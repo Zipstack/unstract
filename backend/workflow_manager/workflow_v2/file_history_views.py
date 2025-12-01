@@ -102,12 +102,38 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
         Supports two modes:
         1. ID-based deletion: Pass {"ids": [...]} to delete specific records (max 100)
         2. Filter-based deletion: Pass filters like status, execution_count_min, etc.
+
+        At least one filter or IDs must be provided to prevent accidental deletion
+        of all records.
         """
+        # Extract all filter parameters upfront
+        ids = request.data.get("ids", [])
+        status_list = request.data.get("status", [])
+        exec_min = request.data.get("execution_count_min")
+        exec_max = request.data.get("execution_count_max")
+        file_path_param = request.data.get("file_path")
+
+        # Safeguard: require at least one filter or IDs to prevent accidental mass deletion
+        has_criteria = bool(
+            ids
+            or status_list
+            or exec_min is not None
+            or exec_max is not None
+            or file_path_param
+        )
+        if not has_criteria:
+            return Response(
+                {
+                    "error": "At least one filter (ids, status, execution_count_min, "
+                    "execution_count_max, or file_path) must be provided"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         workflow = get_object_or_404(Workflow, id=workflow_id)
         queryset = FileHistory.objects.filter(workflow=workflow)
 
         # Check for ID-based deletion
-        ids = request.data.get("ids", [])
         if ids:
             if len(ids) > MAX_BULK_DELETE_LIMIT:
                 return Response(
@@ -120,25 +146,21 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
             queryset = queryset.filter(id__in=ids)
         else:
             # Apply filters from request body (filter-based deletion)
-            status_list = request.data.get("status", [])
             if status_list:
                 queryset = queryset.filter(status__in=status_list)
 
-            exec_min = request.data.get("execution_count_min")
             if exec_min is not None:
                 exec_min_val = self._validate_execution_count(
                     exec_min, "execution_count_min"
                 )
                 queryset = queryset.filter(execution_count__gte=exec_min_val)
 
-            exec_max = request.data.get("execution_count_max")
             if exec_max is not None:
                 exec_max_val = self._validate_execution_count(
                     exec_max, "execution_count_max"
                 )
                 queryset = queryset.filter(execution_count__lte=exec_max_val)
 
-            file_path_param = request.data.get("file_path")
             if file_path_param:
                 queryset = queryset.filter(file_path__icontains=file_path_param)
 

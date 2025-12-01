@@ -51,6 +51,15 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
   const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
   const [fetchingCount, setFetchingCount] = useState(false);
 
+  // Track applied filter values (used for data fetching, pagination, and bulk clear)
+  // These are separate from input values to prevent fetching with unapplied filters
+  const [appliedFilters, setAppliedFilters] = useState({
+    status: [],
+    executionCountMin: null,
+    executionCountMax: null,
+    filePath: "",
+  });
+
   // Pagination states
   const [pagination, setPagination] = useState({
     current: 1,
@@ -63,6 +72,29 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     { label: "Completed", value: "COMPLETED" },
   ];
 
+  // Check if filters have been applied (for "Clear with Filters" button)
+  const hasAppliedFilters = Boolean(
+    appliedFilters.status?.length > 0 ||
+      appliedFilters.executionCountMin !== null ||
+      appliedFilters.executionCountMax !== null ||
+      appliedFilters.filePath
+  );
+
+  // Check if input values differ from applied values (for Apply button indicator)
+  const hasUnappliedChanges = (() => {
+    // Compare status arrays (order-independent)
+    const statusEqual =
+      statusFilter.length === appliedFilters.status.length &&
+      statusFilter.every((s) => appliedFilters.status.includes(s));
+
+    return (
+      !statusEqual ||
+      executionCountMin !== appliedFilters.executionCountMin ||
+      executionCountMax !== appliedFilters.executionCountMax ||
+      filePathFilter !== appliedFilters.filePath
+    );
+  })();
+
   // Copy to clipboard helper
   const copyToClipboard = async (text, label = "Text") => {
     try {
@@ -74,23 +106,25 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     }
   };
 
-  // Fetch file histories
-  const fetchFileHistories = async (page = 1, pageSize = 10) => {
+  // Fetch file histories with optional filters parameter
+  // If filters are passed, use them; otherwise use appliedFilters from state
+  const fetchFileHistoriesWithFilters = async (
+    page = 1,
+    pageSize = 10,
+    filters = null
+  ) => {
     if (!workflowId) {
       console.error("FileHistoryModal: workflowId is missing");
       return;
     }
 
+    const filtersToUse = filters || appliedFilters;
+
     console.log("Fetching file histories:", {
       workflowId,
       page,
       pageSize,
-      filters: {
-        statusFilter,
-        executionCountMin,
-        executionCountMax,
-        filePathFilter,
-      },
+      filters: filtersToUse,
     });
 
     setLoading(true);
@@ -100,17 +134,24 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
         page_size: pageSize,
       };
 
-      if (statusFilter?.length > 0) {
-        params.status = statusFilter.join(",");
+      // Use provided filters for data fetching
+      if (filtersToUse.status?.length > 0) {
+        params.status = filtersToUse.status.join(",");
       }
-      if (executionCountMin !== null && executionCountMin !== undefined) {
-        params.execution_count_min = executionCountMin;
+      if (
+        filtersToUse.executionCountMin !== null &&
+        filtersToUse.executionCountMin !== undefined
+      ) {
+        params.execution_count_min = filtersToUse.executionCountMin;
       }
-      if (executionCountMax !== null && executionCountMax !== undefined) {
-        params.execution_count_max = executionCountMax;
+      if (
+        filtersToUse.executionCountMax !== null &&
+        filtersToUse.executionCountMax !== undefined
+      ) {
+        params.execution_count_max = filtersToUse.executionCountMax;
       }
-      if (filePathFilter) {
-        params.file_path = filePathFilter;
+      if (filtersToUse.filePath) {
+        params.file_path = filtersToUse.filePath;
       }
 
       const response = await workflowApiService.getFileHistories(
@@ -153,6 +194,10 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     }
   };
 
+  // Alias for backward compatibility (pagination, refresh, etc.)
+  const fetchFileHistories = (page, pageSize) =>
+    fetchFileHistoriesWithFilters(page, pageSize);
+
   // Load data on open or filter change
   useEffect(() => {
     if (open && workflowId) {
@@ -163,7 +208,16 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
 
   // Handle filter apply
   const handleApplyFilters = () => {
-    fetchFileHistories(1, pagination.pageSize);
+    // Save current input values as applied filters
+    const newFilters = {
+      status: statusFilter,
+      executionCountMin: executionCountMin,
+      executionCountMax: executionCountMax,
+      filePath: filePathFilter,
+    };
+    setAppliedFilters(newFilters);
+    // Pass new filters directly (state update is async, so can't rely on appliedFilters yet)
+    fetchFileHistoriesWithFilters(1, pagination.pageSize, newFilters);
     setSelectedRowKeys([]);
   };
 
@@ -173,10 +227,16 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     setExecutionCountMin(null);
     setExecutionCountMax(null);
     setFilePathFilter("");
-    // Reset will trigger effect to fetch unfiltered data
-    setTimeout(() => {
-      fetchFileHistories(1, pagination.pageSize);
-    }, 0);
+    // Reset applied filters
+    const emptyFilters = {
+      status: [],
+      executionCountMin: null,
+      executionCountMax: null,
+      filePath: "",
+    };
+    setAppliedFilters(emptyFilters);
+    // Fetch with empty filters
+    fetchFileHistoriesWithFilters(1, pagination.pageSize, emptyFilters);
   };
 
   // Handle pagination change
@@ -236,7 +296,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     }
   };
 
-  // Prepare bulk clear - fetch count for confirmation
+  // Prepare bulk clear - fetch count for confirmation using applied filters
   const handlePrepareBulkClear = async () => {
     setFetchingCount(true);
     try {
@@ -245,17 +305,24 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
         page_size: 1, // We only need count, not actual data
       };
 
-      if (statusFilter?.length > 0) {
-        params.status = statusFilter.join(",");
+      // Use applied filters (not input values)
+      if (appliedFilters.status?.length > 0) {
+        params.status = appliedFilters.status.join(",");
       }
-      if (executionCountMin !== null && executionCountMin !== undefined) {
-        params.execution_count_min = executionCountMin;
+      if (
+        appliedFilters.executionCountMin !== null &&
+        appliedFilters.executionCountMin !== undefined
+      ) {
+        params.execution_count_min = appliedFilters.executionCountMin;
       }
-      if (executionCountMax !== null && executionCountMax !== undefined) {
-        params.execution_count_max = executionCountMax;
+      if (
+        appliedFilters.executionCountMax !== null &&
+        appliedFilters.executionCountMax !== undefined
+      ) {
+        params.execution_count_max = appliedFilters.executionCountMax;
       }
-      if (filePathFilter) {
-        params.file_path = filePathFilter;
+      if (appliedFilters.filePath) {
+        params.file_path = appliedFilters.filePath;
       }
 
       const response = await workflowApiService.getFileHistories(
@@ -273,24 +340,31 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     }
   };
 
-  // Perform bulk clear after user confirms
+  // Perform bulk clear after user confirms using applied filters
   const performBulkClear = async () => {
     setShowBulkDeleteConfirm(false);
     setLoading(true);
     try {
       const filters = {};
 
-      if (statusFilter?.length > 0) {
-        filters.status = statusFilter;
+      // Use applied filters (not input values)
+      if (appliedFilters.status?.length > 0) {
+        filters.status = appliedFilters.status;
       }
-      if (executionCountMin !== null && executionCountMin !== undefined) {
-        filters.execution_count_min = executionCountMin;
+      if (
+        appliedFilters.executionCountMin !== null &&
+        appliedFilters.executionCountMin !== undefined
+      ) {
+        filters.execution_count_min = appliedFilters.executionCountMin;
       }
-      if (executionCountMax !== null && executionCountMax !== undefined) {
-        filters.execution_count_max = executionCountMax;
+      if (
+        appliedFilters.executionCountMax !== null &&
+        appliedFilters.executionCountMax !== undefined
+      ) {
+        filters.execution_count_max = appliedFilters.executionCountMax;
       }
-      if (filePathFilter) {
-        filters.file_path = filePathFilter;
+      if (appliedFilters.filePath) {
+        filters.file_path = appliedFilters.filePath;
       }
 
       const response = await workflowApiService.bulkClearFileHistories(
@@ -544,7 +618,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                   onClick={handleApplyFilters}
                   style={{ flex: 1 }}
                 >
-                  Apply
+                  {hasUnappliedChanges ? "Apply *" : "Apply"}
                 </Button>
                 <Button
                   icon={<ReloadOutlined />}
@@ -594,6 +668,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                 icon={<ClearOutlined />}
                 onClick={handlePrepareBulkClear}
                 loading={fetchingCount}
+                disabled={!hasAppliedFilters}
               >
                 Clear with Filters
               </Button>
