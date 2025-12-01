@@ -22,6 +22,7 @@ function DisplayPromptResult({
   highlightData,
   promptDetails,
   confidenceData,
+  wordConfidenceData,
   isTable = false,
   setOpenExpandModal = () => {},
 }) {
@@ -79,13 +80,96 @@ function DisplayPromptResult({
     );
   }
 
-  const handleClick = (highlightData, confidenceData, key, keyPath) => {
+  // Extract confidence from 5th element of highlight data coordinate arrays
+  const extractConfidenceFromHighlightData = (data) => {
+    if (!data) return null;
+
+    const confidenceValues = [];
+
+    const extractFromArray = (arr) => {
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (Array.isArray(item)) {
+            // Check if this is a coordinate array with 5 elements
+            if (item.length >= 5 && typeof item[4] === "number") {
+              confidenceValues.push(item[4]);
+            } else {
+              // Recursively check nested arrays
+              extractFromArray(item);
+            }
+          } else if (typeof item === "object" && item !== null) {
+            // Recursively check objects
+            for (const val of Object.values(item)) {
+              extractFromArray(val);
+            }
+          }
+        }
+      } else if (typeof arr === "object" && arr !== null) {
+        for (const val of Object.values(arr)) {
+          extractFromArray(val);
+        }
+      }
+    };
+
+    extractFromArray(data);
+
+    // Calculate average confidence if we found any values
+    if (confidenceValues.length > 0) {
+      const sum = confidenceValues.reduce((acc, val) => acc + val, 0);
+      return sum / confidenceValues.length;
+    }
+
+    return null;
+  };
+
+  const handleClick = (
+    highlightData,
+    confidenceData,
+    wordConfidenceData,
+    key,
+    keyPath
+  ) => {
     if (highlightData?.[key]) {
+      const shouldUseWordConfidence =
+        details?.enable_highlight && details?.enable_word_confidence;
+
+      const getNestedValue = (obj, path) => {
+        if (!obj || !path) return undefined;
+        const normalized = path.replace(/\[(\d+)\]/g, ".$1");
+        const parts = normalized.split(".").filter((p) => p !== "");
+        return parts.reduce((acc, part) => {
+          if (acc === undefined || acc === null) return undefined;
+          const maybeIndex = /^\d+$/.test(part) ? Number(part) : part;
+          return acc[maybeIndex];
+        }, obj);
+      };
+
+      let confidence;
+      if (shouldUseWordConfidence && wordConfidenceData) {
+        const wordConfidence = getNestedValue(wordConfidenceData, key);
+        if (wordConfidence && typeof wordConfidence === "object") {
+          const values = Object.values(wordConfidence).filter(
+            (v) => typeof v === "number"
+          );
+          if (values.length > 0) {
+            const sum = values.reduce((acc, val) => acc + val, 0);
+            confidence = sum / values.length;
+          }
+        }
+      }
+
+      if (confidence === undefined) {
+        const extractedConfidence = extractConfidenceFromHighlightData(
+          highlightData[key]
+        );
+        confidence = extractedConfidence ?? confidenceData?.[key];
+      }
+
       handleSelectHighlight(
         highlightData[key],
         promptDetails?.prompt_id,
         profileId,
-        confidenceData?.[key]
+        confidence
       );
       setSelectedKey(keyPath);
     }
@@ -98,6 +182,7 @@ function DisplayPromptResult({
     data,
     highlightData,
     confidenceData,
+    wordConfidenceData,
     indent = 0,
     path = "",
     isTable = false
@@ -146,6 +231,7 @@ function DisplayPromptResult({
                   item,
                   highlightData?.[index],
                   confidenceData?.[index],
+                  wordConfidenceData?.[index],
                   indent + 1,
                   `${path}[${index}]`,
                   isTable
@@ -183,6 +269,7 @@ function DisplayPromptResult({
                         handleClick(
                           highlightData,
                           confidenceData,
+                          wordConfidenceData,
                           key,
                           newPath
                         );
@@ -193,6 +280,7 @@ function DisplayPromptResult({
                       value,
                       highlightData?.[key],
                       confidenceData?.[key],
+                      wordConfidenceData?.[key],
                       indent + 1,
                       newPath,
                       isTable
@@ -214,7 +302,15 @@ function DisplayPromptResult({
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(parsedOutput, highlightData, confidenceData, 0, "", isTable)
+        renderJson(
+          parsedOutput,
+          highlightData,
+          confidenceData,
+          wordConfidenceData,
+          0,
+          "",
+          isTable
+        )
       ) : (
         <TextResult
           enableHighlight={details?.enable_highlight}
@@ -222,6 +318,7 @@ function DisplayPromptResult({
           promptId={promptDetails?.prompt_id}
           profileId={profileId}
           confidenceData={confidenceData}
+          wordConfidenceData={wordConfidenceData}
           selectedHighlight={selectedHighlight}
           parsedOutput={parsedOutput}
           onSelectHighlight={handleSelectHighlight}
@@ -237,15 +334,19 @@ const TextResult = ({
   promptId,
   profileId,
   confidenceData,
+  wordConfidenceData,
   selectedHighlight,
   parsedOutput,
   onSelectHighlight,
 }) => {
+  // Use word confidence if available, otherwise fallback to line confidence
+  const confidence = wordConfidenceData || confidenceData;
+
   return enableHighlight ? (
     <Typography.Text
       wrap
       onClick={() =>
-        onSelectHighlight(highlightData, promptId, profileId, confidenceData)
+        onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
         highlightData ? "clickable" : ""
@@ -264,6 +365,7 @@ TextResult.propTypes = {
   promptId: PropTypes.string,
   profileId: PropTypes.string,
   confidenceData: PropTypes.any,
+  wordConfidenceData: PropTypes.any,
   selectedHighlight: PropTypes.object,
   parsedOutput: PropTypes.any,
   onSelectHighlight: PropTypes.func.isRequired,
@@ -277,6 +379,7 @@ DisplayPromptResult.propTypes = {
   highlightData: PropTypes.object,
   promptDetails: PropTypes.object,
   confidenceData: PropTypes.object,
+  wordConfidenceData: PropTypes.object,
   isTable: PropTypes.bool,
   setOpenExpandModal: PropTypes.func,
 };

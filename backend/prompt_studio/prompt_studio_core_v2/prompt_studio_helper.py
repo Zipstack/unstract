@@ -65,24 +65,13 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.exceptions import IndexingError, SdkError
-    from unstract.sdk1.file_storage.constants import StorageType
-    from unstract.sdk1.file_storage.env_helper import EnvHelper
-    from unstract.sdk1.prompt import PromptTool
-    from unstract.sdk1.utils.indexing import IndexingUtils
-    from unstract.sdk1.utils.tool import ToolUtils
-else:
-    from unstract.sdk.constants import LogLevel
-    from unstract.sdk.exceptions import IndexingError, SdkError
-    from unstract.sdk.file_storage.constants import StorageType
-    from unstract.sdk.file_storage.env_helper import EnvHelper
-    from unstract.sdk.prompt import PromptTool
-    from unstract.sdk.utils import ToolUtils
-    from unstract.sdk.utils.indexing_utils import IndexingUtils
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.exceptions import IndexingError, SdkError
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.prompt import PromptTool
+from unstract.sdk1.utils.indexing import IndexingUtils
+from unstract.sdk1.utils.tool import ToolUtils
 
 logger = logging.getLogger(__name__)
 
@@ -983,8 +972,12 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
+            settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
@@ -1257,9 +1250,13 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.CHUNK_OVERLAP] = default_profile.chunk_overlap
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
         tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
+            settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
         for prompt in prompts:

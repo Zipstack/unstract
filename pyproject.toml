@@ -41,7 +41,6 @@ hook-check-django-migrations = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.1",
     "python-magic==0.4.27",
-    "unstract-sdk~=0.79.0",
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",
@@ -90,6 +89,8 @@ exclude = [
     "venv",
     ".*migrations/.*.py",
     "tests",
+    "*_pb2.py",
+    "*_pb2_grpc.py",
 ]
 
 [tool.ruff.lint]

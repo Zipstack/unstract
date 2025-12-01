@@ -15,14 +15,8 @@ from utils.models.organization_mixin import (
 )
 
 from prompt_studio.prompt_studio_core_v2.constants import DefaultPrompts
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.file_storage.constants import StorageType
-    from unstract.sdk1.file_storage.env_helper import EnvHelper
-else:
-    from unstract.sdk.file_storage.constants import StorageType
-    from unstract.sdk.file_storage.env_helper import EnvHelper
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
 
 logger = logging.getLogger(__name__)
 
@@ -143,6 +137,10 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     )
     enable_highlight = models.BooleanField(
         db_comment="Flag to enable or disable document highlighting", default=False
+    )
+    enable_word_confidence = models.BooleanField(
+        db_comment="Flag to enable or disable word-level confidence (depends on enable_highlight)",
+        default=False,
     )
 
     # Introduced field to establish M2M relation between users and custom_tool.

@@ -12,13 +12,8 @@ from unstract.core.flask import (
     register_request_id_middleware,
 )
 from unstract.core.flask.logging import setup_logging
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.controllers import api
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-else:
-    from unstract.sdk.constants import LogLevel
+from unstract.sdk1.constants import LogLevel
 
 load_dotenv()
 

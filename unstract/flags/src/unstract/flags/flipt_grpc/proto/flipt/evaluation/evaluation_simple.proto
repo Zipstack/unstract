@@ -12,11 +12,14 @@ message EvaluationRequest {
   string flag_key = 3;
   string entity_id = 4;
   map<string, string> context = 5;
+  string reference = 6;
+  string environment_key = 7;
 }
 
 message BatchEvaluationRequest {
   string request_id = 1;
   repeated EvaluationRequest requests = 3;
+  string reference = 4;
 }
 
 message BatchEvaluationResponse {
@@ -59,6 +62,7 @@ message BooleanEvaluationResponse {
   double request_duration_millis = 4;
   google.protobuf.Timestamp timestamp = 5;
   string flag_key = 6;
+  repeated string segment_keys = 7;
 }
 
 message VariantEvaluationResponse {
@@ -80,7 +84,7 @@ message ErrorEvaluationResponse {
 }
 
 service EvaluationService {
-  rpc Boolean(EvaluationRequest) returns (BooleanEvaluationResponse) {}
-  rpc Variant(EvaluationRequest) returns (VariantEvaluationResponse) {}
-  rpc Batch(BatchEvaluationRequest) returns (BatchEvaluationResponse) {}
+  rpc Boolean(EvaluationRequest) returns (BooleanEvaluationResponse);
+  rpc Variant(EvaluationRequest) returns (VariantEvaluationResponse);
+  rpc Batch(BatchEvaluationRequest) returns (BatchEvaluationResponse);
 }

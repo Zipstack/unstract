@@ -1,73 +1,136 @@
-"""Flipt Client class is used to interact with the Flipt server.
-
-This contains all the methods to interact with the Flipt server like
-evaluate,   list, segments and much more. This can be further extended
-to add more methods to interact with the Flipt server as per the
-requirement.
-"""
+"""Flipt client wrapper for feature flag management."""
 
 import logging
 import os
+import warnings
 
-import grpc
-
-from ..generated import flipt_pb2, flipt_pb2_grpc
-from .base import BaseClient
+from ..flipt_grpc.client import FliptGrpcClient, GrpcClientOptions
 
 logger = logging.getLogger(__name__)
 
 
-class FliptClient(BaseClient):
+class FliptClient:
+    """Wrapper class for Flipt SDK client with convenience methods."""
+
     def __init__(self) -> None:
-        super().__init__(flipt_pb2_grpc.FliptStub)
+        """Initialize Flipt client wrapper."""
+        # Check if Flipt service is available
+        self.service_available = (
+            os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
+        )
 
-    def parse_flag_list(self, response):
-        flags = response.flags
-        total_count = response.total_count
+        if not self.service_available:
+            logger.warning("Flipt service is not available")
 
-        parsed_flags = {}
-        for flag in flags:
-            enabled_status = flag.enabled if hasattr(flag, "enabled") else None
-            parsed_flags[flag.key] = enabled_status
-        return {"flags": parsed_flags, "total_count": total_count}
+        # Store configuration for creating clients
+        self.eval_ip = os.environ.get("EVALUATION_SERVER_IP")
+        self.eval_port = os.environ.get("EVALUATION_SERVER_PORT")
+        self.flipt_url = f"{self.eval_ip}:{self.eval_port}"
+        self.namespace_key = os.environ.get("UNSTRACT_FEATURE_FLAG_NAMESPACE", "default")
+        self.grpc_opts = GrpcClientOptions(
+            address=self.flipt_url, namespace_key=self.namespace_key
+        )
 
-    def list_feature_flags(self, namespace_key: str) -> dict:
-        try:
-            FLIPT_SERVICE_AVAILABLE = (
-                os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() == "true"
-            )
-            if not FLIPT_SERVICE_AVAILABLE:
-                logger.warning("Flipt service is not available.")
-                return {}
-
-            request = flipt_pb2.ListFlagRequest(namespace_key=namespace_key)
-            response = self.stub.ListFlags(request)
-            parsed_response = self.parse_flag_list(response)
-            return parsed_response
-        except grpc.RpcError as e:
-            logging.error(f"Error communicating with evaluation server: {e}")
-            return {}
-
-    def evaluate_feature_flag(
-        self, namespace_key: str, flag_key: str, entity_id: str, context: dict = None
+    def evaluate_boolean(
+        self,
+        flag_key: str,
+        entity_id: str | None = "unstract",
+        context: dict | None = None,
+        namespace_key: str | None = None,
     ) -> bool:
-        try:
-            FLIPT_SERVICE_AVAILABLE = os.environ.get("FLIPT_SERVICE_AVAILABLE", False)
-            if not FLIPT_SERVICE_AVAILABLE:
-                logger.warning("Flipt service is not available.")
-                return False
+        """Evaluate a boolean feature flag for a given entity.
 
-            request = flipt_pb2.EvaluationRequest(
-                namespace_key=namespace_key,
-                flag_key=flag_key,
-                entity_id=entity_id,
-                context=context or {},
+        Args:
+            flag_key: The key of the feature flag to evaluate
+            entity_id: The ID of the entity for which to evaluate the flag
+            context: Additional context for evaluation
+            namespace_key: The namespace to evaluate the flag in
+        Returns:
+            bool: The evaluated boolean value of the feature flag
+        """
+        if namespace_key is not None:
+            warnings.warn(
+                "namespace_key parameter is deprecated and will be ignored",
+                DeprecationWarning,
+                stacklevel=2,
             )
-            response = self.stub.Evaluate(request)
-            return response.match
-        except grpc.RpcError as e:
-            logger.warning(
-                f"Error evaluating feature flag '{flag_key}' for "
-                f"{namespace_key} : {e}"
-            )
+        if not self.service_available:
+            logger.warning("Flipt service not available, returning False for all flags")
             return False
+
+        client = None
+        try:
+            # Create a FliptClient instance for this specific namespace
+            client = FliptGrpcClient(opts=self.grpc_opts)
+
+            # Evaluate the boolean flag from the Flipt server
+            result = client.evaluate_boolean(
+                flag_key=flag_key, entity_id=entity_id, context=context or {}
+            )
+
+            return result.value if hasattr(result, "value") else False
+
+        except Exception as e:
+            logger.error(f"Error evaluating flag {flag_key} for entity {entity_id}: {e}")
+            return False
+        finally:
+            # Always close the client to free resources
+            if client:
+                try:
+                    client.close()
+                except Exception as e:
+                    logger.error(f"Error closing Flipt client: {e}")
+
+    def list_feature_flags(self, namespace_key: str | None = None) -> dict:
+        """List all feature flags in a namespace.
+
+        Args:
+            namespace_key: The namespace to list flags from
+
+        Returns:
+            dict: Dictionary containing flags and total_count
+                Format: {"flags": {flag_key: enabled_status}, "total_count": int}
+        """
+        if namespace_key is not None:
+            warnings.warn(
+                "namespace_key parameter is deprecated and will be ignored",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if not self.service_available:
+            logger.warning("Flipt service not available, returning empty flags")
+            return {"flags": {}, "total_count": 0}
+
+        client = None
+        try:
+            # Create a FliptClient instance for this specific namespace
+            client = FliptGrpcClient(opts=self.grpc_opts)
+
+            # List flags from the Flipt server
+            response = client.list_flags()
+
+            # Parse response into expected format
+            parsed_flags = {}
+            flags = response.flags if hasattr(response, "flags") else []
+
+            for flag in flags:
+                # Get enabled status (default to None if not available)
+                enabled_status = flag.enabled if hasattr(flag, "enabled") else None
+                parsed_flags[flag.key] = enabled_status
+
+            total_count = (
+                response.total_count if hasattr(response, "total_count") else len(flags)
+            )
+
+            return {"flags": parsed_flags, "total_count": total_count}
+
+        except Exception as e:
+            logger.error(f"Error listing flags for namespace {self.namespace_key}: {e}")
+            return {"flags": {}, "total_count": 0}
+        finally:
+            # Always close the client to free resources
+            if client:
+                try:
+                    client.close()
+                except Exception as e:
+                    logger.error(f"Error closing Flipt client: {e}")
