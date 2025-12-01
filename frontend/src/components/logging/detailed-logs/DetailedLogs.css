@@ -19,7 +19,7 @@
   margin-right: 20px;
 }
 
-.column-filter-dropdown{
+.column-filter-dropdown {
   margin-bottom: 20px;
 }
 
@@ -31,4 +31,20 @@
   width: 188px;
   margin-bottom: 8px;
   display: block;
+}
+
+.detailed-logs-refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-right: 12px;
+}
+
+.logs-auto-refresh-label {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.logs-refresh-btn {
+  height: 30px;
 }

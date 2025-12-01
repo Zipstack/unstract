@@ -10,6 +10,7 @@ import {
   FileTextOutlined,
   HourglassOutlined,
   InfoCircleFilled,
+  ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
@@ -18,6 +19,7 @@ import {
   Checkbox,
   Dropdown,
   Flex,
+  Switch,
   Table,
   Tooltip,
   Typography,
@@ -61,46 +63,10 @@ const DetailedLogs = () => {
   const [statusFilter, setStatusFilter] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [searchTimeout, setSearchTimeout] = useState(null);
-  // Store interval ID for proper cleanup
-  const pollingIntervalRef = useRef(null);
-  // Store latest execution details for polling re-checks
-  const executionDetailsRef = useRef(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const autoRefreshIntervalRef = useRef(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
-
-  // Check if execution should continue polling
-  const shouldPoll = (executionDetails) => {
-    if (!executionDetails) return false;
-
-    const status = executionDetails?.status?.toLowerCase();
-    // Only poll EXECUTING or PENDING status
-    if (status !== "executing" && status !== "pending") {
-      return false;
-    }
-
-    // Check if execution is stale (>1 hour from creation)
-    if (!executionDetails?.createdAtRaw) return false;
-    const createdAt = new Date(executionDetails?.createdAtRaw);
-    if (!Number.isFinite(createdAt.getTime())) return false;
-    const now = new Date();
-    const oneHourInMs = 60 * 60 * 1000;
-    const timeDifference = now - createdAt;
-
-    if (timeDifference > oneHourInMs) {
-      // Stopping polling in case the execution is possibly stuck
-      return false;
-    }
-
-    return true;
-  };
-
-  // Clear polling interval
-  const clearPolling = () => {
-    if (pollingIntervalRef.current) {
-      clearInterval(pollingIntervalRef.current);
-      pollingIntervalRef.current = null;
-    }
-  };
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -323,43 +289,37 @@ const DetailedLogs = () => {
     setSelectedRecord(record);
   };
 
+  const handleRefresh = () => {
+    fetchExecutionDetails(id);
+    fetchExecutionFiles(id, pagination.current);
+  };
+
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
   }, [pagination.current, ordering, statusFilter]);
 
-  // Keep ref updated with latest execution details
+  // Auto-refresh interval management
   useEffect(() => {
-    executionDetailsRef.current = executionDetails;
-  }, [executionDetails]);
-
-  // Polling logic for execution status updates
-  useEffect(() => {
-    // Clear any existing interval first
-    clearPolling();
-
-    if (shouldPoll(executionDetails)) {
-      pollingIntervalRef.current = setInterval(() => {
-        // Re-check staleness inside polling cycle
-        // Handles scenario where execution runs for >1 hour
-        if (!shouldPoll(executionDetailsRef.current)) {
-          clearPolling();
-          return;
-        }
-
-        fetchExecutionDetails(id);
-        fetchExecutionFiles(id, pagination.current);
-      }, 5000);
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
     }
 
-    // Cleanup when dependencies change
-    return clearPolling;
-  }, [executionDetails?.status, id, pagination.current]);
+    if (autoRefresh) {
+      autoRefreshIntervalRef.current = setInterval(() => {
+        fetchExecutionDetails(id);
+        fetchExecutionFiles(id, pagination.current);
+      }, 30000);
+    }
 
-  // Clear polling when component unmounts
-  useEffect(() => {
-    return clearPolling;
-  }, []);
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [autoRefresh, id, pagination.current]);
 
   useEffect(() => {
     const initialColumns = columnsDetailedTable.reduce((acc, col) => {
@@ -476,13 +436,32 @@ const DetailedLogs = () => {
             </Flex>
           </Card>
         </Flex>
-        <Button
-          className="view-log-button"
-          type="link"
-          onClick={() => handleLogsModalOpen({})}
-        >
-          View Logs
-        </Button>
+        <Flex align="center">
+          <div className="detailed-logs-refresh-controls">
+            <Typography.Text className="logs-auto-refresh-label">
+              Auto-refresh (30s)
+            </Typography.Text>
+            <Switch
+              size="small"
+              checked={autoRefresh}
+              onChange={setAutoRefresh}
+            />
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={handleRefresh}
+              className="logs-refresh-btn"
+            >
+              Refresh
+            </Button>
+          </div>
+          <Button
+            className="view-log-button"
+            type="link"
+            onClick={() => handleLogsModalOpen({})}
+          >
+            View Logs
+          </Button>
+        </Flex>
       </Flex>
       <div className="settings-layout">
         <Dropdown

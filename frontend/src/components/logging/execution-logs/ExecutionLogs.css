@@ -10,6 +10,11 @@
   margin: 0;
 }
 
+.logs-table {
+  padding: 8px 16px;
+  overflow-y: auto;
+}
+
 .log-tab-icon {
   width: 15px !important;
   height: 15px !important;
@@ -30,7 +35,7 @@
   height: 30px;
 }
 
-.log-tab{
+.log-tab {
   height: 30px;
 }
 
@@ -46,4 +51,27 @@
 
 .log-tab .ant-tabs-ink-bar {
   top: 40px !important;
+}
+
+.logs-refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logs-auto-refresh-label {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.logs-refresh-btn {
+  height: 30px;
+}
+
+.logs-filter-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px 8px;
 }

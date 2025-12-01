@@ -1,4 +1,5 @@
-import { DatePicker, Flex, Tabs, Typography } from "antd";
+import { DatePicker, Tabs, Typography, Switch, Button } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 
@@ -43,11 +44,10 @@ function ExecutionLogs() {
   const [selectedDateRange, setSelectedDateRange] = useState([]);
   const [datePickerValue, setDatePickerValue] = useState(null);
   const [ordering, setOrdering] = useState(null);
-  // Store timeouts in a ref for proper cleanup
-  const pollingTimeoutsRef = useRef({});
-  // Store polling IDs in a ref to avoid stale closure issues
-  const pollingIdsRef = useRef(new Set());
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const autoRefreshIntervalRef = useRef(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
+
   const items = [
     {
       key: "ETL",
@@ -97,117 +97,6 @@ function ExecutionLogs() {
     }
   };
 
-  // Check if execution should continue polling
-  const shouldPoll = (item) => {
-    // Only poll EXECUTING or PENDING status
-    if (
-      item?.status?.toLowerCase() !== "executing" &&
-      item?.status?.toLowerCase() !== "pending"
-    ) {
-      return false;
-    }
-
-    // Check if execution is stale (>1 hour from creation)
-    const createdAt = new Date(item?.createdAtRaw || item?.created_at);
-    if (!Number.isFinite(createdAt.getTime())) return false;
-    const now = new Date();
-    const oneHourInMs = 60 * 60 * 1000;
-    const timeDifference = now - createdAt;
-
-    if (timeDifference > oneHourInMs) {
-      // Stopping polling in case the execution is possibly stuck
-      return false;
-    }
-
-    return true;
-  };
-
-  // Clear a single polling timeout
-  const clearPollingTimeout = (id) => {
-    if (pollingTimeoutsRef.current[id]) {
-      clearTimeout(pollingTimeoutsRef.current[id]);
-      delete pollingTimeoutsRef.current[id];
-    }
-  };
-
-  // Clear all polling timeouts and reset state
-  const clearAllPolling = () => {
-    for (const id of Object.keys(pollingTimeoutsRef.current)) {
-      clearTimeout(pollingTimeoutsRef.current[id]);
-    }
-    pollingTimeoutsRef.current = {};
-    // Reset ref to keep it in sync
-    pollingIdsRef.current = new Set();
-  };
-
-  const pollExecutingRecord = async (id) => {
-    try {
-      const url = getUrl(`/execution/${id}/`);
-      const response = await axiosPrivate.get(url);
-      const item = response?.data;
-
-      // Update the record in the dataList
-      setDataList((prevData) => {
-        const newData = [...prevData];
-        const index = newData.findIndex((record) => record.key === id);
-        if (index !== -1) {
-          const total = item.total_files || 0;
-          const processed =
-            (item?.successful_files || 0) + (item?.failed_files || 0);
-          const progress =
-            total > 0 ? Math.round((processed / total) * 100) : 0;
-
-          newData[index] = {
-            ...newData[index],
-            progress,
-            processed,
-            total,
-            createdAtRaw: item?.created_at,
-            success: item?.status === "COMPLETED",
-            isError: item?.status === "ERROR",
-            workflowName: item?.workflow_name,
-            pipelineName: item?.pipeline_name || "Pipeline name not found",
-            successfulFiles: item?.successful_files,
-            failedFiles: item?.failed_files,
-            totalFiles: item?.total_files,
-            status: item?.status,
-            execution_time: item?.execution_time,
-          };
-
-          // If status should no longer be polled, remove from polling
-          if (!shouldPoll(item)) {
-            // Update ref to keep it in sync
-            pollingIdsRef.current.delete(id);
-            clearPollingTimeout(id);
-          }
-        }
-        return newData;
-      });
-
-      // Continue polling if should still poll
-      if (shouldPoll(item)) {
-        pollingTimeoutsRef.current[id] = setTimeout(
-          () => pollExecutingRecord(id),
-          5000
-        );
-      }
-    } catch (err) {
-      // Update ref to keep it in sync
-      pollingIdsRef.current.delete(id);
-      clearPollingTimeout(id);
-    }
-  };
-
-  const startPollingForExecuting = (records) => {
-    for (const record of records) {
-      if (shouldPoll(record) && !pollingIdsRef.current.has(record.key)) {
-        // Update ref immediately to prevent stale closure issues
-        pollingIdsRef.current.add(record.key);
-        pollExecutingRecord(record.key);
-      }
-    }
-  };
-
   const fetchLogs = async (page) => {
     try {
       setLoading(true);
@@ -252,7 +141,6 @@ function ExecutionLogs() {
         };
       });
       setDataList(formattedData);
-      startPollingForExecuting(formattedData);
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {
@@ -260,52 +148,55 @@ function ExecutionLogs() {
     }
   };
 
-  const customButtons = () => {
+  const tabButtons = () => {
     return (
-      <Flex gap={10} className="log-controls">
-        <Tabs
-          activeKey={activeTab}
-          items={items}
-          onChange={onChange}
-          className="log-tab"
-        />
-        <RangePicker
-          showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
-          value={datePickerValue}
-          onChange={(value) => {
-            setDatePickerValue(value);
-            setSelectedDateRange(
-              value ? [value[0].toISOString(), value[1].toISOString()] : []
-            );
-          }}
-          onOk={onOk}
-          className="logs-date-picker"
-          disabled={currentPath}
-          format="YYYY-MM-DD HH:mm:ss"
-        />
-      </Flex>
+      <Tabs
+        activeKey={activeTab}
+        items={items}
+        onChange={onChange}
+        className="log-tab"
+      />
     );
   };
 
-  // Clear all polling when component unmounts or view changes
-  useEffect(() => {
-    return clearAllPolling;
-  }, [id, activeTab]);
-
   useEffect(() => {
     if (!currentPath) {
-      // Clear any existing polling when fetching new logs
-      clearAllPolling();
       setDataList([]);
       fetchLogs(pagination.current);
     }
   }, [activeTab, pagination.current, selectedDateRange, ordering, currentPath]);
 
+  // Auto-refresh interval management
+  useEffect(() => {
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+    }
+
+    if (autoRefresh) {
+      autoRefreshIntervalRef.current = setInterval(() => {
+        fetchLogs(pagination.current);
+      }, 30000);
+    }
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [autoRefresh, pagination.current]);
+
+  // Clear auto-refresh when tab changes
+  useEffect(() => {
+    setAutoRefresh(false);
+  }, [activeTab]);
+
   return (
     <>
       <ToolNavBar
-        title={"Logs"}
-        CustomButtons={customButtons}
+        title={"Execution Logs"}
+        CustomButtons={tabButtons}
         enableSearch={false}
       />
       <div className="file-log-layout">
@@ -313,10 +204,41 @@ function ExecutionLogs() {
           <DetailedLogs />
         ) : (
           <>
-            <Typography.Title className="logs-title" level={4}>
-              Execution Logs
-            </Typography.Title>
-            <div className="settings-layout">
+            <div className="logs-filter-bar">
+              <RangePicker
+                showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
+                value={datePickerValue}
+                onChange={(value) => {
+                  setDatePickerValue(value);
+                  setSelectedDateRange(
+                    value
+                      ? [value[0].toISOString(), value[1].toISOString()]
+                      : []
+                  );
+                }}
+                onOk={onOk}
+                className="logs-date-picker"
+                format="YYYY-MM-DD HH:mm:ss"
+              />
+              <div className="logs-refresh-controls">
+                <Typography.Text className="logs-auto-refresh-label">
+                  Auto-refresh (30s)
+                </Typography.Text>
+                <Switch
+                  size="small"
+                  checked={autoRefresh}
+                  onChange={setAutoRefresh}
+                />
+                <Button
+                  icon={<ReloadOutlined />}
+                  onClick={() => fetchLogs(pagination.current)}
+                  className="logs-refresh-btn"
+                >
+                  Refresh
+                </Button>
+              </div>
+            </div>
+            <div className="logs-table">
               <LogsTable
                 tableData={dataList}
                 loading={loading}
