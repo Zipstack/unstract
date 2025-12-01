@@ -107,17 +107,37 @@ function ListView({
           onClick={(event) => event.stopPropagation()}
           role="none"
         >
-          <EditOutlined
-            key={`${item.id}-edit`}
-            onClick={(event) => handleEdit(event, item)}
-            className="action-icon-buttons edit-icon"
-          />
-          {handleShare && (
-            <ShareAltOutlined
-              key={`${item.id}-share`}
-              className="action-icon-buttons share-icon"
-              onClick={(event) => handleShareClick(event, item, true)}
+          <Tooltip
+            title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+          >
+            <EditOutlined
+              key={`${item.id}-edit`}
+              onClick={(event) => handleEdit(event, item)}
+              className={`action-icon-buttons edit-icon ${
+                item?.is_deprecated ? "disabled-icon" : ""
+              }`}
+              style={{
+                cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+                opacity: item?.is_deprecated ? 0.4 : 1,
+              }}
             />
+          </Tooltip>
+          {handleShare && (
+            <Tooltip
+              title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+            >
+              <ShareAltOutlined
+                key={`${item.id}-share`}
+                className={`action-icon-buttons share-icon ${
+                  item?.is_deprecated ? "disabled-icon" : ""
+                }`}
+                onClick={(event) => handleShareClick(event, item, true)}
+                style={{
+                  cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+                  opacity: item?.is_deprecated ? 0.4 : 1,
+                }}
+              />
+            </Tooltip>
           )}
           <Popconfirm
             key={`${item.id}-delete`}

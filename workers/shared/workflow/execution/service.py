@@ -596,7 +596,12 @@ class WorkerWorkflowExecutionService:
 
         # Consolidate errors
         final_error = None
-        if execution_error and destination_result and destination_result.error:
+        if (
+            execution_error
+            and destination_result
+            and destination_result.error
+            and execution_error != destination_result.error
+        ):
             final_error = (
                 f"Execution: {execution_error}; Destination: {destination_result.error}"
             )

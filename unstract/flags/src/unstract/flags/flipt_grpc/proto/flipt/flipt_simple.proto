@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package flipt;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "go.flipt.io/flipt/rpc/flipt";
+
+// Simplified version of flipt.proto with only the necessary definitions
+
+enum FlagType {
+  VARIANT_FLAG_TYPE = 0;
+  BOOLEAN_FLAG_TYPE = 1;
+}
+
+message Variant {
+  string id = 1;
+  string flag_key = 2;
+  string key = 3;
+  string name = 4;
+  string description = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp updated_at = 7;
+  string attachment = 8;
+  string namespace_key = 9;
+}
+
+message Flag {
+  string key = 1;
+  string name = 2;
+  string description = 3;
+  bool enabled = 4;
+  google.protobuf.Timestamp created_at = 5;
+  google.protobuf.Timestamp updated_at = 6;
+  repeated Variant variants = 7;
+  string namespace_key = 8;
+  FlagType type = 9;
+}
+
+message FlagList {
+  repeated Flag flags = 1;
+  string next_page_token = 2;
+  int32 total_count = 3;
+}
+
+message ListFlagRequest {
+  int32 limit = 1;
+  int32 offset = 2 [deprecated = true];
+  string page_token = 3;
+  string namespace_key = 4;
+  string reference = 5;
+  string environment_key = 6;
+}
+
+service Flipt {
+  rpc ListFlags(ListFlagRequest) returns (FlagList);
+}

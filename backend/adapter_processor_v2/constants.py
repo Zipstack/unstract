@@ -31,6 +31,9 @@ class AdapterKeys:
     ADAPTER_CREATED_BY = "created_by_email"
     ADAPTER_CONTEXT_WINDOW_SIZE = "context_window_size"
     PLATFORM_PROVIDED_UNSTRACT_KEY = "use_platform_provided_unstract_key"
+    IS_AVAILABLE = "is_available"
+    DEPRECATION_METADATA = "deprecation_metadata"
+    IS_DEPRECATED = "is_deprecated"
 
 
 class AllowedDomains(Enum):

@@ -50,6 +50,9 @@ COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/sdk1 /unstract/sdk1
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
+# Increase timeout for large packages (flipt-client is ~45MB)
+ENV UV_HTTP_TIMEOUT=120
+
 # Switch to non-root user
 USER ${APP_USER}
 
@@ -72,7 +75,10 @@ USER ${APP_USER}
 
 # Install the application in non-editable mode to avoid permission issues
 RUN uv sync --group deploy --locked && \
-    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai
 
 EXPOSE 3001
 
