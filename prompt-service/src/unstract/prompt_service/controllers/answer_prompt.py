@@ -4,7 +4,6 @@ from typing import Any
 
 from flask import Blueprint, request
 from flask import current_app as app
-
 from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
