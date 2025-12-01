@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.tool_registry.constants import PropKey
 from unstract.tool_registry.dto import Tool, ToolMeta
 from unstract.tool_registry.exceptions import (

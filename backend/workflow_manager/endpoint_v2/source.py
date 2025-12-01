@@ -46,7 +46,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.sdk.file_storage import FileStorage
+from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
 
 logger = logging.getLogger(__name__)
@@ -573,7 +573,7 @@ class SourceConnector(BaseConnector):
         return WorkflowExecution.objects.filter(
             workflow=self.workflow,
             workflow__organization_id=organization.id,  # Security: Organization isolation
-            status__in=[ExecutionStatus.EXECUTING, ExecutionStatus.PENDING],
+            status__in=[ExecutionStatus.EXECUTING.value, ExecutionStatus.PENDING.value],
         )
 
     def _has_blocking_file_execution(self, execution, file_hash: FileHash) -> bool:
@@ -611,7 +611,10 @@ class SourceConnector(BaseConnector):
                 workflow_execution=execution,
                 file_hash=file_hash.file_hash,
                 file_path=file_hash.file_path,
-                status__in=ExecutionStatus.get_skip_processing_statuses(),
+                status__in=[
+                    status.value
+                    for status in ExecutionStatus.get_skip_processing_statuses()
+                ],
             )
         except WorkflowFileExecution.DoesNotExist:
             return None
@@ -628,7 +631,10 @@ class SourceConnector(BaseConnector):
                 workflow_execution=execution,
                 provider_file_uuid=file_hash.provider_file_uuid,
                 file_path=file_hash.file_path,
-                status__in=ExecutionStatus.get_skip_processing_statuses(),
+                status__in=[
+                    status.value
+                    for status in ExecutionStatus.get_skip_processing_statuses()
+                ],
             )
         except WorkflowFileExecution.DoesNotExist:
             return None

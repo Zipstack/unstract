@@ -10,9 +10,9 @@ from unstract.prompt_service.dto import (
 from unstract.prompt_service.exceptions import APIError
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.utils.file_utils import FileUtils
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.utils.indexing_utils import IndexingUtils
-from unstract.sdk.vector_db import VectorDB
+from unstract.sdk1.embedding import EmbeddingCompat
+from unstract.sdk1.utils.indexing import IndexingUtils
+from unstract.sdk1.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
@@ -51,10 +51,19 @@ class IndexingService:
                 tool=util,
                 fs=fs_instance,
             )
-            embedding = Embedding(
-                tool=util,
+
+            # Skip embedding creation and indexing when chunk_size is 0
+            # When chunk_size is 0, we don't need vector operations
+            if chunking_config.chunk_size == 0:
+                logger.info(f"Skipping indexing for chunk_size=0. Doc ID: {doc_id}")
+                return doc_id
+
+            embedding = EmbeddingCompat(
                 adapter_instance_id=instance_identifiers.embedding_instance_id,
-                usage_kwargs=processing_options.usage_kwargs,
+                tool=util,
+                kwargs={
+                    **processing_options.usage_kwargs,
+                },
             )
 
             vector_db = VectorDB(
@@ -78,7 +87,8 @@ class IndexingService:
             )
             return doc_id
         except Exception as e:
-            raise APIError(f"Error while indexing : {str(e)}") from e
+            status_code = getattr(e, "status_code", 500)
+            raise APIError(f"Error while indexing: {str(e)}", code=status_code) from e
         finally:
             if "vector_db" in locals():
                 vector_db.close()

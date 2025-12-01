@@ -13,8 +13,8 @@ from unstract.prompt_service.core.retrievers.subquestion import SubquestionRetri
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
 from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.metrics import Metrics
-from unstract.sdk.llm import LLM
-from unstract.sdk.vector_db import VectorDB
+from unstract.sdk1.llm import LLM
+from unstract.sdk1.vector_db import VectorDB
 
 
 class RetrievalService:

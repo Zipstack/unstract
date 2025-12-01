@@ -1,8 +1,11 @@
+import logging
 import uuid
 from typing import Any
 
 from account_v2.models import User
 from django.db import models
+from django.db.models.signals import post_delete
+from django.dispatch import receiver
 from pipeline_v2.models import Pipeline
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -14,13 +17,27 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from api_v2.constants import ApiExecution
 
+logger = logging.getLogger(__name__)
+
 API_NAME_MAX_LENGTH = 30
 DESCRIPTION_MAX_LENGTH = 255
 API_ENDPOINT_MAX_LENGTH = 255
 
 
 class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    pass
+    def for_user(self, user):
+        """Filter API deployments that the user can access:
+        - API deployments created by the user
+        - API deployments shared with the user
+        - API deployments shared with the entire organization
+        """
+        from django.db.models import Q
+
+        return self.filter(
+            Q(created_by=user)  # Owned by user
+            | Q(shared_users=user)  # Shared with user
+            | Q(shared_to_org=True)  # Shared to entire organization
+        ).distinct()
 
 
 class APIDeployment(DefaultOrganizationMixin, BaseModel):
@@ -75,6 +92,14 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         blank=True,
         editable=False,
     )
+    # Sharing fields
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_api_deployments", blank=True
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Whether this API deployment is shared with the entire organization",
+    )
 
     # Manager
     objects = APIDeploymentModelManager()
@@ -125,6 +150,46 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
             models.UniqueConstraint(
                 fields=["api_name", "organization"],
                 name="unique_api_name",
+            ),
+        ]
+
+
+class OrganizationRateLimit(DefaultOrganizationMixin, BaseModel):
+    """Model to store organization-specific API deployment rate limits."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    concurrent_request_limit = models.IntegerField(
+        default=5,
+        db_comment="Maximum number of concurrent API deployment requests allowed for this organization",
+    )
+
+    def __str__(self) -> str:
+        return f"{self.organization} - Limit: {self.concurrent_request_limit}"
+
+    def save(self, *args, **kwargs):
+        """Save and automatically clear cache."""
+        super().save(*args, **kwargs)
+        self._clear_cache()
+
+    def _clear_cache(self):
+        """Clear cached limit for this organization."""
+        from django.core.cache import cache
+
+        from api_v2.rate_limit_constants import RateLimitKeys
+
+        org_id = str(self.organization.organization_id)
+        cache_key = RateLimitKeys.get_org_limit_cache_key(org_id)
+        cache.delete(cache_key)
+        logger.info(f"Cleared rate limit cache after save: org {org_id}")
+
+    class Meta:
+        verbose_name = "Organization Rate Limit"
+        verbose_name_plural = "Organization Rate Limits"
+        db_table = "organization_rate_limit"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization"],
+                name="unique_org_rate_limit",
             ),
         ]
 
@@ -199,3 +264,17 @@ class APIKey(BaseModel):
         verbose_name = "Api Deployment key"
         verbose_name_plural = "Api Deployment keys"
         db_table = "api_deployment_key"
+
+
+# Signal handlers for OrganizationRateLimit
+@receiver(post_delete, sender=OrganizationRateLimit)
+def clear_org_rate_limit_cache_on_delete(sender, instance, **kwargs):
+    """Clear cache when rate limit record is deleted."""
+    from django.core.cache import cache
+
+    from api_v2.rate_limit_constants import RateLimitKeys
+
+    org_id = str(instance.organization.organization_id)
+    cache_key = RateLimitKeys.get_org_limit_cache_key(org_id)
+    cache.delete(cache_key)
+    logger.info(f"Cleared rate limit cache after delete: org {org_id}")

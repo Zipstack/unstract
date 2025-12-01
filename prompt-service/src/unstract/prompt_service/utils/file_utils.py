@@ -1,7 +1,7 @@
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys
-from unstract.sdk.file_storage import FileStorage
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
+from unstract.sdk1.file_storage import FileStorage
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
 
 
 class FileUtils:

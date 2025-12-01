@@ -46,7 +46,7 @@ services:
       - traefik.http.routers.minio.rule=Host(`minio.unstract.localhost`)
       - traefik.http.services.minio.loadbalancer.server.port=9001
 
-  createbuckets:
+  minio-bootstrap:
     image: minio/mc
     depends_on:
       - minio
@@ -63,7 +63,7 @@ services:
 
   reverse-proxy:
     # The official v2 Traefik docker image
-    image: traefik:v2.10
+    image: traefik:v3.6.2
     container_name: unstract-proxy
     restart: unless-stopped
     # - Enables the web UI.
@@ -142,8 +142,8 @@ services:
     env_file:
       - ./essentials.env
     ports:
-      - "5672:5672"  # AMQP port
-      - "15672:15672"  # Management UI port
+      - "5672:5672" # AMQP port
+      - "15672:15672" # Management UI port
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
 

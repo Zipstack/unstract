@@ -4,9 +4,9 @@ import warnings
 from flask import current_app
 
 from unstract.prompt_service.constants import PromptServiceConstants
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.tool.stream import StreamMixin
-from unstract.sdk.utils.common_utils import PY_TO_UNSTRACT_LOG_LEVEL
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.tool.stream import StreamMixin
+from unstract.sdk1.utils.common import PY_TO_UNSTRACT_LOG_LEVEL
 
 
 class PromptServiceBaseTool(StreamMixin):

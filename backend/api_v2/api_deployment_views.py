@@ -1,11 +1,13 @@
 import json
 import logging
+import uuid
 from typing import Any
 
 from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -20,15 +22,21 @@ from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
-from api_v2.exceptions import NoActiveAPIKeyError
+from api_v2.exceptions import NoActiveAPIKeyError, RateLimitExceeded
 from api_v2.models import APIDeployment
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
+    SharedUserListSerializer,
 )
+
+notification_plugin = get_plugin("notification")
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +64,7 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         api: APIDeployment = deployment_execution_dto.api
         api_key: str = deployment_execution_dto.api_key
+        organization = api.organization
 
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
@@ -70,25 +79,54 @@ class DeploymentExecution(views.APIView):
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
         hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
+        hitl_packet_id = serializer.validated_data.get(ApiExecution.HITL_PACKET_ID)
         custom_data = serializer.validated_data.get(ApiExecution.CUSTOM_DATA)
 
         if presigned_urls:
             DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
 
-        response = DeploymentHelper.execute_workflow(
-            organization_name=org_name,
-            api=api,
-            file_objs=file_objs,
-            timeout=timeout,
-            include_metadata=include_metadata,
-            include_metrics=include_metrics,
-            use_file_history=use_file_history,
-            tag_names=tag_names,
-            llm_profile_id=llm_profile_id,
-            hitl_queue_name=hitl_queue_name,
-            custom_data=custom_data,
-            request_headers=dict(request.headers),
+        # Generate execution ID for rate limiting
+        execution_id = str(uuid.uuid4())
+
+        # Check and acquire rate limit slot
+        can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
+            organization, execution_id
         )
+        if not can_proceed:
+            logger.warning(
+                f"Rate limit exceeded for org {organization.organization_id}: {limit_info}"
+            )
+            raise RateLimitExceeded(
+                current_usage=limit_info["current_usage"],
+                limit=limit_info["limit"],
+                limit_type=limit_info["limit_type"],
+            )
+
+        # Execute workflow with blanket exception handling
+        try:
+            response = DeploymentHelper.execute_workflow(
+                organization_name=org_name,
+                api=api,
+                file_objs=file_objs,
+                timeout=timeout,
+                include_metadata=include_metadata,
+                include_metrics=include_metrics,
+                use_file_history=use_file_history,
+                tag_names=tag_names,
+                llm_profile_id=llm_profile_id,
+                hitl_queue_name=hitl_queue_name,
+                hitl_packet_id=hitl_packet_id,
+                custom_data=custom_data,
+                request_headers=dict(request.headers),
+                execution_id=execution_id,
+            )
+        except Exception as error:
+            # Release slot on any failure during workflow setup/execution
+            APIDeploymentRateLimiter.release_slot(organization, execution_id)
+            logger.exception(f"Workflow execution failed: {error}")
+            raise
+
+        # Success - signal will handle slot release when workflow completes
         if "error" in response and response["error"]:
             logger.error("API deployment execution failed")
             return Response(
@@ -152,10 +190,13 @@ class DeploymentExecution(views.APIView):
 
 
 class APIDeploymentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsOwner]
+    def get_permissions(self) -> list[Any]:
+        if self.action in ["destroy", "partial_update", "update"]:
+            return [IsOwner()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = APIDeployment.objects.filter(created_by=self.request.user)
+        queryset = APIDeployment.objects.for_user(self.request.user)
 
         # Filter by workflow ID if provided
         workflow_filter = self.request.query_params.get("workflow", None)
@@ -251,4 +292,48 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = (
             f'attachment; filename="{instance.display_name}.json"'
         )
+        return response
+
+    @action(detail=True, methods=["get"], permission_classes=[IsOwner])
+    def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
+        """List users who have access to this API deployment."""
+        instance = self.get_object()
+        serializer = SharedUserListSerializer(instance)
+        return Response(serializer.data)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override partial_update to handle sharing notifications."""
+        # Get current instance and shared users
+        instance = self.get_object()
+        current_shared_users = set(instance.shared_users.all())
+
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # If successful and shared_users changed, send notifications
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and notification_plugin
+        ):
+            try:
+                instance.refresh_from_db()
+                new_shared_users = set(instance.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Get notification service from plugin
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
+                    notification_service.send_sharing_notification(
+                        resource_type=ResourceType.API_DEPLOYMENT.value,
+                        resource_name=instance.display_name,
+                        resource_id=str(instance.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=instance,
+                    )
+            except Exception as e:
+                logger.exception(f"Failed to send sharing notification: {e}")
+
         return response

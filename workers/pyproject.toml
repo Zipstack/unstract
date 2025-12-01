@@ -1,0 +1,200 @@
+[project]
+name = "unstract-workers"
+version = "1.0.0"
+description = "Lightweight Celery workers for Unstract platform"
+authors = [
+    {name = "Unstract Team", email = "support@unstract.com"},
+]
+# readme = "README.md"  # Temporarily disabled for Docker build
+license = {text = "AGPL-3.0"}
+requires-python = ">=3.12"
+dependencies = [
+    # Worker runtime
+    "celery>=5.5.3", # Latest stable version - AMQP support built into core
+    # AWS/S3 client - pin to match backend for MinIO compatibility
+    "boto3~=1.34.0", # Pinned to 1.34.x - boto3 1.36+ breaks MinIO DeleteObjects
+    # HTTP clients and utilities (merged from shared package)
+    "requests>=2.31.0,<3.0.0", # HTTP client for internal API calls
+    "urllib3>=1.26.0", # HTTP utilities and retry strategies
+    "httpx>=0.27.0", # Async HTTP client
+    "python-dotenv>=1.0.0,<2.0.0", # Environment variable loading
+    # WebSocket support for log consumer
+    "python-socketio>=5.9.0", # Socket.IO client for emitting log events
+    # Monitoring and system utilities
+    "prometheus-client>=0.17.0,<1.0.0", # Metrics collection
+    "psutil>=5.9.0,<6.0.0", # System resource monitoring
+    # Essential Unstract packages - with Azure support for connectors
+    "unstract-sdk1[aws,gcs,azure]", # SDK v1 with Azure connector support
+    "unstract-connectors",
+    "unstract-core",
+    "unstract-flags",
+    "unstract-tool-registry",
+    "unstract-tool-sandbox",
+    "unstract-workflow-execution",
+    "unstract-filesystem",
+    # Caching
+    "redis>=4.5.0,<6.0.0", # Redis client for worker cache access
+    # Streaming utilities for bulk downloads (pluggable worker)
+    "zipstream-ng>=1.7.0", # Streaming zip creation for memory-efficient bulk downloads
+    # Note: Using dataclasses instead of pydantic for lightweight typing
+    # Custom implementations replace tenancy (retry), pybreaker (circuit breaker)
+    # - python-dateutil: Standard datetime module sufficient
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.7.0",
+    "isort>=5.12.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "debugpy>=1.8.14",
+]
+
+test = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-mock>=3.11.0",
+    "pytest-cov>=4.1.0",
+    "factory-boy>=3.3.0",
+    "responses>=0.23.0"
+]
+
+deploy = [
+    # Minimal production dependencies - most are already in main deps
+    # Note: Workers don't need WSGI servers or profiling tools
+    # OpenTelemetry for tracing
+    # Keep versions empty and let uv decide version
+    # since we use no code instrumentation and don't use in code
+    "opentelemetry-distro",
+    "opentelemetry-exporter-otlp",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+
+[tool.hatch.metadata]
+allow-direct-references = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["shared"]
+
+[tool.black]
+line-length = 88
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = [
+    "shared",
+    "api_deployment",
+    "general",
+    "file_processing",
+    "callback"
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "celery.*",
+    "kombu.*",
+    "prometheus_client.*",
+    "psutil.*"
+]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--strict-markers",
+    "--strict-config",
+    "--verbose",
+    "--cov=shared",
+    "--cov=api_deployment",
+    "--cov=general",
+    "--cov=file_processing",
+    "--cov=callback",
+    "--cov-report=term-missing",
+    "--cov-report=html",
+    "--cov-report=xml"
+]
+markers = [
+    "unit: Unit tests",
+    "integration: Integration tests",
+    "slow: Slow tests"
+]
+
+[tool.coverage.run]
+source = [
+    "shared",
+    "api_deployment",
+    "general",
+    "file_processing",
+    "callback"
+]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+    "*/*_test.py"
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod"
+]
+
+[tool.uv.sources]
+unstract-filesystem = { path = "../unstract/filesystem", editable = true }
+unstract-workflow-execution = { path = "../unstract/workflow-execution", editable = true }
+unstract-tool-sandbox = { path = "../unstract/tool-sandbox", editable = true }
+unstract-tool-registry = { path = "../unstract/tool-registry", editable = true }
+unstract-flags = { path = "../unstract/flags", editable = true }
+unstract-connectors = { path = "../unstract/connectors", editable = true }
+unstract-core = { path = "../unstract/core", editable = true }
+unstract-sdk1 = { path = "../unstract/sdk1", editable = true }

@@ -1,5 +1,5 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie AS base
 
 ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
@@ -23,10 +23,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies, create user, and setup directories in one layer
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       build-essential \
-       libmagic-dev \
-       pkg-config \
-       git \
+    build-essential \
+    libmagic-dev \
+    pkg-config \
+    git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser -u 5678 --disabled-password --gecos "" ${APP_USER} \
@@ -48,8 +48,12 @@ FROM base AS ext-dependencies
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
 
 # Copy local package dependencies
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/sdk1 /unstract/sdk1
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/flags /unstract/flags
+
+# Increase timeout for large packages (flipt-client is ~45MB)
+ENV UV_HTTP_TIMEOUT=120
 
 # Switch to non-root user
 USER ${APP_USER}
@@ -83,7 +87,10 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
     uv pip install "${TARGET_PLUGINS_PATH}/${dirname}"; \
     fi; \
     done && \
-    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
+    uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai
 
 # Create required directories
 RUN mkdir -p prompt-studio-data

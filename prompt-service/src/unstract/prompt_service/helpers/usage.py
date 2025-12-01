@@ -9,7 +9,7 @@ from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.extensions import db, db_context
 from unstract.prompt_service.utils.db_utils import DBUtils
 from unstract.prompt_service.utils.env_loader import get_env_or_die
-from unstract.sdk.audit import Audit
+from unstract.sdk1.audit import Audit
 
 logger = logging.getLogger(__name__)
 

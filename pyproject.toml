@@ -22,6 +22,10 @@ dev = [
     "types-tzlocal~=5.1.0.1",
 ]
 
+workers = [
+    "unstract-workers",
+]
+
 hook-check-django-migrations = [
     "celery>=5.3.4",
     "cron-descriptor==1.4.0",
@@ -37,7 +41,6 @@ hook-check-django-migrations = [
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.1",
     "python-magic==0.4.27",
-    "unstract-sdk~=0.77.1",
     "unstract-connectors",
     "unstract-core",
     "unstract-flags",
@@ -55,6 +58,8 @@ unstract-tool-registry = { path = "./unstract/tool-registry", editable = true }
 unstract-flags = { path = "./unstract/flags", editable = true }
 unstract-core = { path = "./unstract/core", editable = true }
 unstract-connectors = { path = "./unstract/connectors", editable = true }
+# Workers
+unstract-workers = { path = "./workers", editable = true }
 # === Development tool configurations ===
 
 [tool.ruff]
@@ -84,6 +89,8 @@ exclude = [
     "venv",
     ".*migrations/.*.py",
     "tests",
+    "*_pb2.py",
+    "*_pb2_grpc.py",
 ]
 
 [tool.ruff.lint]

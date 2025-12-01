@@ -8,7 +8,7 @@ from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.template.defaultfilters import filesizeformat
 from django.utils.translation import gettext_lazy as _
 
-from unstract.sdk.file_storage.constants import FileOperationParams
+from unstract.sdk1.file_storage.constants import FileOperationParams
 
 
 class FileValidationParam(TypedDict):

@@ -2,10 +2,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-from unstract.sdk.constants import LogLevel, MetadataKey, UsageKwargs
-from unstract.sdk.llm import LLM
-from unstract.sdk.tool.base import BaseTool
-from unstract.sdk.x2txt import TextExtractionResult, X2Text
+from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
+from unstract.sdk1.constants import LogLevel, MetadataKey, UsageKwargs
+from unstract.sdk1.llm import LLM
+from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.x2txt import X2Text
 
 
 class ReservedBins:
@@ -91,7 +92,7 @@ class ClassifierHelper:
         try:
             # TODO: Move it to the top once SDK released with fileStorage Feature
             # Change the source fs and destination fs type to to FileStorage
-            from unstract.sdk.utils import FileStorageUtils
+            from unstract.sdk1.utils import FileStorageUtils
 
             FileStorageUtils.copy_file_to_destination(
                 source_storage=source_fs,

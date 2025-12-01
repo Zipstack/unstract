@@ -1,7 +1,7 @@
 # Multi-stage build for both development and production
 
 # Base stage with common setup
-FROM node:16-alpine AS base
+FROM node:20-alpine AS base
 ENV BUILD_CONTEXT_PATH=frontend
 WORKDIR /app
 
@@ -23,7 +23,9 @@ CMD ["npm", "start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
+ARG REACT_APP_ENABLE_POSTHOG=true
 ENV REACT_APP_BACKEND_URL=""
+ENV REACT_APP_ENABLE_POSTHOG=${REACT_APP_ENABLE_POSTHOG}
 
 # Copy package files and install dependencies
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
@@ -36,7 +38,7 @@ COPY ${BUILD_CONTEXT_PATH}/ .
 RUN npm run build
 
 # Production stage
-FROM nginx:1.25-alpine AS production
+FROM nginx:1.29.1-alpine AS production
 LABEL maintainer="Zipstack Inc."
 
 # Copy built assets from the builder stage

@@ -11,7 +11,7 @@ dependencies = [
     "docker~=6.1.3",
     "jsonschema>=4.18.6,<5.0",
     "PyYAML~=6.0.1",
-    "unstract-sdk~=0.77.1",
+    "unstract-sdk1",
     "unstract-tool-sandbox",
     "unstract-flags",
 ]
@@ -19,6 +19,7 @@ dependencies = [
 [tool.uv.sources]
 unstract-tool-sandbox = { path = "../tool-sandbox", editable = true }
 unstract-flags = { path = "../flags", editable = true }
+unstract-sdk1 = { path = "../sdk1", editable = true }
 
 # [build-system]
 # requires = ["hatchling"]

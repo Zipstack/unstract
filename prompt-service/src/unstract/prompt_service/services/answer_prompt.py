@@ -6,24 +6,24 @@ from urllib.parse import urlparse
 
 from flask import current_app as app
 
+from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import ExecutionSource, FileStorageKeys, RunLevel
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.exceptions import RateLimitError
-from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.postprocessor import postprocess_data
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 from unstract.prompt_service.utils.json_repair_helper import (
     repair_json_with_best_structure,
 )
 from unstract.prompt_service.utils.log import publish_log
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.exceptions import RateLimitError as SdkRateLimitError
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
-from unstract.sdk.file_storage.constants import StorageType
-from unstract.sdk.file_storage.env_helper import EnvHelper
-from unstract.sdk.llm import LLM
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.exceptions import RateLimitError as SdkRateLimitError
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.llm import LLM
 
 
 def _is_safe_public_url(url: str) -> bool:
@@ -115,11 +115,20 @@ class AnswerPromptService:
         execution_source: str | None = ExecutionSource.IDE.value,
     ) -> str:
         platform_postamble = tool_settings.get(PSKeys.PLATFORM_POSTAMBLE, "")
+        word_confidence_postamble = tool_settings.get(
+            PSKeys.WORD_CONFIDENCE_POSTAMBLE, ""
+        )
         summarize_as_source = tool_settings.get(PSKeys.SUMMARIZE_AS_SOURCE)
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
+        # Dependency: enable_word_confidence only works if enable_highlight is enabled
+        if not enable_highlight:
+            enable_word_confidence = False
         prompt_type = output.get(PSKeys.TYPE, PSKeys.TEXT)
         if not enable_highlight or summarize_as_source:
             platform_postamble = ""
+        if not enable_word_confidence or summarize_as_source:
+            word_confidence_postamble = ""
         plugin = PluginManager().get_plugin("json-extraction")
         if plugin and hasattr(plugin["entrypoint_cls"], "update_settings"):
             plugin["entrypoint_cls"].update_settings(tool_settings, output)
@@ -130,6 +139,7 @@ class AnswerPromptService:
             grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
             context=context,
             platform_postamble=platform_postamble,
+            word_confidence_postamble=word_confidence_postamble,
             prompt_type=prompt_type,
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
@@ -140,6 +150,7 @@ class AnswerPromptService:
             prompt_key=output[PSKeys.NAME],
             prompt_type=prompt_type,
             enable_highlight=enable_highlight,
+            enable_word_confidence=enable_word_confidence,
             file_path=file_path,
             execution_source=execution_source,
         )
@@ -152,6 +163,7 @@ class AnswerPromptService:
         grammar_list: list[dict[str, Any]],
         context: str,
         platform_postamble: str,
+        word_confidence_postamble: str,
         prompt_type: str = PSKeys.TEXT,
     ) -> str:
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
@@ -176,6 +188,8 @@ class AnswerPromptService:
             postamble += f"\n{json_postamble}"
         if platform_postamble:
             platform_postamble += "\n\n"
+            if word_confidence_postamble:
+                platform_postamble += f"{word_confidence_postamble}\n\n"
         prompt += (
             f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
             f"-----------------\n\n{platform_postamble}Answer:"
@@ -190,6 +204,7 @@ class AnswerPromptService:
         prompt_key: str | None = None,
         prompt_type: str | None = PSKeys.TEXT,
         enable_highlight: bool = False,
+        enable_word_confidence: bool = False,
         file_path: str = "",
         execution_source: str | None = None,
     ) -> str:
@@ -211,9 +226,16 @@ class AnswerPromptService:
                         storage_type=StorageType.SHARED_TEMPORARY,
                         env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
                     )
+                logger.info(
+                    f"Initializing highlight plugin with: "
+                    f"file_path={file_path}, "
+                    f"execution_source={execution_source}, "
+                    f"fs_instance={fs_instance}"
+                )
                 highlight_data = highlight_data_plugin["entrypoint_cls"](
                     file_path=file_path,
                     fs_instance=fs_instance,
+                    enable_word_confidence=enable_word_confidence,
                 ).run
             completion = llm.complete(
                 prompt=prompt,
@@ -223,6 +245,7 @@ class AnswerPromptService:
             answer: str = completion[PSKeys.RESPONSE].text
             highlight_data = completion.get(PSKeys.HIGHLIGHT_DATA, [])
             confidence_data = completion.get(PSKeys.CONFIDENCE_DATA)
+            word_confidence_data = completion.get(PSKeys.WORD_CONFIDENCE_DATA)
             line_numbers = completion.get(PSKeys.LINE_NUMBERS, [])
             whisper_hash = completion.get(PSKeys.WHISPER_HASH, "")
             if metadata is not None and prompt_key:
@@ -234,6 +257,10 @@ class AnswerPromptService:
                 if confidence_data:
                     metadata.setdefault(PSKeys.CONFIDENCE_DATA, {})[prompt_key] = (
                         confidence_data
+                    )
+                if enable_word_confidence and word_confidence_data:
+                    metadata.setdefault(PSKeys.WORD_CONFIDENCE_DATA, {})[prompt_key] = (
+                        word_confidence_data
                     )
             return answer
         # TODO: Catch and handle specific exception here
@@ -253,23 +280,69 @@ class AnswerPromptService:
         prompt: str,
     ) -> dict[str, Any]:
         table_settings = output[PSKeys.TABLE_SETTINGS]
+
+        # Check if prompt has valid schema data using json_repair
+        has_valid_schema = False
+        schema_data = None
+
+        if prompt and isinstance(prompt, str):
+            try:
+                # Try to repair and parse the prompt as JSON
+                schema_data = repair_json_with_best_structure(prompt)
+                # Check if the result is a valid dict (schema object)
+                if isinstance(schema_data, dict) and schema_data:
+                    has_valid_schema = True
+                    app.logger.info(
+                        "Valid schema detected in prompt, using Smart Table Extractor"
+                    )
+            except Exception as e:
+                app.logger.debug(f"Prompt does not contain valid schema: {e}")
+
+        # If we have a valid schema, use the smart table extractor
+        if has_valid_schema:
+            smart_table_plugin: dict[str, Any] = PluginManager().get_plugin(
+                "smart-table-extractor"
+            )
+
+            if smart_table_plugin:
+                fs_instance = AnswerPromptService._get_file_storage_instance(
+                    execution_source
+                )
+
+                try:
+                    # Get the input file from table settings
+                    input_file = table_settings.get("input_file")
+
+                    # Run the smart table extractor
+                    result = smart_table_plugin["entrypoint_cls"].run(
+                        llm=llm,
+                        table_settings=table_settings,
+                        fs_instance=fs_instance,
+                        prompt=prompt,
+                        input_file=input_file,
+                    )
+
+                    # Extract the data from the result
+                    answer = result.get("data", [])
+                    structured_output[output[PSKeys.NAME]] = answer
+
+                    # We do not support summary and eval for table.
+                    # Hence returning the result
+                    return structured_output
+                except Exception as e:
+                    app.logger.error(f"Smart Table Extractor failed: {e}")
+                    # Fall back to regular table extractor
+                    app.logger.info("Falling back to regular table extractor")
+
+        # Use regular table extractor (original code)
         table_extractor: dict[str, Any] = PluginManager().get_plugin("table-extractor")
         if not table_extractor:
             raise APIError(
                 "Unable to extract table details. "
                 "Please contact admin to resolve this issue."
             )
-        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
-        if execution_source == ExecutionSource.IDE.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-            )
-        if execution_source == ExecutionSource.TOOL.value:
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.SHARED_TEMPORARY,
-                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
-            )
+        fs_instance = AnswerPromptService._get_file_storage_instance(execution_source)
+
         try:
             answer = table_extractor["entrypoint_cls"].run_table_extraction(
                 llm=llm,
@@ -286,6 +359,22 @@ class AnswerPromptService:
             raise APIError(message=msg)
 
     @staticmethod
+    def _get_file_storage_instance(execution_source) -> FileStorage:
+        fs_instance: FileStorage = FileStorage(FileStorageProvider.LOCAL)
+        if execution_source == ExecutionSource.IDE.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.PERMANENT,
+                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            )
+        if execution_source == ExecutionSource.TOOL.value:
+            fs_instance = EnvHelper.get_storage(
+                storage_type=StorageType.SHARED_TEMPORARY,
+                env_name=FileStorageKeys.TEMPORARY_REMOTE_STORAGE,
+            )
+
+        return fs_instance
+
+    @staticmethod
     def handle_json(
         answer: str,
         structured_output: dict[str, Any],
@@ -295,6 +384,7 @@ class AnswerPromptService:
         doc_name: str,
         llm: LLM,
         enable_highlight: bool = False,
+        enable_word_confidence: bool = False,
         execution_source: str = ExecutionSource.IDE.value,
         metadata: dict[str, Any] | None = None,
         file_path: str = "",
@@ -412,6 +502,7 @@ class AnswerPromptService:
             grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
             context=context,
             platform_postamble="",
+            word_confidence_postamble="",
         )
         try:
             line_item_extraction = line_item_extraction_plugin["entrypoint_cls"](

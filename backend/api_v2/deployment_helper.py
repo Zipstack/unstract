@@ -1,4 +1,5 @@
 import logging
+import uuid
 from io import BytesIO
 from typing import Any
 from urllib.parse import urlencode, urlparse
@@ -33,6 +34,7 @@ from api_v2.exceptions import (
 )
 from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment, APIKey
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import APIExecutionResponseSerializer
 from api_v2.utils import APIDeploymentUtils
 
@@ -155,8 +157,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
         hitl_queue_name: str | None = None,
+        hitl_packet_id: str | None = None,
         custom_data: dict[str, Any] | None = None,
         request_headers=None,
+        execution_id: str | None = None,
     ) -> ReturnDict:
         """Execute workflow by api.
 
@@ -169,11 +173,22 @@ class DeploymentHelper(BaseAPIKeyValidator):
             tag_names (list(str)): list of tag names
             llm_profile_id (str, optional): LLM profile ID for overriding tool settings
             hitl_queue_name (str, optional): Custom queue name for manual review
+            hitl_packet_id (str, optional): Packet ID for packet-based review
             custom_data (dict[str, Any], optional): JSON data for custom_data variable replacement in prompts
+            execution_id (str, optional): Pre-generated execution ID for rate limiting.
+                If None, a new UUID will be generated.
 
         Returns:
             ReturnDict: execution status/ result
+
+        Note:
+            Rate limiting is handled at the view layer. This method should be called
+            after rate limit checks have passed, with a pre-acquired execution_id.
         """
+        # Use provided execution_id or generate one (for backward compatibility)
+        if execution_id is None:
+            execution_id = str(uuid.uuid4())
+
         workflow_id = api.workflow.id
         pipeline_id = api.id
         if hitl_queue_name:
@@ -184,6 +199,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         workflow_execution = WorkflowExecutionServiceHelper.create_workflow_execution(
             workflow_id=workflow_id,
             pipeline_id=pipeline_id,
+            execution_id=execution_id,
             mode=WorkflowExecution.Mode.QUEUE,
             tags=tags,
             total_files=len(file_objs),
@@ -236,6 +252,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 use_file_history=use_file_history,
                 llm_profile_id=llm_profile_id,
                 hitl_queue_name=hitl_queue_name,
+                hitl_packet_id=hitl_packet_id,
                 custom_data=custom_data,
             )
             result.status_api = DeploymentHelper.construct_status_endpoint(
@@ -261,6 +278,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if not include_metrics:
                 result.remove_result_metrics()
         except Exception as error:
+            # Release rate limit slot (workflow setup/dispatch failed, async job not started)
+            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+
+            # Clean up storage
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )

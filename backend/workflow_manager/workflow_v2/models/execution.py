@@ -5,8 +5,7 @@ from datetime import timedelta
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
-from django.db.models import QuerySet, Sum
-from django.utils import timezone
+from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
@@ -29,8 +28,17 @@ class WorkflowExecutionManager(models.Manager):
     """Custom manager for WorkflowExecution model to handle user-specific filtering."""
 
     def for_user(self, user) -> QuerySet:
-        """Filter user's workflow executions.
-        Show those belonging to workflows created by the specified user.
+        """Filter user's workflow executions with proper access control.
+
+        Returns executions where the user has access to:
+        - The workflow (created by user OR shared with user) AND/OR
+        - The pipeline/API deployment (created by user OR shared with user)
+
+        This handles independent sharing scenarios:
+        1. Workflow shared but not API deployment -> User can see workflow-only executions
+        2. API deployment shared but not workflow -> User can see those API executions
+        3. Both shared -> User can see all executions
+        4. Neither shared -> User cannot see executions
 
         Args:
             user: The user to filter executions for
@@ -38,8 +46,36 @@ class WorkflowExecutionManager(models.Manager):
         Returns:
             QuerySet of executions that the user has permission to access
         """
-        # Return executions where the workflow's created_by matches the user
-        return self.filter(workflow__created_by=user)
+        # Filter for workflow access
+        workflow_filter = Q(workflow__created_by=user) | Q(workflow__shared_users=user)
+
+        # Filter for API deployments the user can access
+        api_filter = Q(
+            pipeline_id__in=models.Subquery(
+                APIDeployment.objects.filter(
+                    Q(created_by=user) | Q(shared_users=user)
+                ).values("id")
+            )
+        )
+
+        # Filter for Pipelines the user can access
+        pipeline_filter = Q(
+            pipeline_id__in=models.Subquery(
+                Pipeline.objects.filter(Q(created_by=user) | Q(shared_users=user)).values(
+                    "id"
+                )
+            )
+        )
+
+        # Combine deployment filters
+        deployment_filter = api_filter | pipeline_filter
+
+        # User can see executions if they have access to:
+        # 1. The workflow AND execution has no pipeline (workflow-level execution)
+        # 2. The pipeline/API deployment (regardless of workflow access)
+        final_filter = (workflow_filter & Q(pipeline_id__isnull=True)) | deployment_filter
+
+        return self.filter(final_filter).distinct()
 
     def clean_invalid_workflows(self):
         """Remove execution records with invalid workflow references.
@@ -226,6 +262,17 @@ class WorkflowExecution(BaseModel):
     def is_completed(self) -> bool:
         return ExecutionStatus.is_completed(self.status)
 
+    @property
+    def organization_id(self) -> str | None:
+        """Get the organization ID from the associated workflow."""
+        if (
+            self.workflow
+            and hasattr(self.workflow, "organization")
+            and self.workflow.organization
+        ):
+            return str(self.workflow.organization.organization_id)
+        return None
+
     def __str__(self) -> str:
         return (
             f"Workflow execution: {self.id} ("
@@ -249,26 +296,50 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
         """
+        should_release_rate_limit = False
+
         if status is not None:
+            status = ExecutionStatus(status)
             self.status = status.value
-            if (
-                status
-                in [
-                    ExecutionStatus.COMPLETED,
-                    ExecutionStatus.ERROR,
-                    ExecutionStatus.STOPPED,
-                ]
-                and not self.execution_time
-            ):
-                self.execution_time = round(
-                    (timezone.now() - self.created_at).total_seconds(), 3
-                )
+            if status in [
+                ExecutionStatus.COMPLETED,
+                ExecutionStatus.ERROR,
+                ExecutionStatus.STOPPED,
+            ]:
+                self.execution_time = CommonUtils.time_since(self.created_at, 3)
+                should_release_rate_limit = True
+
         if error:
             self.error_message = error[:EXECUTION_ERROR_LENGTH]
         if increment_attempt:
             self.attempts += 1
 
         self.save()
+
+        # Release rate limit slot for API deployment executions after save
+        if should_release_rate_limit and self.pipeline_id:
+            self._release_api_deployment_rate_limit()
+
+    def _release_api_deployment_rate_limit(self) -> None:
+        """Release rate limit slot for API deployment executions.
+
+        Checks if this execution is for an API deployment and releases
+        the rate limit slot if applicable.
+        """
+        try:
+            # Check if this is an API deployment execution
+            api_deployment = APIDeployment.objects.filter(id=self.pipeline_id).first()
+            if api_deployment and api_deployment.organization:
+                from api_v2.rate_limiter import APIDeploymentRateLimiter
+
+                APIDeploymentRateLimiter.release_slot(
+                    str(api_deployment.organization.organization_id), str(self.id)
+                )
+        except Exception as e:
+            # Log but don't fail the execution update for rate limit release errors
+            logger.exception(
+                f"Failed to release rate limit slot for execution {self.id}: {e}"
+            )
 
     def update_execution_err(self, err_msg: str = "") -> None:
         """Update execution status to ERROR with an error message.

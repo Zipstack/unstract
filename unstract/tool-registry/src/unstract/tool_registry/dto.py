@@ -1,7 +1,7 @@
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk1.constants import AdapterTypes
 from unstract.tool_registry.constants import AdapterPropertyKey
 
 

@@ -10,7 +10,8 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -21,8 +22,6 @@ from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFil
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
-from prompt_studio.processor_loader import get_plugin_class_by_name
-from prompt_studio.processor_loader import load_plugins as load_processor_plugins
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -62,7 +61,7 @@ from prompt_studio.prompt_studio_registry_v2.serializers import (
 from prompt_studio.prompt_studio_v2.constants import ToolStudioPromptErrors
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.prompt_studio_v2.serializers import ToolStudioPromptSerializer
-from unstract.sdk.utils.common_utils import CommonUtils
+from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
 from .serializers import (
@@ -83,13 +82,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     serializer_class = CustomToolSerializer
 
-    processor_plugins = load_processor_plugins()
-
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
             return [IsOwner()]
 
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
         return CustomTool.objects.for_user(self.request.user)
@@ -148,7 +145,48 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        return super().partial_update(request, *args, **kwargs)
+        # Store current shared users before update for email notifications
+        custom_tool = self.get_object()
+        current_shared_users = set(custom_tool.shared_users.all())
+
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Send email notifications to newly shared users
+        if response.status_code == 200 and "shared_users" in request.data:
+            from plugins import get_plugin
+
+            notification_plugin = get_plugin("notification")
+            if notification_plugin:
+                from plugins.notification.constants import ResourceType
+
+                # Refresh the object to get updated shared_users
+                custom_tool.refresh_from_db()
+                updated_shared_users = set(custom_tool.shared_users.all())
+
+                # Find newly added users (not previously shared)
+                newly_shared_users = updated_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
+                    try:
+                        notification_service.send_sharing_notification(
+                            resource_type=ResourceType.TEXT_EXTRACTOR.value,
+                            resource_name=custom_tool.tool_name,
+                            resource_id=str(custom_tool.tool_id),
+                            shared_by=request.user,
+                            shared_to=list(newly_shared_users),
+                            resource_instance=custom_tool,
+                        )
+                    except Exception as e:
+                        # Log error but don't fail the request
+                        logger.exception(
+                            f"Failed to send sharing notification for "
+                            f"custom tool {custom_tool.tool_id}: {str(e)}"
+                        )
+
+        return response
 
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
@@ -357,7 +395,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
         serializer = ProfileManagerSerializer(data=request.data, context=context)
-
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
         prompt_studio_tool = serializer.validated_data[
@@ -394,14 +431,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
         view_type: str = serializer.validated_data.get("view_type")
-        file_converter = get_plugin_class_by_name(
-            name="file_converter",
-            plugins=self.processor_plugins,
-        )
+        file_converter_plugin = get_plugin("file_converter")
 
         allowed_content_types = FileKey.FILE_UPLOAD_ALLOWED_MIME
-        if file_converter:
-            allowed_content_types = file_converter.get_extented_file_information_key()
+        if file_converter_plugin:
+            file_converter_service = file_converter_plugin["service_class"]()
+            allowed_content_types = (
+                file_converter_service.get_extented_file_information_key()
+            )
         filename_without_extension = file_name.rsplit(".", 1)[0]
         if view_type == FileViewTypes.EXTRACT:
             file_name = (
@@ -429,10 +466,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = FileUploadIdeSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files: Any = serializer.validated_data.get("file")
-        file_converter = get_plugin_class_by_name(
-            name="file_converter",
-            plugins=self.processor_plugins,
-        )
+        file_converter_plugin = get_plugin("file_converter")
 
         documents = []
         for uploaded_file in uploaded_files:
@@ -441,8 +475,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_data = uploaded_file
             file_type = uploaded_file.content_type
             # Convert non-PDF files
-            if file_converter and file_type != "application/pdf":
-                file_data, file_name = file_converter.process_file(
+            if file_converter_plugin and file_type != "application/pdf":
+                file_converter_service = file_converter_plugin["service_class"]()
+                file_data, file_name = file_converter_service.process_file(
                     uploaded_file, file_name
                 )
 
