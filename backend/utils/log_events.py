@@ -7,9 +7,9 @@ import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
-
 from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
+
 from utils.constants import ExecutionLogConstants
 
 logger = logging.getLogger(__name__)
