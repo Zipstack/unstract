@@ -23,6 +23,9 @@ const defaultState = {
   isChallengeEnabled: false,
   adapters: [],
   selectedHighlight: null,
+  hasUnsavedChanges: false,
+  lastExportedAt: null,
+  deploymentUsageInfo: null,
 };
 
 const defaultPromptInstance = {
@@ -49,7 +52,13 @@ const useCustomToolStore = create((setState, getState) => ({
     setState({ ...defaultState });
   },
   setCustomTool: (entireState) => {
-    setState(entireState);
+    // Reset unsaved changes when loading a new tool
+    setState({
+      ...entireState,
+      hasUnsavedChanges: false,
+      deploymentUsageInfo: entireState?.deploymentUsageInfo ?? null,
+      lastExportedAt: entireState?.lastExportedAt ?? null,
+    });
   },
   updateCustomTool: (entireState) => {
     setState((state) => ({ state, ...entireState }));
@@ -68,6 +77,8 @@ const useCustomToolStore = create((setState, getState) => ({
       promptsAndNotes.push(newNote);
     }
     newState["details"]["prompts"] = [...promptsAndNotes];
+    // Mark as having unsaved changes when a new prompt/note is added
+    newState["hasUnsavedChanges"] = true;
     setState({ ...newState });
   },
   deleteInstance: (promptId) => {
@@ -77,6 +88,8 @@ const useCustomToolStore = create((setState, getState) => ({
       (item) => item?.prompt_id !== promptId
     );
     newState["details"]["prompts"] = filteredData;
+    // Mark as having unsaved changes when a prompt/note is deleted
+    newState["hasUnsavedChanges"] = true;
     setState({ ...newState });
   },
   getDropdownItems: (propertyName) => {
@@ -99,6 +112,21 @@ const useCustomToolStore = create((setState, getState) => ({
     );
     existingState.indexDocs = docs;
     setState(existingState);
+  },
+  setHasUnsavedChanges: (hasChanges) => {
+    setState({ hasUnsavedChanges: hasChanges });
+  },
+  setLastExportedAt: (timestamp) => {
+    setState({ lastExportedAt: timestamp });
+  },
+  setDeploymentUsageInfo: (info) => {
+    setState({ deploymentUsageInfo: info });
+  },
+  markChangesAsExported: () => {
+    setState({
+      hasUnsavedChanges: false,
+      lastExportedAt: new Date().toISOString(),
+    });
   },
 }));
 
