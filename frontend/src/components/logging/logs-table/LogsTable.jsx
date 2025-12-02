@@ -138,7 +138,6 @@ const LogsTable = ({
       loading={loading}
       onChange={handleTableChange}
       sortDirections={["ascend", "descend", "ascend"]}
-      scroll={{ y: 55 * 10 }}
       locale={{
         emptyText: (
           <EmptyState

@@ -10,7 +10,6 @@ import {
   FileTextOutlined,
   HourglassOutlined,
   InfoCircleFilled,
-  ReloadOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
@@ -19,7 +18,6 @@ import {
   Checkbox,
   Dropdown,
   Flex,
-  Switch,
   Table,
   Tooltip,
   Typography,
@@ -37,6 +35,7 @@ import {
 } from "../../../helpers/GetStaticData";
 import { LogModal } from "../log-modal/LogModal";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 import useRequestUrl from "../../../hooks/useRequestUrl";
 
 const DetailedLogs = () => {
@@ -436,24 +435,12 @@ const DetailedLogs = () => {
             </Flex>
           </Card>
         </Flex>
-        <Flex align="center">
-          <div className="detailed-logs-refresh-controls">
-            <Typography.Text className="logs-auto-refresh-label">
-              Auto-refresh (30s)
-            </Typography.Text>
-            <Switch
-              size="small"
-              checked={autoRefresh}
-              onChange={setAutoRefresh}
-            />
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleRefresh}
-              className="logs-refresh-btn"
-            >
-              Refresh
-            </Button>
-          </div>
+        <Flex align="center" gap={8}>
+          <LogsRefreshControls
+            autoRefresh={autoRefresh}
+            setAutoRefresh={setAutoRefresh}
+            onRefresh={handleRefresh}
+          />
           <Button
             className="view-log-button"
             type="link"

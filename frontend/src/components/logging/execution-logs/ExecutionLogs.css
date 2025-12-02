@@ -3,16 +3,12 @@
   height: 100%;
   margin: 12px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .logs-title {
-  padding: 15px;
   margin: 0;
-}
-
-.logs-table {
-  padding: 8px 16px;
-  overflow-y: auto;
 }
 
 .log-tab-icon {
@@ -53,25 +49,23 @@
   top: 40px !important;
 }
 
-.logs-refresh-controls {
+.logs-header {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+}
+
+.logs-filter-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
-.logs-auto-refresh-label {
-  font-size: 13px;
-  color: #8c8c8c;
-}
-
-.logs-refresh-btn {
-  height: 30px;
-}
-
-.logs-filter-bar {
-  display: flex;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 24px 8px;
+.logs-table-container {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24px 24px;
+  overflow: hidden;
 }

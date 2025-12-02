@@ -1,10 +1,10 @@
-import { DatePicker, Tabs, Typography, Switch, Button } from "antd";
-import { ReloadOutlined } from "@ant-design/icons";
+import { DatePicker, Tabs, Typography } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 
 import { LogsTable } from "../logs-table/LogsTable";
 import { DetailedLogs } from "../detailed-logs/DetailedLogs";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 import {
   ApiDeployments,
   ETLIcon,
@@ -148,7 +148,7 @@ function ExecutionLogs() {
     }
   };
 
-  const tabButtons = () => {
+  const customButtons = () => {
     return (
       <Tabs
         activeKey={activeTab}
@@ -195,8 +195,8 @@ function ExecutionLogs() {
   return (
     <>
       <ToolNavBar
-        title={"Execution Logs"}
-        CustomButtons={tabButtons}
+        title={"Logs"}
+        CustomButtons={customButtons}
         enableSearch={false}
       />
       <div className="file-log-layout">
@@ -204,41 +204,34 @@ function ExecutionLogs() {
           <DetailedLogs />
         ) : (
           <>
-            <div className="logs-filter-bar">
-              <RangePicker
-                showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
-                value={datePickerValue}
-                onChange={(value) => {
-                  setDatePickerValue(value);
-                  setSelectedDateRange(
-                    value
-                      ? [value[0].toISOString(), value[1].toISOString()]
-                      : []
-                  );
-                }}
-                onOk={onOk}
-                className="logs-date-picker"
-                format="YYYY-MM-DD HH:mm:ss"
-              />
-              <div className="logs-refresh-controls">
-                <Typography.Text className="logs-auto-refresh-label">
-                  Auto-refresh (30s)
-                </Typography.Text>
-                <Switch
-                  size="small"
-                  checked={autoRefresh}
-                  onChange={setAutoRefresh}
+            <div className="logs-header">
+              <Typography.Title className="logs-title" level={4}>
+                Execution Logs
+              </Typography.Title>
+              <div className="logs-filter-controls">
+                <RangePicker
+                  showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
+                  value={datePickerValue}
+                  onChange={(value) => {
+                    setDatePickerValue(value);
+                    setSelectedDateRange(
+                      value
+                        ? [value[0].toISOString(), value[1].toISOString()]
+                        : []
+                    );
+                  }}
+                  onOk={onOk}
+                  className="logs-date-picker"
+                  format="YYYY-MM-DD HH:mm:ss"
                 />
-                <Button
-                  icon={<ReloadOutlined />}
-                  onClick={() => fetchLogs(pagination.current)}
-                  className="logs-refresh-btn"
-                >
-                  Refresh
-                </Button>
+                <LogsRefreshControls
+                  autoRefresh={autoRefresh}
+                  setAutoRefresh={setAutoRefresh}
+                  onRefresh={() => fetchLogs(pagination.current)}
+                />
               </div>
             </div>
-            <div className="logs-table">
+            <div className="logs-table-container">
               <LogsTable
                 tableData={dataList}
                 loading={loading}
