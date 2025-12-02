@@ -363,20 +363,11 @@ const DetailedLogs = () => {
           />
           {type} Session ID - {id}{" "}
         </Typography.Title>
-        <div className="detailed-logs-header-controls">
-          <LogsRefreshControls
-            autoRefresh={autoRefresh}
-            setAutoRefresh={setAutoRefresh}
-            onRefresh={handleRefresh}
-          />
-          <Button
-            className="view-log-button"
-            type="link"
-            onClick={() => handleLogsModalOpen({})}
-          >
-            View Logs
-          </Button>
-        </div>
+        <LogsRefreshControls
+          autoRefresh={autoRefresh}
+          setAutoRefresh={setAutoRefresh}
+          onRefresh={handleRefresh}
+        />
       </div>
       <Flex align="center" justify="space-between">
         <Flex className="pad-12">
@@ -451,6 +442,13 @@ const DetailedLogs = () => {
             </Flex>
           </Card>
         </Flex>
+        <Button
+          className="view-log-button"
+          icon={<FileTextOutlined />}
+          onClick={() => handleLogsModalOpen({})}
+        >
+          View Logs
+        </Button>
       </Flex>
       <div className="settings-layout">
         <Dropdown
