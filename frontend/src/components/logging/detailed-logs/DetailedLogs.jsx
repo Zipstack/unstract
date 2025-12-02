@@ -353,15 +353,31 @@ const DetailedLogs = () => {
 
   return (
     <>
-      <Typography.Title className="logs-title" level={4}>
-        <Button
-          type="text"
-          shape="circle"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
-        />
-        {type} Session ID - {id}{" "}
-      </Typography.Title>
+      <div className="detailed-logs-header">
+        <Typography.Title className="logs-title" level={4}>
+          <Button
+            type="text"
+            shape="circle"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
+          />
+          {type} Session ID - {id}{" "}
+        </Typography.Title>
+        <div className="detailed-logs-header-controls">
+          <LogsRefreshControls
+            autoRefresh={autoRefresh}
+            setAutoRefresh={setAutoRefresh}
+            onRefresh={handleRefresh}
+          />
+          <Button
+            className="view-log-button"
+            type="link"
+            onClick={() => handleLogsModalOpen({})}
+          >
+            View Logs
+          </Button>
+        </div>
+      </div>
       <Flex align="center" justify="space-between">
         <Flex className="pad-12">
           <Card className="logs-details-card">
@@ -434,20 +450,6 @@ const DetailedLogs = () => {
               </div>
             </Flex>
           </Card>
-        </Flex>
-        <Flex align="center" gap={8}>
-          <LogsRefreshControls
-            autoRefresh={autoRefresh}
-            setAutoRefresh={setAutoRefresh}
-            onRefresh={handleRefresh}
-          />
-          <Button
-            className="view-log-button"
-            type="link"
-            onClick={() => handleLogsModalOpen({})}
-          >
-            View Logs
-          </Button>
         </Flex>
       </Flex>
       <div className="settings-layout">

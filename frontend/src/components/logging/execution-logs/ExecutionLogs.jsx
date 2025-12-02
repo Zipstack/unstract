@@ -1,4 +1,4 @@
-import { DatePicker, Tabs, Typography } from "antd";
+import { DatePicker, Tabs } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
 import { useEffect, useState, useRef } from "react";
 
@@ -164,7 +164,14 @@ function ExecutionLogs() {
       setDataList([]);
       fetchLogs(pagination.current);
     }
-  }, [activeTab, pagination.current, selectedDateRange, ordering, currentPath]);
+  }, [
+    activeTab,
+    pagination.current,
+    pagination.pageSize,
+    selectedDateRange,
+    ordering,
+    currentPath,
+  ]);
 
   // Auto-refresh interval management
   useEffect(() => {
@@ -195,7 +202,7 @@ function ExecutionLogs() {
   return (
     <>
       <ToolNavBar
-        title={"Logs"}
+        title={"Execution Logs"}
         CustomButtons={customButtons}
         enableSearch={false}
       />
@@ -205,9 +212,6 @@ function ExecutionLogs() {
         ) : (
           <>
             <div className="logs-header">
-              <Typography.Title className="logs-title" level={4}>
-                Execution Logs
-              </Typography.Title>
               <div className="logs-filter-controls">
                 <RangePicker
                   showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
