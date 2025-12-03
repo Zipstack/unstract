@@ -478,12 +478,6 @@ function Pipelines({ type }) {
           direction="horizontal"
           className="action-items"
           onClick={() => {
-            console.log("Opening File History for:", {
-              selectedPorD,
-              workflow_id: selectedPorD?.workflow_id,
-              pipeline_name: selectedPorD?.pipeline_name,
-            });
-
             if (!selectedPorD?.workflow_id) {
               setAlertDetails({
                 type: "error",
