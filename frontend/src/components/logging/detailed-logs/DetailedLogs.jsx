@@ -223,12 +223,16 @@ const DetailedLogs = () => {
     };
   }, [searchTimeout]);
 
+  // Column width strategy:
+  // - Fixed px for predictable content (timestamps, status, file size, execution time, action)
+  // - Percentage for variable content (file name 12%, status message 30%, file path 20%)
+  // - Status Message gets most space as it contains the most important variable info
   const columnsDetailedTable = [
     {
       title: "Executed At",
       dataIndex: "executedAt",
       key: "executedAt",
-      width: 200,
+      width: 140,
       sorter: true,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
@@ -240,6 +244,7 @@ const DetailedLogs = () => {
       title: "File Name",
       dataIndex: "fileName",
       key: "fileName",
+      width: "12%",
       ellipsis: true,
       filterDropdown: () => (
         <div className="search-container">
@@ -259,6 +264,7 @@ const DetailedLogs = () => {
       title: "Status Message",
       dataIndex: "statusMessage",
       key: "statusMessage",
+      width: "30%",
       ellipsis: true,
       render: (text) => <StatusMessageCell text={text} />,
     },
@@ -277,7 +283,7 @@ const DetailedLogs = () => {
       title: "File Size",
       dataIndex: "fileSize",
       key: "fileSize",
-      width: 90,
+      width: 70,
     },
     ...(type !== "API"
       ? [
@@ -285,6 +291,7 @@ const DetailedLogs = () => {
             title: "File Path",
             dataIndex: "filePath",
             key: "filePath",
+            width: "20%",
             ellipsis: true,
           },
         ]
@@ -293,13 +300,13 @@ const DetailedLogs = () => {
       title: "Execution Time",
       dataIndex: "executionTime",
       key: "executionTime",
-      width: 120,
+      width: 90,
     },
     {
       title: "Action",
       dataIndex: "action",
       key: "action",
-      width: 80,
+      width: 60,
       render: (_, record) => (
         <Tooltip title="View logs">
           <Button
