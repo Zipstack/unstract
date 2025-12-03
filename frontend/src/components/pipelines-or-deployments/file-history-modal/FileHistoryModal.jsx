@@ -114,6 +114,10 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     filters = null
   ) => {
     if (!workflowId) {
+      setAlertDetails({
+        type: "error",
+        content: "Workflow ID is missing. Unable to fetch file histories.",
+      });
       return;
     }
 

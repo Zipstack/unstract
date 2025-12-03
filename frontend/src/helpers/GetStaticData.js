@@ -668,7 +668,8 @@ const copyToClipboard = async (text) => {
   try {
     await navigator.clipboard.writeText(text);
     return true;
-  } catch (err) {
+  } catch {
+    // Clipboard API may fail in insecure contexts or unsupported browsers
     return false;
   }
 };
