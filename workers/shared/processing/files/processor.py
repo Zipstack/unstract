@@ -102,8 +102,6 @@ class CachedFileHandler:
                 # Check status - only return COMPLETED results
                 status = file_history_data.get("status")
 
-                from unstract.core.data_models import ExecutionStatus
-
                 if status != ExecutionStatus.COMPLETED.value:
                     logger.info(
                         f"File {context.file_name} found in history with status={status}, "
