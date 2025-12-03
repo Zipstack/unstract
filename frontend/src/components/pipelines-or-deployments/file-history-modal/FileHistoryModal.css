@@ -88,3 +88,31 @@
     justify-content: flex-start;
   }
 }
+
+/* Utility classes for inline style replacement */
+.file-history-modal .filter-label {
+  font-size: 13px;
+}
+
+.file-history-modal .full-width {
+  width: 100%;
+}
+
+.file-history-modal .flex-button {
+  flex: 1;
+}
+
+/* Table cell content styles */
+.file-history-modal .file-path-text {
+  flex: 1;
+  max-width: 400px;
+}
+
+.file-history-modal .error-text {
+  flex: 1;
+  max-width: 230px;
+}
+
+.file-history-modal .cell-content {
+  width: 100%;
+}

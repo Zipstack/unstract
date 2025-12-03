@@ -664,6 +664,15 @@ const formatTimeDisplay = (seconds) => {
   return parts.join(" ");
 };
 
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (err) {
+    return false;
+  }
+};
+
 const UNSTRACT_ADMIN = "unstract_admin";
 
 const logsStaticContent = {
@@ -744,4 +753,5 @@ export {
   formatTimeDisplay,
   formattedDateTimeWithSeconds,
   logsStaticContent,
+  copyToClipboard,
 };

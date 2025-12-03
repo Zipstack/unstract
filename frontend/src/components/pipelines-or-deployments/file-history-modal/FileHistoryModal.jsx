@@ -26,6 +26,7 @@ import { useState, useEffect } from "react";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { copyToClipboard } from "../../../helpers/GetStaticData";
 import "./FileHistoryModal.css";
 
 const { Text } = Typography;
@@ -96,12 +97,11 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
   })();
 
   // Copy to clipboard helper
-  const copyToClipboard = async (text, label = "Text") => {
-    try {
-      await navigator.clipboard.writeText(text);
+  const handleCopy = async (text, label = "Text") => {
+    const success = await copyToClipboard(text);
+    if (success) {
       message.success(`${label} copied to clipboard!`);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+    } else {
       message.error("Failed to copy to clipboard");
     }
   };
@@ -114,18 +114,10 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     filters = null
   ) => {
     if (!workflowId) {
-      console.error("FileHistoryModal: workflowId is missing");
       return;
     }
 
     const filtersToUse = filters || appliedFilters;
-
-    console.log("Fetching file histories:", {
-      workflowId,
-      page,
-      pageSize,
-      filters: filtersToUse,
-    });
 
     setLoading(true);
     try {
@@ -159,8 +151,6 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
         params
       );
 
-      console.log("File histories response:", response);
-
       const data = response?.data?.results || [];
       setFileHistories(data);
       setPagination({
@@ -169,14 +159,6 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
         total: response?.data?.count || 0,
       });
     } catch (err) {
-      console.error("Error fetching file histories:", err);
-      console.error("Error details:", {
-        message: err?.message,
-        response: err?.response,
-        status: err?.response?.status,
-        data: err?.response?.data,
-      });
-
       // Extract more detailed error message
       const errorMessage =
         err?.response?.data?.message ||
@@ -406,8 +388,8 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       width: "40%",
       ellipsis: true,
       render: (text) => (
-        <Space size="small" style={{ width: "100%" }}>
-          <Text ellipsis={{ tooltip: text }} style={{ flex: 1, maxWidth: 400 }}>
+        <Space size="small" className="cell-content">
+          <Text ellipsis={{ tooltip: text }} className="file-path-text">
             {text || "N/A"}
           </Text>
           {text && (
@@ -417,7 +399,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
               icon={<CopyOutlined />}
               onClick={(e) => {
                 e.stopPropagation();
-                copyToClipboard(text, "File path");
+                handleCopy(text, "File path");
               }}
               title="Copy file path"
             />
@@ -479,11 +461,11 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       responsive: ["md"],
       render: (error) =>
         error ? (
-          <Space size="small" style={{ width: "100%" }}>
+          <Space size="small" className="cell-content">
             <Text
               type="danger"
               ellipsis={{ tooltip: error }}
-              style={{ flex: 1, maxWidth: 230 }}
+              className="error-text"
             >
               {error}
             </Text>
@@ -493,7 +475,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
               icon={<CopyOutlined />}
               onClick={(e) => {
                 e.stopPropagation();
-                copyToClipboard(error, "Error message");
+                handleCopy(error, "Error message");
               }}
               title="Copy error message"
             />
@@ -537,12 +519,8 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
         <div className="filters-section">
           <Row gutter={[12, 12]} align="bottom">
             <Col xs={24} sm={12} md={10}>
-              <Space
-                direction="vertical"
-                size="small"
-                style={{ width: "100%" }}
-              >
-                <Text strong style={{ fontSize: "13px" }}>
+              <Space direction="vertical" size="small" className="full-width">
+                <Text strong className="filter-label">
                   File Path:
                 </Text>
                 <Input
@@ -555,12 +533,8 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
               </Space>
             </Col>
             <Col xs={12} sm={8} md={4}>
-              <Space
-                direction="vertical"
-                size="small"
-                style={{ width: "100%" }}
-              >
-                <Text strong style={{ fontSize: "13px" }}>
+              <Space direction="vertical" size="small" className="full-width">
+                <Text strong className="filter-label">
                   Status:
                 </Text>
                 <Select
@@ -569,18 +543,14 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                   value={statusFilter}
                   onChange={setStatusFilter}
                   options={statusOptions}
-                  style={{ width: "100%" }}
+                  className="full-width"
                   allowClear
                 />
               </Space>
             </Col>
             <Col xs={6} sm={4} md={3}>
-              <Space
-                direction="vertical"
-                size="small"
-                style={{ width: "100%" }}
-              >
-                <Text strong style={{ fontSize: "13px" }}>
+              <Space direction="vertical" size="small" className="full-width">
+                <Text strong className="filter-label">
                   Min Count:
                 </Text>
                 <InputNumber
@@ -588,17 +558,13 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                   value={executionCountMin}
                   onChange={setExecutionCountMin}
                   min={0}
-                  style={{ width: "100%" }}
+                  className="full-width"
                 />
               </Space>
             </Col>
             <Col xs={6} sm={4} md={3}>
-              <Space
-                direction="vertical"
-                size="small"
-                style={{ width: "100%" }}
-              >
-                <Text strong style={{ fontSize: "13px" }}>
+              <Space direction="vertical" size="small" className="full-width">
+                <Text strong className="filter-label">
                   Max Count:
                 </Text>
                 <InputNumber
@@ -606,24 +572,24 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                   value={executionCountMax}
                   onChange={setExecutionCountMax}
                   min={executionCountMin || 0}
-                  style={{ width: "100%" }}
+                  className="full-width"
                 />
               </Space>
             </Col>
             <Col xs={24} sm={12} md={4}>
-              <Space size="small" style={{ width: "100%" }}>
+              <Space size="small" className="full-width">
                 <Button
                   type="primary"
                   icon={<FilterOutlined />}
                   onClick={handleApplyFilters}
-                  style={{ flex: 1 }}
+                  className="flex-button"
                 >
                   {hasUnappliedChanges ? "Apply *" : "Apply"}
                 </Button>
                 <Button
                   icon={<ReloadOutlined />}
                   onClick={handleResetFilters}
-                  style={{ flex: 1 }}
+                  className="flex-button"
                 >
                   Reset
                 </Button>
