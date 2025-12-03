@@ -53,7 +53,6 @@
       "title": "Safety Settings",
       "description": "Vertex AI's configurable safety filters",
       "properties": {
-        "type": "string",
         "dangerous_content": {
           "type": "string",
           "title": "Dangerous Content",
