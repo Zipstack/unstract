@@ -1,8 +1,65 @@
+/* Flexbox layout for responsive table */
+.detailed-logs-container {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
 .detailed-logs-header {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 24px;
+}
+
+.detailed-logs-cards {
+  flex: 0 0 auto;
+}
+
+.detailed-logs-table-container {
+  flex: 1;
+  min-height: 0;
+  padding: 0 12px 8px;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailed-logs-table-container .ant-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailed-logs-table-container .ant-spin-nested-loading,
+.detailed-logs-table-container .ant-spin-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailed-logs-table-container .ant-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.detailed-logs-table-container .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detailed-logs-table-container .ant-table-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto !important;
 }
 
 .logging-card-title {
@@ -26,8 +83,47 @@
   margin-right: 24px;
 }
 
-.column-filter-dropdown {
-  margin-bottom: 20px;
+/* Action column header with settings icon */
+.action-column-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.column-settings-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.column-settings-trigger:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+.column-settings-icon {
+  font-size: 16px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.column-settings-trigger:hover .column-settings-icon {
+  color: #1677ff;
+}
+
+/* Thin scrollbar */
+.detailed-logs-table-container .ant-table-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.detailed-logs-table-container .ant-table-body::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 3px;
+}
+
+.detailed-logs-table-container .ant-table-body::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 .search-container {
@@ -38,4 +134,38 @@
   width: 188px;
   margin-bottom: 8px;
   display: block;
+}
+
+/* Fix cursor in pagination dropdown */
+.detailed-logs-table-container .ant-pagination-options .ant-select-selector {
+  cursor: pointer;
+}
+
+.detailed-logs-table-container
+  .ant-pagination-options
+  .ant-select-selection-item {
+  cursor: pointer;
+}
+
+/* Status message text with ellipsis */
+.status-message-text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Outlined copy button style - matches LLM Profiles / API Deployments */
+.copy-btn-outlined {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.65);
+  margin-left: 8px;
+  height: auto;
+  min-width: auto;
+}
+
+.copy-btn-outlined:hover {
+  border-color: #1677ff;
+  color: #1677ff;
 }

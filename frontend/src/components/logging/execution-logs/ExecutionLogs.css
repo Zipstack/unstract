@@ -52,7 +52,6 @@
 .logs-header {
   flex: 0 0 auto;
   display: flex;
-  /* justify-content: space-between; */
   justify-content: flex-end;
   align-items: center;
   padding: 16px 24px;

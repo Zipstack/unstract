@@ -51,7 +51,7 @@ function ExecutionLogs() {
   const items = [
     {
       key: "ETL",
-      label: "ETL Sessions",
+      label: "ETL Executions",
       icon: (
         <ETLIcon
           className={`log-tab-icon ${activeTab === "ETL" ? "active" : ""}`}
@@ -60,7 +60,7 @@ function ExecutionLogs() {
     },
     {
       key: "API",
-      label: "API Sessions",
+      label: "API Executions",
       icon: (
         <ApiDeployments
           className={`log-tab-icon ${activeTab === "API" ? "active" : ""}`}
@@ -69,7 +69,7 @@ function ExecutionLogs() {
     },
     {
       key: "WF",
-      label: "Workflow Sessions",
+      label: "Workflow Executions",
       icon: (
         <Workflows
           className={`log-tab-icon ${activeTab === "WF" ? "active" : ""}`}
@@ -78,7 +78,7 @@ function ExecutionLogs() {
     },
     {
       key: "TASK",
-      label: "Task Sessions",
+      label: "Task Executions",
       icon: (
         <Task
           className={`log-tab-icon ${activeTab === "TASK" ? "active" : ""}`}

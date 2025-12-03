@@ -5,11 +5,12 @@ import {
   CalendarOutlined,
   ClockCircleOutlined,
   CloseCircleFilled,
-  DownOutlined,
+  CopyOutlined,
   EyeOutlined,
   FileTextOutlined,
   HourglassOutlined,
   InfoCircleFilled,
+  MoreOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
@@ -37,6 +38,33 @@ import { LogModal } from "../log-modal/LogModal";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
 import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+
+// Component for status message with conditional tooltip (only when truncated)
+const StatusMessageCell = ({ text }) => {
+  const textRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (textRef.current) {
+        setIsOverflowing(
+          textRef.current.scrollWidth > textRef.current.clientWidth
+        );
+      }
+    };
+    checkOverflow();
+    window.addEventListener("resize", checkOverflow);
+    return () => window.removeEventListener("resize", checkOverflow);
+  }, [text]);
+
+  const content = (
+    <span ref={textRef} className="status-message-text">
+      {text}
+    </span>
+  );
+
+  return isOverflowing ? <Tooltip title={text}>{content}</Tooltip> : content;
+};
 
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
@@ -66,6 +94,15 @@ const DetailedLogs = () => {
   const autoRefreshIntervalRef = useRef(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
+
+  const handleCopyToClipboard = (text, label = "Text") => {
+    navigator.clipboard.writeText(text).then(() => {
+      setAlertDetails({
+        type: "success",
+        content: `${label} copied to clipboard`,
+      });
+    });
+  };
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -191,6 +228,7 @@ const DetailedLogs = () => {
       title: "Executed At",
       dataIndex: "executedAt",
       key: "executedAt",
+      width: 200,
       sorter: true,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
@@ -202,6 +240,7 @@ const DetailedLogs = () => {
       title: "File Name",
       dataIndex: "fileName",
       key: "fileName",
+      ellipsis: true,
       filterDropdown: () => (
         <div className="search-container">
           <Input
@@ -220,11 +259,14 @@ const DetailedLogs = () => {
       title: "Status Message",
       dataIndex: "statusMessage",
       key: "statusMessage",
+      ellipsis: true,
+      render: (text) => <StatusMessageCell text={text} />,
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      width: 110,
       filters: filterOptions.map((filter) => ({
         text: filter,
         value: filter,
@@ -235,11 +277,7 @@ const DetailedLogs = () => {
       title: "File Size",
       dataIndex: "fileSize",
       key: "fileSize",
-    },
-    {
-      title: "Execution Time",
-      dataIndex: "executionTime",
-      key: "executionTime",
+      width: 90,
     },
     ...(type !== "API"
       ? [
@@ -247,13 +285,21 @@ const DetailedLogs = () => {
             title: "File Path",
             dataIndex: "filePath",
             key: "filePath",
+            ellipsis: true,
           },
         ]
       : []),
     {
+      title: "Execution Time",
+      dataIndex: "executionTime",
+      key: "executionTime",
+      width: 120,
+    },
+    {
       title: "Action",
       dataIndex: "action",
       key: "action",
+      width: 80,
       render: (_, record) => (
         <Tooltip title="View logs">
           <Button
@@ -265,10 +311,12 @@ const DetailedLogs = () => {
     },
   ];
 
-  const handleTableChange = (pagination, filters, sorter) => {
-    setPagination((prev) => {
-      return { ...prev, ...pagination };
-    });
+  const handleTableChange = (newPagination, filters, sorter) => {
+    setPagination((prev) => ({
+      ...prev,
+      current: newPagination.current,
+      pageSize: newPagination.pageSize,
+    }));
 
     if (sorter.order) {
       const order = sorter.order === "ascend" ? "created_at" : "-created_at";
@@ -296,7 +344,7 @@ const DetailedLogs = () => {
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
-  }, [pagination.current, ordering, statusFilter]);
+  }, [pagination.current, pagination.pageSize, ordering, statusFilter]);
 
   // Auto-refresh interval management
   useEffect(() => {
@@ -334,9 +382,6 @@ const DetailedLogs = () => {
       [key]: !prev[key],
     }));
   };
-  const columnsToShow = columnsDetailedTable.filter(
-    (col) => columnsVisibility[col.key]
-  );
   const menu = {
     items: columnsDetailedTable.map((col) => ({
       key: col.key,
@@ -351,8 +396,31 @@ const DetailedLogs = () => {
     })),
   };
 
+  const columnsToShow = columnsDetailedTable
+    .filter((col) => columnsVisibility[col.key])
+    .map((col) => {
+      if (col.key === "action") {
+        return {
+          ...col,
+          width: 80,
+          align: "center",
+          title: () => (
+            <div className="action-column-header">
+              <span>Action</span>
+              <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+                <span className="column-settings-trigger">
+                  <MoreOutlined className="column-settings-icon" />
+                </span>
+              </Dropdown>
+            </div>
+          ),
+        };
+      }
+      return col;
+    });
+
   return (
-    <>
+    <div className="detailed-logs-container">
       <div className="detailed-logs-header">
         <Typography.Title className="logs-title" level={4}>
           <Button
@@ -361,7 +429,12 @@ const DetailedLogs = () => {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
           />
-          {type} Session ID - {id}{" "}
+          {type} Execution ID {id}
+          <Button
+            className="copy-btn-outlined"
+            icon={<CopyOutlined />}
+            onClick={() => handleCopyToClipboard(id, "Execution ID")}
+          />
         </Typography.Title>
         <LogsRefreshControls
           autoRefresh={autoRefresh}
@@ -369,7 +442,11 @@ const DetailedLogs = () => {
           onRefresh={handleRefresh}
         />
       </div>
-      <Flex align="center" justify="space-between">
+      <Flex
+        align="center"
+        justify="space-between"
+        className="detailed-logs-cards"
+      >
         <Flex className="pad-12">
           <Card className="logs-details-card">
             <Flex justify="flex-start" align="center">
@@ -444,28 +521,28 @@ const DetailedLogs = () => {
         </Flex>
         <Button
           className="view-log-button"
-          icon={<FileTextOutlined />}
+          icon={<EyeOutlined />}
           onClick={() => handleLogsModalOpen({})}
         >
           View Logs
         </Button>
       </Flex>
-      <div className="settings-layout">
-        <Dropdown
-          menu={menu}
-          trigger={["click"]}
-          className="column-filter-dropdown"
-        >
-          <Button icon={<DownOutlined />}>Show/Hide Columns</Button>
-        </Dropdown>
+      <div className="detailed-logs-table-container">
         <Table
           dataSource={executionFiles}
           columns={columnsToShow}
-          pagination={{ ...pagination }}
+          pagination={{
+            ...pagination,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "20", "50", "100"],
+            showTotal: (total, range) =>
+              `${range[0]}-${range[1]} of ${total} files`,
+          }}
+          bordered
+          size="small"
           loading={loading}
           onChange={handleTableChange}
           sortDirections={["ascend", "descend", "ascend"]}
-          scroll={{ y: 55 * 10 }}
         />
       </div>
       <LogModal
@@ -475,7 +552,7 @@ const DetailedLogs = () => {
         setLogDescModalOpen={setLogDescModalOpen}
         filterParams={{ executionTime: "event_time" }}
       />
-    </>
+    </div>
   );
 };
 export { DetailedLogs };
