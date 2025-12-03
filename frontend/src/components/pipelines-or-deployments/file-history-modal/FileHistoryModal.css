@@ -116,3 +116,7 @@
 .file-history-modal .cell-content {
   width: 100%;
 }
+
+.warning-icon {
+  color: #faad14;
+}

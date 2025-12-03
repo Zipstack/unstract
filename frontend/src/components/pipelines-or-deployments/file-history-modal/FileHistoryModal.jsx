@@ -19,6 +19,7 @@ import {
   FilterOutlined,
   ClearOutlined,
   CopyOutlined,
+  ExclamationCircleFilled,
 } from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useState, useEffect } from "react";
@@ -49,8 +50,8 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
 
   // Bulk delete confirmation states
   const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
-  const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
   const [fetchingCount, setFetchingCount] = useState(false);
+  const [bulkDeleteCount, setBulkDeleteCount] = useState(0);
 
   // Track applied filter values (used for data fetching, pagination, and bulk clear)
   // These are separate from input values to prevent fetching with unapplied filters
@@ -317,8 +318,11 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       );
 
       const count = response?.data?.count || 0;
-      setBulkDeleteCount(count);
-      setShowBulkDeleteConfirm(true);
+      if (count > 0) {
+        setBulkDeleteCount(count);
+        setShowBulkDeleteConfirm(true);
+      }
+      // Note: count === 0 case is handled by disabling the button when pagination.total === 0
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {
@@ -622,27 +626,45 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
               </Button>
             </Popconfirm>
 
-            <Popconfirm
-              open={showBulkDeleteConfirm}
-              title={`Delete ${bulkDeleteCount} file ${
-                bulkDeleteCount === 1 ? "history" : "histories"
-              } matching current filters?`}
-              description="This action cannot be undone. Are you sure?"
-              onConfirm={performBulkClear}
-              onCancel={() => setShowBulkDeleteConfirm(false)}
-              okText="Yes, Delete"
-              cancelText="Cancel"
-              okButtonProps={{ danger: true }}
+            <Button
+              icon={<ClearOutlined />}
+              onClick={handlePrepareBulkClear}
+              loading={fetchingCount}
+              disabled={!hasAppliedFilters || pagination.total === 0}
             >
-              <Button
-                icon={<ClearOutlined />}
-                onClick={handlePrepareBulkClear}
-                loading={fetchingCount}
-                disabled={!hasAppliedFilters}
-              >
-                Clear with Filters
-              </Button>
-            </Popconfirm>
+              Clear with Filters
+            </Button>
+
+            {/* Clear with Filters confirmation modal */}
+            <Modal
+              title={
+                <Space>
+                  <ExclamationCircleFilled className="warning-icon" />
+                  <span>Clear with filters</span>
+                </Space>
+              }
+              open={showBulkDeleteConfirm}
+              onCancel={() => setShowBulkDeleteConfirm(false)}
+              footer={[
+                <Button
+                  key="cancel"
+                  onClick={() => setShowBulkDeleteConfirm(false)}
+                >
+                  Cancel
+                </Button>,
+                <Button key="clear" type="primary" onClick={performBulkClear}>
+                  Clear
+                </Button>,
+              ]}
+              centered
+              width={400}
+            >
+              <Typography.Text>
+                This will delete {bulkDeleteCount} record
+                {bulkDeleteCount !== 1 ? "s" : ""} matching the active filters.
+                This action cannot be undone.
+              </Typography.Text>
+            </Modal>
 
             <Button
               icon={<ReloadOutlined />}
