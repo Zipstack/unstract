@@ -65,3 +65,13 @@
   display: inline-block;
   margin-right: 10px;
 }
+
+.search-container {
+  padding: 8px;
+}
+
+.search-input {
+  width: 188px;
+  margin-bottom: 8px;
+  display: block;
+}

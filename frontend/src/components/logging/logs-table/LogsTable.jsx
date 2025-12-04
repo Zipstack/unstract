@@ -1,4 +1,4 @@
-import { Table, Tooltip, Typography } from "antd";
+import { Input, Table, Tooltip, Typography } from "antd";
 import "./LogsTable.css";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
@@ -6,6 +6,7 @@ import {
   CloseCircleFilled,
   HourglassOutlined,
   InfoCircleFilled,
+  SearchOutlined,
 } from "@ant-design/icons";
 
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
@@ -19,6 +20,8 @@ const LogsTable = ({
   setPagination,
   setOrdering,
   activeTab,
+  executionIdSearch,
+  setExecutionIdSearch,
 }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -39,6 +42,21 @@ const LogsTable = ({
       title: "Execution ID",
       dataIndex: "executionId",
       key: "executionId",
+      filterDropdown: () => (
+        <div className="search-container">
+          <Input
+            placeholder="Search execution ID"
+            value={executionIdSearch}
+            onChange={(e) => setExecutionIdSearch(e.target.value)}
+            className="search-input"
+          />
+        </div>
+      ),
+      filterIcon: () => (
+        <SearchOutlined
+          style={{ color: executionIdSearch ? "#1890ff" : undefined }}
+        />
+      ),
       render: (text) => (
         <Typography.Link
           className="title-name-redirect"
@@ -101,30 +119,36 @@ const LogsTable = ({
       title: "Files Processed",
       dataIndex: "filesProcessed",
       key: "filesProcessed",
-      render: (text, record) => `${record?.processed}/${record?.totalFiles}`,
+      render: (_, record) => `${record?.processed}/${record?.totalFiles}`,
     },
     {
       title: "Execution Time",
       dataIndex: "executionTime",
       key: "executionTime",
+      sorter: true,
       render: (_, record) => record?.execution_time || "-",
     },
   ];
 
-  const handleTableChange = (pagination, filters, sorter) => {
+  const handleTableChange = (pagination, _filters, sorter) => {
     setPagination((prev) => {
       return { ...prev, ...pagination };
     });
 
     if (sorter.order) {
-      // Determine ascending or descending order
-      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      const fieldMap = {
+        executedAt: "created_at",
+        executionTime: "execution_time",
+      };
+      const backendField = fieldMap[sorter.field] || sorter.field;
+      const order =
+        sorter.order === "ascend" ? backendField : `-${backendField}`;
       setOrdering(order);
       setPagination((prev) => {
         return { ...prev, ...pagination, current: 1 };
       });
     } else {
-      setOrdering(null); // Default ordering if sorting is cleared
+      setOrdering(null);
     }
   };
 
@@ -168,6 +192,8 @@ LogsTable.propTypes = {
   setPagination: PropTypes.func,
   setOrdering: PropTypes.func,
   activeTab: PropTypes.string,
+  executionIdSearch: PropTypes.string,
+  setExecutionIdSearch: PropTypes.func,
 };
 
 export { LogsTable };

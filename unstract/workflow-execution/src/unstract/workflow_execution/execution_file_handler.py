@@ -168,15 +168,16 @@ class ExecutionFileHandler:
 
         # Add custom_data to metadata if provided
         if custom_data:
+            logger.info(
+                f"Custom data is provided for file_execution_id {file_execution_id}"
+            )
             content[MetaDataKey.CUSTOM_DATA] = custom_data
 
         file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         file_storage = file_system.get_file_storage()
         file_storage.json_dump(path=metadata_path, data=content)
 
-        logger.info(
-            f"metadata for {input_file_path} is " "added in to execution directory"
-        )
+        logger.info(f"metadata for {input_file_path} is added in to execution directory")
 
     def _get_file_execution_dir(self) -> str | None:
         """Get the directory path for a specific file execution.

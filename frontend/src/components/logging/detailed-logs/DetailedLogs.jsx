@@ -284,6 +284,7 @@ const DetailedLogs = () => {
       dataIndex: "fileSize",
       key: "fileSize",
       width: 70,
+      sorter: true,
     },
     ...(type !== "API"
       ? [
@@ -301,6 +302,7 @@ const DetailedLogs = () => {
       dataIndex: "executionTime",
       key: "executionTime",
       width: 90,
+      sorter: true,
     },
     {
       title: "Action",
@@ -326,7 +328,14 @@ const DetailedLogs = () => {
     }));
 
     if (sorter.order) {
-      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      const fieldMap = {
+        executedAt: "created_at",
+        fileSize: "file_size",
+        executionTime: "execution_time",
+      };
+      const backendField = fieldMap[sorter.field] || sorter.field;
+      const order =
+        sorter.order === "ascend" ? backendField : `-${backendField}`;
       setOrdering(order);
     } else {
       setOrdering(null);

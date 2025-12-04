@@ -44,6 +44,7 @@ function ExecutionLogs() {
   const [selectedDateRange, setSelectedDateRange] = useState([]);
   const [datePickerValue, setDatePickerValue] = useState(null);
   const [ordering, setOrdering] = useState(null);
+  const [executionIdSearch, setExecutionIdSearch] = useState("");
   const [autoRefresh, setAutoRefresh] = useState(false);
   const autoRefreshIntervalRef = useRef(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
@@ -109,6 +110,7 @@ function ExecutionLogs() {
           created_at_after: selectedDateRange[0] || null,
           created_at_before: selectedDateRange[1] || null,
           ordering,
+          id: executionIdSearch || null,
         },
       });
       setPagination({
@@ -170,6 +172,7 @@ function ExecutionLogs() {
     pagination.pageSize,
     selectedDateRange,
     ordering,
+    executionIdSearch,
     currentPath,
   ]);
 
@@ -243,6 +246,8 @@ function ExecutionLogs() {
                 setPagination={setPagination}
                 setOrdering={setOrdering}
                 activeTab={activeTab}
+                executionIdSearch={executionIdSearch}
+                setExecutionIdSearch={setExecutionIdSearch}
               />
             </div>
           </>
