@@ -20,15 +20,20 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
-from shared.enums import QueueResultStatus
+from shared.enums import DestinationConfigKey, QueueResultStatus
 
 # Import database utils (stable path)
 from shared.infrastructure.database.utils import WorkerDatabaseUtils
+from shared.infrastructure.logging import WorkerLogger
+from shared.infrastructure.logging.helpers import log_file_error, log_file_info
 from shared.models.result_models import QueueResult
+from shared.utils.api_result_cache import get_api_cache_manager
 from shared.utils.manual_review_factory import (
     get_manual_review_service,
     has_manual_review_plugin,
 )
+from shared.workflow.connectors.service import WorkerConnectorService
+from shared.workflow.logger_helper import WorkflowLoggerHelper
 
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.exceptions import ConnectorError
@@ -52,12 +57,6 @@ from unstract.workflow_execution.constants import (
 from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
-
-from ..enums import DestinationConfigKey
-from ..infrastructure.logging import WorkerLogger
-from ..infrastructure.logging.helpers import log_file_error, log_file_info
-from ..utils.api_result_cache import get_api_cache_manager
-from .connectors.service import WorkerConnectorService
 
 if TYPE_CHECKING:
     from ..api_client import InternalAPIClient
@@ -197,6 +196,9 @@ class WorkerDestinationConnector:
         self.use_file_history = config.use_file_history
         self.settings = config.settings
         self.workflow_log = workflow_log
+
+        # Initialize logger helper for safe logging operations
+        self.logger_helper = WorkflowLoggerHelper(workflow_log)
 
         # Store destination connector instance details
         self.connector_id = config.connector_id
@@ -971,7 +973,7 @@ class WorkerDestinationConnector:
             logger.info(f"Successfully inserted data into database table {table_name}")
 
             # Log to UI with file_execution_id for better correlation
-            if self.workflow_log and hasattr(self, "current_file_execution_id"):
+            if hasattr(self, "current_file_execution_id"):
                 log_file_info(
                     self.workflow_log,
                     self.current_file_execution_id,
@@ -1219,7 +1221,7 @@ class WorkerDestinationConnector:
                 logger.error(error_message)
 
                 # Log to UI with file_execution_id
-                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                if hasattr(self, "current_file_execution_id"):
                     log_file_info(
                         self.workflow_log,
                         self.current_file_execution_id,
@@ -1233,7 +1235,7 @@ class WorkerDestinationConnector:
                 logger.info(success_message)
 
                 # Log to UI
-                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                if hasattr(self, "current_file_execution_id"):
                     log_file_info(
                         self.workflow_log,
                         self.current_file_execution_id,
@@ -1246,7 +1248,7 @@ class WorkerDestinationConnector:
                 logger.info(success_message)
 
                 # Log to UI
-                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                if hasattr(self, "current_file_execution_id"):
                     log_file_info(
                         self.workflow_log,
                         self.current_file_execution_id,
@@ -1258,7 +1260,7 @@ class WorkerDestinationConnector:
             logger.error(error_msg, exc_info=True)
 
             # Log error to UI
-            if self.workflow_log and hasattr(self, "current_file_execution_id"):
+            if hasattr(self, "current_file_execution_id"):
                 log_file_info(
                     self.workflow_log,
                     self.current_file_execution_id,
