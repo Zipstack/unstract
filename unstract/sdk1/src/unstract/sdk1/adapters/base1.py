@@ -289,8 +289,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = adapter_metadata.get("model", "")
+        model = adapter_metadata.get("deployment_name", "")
         # Only add azure/ prefix if the model doesn't already have it
+        del adapter_metadata["deployment_name"]
         if model.startswith("azure/"):
             return model
         else:
