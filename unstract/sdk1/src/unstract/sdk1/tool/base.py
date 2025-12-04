@@ -271,14 +271,6 @@ class BaseTool(ABC, StreamMixin):
                 f"but {type(data)} is passed"
             )
 
-        # TODO: Review if below is necessary
-        result = {
-            "workflow_id": self.workflow_id,
-            "elapsed_time": self.elapsed_time(),
-            "output": data,
-        }
-        self.stream_result(result)
-
         self._update_exec_metadata()
         # INFILE is overwritten for next tool to run
         input_file_path: Path = Path(self.get_input_file())
