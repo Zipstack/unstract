@@ -125,7 +125,6 @@ function ExecutionLogs() {
         const progress = total > 0 ? Math.round((processed / total) * 100) : 0;
         return {
           key: item?.id,
-          createdAtRaw: item?.created_at,
           executedAt: formattedDateTime(item?.created_at),
           executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
           executionId: item?.id,
@@ -222,7 +221,7 @@ function ExecutionLogs() {
                   onChange={(value) => {
                     setDatePickerValue(value);
                     setSelectedDateRange(
-                      value
+                      value && value[0] && value[1]
                         ? [value[0].toISOString(), value[1].toISOString()]
                         : []
                     );

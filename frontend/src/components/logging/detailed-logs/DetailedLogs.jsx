@@ -114,7 +114,6 @@ const DetailedLogs = () => {
         (item?.successful_files || 0) + (item?.failed_files || 0);
       const progress = total > 0 ? Math.round((processed / total) * 100) : 0;
       const formattedData = {
-        createdAtRaw: item?.created_at,
         executedAt: formattedDateTime(item?.created_at),
         executionId: item?.id,
         progress,
