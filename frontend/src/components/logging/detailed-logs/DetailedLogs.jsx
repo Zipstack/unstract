@@ -94,6 +94,12 @@ const DetailedLogs = () => {
   const autoRefreshIntervalRef = useRef(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
+  const TERMINAL_STATES = ["COMPLETED", "ERROR", "STOPPED"];
+
+  // Check if execution is in a terminal state (no more updates expected)
+  const isTerminalState =
+    executionDetails?.status &&
+    TERMINAL_STATES.includes(executionDetails.status.toUpperCase());
 
   const handleCopyToClipboard = (text, label = "Text") => {
     navigator.clipboard.writeText(text).then(() => {
@@ -361,6 +367,13 @@ const DetailedLogs = () => {
     fetchExecutionFiles(id, pagination.current);
   }, [pagination.current, pagination.pageSize, ordering, statusFilter]);
 
+  // Auto-disable auto-refresh when execution reaches terminal state
+  useEffect(() => {
+    if (isTerminalState && autoRefresh) {
+      setAutoRefresh(false);
+    }
+  }, [isTerminalState]);
+
   // Auto-refresh interval management
   useEffect(() => {
     if (autoRefreshIntervalRef.current) {
@@ -455,6 +468,7 @@ const DetailedLogs = () => {
           autoRefresh={autoRefresh}
           setAutoRefresh={setAutoRefresh}
           onRefresh={handleRefresh}
+          disabled={isTerminalState}
         />
       </div>
       <Flex

@@ -12,3 +12,7 @@
 .logs-refresh-btn {
   height: 30px;
 }
+
+.logs-refresh-controls.disabled .logs-auto-refresh-label {
+  color: #bfbfbf;
+}
