@@ -118,7 +118,6 @@ function PromptOutput({
             promptRunStatus={promptRunStatus}
             handleSelectHighlight={handleSelectHighlight}
             highlightData={promptOutputData?.highlightData}
-            confidenceData={promptOutputData?.confidenceData}
             wordConfidenceData={promptOutputData?.wordConfidenceData}
             promptDetails={promptDetails}
             isTable={true}
@@ -209,9 +208,6 @@ function PromptOutput({
               promptOutputData?.highlightData?.[promptDetails.prompt_key]
             }
             handleSelectHighlight={handleSelectHighlight}
-            confidenceData={
-              promptOutputData?.confidenceData?.[promptDetails.prompt_key]
-            }
             wordConfidenceData={
               promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
             }
@@ -299,13 +295,72 @@ function PromptOutput({
                   direction="vertical"
                   className="prompt-card-llm-layout"
                   onClick={() => {
-                    enforceType !== "json" &&
+                    if (enforceType !== "json") {
+                      // Calculate overall confidence for non-JSON types
+                      let confidence;
+                      const wordConfidenceData =
+                        promptOutputData?.wordConfidenceData;
+                      const highlightData = promptOutputData?.highlightData;
+
+                      // Try word confidence first
+                      if (
+                        wordConfidenceData &&
+                        typeof wordConfidenceData === "object"
+                      ) {
+                        const values = Object.values(wordConfidenceData).filter(
+                          (v) => typeof v === "number"
+                        );
+                        if (values.length > 0) {
+                          confidence =
+                            values.reduce((acc, val) => acc + val, 0) /
+                            values.length;
+                        }
+                      }
+
+                      // Fallback to extracting from highlight data
+                      if (confidence === undefined && highlightData) {
+                        const confidenceValues = [];
+                        const extractConfidence = (data) => {
+                          if (Array.isArray(data)) {
+                            for (const item of data) {
+                              if (Array.isArray(item)) {
+                                if (
+                                  item.length >= 5 &&
+                                  typeof item[4] === "number"
+                                ) {
+                                  confidenceValues.push(item[4]);
+                                } else {
+                                  extractConfidence(item);
+                                }
+                              } else if (
+                                typeof item === "object" &&
+                                item !== null
+                              ) {
+                                Object.values(item).forEach(extractConfidence);
+                              }
+                            }
+                          } else if (
+                            typeof data === "object" &&
+                            data !== null
+                          ) {
+                            Object.values(data).forEach(extractConfidence);
+                          }
+                        };
+                        extractConfidence(highlightData);
+                        if (confidenceValues.length > 0) {
+                          confidence =
+                            confidenceValues.reduce((a, b) => a + b, 0) /
+                            confidenceValues.length;
+                        }
+                      }
+
                       handleSelectHighlight(
-                        promptOutputData?.highlightData,
+                        highlightData,
                         promptId,
                         profileId,
-                        promptOutputData?.confidenceData
+                        confidence
                       );
+                    }
                   }}
                 >
                   <div className="llm-info">
@@ -470,7 +525,6 @@ function PromptOutput({
                           promptRunStatus={promptRunStatus}
                           handleSelectHighlight={handleSelectHighlight}
                           highlightData={promptOutputData?.highlightData}
-                          confidenceData={promptOutputData?.confidenceData}
                           wordConfidenceData={
                             promptOutputData?.wordConfidenceData
                           }

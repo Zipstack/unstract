@@ -80,7 +80,7 @@ class PromptStudioRegistryHelper:
             },
             "enable_word_confidence": {
                 "type": "boolean",
-                "title": "Enable word confidence",
+                "title": "Enable word level confidence",
                 "default": False,
                 "description": "Enables word-level confidence (depends on enable_highlight)",
             },

@@ -1492,30 +1492,19 @@ class WorkerDestinationConnector:
                     # Legacy format: wrap in expected structure
                     metadata = self.get_metadata()
 
-                    # 3-tier fallback hierarchy for confidence:
-                    # 1. word_confidence_data (if available)
-                    # 2. Extract from 5th element of highlight_data
-                    # 3. confidence_data (last resort)
                     highlight_data = (
                         metadata.get("highlight_data", {}) if metadata else {}
                     )
                     word_confidence_data = (
                         metadata.get("word_confidence_data", {}) if metadata else {}
                     )
-                    confidence_data = (
-                        metadata.get("confidence_data", {}) if metadata else {}
-                    )
+                    confidence_data = {}
 
-                    # If word_confidence_data is not available, try extracting from highlight_data
                     if not word_confidence_data and highlight_data:
                         extracted_confidence = (
                             self._extract_confidence_from_highlight_data(highlight_data)
                         )
-                        # Use extracted confidence if available, otherwise fall back to confidence_data
-                        # Store as a simple dict for compatibility
                         if extracted_confidence is not None:
-                            # For rule engine, we provide a single confidence score
-                            # This will be used by the enterprise plugin
                             confidence_data = {"_extracted_average": extracted_confidence}
 
                     wrapped_result = {
