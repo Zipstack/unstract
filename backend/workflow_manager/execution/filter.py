@@ -10,7 +10,7 @@ from workflow_manager.workflow_v2.models import WorkflowExecution
 
 
 class ExecutionFilter(filters.FilterSet):
-    id = filters.CharFilter(lookup_expr="icontains")
+    id = filters.UUIDFilter()
     execution_entity = filters.ChoiceFilter(
         choices=[
             (ExecutionEntity.API.value, "API"),
