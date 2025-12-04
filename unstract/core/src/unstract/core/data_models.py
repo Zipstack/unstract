@@ -1181,6 +1181,7 @@ class FileHistoryData:
     cache_key: str
     provider_file_uuid: str | None = None
     status: str = ExecutionStatus.PENDING.value
+    execution_count: int = 1
     result: str | None = None
     metadata: str | None = None
     error: str | None = None
@@ -1207,6 +1208,7 @@ class FileHistoryData:
             cache_key=data.get("cache_key"),
             provider_file_uuid=data.get("provider_file_uuid"),
             status=data.get("status", ExecutionStatus.PENDING.value),
+            execution_count=data.get("execution_count", 1),
             result=data.get("result"),
             metadata=data.get("metadata"),
             error=data.get("error"),

@@ -131,9 +131,34 @@ class WorkflowExecutionLogSerializer(ModelSerializer):
 
 
 class FileHistorySerializer(ModelSerializer):
+    max_execution_count = SerializerMethodField()
+    has_exceeded_limit = SerializerMethodField()
+
     class Meta:
         model = FileHistory
         fields = "__all__"
+
+    def get_max_execution_count(self, obj: FileHistory) -> int:
+        """Get the maximum execution count from the associated workflow.
+
+        Args:
+            obj: FileHistory instance
+
+        Returns:
+            int: Maximum execution count from workflow configuration
+        """
+        return obj.workflow.get_max_execution_count()
+
+    def get_has_exceeded_limit(self, obj: FileHistory) -> bool:
+        """Check if this file has exceeded its execution limit.
+
+        Args:
+            obj: FileHistory instance
+
+        Returns:
+            bool: True if file has exceeded limit and should be skipped
+        """
+        return obj.has_exceeded_limit(obj.workflow)
 
 
 class SharedUserListSerializer(ModelSerializer):
