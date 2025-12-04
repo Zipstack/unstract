@@ -221,7 +221,7 @@ function ExecutionLogs() {
                   onChange={(value) => {
                     setDatePickerValue(value);
                     setSelectedDateRange(
-                      value && value[0] && value[1]
+                      value?.[0] && value?.[1]
                         ? [value[0].toISOString(), value[1].toISOString()]
                         : []
                     );

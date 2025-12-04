@@ -13,6 +13,32 @@ import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { logsStaticContent } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
 
+// Search filter dropdown component for execution ID column
+const SearchFilterDropdown = ({ value, onChange }) => (
+  <div className="search-container">
+    <Input
+      placeholder="Search execution ID"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="search-input"
+    />
+  </div>
+);
+
+SearchFilterDropdown.propTypes = {
+  value: PropTypes.string,
+  onChange: PropTypes.func.isRequired,
+};
+
+// Search filter icon component
+const SearchFilterIcon = ({ isActive }) => (
+  <SearchOutlined style={{ color: isActive ? "#1890ff" : undefined }} />
+);
+
+SearchFilterIcon.propTypes = {
+  isActive: PropTypes.bool,
+};
+
 const LogsTable = ({
   tableData,
   loading,
@@ -43,20 +69,12 @@ const LogsTable = ({
       dataIndex: "executionId",
       key: "executionId",
       filterDropdown: () => (
-        <div className="search-container">
-          <Input
-            placeholder="Search execution ID"
-            value={executionIdSearch}
-            onChange={(e) => setExecutionIdSearch(e.target.value)}
-            className="search-input"
-          />
-        </div>
-      ),
-      filterIcon: () => (
-        <SearchOutlined
-          style={{ color: executionIdSearch ? "#1890ff" : undefined }}
+        <SearchFilterDropdown
+          value={executionIdSearch}
+          onChange={setExecutionIdSearch}
         />
       ),
+      filterIcon: () => <SearchFilterIcon isActive={!!executionIdSearch} />,
       render: (text) => (
         <Typography.Link
           className="title-name-redirect"
