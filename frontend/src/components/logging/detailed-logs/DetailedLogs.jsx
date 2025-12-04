@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from "react";
+import PropTypes from "prop-types";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeftOutlined,
@@ -64,6 +65,10 @@ const StatusMessageCell = ({ text }) => {
   );
 
   return isOverflowing ? <Tooltip title={text}>{content}</Tooltip> : content;
+};
+
+StatusMessageCell.propTypes = {
+  text: PropTypes.string,
 };
 
 const DetailedLogs = () => {
