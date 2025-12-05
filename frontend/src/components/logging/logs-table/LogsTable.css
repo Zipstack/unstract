@@ -75,3 +75,7 @@
   margin-bottom: 8px;
   display: block;
 }
+
+.search-filter-icon-active {
+  color: #1890ff;
+}

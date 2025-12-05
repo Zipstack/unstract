@@ -32,7 +32,7 @@ SearchFilterDropdown.propTypes = {
 
 // Search filter icon component
 const SearchFilterIcon = ({ isActive }) => (
-  <SearchOutlined style={{ color: isActive ? "#1890ff" : undefined }} />
+  <SearchOutlined className={isActive ? "search-filter-icon-active" : ""} />
 );
 
 SearchFilterIcon.propTypes = {
