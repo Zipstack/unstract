@@ -16,6 +16,7 @@ import {
   FileProtectOutlined,
   LikeOutlined,
   LoginOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -162,6 +163,8 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
   const isAPIHub = selectedProduct && selectedProduct === "verticals";
+  const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
+  const isOpenSource = orgName === "mock_org";
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
@@ -346,6 +349,22 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       menuItems.push({
         key: "7",
         label: <UnstractPricingMenuLink orgName={orgName} />,
+      });
+    }
+
+    // Custom Plans
+    if (isUnstract && isStaff && !isOpenSource) {
+      menuItems.push({
+        key: "8",
+        label: (
+          <Button
+            onClick={() => navigate(`/${orgName}/admin/custom-plans`)}
+            className="logout-button"
+            type="text"
+          >
+            <SettingOutlined /> Custom Plans
+          </Button>
+        ),
       });
     }
 

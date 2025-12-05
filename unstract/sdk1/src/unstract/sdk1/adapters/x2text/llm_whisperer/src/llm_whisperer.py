@@ -8,14 +8,14 @@ from typing import Any
 import requests
 from requests import Response
 from requests.exceptions import ConnectionError, HTTPError, Timeout
-from unstract.sdk.adapters.exceptions import ExtractorError
-from unstract.sdk.adapters.utils import AdapterUtils
-from unstract.sdk.adapters.x2text.constants import X2TextConstants
-from unstract.sdk.adapters.x2text.dto import (
+from unstract.sdk1.adapters.exceptions import ExtractorError
+from unstract.sdk1.adapters.utils import AdapterUtils
+from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,
     TextExtractionResult,
 )
-from unstract.sdk.adapters.x2text.llm_whisperer.src.constants import (
+from unstract.sdk1.adapters.x2text.llm_whisperer.src.constants import (
     HTTPMethod,
     OutputModes,
     ProcessingModes,
@@ -25,9 +25,9 @@ from unstract.sdk.adapters.x2text.llm_whisperer.src.constants import (
     WhispererHeader,
     WhisperStatus,
 )
-from unstract.sdk.adapters.x2text.x2text_adapter import X2TextAdapter
-from unstract.sdk.constants import MimeType
-from unstract.sdk.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
+from unstract.sdk1.constants import MimeType
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 logger = logging.getLogger(__name__)
 

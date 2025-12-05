@@ -1,4 +1,5 @@
 import logging
+import warnings
 from logging.config import dictConfig
 
 from flask import g
@@ -78,4 +79,15 @@ def setup_logging(log_level: int):
                 "handlers": ["wsgi"],
             },
         }
+    )
+
+    # Suppress OpenTelemetry EventLogger LogRecord deprecation warning
+    # This is a bug in OpenTelemetry SDK 1.37.0 where EventLogger.emit() still uses
+    # deprecated trace_id/span_id/trace_flags parameters instead of context parameter.
+    # See: https://github.com/open-telemetry/opentelemetry-python/issues/4328
+    # TODO: Remove this suppression once OpenTelemetry fixes EventLogger.emit()
+    warnings.filterwarnings(
+        "ignore",
+        message="LogRecord init with.*trace_id.*span_id.*trace_flags.*deprecated",
+        category=UserWarning,
     )

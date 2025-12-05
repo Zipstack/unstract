@@ -16,17 +16,9 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.adapters.adapterkit import Adapterkit
-    from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk1.exceptions import SdkError
-    from unstract.sdk1.llm import LLM
-else:
-    from unstract.sdk.adapters.adapterkit import Adapterkit
-    from unstract.sdk.adapters.enums import AdapterTypes
-    from unstract.sdk.adapters.exceptions import AdapterError
+from unstract.sdk1.constants import AdapterTypes
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.llm import LLM
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +114,20 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         db_comment="Is the Adpater Usable",
     )
 
+    # Indicates if the adapter is available in SDK (not deprecated/removed)
+    is_available = models.BooleanField(
+        default=True,
+        db_comment="Is the adapter available in SDK (not deprecated)",
+    )
+
+    # Stores metadata about deprecated adapters (reason, deprecation date, replacement info)
+    deprecation_metadata = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        db_comment="Metadata about adapter deprecation (reason, date, replacement)",
+    )
+
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
@@ -166,20 +172,10 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
 
     def get_context_window_size(self) -> int:
         # Get the adapter_instance
-        if check_feature_flag_status("sdk1"):
-            try:
-                return LLM.get_context_window_size(self.adapter_id, self.metadata)
-            except SdkError as e:
-                logger.warning(f"Unable to retrieve context window size: {e}")
-        else:
-            try:
-                adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
-                    self.adapter_id
-                )
-                adapter_instance = adapter_class(self.metadata)
-                return adapter_instance.get_context_window_size()
-            except AdapterError as e:
-                logger.warning(f"Unable to retrieve context window size - {e}")
+        try:
+            return LLM.get_context_window_size(self.adapter_id, self.metadata)
+        except SdkError as e:
+            logger.warning(f"Unable to retrieve context window size: {e}")
         return 0
 
 

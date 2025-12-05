@@ -19,6 +19,7 @@ class AllowedFileTypes(Enum):
     DOC = "application/msword"
     XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     XLS = "application/vnd.ms-excel"
+    XLSM = "application/vnd.ms-excel.sheet.macroenabled.12"
     PPTX = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     PPT = "application/vnd.ms-powerpoint"
     ODT = "application/vnd.oasis.opendocument.text"

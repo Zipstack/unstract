@@ -2,6 +2,7 @@ import json
 import logging
 from typing import Any
 
+import openai
 from llama_index.core import Document
 from llama_index.core.vector_stores import (
     FilterOperator,
@@ -11,42 +12,25 @@ from llama_index.core.vector_stores import (
     VectorStoreQueryResult,
 )
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,
     InstanceIdentifiers,
     ProcessingOptions,
 )
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
-        NoOpCustomVectorDB,
-    )
-    from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.embedding import Embedding
-    from unstract.sdk1.exceptions import IndexingError, SdkError
-    from unstract.sdk1.file_storage.impl import FileStorage
-    from unstract.sdk1.file_storage.provider import FileStorageProvider
-    from unstract.sdk1.platform import PlatformHelper as ToolAdapter
-    from unstract.sdk1.tool.stream import StreamMixin
-    from unstract.sdk1.utils.common import capture_metrics
-    from unstract.sdk1.utils.tool import ToolUtils
-    from unstract.sdk1.vector_db import VectorDB
-else:
-    from unstract.sdk.adapter import ToolAdapter
-    from unstract.sdk.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
-        NoOpCustomVectorDB,
-    )
-    from unstract.sdk.constants import LogLevel
-    from unstract.sdk.embedding import Embedding
-    from unstract.sdk.exceptions import IndexingError, SdkError
-    from unstract.sdk.file_storage.impl import FileStorage
-    from unstract.sdk.file_storage.provider import FileStorageProvider
-    from unstract.sdk.tool.stream import StreamMixin
-    from unstract.sdk.utils.common_utils import capture_metrics
-    from unstract.sdk.utils.tool_utils import ToolUtils
-    from unstract.sdk.vector_db import VectorDB
+from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
+    NoOpCustomVectorDB,
+)
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.embedding import Embedding
+from unstract.sdk1.exceptions import SdkError, parse_litellm_err
+from unstract.sdk1.file_storage.impl import FileStorage
+from unstract.sdk1.file_storage.provider import FileStorageProvider
+from unstract.sdk1.platform import PlatformHelper as ToolAdapter
+from unstract.sdk1.tool.stream import StreamMixin
+from unstract.sdk1.utils.common import capture_metrics
+from unstract.sdk1.utils.tool import ToolUtils
+from unstract.sdk1.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
@@ -206,12 +190,16 @@ class Index:
                 show_progress=True,
             )
             self.tool.stream_log("File has been indexed successfully")
+        # Handle embedding errors from litellm
+        except openai.OpenAIError as e:
+            e = parse_litellm_err(e)
+            raise e
         except Exception as e:
             self.tool.stream_log(
                 f"Error adding nodes to vector db: {e}",
                 level=LogLevel.ERROR,
             )
-            raise IndexingError(str(e)) from e
+            raise e
 
     def delete_nodes(self, vector_db: VectorDB, doc_id: str):
         try:

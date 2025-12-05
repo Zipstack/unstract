@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -129,7 +129,6 @@ class BaseChatCompletionParameters(BaseModel):
     # The number of chat completion choices to generate for each input message.
     n: int | None = 1
     timeout: float | int | None = 600
-    stream: bool | None = False
     max_tokens: int | None = None
     max_retries: int | None = None
 
@@ -236,6 +235,17 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     num_retries: int | None = 3
     reasoning_effort: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def set_model_from_deployment_name(cls, data: dict[str, "Any"]) -> dict[str, "Any"]:
+        """Convert deployment_name to model field before validation."""
+        if "deployment_name" in data:
+            deployment_name = data.pop("deployment_name")
+            if not deployment_name.startswith("azure/"):
+                deployment_name = f"azure/{deployment_name}"
+            data["model"] = deployment_name
+        return data
+
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
@@ -290,12 +300,18 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        # deployment_name ALWAYS takes precedence over model
+        if "deployment_name" in adapter_metadata:
+            deployment_name = adapter_metadata["deployment_name"]
+            if deployment_name.startswith("azure/"):
+                return deployment_name
+            return f"azure/{deployment_name}"
+
+        # Only use model if deployment_name doesn't exist (second validation call)
         model = adapter_metadata.get("model", "")
-        # Only add azure/ prefix if the model doesn't already have it
         if model.startswith("azure/"):
             return model
-        else:
-            return f"azure/{model}"
+        return f"azure/{model}"
 
 
 class VertexAILLMParameters(BaseChatCompletionParameters):
@@ -321,15 +337,45 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
             metadata_copy["vertex_project"] = metadata_copy["project"]
 
+        # Handle Vertex AI thinking configuration (for Gemini models)
+        enable_thinking = metadata_copy.get("enable_thinking", False)
+
+        # If enable_thinking is not explicitly provided but thinking config is present,
+        # assume thinking was enabled in a previous validation
+        has_thinking_config = (
+            "thinking" in metadata_copy and metadata_copy.get("thinking") is not None
+        )
+        if not enable_thinking and has_thinking_config:
+            enable_thinking = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = metadata_copy.copy()
+
+        if enable_thinking:
+            if has_thinking_config:
+                # Preserve existing thinking config
+                result_metadata["thinking"] = metadata_copy["thinking"]
+            else:
+                # Create new thinking config for enabled state
+                thinking_config = {"type": "enabled"}
+                budget_tokens = metadata_copy.get("budget_tokens")
+                if budget_tokens is not None:
+                    thinking_config["budget_tokens"] = budget_tokens
+                result_metadata["thinking"] = thinking_config
+                result_metadata["temperature"] = 1
+        else:
+            # Vertex AI requires explicit disabled state with budget 0
+            result_metadata["thinking"] = {"type": "disabled", "budget_tokens": 0}
+
         # Handle safety settings
-        ss_dict = metadata_copy.get("safety_settings", {})
+        ss_dict = result_metadata.get("safety_settings", {})
 
         # Handle case where safety_settings is already a list
         if isinstance(ss_dict, list):
-            metadata_copy["safety_settings"] = ss_dict
+            result_metadata["safety_settings"] = ss_dict
         else:
             # Convert dictionary format to list format
-            metadata_copy["safety_settings"] = [
+            result_metadata["safety_settings"] = [
                 {
                     "category": "HARM_CATEGORY_HARASSMENT",
                     "threshold": ss_dict.get("harassment", "BLOCK_ONLY_HIGH"),
@@ -362,13 +408,23 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
             "stream",
         ]
 
+        # Create validation metadata excluding control fields
+        validation_metadata = {
+            k: v
+            for k, v in result_metadata.items()
+            if k not in ("enable_thinking", "budget_tokens", "thinking")
+        }
+
         # First validate using pydantic
-        validated_data = VertexAILLMParameters(**metadata_copy).model_dump()
+        validated_data = VertexAILLMParameters(**validation_metadata).model_dump()
 
         # Preserve any important fields not in the model
         for field in fields_to_preserve:
-            if field in metadata_copy and field not in validated_data:
-                validated_data[field] = metadata_copy[field]
+            if field in result_metadata and field not in validated_data:
+                validated_data[field] = result_metadata[field]
+
+        # Always add thinking config to final result (either enabled or disabled)
+        validated_data["thinking"] = result_metadata["thinking"]
 
         return validated_data
 
