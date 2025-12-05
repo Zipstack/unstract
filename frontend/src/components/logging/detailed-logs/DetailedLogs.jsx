@@ -1,15 +1,17 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
+import PropTypes from "prop-types";
 import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeftOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
   CloseCircleFilled,
-  DownOutlined,
+  CopyOutlined,
   EyeOutlined,
   FileTextOutlined,
   HourglassOutlined,
   InfoCircleFilled,
+  MoreOutlined,
   SearchOutlined,
 } from "@ant-design/icons";
 import {
@@ -35,7 +37,55 @@ import {
 } from "../../../helpers/GetStaticData";
 import { LogModal } from "../log-modal/LogModal";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+
+// Component for status message with conditional tooltip (only when truncated)
+const StatusMessageCell = ({ text }) => {
+  const textRef = useRef(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (textRef.current) {
+        setIsOverflowing(
+          textRef.current.scrollWidth > textRef.current.clientWidth
+        );
+      }
+    };
+    checkOverflow();
+    window.addEventListener("resize", checkOverflow);
+    return () => window.removeEventListener("resize", checkOverflow);
+  }, [text]);
+
+  const content = (
+    <span ref={textRef} className="status-message-text">
+      {text}
+    </span>
+  );
+
+  return isOverflowing ? <Tooltip title={text}>{content}</Tooltip> : content;
+};
+
+StatusMessageCell.propTypes = {
+  text: PropTypes.string.isRequired,
+};
+
+// Action column header with visibility dropdown
+const ActionColumnHeader = ({ menu }) => (
+  <div className="action-column-header">
+    <span>Action</span>
+    <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+      <span className="column-settings-trigger">
+        <MoreOutlined className="column-settings-icon" />
+      </span>
+    </Dropdown>
+  </div>
+);
+
+ActionColumnHeader.propTypes = {
+  menu: PropTypes.object.isRequired,
+};
 
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
@@ -61,8 +111,40 @@ const DetailedLogs = () => {
   const [statusFilter, setStatusFilter] = useState(null);
   const [searchText, setSearchText] = useState("");
   const [searchTimeout, setSearchTimeout] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const autoRefreshIntervalRef = useRef(null);
 
   const filterOptions = ["COMPLETED", "PENDING", "ERROR", "EXECUTING"];
+  const TERMINAL_STATES = ["COMPLETED", "ERROR", "STOPPED"];
+
+  // Check if execution is in a terminal state (no more updates expected)
+  const isTerminalState =
+    executionDetails?.status &&
+    TERMINAL_STATES.includes(executionDetails.status.toUpperCase());
+
+  const handleCopyToClipboard = (text, label = "Text") => {
+    if (!navigator.clipboard) {
+      setAlertDetails({
+        type: "error",
+        content: "Clipboard not available in this browser",
+      });
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setAlertDetails({
+          type: "success",
+          content: `${label} copied to clipboard`,
+        });
+      },
+      (err) => {
+        setAlertDetails({
+          type: "error",
+          content: `Failed to copy: ${err.message || "Unknown error"}`,
+        });
+      }
+    );
+  };
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -128,17 +210,17 @@ const DetailedLogs = () => {
       const params = { ...defaultParams, ...customParams };
       const searchParams = new URLSearchParams();
 
-      Object.entries(params).forEach(([key, value]) => {
+      for (const [key, value] of Object.entries(params)) {
         if (value !== null && value !== undefined) {
           searchParams.append(key, value);
         }
-      });
+      }
 
       // Handle file status filter for MultipleChoiceFilter
       if (statusFilter && statusFilter.length > 0) {
-        statusFilter.forEach((status) => {
+        for (const status of statusFilter) {
           searchParams.append("status", status);
-        });
+        }
       }
 
       const response = await axiosPrivate.get(
@@ -182,11 +264,16 @@ const DetailedLogs = () => {
     };
   }, [searchTimeout]);
 
+  // Column width strategy:
+  // - Fixed px for predictable content (timestamps, status, file size, execution time, action)
+  // - Percentage for variable content (file name 12%, status message 30%, file path 20%)
+  // - Status Message gets most space as it contains the most important variable info
   const columnsDetailedTable = [
     {
       title: "Executed At",
       dataIndex: "executedAt",
       key: "executedAt",
+      width: 140,
       sorter: true,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
@@ -198,6 +285,8 @@ const DetailedLogs = () => {
       title: "File Name",
       dataIndex: "fileName",
       key: "fileName",
+      width: "12%",
+      ellipsis: true,
       filterDropdown: () => (
         <div className="search-container">
           <Input
@@ -216,11 +305,15 @@ const DetailedLogs = () => {
       title: "Status Message",
       dataIndex: "statusMessage",
       key: "statusMessage",
+      width: "30%",
+      ellipsis: true,
+      render: (text) => <StatusMessageCell text={text} />,
     },
     {
       title: "Status",
       dataIndex: "status",
       key: "status",
+      width: 110,
       filters: filterOptions.map((filter) => ({
         text: filter,
         value: filter,
@@ -231,11 +324,8 @@ const DetailedLogs = () => {
       title: "File Size",
       dataIndex: "fileSize",
       key: "fileSize",
-    },
-    {
-      title: "Execution Time",
-      dataIndex: "executionTime",
-      key: "executionTime",
+      width: 70,
+      sorter: true,
     },
     ...(type !== "API"
       ? [
@@ -243,13 +333,23 @@ const DetailedLogs = () => {
             title: "File Path",
             dataIndex: "filePath",
             key: "filePath",
+            width: "20%",
+            ellipsis: true,
           },
         ]
       : []),
     {
+      title: "Execution Time",
+      dataIndex: "executionTime",
+      key: "executionTime",
+      width: 90,
+      sorter: true,
+    },
+    {
       title: "Action",
       dataIndex: "action",
       key: "action",
+      width: 60,
       render: (_, record) => (
         <Tooltip title="View logs">
           <Button
@@ -261,13 +361,22 @@ const DetailedLogs = () => {
     },
   ];
 
-  const handleTableChange = (pagination, filters, sorter) => {
-    setPagination((prev) => {
-      return { ...prev, ...pagination };
-    });
+  const handleTableChange = (newPagination, filters, sorter) => {
+    setPagination((prev) => ({
+      ...prev,
+      current: newPagination.current,
+      pageSize: newPagination.pageSize,
+    }));
 
     if (sorter.order) {
-      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      const fieldMap = {
+        executedAt: "created_at",
+        fileSize: "file_size",
+        executionTime: "execution_time",
+      };
+      const backendField = fieldMap[sorter.field] || sorter.field;
+      const order =
+        sorter.order === "ascend" ? backendField : `-${backendField}`;
       setOrdering(order);
     } else {
       setOrdering(null);
@@ -284,25 +393,44 @@ const DetailedLogs = () => {
     setSelectedRecord(record);
   };
 
+  const handleRefresh = () => {
+    fetchExecutionDetails(id);
+    fetchExecutionFiles(id, pagination.current);
+  };
+
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
-  }, [pagination.current, ordering, statusFilter]);
+  }, [id, pagination.current, pagination.pageSize, ordering, statusFilter]);
 
+  // Auto-disable auto-refresh when execution reaches terminal state
   useEffect(() => {
-    let interval = null;
-    if (executionDetails?.status === "EXECUTING") {
-      interval = setInterval(() => {
+    if (isTerminalState && autoRefresh) {
+      setAutoRefresh(false);
+    }
+  }, [isTerminalState]);
+
+  // Auto-refresh interval management
+  useEffect(() => {
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+    }
+
+    if (autoRefresh) {
+      autoRefreshIntervalRef.current = setInterval(() => {
         fetchExecutionDetails(id);
         fetchExecutionFiles(id, pagination.current);
-      }, 5000);
+      }, 30000);
     }
+
     return () => {
-      if (interval) {
-        clearInterval(interval);
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
       }
     };
-  }, [executionDetails?.status, id, pagination.current]);
+  }, [autoRefresh, id, pagination.current]);
 
   useEffect(() => {
     const initialColumns = columnsDetailedTable.reduce((acc, col) => {
@@ -318,35 +446,65 @@ const DetailedLogs = () => {
       [key]: !prev[key],
     }));
   };
-  const columnsToShow = columnsDetailedTable.filter(
-    (col) => columnsVisibility[col.key]
-  );
   const menu = {
-    items: columnsDetailedTable.map((col) => ({
-      key: col.key,
-      label: (
-        <Checkbox
-          checked={columnsVisibility[col.key]}
-          onChange={() => handleColumnToggle(col.key)}
-        >
-          {col.title}
-        </Checkbox>
-      ),
-    })),
+    items: columnsDetailedTable
+      .filter((col) => col.key !== "action")
+      .map((col) => ({
+        key: col.key,
+        label: (
+          <Checkbox
+            checked={columnsVisibility[col.key]}
+            onChange={() => handleColumnToggle(col.key)}
+          >
+            {col.title}
+          </Checkbox>
+        ),
+      })),
   };
 
+  const columnsToShow = columnsDetailedTable
+    .filter((col) => columnsVisibility[col.key])
+    .map((col) => {
+      if (col.key === "action") {
+        return {
+          ...col,
+          width: 80,
+          align: "center",
+          title: <ActionColumnHeader menu={menu} />,
+        };
+      }
+      return col;
+    });
+
   return (
-    <>
-      <Typography.Title className="logs-title" level={4}>
-        <Button
-          type="text"
-          shape="circle"
-          icon={<ArrowLeftOutlined />}
-          onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
+    <div className="detailed-logs-container">
+      <div className="detailed-logs-header">
+        <Typography.Title className="logs-title" level={4}>
+          <Button
+            type="text"
+            shape="circle"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
+          />
+          {type} Execution ID {id}
+          <Button
+            className="copy-btn-outlined"
+            icon={<CopyOutlined />}
+            onClick={() => handleCopyToClipboard(id, "Execution ID")}
+          />
+        </Typography.Title>
+        <LogsRefreshControls
+          autoRefresh={autoRefresh}
+          setAutoRefresh={setAutoRefresh}
+          onRefresh={handleRefresh}
+          disabled={isTerminalState}
         />
-        {type} Session ID - {id}{" "}
-      </Typography.Title>
-      <Flex align="center" justify="space-between">
+      </div>
+      <Flex
+        align="center"
+        justify="space-between"
+        className="detailed-logs-cards"
+      >
         <Flex className="pad-12">
           <Card className="logs-details-card">
             <Flex justify="flex-start" align="center">
@@ -421,28 +579,28 @@ const DetailedLogs = () => {
         </Flex>
         <Button
           className="view-log-button"
-          type="link"
+          icon={<EyeOutlined />}
           onClick={() => handleLogsModalOpen({})}
         >
           View Logs
         </Button>
       </Flex>
-      <div className="settings-layout">
-        <Dropdown
-          menu={menu}
-          trigger={["click"]}
-          className="column-filter-dropdown"
-        >
-          <Button icon={<DownOutlined />}>Show/Hide Columns</Button>
-        </Dropdown>
+      <div className="detailed-logs-table-container">
         <Table
           dataSource={executionFiles}
           columns={columnsToShow}
-          pagination={{ ...pagination }}
+          pagination={{
+            ...pagination,
+            showSizeChanger: true,
+            pageSizeOptions: ["10", "20", "50", "100"],
+            showTotal: (total, range) =>
+              `${range[0]}-${range[1]} of ${total} files`,
+          }}
+          bordered
+          size="small"
           loading={loading}
           onChange={handleTableChange}
           sortDirections={["ascend", "descend", "ascend"]}
-          scroll={{ y: 55 * 10 }}
         />
       </div>
       <LogModal
@@ -452,7 +610,7 @@ const DetailedLogs = () => {
         setLogDescModalOpen={setLogDescModalOpen}
         filterParams={{ executionTime: "event_time" }}
       />
-    </>
+    </div>
   );
 };
 export { DetailedLogs };

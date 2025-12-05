@@ -16,7 +16,7 @@ class FileCentricExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = FileCentricExecutionSerializer
     pagination_class = CustomPagination
     filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering_fields = ["created_at", "execution_time"]
+    ordering_fields = ["created_at", "execution_time", "file_size"]
     ordering = ["created_at"]
     filterset_class = FileExecutionFilter
 
