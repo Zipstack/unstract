@@ -35,7 +35,9 @@ class GetWorkflowExecutionsByIdsAPIView(APIView):
         try:
             execution_ids = request.data.get("execution_ids", [])
 
-            executions = WorkflowExecution.objects.filter(id__in=execution_ids)
+            executions = WorkflowExecution.objects.filter(
+                id__in=execution_ids
+            ).select_related("workflow")
             execution_data = {}
 
             for execution in executions:
@@ -76,7 +78,7 @@ class GetFileExecutionsByIdsAPIView(APIView):
 
             file_executions = WorkflowFileExecution.objects.filter(
                 id__in=file_execution_ids
-            )
+            ).select_related("workflow_execution")
             file_execution_data = {}
 
             for file_execution in file_executions:
