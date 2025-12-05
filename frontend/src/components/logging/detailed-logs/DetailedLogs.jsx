@@ -107,12 +107,27 @@ const DetailedLogs = () => {
     TERMINAL_STATES.includes(executionDetails.status.toUpperCase());
 
   const handleCopyToClipboard = (text, label = "Text") => {
-    navigator.clipboard.writeText(text).then(() => {
+    if (!navigator.clipboard) {
       setAlertDetails({
-        type: "success",
-        content: `${label} copied to clipboard`,
+        type: "error",
+        content: "Clipboard not available in this browser",
       });
-    });
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setAlertDetails({
+          type: "success",
+          content: `${label} copied to clipboard`,
+        });
+      },
+      (err) => {
+        setAlertDetails({
+          type: "error",
+          content: `Failed to copy: ${err.message || "Unknown error"}`,
+        });
+      }
+    );
   };
 
   const fetchExecutionDetails = async (id) => {
