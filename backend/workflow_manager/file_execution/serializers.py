@@ -35,13 +35,7 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
         elif obj.status == ExecutionStatus.ERROR.value:
             return obj.execution_error
 
-        latest_log = (
-            obj.execution_logs.exclude(data__level__in=["DEBUG", "WARN"])
-            .order_by("-event_time")
-            .first()
-        )
-        return (
-            latest_log.data["log"]
-            if latest_log and "log" in latest_log.data
-            else self.DEFAULT_STATUS_MSG
-        )
+        # Use pre-annotated field from viewset queryset to avoid N+1 queries
+        if hasattr(obj, "latest_log_data") and obj.latest_log_data:
+            return obj.latest_log_data.get("log", self.DEFAULT_STATUS_MSG)
+        return self.DEFAULT_STATUS_MSG
