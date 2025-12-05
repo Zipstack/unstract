@@ -470,7 +470,7 @@ const DetailedLogs = () => {
           ...col,
           width: 80,
           align: "center",
-          title: () => <ActionColumnHeader menu={menu} />,
+          title: <ActionColumnHeader menu={menu} />,
         };
       }
       return col;
