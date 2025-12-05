@@ -416,17 +416,19 @@ const DetailedLogs = () => {
     }));
   };
   const menu = {
-    items: columnsDetailedTable.map((col) => ({
-      key: col.key,
-      label: (
-        <Checkbox
-          checked={columnsVisibility[col.key]}
-          onChange={() => handleColumnToggle(col.key)}
-        >
-          {col.title}
-        </Checkbox>
-      ),
-    })),
+    items: columnsDetailedTable
+      .filter((col) => col.key !== "action")
+      .map((col) => ({
+        key: col.key,
+        label: (
+          <Checkbox
+            checked={columnsVisibility[col.key]}
+            onChange={() => handleColumnToggle(col.key)}
+          >
+            {col.title}
+          </Checkbox>
+        ),
+      })),
   };
 
   const columnsToShow = columnsDetailedTable
