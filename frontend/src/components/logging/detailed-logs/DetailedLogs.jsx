@@ -68,7 +68,7 @@ const StatusMessageCell = ({ text }) => {
 };
 
 StatusMessageCell.propTypes = {
-  text: PropTypes.string,
+  text: PropTypes.string.isRequired,
 };
 
 const DetailedLogs = () => {
