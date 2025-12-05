@@ -385,7 +385,7 @@ const DetailedLogs = () => {
   useEffect(() => {
     fetchExecutionDetails(id);
     fetchExecutionFiles(id, pagination.current);
-  }, [pagination.current, pagination.pageSize, ordering, statusFilter]);
+  }, [id, pagination.current, pagination.pageSize, ordering, statusFilter]);
 
   // Auto-disable auto-refresh when execution reaches terminal state
   useEffect(() => {
