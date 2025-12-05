@@ -68,13 +68,13 @@ const LogsTable = ({
       title: "Execution ID",
       dataIndex: "executionId",
       key: "executionId",
-      filterDropdown: () => (
+      filterDropdown: (
         <SearchFilterDropdown
           value={executionIdSearch}
           onChange={setExecutionIdSearch}
         />
       ),
-      filterIcon: () => <SearchFilterIcon isActive={!!executionIdSearch} />,
+      filterIcon: <SearchFilterIcon isActive={!!executionIdSearch} />,
       render: (text) => (
         <Typography.Link
           className="title-name-redirect"

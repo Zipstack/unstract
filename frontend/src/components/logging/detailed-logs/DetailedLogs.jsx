@@ -71,6 +71,22 @@ StatusMessageCell.propTypes = {
   text: PropTypes.string.isRequired,
 };
 
+// Action column header with visibility dropdown
+const ActionColumnHeader = ({ menu }) => (
+  <div className="action-column-header">
+    <span>Action</span>
+    <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
+      <span className="column-settings-trigger">
+        <MoreOutlined className="column-settings-icon" />
+      </span>
+    </Dropdown>
+  </div>
+);
+
+ActionColumnHeader.propTypes = {
+  menu: PropTypes.object.isRequired,
+};
+
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
   const axiosPrivate = useAxiosPrivate();
@@ -454,16 +470,7 @@ const DetailedLogs = () => {
           ...col,
           width: 80,
           align: "center",
-          title: () => (
-            <div className="action-column-header">
-              <span>Action</span>
-              <Dropdown menu={menu} trigger={["click"]} placement="bottomRight">
-                <span className="column-settings-trigger">
-                  <MoreOutlined className="column-settings-icon" />
-                </span>
-              </Dropdown>
-            </div>
-          ),
+          title: () => <ActionColumnHeader menu={menu} />,
         };
       }
       return col;
