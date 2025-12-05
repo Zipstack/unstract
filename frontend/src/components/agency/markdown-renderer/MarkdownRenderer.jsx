@@ -1,16 +1,14 @@
 import PropTypes from "prop-types";
-import { memo, useMemo } from "react";
-import { Remarkable } from "remarkable";
-
-const md = new Remarkable();
+import { memo } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 const MarkdownRenderer = memo(({ markdownText }) => {
-  const htmlContent = useMemo(() => {
-    if (!markdownText) return "";
-    return md.render(markdownText);
-  }, [markdownText]);
+  if (!markdownText) return null;
 
-  return <div dangerouslySetInnerHTML={{ __html: htmlContent }} />;
+  return (
+    <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownText}</ReactMarkdown>
+  );
 });
 
 MarkdownRenderer.displayName = "MarkdownRenderer";

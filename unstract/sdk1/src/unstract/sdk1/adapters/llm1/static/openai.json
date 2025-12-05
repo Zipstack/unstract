@@ -43,6 +43,7 @@
       "minimum": 0,
       "multipleOf": 1,
       "title": "Maximum Output Tokens",
+      "default": 4096,
       "description": "Maximum number of output tokens to limit LLM replies, leave it empty to use the maximum possible for the selected model."
     },
     "max_retries": {

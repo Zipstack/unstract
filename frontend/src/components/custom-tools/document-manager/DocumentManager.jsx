@@ -380,6 +380,23 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                     if (typeof confidence === "number") {
                       return confidence.toFixed(2);
                     }
+                    // Handle word confidence format: object with line numbers as keys
+                    if (
+                      confidence &&
+                      typeof confidence === "object" &&
+                      !Array.isArray(confidence)
+                    ) {
+                      const values = Object.values(confidence);
+                      if (
+                        values.length > 0 &&
+                        values.every((v) => typeof v === "number")
+                      ) {
+                        const avg =
+                          values.reduce((sum, val) => sum + val, 0) /
+                          values.length;
+                        return avg.toFixed(2);
+                      }
+                    }
                     // Handle old format: nested array structure
                     if (confidence?.[0]?.[0]?.confidence) {
                       return confidence[0][0].confidence;
