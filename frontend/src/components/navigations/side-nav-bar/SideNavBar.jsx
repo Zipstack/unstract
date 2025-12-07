@@ -1,6 +1,14 @@
 import { useMemo } from "react";
 import { BranchesOutlined } from "@ant-design/icons";
-import { Divider, Image, Layout, Space, Tooltip, Typography } from "antd";
+import {
+  Divider,
+  Image,
+  Layout,
+  Popover,
+  Space,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
@@ -19,6 +27,7 @@ import TerminalIcon from "../../../assets/terminal.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 
 import "./SideNavBar.css";
+import "../../settings/settings/Settings.css";
 
 const { Sider } = Layout;
 
@@ -56,6 +65,14 @@ try {
   selectedProductStore = require("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
+}
+
+let manualReviewSettingsEnabled = false;
+try {
+  require("../../../plugins/manual-review/settings/Settings.jsx");
+  manualReviewSettingsEnabled = true;
+} catch {
+  // Plugin unavailable
 }
 
 const SideNavBar = ({ collapsed }) => {
@@ -271,37 +288,135 @@ const SideNavBar = ({ collapsed }) => {
                 </Typography>
               )}
               <Space direction="vertical" className="menu-item-body">
-                {item.subMenu.map((el) => (
-                  <Tooltip key={el.id} title={collapsed ? el.title : ""}>
-                    <Space
-                      className={`space-styles ${
-                        el.active ? "space-styles-active" : ""
-                      } ${el.disable ? "space-styles-disable" : ""}`}
-                      onClick={() => {
-                        if (!el.disable) {
-                          navigate(el.path);
-                        }
-                      }}
-                    >
-                      <Image
-                        src={el.image}
-                        alt="side_icon"
-                        className="menu-item-icon"
-                        preview={false}
-                      />
-                      {!collapsed && (
-                        <div>
-                          <Typography className="sidebar-item-text fs-14">
-                            {el.title}
-                          </Typography>
-                          <Typography className="sidebar-item-text fs-11">
-                            {el.description}
-                          </Typography>
-                        </div>
-                      )}
-                    </Space>
-                  </Tooltip>
-                ))}
+                {item.subMenu.map((el) => {
+                  // Platform item has a hover menu
+                  if (el.id === 3.6) {
+                    const settingsMenuItems = [
+                      {
+                        key: "platform",
+                        label: "Platform Settings",
+                        path: `/${orgName}/settings/platform`,
+                      },
+                      {
+                        key: "users",
+                        label: "User Management",
+                        path: `/${orgName}/users`,
+                      },
+                      {
+                        key: "triad",
+                        label: "Default Triad",
+                        path: `/${orgName}/settings/triad`,
+                      },
+                      ...(manualReviewSettingsEnabled
+                        ? [
+                            {
+                              key: "review",
+                              label: "Human In the Loop Settings",
+                              path: `/${orgName}/settings/review`,
+                            },
+                          ]
+                        : []),
+                    ];
+
+                    const currentPath = window.location.pathname;
+                    const getActiveKey = () => {
+                      if (currentPath.includes("/settings/platform"))
+                        return "platform";
+                      if (currentPath.includes("/users")) return "users";
+                      if (currentPath.includes("/settings/triad"))
+                        return "triad";
+                      if (currentPath.includes("/settings/review"))
+                        return "review";
+                      return "platform";
+                    };
+                    const currentActiveKey = getActiveKey();
+
+                    const menuContent = (
+                      <nav className="settings-sidebar-popover">
+                        {settingsMenuItems.map((menuItem) => (
+                          <button
+                            key={menuItem.key}
+                            type="button"
+                            className={`settings-menu-item ${
+                              currentActiveKey === menuItem.key ? "active" : ""
+                            }`}
+                            onClick={() => navigate(menuItem.path)}
+                          >
+                            {menuItem.label}
+                          </button>
+                        ))}
+                      </nav>
+                    );
+
+                    return (
+                      <Popover
+                        key={el.id}
+                        content={menuContent}
+                        trigger="hover"
+                        placement="rightTop"
+                        arrow={false}
+                        overlayClassName="settings-popover-overlay"
+                      >
+                        <Tooltip title={collapsed ? el.title : ""}>
+                          <Space
+                            className={`space-styles ${
+                              el.active ? "space-styles-active" : ""
+                            } ${el.disable ? "space-styles-disable" : ""}`}
+                          >
+                            <Image
+                              src={el.image}
+                              alt="side_icon"
+                              className="menu-item-icon"
+                              preview={false}
+                            />
+                            {!collapsed && (
+                              <div>
+                                <Typography className="sidebar-item-text fs-14">
+                                  {el.title}
+                                </Typography>
+                                <Typography className="sidebar-item-text fs-11">
+                                  {el.description}
+                                </Typography>
+                              </div>
+                            )}
+                          </Space>
+                        </Tooltip>
+                      </Popover>
+                    );
+                  }
+
+                  return (
+                    <Tooltip key={el.id} title={collapsed ? el.title : ""}>
+                      <Space
+                        className={`space-styles ${
+                          el.active ? "space-styles-active" : ""
+                        } ${el.disable ? "space-styles-disable" : ""}`}
+                        onClick={() => {
+                          if (!el.disable) {
+                            navigate(el.path);
+                          }
+                        }}
+                      >
+                        <Image
+                          src={el.image}
+                          alt="side_icon"
+                          className="menu-item-icon"
+                          preview={false}
+                        />
+                        {!collapsed && (
+                          <div>
+                            <Typography className="sidebar-item-text fs-14">
+                              {el.title}
+                            </Typography>
+                            <Typography className="sidebar-item-text fs-11">
+                              {el.description}
+                            </Typography>
+                          </div>
+                        )}
+                      </Space>
+                    </Tooltip>
+                  );
+                })}
               </Space>
               {index < data.length - 1 && (
                 <Divider className="sidebar-divider" />
