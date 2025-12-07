@@ -356,14 +356,21 @@ const SideNavBar = ({ collapsed }) => {
               )}
               <Space direction="vertical" className="menu-item-body">
                 {item.subMenu.map((el) => {
-                  // Platform item has a hover menu
+                  // Platform item has a hover menu and click navigates to platform settings
                   if (el.id === 3.6) {
+                    const handlePlatformClick = () => {
+                      if (!el.disable) {
+                        navigate(el.path);
+                      }
+                    };
+
                     const platformContent = (
                       <Tooltip title={collapsed ? el.title : ""}>
                         <Space
                           className={`space-styles ${
                             el.active ? "space-styles-active" : ""
                           } ${el.disable ? "space-styles-disable" : ""}`}
+                          onClick={handlePlatformClick}
                         >
                           <Image
                             src={el.image}
