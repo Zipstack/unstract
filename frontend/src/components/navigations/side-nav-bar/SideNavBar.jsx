@@ -75,6 +75,73 @@ try {
   // Plugin unavailable
 }
 
+const getSettingsMenuItems = (orgName) => [
+  {
+    key: "platform",
+    label: "Platform Settings",
+    path: `/${orgName}/settings/platform`,
+  },
+  {
+    key: "users",
+    label: "User Management",
+    path: `/${orgName}/users`,
+  },
+  {
+    key: "triad",
+    label: "Default Triad",
+    path: `/${orgName}/settings/triad`,
+  },
+  ...(manualReviewSettingsEnabled
+    ? [
+        {
+          key: "review",
+          label: "Human In the Loop Settings",
+          path: `/${orgName}/settings/review`,
+        },
+      ]
+    : []),
+];
+
+const getActiveSettingsKey = () => {
+  const currentPath = globalThis.location.pathname;
+  if (currentPath.includes("/settings/platform")) return "platform";
+  if (currentPath.includes("/users")) return "users";
+  if (currentPath.includes("/settings/triad")) return "triad";
+  if (currentPath.includes("/settings/review")) return "review";
+  return "platform";
+};
+
+const SettingsPopoverContent = ({ orgName, navigate }) => {
+  const settingsMenuItems = getSettingsMenuItems(orgName);
+  const currentActiveKey = getActiveSettingsKey();
+
+  const handleMenuClick = (path) => {
+    navigate(path);
+  };
+
+  return (
+    <nav className="settings-sidebar-popover">
+      {settingsMenuItems.map((menuItem) => (
+        <button
+          key={menuItem.key}
+          type="button"
+          className={`settings-menu-item ${
+            currentActiveKey === menuItem.key ? "active" : ""
+          }`}
+          onClick={() => handleMenuClick(menuItem.path)}
+        >
+          {menuItem.label}
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+SettingsPopoverContent.propTypes = {
+  orgName: PropTypes.string.isRequired,
+  navigate: PropTypes.func.isRequired,
+};
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -291,96 +358,53 @@ const SideNavBar = ({ collapsed }) => {
                 {item.subMenu.map((el) => {
                   // Platform item has a hover menu
                   if (el.id === 3.6) {
-                    const settingsMenuItems = [
-                      {
-                        key: "platform",
-                        label: "Platform Settings",
-                        path: `/${orgName}/settings/platform`,
-                      },
-                      {
-                        key: "users",
-                        label: "User Management",
-                        path: `/${orgName}/users`,
-                      },
-                      {
-                        key: "triad",
-                        label: "Default Triad",
-                        path: `/${orgName}/settings/triad`,
-                      },
-                      ...(manualReviewSettingsEnabled
-                        ? [
-                            {
-                              key: "review",
-                              label: "Human In the Loop Settings",
-                              path: `/${orgName}/settings/review`,
-                            },
-                          ]
-                        : []),
-                    ];
-
-                    const currentPath = window.location.pathname;
-                    const getActiveKey = () => {
-                      if (currentPath.includes("/settings/platform"))
-                        return "platform";
-                      if (currentPath.includes("/users")) return "users";
-                      if (currentPath.includes("/settings/triad"))
-                        return "triad";
-                      if (currentPath.includes("/settings/review"))
-                        return "review";
-                      return "platform";
-                    };
-                    const currentActiveKey = getActiveKey();
-
-                    const menuContent = (
-                      <nav className="settings-sidebar-popover">
-                        {settingsMenuItems.map((menuItem) => (
-                          <button
-                            key={menuItem.key}
-                            type="button"
-                            className={`settings-menu-item ${
-                              currentActiveKey === menuItem.key ? "active" : ""
-                            }`}
-                            onClick={() => navigate(menuItem.path)}
-                          >
-                            {menuItem.label}
-                          </button>
-                        ))}
-                      </nav>
+                    const platformContent = (
+                      <Tooltip title={collapsed ? el.title : ""}>
+                        <Space
+                          className={`space-styles ${
+                            el.active ? "space-styles-active" : ""
+                          } ${el.disable ? "space-styles-disable" : ""}`}
+                        >
+                          <Image
+                            src={el.image}
+                            alt="side_icon"
+                            className="menu-item-icon"
+                            preview={false}
+                          />
+                          {!collapsed && (
+                            <div>
+                              <Typography className="sidebar-item-text fs-14">
+                                {el.title}
+                              </Typography>
+                              <Typography className="sidebar-item-text fs-11">
+                                {el.description}
+                              </Typography>
+                            </div>
+                          )}
+                        </Space>
+                      </Tooltip>
                     );
+
+                    // Don't show popover when disabled
+                    if (el.disable) {
+                      return <div key={el.id}>{platformContent}</div>;
+                    }
 
                     return (
                       <Popover
                         key={el.id}
-                        content={menuContent}
+                        content={
+                          <SettingsPopoverContent
+                            orgName={orgName}
+                            navigate={navigate}
+                          />
+                        }
                         trigger="hover"
                         placement="rightTop"
                         arrow={false}
                         overlayClassName="settings-popover-overlay"
                       >
-                        <Tooltip title={collapsed ? el.title : ""}>
-                          <Space
-                            className={`space-styles ${
-                              el.active ? "space-styles-active" : ""
-                            } ${el.disable ? "space-styles-disable" : ""}`}
-                          >
-                            <Image
-                              src={el.image}
-                              alt="side_icon"
-                              className="menu-item-icon"
-                              preview={false}
-                            />
-                            {!collapsed && (
-                              <div>
-                                <Typography className="sidebar-item-text fs-14">
-                                  {el.title}
-                                </Typography>
-                                <Typography className="sidebar-item-text fs-11">
-                                  {el.description}
-                                </Typography>
-                              </div>
-                            )}
-                          </Space>
-                        </Tooltip>
+                        {platformContent}
                       </Popover>
                     );
                   }
