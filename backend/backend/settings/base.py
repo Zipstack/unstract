@@ -200,6 +200,8 @@ MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
 MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
     os.environ.get("MAX_PARALLEL_FILE_BATCHES_MAX_VALUE", 100)
 )
+# Maximum number of times a file can be executed in a workflow
+MAX_FILE_EXECUTION_COUNT = int(os.environ.get("MAX_FILE_EXECUTION_COUNT", 3))
 
 CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
