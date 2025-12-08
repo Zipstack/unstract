@@ -502,6 +502,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 from workflow_manager.workflow_v2.enums import ExecutionStatus
 
                 status_enum = ExecutionStatus(validated_data["status"])
+                logger.info(f"Updating status for execution {id} to {status_enum}")
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
@@ -2305,6 +2306,9 @@ class FileHistoryBatchCheckView(APIView):
                 file_history_queryset, request, "workflow__organization"
             )
 
+            # Get max execution count for this workflow (for worker decision making)
+            max_execution_count = workflow.get_max_execution_count()
+
             # Get full file history details for cached results
             file_histories = file_history_queryset.values(
                 "cache_key",
@@ -2313,6 +2317,8 @@ class FileHistoryBatchCheckView(APIView):
                 "error",
                 "file_path",
                 "provider_file_uuid",
+                "execution_count",
+                "status",
             )
 
             # Build response with both processed hashes (for compatibility) and full details
@@ -2328,16 +2334,21 @@ class FileHistoryBatchCheckView(APIView):
                     "error": fh["error"],
                     "file_path": fh["file_path"],
                     "provider_file_uuid": fh["provider_file_uuid"],
+                    "execution_count": fh["execution_count"],
+                    "status": fh["status"],
+                    "max_execution_count": max_execution_count,  # Include for worker logic
                 }
 
             logger.info(
-                f"File history batch check: {len(processed_file_hashes)}/{len(file_hashes)} files already processed"
+                f"File history batch check: {len(processed_file_hashes)}/{len(file_hashes)} files already processed "
+                f"(max_execution_count: {max_execution_count})"
             )
 
             return Response(
                 {
                     "processed_file_hashes": processed_file_hashes,  # For backward compatibility
                     "file_history_details": file_history_details,  # Full details for cached results
+                    "max_execution_count": max_execution_count,  # Global max for this workflow
                 }
             )
 
@@ -2470,10 +2481,17 @@ class FileHistoryCreateView(APIView):
             )
 
             logger.info(
-                f"Created file history entry {file_history.id} for file {file_name}"
+                f"Created/updated file history entry {file_history.id} for file {file_name} "
+                f"(execution_count: {file_history.execution_count})"
             )
 
-            return Response({"created": True, "file_history_id": str(file_history.id)})
+            return Response(
+                {
+                    "created": True,
+                    "file_history_id": str(file_history.id),
+                    "execution_count": file_history.execution_count,
+                }
+            )
 
         except Exception as e:
             logger.error(f"File history creation failed: {str(e)}")
