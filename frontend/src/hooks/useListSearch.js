@@ -2,32 +2,45 @@ import { useRef, useState, useCallback } from "react";
 
 function useListSearch(searchField) {
   const listRef = useRef([]);
+  const searchTextRef = useRef("");
   const [displayList, setDisplayList] = useState([]);
 
-  const setMasterList = useCallback((list) => {
-    listRef.current = list;
-    setDisplayList(list);
-  }, []);
-
-  const onSearch = useCallback(
-    (searchText, setSearchList) => {
+  const filterList = useCallback(
+    (list, searchText) => {
       if (!searchText.trim()) {
-        setSearchList(listRef.current);
-        return;
+        return list;
       }
-      const filteredList = listRef.current.filter((item) =>
+      return list.filter((item) =>
         item[searchField]?.toLowerCase().includes(searchText.toLowerCase())
       );
-      setSearchList(filteredList);
     },
     [searchField]
   );
 
-  const updateMasterList = useCallback((updateFn) => {
-    const updatedList = updateFn(listRef.current);
-    listRef.current = updatedList;
-    setDisplayList(updatedList);
-  }, []);
+  const setMasterList = useCallback(
+    (list) => {
+      listRef.current = list;
+      setDisplayList(filterList(list, searchTextRef.current));
+    },
+    [filterList]
+  );
+
+  const onSearch = useCallback(
+    (searchText, setSearchList) => {
+      searchTextRef.current = searchText;
+      setSearchList(filterList(listRef.current, searchText));
+    },
+    [filterList]
+  );
+
+  const updateMasterList = useCallback(
+    (updateFn) => {
+      const updatedList = updateFn(listRef.current);
+      listRef.current = updatedList;
+      setDisplayList(filterList(updatedList, searchTextRef.current));
+    },
+    [filterList]
+  );
 
   return {
     listRef,
