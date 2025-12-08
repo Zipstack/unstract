@@ -22,10 +22,9 @@ from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
 from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
-from worker import app
-
 from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
 from unstract.core.worker_models import ApiDeploymentResultStatus
+from worker import app
 
 logger = WorkerLogger.get_logger(__name__)
 
