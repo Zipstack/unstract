@@ -99,6 +99,16 @@ function ToolSettings({ type }) {
     }
   };
 
+  const handleDeleteSuccess = (adapterId) => {
+    updateMasterList((currentList) =>
+      currentList.filter((row) => row?.id !== adapterId)
+    );
+    setAlertDetails({
+      type: "success",
+      content: "Successfully deleted",
+    });
+  };
+
   const handleDelete = (_event, adapter) => {
     const requestOptions = {
       method: "DELETE",
@@ -110,21 +120,9 @@ function ToolSettings({ type }) {
 
     setIsLoading(true);
     axiosPrivate(requestOptions)
-      .then(() => {
-        updateMasterList((currentList) =>
-          currentList.filter((row) => row?.id !== adapter?.id)
-        );
-        setAlertDetails({
-          type: "success",
-          content: "Successfully deleted",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .then(() => handleDeleteSuccess(adapter?.id))
+      .catch((err) => setAlertDetails(handleException(err)))
+      .finally(() => setIsLoading(false));
   };
 
   const handleShare = (_event, adapter, isEdit) => {
