@@ -564,7 +564,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Col xs={6} sm={4} md={3}>
               <Space direction="vertical" size="small" className="full-width">
                 <Text strong className="filter-label">
-                  Min Count:
+                  Min Attempts:
                 </Text>
                 <InputNumber
                   placeholder="0"
@@ -578,7 +578,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Col xs={6} sm={4} md={3}>
               <Space direction="vertical" size="small" className="full-width">
                 <Text strong className="filter-label">
-                  Max Count:
+                  Max Attempts:
                 </Text>
                 <InputNumber
                   placeholder="∞"
