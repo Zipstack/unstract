@@ -317,7 +317,6 @@ function DisplayPromptResult({
           highlightData={highlightData}
           promptId={promptDetails?.prompt_id}
           profileId={profileId}
-          confidenceData={confidenceData}
           wordConfidenceData={wordConfidenceData}
           selectedHighlight={selectedHighlight}
           parsedOutput={parsedOutput}
@@ -333,14 +332,61 @@ const TextResult = ({
   highlightData,
   promptId,
   profileId,
-  confidenceData,
   wordConfidenceData,
   selectedHighlight,
   parsedOutput,
   onSelectHighlight,
 }) => {
-  // Use word confidence if available, otherwise fallback to line confidence
-  const confidence = wordConfidenceData || confidenceData;
+  const getConfidenceForText = () => {
+    // Try word confidence first
+    if (wordConfidenceData && typeof wordConfidenceData === "object") {
+      const values = Object.values(wordConfidenceData).filter(
+        (v) => typeof v === "number"
+      );
+      if (values.length > 0) {
+        const sum = values.reduce((acc, val) => acc + val, 0);
+        return sum / values.length;
+      }
+    }
+
+    // Fallback to extracting from highlight data
+    if (highlightData) {
+      const confidenceValues = [];
+
+      const extractConfidenceFromHighlightData = (data) => {
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            if (Array.isArray(item)) {
+              if (item.length >= 5 && typeof item[4] === "number") {
+                confidenceValues.push(item[4]);
+              } else {
+                extractConfidenceFromHighlightData(item);
+              }
+            } else if (typeof item === "object" && item !== null) {
+              for (const val of Object.values(item)) {
+                extractConfidenceFromHighlightData(val);
+              }
+            }
+          }
+        } else if (typeof data === "object" && data !== null) {
+          for (const val of Object.values(data)) {
+            extractConfidenceFromHighlightData(val);
+          }
+        }
+      };
+
+      extractConfidenceFromHighlightData(highlightData);
+
+      if (confidenceValues.length > 0) {
+        const sum = confidenceValues.reduce((acc, val) => acc + val, 0);
+        return sum / confidenceValues.length;
+      }
+    }
+
+    return undefined;
+  };
+
+  const confidence = getConfidenceForText();
 
   return enableHighlight ? (
     <Typography.Text
@@ -364,7 +410,6 @@ TextResult.propTypes = {
   highlightData: PropTypes.any,
   promptId: PropTypes.string,
   profileId: PropTypes.string,
-  confidenceData: PropTypes.any,
   wordConfidenceData: PropTypes.any,
   selectedHighlight: PropTypes.object,
   parsedOutput: PropTypes.any,

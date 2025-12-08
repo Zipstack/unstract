@@ -235,7 +235,7 @@ function PlatformSettings() {
   };
 
   return (
-    <SettingsLayout activeKey="platform">
+    <SettingsLayout>
       <div>
         <div className="plt-set-head">
           <Button

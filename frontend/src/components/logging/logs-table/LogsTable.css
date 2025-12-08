@@ -1,14 +1,60 @@
-.title-name-redirect{
+.title-name-redirect {
   word-break: break-all;
 }
 
+.logs-table-container .ant-table-wrapper {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-table-container .ant-spin-nested-loading,
+.logs-table-container .ant-spin-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-table-container .ant-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+}
+
+.logs-table-container .ant-table-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.logs-table-container .ant-table-body {
+  flex: 1;
+  overflow-y: auto !important;
+}
+
+.logs-table-container .ant-table-thead > tr > th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #fafafa;
+}
+
+.logs-table-container .ant-pagination {
+  margin-top: 8px;
+  padding-bottom: 0;
+}
 
 .gen-index-progress {
-  color: #FAAD14;
+  color: #faad14;
 }
 
 .gen-index-success {
-  color: #52C41A;
+  color: #52c41a;
 }
 
 .gen-index-fail {
@@ -18,4 +64,18 @@
 .status-container {
   display: inline-block;
   margin-right: 10px;
+}
+
+.search-container {
+  padding: 8px;
+}
+
+.search-input {
+  width: 188px;
+  margin-bottom: 8px;
+  display: block;
+}
+
+.search-filter-icon-active {
+  color: #1890ff;
 }
