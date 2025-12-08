@@ -170,6 +170,7 @@ class WorkerExecutionContext:
                     "password" in key.lower()
                     or "secret" in key.lower()
                     or "token" in key.lower()
+                    or "custom_data" in key.lower()
                 ):
                     value = "***REDACTED***"
                 log_parts.append(f"{key}={value}")

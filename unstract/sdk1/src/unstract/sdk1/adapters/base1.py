@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -235,6 +235,17 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     num_retries: int | None = 3
     reasoning_effort: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def set_model_from_deployment_name(cls, data: dict[str, "Any"]) -> dict[str, "Any"]:
+        """Convert deployment_name to model field before validation."""
+        if "deployment_name" in data:
+            deployment_name = data.pop("deployment_name")
+            if not deployment_name.startswith("azure/"):
+                deployment_name = f"azure/{deployment_name}"
+            data["model"] = deployment_name
+        return data
+
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
@@ -289,12 +300,18 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        # deployment_name ALWAYS takes precedence over model
+        if "deployment_name" in adapter_metadata:
+            deployment_name = adapter_metadata["deployment_name"]
+            if deployment_name.startswith("azure/"):
+                return deployment_name
+            return f"azure/{deployment_name}"
+
+        # Only use model if deployment_name doesn't exist (second validation call)
         model = adapter_metadata.get("model", "")
-        # Only add azure/ prefix if the model doesn't already have it
         if model.startswith("azure/"):
             return model
-        else:
-            return f"azure/{model}"
+        return f"azure/{model}"
 
 
 class VertexAILLMParameters(BaseChatCompletionParameters):

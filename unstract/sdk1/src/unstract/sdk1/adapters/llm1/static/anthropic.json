@@ -26,7 +26,7 @@
       "type": "number",
       "minimum": 0,
       "multipleOf": 1,
-      "default": 512,
+      "default": 4096,
       "title": "Maximum Output Tokens",
       "description": "Maximum number of output tokens to limit LLM replies, the maximum possible differs from model to model."
     },
