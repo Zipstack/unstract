@@ -13,9 +13,10 @@ Handles:
 from dataclasses import dataclass
 from typing import Any
 
-from unstract.core.data_models import ConnectionType as CoreConnectionType
+from shared.infrastructure.logging.logger import WorkerLogger
+from shared.workflow.logger_helper import WorkflowLoggerHelper
 
-from ..infrastructure.logging.logger import WorkerLogger
+from unstract.core.data_models import ConnectionType as CoreConnectionType
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -94,6 +95,7 @@ class WorkerSourceConnector:
         self.connection_type = config.connection_type
         self.settings = config.settings
         self.workflow_log = workflow_log
+        self.logger_helper = WorkflowLoggerHelper(workflow_log)
 
         # Store connector instance details
         self.connector_id = config.connector_id
@@ -110,27 +112,39 @@ class WorkerSourceConnector:
 
         This method replicates backend logic for getting filesystem access.
         """
-        if self.connection_type == self.ConnectionType.API_STORAGE:
-            # API storage uses workflow execution storage
-            from unstract.filesystem import FileStorageType, FileSystem
+        try:
+            if self.connection_type == self.ConnectionType.API_STORAGE:
+                # API storage uses workflow execution storage
+                from unstract.filesystem import FileStorageType, FileSystem
 
-            file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
-            return file_system.get_file_storage()
+                file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
+                return file_system.get_file_storage()
 
-        if not self.connector_id or not self.connector_settings:
-            raise Exception("Source connector not configured")
+            if not self.connector_id or not self.connector_settings:
+                error_msg = (
+                    "Source connector not configured - missing connector_id or settings"
+                )
+                self.logger_helper.log_error(logger, error_msg)
+                raise Exception(error_msg)
 
-        # Get the connector instance using connectorkit
-        from unstract.connectors.connectorkit import Connectorkit
+            # Get the connector instance using connectorkit
+            from unstract.connectors.connectorkit import Connectorkit
 
-        connectorkit = Connectorkit()
-        connector_class = connectorkit.get_connector_class_by_connector_id(
-            self.connector_id
-        )
-        connector_instance = connector_class(self.connector_settings)
+            connectorkit = Connectorkit()
+            connector_class = connectorkit.get_connector_class_by_connector_id(
+                self.connector_id
+            )
+            connector_instance = connector_class(self.connector_settings)
 
-        # Get fsspec filesystem
-        return connector_instance.get_fsspec_fs()
+            # Get fsspec filesystem
+            fs = connector_instance.get_fsspec_fs()
+            return fs
+
+        except Exception as e:
+            error_msg = f"Failed to initialize source connector filesystem: {str(e)}"
+            self.logger_helper.log_error(logger, error_msg)
+            logger.error(error_msg)
+            raise
 
     def read_file_content(self, file_path: str) -> bytes:
         """Read file content from source connector.
@@ -164,7 +178,6 @@ class WorkerSourceConnector:
             List of file information dictionaries
         """
         fs = self.get_fsspec_fs()
-
         # Implementation would list files using fsspec
         # This is a simplified version
         try:
@@ -186,7 +199,9 @@ class WorkerSourceConnector:
 
             return files
         except Exception as e:
-            logger.error(f"Failed to list files from source: {e}")
+            error_msg = f"Failed to list files from source connector directory '{input_directory}': {str(e)}"
+            self.logger_helper.log_error(logger, error_msg)
+            logger.error(error_msg)
             return []
 
     def validate(self) -> None:
@@ -198,11 +213,15 @@ class WorkerSourceConnector:
             self.ConnectionType.API,
             self.ConnectionType.API_STORAGE,
         ]:
-            raise Exception(f"Invalid source connection type: {connection_type}")
+            error_msg = f"Invalid source connection type: {connection_type}"
+            self.logger_helper.log_error(logger, error_msg)
+            raise Exception(error_msg)
 
         if connection_type == self.ConnectionType.FILESYSTEM:
             if not self.connector_id or not self.connector_settings:
-                raise Exception("Filesystem source requires connector configuration")
+                error_msg = "Filesystem source requires connector configuration"
+                self.logger_helper.log_error(logger, error_msg)
+                raise Exception(error_msg)
 
     def get_config(self) -> SourceConfig:
         """Get serializable configuration for the source connector."""
