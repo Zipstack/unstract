@@ -4,12 +4,7 @@ from account_v2.constants import Common
 from utils.local_context import StateStore
 
 from unstract.core.pubsub_helper import LogPublisher
-from unstract.workflow_execution.enums import (
-    LogComponent,
-    LogLevel,
-    LogStage,
-    LogState,
-)
+from unstract.workflow_execution.enums import LogComponent, LogLevel, LogStage, LogState
 
 
 class WorkflowLog:
@@ -22,7 +17,8 @@ class WorkflowLog:
         pipeline_id: str | None = None,
     ):
         log_events_id: str | None = StateStore.get(Common.LOG_EVENTS_ID)
-        self.messaging_channel = log_events_id if log_events_id else pipeline_id
+        # Ensure messaging_channel is never None - use execution_id as fallback
+        self.messaging_channel = log_events_id or pipeline_id or str(execution_id)
         self.execution_id = str(execution_id)
         self.file_execution_id = str(file_execution_id) if file_execution_id else None
         self.organization_id = str(organization_id) if organization_id else None

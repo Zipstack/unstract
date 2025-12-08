@@ -56,3 +56,15 @@
     height: 100%;
     overflow: auto;
 }
+
+/* Popover menu for sidebar hover */
+.settings-sidebar-popover {
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-popover-overlay .ant-popover-inner {
+    padding: 8px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
