@@ -21,12 +21,27 @@ from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
 from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
-try:
-    from unstract.connectors.queues.redis import RedisQueue
-except ImportError:
-    RedisQueue = None
-
 logger = logging.getLogger(__name__)
+
+
+def import_optional_connector(module_path: str, class_name: str):
+    """Import connector class with graceful error handling."""
+    try:
+        module = __import__(module_path, fromlist=[class_name])
+        connector_class = getattr(module, class_name)
+        logger.debug(f"Successfully imported {class_name}")
+        return connector_class
+    except ImportError as e:
+        logger.debug(f"Failed to import {class_name}: {e}")
+        return None
+
+
+# Import optional connectors
+RedisQueue = import_optional_connector("unstract.connectors.queues.redis", "RedisQueue")
+# TODO(UN-2261): Oracle temporarily excluded due to missing wallet support
+OracleDB = import_optional_connector(
+    "unstract.connectors.databases.oracle_db", "OracleDB"
+)
 
 
 def fetch_connectors_by_key_value(
@@ -80,7 +95,7 @@ class ConnectorProcessor:
         # TODO: Remove RedisQueue from the list of connectors and use separately instead
         # HACK: Connectors that are marked active but not supported explicitly
         unsupported_connectors = [
-            connector.get_id() for connector in filter(None, [RedisQueue])
+            connector.get_id() for connector in filter(None, [RedisQueue, OracleDB])
         ]
 
         if type == ConnectorKeys.INPUT:

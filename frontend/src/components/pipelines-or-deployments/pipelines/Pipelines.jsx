@@ -12,6 +12,7 @@ import {
   CopyOutlined,
   LoadingOutlined,
   ShareAltOutlined,
+  HistoryOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -39,6 +40,7 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
+import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
 import "./Pipelines.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { pipelineService } from "../pipeline-service.js";
@@ -71,6 +73,7 @@ function Pipelines({ type }) {
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
   const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
@@ -469,6 +472,29 @@ function Pipelines({ type }) {
       ),
     },
     {
+      key: "view-file-history",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={() => {
+            if (!selectedPorD?.workflow_id) {
+              setAlertDetails({
+                type: "error",
+                content: "Cannot view file history: Workflow ID not found",
+              });
+              return;
+            }
+
+            setOpenFileHistoryModal(true);
+          }}
+        >
+          <HistoryOutlined />
+          <Typography.Text>View File History</Typography.Text>
+        </Space>
+      ),
+    },
+    {
       key: "divider-operation",
       type: "divider",
     },
@@ -749,6 +775,12 @@ function Pipelines({ type }) {
         setOpen={setOpenNotificationModal}
         type={deploymentApiTypes.pipeline}
         id={selectedPorD?.id}
+      />
+      <FileHistoryModal
+        open={openFileHistoryModal}
+        setOpen={setOpenFileHistoryModal}
+        workflowId={selectedPorD?.workflow_id}
+        workflowName={selectedPorD?.pipeline_name}
       />
       {openShareModal && (
         <SharePermission
