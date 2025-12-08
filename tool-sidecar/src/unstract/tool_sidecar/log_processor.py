@@ -220,8 +220,8 @@ class LogProcessor:
     def monitor_logs(self) -> None:
         """Main loop to monitor log file for new content and completion signals.
         Uses file polling with position tracking to efficiently read new lines.
-        Handles graceful shutdown via SIGTERM.
         """
+        logger.info("Starting log monitoring...")
         if not self.wait_for_log_file():
             raise TimeoutError("Log file was not created within timeout period")
 
@@ -250,8 +250,6 @@ class LogProcessor:
                 if log_line.is_terminated:
                     logger.info("Completion signal received")
                     break
-
-        logger.info("Log monitoring completed")
 
 
 def main():
