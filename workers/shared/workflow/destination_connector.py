@@ -223,6 +223,50 @@ class WorkerDestinationConnector:
         self.manual_review_service = None
         self._api_client = None
 
+    @staticmethod
+    def _extract_confidence_from_highlight_data(data: Any) -> float | None:
+        """Extract confidence from 5th element of highlight data coordinate arrays.
+
+        Recursively searches through nested arrays/objects to find coordinate arrays
+        with 5 elements where the 5th element (index 4) is the confidence score.
+
+        Args:
+            data: Highlight data structure (can be nested arrays/dicts)
+
+        Returns:
+            Average confidence score if found, None otherwise
+        """
+        if not data:
+            return None
+
+        confidence_values = []
+
+        def extract_from_array(arr):
+            if isinstance(arr, list):
+                for item in arr:
+                    if isinstance(item, list):
+                        # Check if this is a coordinate array with 5 elements
+                        if len(item) >= 5 and isinstance(item[4], (int, float)):
+                            confidence_values.append(float(item[4]))
+                        else:
+                            # Recursively check nested arrays
+                            extract_from_array(item)
+                    elif isinstance(item, dict):
+                        # Recursively check objects
+                        for val in item.values():
+                            extract_from_array(val)
+            elif isinstance(arr, dict):
+                for val in arr.values():
+                    extract_from_array(val)
+
+        extract_from_array(data)
+
+        # Calculate average confidence if we found any values
+        if confidence_values:
+            return sum(confidence_values) / len(confidence_values)
+
+        return None
+
     @classmethod
     def from_config(cls, workflow_log, config: DestinationConfig):
         """Create destination connector from config (matching Django backend interface)."""
@@ -1449,12 +1493,39 @@ class WorkerDestinationConnector:
                 else:
                     # Legacy format: wrap in expected structure
                     metadata = self.get_metadata()
+
+                    # 3-tier fallback hierarchy for confidence:
+                    # 1. word_confidence_data (if available)
+                    # 2. Extract from 5th element of highlight_data
+                    # 3. confidence_data (last resort)
+                    highlight_data = (
+                        metadata.get("highlight_data", {}) if metadata else {}
+                    )
+                    word_confidence_data = (
+                        metadata.get("word_confidence_data", {}) if metadata else {}
+                    )
+                    confidence_data = (
+                        metadata.get("confidence_data", {}) if metadata else {}
+                    )
+
+                    # If word_confidence_data is not available, try extracting from highlight_data
+                    if not word_confidence_data and highlight_data:
+                        extracted_confidence = (
+                            self._extract_confidence_from_highlight_data(highlight_data)
+                        )
+                        # Use extracted confidence if available, otherwise fall back to confidence_data
+                        # Store as a simple dict for compatibility
+                        if extracted_confidence is not None:
+                            # For rule engine, we provide a single confidence score
+                            # This will be used by the enterprise plugin
+                            confidence_data = {"_extracted_average": extracted_confidence}
+
                     wrapped_result = {
                         "output": tool_execution_result,
                         "metadata": {
-                            "confidence_data": metadata.get("confidence_data", {})
-                            if metadata
-                            else {},
+                            "confidence_data": confidence_data,
+                            "word_confidence_data": word_confidence_data,
+                            "highlight_data": highlight_data,
                             "whisper-hash": metadata.get("whisper-hash")
                             if metadata
                             else None,

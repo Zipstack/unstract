@@ -149,19 +149,24 @@ def prompt_processor() -> Any:
                 capture_metrics=True,
             )
 
-            embedding = EmbeddingCompat(
-                adapter_instance_id=output[PSKeys.EMBEDDING],
-                tool=util,
-                kwargs={
-                    **usage_kwargs,
-                },
-            )
+            # Only create embedding and vector_db if chunk_size > 0
+            # When chunk_size is 0, we read the complete file without embeddings
+            embedding = None
+            vector_db = None
+            if chunk_size > 0:
+                embedding = EmbeddingCompat(
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=util,
+                    kwargs={
+                        **usage_kwargs,
+                    },
+                )
 
-            vector_db = VectorDB(
-                tool=util,
-                adapter_instance_id=output[PSKeys.VECTOR_DB],
-                embedding=embedding,
-            )
+                vector_db = VectorDB(
+                    tool=util,
+                    adapter_instance_id=output[PSKeys.VECTOR_DB],
+                    embedding=embedding,
+                )
         except SdkError as e:
             msg = f"Couldn't fetch adapter. {e}"
             app.logger.error(msg)
@@ -384,7 +389,7 @@ def prompt_processor() -> Any:
                     output=output,
                     doc_id=doc_id,
                     llm=llm,
-                    vector_db=vector_db,
+                    vector_db=vector_db,  # This will be None when chunk_size is 0
                     retrieval_type=retrieval_strategy,
                     metadata=metadata,
                     chunk_size=chunk_size,
@@ -502,6 +507,9 @@ def prompt_processor() -> Any:
                     doc_name=doc_name,
                     llm=llm,
                     enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
+                    enable_word_confidence=tool_settings.get(
+                        PSKeys.ENABLE_WORD_CONFIDENCE, False
+                    ),
                     execution_source=execution_source,
                     metadata=metadata,
                     file_path=file_path,
@@ -654,7 +662,9 @@ def prompt_processor() -> Any:
                     **challenge_metrics,
                 }
             )
-            vector_db.close()
+            # Only close vector_db if it was created (chunk_size > 0)
+            if vector_db:
+                vector_db.close()
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "doc_name": doc_name},
