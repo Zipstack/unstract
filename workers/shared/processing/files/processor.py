@@ -83,9 +83,6 @@ class CachedFileHandler:
 
             # Handle both legacy format (result field) and new format (file_history field)
             if history_result.get("found") and history_result.get("file_history"):
-                # Legacy format - direct result field
-                logger.info(f"✓ Retrieved cached result for {context.file_name}")
-
                 file_history_data = history_result.get("file_history")
 
                 if not file_history_data:
@@ -101,6 +98,20 @@ class CachedFileHandler:
                         metadata=None,
                         from_cache=True,
                     )
+
+                # Check status - only return COMPLETED results
+                status = file_history_data.get("status")
+
+                if status != ExecutionStatus.COMPLETED.value:
+                    logger.info(
+                        f"File {context.file_name} found in history with status={status}, "
+                        f"skipping cached result and executing fresh"
+                    )
+                    return None  # Continue to fresh execution
+
+                logger.info(
+                    f"✓ Retrieved cached COMPLETED result for {context.file_name}"
+                )
 
                 # Parse cached JSON result
                 try:
