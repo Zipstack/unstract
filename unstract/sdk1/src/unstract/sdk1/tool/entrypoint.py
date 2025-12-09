@@ -1,5 +1,6 @@
 import logging
 import signal
+import time
 import types
 
 from unstract.sdk1.tool.base import BaseTool
@@ -35,6 +36,22 @@ class ToolEntrypoint:
         signal.signal(signal.SIGTERM, ToolEntrypoint._signal_handler)
         signal.signal(signal.SIGINT, ToolEntrypoint._signal_handler)
 
+        # TEMPORARY: Add test loop for SIGTERM testing
+        logger.info("✅ Tool Entrypoint - Signal handlers registered")
+        logger.info("🔄 Tool Entrypoint - Starting 60-second test loop...")
+
+        try:
+            for i in range(60):
+                logger.info(f"🔄 Tool running... {i+1}/60 seconds")
+                time.sleep(1)
+            logger.info("⏰ Tool Entrypoint - Test completed, no signal received")
+        except KeyboardInterrupt:
+            logger.info("🔥 Tool Entrypoint - Interrupted by signal")
+            exit(0)
+        except Exception as e:
+            logger.info(f"❌ Tool Entrypoint - Error in test loop: {e}")
+
+        # Continue with normal tool execution
         parsed_args = ToolArgsParser.parse_args(args)
         executor = ToolExecutor(tool=tool)
         executor.execute(parsed_args)
