@@ -171,6 +171,158 @@ class PromptTool:
             headers=headers,
         )
 
+    @log_elapsed(operation="VIBE_EXTRACTOR_GUESS_DOCUMENT_TYPE")
+    @handle_service_exceptions("guessing document type")
+    def guess_document_type(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Guess document type from file content using LLM.
+
+        Args:
+            payload: Dictionary with file_content and llm_config
+            params: Optional query parameters
+            headers: Optional request headers
+
+        Returns:
+            dict: Response with document_type, confidence, and metadata
+        """
+        return self._call_service(
+            url_path="vibe-extractor/guess-document-type",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
+    @log_elapsed(operation="VIBE_EXTRACTOR_GENERATE_METADATA")
+    @handle_service_exceptions("generating metadata")
+    def generate_metadata(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate metadata for a document type.
+
+        Args:
+            payload: Dictionary with doc_type, llm_config, reference_template
+            params: Optional query parameters
+            headers: Optional request headers
+
+        Returns:
+            dict: Response with generated metadata
+        """
+        return self._call_service(
+            url_path="vibe-extractor/generate-metadata",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
+    @log_elapsed(operation="VIBE_EXTRACTOR_GENERATE_EXTRACTION_FIELDS")
+    @handle_service_exceptions("generating extraction fields")
+    def generate_extraction_fields(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate extraction fields YAML for a document type.
+
+        Args:
+            payload: Dictionary with doc_type, metadata_description, llm_config
+            params: Optional query parameters
+            headers: Optional request headers
+
+        Returns:
+            dict: Response with extraction_yaml string
+        """
+        return self._call_service(
+            url_path="vibe-extractor/generate-extraction-fields",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
+    @log_elapsed(operation="VIBE_EXTRACTOR_GENERATE_PAGE_PROMPTS")
+    @handle_service_exceptions("generating page prompts")
+    def generate_page_prompts(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate page extraction prompts for a document type.
+
+        Args:
+            payload: Dictionary with doc_type, metadata_description, llm_config
+            params: Optional query parameters
+            headers: Optional request headers
+
+        Returns:
+            dict: Response with system_prompt and user_prompt
+        """
+        return self._call_service(
+            url_path="vibe-extractor/generate-page-prompts",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
+    @log_elapsed(operation="VIBE_EXTRACTOR_GENERATE_SCALAR_PROMPTS")
+    @handle_service_exceptions("generating scalar prompts")
+    def generate_scalar_prompts(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate scalar extraction prompts for a document type.
+
+        Args:
+            payload: Dictionary with doc_type, metadata_description,
+                    extraction_yaml, scalar_fields, llm_config
+            params: Optional query parameters
+            headers: Optional request headers
+
+        Returns:
+            dict: Response with system_prompt and user_prompt
+        """
+        return self._call_service(
+            url_path="vibe-extractor/generate-scalar-prompts",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
+    @log_elapsed(operation="VIBE_EXTRACTOR_GENERATE_TABLE_PROMPTS")
+    @handle_service_exceptions("generating table prompts")
+    def generate_table_prompts(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Generate table extraction prompts for a document type.
+
+        Args:
+            payload: Dictionary with doc_type, metadata_description,
+                    extraction_yaml, list_fields, llm_config
+            params: Optional query parameters
+            headers: Optional request headers
+
+        Returns:
+            dict: Response with system_prompt and user_prompt
+        """
+        return self._call_service(
+            url_path="vibe-extractor/generate-table-prompts",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
     def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get default headers for requests.
 
