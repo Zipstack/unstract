@@ -288,6 +288,7 @@ class FileHistoryHelper:
             result=str(result),
             metadata=FileHistoryHelper._safe_str(metadata),
             error=FileHistoryHelper._safe_str(error),
+            modified_at=timezone.now(),
         )
         # Refresh from DB to get updated values
         file_history.refresh_from_db()
