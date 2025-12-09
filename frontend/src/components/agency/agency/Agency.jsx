@@ -375,6 +375,32 @@ function Agency() {
     }
   };
 
+  // Get tool name from tool ID
+  const getToolName = (toolId) => {
+    if (!toolId) return null;
+
+    // First check if we have the name in tool_instances (from backend)
+    const toolInstance = details?.tool_instances?.find(
+      (instance) => instance.tool_id === toolId
+    );
+    if (toolInstance?.name) {
+      return toolInstance.name;
+    }
+
+    // Fallback to exportedTools if not in tool_instances
+    const tool = exportedTools.find((t) => t.function_name === toolId);
+    return tool?.name || toolId;
+  };
+
+  // Check if current user is the workflow owner
+  const isWorkflowOwner = () => {
+    if (!details?.created_by || !sessionDetails?.id) {
+      return false;
+    }
+    // Convert both to strings for comparison to handle type differences
+    return String(details.created_by) === String(sessionDetails.id);
+  };
+
   // Initialize selected tool from existing tool instances on page load
   const initializeSelectedTool = () => {
     if (details?.tool_instances?.length > 0) {
@@ -1104,6 +1130,7 @@ function Agency() {
                 connType={sourceTypes.connectors[0]}
                 endpointDetails={source}
                 message={sourceMsg}
+                isWorkflowOwner={isWorkflowOwner()}
               />
             </Col>
 
@@ -1122,6 +1149,7 @@ function Agency() {
                 connType={sourceTypes.connectors[1]}
                 endpointDetails={destination}
                 message={destinationMsg}
+                isWorkflowOwner={isWorkflowOwner()}
               />
             </Col>
             <Col span={12}>
@@ -1135,14 +1163,13 @@ function Agency() {
                       {selectedTool ? (
                         <div className="selected-tool-info">
                           <span className="selected-tool-name">
-                            {exportedTools.find(
-                              (t) => t.function_name === selectedTool
-                            )?.name || selectedTool}
+                            {getToolName(selectedTool)}
                           </span>
                           <Button
                             type="link"
                             onClick={() => setShowToolSelectionSidebar(true)}
                             size="small"
+                            disabled={!isWorkflowOwner()}
                           >
                             Change Prompt Studio project
                           </Button>
@@ -1160,7 +1187,7 @@ function Agency() {
                     <Button
                       type="primary"
                       onClick={() => setShowSidebar(!showSidebar)}
-                      disabled={!selectedTool}
+                      disabled={!selectedTool || !isWorkflowOwner()}
                     >
                       Configure Settings
                     </Button>

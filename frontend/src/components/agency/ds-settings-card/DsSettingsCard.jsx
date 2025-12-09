@@ -21,7 +21,12 @@ import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureC
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
 
-function DsSettingsCard({ connType, endpointDetails, message }) {
+function DsSettingsCard({
+  connType,
+  endpointDetails,
+  message,
+  isWorkflowOwner,
+}) {
   const workflowStore = useWorkflowStore();
   const { source, destination, allowChangeEndpoint, details } = workflowStore;
   const [options, setOptions] = useState([]);
@@ -231,8 +236,11 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
             <Space>
               <Tooltip
                 title={
-                  !allowChangeEndpoint &&
-                  "Workflow used in API/Task/ETL deployment"
+                  !allowChangeEndpoint
+                    ? "Workflow used in API/Task/ETL deployment"
+                    : !isWorkflowOwner
+                    ? "Only workflow owner can modify connectors"
+                    : ""
                 }
               >
                 <Select
@@ -240,7 +248,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                   options={options}
                   placeholder="Select Connector Type"
                   value={endpointDetails?.connection_type || undefined}
-                  disabled={!allowChangeEndpoint}
+                  disabled={!allowChangeEndpoint || !isWorkflowOwner}
                   onChange={(value) => {
                     handleEndpointUpdate({
                       connection_type: value,
@@ -251,14 +259,21 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                 />
               </Tooltip>
 
-              <Tooltip title={getConfigureTooltipMessage()}>
+              <Tooltip
+                title={
+                  !isWorkflowOwner
+                    ? "Only workflow owner can configure connectors"
+                    : getConfigureTooltipMessage()
+                }
+              >
                 <Button
                   type="primary"
                   onClick={() => setOpenModal(true)}
                   disabled={
                     !endpointDetails?.connection_type ||
                     connMode === "API" ||
-                    connMode === "APPDEPLOYMENT"
+                    connMode === "APPDEPLOYMENT" ||
+                    !isWorkflowOwner
                   }
                 >
                   Configure
@@ -310,6 +325,7 @@ DsSettingsCard.propTypes = {
   connType: PropTypes.string.isRequired,
   endpointDetails: PropTypes.object.isRequired,
   message: PropTypes.string,
+  isWorkflowOwner: PropTypes.bool,
 };
 
 export { DsSettingsCard };
