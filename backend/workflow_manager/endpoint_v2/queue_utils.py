@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any
 
+from django.conf import settings
 from utils.constants import Common
 from workflow_manager.endpoint_v2.exceptions import UnstractQueueException
 
@@ -20,8 +21,25 @@ class QueueResultStatus(Enum):
 
 
 class QueueUtils:
+    # HITL connectors registry (lazy-loaded to avoid circular imports)
+    _hitl_connectors = {}
+
     @staticmethod
     def get_queue_inst(connector_settings: dict[str, Any] = {}) -> UnstractQueue:
+        """Get queue connector instance based on configuration.
+
+        For HITL operations, this can return PostgreSQL, Hybrid, or Redis connectors
+        based on the HITL_QUEUE_BACKEND setting.
+        """
+        # Check if this is for HITL operations
+        is_hitl = connector_settings.get("use_hitl_backend", False)
+
+        if is_hitl:
+            # Use HITL-specific queue backend
+            hitl_backend = getattr(settings, "HITL_QUEUE_BACKEND", "hybrid")
+            return QueueUtils.get_hitl_queue_inst(hitl_backend, connector_settings)
+
+        # Default behavior for non-HITL operations
         if not queue_connectors:
             raise UnstractQueueException(detail="Queue connector not exists")
         queue_connector_key = next(iter(queue_connectors))
@@ -30,6 +48,108 @@ class QueueUtils:
         ]
         connector_class: UnstractQueue = connector(connector_settings)
         return connector_class
+
+    @staticmethod
+    def get_hitl_queue_inst(
+        backend: str, connector_settings: dict[str, Any] = {}
+    ) -> UnstractQueue:
+        """Get HITL-specific queue connector instance with dynamic imports.
+
+        This method uses dynamic imports to avoid hard dependencies on the
+        manual_review_v2 pluggable app, allowing graceful degradation when
+        the app is not available.
+
+        Args:
+            backend: Backend type ('postgresql', 'hybrid', 'redis')
+            connector_settings: Connector configuration
+
+        Returns:
+            Configured queue connector instance
+
+        Raises:
+            UnstractQueueException: When HITL connectors are not available
+        """
+        # For Redis backend, use default connector
+        if backend == "redis":
+            # Strip HITL flag to force default (non-HITL) connector path
+            non_hitl_settings = dict(connector_settings)
+            non_hitl_settings.pop("use_hitl_backend", None)
+            return QueueUtils.get_queue_inst(non_hitl_settings)
+
+        # For PostgreSQL and Hybrid backends, try dynamic imports
+        try:
+            if backend == "postgresql":
+                connector_class = QueueUtils._import_hitl_connector("PostgreSQLQueue")
+                return connector_class(connector_settings)
+
+            elif backend == "hybrid":
+                connector_class = QueueUtils._import_hitl_connector("HybridQueue")
+                return connector_class(connector_settings)
+
+            else:
+                logger.warning(
+                    f"Unknown HITL queue backend '{backend}'. "
+                    f"Valid options: postgresql, hybrid, redis. "
+                    f"Attempting fallback to hybrid."
+                )
+                connector_class = QueueUtils._import_hitl_connector("HybridQueue")
+                return connector_class(connector_settings)
+
+        except ImportError as e:
+            logger.error(
+                f"HITL queue backend '{backend}' not available: {e}. "
+                f"Make sure 'pluggable_apps.manual_review_v2' is installed and configured."
+            )
+            raise UnstractQueueException(
+                detail=f"HITL queue backend '{backend}' not available. "
+                f"Please install the manual_review_v2 app or use 'redis' backend."
+            )
+        except Exception as e:
+            logger.error(f"Failed to initialize HITL queue backend '{backend}': {e}")
+            raise UnstractQueueException(
+                detail=f"Failed to initialize HITL queue backend '{backend}': {str(e)}"
+            )
+
+    @classmethod
+    def _import_hitl_connector(cls, connector_name: str):
+        """Get HITL connector class from registry (lazy-loaded to avoid circular imports).
+
+        Args:
+            connector_name: Name of the connector class to get
+
+        Returns:
+            The connector class
+
+        Raises:
+            ImportError: When the connector is not available
+        """
+        # Lazy initialization on first access (avoids circular imports)
+        if not cls._hitl_connectors:
+            try:
+                from pluggable_apps.manual_review_v2.connectors import (
+                    HybridQueue,
+                    PostgreSQLQueue,
+                )
+
+                cls._hitl_connectors = {
+                    "PostgreSQLQueue": PostgreSQLQueue,
+                    "HybridQueue": HybridQueue,
+                }
+            except ImportError as e:
+                logger.debug(f"HITL connectors not available: {e}")
+
+        if not cls._hitl_connectors:
+            raise ImportError(
+                "HITL connectors not available. Make sure 'pluggable_apps.manual_review_v2' is installed."
+            )
+
+        if connector_name not in cls._hitl_connectors:
+            available_connectors = list(cls._hitl_connectors.keys())
+            raise ImportError(
+                f"Unknown HITL connector: {connector_name}. Available: {available_connectors}"
+            )
+
+        return cls._hitl_connectors[connector_name]
 
     @staticmethod
     def calculate_remaining_ttl(enqueued_at: float, ttl_seconds: int) -> int | None:
