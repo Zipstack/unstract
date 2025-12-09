@@ -40,16 +40,10 @@ class ToolEntrypoint:
         logger.info("✅ Tool Entrypoint - Signal handlers registered")
         logger.info("🔄 Tool Entrypoint - Starting 60-second test loop...")
 
-        try:
-            for i in range(60):
-                logger.info(f"🔄 Tool running... {i+1}/60 seconds")
-                time.sleep(1)
-            logger.info("⏰ Tool Entrypoint - Test completed, no signal received")
-        except KeyboardInterrupt:
-            logger.info("🔥 Tool Entrypoint - Interrupted by signal")
-            exit(0)
-        except Exception as e:
-            logger.info(f"❌ Tool Entrypoint - Error in test loop: {e}")
+        for i in range(60):
+            logger.info(f"🔄 Tool running... {i+1}/60 seconds")
+            time.sleep(1)
+        logger.info("Executing tool")
 
         # Continue with normal tool execution
         parsed_args = ToolArgsParser.parse_args(args)

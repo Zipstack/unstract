@@ -27,18 +27,13 @@ from .dto import LogLineDTO
 
 logger = logging.getLogger(__name__)
 
-# Global shutdown flag for graceful termination
-_shutdown_requested = False
-
 
 def _signal_handler(signum: int, _frame: types.FrameType | None):
     """Handle shutdown signals gracefully."""
-    global _shutdown_requested
     sig = signal.Signals(signum)
     signal_name = sig.name
     logger.warning(f"RECEIVED SIGNAL: {signal_name}")
     logger.warning("Initiating graceful shutdown...")
-    _shutdown_requested = True
 
 
 class LogProcessor:
@@ -226,27 +221,13 @@ class LogProcessor:
         """Main loop to monitor log file for new content and completion signals.
         Uses file polling with position tracking to efficiently read new lines.
         """
-        global _shutdown_requested
         logger.warning("✅ Sidecar - Signal handlers registered")
         logger.warning("🔄 Sidecar - Starting 60-second test loop...")
 
         # TEMPORARY: Add test loop for SIGTERM testing
-        try:
-            for i in range(60):
-                if _shutdown_requested:
-                    logger.warning("🔥 Sidecar - Shutdown requested during test loop")
-                    break
-                logger.warning(f"🔄 Sidecar running... {i+1}/60 seconds")
-                time.sleep(1)
-            if not _shutdown_requested:
-                logger.warning("⏰ Sidecar - Test completed, starting log monitoring...")
-        except Exception as e:
-            logger.error(f"❌ Sidecar - Error in test loop: {e}")
-
-        # Check if shutdown was requested during test
-        if _shutdown_requested:
-            logger.warning("🔥 Sidecar - Exiting due to shutdown request")
-            return
+        for i in range(60):
+            logger.warning(f"🔄 Sidecar running... {i+1}/60 seconds")
+            time.sleep(1)
 
         logger.info("Starting log monitoring...")
         if not self.wait_for_log_file():
