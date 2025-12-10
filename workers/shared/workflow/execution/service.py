@@ -52,6 +52,7 @@ from unstract.workflow_execution.workflow_execution import WorkflowExecutionServ
 
 from ...api.internal_client import InternalAPIClient
 from ...infrastructure.logging import WorkerLogger
+from ...utils.error_utils import get_user_friendly_error_message
 from ..destination_connector import (
     DestinationConfig,
     WorkerDestinationConnector,
@@ -854,7 +855,7 @@ class WorkerWorkflowExecutionService:
             logger.error(
                 f"Tool execution failed for file {file_name}: {str(e)}", exc_info=True
             )
-            self._last_execution_error = str(e)
+            self._last_execution_error = get_user_friendly_error_message(e)
             return False
 
     def _compile_workflow(
