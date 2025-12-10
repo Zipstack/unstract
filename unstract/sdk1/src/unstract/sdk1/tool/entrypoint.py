@@ -1,6 +1,5 @@
 import logging
 import signal
-import time
 import types
 
 from unstract.sdk1.tool.base import BaseTool
@@ -42,9 +41,9 @@ class ToolEntrypoint:
         # logger.info("✅ Tool Entrypoint - Signal handlers registered")
         # logger.info("🔄 Tool Entrypoint - Starting 60-second test loop...")
 
-        for i in range(60):
-            logger.info(f"🔄 Tool running... {i+1}/60 seconds")
-            time.sleep(1)
+        # for i in range(60):
+        #     logger.info(f"🔄 Tool running... {i+1}/60 seconds")
+        #     time.sleep(1)
         logger.info("Executing tool")
 
         # Continue with normal tool execution
