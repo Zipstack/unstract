@@ -221,13 +221,6 @@ class LogProcessor:
         """Main loop to monitor log file for new content and completion signals.
         Uses file polling with position tracking to efficiently read new lines.
         """
-        logger.warning("✅ Sidecar - Signal handlers registered")
-
-        # # TEMPORARY: Add test loop for SIGTERM testing
-        # for i in range(60):
-        #     logger.warning(f"🔄 Sidecar running... {i+1}/60 seconds")
-        #     time.sleep(1)
-
         logger.info("Starting log monitoring...")
         if not self.wait_for_log_file():
             raise TimeoutError("Log file was not created within timeout period")

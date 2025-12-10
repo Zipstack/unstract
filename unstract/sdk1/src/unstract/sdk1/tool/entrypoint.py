@@ -35,18 +35,6 @@ class ToolEntrypoint:
         signal.signal(signal.SIGTERM, ToolEntrypoint._signal_handler)
         signal.signal(signal.SIGINT, ToolEntrypoint._signal_handler)
 
-        logger.warning("✅ Sidecar - Signal handlers registered")
-
-        # # TEMPORARY: Add test loop for SIGTERM testing
-        # logger.info("✅ Tool Entrypoint - Signal handlers registered")
-        # logger.info("🔄 Tool Entrypoint - Starting 60-second test loop...")
-
-        # for i in range(60):
-        #     logger.info(f"🔄 Tool running... {i+1}/60 seconds")
-        #     time.sleep(1)
-        logger.info("Executing tool")
-
-        # Continue with normal tool execution
         parsed_args = ToolArgsParser.parse_args(args)
         executor = ToolExecutor(tool=tool)
         executor.execute(parsed_args)
