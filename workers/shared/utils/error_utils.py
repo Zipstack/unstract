@@ -16,6 +16,6 @@ def get_user_friendly_error_message(exception: Exception) -> str:
         A user-friendly error message string.
     """
     if isinstance(exception, SoftTimeLimitExceeded):
-        return "Processing timed out. couldn't complete processing within the time limit."
+        return "Processing timed out. Couldn't complete processing within the time limit."
 
     return str(exception)
