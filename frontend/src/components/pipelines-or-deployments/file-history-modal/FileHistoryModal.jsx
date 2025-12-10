@@ -9,6 +9,7 @@ import {
   Typography,
   Popconfirm,
   Tag,
+  Tooltip,
   Row,
   Col,
   message,
@@ -435,7 +436,11 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       },
     },
     {
-      title: "Execution Count",
+      title: (
+        <Tooltip title="Number of times this file has been processed in this workflow">
+          <span>Total Attempts</span>
+        </Tooltip>
+      ),
       dataIndex: "execution_count",
       key: "execution_count",
       width: "10%",
@@ -450,7 +455,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       },
     },
     {
-      title: "Last Run",
+      title: "Last Attempt",
       dataIndex: "modified_at",
       key: "modified_at",
       width: "12%",
@@ -559,7 +564,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Col xs={6} sm={4} md={3}>
               <Space direction="vertical" size="small" className="full-width">
                 <Text strong className="filter-label">
-                  Min Count:
+                  Min Attempts:
                 </Text>
                 <InputNumber
                   placeholder="0"
@@ -573,7 +578,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
             <Col xs={6} sm={4} md={3}>
               <Space direction="vertical" size="small" className="full-width">
                 <Text strong className="filter-label">
-                  Max Count:
+                  Max Attempts:
                 </Text>
                 <InputNumber
                   placeholder="∞"
