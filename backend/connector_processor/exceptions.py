@@ -1,6 +1,5 @@
-from rest_framework.exceptions import APIException
-
 from backend.exceptions import UnstractBaseException
+from rest_framework.exceptions import APIException
 from unstract.connectors.exceptions import ConnectorError
 
 
@@ -28,4 +27,6 @@ class TestConnectorInputError(UnstractBaseException):
     def __init__(self, core_err: ConnectorError) -> None:
         super().__init__(detail=core_err.message, core_err=core_err)
         self.default_detail = core_err.message
-        self.status_code = 400
+        # Preserve status code from connector error if available, otherwise default to 400
+        if not core_err.status_code:
+            self.status_code = 400

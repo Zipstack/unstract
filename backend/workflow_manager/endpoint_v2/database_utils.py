@@ -59,7 +59,9 @@ class DatabaseUtils:
         try:
             return conn_cls.get_information_schema(table_name=table_name)
         except ConnectorError as e:
-            raise UnstractDBException(detail=e.message) from e
+            raise UnstractDBException(
+                detail=e.message, status_code=e.status_code
+            ) from e
 
     @staticmethod
     def get_sql_values_for_query(
