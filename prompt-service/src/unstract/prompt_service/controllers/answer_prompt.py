@@ -181,7 +181,9 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            raise APIError(message=msg)
+            # Preserve the status code from the SDK error
+            status_code = getattr(e, "status_code", None) or 500
+            raise APIError(message=msg, code=status_code)
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
             adapter_parent_data = ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
