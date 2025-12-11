@@ -1,4 +1,4 @@
-import { Table, Tooltip, Typography } from "antd";
+import { Input, Table, Tooltip, Typography } from "antd";
 import "./LogsTable.css";
 import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
@@ -6,11 +6,38 @@ import {
   CloseCircleFilled,
   HourglassOutlined,
   InfoCircleFilled,
+  SearchOutlined,
 } from "@ant-design/icons";
 
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { logsStaticContent } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+
+// Search filter dropdown component for execution ID column
+const SearchFilterDropdown = ({ value, onChange }) => (
+  <div className="search-container">
+    <Input
+      placeholder="Search execution ID"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="search-input"
+    />
+  </div>
+);
+
+SearchFilterDropdown.propTypes = {
+  value: PropTypes.string,
+  onChange: PropTypes.func.isRequired,
+};
+
+// Search filter icon component
+const SearchFilterIcon = ({ isActive }) => (
+  <SearchOutlined className={isActive ? "search-filter-icon-active" : ""} />
+);
+
+SearchFilterIcon.propTypes = {
+  isActive: PropTypes.bool,
+};
 
 const LogsTable = ({
   tableData,
@@ -19,6 +46,8 @@ const LogsTable = ({
   setPagination,
   setOrdering,
   activeTab,
+  executionIdSearch,
+  setExecutionIdSearch,
 }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -39,6 +68,13 @@ const LogsTable = ({
       title: "Execution ID",
       dataIndex: "executionId",
       key: "executionId",
+      filterDropdown: (
+        <SearchFilterDropdown
+          value={executionIdSearch}
+          onChange={setExecutionIdSearch}
+        />
+      ),
+      filterIcon: <SearchFilterIcon isActive={!!executionIdSearch} />,
       render: (text) => (
         <Typography.Link
           className="title-name-redirect"
@@ -101,30 +137,36 @@ const LogsTable = ({
       title: "Files Processed",
       dataIndex: "filesProcessed",
       key: "filesProcessed",
-      render: (text, record) => `${record?.processed}/${record?.totalFiles}`,
+      render: (_, record) => `${record?.processed}/${record?.totalFiles}`,
     },
     {
       title: "Execution Time",
       dataIndex: "executionTime",
       key: "executionTime",
+      sorter: true,
       render: (_, record) => record?.execution_time || "-",
     },
   ];
 
-  const handleTableChange = (pagination, filters, sorter) => {
+  const handleTableChange = (pagination, _filters, sorter) => {
     setPagination((prev) => {
       return { ...prev, ...pagination };
     });
 
     if (sorter.order) {
-      // Determine ascending or descending order
-      const order = sorter.order === "ascend" ? "created_at" : "-created_at";
+      const fieldMap = {
+        executedAt: "created_at",
+        executionTime: "execution_time",
+      };
+      const backendField = fieldMap[sorter.field] || sorter.field;
+      const order =
+        sorter.order === "ascend" ? backendField : `-${backendField}`;
       setOrdering(order);
       setPagination((prev) => {
         return { ...prev, ...pagination, current: 1 };
       });
     } else {
-      setOrdering(null); // Default ordering if sorting is cleared
+      setOrdering(null);
     }
   };
 
@@ -132,13 +174,18 @@ const LogsTable = ({
     <Table
       columns={columns}
       dataSource={tableData}
-      pagination={pagination}
+      pagination={{
+        ...pagination,
+        showSizeChanger: true,
+        pageSizeOptions: ["10", "20", "50", "100"],
+        showTotal: (total, range) =>
+          `${range[0]}-${range[1]} of ${total} executions`,
+      }}
       bordered
       size="small"
       loading={loading}
       onChange={handleTableChange}
       sortDirections={["ascend", "descend", "ascend"]}
-      scroll={{ y: 55 * 10 }}
       locale={{
         emptyText: (
           <EmptyState
@@ -163,6 +210,8 @@ LogsTable.propTypes = {
   setPagination: PropTypes.func,
   setOrdering: PropTypes.func,
   activeTab: PropTypes.string,
+  executionIdSearch: PropTypes.string,
+  setExecutionIdSearch: PropTypes.func,
 };
 
 export { LogsTable };

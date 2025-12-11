@@ -60,6 +60,7 @@ def index() -> Any:
     chunk_overlap: int = payload.get(IKeys.CHUNK_OVERLAP, 128)  # Default chunk overlap
     reindex: bool = payload.get(IKeys.REINDEX, False)
     enable_highlight: bool = payload.get(IKeys.ENABLE_HIGHLIGHT, False)
+    enable_word_confidence: bool = payload.get(IKeys.ENABLE_WORD_CONFIDENCE, False)
     usage_kwargs: dict[Any, Any] = payload.get(IKeys.USAGE_KWARGS, {})
     extracted_text: str = payload.get(IKeys.EXTRACTED_TEXT, "")
     tags: list[str] = payload.get(IKeys.TAGS, None)
@@ -80,7 +81,10 @@ def index() -> Any:
     chunking_config = ChunkingConfig(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     processing_options = ProcessingOptions(
-        reindex=reindex, enable_highlight=enable_highlight, usage_kwargs=usage_kwargs
+        reindex=reindex,
+        enable_highlight=enable_highlight,
+        enable_word_confidence=enable_word_confidence,
+        usage_kwargs=usage_kwargs,
     )
     doc_id = IndexingService.index(
         chunking_config=chunking_config,

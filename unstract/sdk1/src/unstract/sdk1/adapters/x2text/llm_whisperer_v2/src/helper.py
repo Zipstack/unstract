@@ -203,6 +203,7 @@ class LLMWhispererHelper:
                 WhispererDefaults.PAGE_SEPARATOR,
             ),
             WhispererConfig.ADD_LINE_NOS: extra_params.enable_highlight,
+            WhispererConfig.INCLUDE_LINE_CONFIDENCE: extra_params.enable_highlight,
             # Not providing default value to maintain legacy compatablity
             # these are optional params and identifiers for audit
             WhispererConfig.TAG: extra_params.tag
