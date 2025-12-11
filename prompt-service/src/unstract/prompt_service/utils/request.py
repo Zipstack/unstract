@@ -45,12 +45,12 @@ def make_http_request(
         app.logger.error(f"HTTP request error: {e}")
         # Extract status code from requests exception if available
         status_code = None
-        if hasattr(e, "response") and hasattr(e.response, "status_code"):
-            status_code = e.response.status_code
+        if getattr(e, "response", None) is not None:
+            status_code = getattr(e.response, "status_code", None)
         raise APIError(
-            f"Error occured while invoking POST API Variable : {str(e)}",
+            f"HTTP {verb.value} request to {url} failed: {e!s}",
             code=status_code or 500,
-        )
+        ) from e
     except Exception as e:
         app.logger.error(f"An unexpected error occurred: {e}")
         raise e

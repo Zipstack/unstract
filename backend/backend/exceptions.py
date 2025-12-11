@@ -30,9 +30,9 @@ class UnstractBaseException(APIException):
         self._core_err = core_err
 
         # Preserve status code from ConnectorError if available
-        if isinstance(core_err, ConnectorError) and core_err.status_code:
+        if isinstance(core_err, ConnectorError) and core_err.status_code is not None:
             self.status_code = core_err.status_code
-        elif not hasattr(self, "status_code") or self.status_code is None:
+        else:
             self.status_code = self.default_status_code
 
 
