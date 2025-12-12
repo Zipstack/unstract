@@ -5,12 +5,14 @@ from datetime import datetime
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from api_v2.models import APIDeployment
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -19,12 +21,9 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-
-from api_v2.models import APIDeployment
-from pipeline_v2.models import Pipeline
-from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
@@ -715,9 +714,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 deployment_types = set()
 
                 # Check API Deployments (include inactive to prevent drift)
-                if APIDeployment.objects.filter(
-                    workflow_id__in=workflow_ids
-                ).exists():
+                if APIDeployment.objects.filter(workflow_id__in=workflow_ids).exists():
                     deployment_types.add(DeploymentType.API_DEPLOYMENT)
 
                 # Check Pipelines (include inactive to prevent drift)
