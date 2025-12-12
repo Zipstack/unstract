@@ -219,7 +219,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f" depended by workflows {dependent_wfs}"
             )
             raise ToolDeleteError(
-
                 "Failed to delete prompt studio project, its used in other workflows."
                 "Delete its usages first"
             )
