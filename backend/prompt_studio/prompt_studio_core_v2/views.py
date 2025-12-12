@@ -133,15 +133,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Tuple of (is_used: bool, dependent_workflows: set)
         """
-        if hasattr(instance, "prompt_studio_registry"):
-            exported_tool_instances_in_use = ToolInstance.objects.filter(
-                tool_id__exact=instance.prompt_studio_registry.pk
-            )
-            dependent_wfs = set()
-            for tool_instance in exported_tool_instances_in_use:
-                dependent_wfs.add(tool_instance.workflow_id)
-            return len(dependent_wfs) > 0, dependent_wfs
-        return False, set()
+        registry = getattr(instance, "prompt_studio_registry", None)
+        if not registry:
+            return False, set()
+
+        dependent_wfs = set(
+            ToolInstance.objects.filter(tool_id=registry.pk)
+            .values_list("workflow_id", flat=True)
+            .distinct()
+        )
+        return bool(dependent_wfs), dependent_wfs
 
     def _get_deployment_types(self, workflow_ids: set) -> set:
         """Get all deployment types where the tool is used.
@@ -219,9 +220,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f" depended by workflows {dependent_wfs}"
             )
             raise ToolDeleteError(
-
-                "Failed to delete prompt studio project, its used in other workflows."
-                "Delete its usages first"
+                "Failed to delete Prompt Studio project; it's used in other workflows."
+                "Delete its usages first."
             )
         return super().destroy(request, *args, **kwargs)
 
