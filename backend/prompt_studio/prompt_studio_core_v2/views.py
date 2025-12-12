@@ -144,6 +144,70 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return len(dependent_wfs) > 0, dependent_wfs
         return False, set()
 
+    def _get_deployment_types(self, workflow_ids: set) -> set:
+        """Get all deployment types where the tool is used.
+
+        Args:
+            workflow_ids: Set of workflow IDs to check
+
+        Returns:
+            Set of deployment type strings
+        """
+        deployment_types: set = set()
+
+        # Check API Deployments (include inactive to prevent drift)
+        if APIDeployment.objects.filter(workflow_id__in=workflow_ids).exists():
+            deployment_types.add(DeploymentType.API_DEPLOYMENT)
+
+        # Check Pipelines using mapping instead of if/elif
+        pipeline_type_mapping = {
+            Pipeline.PipelineType.ETL: DeploymentType.ETL_PIPELINE,
+            Pipeline.PipelineType.TASK: DeploymentType.TASK_PIPELINE,
+        }
+        pipelines = (
+            Pipeline.objects.filter(workflow_id__in=workflow_ids)
+            .values_list("pipeline_type", flat=True)
+            .distinct()
+        )
+        for pipeline_type in pipelines:
+            if pipeline_type in pipeline_type_mapping:
+                deployment_types.add(pipeline_type_mapping[pipeline_type])
+
+        # Check for Manual Review
+        if WorkflowEndpoint.objects.filter(
+            workflow_id__in=workflow_ids,
+            connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+        ).exists():
+            deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
+
+        return deployment_types
+
+    def _format_deployment_types_message(self, deployment_types: set) -> str:
+        """Format deployment types into human-readable message.
+
+        Args:
+            deployment_types: Set of deployment type strings
+
+        Returns:
+            Formatted message string or empty string if no types
+        """
+        if not deployment_types:
+            return ""
+
+        types_list = sorted(deployment_types)
+        if len(types_list) == 1:
+            types_text = types_list[0]
+        elif len(types_list) == 2:
+            types_text = f"{types_list[0]} or {types_list[1]}"
+        else:
+            types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
+
+        return (
+            f"You have made changes to this Prompt Studio project. "
+            f"This project is used in {types_text}. "
+            f"Please export it for the changes to take effect in the deployment(s)."
+        )
+
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
@@ -156,7 +220,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f" depended by workflows {dependent_wfs}"
             )
             raise ToolDeleteError(
-                "Failed to delete tool, its used in other workflows. "
+
+                "Failed to delete prompt studio project, its used in other workflows."
                 "Delete its usages first"
             )
         return super().destroy(request, *args, **kwargs)
@@ -709,60 +774,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             instance: CustomTool = self.get_object()
             is_used, workflow_ids = self._check_tool_usage_in_workflows(instance)
 
-            deployment_info = {"is_used": is_used, "deployment_types": [], "message": ""}
+            deployment_info: dict = {
+                "is_used": is_used,
+                "deployment_types": [],
+                "message": "",
+            }
 
             if is_used and workflow_ids:
-                deployment_types = set()
-
-                # Check API Deployments (include inactive to prevent drift)
-                if APIDeployment.objects.filter(
-                    workflow_id__in=workflow_ids
-                ).exists():
-                    deployment_types.add(DeploymentType.API_DEPLOYMENT)
-
-                # Check Pipelines (include inactive to prevent drift)
-                pipelines = (
-                    Pipeline.objects.filter(workflow_id__in=workflow_ids)
-                    .values_list("pipeline_type", flat=True)
-                    .distinct()
-                )
-
-                for pipeline_type in pipelines:
-                    if pipeline_type == Pipeline.PipelineType.ETL:
-                        deployment_types.add(DeploymentType.ETL_PIPELINE)
-                    elif pipeline_type == Pipeline.PipelineType.TASK:
-                        deployment_types.add(DeploymentType.TASK_PIPELINE)
-
-                # Check for Manual Review
-                workflows_with_manual_review = (
-                    WorkflowEndpoint.objects.filter(
-                        workflow_id__in=workflow_ids,
-                        connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
-                    )
-                    .values_list("workflow_id", flat=True)
-                    .distinct()
-                )
-
-                if workflows_with_manual_review:
-                    deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
-
+                deployment_types = self._get_deployment_types(workflow_ids)
                 deployment_info["deployment_types"] = list(deployment_types)
-
-                # Construct the message if deployments exist
-                if deployment_types:
-                    types_list = sorted(deployment_types)
-                    if len(types_list) == 1:
-                        types_text = types_list[0]
-                    elif len(types_list) == 2:
-                        types_text = f"{types_list[0]} or {types_list[1]}"
-                    else:
-                        types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
-
-                    deployment_info["message"] = (
-                        f"You have made changes to this Prompt Studio project. "
-                        f"This project is used in {types_text}. "
-                        f"Please export it for the changes to take effect in the deployment(s)."
-                    )
+                deployment_info["message"] = self._format_deployment_types_message(
+                    deployment_types
+                )
 
             return Response(deployment_info, status=status.HTTP_200_OK)
 

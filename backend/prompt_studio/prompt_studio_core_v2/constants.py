@@ -186,7 +186,7 @@ class DeploymentType:
     API_DEPLOYMENT = "API Deployment"
     ETL_PIPELINE = "ETL Pipeline"
     TASK_PIPELINE = "Task Pipeline"
-    HUMAN_QUALITY_REVIEW = "Human Quality Review"
+    HUMAN_QUALITY_REVIEW = "Human in the Loop"
 
 
 class DefaultValues:
