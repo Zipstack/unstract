@@ -23,11 +23,13 @@ class ConnectorError(ConnectorBaseException):
         message: str,
         *args: Any,
         treat_as_user_message: bool = False,
+        status_code: int | None = None,
         **kwargs: Any,
     ) -> None:
         user_message = message if treat_as_user_message else None
         super().__init__(*args, user_message=user_message, **kwargs)
         self.message = message
+        self.status_code = status_code
 
     def __str__(self) -> str:
         return f"{self.message}"
