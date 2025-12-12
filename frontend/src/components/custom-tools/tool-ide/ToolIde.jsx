@@ -66,6 +66,8 @@ function ToolIde() {
   const [showExportReminder, setShowExportReminder] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const isCheckingUsageRef = useRef(false);
+  const hasCheckedForCurrentSessionRef = useRef(false);
+  const abortControllerRef = useRef(null);
 
   useEffect(() => {
     if (openShareModal) {
@@ -86,31 +88,52 @@ function ToolIde() {
     }
   }, [openShareModal]);
 
-  // Check deployment usage when there are unsaved changes
+  // Check deployment usage when there are unsaved changes (only once per edit session)
   const checkDeploymentUsage = useCallback(async () => {
-    if (!details?.tool_id || !hasUnsavedChanges || isCheckingUsageRef.current) {
+    const currentHasUnsavedChanges =
+      useCustomToolStore.getState().hasUnsavedChanges;
+
+    // Skip if: no tool, no unsaved changes, already checking, or already checked this session
+    if (
+      !details?.tool_id ||
+      !currentHasUnsavedChanges ||
+      isCheckingUsageRef.current ||
+      hasCheckedForCurrentSessionRef.current
+    ) {
       return;
     }
 
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
     isCheckingUsageRef.current = true;
+    hasCheckedForCurrentSessionRef.current = true;
+
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`,
+        { signal: abortControllerRef.current.signal }
       );
 
       const usageInfo = response.data;
       setDeploymentUsageInfo(usageInfo);
 
       // Only show reminder if there are still unsaved changes
-      // Check current state from store to handle race condition where
-      // user might have exported while this check was in-flight
-      const currentHasUnsavedChanges = customToolStore.getState().hasUnsavedChanges;
-      if (currentHasUnsavedChanges && usageInfo?.is_used && usageInfo?.message) {
+      const stillHasUnsavedChanges =
+        useCustomToolStore.getState().hasUnsavedChanges;
+      if (stillHasUnsavedChanges && usageInfo?.is_used && usageInfo?.message) {
         setShowExportReminder(true);
       } else {
         setShowExportReminder(false);
       }
     } catch (error) {
+      // Ignore abort errors
+      if (error.name === "AbortError" || error.name === "CanceledError") {
+        return;
+      }
       console.error("Error checking deployment usage:", error);
       setShowExportReminder(false);
     } finally {
@@ -118,16 +141,30 @@ function ToolIde() {
     }
   }, [
     details?.tool_id,
-    hasUnsavedChanges,
     axiosPrivate,
     sessionDetails?.orgId,
     setDeploymentUsageInfo,
-    customToolStore,
   ]);
 
+  // Trigger deployment check when unsaved changes are detected
   useEffect(() => {
-    checkDeploymentUsage();
-  }, [checkDeploymentUsage]);
+    if (hasUnsavedChanges) {
+      checkDeploymentUsage();
+    } else {
+      // Reset the check flag when changes are cleared (after export)
+      hasCheckedForCurrentSessionRef.current = false;
+      setShowExportReminder(false);
+    }
+  }, [hasUnsavedChanges, checkDeploymentUsage]);
+
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
 
   // Handle export from reminder bar
   const handleExportFromReminder = useCallback(async () => {

@@ -714,23 +714,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             if is_used and workflow_ids:
                 deployment_types = set()
 
-                # Check API Deployments
+                # Check API Deployments (include inactive to prevent drift)
                 if APIDeployment.objects.filter(
-                    workflow_id__in=workflow_ids, is_active=True
+                    workflow_id__in=workflow_ids
                 ).exists():
                     deployment_types.add(DeploymentType.API_DEPLOYMENT)
 
-                # Check Pipelines
+                # Check Pipelines (include inactive to prevent drift)
                 pipelines = (
-                    Pipeline.objects.filter(workflow_id__in=workflow_ids, is_active=True)
+                    Pipeline.objects.filter(workflow_id__in=workflow_ids)
                     .values_list("pipeline_type", flat=True)
                     .distinct()
                 )
 
                 for pipeline_type in pipelines:
-                    if pipeline_type == "ETL":
+                    if pipeline_type == Pipeline.PipelineType.ETL:
                         deployment_types.add(DeploymentType.ETL_PIPELINE)
-                    elif pipeline_type == "TASK":
+                    elif pipeline_type == Pipeline.PipelineType.TASK:
                         deployment_types.add(DeploymentType.TASK_PIPELINE)
 
                 # Check for Manual Review
