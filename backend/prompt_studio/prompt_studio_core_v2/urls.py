@@ -55,6 +55,10 @@ prompt_studio_project_transfer = PromptStudioCoreView.as_view(
     {"get": "export_project", "post": "import_project"}
 )
 
+prompt_studio_deployment_usage = PromptStudioCoreView.as_view(
+    {"get": "check_deployment_usage"}
+)
+
 
 urlpatterns = format_suffix_patterns(
     [
@@ -133,6 +137,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/project-transfer/",
             prompt_studio_project_transfer,
             name="prompt_studio_project_transfer_import",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/check_deployment_usage/",
+            prompt_studio_deployment_usage,
+            name="prompt_studio_deployment_usage",
         ),
     ]
 )

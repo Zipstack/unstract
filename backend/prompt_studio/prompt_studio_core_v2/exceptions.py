@@ -111,3 +111,8 @@ class PromptNotRun(APIException):
         if code is not None:
             self.code = code
         super().__init__(detail, code)
+
+
+class DeploymentUsageCheckError(APIException):
+    status_code = 500
+    default_detail = "Failed to check deployment usage"
