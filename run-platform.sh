@@ -214,24 +214,24 @@ setup_env() {
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
         if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" $env_path
+          sed -i '' "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" "$env_path"
         else
-          sed -i "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" $env_path
+          sed -i "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" "$env_path"
         fi
       fi
       # Add default auth and system admin credentials for backend.
       if [ "$service" == "backend" ]; then
         echo -e "$blue_text""Adding default auth and system admin credentials to $service""$default_text"
         if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          sed -i '' "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          sed -i '' "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          sed -i '' "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
         else
-          sed -i "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          sed -i "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          sed -i "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          sed -i "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
