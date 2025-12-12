@@ -38,6 +38,10 @@ class SdkError(Exception):
                 self.status_code = actual_err.status_code
             elif hasattr(actual_err, "http_status"):  # Few providers like Mistral
                 self.status_code = actual_err.http_status
+            elif hasattr(actual_err, "response") and hasattr(
+                actual_err.response, "status_code"
+            ):  # requests.HTTPError
+                self.status_code = actual_err.response.status_code
 
     def __str__(self) -> str:
         """Return string representation of the SdkError."""
