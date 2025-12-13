@@ -71,25 +71,41 @@ class ManualReviewNullClient:
             message="Manual review not available in OSS - no files selected for review",
         )
 
-    def get_db_rules_data(
-        self, workflow_id: str, _organization_id: str | None = None
+    def get_rule_engine_data(
+        self, workflow_id: str, _organization_id: str | None = None, rule_type: str = "DB"
     ) -> ManualReviewResponse:
-        """Get database rules for manual review (returns no rules in OSS).
+        """Get rule engine data for manual review (returns no rules in OSS).
 
         Args:
             workflow_id: Workflow ID
             _organization_id: Organization ID (unused in stub)
+            rule_type: Rule type (DB or API, unused in stub)
 
         Returns:
             ManualReviewResponse indicating no manual review rules are configured
         """
         logger.debug(
-            f"ManualReviewNullClient: get_db_rules_data called for workflow {workflow_id} - returning no rules"
+            f"ManualReviewNullClient: get_rule_engine_data called for workflow {workflow_id} - returning no rules"
         )
         return ManualReviewResponse.success_response(
-            data={"rules": [], "percentage": 0, "review_required": False},
+            data={
+                "rules": [],
+                "percentage": 0,
+                "review_required": False,
+                "rule_type": rule_type,
+            },
             message="Manual review not available in OSS - no rules configured",
         )
+
+    # Backward compatibility alias
+    def get_db_rules_data(
+        self, workflow_id: str, _organization_id: str | None = None
+    ) -> ManualReviewResponse:
+        """Get database rules for manual review (returns no rules in OSS).
+
+        Deprecated: Use get_rule_engine_data instead.
+        """
+        return self.get_rule_engine_data(workflow_id, _organization_id, rule_type="DB")
 
     def enqueue_manual_review(self, *args, **kwargs) -> dict[str, Any]:
         """Enqueue item for manual review (no-op in OSS).
@@ -212,19 +228,33 @@ class ManualReviewNullClient:
             "item": None,
         }
 
-    def validate_manual_review_db_rule(self, *args, **kwargs) -> dict[str, Any]:
-        """Validate manual review database rule (no-op in OSS).
+    def validate_rule_engine(
+        self, *args, rule_type: str = "DB", **kwargs
+    ) -> dict[str, Any]:
+        """Validate rule engine (no-op in OSS).
+
+        Args:
+            rule_type: Rule type (DB or API)
 
         Returns:
             Dictionary indicating validation is not available
         """
         logger.debug(
-            "ManualReviewNullClient: validate_manual_review_db_rule called - not available in OSS"
+            f"ManualReviewNullClient: validate_rule_engine called (rule_type={rule_type}) - not available in OSS"
         )
         return {
             "valid": False,
             "message": "Manual review validation not available in OSS version",
+            "rule_type": rule_type,
         }
+
+    # Backward compatibility alias
+    def validate_manual_review_db_rule(self, *args, **kwargs) -> dict[str, Any]:
+        """Validate manual review database rule (no-op in OSS).
+
+        Deprecated: Use validate_rule_engine instead.
+        """
+        return self.validate_rule_engine(*args, rule_type="DB", **kwargs)
 
     def get_hitl_settings(
         self, workflow_id: str, organization_id: str | None = None

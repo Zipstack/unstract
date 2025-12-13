@@ -177,7 +177,15 @@ class DestinationConnector(BaseConnector):
         input_file_path: str,
         file_execution_id: str,
     ) -> bool:
-        """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
+        """Determines if HITL processing should be performed, returning True if data was pushed to the queue.
+
+        The logic is:
+        1. packet_id takes precedence - always push to packet queue
+        2. hitl_queue_name with API rules:
+           - If no API rules configured → Push ALL to HITL (backward compatible)
+           - If API rules exist → Evaluate rules, push only if rules match
+        3. Database destination → Evaluate DB rules
+        """
         # Check packet_id first - it takes precedence over hitl_queue_name
         if self.packet_id:
             logger.info(
@@ -191,26 +199,55 @@ class DestinationConnector(BaseConnector):
             )
             return True
 
-        # Check if API deployment requested HITL override
+        # Check if API deployment requested HITL override with hitl_queue_name
         if self.hitl_queue_name:
-            logger.info(f"API HITL override: pushing to queue for file {file_name}")
-            self._push_data_to_queue(
-                file_name=file_name,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-            )
-            return True
+            # Check if API rules are configured for this workflow
+            if WorkflowUtil.has_api_rules(workflow):
+                # API rules exist - evaluate them
+                execution_result = self.get_tool_execution_result()
+                if WorkflowUtil.validate_rule_engine(
+                    execution_result,
+                    workflow,
+                    file_hash.file_destination,
+                    rule_type="API",
+                ):
+                    logger.info(
+                        f"API rules matched: pushing to queue for file {file_name}"
+                    )
+                    self._push_data_to_queue(
+                        file_name=file_name,
+                        workflow=workflow,
+                        input_file_path=input_file_path,
+                        file_execution_id=file_execution_id,
+                    )
+                    return True
+                else:
+                    logger.info(
+                        f"API rules not matched: returning result for file {file_name}"
+                    )
+                    return False
+            else:
+                # No API rules configured - backward compatible behavior: push ALL to HITL
+                logger.info(
+                    f"No API rules configured: pushing to queue for file {file_name}"
+                )
+                self._push_data_to_queue(
+                    file_name=file_name,
+                    workflow=workflow,
+                    input_file_path=input_file_path,
+                    file_execution_id=file_execution_id,
+                )
+                return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
         if self.is_api and self.use_file_history:
             return False
 
-        # Otherwise use existing workflow-based HITL logic
+        # Otherwise use existing workflow-based HITL logic for DB destinations
         execution_result = self.get_tool_execution_result()
 
-        if WorkflowUtil.validate_db_rule(
-            execution_result, workflow, file_hash.file_destination
+        if WorkflowUtil.validate_rule_engine(
+            execution_result, workflow, file_hash.file_destination, rule_type="DB"
         ):
             self._push_data_to_queue(
                 file_name=file_name,

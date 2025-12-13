@@ -123,10 +123,27 @@ class ManualReviewNullService:
                 return None
 
             @staticmethod
+            def validate_rule_engine(
+                result,
+                workflow_id,
+                file_destination,
+                is_manual_review_required,
+                rule_type="DB",
+            ):
+                # OSS: No rule validation
+                return False
+
+            # Backward compatibility alias
+            @staticmethod
             def validate_db_rule(
                 result, workflow_id, file_destination, is_manual_review_required
             ):
                 # OSS: No rule validation
+                return False
+
+            @staticmethod
+            def has_api_rules(workflow):
+                # OSS: No API rules support
                 return False
 
             @staticmethod
@@ -297,9 +314,34 @@ class ManualReviewEnhancedService:
                 return None
 
             @staticmethod
+            def validate_rule_engine(
+                result,
+                workflow_id,
+                file_destination,
+                is_manual_review_required,
+                rule_type="DB",
+            ):
+                return False
+
+            @staticmethod
+            def validate_rule_engine_with_reason(
+                result,
+                workflow_id,
+                file_destination,
+                is_manual_review_required,
+                rule_type="DB",
+            ):
+                return {"matched": False, "reason": "HITL plugin not available"}
+
+            # Backward compatibility alias
+            @staticmethod
             def validate_db_rule(
                 result, workflow_id, file_destination, is_manual_review_required
             ):
+                return False
+
+            @staticmethod
+            def has_api_rules(workflow):
                 return False
 
             @staticmethod
@@ -361,9 +403,34 @@ def _create_null_workflow_util():
             return None
 
         @staticmethod
+        def validate_rule_engine(
+            result,
+            workflow_id,
+            file_destination,
+            is_manual_review_required,
+            rule_type="DB",
+        ):
+            return False
+
+        @staticmethod
+        def validate_rule_engine_with_reason(
+            result,
+            workflow_id,
+            file_destination,
+            is_manual_review_required,
+            rule_type="DB",
+        ):
+            return {"matched": False, "reason": "HITL plugin not available"}
+
+        # Backward compatibility alias
+        @staticmethod
         def validate_db_rule(
             result, workflow_id, file_destination, is_manual_review_required
         ):
+            return False
+
+        @staticmethod
+        def has_api_rules(workflow):
             return False
 
         def create_workflow_file_data_with_manual_review(
