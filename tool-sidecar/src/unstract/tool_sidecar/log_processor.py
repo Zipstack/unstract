@@ -7,7 +7,9 @@ completion signals.
 import json
 import logging
 import os
+import signal
 import time
+import types
 from datetime import UTC, datetime
 from typing import Any
 
@@ -24,6 +26,14 @@ from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
 
 logger = logging.getLogger(__name__)
+
+
+def _signal_handler(signum: int, _frame: types.FrameType | None):
+    """Handle shutdown signals gracefully."""
+    sig = signal.Signals(signum)
+    signal_name = sig.name
+    logger.warning(f"RECEIVED SIGNAL: {signal_name}")
+    logger.warning("Initiating graceful shutdown...")
 
 
 class LogProcessor:
@@ -246,6 +256,10 @@ def main():
     """Main entry point for the sidecar container.
     Sets up the log processor with environment variables and starts monitoring.
     """
+    # Set up signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+
     # Get configuration from environment
     log_path = os.getenv(Env.LOG_PATH, "/shared/logs/logs.txt")
     redis_host = os.getenv(Env.REDIS_HOST)
