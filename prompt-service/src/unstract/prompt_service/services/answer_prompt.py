@@ -263,13 +263,13 @@ class AnswerPromptService:
                         word_confidence_data
                     )
             return answer
-        # TODO: Catch and handle specific exception here
         except SdkRateLimitError as e:
             raise RateLimitError(f"Rate limit error. {str(e)}") from e
         except SdkError as e:
             logger.error(f"Error fetching response for prompt: {e}.")
-            # TODO: Publish this error as a FE update
-            raise APIError(str(e)) from e
+            # Preserve the status code from the SDK error for proper HTTP response
+            status_code = getattr(e, "status_code", None) or 500
+            raise APIError(message=str(e), code=status_code) from e
 
     @staticmethod
     def extract_table(
