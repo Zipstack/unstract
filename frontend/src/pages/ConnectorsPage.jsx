@@ -7,6 +7,7 @@ import { useSessionStore } from "../store/session-store";
 import { useAlertStore } from "../store/alert-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
 import useRequestUrl from "../hooks/useRequestUrl";
+import { useListSearch } from "../hooks/useListSearch";
 import "./ConnectorsPage.css";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
@@ -14,7 +15,6 @@ import { SharePermission } from "../components/widgets/share-permission/SharePer
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 
 function ConnectorsPage() {
-  const [connectors, setConnectors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConnector, setEditingConnector] = useState(null);
@@ -29,6 +29,8 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+  const { displayList, setDisplayList, setMasterList, onSearch } =
+    useListSearch("connector_name");
 
   useEffect(() => {
     fetchConnectors();
@@ -39,7 +41,7 @@ function ConnectorsPage() {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(getUrl("connector/"));
-      setConnectors(response.data || []);
+      setMasterList(response.data || []);
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load connectors"));
     } finally {
@@ -155,12 +157,15 @@ function ConnectorsPage() {
     <div className="connectors-layout">
       <ToolNavBar
         title="Connectors"
+        enableSearch
+        setSearchList={setDisplayList}
+        onSearch={onSearch}
         CustomButtons={renderCreateConnectorButtons}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
           <ViewTools
-            listOfTools={connectors}
+            listOfTools={displayList}
             isLoading={loading}
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
@@ -172,7 +177,7 @@ function ConnectorsPage() {
             iconProp="icon"
             showOwner={true}
             type="Connector"
-            isEmpty={!connectors.length}
+            isEmpty={!displayList.length}
             centered
             isClickable={false}
           />
