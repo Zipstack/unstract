@@ -591,6 +591,7 @@ class WorkerDestinationConnector:
                 file_execution_id=exec_ctx.file_execution_id,
                 tool_execution_result=result.tool_execution_result,
                 api_client=exec_ctx.api_client,
+                hitl_reason=hitl_decision.reason,
             )
 
         return hitl_decision
@@ -723,6 +724,7 @@ class WorkerDestinationConnector:
                 file_execution_id=exec_ctx.file_execution_id,
                 tool_execution_result=result.tool_execution_result,
                 api_client=exec_ctx.api_client,
+                hitl_reason="Destination configured for manual review",
             )
 
     def _handle_destination_error(
@@ -1725,6 +1727,7 @@ class WorkerDestinationConnector:
         file_execution_id: str,
         tool_execution_result: str = None,
         api_client: Optional["InternalAPIClient"] = None,
+        hitl_reason: str | None = None,
     ) -> None:
         """Handle manual review queue processing (following production pattern).
 
@@ -1795,6 +1798,7 @@ class WorkerDestinationConnector:
                 file_execution_id=file_execution_id,
                 extracted_text=extracted_text,
                 ttl_seconds=ttl_seconds,
+                hitl_reason=hitl_reason,
             )
 
             # Only include file_content if provided (backend API will handle it)

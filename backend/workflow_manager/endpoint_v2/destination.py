@@ -971,6 +971,7 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
         meta_data: dict[str, Any] | None = None,
         ttl_seconds: int | None = None,
+        hitl_reason: str | None = None,
     ) -> dict[str, Any]:
         """Create QueueResult dictionary.
 
@@ -981,6 +982,7 @@ class DestinationConnector(BaseConnector):
             file_execution_id: File execution ID
             meta_data: Optional metadata
             ttl_seconds: Optional TTL in seconds
+            hitl_reason: Optional reason why file was sent to HITL
 
         Returns:
             QueueResult as dictionary
@@ -998,6 +1000,7 @@ class DestinationConnector(BaseConnector):
             file_execution_id=file_execution_id,
             extracted_text=extracted_text,
             ttl_seconds=ttl_seconds,
+            hitl_reason=hitl_reason,
         )
         return queue_result_obj.to_dict()
 
