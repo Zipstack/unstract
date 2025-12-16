@@ -838,18 +838,33 @@ def _create_file_data(
         "rule_json": None,
     }
 
-    # ARCHITECTURE FIX: Skip manual review DB rules for API deployments
-    # API deployments handle manual review through different mechanisms (if supported)
-    # The DB rules endpoint is designed for ETL workflows, not API deployments
-    logger.info(
-        "API deployment workflow detected - skipping manual review DB rules lookup"
-    )
-
-    # For future: API deployments could support manual review through other mechanisms
-    # such as workflow-specific configuration or query parameters passed in the API request
-    logger.info(
-        f"No manual review rules configured for API deployment workflow {workflow_id}"
-    )
+    # Fetch API rules for this workflow (rule_type="API" for API deployments)
+    try:
+        rule_response = api_client.manual_review_client.get_rule_engine_data(
+            workflow_id=workflow_id,
+            _organization_id=organization_id,
+            rule_type="API",
+        )
+        if rule_response and rule_response.success:
+            rule_data = rule_response.data or {}
+            if rule_data.get("review_required") or rule_data.get("percentage", 0) > 0:
+                manual_review_config = {
+                    "review_required": rule_data.get("review_required", False),
+                    "review_percentage": rule_data.get("percentage", 0),
+                    "rule_logic": rule_data.get("rule_logic"),
+                    "rule_json": rule_data.get("rule_json"),
+                }
+                logger.info(
+                    f"API rules configured for workflow {workflow_id}: "
+                    f"percentage={manual_review_config['review_percentage']}, "
+                    f"rule_logic={manual_review_config['rule_logic']}"
+                )
+            else:
+                logger.info(f"No API rules configured for workflow {workflow_id}")
+        else:
+            logger.info(f"No API rules found for workflow {workflow_id}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch API rules for workflow {workflow_id}: {e}")
     hitl_queue_name = kwargs.get("hitl_queue_name")
     hitl_packet_id = kwargs.get("hitl_packet_id")
     llm_profile_id = kwargs.get("llm_profile_id")
