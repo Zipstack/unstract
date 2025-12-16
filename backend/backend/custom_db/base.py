@@ -24,7 +24,10 @@ class DatabaseWrapper(PostgresDatabaseWrapper):
             connection: The database connection
         """
         connection = super().get_new_connection(conn_params)
-        logger.info(f"DB connection (ID: {id(connection)}) is established or reused.")
+        logger.info(
+            f"DB connection (ID: {id(connection)}) is established or reused."
+            f" Using search path: {settings.DB_SCHEMA}"
+        )
         self.set_search_path(connection)
         return connection
 
