@@ -161,6 +161,7 @@ function AddSourceModal({
         size="small"
         icon={<ArrowLeftOutlined />}
         onClick={handleBack}
+        aria-label="Go back to source selection"
       />
       <span>{isConnector ? titles["connectors"] : titles[type]}</span>
     </div>
