@@ -307,11 +307,13 @@ class UnstractRunner:
         mkdir_cmd = f"mkdir -p {shared_log_dir}"
         run_tool_fn = (
             "run_tool() { "
-            f"exec {tool_cmd}; "  # Use exec to replace shell with Python process
+            f"{tool_cmd}; "
+            "exit_code=$?; "
+            f'echo "{LogFieldName.TOOL_TERMINATION_MARKER} with exit code $exit_code" '
+            f">> {shared_log_file}; "
+            "return $exit_code; "
             "}"
         )
-        # Note: With exec, the shell is replaced, so we can't capture exit code
-        # The TOOL_TERMINATION_MARKER will need to be handled differently
         execute_cmd = f"run_tool > {shared_log_file} 2>&1"
 
         # Combine all commands

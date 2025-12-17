@@ -26,6 +26,12 @@ class ToolEntrypoint:
         # any interruption of tool operations
         signal.signal(signal.SIGTERM, signal.SIG_IGN)
         signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        # Prevent signals from interrupting system calls
+        # This ensures I/O operations are not interrupted by ignored signals
+        signal.siginterrupt(signal.SIGTERM, False)
+        signal.siginterrupt(signal.SIGINT, False)
+
         logger.info(
             "Tool configured to ignore SIGTERM/SIGINT for uninterrupted execution"
         )

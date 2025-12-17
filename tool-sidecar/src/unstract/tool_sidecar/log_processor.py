@@ -251,6 +251,12 @@ def main():
     # any interruption of monitoring operations
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+    # Prevent signals from interrupting system calls
+    # This ensures I/O operations are not interrupted by ignored signals
+    signal.siginterrupt(signal.SIGTERM, False)
+    signal.siginterrupt(signal.SIGINT, False)
+
     logger.info(
         "Sidecar configured to ignore SIGTERM/SIGINT for uninterrupted monitoring"
     )
