@@ -86,16 +86,14 @@ function ConfigureConnectorModal({
       const existingIndex = prevTabOptions.findIndex(
         (opt) => opt?.key === tabOption?.key
       );
-      if (existingIndex !== -1) {
-        // Update existing tab option (e.g., disabled state may have changed)
-        const updatedTabOptions = [...prevTabOptions];
-        updatedTabOptions[existingIndex] = tabOption;
-        return updatedTabOptions;
-      } else {
+      if (existingIndex === -1) {
         // Add new tab option
-        const updatedTabOptions = [...prevTabOptions, tabOption];
-        return updatedTabOptions;
+        return [...prevTabOptions, tabOption];
       }
+      // Update existing tab option (e.g., disabled state may have changed)
+      const updatedTabOptions = [...prevTabOptions];
+      updatedTabOptions[existingIndex] = tabOption;
+      return updatedTabOptions;
     });
   };
 
