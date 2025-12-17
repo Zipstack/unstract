@@ -149,7 +149,7 @@ function AddSourceModal({
 
   const handleBack = () => {
     setSelectedSourceId(null);
-    setMetadata({});
+    setMetadata(null);
   };
 
   const showBackButton = selectedSourceId && !editItemId;
