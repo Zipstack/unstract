@@ -95,6 +95,14 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let AgenticPromptStudio;
+try {
+  AgenticPromptStudio =
+    require("../plugins/agentic-prompt-studio").default;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 function Router() {
   const MainAppRoute = useMainAppRoutes();
   return (
@@ -166,6 +174,9 @@ function Router() {
           {MainAppRoute}
           {llmWhispererRouter && (
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+          )}
+          {AgenticPromptStudio && (
+            <Route path="agentic-prompt-studio/*" element={<AgenticPromptStudio />} />
           )}
         </Route>
       </Route>
