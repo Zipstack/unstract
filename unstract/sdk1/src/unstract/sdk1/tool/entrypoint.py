@@ -8,6 +8,9 @@ from unstract.sdk1.tool.parser import ToolArgsParser
 
 logger = logging.getLogger(__name__)
 
+# Global flag for graceful shutdown
+_shutdown_requested = False
+
 
 class ToolEntrypoint:
     """Class that contains methods for the entrypoint for a tool."""
@@ -15,10 +18,16 @@ class ToolEntrypoint:
     @staticmethod
     def _signal_handler(signum: int, _frame: types.FrameType | None) -> None:
         """Handle SIGTERM and SIGINT signals."""
+        global _shutdown_requested
         sig = signal.Signals(signum)
         signal_name = sig.name
         logger.warning(f"RECEIVED SIGNAL: {signal_name}")
         logger.warning("Initiating graceful shutdown...")
+
+        # Set flag to indicate shutdown requested
+        _shutdown_requested = True
+
+        # Don't call exit() - let the tool complete current operation gracefully
 
     @staticmethod
     def launch(tool: BaseTool, args: list[str]) -> None:
