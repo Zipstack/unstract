@@ -9,7 +9,6 @@ import logging
 import os
 import signal
 import time
-import types
 from datetime import UTC, datetime
 from typing import Any
 
@@ -26,18 +25,6 @@ from .constants import Env, LogLevel, LogType
 from .dto import LogLineDTO
 
 logger = logging.getLogger(__name__)
-
-
-def _signal_handler(signum: int, _frame: types.FrameType | None):
-    """Handle shutdown signals gracefully."""
-    sig = signal.Signals(signum)
-    signal_name = sig.name
-    logger.warning(f"RECEIVED SIGNAL: {signal_name}")
-    logger.warning("Allowing sidecar to continue monitoring...")
-
-    # Ignore the signal to allow the process to continue
-    # This prevents the signal from interrupting the monitoring operation
-    signal.signal(signum, signal.SIG_IGN)
 
 
 class LogProcessor:
@@ -260,9 +247,13 @@ def main():
     """Main entry point for the sidecar container.
     Sets up the log processor with environment variables and starts monitoring.
     """
-    # Set up signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, _signal_handler)
-    signal.signal(signal.SIGINT, _signal_handler)
+    # Ignore SIGTERM and SIGINT from the very beginning to prevent
+    # any interruption of monitoring operations
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    logger.info(
+        "Sidecar configured to ignore SIGTERM/SIGINT for uninterrupted monitoring"
+    )
 
     # Get configuration from environment
     log_path = os.getenv(Env.LOG_PATH, "/shared/logs/logs.txt")
