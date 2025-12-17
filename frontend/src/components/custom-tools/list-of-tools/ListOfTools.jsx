@@ -15,21 +15,38 @@ import { SharePermission } from "../../widgets/share-permission/SharePermission"
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { ImportTool } from "../import-tool/ImportTool";
 
+// Try to import Agentic Prompt Studio components (Enterprise feature)
+let AgenticStudioTabWrapper;
+let AgenticToolNavBar;
+let useAgenticNavBar;
+try {
+  AgenticStudioTabWrapper =
+    require("../../../plugins/agentic-prompt-studio/components/AgenticStudioTabWrapper").default;
+  AgenticToolNavBar =
+    require("../../../plugins/agentic-prompt-studio/components/AgenticToolNavBar").default;
+  useAgenticNavBar =
+    require("../../../plugins/agentic-prompt-studio/hooks/useAgenticNavBar").useAgenticNavBar;
+} catch (err) {
+  // Not available in OSS
+}
+
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [openImportTool, setOpenImportTool] = useState(false);
   const [isImportLoading, setIsImportLoading] = useState(false);
   const [editItem, setEditItem] = useState(null);
+  const [activeTab, setActiveTab] = useState("default");
   const { sessionDetails } = useSessionStore();
   const { setPostHogCustomEvent } = usePostHogEvents();
-
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
+
+  const agenticNavBar = useAgenticNavBar ? useAgenticNavBar() : null;
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
-  const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -45,6 +62,14 @@ function ListOfTools() {
   useEffect(() => {
     setFilteredListOfTools(listOfTools);
   }, [listOfTools]);
+
+  useEffect(() => {
+    if (activeTab === "default") {
+      setFilteredListOfTools(listOfTools);
+    } else if (activeTab === "agentic" && agenticNavBar) {
+      agenticNavBar.resetFilter();
+    }
+  }, [activeTab]);
 
   const getListOfTools = () => {
     const requestOptions = {
@@ -242,7 +267,7 @@ function ListOfTools() {
       });
   };
 
-  const CustomButtons = () => {
+  const DefaultCustomButtons = () => {
     return (
       <Space gap={16}>
         <CustomButton
@@ -338,34 +363,58 @@ function ListOfTools() {
       });
   };
 
+  const defaultContent = (
+    <div className="list-of-tools-body">
+      <ViewTools
+        isLoading={isListLoading}
+        isEmpty={!listOfTools?.length}
+        listOfTools={filteredListOfTools}
+        setOpenAddTool={setOpenAddTool}
+        handleEdit={handleEdit}
+        handleDelete={handleDelete}
+        titleProp="tool_name"
+        descriptionProp="description"
+        iconProp="icon"
+        idProp="tool_id"
+        type="Prompt Project"
+        handleShare={handleShare}
+      />
+    </div>
+  );
+
   return (
     <>
-      <ToolNavBar
-        title={"Prompt Studio"}
-        enableSearch
-        onSearch={onSearch}
-        searchList={listOfTools}
-        setSearchList={setFilteredListOfTools}
-        CustomButtons={CustomButtons}
-      />
+      {activeTab === "agentic" && AgenticToolNavBar && agenticNavBar ? (
+        <AgenticToolNavBar
+          onSearch={agenticNavBar.onSearch}
+          setFilteredProjects={agenticNavBar.setFilteredProjects}
+        />
+      ) : (
+        <ToolNavBar
+          title={"Prompt Studio"}
+          enableSearch
+          onSearch={onSearch}
+          searchList={listOfTools}
+          setSearchList={setFilteredListOfTools}
+          CustomButtons={DefaultCustomButtons}
+        />
+      )}
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">
-          <div className="list-of-tools-body">
-            <ViewTools
-              isLoading={isListLoading}
-              isEmpty={!listOfTools?.length}
-              listOfTools={filteredListOfTools}
-              setOpenAddTool={setOpenAddTool}
-              handleEdit={handleEdit}
-              handleDelete={handleDelete}
-              titleProp="tool_name"
-              descriptionProp="description"
-              iconProp="icon"
-              idProp="tool_id"
-              type="Prompt Project"
-              handleShare={handleShare}
-            />
-          </div>
+          {AgenticStudioTabWrapper ? (
+            <AgenticStudioTabWrapper
+              isListLoading={isListLoading}
+              setIsListLoading={setIsListLoading}
+              onTabChange={setActiveTab}
+              agenticProjects={agenticNavBar?.projects}
+              filteredAgenticProjects={agenticNavBar?.filteredProjects}
+              refreshProjects={agenticNavBar?.refreshProjects}
+            >
+              {defaultContent}
+            </AgenticStudioTabWrapper>
+          ) : (
+            defaultContent
+          )}
         </div>
       </div>
       {openAddTool && (
