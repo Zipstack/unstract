@@ -1,6 +1,5 @@
 import uuid
 
-from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from django.db.models import Q
 from utils.models.base_model import BaseModel
@@ -93,11 +92,6 @@ class FileHistory(BaseModel):
             ),
             models.Index(
                 fields=["workflow", "file_path"], name="idx_fh_workflow_filepath"
-            ),
-            GinIndex(
-                fields=["file_path"],
-                name="idx_fh_file_path_trgm",
-                opclasses=["gin_trgm_ops"],
             ),
         ]
         constraints = [
