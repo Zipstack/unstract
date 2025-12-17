@@ -76,8 +76,23 @@ class ToolExecutor:
                 output_dir=self.tool.get_output_dir(),
             )
         except Exception as e:
-            msg = f"Error while running tool '{tool_name}': {str(e)}"
+            msg = f"Error while running tool '{tool_name}': {type(e).__name__}: {str(e)}"
             logger.error(msg, stack_info=True, exc_info=True)
+
+            # Log more details about the exception
+            import traceback
+
+            logger.error(f"Full traceback:\n{traceback.format_exc()}")
+
+            # Check if it's interruption-related
+            if isinstance(e, InterruptedError | KeyboardInterrupt):
+                logger.warning(
+                    "Operation was interrupted by signal - "
+                    "this is expected during pod deletion"
+                )
+            elif "interrupted system call" in str(e).lower():
+                logger.warning("System call was interrupted - likely due to SIGTERM")
+
             self.tool.stream_error_and_exit(msg)
 
         # TODO: Call tool method to validate if output was written
