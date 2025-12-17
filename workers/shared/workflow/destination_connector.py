@@ -20,15 +20,20 @@ import uuid
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Optional
 
-from shared.enums import QueueResultStatus
+from shared.enums import DestinationConfigKey, QueueResultStatus
 
 # Import database utils (stable path)
 from shared.infrastructure.database.utils import WorkerDatabaseUtils
+from shared.infrastructure.logging import WorkerLogger
+from shared.infrastructure.logging.helpers import log_file_error, log_file_info
 from shared.models.result_models import QueueResult
+from shared.utils.api_result_cache import get_api_cache_manager
 from shared.utils.manual_review_factory import (
     get_manual_review_service,
     has_manual_review_plugin,
 )
+from shared.workflow.connectors.service import WorkerConnectorService
+from shared.workflow.logger_helper import WorkflowLoggerHelper
 
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.exceptions import ConnectorError
@@ -52,12 +57,6 @@ from unstract.workflow_execution.constants import (
 from unstract.workflow_execution.execution_file_handler import (
     ExecutionFileHandler,
 )
-
-from ..enums import DestinationConfigKey
-from ..infrastructure.logging import WorkerLogger
-from ..infrastructure.logging.helpers import log_file_error, log_file_info
-from ..utils.api_result_cache import get_api_cache_manager
-from .connectors.service import WorkerConnectorService
 
 if TYPE_CHECKING:
     from ..api_client import InternalAPIClient
@@ -98,12 +97,21 @@ class FileContext:
 
 
 @dataclass
+class HITLDecision:
+    """Result of HITL routing decision."""
+
+    should_route_to_hitl: bool = False
+    reason: str | None = None  # Human-readable reason for the decision
+
+
+@dataclass
 class ProcessingResult:
     """Result of destination processing."""
 
     tool_execution_result: dict | str | None = None
     metadata: dict[str, Any] | None = None
     has_hitl: bool = False
+    hitl_reason: str | None = None  # Reason why file was sent to HITL
 
 
 @dataclass
@@ -198,6 +206,9 @@ class WorkerDestinationConnector:
         self.settings = config.settings
         self.workflow_log = workflow_log
 
+        # Initialize logger helper for safe logging operations
+        self.logger_helper = WorkflowLoggerHelper(workflow_log)
+
         # Store destination connector instance details
         self.connector_id = config.connector_id
         self.connector_settings = config.connector_settings
@@ -264,6 +275,68 @@ class WorkerDestinationConnector:
             return sum(confidence_values) / len(confidence_values)
 
         return None
+
+    def _prepare_result_for_rule_evaluation(
+        self, file_name: str, tool_execution_result: dict | str | None
+    ) -> dict | None:
+        """Prepare result for rule evaluation by wrapping in expected structure.
+
+        The rule engine expects: {"output": {...}, "metadata": {...}}
+
+        Args:
+            file_name: Name of the file (for logging)
+            tool_execution_result: Raw tool execution result
+
+        Returns:
+            Wrapped result dict or None if no result
+        """
+        if not tool_execution_result:
+            return None
+
+        if not isinstance(tool_execution_result, dict):
+            logger.warning(
+                f"{file_name}: tool_execution_result is not a dict: {type(tool_execution_result)}"
+            )
+            return None
+
+        # Check if tool_execution_result already has the correct structure
+        if "output" in tool_execution_result:
+            # Already in correct format with metadata - use directly
+            return tool_execution_result
+
+        # Legacy format: wrap in expected structure
+        metadata = self.get_metadata()
+
+        # 3-tier fallback hierarchy for confidence:
+        # 1. word_confidence_data (if available)
+        # 2. Extract from 5th element of highlight_data
+        # 3. confidence_data (last resort)
+        highlight_data = metadata.get("highlight_data", {}) if metadata else {}
+        word_confidence_data = (
+            metadata.get("word_confidence_data", {}) if metadata else {}
+        )
+        confidence_data = metadata.get("confidence_data", {}) if metadata else {}
+
+        # If word_confidence_data is not available, try extracting from highlight_data
+        if not word_confidence_data and highlight_data:
+            extracted_confidence = self._extract_confidence_from_highlight_data(
+                highlight_data
+            )
+            # Use extracted confidence if available, otherwise fall back to confidence_data
+            if extracted_confidence is not None:
+                # For rule engine, we provide a single confidence score
+                confidence_data = {"_extracted_average": extracted_confidence}
+
+        return {
+            "output": tool_execution_result,
+            "metadata": {
+                "confidence_data": confidence_data,
+                "word_confidence_data": word_confidence_data,
+                "highlight_data": highlight_data,
+                "whisper-hash": metadata.get("whisper-hash") if metadata else None,
+                "extracted_text": metadata.get("extracted_text") if metadata else None,
+            },
+        }
 
     @classmethod
     def from_config(cls, workflow_log, config: DestinationConfig):
@@ -491,9 +564,13 @@ class WorkerDestinationConnector:
         exec_ctx: ExecutionContext,
         file_ctx: FileContext,
         result: ProcessingResult,
-    ) -> bool:
-        """Check HITL requirements and push to queue if needed."""
-        has_hitl = self._should_handle_hitl(
+    ) -> HITLDecision:
+        """Check HITL requirements and push to queue if needed.
+
+        Returns:
+            HITLDecision: Decision object with should_route_to_hitl flag and reason
+        """
+        hitl_decision = self._should_handle_hitl(
             file_name=file_ctx.file_name,
             file_hash=file_ctx.file_hash,
             workflow=file_ctx.workflow,
@@ -502,7 +579,11 @@ class WorkerDestinationConnector:
             error=file_ctx.execution_error,
         )
 
-        if has_hitl:
+        # Update result with HITL metadata
+        result.has_hitl = hitl_decision.should_route_to_hitl
+        result.hitl_reason = hitl_decision.reason
+
+        if hitl_decision.should_route_to_hitl:
             self._push_data_to_queue(
                 file_name=file_ctx.file_name,
                 workflow=file_ctx.workflow,
@@ -510,9 +591,10 @@ class WorkerDestinationConnector:
                 file_execution_id=exec_ctx.file_execution_id,
                 tool_execution_result=result.tool_execution_result,
                 api_client=exec_ctx.api_client,
+                hitl_reason=hitl_decision.reason,
             )
 
-        return has_hitl
+        return hitl_decision
 
     def _process_destination(
         self,
@@ -547,6 +629,14 @@ class WorkerDestinationConnector:
             f"🔌 File '{file_ctx.file_name}' marked for API processing - preparing response",
         )
 
+        # Prepare metadata - add HITL info only if plugin is available (cloud feature)
+        api_metadata = result.metadata.copy() if result.metadata else {}
+        if has_manual_review_plugin():
+            api_metadata["hitl"] = {
+                "file_sent_to_hitl": result.has_hitl,
+                "reason": result.hitl_reason,
+            }
+
         self.cache_api_result(
             api_client=exec_ctx.api_client,
             file_hash=file_ctx.file_hash,
@@ -556,7 +646,7 @@ class WorkerDestinationConnector:
             file_execution_id=exec_ctx.file_execution_id,
             organization_id=exec_ctx.organization_id,
             error=file_ctx.execution_error,
-            metadata=result.metadata,
+            metadata=api_metadata,
         )
 
     def _handle_filesystem_destination(
@@ -634,6 +724,7 @@ class WorkerDestinationConnector:
                 file_execution_id=exec_ctx.file_execution_id,
                 tool_execution_result=result.tool_execution_result,
                 api_client=exec_ctx.api_client,
+                hitl_reason="Destination configured for manual review",
             )
 
     def _handle_destination_error(
@@ -764,8 +855,8 @@ class WorkerDestinationConnector:
         # Only extract data if lock was acquired (not a duplicate)
         result = self._extract_processing_data(exec_ctx, file_ctx)
 
-        # Check and handle HITL if needed
-        result.has_hitl = self._check_and_handle_hitl(exec_ctx, file_ctx, result)
+        # Check and handle HITL if needed (this updates result.has_hitl and result.hitl_reason)
+        self._check_and_handle_hitl(exec_ctx, file_ctx, result)
 
         # Process through appropriate destination
         try:
@@ -971,7 +1062,7 @@ class WorkerDestinationConnector:
             logger.info(f"Successfully inserted data into database table {table_name}")
 
             # Log to UI with file_execution_id for better correlation
-            if self.workflow_log and hasattr(self, "current_file_execution_id"):
+            if hasattr(self, "current_file_execution_id"):
                 log_file_info(
                     self.workflow_log,
                     self.current_file_execution_id,
@@ -1219,7 +1310,7 @@ class WorkerDestinationConnector:
                 logger.error(error_message)
 
                 # Log to UI with file_execution_id
-                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                if hasattr(self, "current_file_execution_id"):
                     log_file_info(
                         self.workflow_log,
                         self.current_file_execution_id,
@@ -1233,7 +1324,7 @@ class WorkerDestinationConnector:
                 logger.info(success_message)
 
                 # Log to UI
-                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                if hasattr(self, "current_file_execution_id"):
                     log_file_info(
                         self.workflow_log,
                         self.current_file_execution_id,
@@ -1246,7 +1337,7 @@ class WorkerDestinationConnector:
                 logger.info(success_message)
 
                 # Log to UI
-                if self.workflow_log and hasattr(self, "current_file_execution_id"):
+                if hasattr(self, "current_file_execution_id"):
                     log_file_info(
                         self.workflow_log,
                         self.current_file_execution_id,
@@ -1258,7 +1349,7 @@ class WorkerDestinationConnector:
             logger.error(error_msg, exc_info=True)
 
             # Log error to UI
-            if self.workflow_log and hasattr(self, "current_file_execution_id"):
+            if hasattr(self, "current_file_execution_id"):
                 log_file_info(
                     self.workflow_log,
                     self.current_file_execution_id,
@@ -1426,29 +1517,88 @@ class WorkerDestinationConnector:
         api_client: Optional["InternalAPIClient"] = None,
         tool_execution_result: dict | str | None = None,
         error: str | None = None,
-    ) -> bool:
-        """Determines if HITL processing should be performed, returning True if data was pushed to the queue.
+    ) -> HITLDecision:
+        """Determines if HITL processing should be performed.
 
         This method replicates the backend DestinationConnector._should_handle_hitl logic.
+
+        The logic is:
+        1. hitl_packet_id takes precedence - always push to packet queue
+        2. hitl_queue_name with API rules:
+           - If no API rules configured → Push ALL to HITL (backward compatible)
+           - If API rules exist → Evaluate rules, push only if rules match
+        3. Database destination → Evaluate DB rules
+
+        Returns:
+            HITLDecision: Decision object with should_route_to_hitl flag and reason
         """
         logger.info(f"{file_name}: checking if file is eligible for HITL")
         if error:
             logger.error(
                 f"{file_name}: file is not eligible for HITL due to error: {error}"
             )
-            return False
+            return HITLDecision(False, f"Processing error: {error}")
 
         # Check hitl_packet_id first - it takes precedence over everything else
         if self.hitl_packet_id:
             logger.info(
                 f"API packet override: pushing to packet queue for file {file_name}"
             )
-            return True
+            return HITLDecision(True, f"HITL packet ID specified: {self.hitl_packet_id}")
 
-        # Check if API deployment requested HITL override
+        # Check if API deployment requested HITL override with hitl_queue_name
         if self.hitl_queue_name:
-            logger.info(f"{file_name}: Pushing to HITL queue")
-            return True
+            logger.info(
+                f"{file_name}: HITL queue name detected: {self.hitl_queue_name}. "
+                f"Checking for API rules..."
+            )
+            # Get workflow util to check for API rules
+            manual_review_service = self._ensure_manual_review_service(api_client)
+            if manual_review_service:
+                workflow_util = manual_review_service.get_workflow_util()
+                has_rules = workflow_util.has_api_rules(workflow)
+                logger.info(f"{file_name}: has_api_rules={has_rules}")
+
+                if has_rules:
+                    # API rules exist - evaluate them
+                    wrapped_result = self._prepare_result_for_rule_evaluation(
+                        file_name, tool_execution_result
+                    )
+                    logger.info(
+                        f"{file_name}: Evaluating API rules. "
+                        f"wrapped_result type={type(wrapped_result).__name__}, "
+                        f"has_output={bool(wrapped_result.get('output') if wrapped_result else False)}"
+                    )
+                    # Get detailed rule evaluation result
+                    rule_result = workflow_util.validate_rule_engine_with_reason(
+                        wrapped_result,
+                        workflow,
+                        file_hash.file_destination,
+                        file_hash.is_manualreview_required,
+                        rule_type="API",
+                    )
+                    if rule_result.get("matched", False):
+                        reason = rule_result.get("reason", "API rules matched")
+                        logger.info(
+                            f"{file_name}: API rules matched - pushing to HITL queue. Reason: {reason}"
+                        )
+                        return HITLDecision(True, reason)
+                    else:
+                        reason = rule_result.get("reason", "API rules not matched")
+                        logger.info(
+                            f"{file_name}: API rules not matched - returning result directly. Reason: {reason}"
+                        )
+                        return HITLDecision(False, reason)
+            else:
+                logger.warning(f"{file_name}: No manual review service available")
+
+            # No API rules configured - backward compatible behavior: push ALL to HITL
+            logger.info(
+                f"{file_name}: No API rules configured - pushing ALL to HITL queue (backward compatible)"
+            )
+            return HITLDecision(
+                True, "HITL queue specified, no rules configured - sending all to HITL"
+            )
 
         # Skip HITL validation if we're using file_history and no execution result is available
         # CRITICAL FIX: Only skip HITL validation for API deployments without file history
@@ -1457,7 +1607,9 @@ class WorkerDestinationConnector:
             logger.info(
                 f"{file_name}: Skipping HITL validation for API deployment without file history"
             )
-            return False
+            return HITLDecision(
+                False, "API deployment without file history - HITL not applicable"
+            )
 
         # For API deployments WITH file history, continue to evaluate rules
         # For ETL workflows, ALWAYS evaluate rules (regardless of file_history)
@@ -1466,87 +1618,37 @@ class WorkerDestinationConnector:
         manual_review_service = self._ensure_manual_review_service(api_client)
         if not manual_review_service:
             logger.info(f"No manual review service available for {file_name}")
-            return False
+            return HITLDecision(False, "Manual review service not available")
 
         workflow_util = manual_review_service.get_workflow_util()
 
         # Don't skip rule evaluation just because file wasn't pre-selected by percentage
-        # validate_db_rule will check both percentage selection AND rules with OR/AND logic
+        # validate_rule_engine will check both percentage selection AND rules with OR/AND logic
         if not file_hash.is_manualreview_required:
             logger.info(
                 f"{file_name}: File not pre-selected by percentage, "
                 f"but checking if rules match..."
             )
 
-        # Prepare result for rule evaluation
-        # validate_db_rule expects: {"output": {...}, "metadata": {...}}
-        # Note: tool_execution_result from JSON output already has correct structure
-        wrapped_result = None
-        if tool_execution_result:
-            if isinstance(tool_execution_result, dict):
-                # Check if tool_execution_result already has the correct structure
-                if "output" in tool_execution_result:
-                    # Already in correct format with metadata - use directly
-                    wrapped_result = tool_execution_result
-                else:
-                    # Legacy format: wrap in expected structure
-                    metadata = self.get_metadata()
+        # Prepare result for rule evaluation using helper method
+        wrapped_result = self._prepare_result_for_rule_evaluation(
+            file_name, tool_execution_result
+        )
 
-                    # 3-tier fallback hierarchy for confidence:
-                    # 1. word_confidence_data (if available)
-                    # 2. Extract from 5th element of highlight_data
-                    # 3. confidence_data (last resort)
-                    highlight_data = (
-                        metadata.get("highlight_data", {}) if metadata else {}
-                    )
-                    word_confidence_data = (
-                        metadata.get("word_confidence_data", {}) if metadata else {}
-                    )
-                    confidence_data = (
-                        metadata.get("confidence_data", {}) if metadata else {}
-                    )
-
-                    # If word_confidence_data is not available, try extracting from highlight_data
-                    if not word_confidence_data and highlight_data:
-                        extracted_confidence = (
-                            self._extract_confidence_from_highlight_data(highlight_data)
-                        )
-                        # Use extracted confidence if available, otherwise fall back to confidence_data
-                        # Store as a simple dict for compatibility
-                        if extracted_confidence is not None:
-                            # For rule engine, we provide a single confidence score
-                            # This will be used by the enterprise plugin
-                            confidence_data = {"_extracted_average": extracted_confidence}
-
-                    wrapped_result = {
-                        "output": tool_execution_result,
-                        "metadata": {
-                            "confidence_data": confidence_data,
-                            "word_confidence_data": word_confidence_data,
-                            "highlight_data": highlight_data,
-                            "whisper-hash": metadata.get("whisper-hash")
-                            if metadata
-                            else None,
-                            "extracted_text": metadata.get("extracted_text")
-                            if metadata
-                            else None,
-                        },
-                    }
-            else:
-                logger.warning(
-                    f"{file_name}: tool_execution_result is not a dict: {type(tool_execution_result)}"
-                )
-
-        is_to_hitl = workflow_util.validate_db_rule(
+        # Evaluate DB rules for ETL workflows with reason
+        rule_result = workflow_util.validate_rule_engine_with_reason(
             wrapped_result,
             workflow,
             file_hash.file_destination,
             file_hash.is_manualreview_required,
+            rule_type="DB",
         )
-        logger.info(f"File {file_name} checked for manual review: {is_to_hitl}")
-        if is_to_hitl:
-            return True
-        return False
+        is_to_hitl = rule_result.get("matched", False)
+        reason = rule_result.get("reason", "DB rules evaluation")
+        logger.info(
+            f"File {file_name} checked for manual review: {is_to_hitl}, reason: {reason}"
+        )
+        return HITLDecision(is_to_hitl, reason)
 
     def _enqueue_to_packet_or_regular_queue(
         self,
@@ -1625,6 +1727,7 @@ class WorkerDestinationConnector:
         file_execution_id: str,
         tool_execution_result: str = None,
         api_client: Optional["InternalAPIClient"] = None,
+        hitl_reason: str | None = None,
     ) -> None:
         """Handle manual review queue processing (following production pattern).
 
@@ -1695,6 +1798,7 @@ class WorkerDestinationConnector:
                 file_execution_id=file_execution_id,
                 extracted_text=extracted_text,
                 ttl_seconds=ttl_seconds,
+                hitl_reason=hitl_reason,
             )
 
             # Only include file_content if provided (backend API will handle it)

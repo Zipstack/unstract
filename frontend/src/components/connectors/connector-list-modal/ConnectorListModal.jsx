@@ -1,8 +1,8 @@
 import { SearchOutlined } from "@ant-design/icons";
-import { Input, Row, Col, Tabs, Typography, Spin } from "antd";
+import { Col, Input, Row, Spin, Tabs, Typography } from "antd";
+import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import debounce from "lodash/debounce";
 
 import { ConnectorCard } from "../connector-card/ConnectorCard";
 import "./ConnectorListModal.css";

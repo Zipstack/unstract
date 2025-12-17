@@ -175,7 +175,7 @@ function DefaultTriad() {
   };
 
   return (
-    <SettingsLayout activeKey="triad">
+    <SettingsLayout>
       <div className="plt-set-head">
         <Button
           size="small"

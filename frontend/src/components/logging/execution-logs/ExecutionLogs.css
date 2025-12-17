@@ -2,11 +2,12 @@
   background-color: var(--white);
   height: 100%;
   margin: 12px;
-  overflow-y: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .logs-title {
-  padding: 15px;
   margin: 0;
 }
 
@@ -30,7 +31,7 @@
   height: 30px;
 }
 
-.log-tab{
+.log-tab {
   height: 30px;
 }
 
@@ -46,4 +47,26 @@
 
 .log-tab .ant-tabs-ink-bar {
   top: 40px !important;
+}
+
+.logs-header {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  padding: 16px 24px;
+}
+
+.logs-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logs-table-container {
+  flex: 1;
+  min-height: 0;
+  padding: 0 24px 8px;
+  display: flex;
+  flex-direction: column;
 }

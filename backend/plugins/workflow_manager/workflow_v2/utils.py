@@ -62,23 +62,64 @@ class WorkflowUtil:
         return file_hash
 
     @staticmethod
-    def validate_db_rule(
+    def validate_rule_engine(
         result: Any | None,
-        workflow_id: Workflow,
+        workflow: Workflow,
         file_destination: tuple[str, str] | None,
+        rule_type: str = "DB",
     ) -> bool:
-        """Placeholder method to check the db rules - MRQ
+        """Placeholder method to check the rule engine - MRQ
 
         Args:
             result (Optional[Any]): The result dictionary containing
             confidence_data.
-            workflow_id (str): The ID of the workflow to retrieve the rules.
+            workflow (Workflow): The workflow to retrieve the rules.
+            file_destination (Optional[tuple[str, str]]): The destination of
+            the file (e.g., MANUALREVIEW or other).
+            rule_type (str): Rule type - "DB" for database destination,
+            "API" for API deployments with hitl_queue_name.
+
+        Returns:
+            bool: True if the field_key conditions are met based on rule logic
+            and file destination.
+        """
+        return False
+
+    @staticmethod
+    def validate_db_rule(
+        result: Any | None,
+        workflow: Workflow,
+        file_destination: tuple[str, str] | None,
+    ) -> bool:
+        """Backward compatible method to check the db rules - MRQ
+
+        Deprecated: Use validate_rule_engine instead.
+
+        Args:
+            result (Optional[Any]): The result dictionary containing
+            confidence_data.
+            workflow (Workflow): The workflow to retrieve the rules.
             file_destination (Optional[tuple[str, str]]): The destination of
             the file (e.g., MANUALREVIEW or other).
 
         Returns:
             bool: True if the field_key conditions are met based on rule logic
             and file destination.
+        """
+        return WorkflowUtil.validate_rule_engine(
+            result, workflow, file_destination, rule_type="DB"
+        )
+
+    @staticmethod
+    def has_api_rules(workflow: Workflow) -> bool:
+        """Check if API rules are configured for a workflow.
+
+        Args:
+            workflow (Workflow): The workflow to check.
+
+        Returns:
+            bool: True if API rules exist for this workflow, False otherwise.
+            For OSS version, always returns False.
         """
         return False
 

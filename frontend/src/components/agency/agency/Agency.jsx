@@ -42,6 +42,7 @@ import { pipelineService } from "../../pipelines-or-deployments/pipeline-service
 import { InputOutput } from "../input-output/InputOutput";
 import { ToolSelectionSidebar } from "../tool-selection-sidebar/ToolSelectionSidebar.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import FileHistoryModal from "../../pipelines-or-deployments/file-history-modal/FileHistoryModal.jsx";
 function Agency() {
   const [steps, setSteps] = useState([]);
   const [workflowProgress, setWorkflowProgress] = useState(0);
@@ -96,6 +97,7 @@ function Agency() {
   const [openFileUploadModal, setOpenFileUploadModal] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [wfExecutionParams, setWfExecutionParams] = useState([]);
+  const [fileHistoryModalOpen, setFileHistoryModalOpen] = useState(false);
 
   const { setPostHogCustomEvent } = usePostHogEvents();
 
@@ -1002,6 +1004,9 @@ function Agency() {
       case "run-workflow":
         handleRunWorkflow();
         break;
+      case "view-file-history":
+        setFileHistoryModalOpen(true);
+        break;
       case "clear-history":
         handleClearFileMarker();
         break;
@@ -1015,6 +1020,12 @@ function Agency() {
       key: "run-workflow",
       label: "Run Workflow",
       icon: <PlayCircleOutlined />,
+      disabled: isClearingFileHistory || loadingType === "EXECUTE",
+    },
+    {
+      key: "view-file-history",
+      label: "View File History",
+      icon: <HistoryOutlined />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
@@ -1317,6 +1328,14 @@ function Agency() {
           selectedTool={selectedTool}
           onToolSelect={handleToolSelection}
           onSave={() => setShowToolSelectionSidebar(false)}
+        />
+
+        {/* File History Modal */}
+        <FileHistoryModal
+          open={fileHistoryModalOpen}
+          setOpen={setFileHistoryModalOpen}
+          workflowId={details?.id}
+          workflowName={projectName}
         />
       </div>
     </IslandLayout>

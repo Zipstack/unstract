@@ -1,9 +1,10 @@
-import { DatePicker, Flex, Tabs, Typography } from "antd";
+import { DatePicker, Tabs } from "antd";
 import { useNavigate, useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 import { LogsTable } from "../logs-table/LogsTable";
 import { DetailedLogs } from "../detailed-logs/DetailedLogs";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 import {
   ApiDeployments,
   ETLIcon,
@@ -43,12 +44,15 @@ function ExecutionLogs() {
   const [selectedDateRange, setSelectedDateRange] = useState([]);
   const [datePickerValue, setDatePickerValue] = useState(null);
   const [ordering, setOrdering] = useState(null);
-  const [pollingIds, setPollingIds] = useState(new Set());
+  const [executionIdSearch, setExecutionIdSearch] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const autoRefreshIntervalRef = useRef(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
+
   const items = [
     {
       key: "ETL",
-      label: "ETL Sessions",
+      label: "ETL Executions",
       icon: (
         <ETLIcon
           className={`log-tab-icon ${activeTab === "ETL" ? "active" : ""}`}
@@ -57,7 +61,7 @@ function ExecutionLogs() {
     },
     {
       key: "API",
-      label: "API Sessions",
+      label: "API Executions",
       icon: (
         <ApiDeployments
           className={`log-tab-icon ${activeTab === "API" ? "active" : ""}`}
@@ -66,7 +70,7 @@ function ExecutionLogs() {
     },
     {
       key: "WF",
-      label: "Workflow Sessions",
+      label: "Workflow Executions",
       icon: (
         <Workflows
           className={`log-tab-icon ${activeTab === "WF" ? "active" : ""}`}
@@ -75,7 +79,7 @@ function ExecutionLogs() {
     },
     {
       key: "TASK",
-      label: "Task Sessions",
+      label: "Task Executions",
       icon: (
         <Task
           className={`log-tab-icon ${activeTab === "TASK" ? "active" : ""}`}
@@ -94,74 +98,6 @@ function ExecutionLogs() {
     }
   };
 
-  const pollExecutingRecord = async (id) => {
-    try {
-      const url = getUrl(`/execution/${id}/`);
-      const response = await axiosPrivate.get(url);
-      const item = response?.data;
-
-      // Update the record in the dataList
-      setDataList((prevData) => {
-        const newData = [...prevData];
-        const index = newData.findIndex((record) => record.key === id);
-        if (index !== -1) {
-          const total = item.total_files || 0;
-          const processed =
-            (item?.successful_files || 0) + (item?.failed_files || 0);
-          const progress =
-            total > 0 ? Math.round((processed / total) * 100) : 0;
-
-          newData[index] = {
-            ...newData[index],
-            progress,
-            processed,
-            total,
-            success: item?.status === "COMPLETED",
-            isError: item?.status === "ERROR",
-            status: item?.status,
-            successfulFiles: item?.successful_files,
-            failedFiles: item?.failed_files,
-            execution_time: item?.execution_time,
-          };
-
-          // If status is no longer executing, remove from polling
-          if (item?.status.toLowerCase() !== "executing") {
-            setPollingIds((prev) => {
-              const newSet = new Set(prev);
-              newSet.delete(id);
-              return newSet;
-            });
-          }
-        }
-        return newData;
-      });
-
-      // Continue polling if still executing
-      if (item?.status === "EXECUTING") {
-        setTimeout(() => pollExecutingRecord(id), 5000); // Poll every 5 seconds
-      }
-    } catch (err) {
-      setPollingIds((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(id);
-        return newSet;
-      });
-    }
-  };
-
-  const startPollingForExecuting = (records) => {
-    records.forEach((record) => {
-      if (record.status === "EXECUTING" && !pollingIds.has(record.key)) {
-        setPollingIds((prev) => {
-          const newSet = new Set(prev);
-          newSet.add(record.key);
-          return newSet;
-        });
-        pollExecutingRecord(record.key);
-      }
-    });
-  };
-
   const fetchLogs = async (page) => {
     try {
       setLoading(true);
@@ -174,6 +110,7 @@ function ExecutionLogs() {
           created_at_after: selectedDateRange[0] || null,
           created_at_before: selectedDateRange[1] || null,
           ordering,
+          id: executionIdSearch || null,
         },
       });
       setPagination({
@@ -205,7 +142,6 @@ function ExecutionLogs() {
         };
       });
       setDataList(formattedData);
-      startPollingForExecuting(formattedData);
     } catch (err) {
       setAlertDetails(handleException(err));
     } finally {
@@ -215,28 +151,12 @@ function ExecutionLogs() {
 
   const customButtons = () => {
     return (
-      <Flex gap={10} className="log-controls">
-        <Tabs
-          activeKey={activeTab}
-          items={items}
-          onChange={onChange}
-          className="log-tab"
-        />
-        <RangePicker
-          showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
-          value={datePickerValue}
-          onChange={(value) => {
-            setDatePickerValue(value);
-            setSelectedDateRange(
-              value ? [value[0].toISOString(), value[1].toISOString()] : []
-            );
-          }}
-          onOk={onOk}
-          className="logs-date-picker"
-          disabled={currentPath}
-          format="YYYY-MM-DD HH:mm:ss"
-        />
-      </Flex>
+      <Tabs
+        activeKey={activeTab}
+        items={items}
+        onChange={onChange}
+        className="log-tab"
+      />
     );
   };
 
@@ -245,12 +165,46 @@ function ExecutionLogs() {
       setDataList([]);
       fetchLogs(pagination.current);
     }
-  }, [activeTab, pagination.current, selectedDateRange, ordering, currentPath]);
+  }, [
+    activeTab,
+    pagination.current,
+    pagination.pageSize,
+    selectedDateRange,
+    ordering,
+    executionIdSearch,
+    currentPath,
+  ]);
+
+  // Auto-refresh interval management
+  useEffect(() => {
+    if (autoRefreshIntervalRef.current) {
+      clearInterval(autoRefreshIntervalRef.current);
+      autoRefreshIntervalRef.current = null;
+    }
+
+    if (autoRefresh) {
+      autoRefreshIntervalRef.current = setInterval(() => {
+        fetchLogs(pagination.current);
+      }, 30000);
+    }
+
+    return () => {
+      if (autoRefreshIntervalRef.current) {
+        clearInterval(autoRefreshIntervalRef.current);
+        autoRefreshIntervalRef.current = null;
+      }
+    };
+  }, [autoRefresh, pagination.current]);
+
+  // Clear auto-refresh when tab changes
+  useEffect(() => {
+    setAutoRefresh(false);
+  }, [activeTab]);
 
   return (
     <>
       <ToolNavBar
-        title={"Logs"}
+        title={"Execution Logs"}
         CustomButtons={customButtons}
         enableSearch={false}
       />
@@ -259,10 +213,31 @@ function ExecutionLogs() {
           <DetailedLogs />
         ) : (
           <>
-            <Typography.Title className="logs-title" level={4}>
-              Execution Logs
-            </Typography.Title>
-            <div className="settings-layout">
+            <div className="logs-header">
+              <div className="logs-filter-controls">
+                <RangePicker
+                  showTime={{ format: "YYYY-MM-DDTHH:mm:ssZ[Z]" }}
+                  value={datePickerValue}
+                  onChange={(value) => {
+                    setDatePickerValue(value);
+                    setSelectedDateRange(
+                      value?.[0] && value?.[1]
+                        ? [value[0].toISOString(), value[1].toISOString()]
+                        : []
+                    );
+                  }}
+                  onOk={onOk}
+                  className="logs-date-picker"
+                  format="YYYY-MM-DD HH:mm:ss"
+                />
+                <LogsRefreshControls
+                  autoRefresh={autoRefresh}
+                  setAutoRefresh={setAutoRefresh}
+                  onRefresh={() => fetchLogs(pagination.current)}
+                />
+              </div>
+            </div>
+            <div className="logs-table-container">
               <LogsTable
                 tableData={dataList}
                 loading={loading}
@@ -270,6 +245,8 @@ function ExecutionLogs() {
                 setPagination={setPagination}
                 setOrdering={setOrdering}
                 activeTab={activeTab}
+                executionIdSearch={executionIdSearch}
+                setExecutionIdSearch={setExecutionIdSearch}
               />
             </div>
           </>
