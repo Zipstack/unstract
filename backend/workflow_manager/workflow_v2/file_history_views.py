@@ -77,8 +77,8 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
 
         file_path_param = self.request.query_params.get("file_path")
         if file_path_param:
-            # Support partial matching (case-insensitive)
-            queryset = queryset.filter(file_path__icontains=file_path_param)
+            # Support prefix matching (case-insensitive) - uses B-tree index efficiently
+            queryset = queryset.filter(file_path__istartswith=file_path_param)
 
         return queryset.order_by("-created_at")
 
@@ -162,7 +162,7 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
                 queryset = queryset.filter(execution_count__lte=exec_max_val)
 
             if file_path_param:
-                queryset = queryset.filter(file_path__icontains=file_path_param)
+                queryset = queryset.filter(file_path__istartswith=file_path_param)
 
         deleted_count, _ = queryset.delete()
 
