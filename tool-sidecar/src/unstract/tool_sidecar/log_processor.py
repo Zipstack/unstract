@@ -30,16 +30,14 @@ logger = logging.getLogger(__name__)
 
 def _signal_handler(signum: int, _frame: types.FrameType | None):
     """Handle shutdown signals gracefully."""
-    global _shutdown_requested
     sig = signal.Signals(signum)
     signal_name = sig.name
     logger.warning(f"RECEIVED SIGNAL: {signal_name}")
-    logger.warning("Initiating graceful shutdown...")
+    logger.warning("Allowing sidecar to continue monitoring...")
 
-    # Set shutdown flag so monitoring loop can exit gracefully
-    _shutdown_requested = True
-
-    # Don't call exit() - let monitoring loop check flag and exit naturally
+    # Ignore the signal to allow the process to continue
+    # This prevents the signal from interrupting the monitoring operation
+    signal.signal(signum, signal.SIG_IGN)
 
 
 class LogProcessor:

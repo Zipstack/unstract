@@ -455,7 +455,7 @@ class UnstractRunner:
         )
 
         container_config = self.client.get_container_run_config(
-            command=["/bin/sh", "-c", container_command],
+            command=["dumb-init", "/bin/sh", "-c", container_command],
             file_execution_id=file_execution_id,
             shared_log_dir=shared_log_dir,  # Pass directory for mounting
             container_name=container_name,
