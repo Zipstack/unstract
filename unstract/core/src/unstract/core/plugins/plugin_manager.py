@@ -243,15 +243,15 @@ class PluginManager:
 
             # Try to import the plugin module
             try:
-                self.logger.debug(f"   Attempting to import: {pkg_anchor}")
+                self.logger.info(f"   Attempting to import: {pkg_anchor}")
                 
-                module = importlib.import_module("unstract.prompt_service.plugins.agentic_extraction")
-                self.logger.debug(f"   ✓ Import successful")
+                module = importlib.import_module(pkg_anchor)
+                self.logger.info(f"   ✓ Import successful")
             except ImportError as e:
-                self.logger.warning(
+                self.logger.info(
                     f"   ⚠ Import failed for {pkg_anchor}: {str(e)}"
                 )
-                self.logger.debug(f"   Full error: {repr(e)}", exc_info=True)
+                self.logger.info(f"   Full error: {repr(e)}", exc_info=True)
                 failed_count += 1
                 continue
             except Exception as e:
