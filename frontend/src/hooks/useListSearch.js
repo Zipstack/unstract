@@ -33,6 +33,11 @@ function useListSearch(searchField) {
     [filterList]
   );
 
+  const clearSearch = useCallback(() => {
+    searchTextRef.current = "";
+    setDisplayList(listRef.current);
+  }, []);
+
   const updateMasterList = useCallback(
     (updateFn) => {
       const updatedList = updateFn(listRef.current);
@@ -49,6 +54,7 @@ function useListSearch(searchField) {
     setMasterList,
     updateMasterList,
     onSearch,
+    clearSearch,
   };
 }
 
