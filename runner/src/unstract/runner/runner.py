@@ -305,19 +305,14 @@ class UnstractRunner:
 
         # Shell script components
         mkdir_cmd = f"mkdir -p {shared_log_dir}"
-        run_tool_fn = (
-            "run_tool() { "
-            f"{tool_cmd}; "
-            "exit_code=$?; "
-            f'echo "{LogFieldName.TOOL_TERMINATION_MARKER} with exit code $exit_code" '
-            f">> {shared_log_file}; "
-            "return $exit_code; "
-            "}"
+        run_tool_cmd = (
+            f"{tool_cmd} > {shared_log_file} 2>&1; "
+            f'echo "{LogFieldName.TOOL_TERMINATION_MARKER} with exit code $?" >> {shared_log_file}'
         )
-        execute_cmd = f"run_tool > {shared_log_file} 2>&1"
 
-        # Combine all commands
-        shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
+        # Combine commands with signal trapping to ignore SIGTERM and SIGINT
+        # This ensures the shell stays alive when receiving termination signals
+        shell_script = f"trap '' TERM INT; {mkdir_cmd} && {run_tool_cmd}"
         return shell_script
 
     def _handle_tool_execution_status(
