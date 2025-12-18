@@ -6,6 +6,7 @@ import PropTypes from "prop-types";
 import { highlightPlugin } from "@react-pdf-viewer/highlight";
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
+import pdfjsWorker from "pdfjs-dist/build/pdf.worker.min.js?url";
 
 let RenderHighlights;
 try {
@@ -97,7 +98,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
 
   return (
     <div ref={parentRef} className="doc-manager-body">
-      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+      <Worker workerUrl={pdfjsWorker}>
         <Viewer
           fileUrl={fileUrl}
           plugins={[
