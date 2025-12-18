@@ -54,9 +54,11 @@ function ToolSettings({ type }) {
     setMasterList,
     updateMasterList,
     onSearch,
+    clearSearch,
   } = useListSearch("adapter_name");
 
   useEffect(() => {
+    clearSearch();
     setMasterList([]);
     if (!type) {
       return;
@@ -226,6 +228,7 @@ function ToolSettings({ type }) {
       <ToolNavBar
         title={titles[type]}
         enableSearch
+        searchKey={type}
         setSearchList={setDisplayList}
         onSearch={onSearch}
         CustomButtons={() => {
