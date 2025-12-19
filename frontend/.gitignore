@@ -11,6 +11,9 @@
 # production
 /build
 
+# pdfjs worker file (copied from node_modules via postinstall)
+/public/pdf.worker.min.js
+
 # misc
 .DS_Store
 .env.local
