@@ -33,6 +33,11 @@ Your scope is everything under the `backend/` directory at the repository root. 
 - Backend tests and test infrastructure
 - Docker configurations for backend services
 - Integration points with other services (platform-service, prompt-service, etc.)
+- **Legacy workers** in `backend/backend/workers/` (file_processing, file_processing_callback)
+- Rate limiting system (`api_v2/rate_limiter.py`, `api_v2/rate_limit_constants.py`)
+- Stripe billing integration
+
+**NOTE:** The main `workers/` directory at the repository root has a dedicated **workers agent**. This backend-agent owns only the legacy workers under `backend/backend/workers/`.
 
 # OPERATIONAL PROTOCOL
 
@@ -174,9 +179,62 @@ ruff format .
 ## Architecture Patterns
 - Apps use `_v2` suffix for major version updates
 - Multi-tenant middleware handles tenant routing
-- Celery queues: `celery`, `celery_api_deployments`
+- Celery queues: `celery`, `celery_api_deployments`, `file_processing`, `file_processing_callback`
 - Worker auto-scaling based on `WORKER_AUTOSCALE`
 - Tool isolation via Docker containers managed by Runner service
+
+## Backend Directory Structure
+```
+backend/
+├── account_v2/           # User authentication, organization management
+├── account_usage/        # Usage tracking and page counts
+├── adapter_processor_v2/ # Adapter (LLM, embedding, etc.) management
+├── api_v2/               # API deployments, rate limiting, API keys
+├── backend/              # Django project settings and configuration
+│   ├── settings/         # Environment-specific settings
+│   ├── workers/          # Legacy Celery workers (file_processing)
+│   └── celery_*.py       # Celery configuration
+├── configuration/        # Global configuration management
+├── connector_v2/         # Data connector management
+├── connector_auth_v2/    # Connector authentication (OAuth, etc.)
+├── feature_flag/         # Feature flag management
+├── file_management/      # File upload/download handling
+├── notification_v2/      # Notification system with providers
+├── permissions/          # Custom permission classes
+├── pipeline_v2/          # ETL pipeline management
+├── platform_settings_v2/ # Platform-wide settings
+├── prompt_studio/        # Prompt Studio backend
+├── scheduler/            # Scheduled job management
+├── tags/                 # Tagging system
+├── tenant_account_v2/    # Tenant-specific account features
+├── tool_instance_v2/     # Tool instance management
+├── usage_v2/             # Usage metrics and billing
+├── utils/                # Shared utilities
+└── workflow_manager/     # Workflow orchestration
+```
+
+## Key Features by App
+
+**api_v2/** - API Deployment System:
+- API key management and validation
+- Rate limiting (per-organization, per-deployment)
+- Postman collection generation
+- Deployment sharing across organizations
+
+**workflow_manager/** - Workflow Orchestration:
+- Workflow creation and execution
+- Tool instance coordination
+- Execution logging and monitoring
+
+**prompt_studio/** - Prompt Engineering:
+- Prompt template management
+- Variable replacement logic
+- Integration with prompt-service
+
+**notification_v2/** - Notification System:
+- Pluggable providers (Slack, webhook, email, SMS)
+- Notification routing and delivery
+- Circuit breaker patterns for reliability
 
 ## Critical Environment Variables
 - `DJANGO_SETTINGS_MODULE`: Use `backend.settings.dev` for development
