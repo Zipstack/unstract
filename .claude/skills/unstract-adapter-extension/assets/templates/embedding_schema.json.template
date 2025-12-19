@@ -1,0 +1,52 @@
+{
+  "title": "${PROVIDER_NAME} Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: ${PROVIDER_ID}-emb-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "",
+      "description": "The embedding model to use."
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "default": "",
+      "format": "password",
+      "description": "Your ${PROVIDER_NAME} API key."
+    },
+    "api_base": {
+      "type": "string",
+      "title": "API Base",
+      "format": "uri",
+      "default": "",
+      "description": "API endpoint URL (optional)."
+    },
+    "embed_batch_size": {
+      "type": "number",
+      "minimum": 1,
+      "multipleOf": 1,
+      "title": "Embed Batch Size",
+      "default": 10,
+      "description": "Number of texts to embed per batch."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 240,
+      "description": "Request timeout in seconds."
+    }
+  }
+}
