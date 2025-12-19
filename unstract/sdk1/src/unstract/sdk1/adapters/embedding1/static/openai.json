@@ -15,8 +15,8 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "text-embedding-ada-002",
-      "description": "Provide the name of the model."
+      "default": "text-embedding-3-small",
+      "description": "Provide the name of the model. Recommended: text-embedding-3-small, text-embedding-3-large"
     },
     "api_key": {
       "type": "string",
@@ -29,6 +29,13 @@
       "title": "API Base",
       "format": "uri",
       "default": "https://api.openai.com/v1/"
+    },
+    "dimensions": {
+      "type": "number",
+      "minimum": 1,
+      "multipleOf": 1,
+      "title": "Dimensions",
+      "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions (1536 for small, 3072 for large)."
     },
     "embed_batch_size": {
       "type": "number",

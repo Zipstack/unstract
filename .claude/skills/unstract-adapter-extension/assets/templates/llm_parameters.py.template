@@ -1,0 +1,61 @@
+"""LLM Parameter Class Template for ${PROVIDER_NAME}.
+
+Add this class to base1.py after the existing parameter classes.
+
+Replace placeholders:
+- ${PROVIDER_NAME} -> Display name (e.g., "New Provider")
+- ${PROVIDER_ID} -> Lowercase identifier (e.g., "newprovider")
+- ${CLASS_NAME} -> PascalCase name (e.g., "NewProvider")
+- ${MODEL_PREFIX} -> LiteLLM model prefix (e.g., "newprovider/")
+"""
+
+
+class ${CLASS_NAME}LLMParameters(BaseChatCompletionParameters):
+    """Parameters for ${PROVIDER_NAME} LLM.
+
+    See https://docs.litellm.ai/docs/providers/${PROVIDER_ID}
+    """
+
+    # Required fields
+    api_key: str
+
+    # Optional fields with defaults
+    api_base: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        """Validate and transform adapter metadata.
+
+        Args:
+            adapter_metadata: Raw configuration from UI form
+
+        Returns:
+            Validated configuration dict for LiteLLM
+        """
+        # Add model prefix
+        adapter_metadata["model"] = ${CLASS_NAME}LLMParameters.validate_model(
+            adapter_metadata
+        )
+
+        # Map any custom field names here
+        # Example: if "endpoint" in adapter_metadata:
+        #     adapter_metadata["api_base"] = adapter_metadata["endpoint"]
+
+        # Validate with pydantic and return
+        return ${CLASS_NAME}LLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        """Add provider prefix to model name (idempotent).
+
+        Args:
+            adapter_metadata: Configuration containing 'model' key
+
+        Returns:
+            Model name with provider prefix
+        """
+        model = adapter_metadata.get("model", "")
+        # Avoid double-prefixing
+        if model.startswith("${MODEL_PREFIX}"):
+            return model
+        return f"${MODEL_PREFIX}{model}"
