@@ -1,6 +1,5 @@
 import logging
 import signal
-import types
 
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.tool.executor import ToolExecutor
@@ -13,14 +12,6 @@ class ToolEntrypoint:
     """Class that contains methods for the entrypoint for a tool."""
 
     @staticmethod
-    def _signal_handler(signum: int, _frame: types.FrameType | None) -> None:
-        """Handle SIGTERM and SIGINT signals."""
-        sig = signal.Signals(signum)
-        signal_name = sig.name
-        logger.warning(f"RECEIVED SIGNAL: {signal_name}")
-        logger.warning("Initiating graceful shutdown...")
-
-    @staticmethod
     def launch(tool: BaseTool, args: list[str]) -> None:
         """Entrypoint function for a tool.
 
@@ -31,9 +22,19 @@ class ToolEntrypoint:
             tool (AbstractTool): Tool to execute
             args (List[str]): Arguments passed to a tool
         """
-        # Register signal handlers for graceful shutdown
-        signal.signal(signal.SIGTERM, ToolEntrypoint._signal_handler)
-        signal.signal(signal.SIGINT, ToolEntrypoint._signal_handler)
+        # Ignore SIGTERM and SIGINT from the very beginning to prevent
+        # any interruption of tool operations
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+        # Prevent signals from interrupting system calls
+        # This ensures I/O operations are not interrupted by ignored signals
+        signal.siginterrupt(signal.SIGTERM, False)
+        signal.siginterrupt(signal.SIGINT, False)
+
+        logger.info(
+            "Tool configured to ignore SIGTERM/SIGINT for uninterrupted execution"
+        )
 
         parsed_args = ToolArgsParser.parse_args(args)
         executor = ToolExecutor(tool=tool)
