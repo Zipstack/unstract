@@ -35,6 +35,7 @@ class VariableReplacementService:
         prompt_name: str,
         doc_name: str,
         custom_data: dict[str, Any] = None,
+        is_ide: bool = True,
     ) -> str:
         """Replaces variables in prompt.
 
@@ -70,6 +71,7 @@ class VariableReplacementService:
                 prompt_text=prompt[PSKeys.PROMPT],
                 variable_map=variable_map,
                 custom_data=custom_data,
+                is_ide=is_ide,
             )
         except KeyError:
             # Executed incase of structured tool and
@@ -78,6 +80,7 @@ class VariableReplacementService:
                 prompt_text=prompt_text,
                 variable_map=structured_output,
                 custom_data=custom_data,
+                is_ide=is_ide,
             )
         finally:
             publish_log(
@@ -98,6 +101,7 @@ class VariableReplacementService:
         prompt_text: str,
         variable_map: dict[str, Any],
         custom_data: dict[str, Any] = None,
+        is_ide: bool = True,
     ) -> str:
         variables: list[str] = VariableReplacementHelper.extract_variables_from_prompt(
             prompt_text=prompt_text
@@ -120,10 +124,11 @@ class VariableReplacementService:
                     structured_output=variable_map,
                 )
 
-            elif variable_type == VariableType.CUSTOM_DATA and custom_data:
+            elif variable_type == VariableType.CUSTOM_DATA:
                 prompt_text = VariableReplacementHelper.replace_custom_data_variable(
                     prompt=prompt_text,
                     variable=variable,
-                    custom_data=custom_data,
+                    custom_data=custom_data or {},
+                    is_ide=is_ide,
                 )
         return prompt_text
