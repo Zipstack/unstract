@@ -9,11 +9,12 @@ Example:
     python fetch_logo.py "PostgreSQL" "/path/to/frontend/public/icons/connector-icons/Postgresql.png"
 
 Sources tried in order:
-1. SimpleIcons (simpleicons.org)
-2. Devicon (devicon.dev)
-3. Logo.dev API
-4. Web search fallback
-5. Skip if not found
+1. WorldVectorLogo (worldvectorlogo.com) - best for tech/software logos
+2. SimpleIcons (simpleicons.org)
+3. Devicon (devicon.dev)
+4. Logo.dev API
+5. Clearbit
+6. Skip if not found
 """
 
 import sys
@@ -28,6 +29,36 @@ from pathlib import Path
 def normalize_name(name: str) -> str:
     """Normalize service name for API lookups."""
     return re.sub(r'[^a-z0-9]', '', name.lower())
+
+
+def fetch_worldvectorlogo(name: str, output_path: str) -> bool:
+    """Try to fetch from WorldVectorLogo CDN - best source for tech logos."""
+    # Try different name formats
+    name_variants = [
+        name.lower().replace(' ', '-'),  # "SharePoint" -> "sharepoint"
+        f"microsoft-{name.lower().replace(' ', '-')}",  # "SharePoint" -> "microsoft-sharepoint"
+        normalize_name(name),  # "SharePoint" -> "sharepoint"
+    ]
+
+    for variant in name_variants:
+        url = f"https://cdn.worldvectorlogo.com/logos/{variant}.svg"
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=10) as response:
+                if response.status == 200:
+                    content = response.read()
+                    # Check if it's actually an SVG (not an error page)
+                    if content.startswith(b'<svg') or b'<svg' in content[:500]:
+                        svg_path = output_path.rsplit('.', 1)[0] + '.svg'
+                        with open(svg_path, 'wb') as f:
+                            f.write(content)
+                        print(f"[WorldVectorLogo] Logo saved to: {svg_path}")
+                        return True
+        except (urllib.error.URLError, urllib.error.HTTPError):
+            continue
+
+    print("[WorldVectorLogo] Not found")
+    return False
 
 
 def fetch_simple_icons(name: str, output_path: str) -> bool:
@@ -155,6 +186,7 @@ def main():
 
     # Try sources in order
     sources = [
+        ("WorldVectorLogo", fetch_worldvectorlogo),
         ("SimpleIcons", fetch_simple_icons),
         ("Devicon", fetch_devicon),
         ("logo.dev", fetch_logo_dev),
