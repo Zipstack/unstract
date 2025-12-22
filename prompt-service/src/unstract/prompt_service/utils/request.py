@@ -4,7 +4,6 @@ from typing import Any
 import requests as pyrequests
 from flask import current_app as app
 from requests.exceptions import RequestException
-
 from unstract.prompt_service.exceptions import APIError, BadRequest, MissingFieldError
 
 
