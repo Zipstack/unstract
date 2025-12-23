@@ -4,8 +4,10 @@ import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import PropTypes from "prop-types";
 import { highlightPlugin } from "@react-pdf-viewer/highlight";
+
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
+import { PDF_WORKER_URL } from "../../../helpers/pdfWorkerConfig";
 
 let RenderHighlights;
 try {
@@ -97,7 +99,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
 
   return (
     <div ref={parentRef} className="doc-manager-body">
-      <Worker workerUrl="https://unpkg.com/pdfjs-dist@3.4.120/build/pdf.worker.min.js">
+      <Worker workerUrl={PDF_WORKER_URL}>
         <Viewer
           fileUrl={fileUrl}
           plugins={[
