@@ -95,18 +95,11 @@ class SharePointFileSystem(AbstractFileSystem):
                 if self._ctx is None:
                     # Import here for fork safety
                     from office365.graph_client import GraphClient
-                    from office365.runtime.auth.client_credential import (
-                        ClientCredential,
-                    )
 
                     logger.info("Initializing SharePoint/OneDrive client")
 
                     if self.client_secret:
                         # Client credentials flow (app-only)
-                        credentials = ClientCredential(
-                            self.client_id,
-                            self.client_secret,
-                        )
                         self._ctx = GraphClient.with_client_credentials(
                             self.tenant_id,
                             self.client_id,
