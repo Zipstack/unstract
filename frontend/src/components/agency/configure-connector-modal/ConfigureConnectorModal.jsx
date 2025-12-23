@@ -25,14 +25,17 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import "./ConfigureConnectorModal.css";
 
-let DBRules;
+let RuleEngine;
+let ruleEngineTabs;
 
 try {
-  DBRules =
-    require("../../../plugins/manual-review/db-rules/DBRules.jsx").DBRules;
+  const ruleEnginePlugin = require("../../../plugins/manual-review/rule-engine");
+  RuleEngine = ruleEnginePlugin.RuleEngine;
+  ruleEngineTabs = ruleEnginePlugin.ruleEngineTabs;
 } catch {
-  // The component will remain null of it is not available
+  // Plugin not available
 }
+
 function ConfigureConnectorModal({
   open,
   setOpen,
@@ -80,14 +83,17 @@ function ConfigureConnectorModal({
 
   const setUpdatedTabOptions = (tabOption) => {
     setTabItems((prevTabOptions) => {
-      // Check if tabOption already exists in prevTabOptions
-      // Return previous state unchanged if it does or create new array
-      if (prevTabOptions.some((opt) => opt?.key === tabOption?.key)) {
-        return prevTabOptions;
-      } else {
-        const updatedTabOptions = [...prevTabOptions, tabOption];
-        return updatedTabOptions;
+      const existingIndex = prevTabOptions.findIndex(
+        (opt) => opt?.key === tabOption?.key
+      );
+      if (existingIndex === -1) {
+        // Add new tab option
+        return [...prevTabOptions, tabOption];
       }
+      // Update existing tab option (e.g., disabled state may have changed)
+      const updatedTabOptions = [...prevTabOptions];
+      updatedTabOptions[existingIndex] = tabOption;
+      return updatedTabOptions;
     });
   };
 
@@ -378,22 +384,17 @@ function ConfigureConnectorModal({
   };
 
   // Load plugin tab for Human In The Loop (DATABASE connectors only)
+  // API connectors show RuleEngine directly without tabs
   useEffect(() => {
-    if (connMode !== "DATABASE") {
+    if (connMode !== "DATABASE" || !ruleEngineTabs) {
       return;
     }
 
-    try {
-      const tabOption =
-        require("../../../plugins/manual-review/connector-config-tab-mrq/ConnectorConfigTabMRQ").mrqTabs;
-      if (tabOption) {
-        tabOption["disabled"] = !connDetails?.id;
-        tabOption["visible"] = true;
-        setUpdatedTabOptions(tabOption);
-      }
-    } catch {
-      // The component will remain null if it is not available
-    }
+    // Use tab configuration from the rule-engine plugin
+    const tabOption = { ...ruleEngineTabs };
+    tabOption["disabled"] = !connDetails?.id;
+    tabOption["visible"] = true;
+    setUpdatedTabOptions(tabOption);
   }, [connMode, connDetails?.id]);
 
   // Handle click-outside to clear file selection
@@ -496,17 +497,19 @@ function ConfigureConnectorModal({
       closable={!isSavingEndpoint}
       centered
       footer={
-        connDetails?.id ? (
+        connDetails?.id || connMode === "API" ? (
           <div className="conn-modal-footer">
             <Button onClick={handleModalClose}>Cancel</Button>
-            <Button
-              type="primary"
-              loading={isSavingEndpoint}
-              onClick={handleSave}
-              disabled={!hasUnsavedChanges()}
-            >
-              Save
-            </Button>
+            {connMode !== "API" && (
+              <Button
+                type="primary"
+                loading={isSavingEndpoint}
+                onClick={handleSave}
+                disabled={!hasUnsavedChanges()}
+              >
+                Save
+              </Button>
+            )}
           </div>
         ) : null
       }
@@ -515,61 +518,63 @@ function ConfigureConnectorModal({
     >
       <div className="conn-modal-body">
         <Typography.Text className="modal-header" strong>
-          Configure Connector
+          {connMode === "API" ? "Configure HITL Rules" : "Configure Connector"}
         </Typography.Text>
 
-        {/* Connector Selection Dropdown */}
-        <div className="connector-selection-section">
-          <Typography.Text strong className="connector-selection-label">
-            Select Connector
-          </Typography.Text>
-          <Select
-            className="connector-selection-dropdown"
-            placeholder="Select a connector"
-            showSearch
-            filterOption={(input, option) => {
-              return option?.data?.label
-                ?.toLowerCase()
-                .includes(input.toLowerCase());
-            }}
-            value={
-              connDetails?.id
-                ? {
-                    value: connDetails.id,
-                    label: renderConnectorLabel(
-                      connDetails,
-                      availableConnectors
-                    ),
-                  }
-                : undefined
-            }
-            labelInValue
-            onChange={(option) => handleConnectorSelect(option?.value)}
-            loading={isLoadingConnectors}
-            options={availableConnectors.map((conn) => ({
-              value: conn.value,
-              label: (
-                <Space>
-                  {conn.icon && !conn.isAddNew && (
-                    <Image
-                      src={conn.icon}
-                      width={20}
-                      height={20}
-                      preview={false}
-                    />
-                  )}
-                  <span>{conn.label}</span>
-                </Space>
-              ),
-              data: conn,
-            }))}
-            optionRender={(option) => option.label}
-            dropdownRender={renderDropdown}
-          />
-        </div>
+        {/* Connector Selection Dropdown (not shown for API connectors) */}
+        {connMode !== "API" && (
+          <div className="connector-selection-section">
+            <Typography.Text strong className="connector-selection-label">
+              Select Connector
+            </Typography.Text>
+            <Select
+              className="connector-selection-dropdown"
+              placeholder="Select a connector"
+              showSearch
+              filterOption={(input, option) => {
+                return option?.data?.label
+                  ?.toLowerCase()
+                  .includes(input.toLowerCase());
+              }}
+              value={
+                connDetails?.id
+                  ? {
+                      value: connDetails.id,
+                      label: renderConnectorLabel(
+                        connDetails,
+                        availableConnectors
+                      ),
+                    }
+                  : undefined
+              }
+              labelInValue
+              onChange={(option) => handleConnectorSelect(option?.value)}
+              loading={isLoadingConnectors}
+              options={availableConnectors.map((conn) => ({
+                value: conn.value,
+                label: (
+                  <Space>
+                    {conn.icon && !conn.isAddNew && (
+                      <Image
+                        src={conn.icon}
+                        width={20}
+                        height={20}
+                        preview={false}
+                      />
+                    )}
+                    <span>{conn.label}</span>
+                  </Space>
+                ),
+                data: conn,
+              }))}
+              optionRender={(option) => option.label}
+              dropdownRender={renderDropdown}
+            />
+          </div>
+        )}
 
-        {/* Show placeholder when no connector is selected */}
-        {!connDetails?.id && (
+        {/* Show placeholder when no connector is selected (not for API connectors) */}
+        {!connDetails?.id && connMode !== "API" && (
           <div className="connector-placeholder">
             {connType === "input" ? (
               <CloudDownloadOutlined className="connector-placeholder-icon" />
@@ -582,8 +587,13 @@ function ConfigureConnectorModal({
           </div>
         )}
 
+        {/* API connectors: Show only HITL rules (no connector selection needed) */}
+        {connMode === "API" && RuleEngine && (
+          <RuleEngine workflowDetails={workflowDetails} ruleType="API" />
+        )}
+
         {/* Only show configuration form and file browser after a connector is selected */}
-        {connDetails?.id && (
+        {connDetails?.id && connMode !== "API" && (
           <>
             {/* DATABASE connectors: Show tabs with Settings and Human In The Loop */}
             {connMode === "DATABASE" ? (
@@ -609,8 +619,11 @@ function ConfigureConnectorModal({
                             validateAndSubmit={handleValidateAndSubmit}
                           />
                         )}
-                        {item.key === "MANUALREVIEW" && DBRules && (
-                          <DBRules workflowDetails={workflowDetails} />
+                        {item.key === "MANUALREVIEW" && RuleEngine && (
+                          <RuleEngine
+                            workflowDetails={workflowDetails}
+                            ruleType="DB"
+                          />
                         )}
                       </>
                     ),

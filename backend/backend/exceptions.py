@@ -4,11 +4,12 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import exception_handler
 
-from unstract.connectors.exceptions import ConnectorBaseException
+from unstract.connectors.exceptions import ConnectorBaseException, ConnectorError
 
 
 class UnstractBaseException(APIException):
     default_detail = "Error occurred"
+    default_status_code = 500
 
     def __init__(
         self,
@@ -27,6 +28,12 @@ class UnstractBaseException(APIException):
             )
         super().__init__(detail=detail, **kwargs)
         self._core_err = core_err
+
+        # Preserve status code from ConnectorError if available
+        if isinstance(core_err, ConnectorError) and core_err.status_code is not None:
+            self.status_code = core_err.status_code
+        else:
+            self.status_code = self.default_status_code
 
 
 class LLMHelperError(Exception):
@@ -51,4 +58,4 @@ class UnstractFSException(UnstractBaseException):
     """
 
     default_detail = "Error testing connection. "
-    status_code = 500
+    default_status_code = 500
