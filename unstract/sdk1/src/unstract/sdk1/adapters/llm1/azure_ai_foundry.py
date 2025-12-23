@@ -1,6 +1,6 @@
 from typing import Any
 
-from unstract.sdk1.adapters.base1 import BaseAdapter, AzureAIFoundryLLMParameters
+from unstract.sdk1.adapters.base1 import AzureAIFoundryLLMParameters, BaseAdapter
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 

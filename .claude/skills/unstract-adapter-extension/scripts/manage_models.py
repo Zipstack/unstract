@@ -157,7 +157,9 @@ def convert_to_freetext(schema: dict) -> dict:
 
     if "enum" in model_prop:
         # Preserve default if it exists
-        default = model_prop.get("default", model_prop["enum"][0] if model_prop["enum"] else "")
+        default = model_prop.get(
+            "default", model_prop["enum"][0] if model_prop["enum"] else ""
+        )
         del model_prop["enum"]
         model_prop["default"] = default
 
@@ -165,38 +167,36 @@ def convert_to_freetext(schema: dict) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Manage models in adapter JSON schemas"
-    )
+    parser = argparse.ArgumentParser(description="Manage models in adapter JSON schemas")
     parser.add_argument(
         "--adapter",
         required=True,
         choices=["llm", "embedding"],
-        help="Adapter type (llm or embedding)"
+        help="Adapter type (llm or embedding)",
     )
     parser.add_argument(
-        "--provider",
-        required=True,
-        help="Provider name (e.g., 'openai', 'anthropic')"
+        "--provider", required=True, help="Provider name (e.g., 'openai', 'anthropic')"
     )
     parser.add_argument(
         "--action",
         required=True,
-        choices=["list", "add-enum", "remove-enum", "set-default", "update-description", "to-enum", "to-freetext"],
-        help="Action to perform"
+        choices=[
+            "list",
+            "add-enum",
+            "remove-enum",
+            "set-default",
+            "update-description",
+            "to-enum",
+            "to-freetext",
+        ],
+        help="Action to perform",
     )
     parser.add_argument(
-        "--models",
-        help="Comma-separated list of models (for add/remove/set-default)"
+        "--models", help="Comma-separated list of models (for add/remove/set-default)"
     )
+    parser.add_argument("--description", help="New description for model field")
     parser.add_argument(
-        "--description",
-        help="New description for model field"
-    )
-    parser.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Show changes without applying them"
+        "--dry-run", action="store_true", help="Show changes without applying them"
     )
 
     args = parser.parse_args()
@@ -218,11 +218,11 @@ def main():
         print(f"Model configuration for {args.provider} {args.adapter}:")
         print(f"  Type: {info['type']}")
         print(f"  Default: {info['default']}")
-        if info['enum']:
+        if info["enum"]:
             print(f"  Enum values: {', '.join(info['enum'])}")
         else:
             print("  Enum: (free text)")
-        if info['description']:
+        if info["description"]:
             print(f"  Description: {info['description']}")
         return 0
 
@@ -255,7 +255,7 @@ def main():
             print("Error: --description required for update-description action")
             return 1
         schema = update_description(schema, args.description)
-        print(f"Updated description")
+        print("Updated description")
 
     elif args.action == "to-enum":
         schema = convert_to_enum(schema)

@@ -27,116 +27,215 @@ LITELLM_FEATURES = {
     "llm": {
         "openai": {
             "known_params": [
-                "api_key", "api_base", "api_version", "model", "max_tokens",
-                "max_retries", "timeout", "temperature", "top_p", "n",
-                "enable_reasoning", "reasoning_effort", "seed", "response_format",
-                "tools", "tool_choice", "parallel_tool_calls", "logprobs"
+                "api_key",
+                "api_base",
+                "api_version",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "top_p",
+                "n",
+                "enable_reasoning",
+                "reasoning_effort",
+                "seed",
+                "response_format",
+                "tools",
+                "tool_choice",
+                "parallel_tool_calls",
+                "logprobs",
             ],
             "reasoning_models": ["o1-mini", "o1-preview", "o3-mini", "o3", "o4-mini"],
             "latest_models": ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-5"],
-            "docs_url": "https://docs.litellm.ai/docs/providers/openai"
+            "docs_url": "https://docs.litellm.ai/docs/providers/openai",
         },
         "anthropic": {
             "known_params": [
-                "api_key", "model", "max_tokens", "max_retries", "timeout",
-                "temperature", "enable_thinking", "budget_tokens", "thinking"
+                "api_key",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "enable_thinking",
+                "budget_tokens",
+                "thinking",
             ],
             "thinking_models": ["claude-3-7-sonnet", "claude-sonnet-4", "claude-opus-4"],
             "latest_models": ["claude-sonnet-4-5-20250929", "claude-opus-4-1-20250805"],
-            "docs_url": "https://docs.litellm.ai/docs/providers/anthropic"
+            "docs_url": "https://docs.litellm.ai/docs/providers/anthropic",
         },
         "azure": {
             "known_params": [
-                "api_key", "api_base", "api_version", "deployment_name", "azure_endpoint",
-                "model", "max_tokens", "max_retries", "timeout", "temperature",
-                "enable_reasoning", "reasoning_effort"
+                "api_key",
+                "api_base",
+                "api_version",
+                "deployment_name",
+                "azure_endpoint",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "enable_reasoning",
+                "reasoning_effort",
             ],
             "reasoning_models": ["o1-mini", "o1-preview"],
-            "docs_url": "https://docs.litellm.ai/docs/providers/azure"
+            "docs_url": "https://docs.litellm.ai/docs/providers/azure",
         },
         "bedrock": {
             "known_params": [
-                "aws_access_key_id", "aws_secret_access_key", "region_name",
-                "aws_region_name", "aws_profile_name", "model_id", "model",
-                "max_tokens", "max_retries", "timeout", "temperature",
-                "enable_thinking", "budget_tokens", "thinking", "top_k"
+                "aws_access_key_id",
+                "aws_secret_access_key",
+                "region_name",
+                "aws_region_name",
+                "aws_profile_name",
+                "model_id",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "enable_thinking",
+                "budget_tokens",
+                "thinking",
+                "top_k",
             ],
             "thinking_models": ["anthropic.claude-3-7-sonnet"],
-            "docs_url": "https://docs.litellm.ai/docs/providers/bedrock"
+            "docs_url": "https://docs.litellm.ai/docs/providers/bedrock",
         },
         "vertex_ai": {
             "known_params": [
-                "json_credentials", "vertex_credentials", "project", "vertex_project",
-                "model", "max_tokens", "max_retries", "timeout", "temperature",
-                "safety_settings", "enable_thinking", "budget_tokens", "thinking",
-                "reasoning_effort", "tools", "googleSearch"
+                "json_credentials",
+                "vertex_credentials",
+                "project",
+                "vertex_project",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "safety_settings",
+                "enable_thinking",
+                "budget_tokens",
+                "thinking",
+                "reasoning_effort",
+                "tools",
+                "googleSearch",
             ],
             "thinking_models": ["gemini-2.5-flash-preview", "gemini-2.5-pro"],
-            "docs_url": "https://docs.litellm.ai/docs/providers/vertex"
+            "docs_url": "https://docs.litellm.ai/docs/providers/vertex",
         },
         "mistral": {
             "known_params": [
-                "api_key", "model", "max_tokens", "max_retries", "timeout",
-                "temperature", "enable_reasoning", "reasoning_effort", "tools"
+                "api_key",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "enable_reasoning",
+                "reasoning_effort",
+                "tools",
             ],
             "reasoning_models": ["magistral-medium-2506", "magistral-small-2506"],
             "latest_models": ["mistral-large-latest", "mistral-small-latest"],
-            "docs_url": "https://docs.litellm.ai/docs/providers/mistral"
+            "docs_url": "https://docs.litellm.ai/docs/providers/mistral",
         },
         "ollama": {
             "known_params": [
-                "base_url", "api_base", "model", "max_tokens", "temperature",
-                "context_window", "request_timeout", "json_mode", "response_format",
-                "tools"
+                "base_url",
+                "api_base",
+                "model",
+                "max_tokens",
+                "temperature",
+                "context_window",
+                "request_timeout",
+                "json_mode",
+                "response_format",
+                "tools",
             ],
-            "docs_url": "https://docs.litellm.ai/docs/providers/ollama"
+            "docs_url": "https://docs.litellm.ai/docs/providers/ollama",
         },
         "anyscale": {
             "known_params": [
-                "api_key", "api_base", "model", "max_tokens", "max_retries",
-                "timeout", "temperature", "additional_kwargs"
+                "api_key",
+                "api_base",
+                "model",
+                "max_tokens",
+                "max_retries",
+                "timeout",
+                "temperature",
+                "additional_kwargs",
             ],
-            "docs_url": "https://docs.litellm.ai/docs/providers/anyscale"
-        }
+            "docs_url": "https://docs.litellm.ai/docs/providers/anyscale",
+        },
     },
     "embedding": {
         "openai": {
             "known_params": [
-                "api_key", "api_base", "model", "embed_batch_size", "timeout",
-                "dimensions"
+                "api_key",
+                "api_base",
+                "model",
+                "embed_batch_size",
+                "timeout",
+                "dimensions",
             ],
             "latest_models": ["text-embedding-3-small", "text-embedding-3-large"],
-            "docs_url": "https://docs.litellm.ai/docs/embedding/supported_embedding"
+            "docs_url": "https://docs.litellm.ai/docs/embedding/supported_embedding",
         },
         "azure": {
             "known_params": [
-                "api_key", "api_base", "api_version", "deployment_name",
-                "azure_endpoint", "model", "embed_batch_size", "timeout",
-                "dimensions"
+                "api_key",
+                "api_base",
+                "api_version",
+                "deployment_name",
+                "azure_endpoint",
+                "model",
+                "embed_batch_size",
+                "timeout",
+                "dimensions",
             ],
-            "docs_url": "https://docs.litellm.ai/docs/providers/azure"
+            "docs_url": "https://docs.litellm.ai/docs/providers/azure",
         },
         "bedrock": {
             "known_params": [
-                "aws_access_key_id", "aws_secret_access_key", "region_name",
-                "aws_region_name", "model", "max_retries", "timeout"
+                "aws_access_key_id",
+                "aws_secret_access_key",
+                "region_name",
+                "aws_region_name",
+                "model",
+                "max_retries",
+                "timeout",
             ],
-            "docs_url": "https://docs.litellm.ai/docs/providers/bedrock_embedding"
+            "docs_url": "https://docs.litellm.ai/docs/providers/bedrock_embedding",
         },
         "vertexai": {
             "known_params": [
-                "json_credentials", "vertex_credentials", "project", "vertex_project",
-                "model", "embed_batch_size", "embed_mode", "dimensions", "input_type"
+                "json_credentials",
+                "vertex_credentials",
+                "project",
+                "vertex_project",
+                "model",
+                "embed_batch_size",
+                "embed_mode",
+                "dimensions",
+                "input_type",
             ],
-            "docs_url": "https://docs.litellm.ai/docs/providers/vertex"
+            "docs_url": "https://docs.litellm.ai/docs/providers/vertex",
         },
         "ollama": {
             "known_params": [
-                "base_url", "api_base", "model_name", "model", "embed_batch_size"
+                "base_url",
+                "api_base",
+                "model_name",
+                "model",
+                "embed_batch_size",
             ],
-            "docs_url": "https://docs.litellm.ai/docs/providers/ollama"
-        }
-    }
+            "docs_url": "https://docs.litellm.ai/docs/providers/ollama",
+        },
+    },
 }
 
 
@@ -179,7 +278,7 @@ def analyze_adapter(adapter_type: str, provider: str) -> dict:
         "current_properties": [],
         "missing_properties": [],
         "suggestions": [],
-        "docs_url": None
+        "docs_url": None,
     }
 
     # Load schema
@@ -203,7 +302,9 @@ def analyze_adapter(adapter_type: str, provider: str) -> dict:
 
     # Find missing parameters
     known_params = set(features.get("known_params", []))
-    missing = known_params - current_props - {"adapter_name"}  # adapter_name is always present
+    missing = (
+        known_params - current_props - {"adapter_name"}
+    )  # adapter_name is always present
 
     # Filter out params that might be named differently
     common_aliases = {
@@ -211,7 +312,7 @@ def analyze_adapter(adapter_type: str, provider: str) -> dict:
         "base_url": "api_base",
         "vertex_credentials": "json_credentials",
         "vertex_project": "project",
-        "aws_region_name": "region_name"
+        "aws_region_name": "region_name",
     }
 
     filtered_missing = set()
@@ -235,7 +336,11 @@ def analyze_adapter(adapter_type: str, provider: str) -> dict:
         reasoning_models = features.get("reasoning_models", [])
         thinking_models = features.get("thinking_models", [])
 
-        if reasoning_models and "enable_reasoning" not in current_props and "reasoning_effort" not in current_props:
+        if (
+            reasoning_models
+            and "enable_reasoning" not in current_props
+            and "reasoning_effort" not in current_props
+        ):
             result["suggestions"].append(
                 f"Consider adding reasoning support for models: {', '.join(reasoning_models)}"
             )
@@ -326,17 +431,12 @@ def main():
         "--adapter",
         choices=["llm", "embedding", "all"],
         default="all",
-        help="Type of adapter to check"
+        help="Type of adapter to check",
     )
     parser.add_argument(
-        "--provider",
-        help="Specific provider to check (e.g., openai, anthropic)"
+        "--provider", help="Specific provider to check (e.g., openai, anthropic)"
     )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Output results as JSON"
-    )
+    parser.add_argument("--json", action="store_true", help="Output results as JSON")
 
     args = parser.parse_args()
 

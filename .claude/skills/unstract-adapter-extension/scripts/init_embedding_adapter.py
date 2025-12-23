@@ -18,18 +18,20 @@ import json
 import sys
 import uuid
 from pathlib import Path
-from urllib.request import urlopen, Request
-from urllib.error import URLError, HTTPError
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 # Resolve paths
 SCRIPT_DIR = Path(__file__).parent
 SKILL_DIR = SCRIPT_DIR.parent
 # Find the sdk1 adapters directory relative to the repo root
-REPO_ROOT = SKILL_DIR.parent.parent.parent  # .claude/skills/unstract-adapter-extension -> repo root
+REPO_ROOT = (
+    SKILL_DIR.parent.parent.parent
+)  # .claude/skills/unstract-adapter-extension -> repo root
 SDK1_ADAPTERS = REPO_ROOT / "unstract" / "sdk1" / "src" / "unstract" / "sdk1" / "adapters"
 ICONS_DIR = REPO_ROOT / "frontend" / "public" / "icons" / "adapter-icons"
 
-EMBEDDING_ADAPTER_TEMPLATE = '''from typing import Any
+EMBEDDING_ADAPTER_TEMPLATE = """from typing import Any
 
 from unstract.sdk1.adapters.base1 import BaseAdapter, {param_class}
 from unstract.sdk1.adapters.enums import AdapterTypes
@@ -69,7 +71,7 @@ class {class_name}({param_class}, BaseAdapter):
     @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING
-'''
+"""
 
 EMBEDDING_SCHEMA_TEMPLATE = {
     "title": "{display_name} Embedding",
@@ -80,27 +82,27 @@ EMBEDDING_SCHEMA_TEMPLATE = {
             "type": "string",
             "title": "Name",
             "default": "",
-            "description": "Provide a unique name for this adapter instance. Example: {provider}-emb-1"
+            "description": "Provide a unique name for this adapter instance. Example: {provider}-emb-1",
         },
         "model": {
             "type": "string",
             "title": "Model",
             "default": "",
-            "description": "Provide the name of the embedding model."
+            "description": "Provide the name of the embedding model.",
         },
         "api_key": {
             "type": "string",
             "title": "API Key",
             "default": "",
             "format": "password",
-            "description": "Your {display_name} API key."
+            "description": "Your {display_name} API key.",
         },
         "api_base": {
             "type": "string",
             "title": "API Base",
             "format": "uri",
             "default": "",
-            "description": "API endpoint URL (if different from default)."
+            "description": "API endpoint URL (if different from default).",
         },
         "embed_batch_size": {
             "type": "number",
@@ -108,7 +110,7 @@ EMBEDDING_SCHEMA_TEMPLATE = {
             "multipleOf": 1,
             "title": "Embed Batch Size",
             "default": 10,
-            "description": "Number of texts to embed in each batch."
+            "description": "Number of texts to embed in each batch.",
         },
         "timeout": {
             "type": "number",
@@ -116,9 +118,9 @@ EMBEDDING_SCHEMA_TEMPLATE = {
             "multipleOf": 1,
             "title": "Timeout",
             "default": 240,
-            "description": "Timeout in seconds"
-        }
-    }
+            "description": "Timeout in seconds",
+        },
+    },
 }
 
 PARAMETER_CLASS_TEMPLATE = '''
@@ -156,7 +158,9 @@ def to_class_name(provider: str) -> str:
     if provider.lower() in special_cases:
         return special_cases[provider.lower()]
 
-    return "".join(word.capitalize() for word in provider.replace("_", " ").replace("-", " ").split())
+    return "".join(
+        word.capitalize() for word in provider.replace("_", " ").replace("-", " ").split()
+    )
 
 
 def to_icon_name(display_name: str) -> str:
@@ -168,7 +172,7 @@ def fetch_url(url: str, timeout: int = 10) -> bytes | None:
     """Fetch content from URL with error handling."""
     try:
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
         }
         request = Request(url, headers=headers)
         with urlopen(request, timeout=timeout) as response:
@@ -201,14 +205,13 @@ def search_potential_logo_sources(provider: str, display_name: str) -> list[dict
     for domain, source_type in domains:
         url = f"https://logo.clearbit.com/{domain}"
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            request = Request(url, headers=headers, method='HEAD')
+            headers = {"User-Agent": "Mozilla/5.0"}
+            request = Request(url, headers=headers, method="HEAD")
             with urlopen(request, timeout=5) as response:
                 if response.status == 200:
-                    found_sources.append({
-                        'url': url,
-                        'source': f"Clearbit ({source_type}: {domain})"
-                    })
+                    found_sources.append(
+                        {"url": url, "source": f"Clearbit ({source_type}: {domain})"}
+                    )
         except (URLError, HTTPError, TimeoutError):
             continue
 
@@ -222,23 +225,24 @@ def search_potential_logo_sources(provider: str, display_name: str) -> list[dict
     for name in github_names:
         url = f"https://github.com/{name}.png?size=512"
         try:
-            headers = {'User-Agent': 'Mozilla/5.0'}
-            request = Request(url, headers=headers, method='HEAD')
+            headers = {"User-Agent": "Mozilla/5.0"}
+            request = Request(url, headers=headers, method="HEAD")
             with urlopen(request, timeout=5) as response:
                 if response.status == 200:
-                    content_type = response.headers.get('Content-Type', '')
-                    if 'image' in content_type:
-                        found_sources.append({
-                            'url': url,
-                            'source': f"GitHub avatar (@{name})"
-                        })
+                    content_type = response.headers.get("Content-Type", "")
+                    if "image" in content_type:
+                        found_sources.append(
+                            {"url": url, "source": f"GitHub avatar (@{name})"}
+                        )
         except (URLError, HTTPError, TimeoutError):
             continue
 
     return found_sources
 
 
-def download_and_process_logo(url: str, output_path: Path, target_size: int = 512) -> bool:
+def download_and_process_logo(
+    url: str, output_path: Path, target_size: int = 512
+) -> bool:
     """Download logo from URL and process to standard format.
 
     Args:
@@ -256,60 +260,78 @@ def download_and_process_logo(url: str, output_path: Path, target_size: int = 51
         return False
 
     # Check if SVG (by URL extension or content)
-    is_svg = url.lower().endswith('.svg') or image_data[:5] == b'<?xml' or b'<svg' in image_data[:1000]
+    is_svg = (
+        url.lower().endswith(".svg")
+        or image_data[:5] == b"<?xml"
+        or b"<svg" in image_data[:1000]
+    )
 
     if is_svg:
         # Use ImageMagick for SVG conversion with optimal settings
         import subprocess
         import tempfile
 
-        with tempfile.NamedTemporaryFile(suffix='.svg', delete=False) as tmp:
+        with tempfile.NamedTemporaryFile(suffix=".svg", delete=False) as tmp:
             tmp.write(image_data)
             tmp_path = tmp.name
 
         try:
             # Convert SVG to PNG: 4800 DPI, 8-bit depth, 512x512
             result = subprocess.run(
-                ['magick', '-density', '4800', '-background', 'none',
-                 tmp_path, '-resize', f'{target_size}x{target_size}',
-                 '-depth', '8', str(output_path)],
-                capture_output=True, text=True
+                [
+                    "magick",
+                    "-density",
+                    "4800",
+                    "-background",
+                    "none",
+                    tmp_path,
+                    "-resize",
+                    f"{target_size}x{target_size}",
+                    "-depth",
+                    "8",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
             )
             if result.returncode != 0:
                 print(f"  ImageMagick error: {result.stderr}")
                 return False
             return True
         except FileNotFoundError:
-            print("  Note: ImageMagick not found. Install with: sudo pacman -S imagemagick")
+            print(
+                "  Note: ImageMagick not found. Install with: sudo pacman -S imagemagick"
+            )
             return False
         finally:
             Path(tmp_path).unlink(missing_ok=True)
 
     # Handle raster images (PNG, JPG, etc.) with PIL
     try:
-        from PIL import Image
         from io import BytesIO
+
+        from PIL import Image
 
         img = Image.open(BytesIO(image_data))
 
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
 
         if img.width != target_size or img.height != target_size:
             ratio = min(target_size / img.width, target_size / img.height)
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-            canvas = Image.new('RGBA', (target_size, target_size), (255, 255, 255, 0))
+            canvas = Image.new("RGBA", (target_size, target_size), (255, 255, 255, 0))
             offset = ((target_size - img.width) // 2, (target_size - img.height) // 2)
-            canvas.paste(img, offset, img if img.mode == 'RGBA' else None)
+            canvas.paste(img, offset, img if img.mode == "RGBA" else None)
             img = canvas
 
-        img.save(output_path, 'PNG')
+        img.save(output_path, "PNG")
         return True
 
     except ImportError:
-        if image_data[:8] == b'\x89PNG\r\n\x1a\n':
+        if image_data[:8] == b"\x89PNG\r\n\x1a\n":
             output_path.write_bytes(image_data)
             return True
         print("  Note: Install Pillow for better image processing: pip install Pillow")
@@ -328,7 +350,7 @@ def copy_logo(source_path: Path, output_path: Path, target_size: int = 512) -> b
         return False
 
     # Check if SVG
-    is_svg = source_path.suffix.lower() == '.svg'
+    is_svg = source_path.suffix.lower() == ".svg"
 
     if is_svg:
         # Use ImageMagick for SVG conversion with optimal settings
@@ -336,17 +358,30 @@ def copy_logo(source_path: Path, output_path: Path, target_size: int = 512) -> b
 
         try:
             result = subprocess.run(
-                ['magick', '-density', '4800', '-background', 'none',
-                 str(source_path), '-resize', f'{target_size}x{target_size}',
-                 '-depth', '8', str(output_path)],
-                capture_output=True, text=True
+                [
+                    "magick",
+                    "-density",
+                    "4800",
+                    "-background",
+                    "none",
+                    str(source_path),
+                    "-resize",
+                    f"{target_size}x{target_size}",
+                    "-depth",
+                    "8",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
             )
             if result.returncode != 0:
                 print(f"  ImageMagick error: {result.stderr}")
                 return False
             return True
         except FileNotFoundError:
-            print("  Note: ImageMagick not found. Install with: sudo pacman -S imagemagick")
+            print(
+                "  Note: ImageMagick not found. Install with: sudo pacman -S imagemagick"
+            )
             return False
 
     # Handle raster images with PIL
@@ -354,24 +389,25 @@ def copy_logo(source_path: Path, output_path: Path, target_size: int = 512) -> b
         from PIL import Image
 
         img = Image.open(source_path)
-        if img.mode != 'RGBA':
-            img = img.convert('RGBA')
+        if img.mode != "RGBA":
+            img = img.convert("RGBA")
 
         if img.width != target_size or img.height != target_size:
             ratio = min(target_size / img.width, target_size / img.height)
             new_size = (int(img.width * ratio), int(img.height * ratio))
             img = img.resize(new_size, Image.Resampling.LANCZOS)
 
-            canvas = Image.new('RGBA', (target_size, target_size), (255, 255, 255, 0))
+            canvas = Image.new("RGBA", (target_size, target_size), (255, 255, 255, 0))
             offset = ((target_size - img.width) // 2, (target_size - img.height) // 2)
-            canvas.paste(img, offset, img if img.mode == 'RGBA' else None)
+            canvas.paste(img, offset, img if img.mode == "RGBA" else None)
             img = canvas
 
-        img.save(output_path, 'PNG')
+        img.save(output_path, "PNG")
         return True
 
     except ImportError:
         import shutil
+
         shutil.copy2(source_path, output_path)
         return True
     except Exception:
@@ -403,7 +439,9 @@ def create_embedding_adapter(
     static_dir = embedding_dir / "static"
 
     if not embedding_dir.exists():
-        result["errors"].append(f"Embedding adapters directory not found at: {embedding_dir}")
+        result["errors"].append(
+            f"Embedding adapters directory not found at: {embedding_dir}"
+        )
         return result
 
     static_dir.mkdir(exist_ok=True)
@@ -498,44 +536,34 @@ def main():
     parser.add_argument(
         "--provider",
         required=True,
-        help="Provider identifier (lowercase, e.g., 'newprovider')"
+        help="Provider identifier (lowercase, e.g., 'newprovider')",
     )
     parser.add_argument(
         "--name",
         required=True,
-        help="Display name for the provider (e.g., 'New Provider')"
+        help="Display name for the provider (e.g., 'New Provider')",
     )
-    parser.add_argument(
-        "--description",
-        required=True,
-        help="Description of the adapter"
-    )
+    parser.add_argument("--description", required=True, help="Description of the adapter")
     parser.add_argument(
         "--add-param-class",
         action="store_true",
-        help="Generate a parameter class stub for base1.py"
+        help="Generate a parameter class stub for base1.py",
     )
     parser.add_argument(
         "--use-param-class",
-        help="Use an existing parameter class (e.g., 'OpenAIEmbeddingParameters')"
+        help="Use an existing parameter class (e.g., 'OpenAIEmbeddingParameters')",
     )
-    parser.add_argument(
-        "--logo-url",
-        help="URL to download the provider logo from"
-    )
-    parser.add_argument(
-        "--logo-file",
-        help="Path to a local logo file to copy"
-    )
+    parser.add_argument("--logo-url", help="URL to download the provider logo from")
+    parser.add_argument("--logo-file", help="Path to a local logo file to copy")
     parser.add_argument(
         "--auto-logo",
         action="store_true",
-        help="Automatically search for and download provider logo"
+        help="Automatically search for and download provider logo",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Show what would be created without actually creating files"
+        help="Show what would be created without actually creating files",
     )
 
     args = parser.parse_args()
@@ -554,7 +582,7 @@ def main():
         if args.logo_url or args.logo_file or args.auto_logo:
             print(f"  - {ICONS_DIR}/{icon_name}.png (if logo found)")
         if args.add_param_class:
-            print(f"  - Parameter class stub for base1.py")
+            print("  - Parameter class stub for base1.py")
         return 0
 
     result = create_embedding_adapter(
@@ -589,7 +617,7 @@ def main():
         for i, suggestion in enumerate(result["logo_suggestions"], 1):
             print(f"  {i}. {suggestion['source']}")
             print(f"     URL: {suggestion['url']}")
-        print(f"\nTo use a logo, re-run with: --logo-url <URL>")
+        print("\nTo use a logo, re-run with: --logo-url <URL>")
         print(f"Logo will be saved to: {ICONS_DIR}/{icon_name}.png")
 
     if result["param_class_stub"]:
@@ -602,7 +630,9 @@ def main():
     print("1. Customize the JSON schema in static/{provider}.json")
     print("2. If needed, add parameter class to base1.py")
     print("3. Update the adapter to use the correct parameter class")
-    if not any("png" in f for f in result["files_created"]) and not result.get("logo_suggestions"):
+    if not any("png" in f for f in result["files_created"]) and not result.get(
+        "logo_suggestions"
+    ):
         print(f"4. Add logo manually to: {ICONS_DIR}/{icon_name}.png")
     print("5. Test with: from unstract.sdk1.adapters.adapterkit import Adapterkit")
 
