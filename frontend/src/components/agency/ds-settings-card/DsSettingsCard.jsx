@@ -257,11 +257,13 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                   onClick={() => setOpenModal(true)}
                   disabled={
                     !endpointDetails?.connection_type ||
-                    connMode === "API" ||
-                    connMode === "APPDEPLOYMENT"
+                    connMode === "APPDEPLOYMENT" ||
+                    (connMode === "API" && connType === "input")
                   }
                 >
-                  Configure
+                  {connMode === "API" && connType === "output"
+                    ? "Configure HITL"
+                    : "Configure"}
                 </Button>
               </Tooltip>
             </Space>

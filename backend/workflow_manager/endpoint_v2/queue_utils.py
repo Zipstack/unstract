@@ -98,6 +98,7 @@ class QueueResult:
     enqueued_at: float | None = None
     ttl_seconds: int | None = None
     extracted_text: str | None = None
+    hitl_reason: str | None = None
 
     def __post_init__(self):
         """Initialize enqueued_at timestamp if not provided and validate required fields"""
@@ -124,5 +125,6 @@ class QueueResult:
             "enqueued_at": self.enqueued_at,
             "ttl_seconds": self.ttl_seconds,
             "extracted_text": self.extracted_text,
+            "hitl_reason": self.hitl_reason,
         }
         return result_dict
