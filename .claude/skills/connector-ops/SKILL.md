@@ -112,9 +112,9 @@ metadata = {
 #### 5b. Create Main Connector Class
 
 Use the appropriate template from `assets/templates/`:
-- `database_template.py` for database connectors
-- `filesystem_template.py` for filesystem connectors
-- `queue_template.py` for queue connectors
+- `database.py.template` for database connectors
+- `filesystem.py.template` for filesystem connectors
+- `queue.py.template` for queue connectors
 
 Read the template and adapt it for the specific service. Key methods to implement:
 
@@ -444,13 +444,13 @@ Consult these files for detailed patterns:
 ## Asset Templates
 
 Use these templates as starting points:
-- `assets/templates/database_template.py`
-- `assets/templates/filesystem_template.py`
-- `assets/templates/queue_template.py`
-- `assets/templates/init_template.py`
+- `assets/templates/database.py.template`
+- `assets/templates/filesystem.py.template`
+- `assets/templates/queue.py.template`
+- `assets/templates/init.py.template`
 - `assets/templates/json_schema_template.json`
-- `assets/templates/test_mock_template.py`
-- `assets/templates/test_integration_template.py`
+- `assets/templates/test_mock.py.template`
+- `assets/templates/test_integration.py.template`
 
 ---
 
