@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Fetch connector logo from various sources.
+"""Fetch connector logo from various sources.
 
 Usage:
     python fetch_logo.py "service_name" "output_path"
@@ -17,25 +16,23 @@ Sources tried in order:
 6. Skip if not found
 """
 
-import sys
-import os
 import re
-import urllib.request
+import sys
 import urllib.error
-import json
+import urllib.request
 from pathlib import Path
 
 
 def normalize_name(name: str) -> str:
     """Normalize service name for API lookups."""
-    return re.sub(r'[^a-z0-9]', '', name.lower())
+    return re.sub(r"[^a-z0-9]", "", name.lower())
 
 
 def fetch_worldvectorlogo(name: str, output_path: str) -> bool:
     """Try to fetch from WorldVectorLogo CDN - best source for tech logos."""
     # Try different name formats
     name_variants = [
-        name.lower().replace(' ', '-'),  # "SharePoint" -> "sharepoint"
+        name.lower().replace(" ", "-"),  # "SharePoint" -> "sharepoint"
         f"microsoft-{name.lower().replace(' ', '-')}",  # "SharePoint" -> "microsoft-sharepoint"
         normalize_name(name),  # "SharePoint" -> "sharepoint"
     ]
@@ -43,14 +40,14 @@ def fetch_worldvectorlogo(name: str, output_path: str) -> bool:
     for variant in name_variants:
         url = f"https://cdn.worldvectorlogo.com/logos/{variant}.svg"
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status == 200:
                     content = response.read()
                     # Check if it's actually an SVG (not an error page)
-                    if content.startswith(b'<svg') or b'<svg' in content[:500]:
-                        svg_path = output_path.rsplit('.', 1)[0] + '.svg'
-                        with open(svg_path, 'wb') as f:
+                    if content.startswith(b"<svg") or b"<svg" in content[:500]:
+                        svg_path = output_path.rsplit(".", 1)[0] + ".svg"
+                        with open(svg_path, "wb") as f:
                             f.write(content)
                         print(f"[WorldVectorLogo] Logo saved to: {svg_path}")
                         return True
@@ -69,13 +66,13 @@ def fetch_simple_icons(name: str, output_path: str) -> bool:
     url = f"https://cdn.simpleicons.org/{normalized}"
 
     try:
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=10) as response:
             if response.status == 200:
                 content = response.read()
                 # Save as SVG if output expects PNG, note this
-                svg_path = output_path.rsplit('.', 1)[0] + '.svg'
-                with open(svg_path, 'wb') as f:
+                svg_path = output_path.rsplit(".", 1)[0] + ".svg"
+                with open(svg_path, "wb") as f:
                     f.write(content)
                 print(f"[SimpleIcons] Logo saved to: {svg_path}")
                 return True
@@ -98,12 +95,12 @@ def fetch_devicon(name: str, output_path: str) -> bool:
 
     for url in variants:
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status == 200:
                     content = response.read()
-                    svg_path = output_path.rsplit('.', 1)[0] + '.svg'
-                    with open(svg_path, 'wb') as f:
+                    svg_path = output_path.rsplit(".", 1)[0] + ".svg"
+                    with open(svg_path, "wb") as f:
                         f.write(content)
                     print(f"[Devicon] Logo saved to: {svg_path}")
                     return True
@@ -126,12 +123,12 @@ def fetch_logo_dev(name: str, output_path: str) -> bool:
     for domain in domain_guesses:
         url = f"https://img.logo.dev/{domain}?token=pk_anonymous"
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status == 200:
                     content = response.read()
                     # logo.dev returns PNG
-                    with open(output_path, 'wb') as f:
+                    with open(output_path, "wb") as f:
                         f.write(content)
                     print(f"[logo.dev] Logo saved to: {output_path}")
                     return True
@@ -153,11 +150,11 @@ def fetch_clearbit(name: str, output_path: str) -> bool:
     for domain in domain_guesses:
         url = f"https://logo.clearbit.com/{domain}"
         try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
             with urllib.request.urlopen(req, timeout=10) as response:
                 if response.status == 200:
                     content = response.read()
-                    with open(output_path, 'wb') as f:
+                    with open(output_path, "wb") as f:
                         f.write(content)
                     print(f"[Clearbit] Logo saved to: {output_path}")
                     return True

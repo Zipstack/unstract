@@ -3,7 +3,6 @@
 import os
 import unittest
 from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
 
 
 class TestSharePointFSUnit(unittest.TestCase):

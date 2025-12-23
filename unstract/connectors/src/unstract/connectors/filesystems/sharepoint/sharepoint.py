@@ -12,7 +12,6 @@ import logging
 import os
 import threading
 from datetime import UTC, datetime
-from io import BytesIO
 from typing import Any
 
 from fsspec import AbstractFileSystem
@@ -99,7 +98,6 @@ class SharePointFileSystem(AbstractFileSystem):
                     from office365.runtime.auth.client_credential import (
                         ClientCredential,
                     )
-                    from office365.runtime.auth.token_response import TokenResponse
 
                     logger.info("Initializing SharePoint/OneDrive client")
 
@@ -443,7 +441,7 @@ class SharePointFS(UnstractFileSystem):
             "static",
             "json_schema.json",
         )
-        with open(schema_path, "r") as f:
+        with open(schema_path) as f:
             return f.read()
 
     @staticmethod
@@ -585,12 +583,12 @@ class SharePointFS(UnstractFileSystem):
                             return dt.replace(tzinfo=UTC)
                         return dt.astimezone(UTC)
                     except ValueError:
-                        logger.warning(
-                            f"[SharePoint] Invalid datetime format: {value}"
-                        )
+                        logger.warning(f"[SharePoint] Invalid datetime format: {value}")
                         continue
 
-        logger.debug(f"[SharePoint] No modified date in metadata: {list(metadata.keys())}")
+        logger.debug(
+            f"[SharePoint] No modified date in metadata: {list(metadata.keys())}"
+        )
         return None
 
     @staticmethod

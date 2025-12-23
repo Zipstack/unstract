@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-Verify a connector installation.
+"""Verify a connector installation.
 
 Usage:
     python verify_connector.py <connector_type> <connector_name>
@@ -20,18 +19,21 @@ Checks:
 7. Mock tests pass
 """
 
-import sys
-import os
-import subprocess
 import importlib
+import subprocess
+import sys
 from pathlib import Path
 
 
-def check_directory_structure(base_path: Path, connector_type: str, connector_name: str) -> list[str]:
+def check_directory_structure(
+    base_path: Path, connector_type: str, connector_name: str
+) -> list[str]:
     """Check required directory structure exists."""
     errors = []
 
-    connector_dir = base_path / "src/unstract/connectors" / connector_type / connector_name
+    connector_dir = (
+        base_path / "src/unstract/connectors" / connector_type / connector_name
+    )
 
     if not connector_dir.exists():
         errors.append(f"Connector directory not found: {connector_dir}")
@@ -52,7 +54,9 @@ def check_directory_structure(base_path: Path, connector_type: str, connector_na
     return errors
 
 
-def check_metadata(base_path: Path, connector_type: str, connector_name: str) -> list[str]:
+def check_metadata(
+    base_path: Path, connector_type: str, connector_name: str
+) -> list[str]:
     """Check metadata is valid."""
     errors = []
 
@@ -78,7 +82,9 @@ def check_metadata(base_path: Path, connector_type: str, connector_name: str) ->
                 errors.append(f"Metadata missing required field: {field}")
 
         if metadata.get("is_active") is not True:
-            errors.append("Metadata 'is_active' is not True - connector won't be registered")
+            errors.append(
+                "Metadata 'is_active' is not True - connector won't be registered"
+            )
 
     except ImportError as e:
         errors.append(f"Failed to import connector module: {e}")
@@ -86,7 +92,9 @@ def check_metadata(base_path: Path, connector_type: str, connector_name: str) ->
     return errors
 
 
-def check_connector_class(base_path: Path, connector_type: str, connector_name: str) -> list[str]:
+def check_connector_class(
+    base_path: Path, connector_type: str, connector_name: str
+) -> list[str]:
     """Check connector class is valid."""
     errors = []
 
@@ -132,7 +140,9 @@ def check_connector_class(base_path: Path, connector_type: str, connector_name: 
     return errors
 
 
-def check_connectorkit_registration(base_path: Path, connector_type: str, connector_name: str) -> list[str]:
+def check_connectorkit_registration(
+    base_path: Path, connector_type: str, connector_name: str
+) -> list[str]:
     """Check connector is registered in Connectorkit."""
     errors = []
 
@@ -165,11 +175,19 @@ def check_connectorkit_registration(base_path: Path, connector_type: str, connec
     return errors
 
 
-def run_syntax_check(base_path: Path, connector_type: str, connector_name: str) -> list[str]:
+def run_syntax_check(
+    base_path: Path, connector_type: str, connector_name: str
+) -> list[str]:
     """Run Python syntax/compile check."""
     errors = []
 
-    connector_file = base_path / "src/unstract/connectors" / connector_type / connector_name / f"{connector_name}.py"
+    connector_file = (
+        base_path
+        / "src/unstract/connectors"
+        / connector_type
+        / connector_name
+        / f"{connector_name}.py"
+    )
 
     result = subprocess.run(
         [sys.executable, "-m", "py_compile", str(connector_file)],
@@ -183,7 +201,9 @@ def run_syntax_check(base_path: Path, connector_type: str, connector_name: str) 
     return errors
 
 
-def run_mock_tests(base_path: Path, connector_type: str, connector_name: str) -> list[str]:
+def run_mock_tests(
+    base_path: Path, connector_type: str, connector_name: str
+) -> list[str]:
     """Run mock-based tests."""
     errors = []
 
@@ -232,7 +252,7 @@ def main():
         # Try relative to current working directory
         base_path = Path.cwd()
         if not (base_path / "src/unstract/connectors").exists():
-            print(f"Could not find connectors base path")
+            print("Could not find connectors base path")
             sys.exit(1)
 
     print(f"Verifying connector: {connector_type}/{connector_name}")
@@ -256,12 +276,12 @@ def main():
         errors = check_func(base_path, connector_type, connector_name)
 
         if errors:
-            print(f"  FAILED:")
+            print("  FAILED:")
             for error in errors:
                 print(f"    - {error}")
             all_errors.extend(errors)
         else:
-            print(f"  PASSED")
+            print("  PASSED")
 
     print("\n" + "=" * 60)
 
