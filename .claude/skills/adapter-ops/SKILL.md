@@ -1,5 +1,5 @@
 ---
-name: unstract-adapter-extension
+name: adapter-ops
 description: Extend LLM and embedding adapters in unstract/sdk1. Use when adding new adapters (LLM or embedding), removing adapters, adding/removing models to existing adapters, or editing adapter configurations. Supports OpenAI-compatible providers, cloud providers (AWS Bedrock, VertexAI, Azure), and self-hosted models (Ollama).
 ---
 
