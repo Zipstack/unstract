@@ -5,12 +5,14 @@ from datetime import datetime
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from api_v2.models import APIDeployment
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -21,6 +23,7 @@ from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
+from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
@@ -29,6 +32,7 @@ from prompt_studio.prompt_profile_manager_v2.constants import (
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.serializers import ProfileManagerSerializer
 from prompt_studio.prompt_studio_core_v2.constants import (
+    DeploymentType,
     FileViewTypes,
     ToolStudioErrors,
     ToolStudioPromptKeys,
@@ -37,6 +41,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
     DocumentIndexingService,
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
+    DeploymentUsageCheckError,
     IndexingAPIError,
     MaxProfilesReachedError,
     ToolDeleteError,
@@ -119,27 +124,105 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         organization_id = UserSessionUtils.get_organization_id(self.request)
         instance.delete(organization_id)
 
+    def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
+        """Check if a tool is being used in any workflows.
+
+        Args:
+            instance: The CustomTool instance to check
+
+        Returns:
+            Tuple of (is_used: bool, dependent_workflows: set)
+        """
+        registry = getattr(instance, "prompt_studio_registries", None)
+        if not registry:
+            return False, set()
+
+        dependent_wfs = set(
+            ToolInstance.objects.filter(tool_id=registry.pk)
+            .values_list("workflow_id", flat=True)
+            .distinct()
+        )
+        return bool(dependent_wfs), dependent_wfs
+
+    def _get_deployment_types(self, workflow_ids: set) -> set:
+        """Get all deployment types where the tool is used.
+
+        Args:
+            workflow_ids: Set of workflow IDs to check
+
+        Returns:
+            Set of deployment type strings
+        """
+        deployment_types: set = set()
+
+        # Check API Deployments (include inactive to prevent drift)
+        if APIDeployment.objects.filter(workflow_id__in=workflow_ids).exists():
+            deployment_types.add(DeploymentType.API_DEPLOYMENT)
+
+        # Check Pipelines using mapping instead of if/elif
+        pipeline_type_mapping = {
+            Pipeline.PipelineType.ETL: DeploymentType.ETL_PIPELINE,
+            Pipeline.PipelineType.TASK: DeploymentType.TASK_PIPELINE,
+        }
+        pipelines = (
+            Pipeline.objects.filter(workflow_id__in=workflow_ids)
+            .values_list("pipeline_type", flat=True)
+            .distinct()
+        )
+        for pipeline_type in pipelines:
+            if pipeline_type in pipeline_type_mapping:
+                deployment_types.add(pipeline_type_mapping[pipeline_type])
+
+        # Check for Manual Review
+        if WorkflowEndpoint.objects.filter(
+            workflow_id__in=workflow_ids,
+            connection_type=WorkflowEndpoint.ConnectionType.MANUALREVIEW,
+        ).exists():
+            deployment_types.add(DeploymentType.HUMAN_QUALITY_REVIEW)
+
+        return deployment_types
+
+    def _format_deployment_types_message(self, deployment_types: set) -> str:
+        """Format deployment types into human-readable message.
+
+        Args:
+            deployment_types: Set of deployment type strings
+
+        Returns:
+            Formatted message string or empty string if no types
+        """
+        if not deployment_types:
+            return ""
+
+        types_list = sorted(deployment_types)
+        if len(types_list) == 1:
+            types_text = types_list[0]
+        elif len(types_list) == 2:
+            types_text = f"{types_list[0]} or {types_list[1]}"
+        else:
+            types_text = ", ".join(types_list[:-1]) + f", or {types_list[-1]}"
+
+        return (
+            f"You have made changes to this Prompt Studio project. "
+            f"This project is used in {types_text}. "
+            f"Please export it for the changes to take effect in the deployment(s)."
+        )
+
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
         instance: CustomTool = self.get_object()
         # Checks if tool is exported
-        if hasattr(instance, "prompt_studio_registry"):
-            exported_tool_instances_in_use = ToolInstance.objects.filter(
-                tool_id__exact=instance.prompt_studio_registry.pk
+        is_used, dependent_wfs = self._check_tool_usage_in_workflows(instance)
+        if is_used:
+            logger.info(
+                f"Cannot destroy custom tool {instance.tool_id},"
+                f" depended by workflows {dependent_wfs}"
             )
-            dependent_wfs = set()
-            for tool_instance in exported_tool_instances_in_use:
-                dependent_wfs.add(tool_instance.workflow_id)
-            if len(dependent_wfs) > 0:
-                logger.info(
-                    f"Cannot destroy custom tool {instance.tool_id},"
-                    f" depended by workflows {dependent_wfs}"
-                )
-                raise ToolDeleteError(
-                    "Failed to delete tool, its used in other workflows. "
-                    "Delete its usages first"
-                )
+            raise ToolDeleteError(
+                "Failed to delete Prompt Studio project; it's used in other workflows."
+                "Delete its usages first."
+            )
         return super().destroy(request, *args, **kwargs)
 
     def partial_update(
@@ -569,9 +652,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:
         custom_tool = self.get_object()
         serialized_instances = None
-        if hasattr(custom_tool, "prompt_studio_registry"):
+        if hasattr(custom_tool, "prompt_studio_registries"):
             serialized_instances = PromptStudioRegistryInfoSerializer(
-                custom_tool.prompt_studio_registry
+                custom_tool.prompt_studio_registries
             ).data
 
             return Response(serialized_instances)
@@ -671,4 +754,42 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(
                 {"error": "Failed to import project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["get"])
+    def check_deployment_usage(self, request: Request, pk: Any = None) -> Response:
+        """Check if the Prompt Studio project is used in any deployments.
+
+        This endpoint checks if the exported tool from this project is being used in:
+        - API Deployments
+        - ETL Pipelines
+        - Task Pipelines
+        - Manual Review (Human Quality Review)
+
+        Returns:
+            Response: Contains is_used flag and deployment types where it's used
+        """
+        try:
+            instance: CustomTool = self.get_object()
+            is_used, workflow_ids = self._check_tool_usage_in_workflows(instance)
+
+            deployment_info: dict = {
+                "is_used": is_used,
+                "deployment_types": [],
+                "message": "",
+            }
+
+            if is_used and workflow_ids:
+                deployment_types = self._get_deployment_types(workflow_ids)
+                deployment_info["deployment_types"] = list(deployment_types)
+                deployment_info["message"] = self._format_deployment_types_message(
+                    deployment_types
+                )
+
+            return Response(deployment_info, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Error checking deployment usage for tool {pk}: {e}")
+            raise DeploymentUsageCheckError(
+                detail=f"Failed to check deployment usage: {str(e)}"
             )
