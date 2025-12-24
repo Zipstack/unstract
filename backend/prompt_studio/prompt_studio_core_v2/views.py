@@ -133,7 +133,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Tuple of (is_used: bool, dependent_workflows: set)
         """
-        registry = getattr(instance, "prompt_studio_registry", None)
+        registry = getattr(instance, "prompt_studio_registries", None)
         if not registry:
             return False, set()
 
@@ -652,9 +652,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:
         custom_tool = self.get_object()
         serialized_instances = None
-        if hasattr(custom_tool, "prompt_studio_registry"):
+        if hasattr(custom_tool, "prompt_studio_registries"):
             serialized_instances = PromptStudioRegistryInfoSerializer(
-                custom_tool.prompt_studio_registry
+                custom_tool.prompt_studio_registries
             ).data
 
             return Response(serialized_instances)

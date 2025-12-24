@@ -180,7 +180,7 @@ function ToolIde() {
         data: {
           is_shared_with_org: false,
           user_id: [details?.created_by || sessionDetails?.userId],
-          force_export: true,
+          force_export: false,
         },
       };
 
