@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import {
   CodeOutlined,
+  DatabaseOutlined,
   DiffOutlined,
   FileTextOutlined,
   MessageOutlined,
@@ -13,6 +14,7 @@ import { getMenuItem } from "../../../helpers/GetStaticData";
 import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
 import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
+import { CustomDataSettings } from "../custom-data-settings/CustomDataSettings";
 
 import "./SettingsModal.css";
 
@@ -38,6 +40,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
   useEffect(() => {
     const items = [
       getMenuItem("LLM Profiles", 1, <CodeOutlined />),
+      getMenuItem("Custom Data", 9, <DatabaseOutlined />),
       getMenuItem("Grammar", 5, <MessageOutlined />),
       getMenuItem("Preamble", 6, <DiffOutlined />),
       getMenuItem("Postamble", 7, <DiffOutlined />),
@@ -58,6 +61,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
         />
       ),
+      9: <CustomDataSettings />,
     };
 
     let position = 1;

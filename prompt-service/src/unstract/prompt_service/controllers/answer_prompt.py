@@ -87,6 +87,8 @@ def prompt_processor() -> Any:
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
         if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
+            # Determine if this is from IDE (Prompt Studio) or API deployment
+            is_ide = execution_source == "ide"
             prompt_text = VariableReplacementService.replace_variables_in_prompt(
                 prompt=output,
                 structured_output=structured_output,
@@ -95,6 +97,7 @@ def prompt_processor() -> Any:
                 prompt_name=prompt_name,
                 doc_name=doc_name,
                 custom_data=custom_data,
+                is_ide=is_ide,
             )
 
         app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
