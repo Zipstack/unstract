@@ -20,7 +20,7 @@
       "type": "string",
       "title": "Model",
       "default": "",
-      "description": "Provide the name of the model you defined in Azure console. Example text-embedding-ada-002"
+      "description": "Provide the name of the model you defined in Azure console. Example: text-embedding-3-small, text-embedding-ada-002"
     },
     "deployment_name": {
       "type": "string",
@@ -46,6 +46,13 @@
       "default": "",
       "format": "uri",
       "description": "Provide the Azure endpoint. Example: https://<your-deployment>.openai.azure.com/"
+    },
+    "dimensions": {
+      "type": "number",
+      "minimum": 1,
+      "multipleOf": 1,
+      "title": "Dimensions",
+      "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions."
     },
     "embed_batch_size": {
       "type": "number",
