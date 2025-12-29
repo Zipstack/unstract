@@ -441,9 +441,11 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
-    aws_access_key_id: str | None
-    aws_secret_access_key: str | None
-    aws_region_name: str | None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region_name: str | None = None
+    aws_profile_name: str | None = None  # For AWS SSO authentication
+    model_id: str | None = None  # For Application Inference Profile (cost tracking)
     max_retries: int | None = None
 
     @staticmethod
@@ -601,12 +603,51 @@ class MistralLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/mistral."""
 
     api_key: str
+    reasoning_effort: str | None = None  # For Magistral models: low, medium, high
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = MistralLLMParameters.validate_model(adapter_metadata)
 
-        return MistralLLMParameters(**adapter_metadata).model_dump()
+        # Handle Mistral reasoning configuration (for Magistral models)
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+
+        # If enable_reasoning is not explicitly provided but reasoning_effort is present,
+        # assume reasoning was enabled in a previous validation
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
+        if not enable_reasoning and has_reasoning_effort:
+            enable_reasoning = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = adapter_metadata.copy()
+
+        if enable_reasoning:
+            reasoning_effort = adapter_metadata.get("reasoning_effort", "medium")
+            result_metadata["reasoning_effort"] = reasoning_effort
+
+        # Create validation metadata excluding control fields
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
+
+        validated = MistralLLMParameters(**validation_metadata).model_dump()
+
+        # Clean up result based on reasoning state
+        if not enable_reasoning and "reasoning_effort" in validated:
+            validated.pop("reasoning_effort")
+        elif enable_reasoning:
+            validated["reasoning_effort"] = result_metadata.get(
+                "reasoning_effort", "medium"
+            )
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -622,13 +663,20 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/ollama."""
 
     api_base: str
+    json_mode: bool | None = False  # Enable JSON mode for structured output
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = OllamaLLMParameters.validate_model(adapter_metadata)
         adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
 
-        return OllamaLLMParameters(**adapter_metadata).model_dump()
+        # Handle JSON mode - convert to response_format
+        result_metadata = adapter_metadata.copy()
+        json_mode = result_metadata.pop("json_mode", False)
+        if json_mode:
+            result_metadata["response_format"] = {"type": "json_object"}
+
+        return OllamaLLMParameters(**result_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -640,6 +688,33 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
             return f"ollama_chat/{model}"
 
 
+class AzureAIFoundryLLMParameters(BaseChatCompletionParameters):
+    """Azure AI Foundry LLM parameters.
+
+    See https://docs.litellm.ai/docs/providers/azure_ai
+    """
+
+    api_key: str
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = AzureAIFoundryLLMParameters.validate_model(
+            adapter_metadata
+        )
+
+        return AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = adapter_metadata.get("model", "")
+        # Only add azure_ai/ prefix if the model doesn't already have it
+        if model.startswith("azure_ai/"):
+            return model
+        else:
+            return f"azure_ai/{model}"
+
+
 # Embedding Parameter Classes
 
 
@@ -649,6 +724,7 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_key: str
     api_base: str | None = None
     embed_batch_size: int | None = 10
+    dimensions: int | None = None  # For text-embedding-3-* models
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -672,6 +748,7 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_version: str | None
     embed_batch_size: int | None = 5
     num_retries: int | None = 3
+    dimensions: int | None = None  # For text-embedding-3-* models
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
