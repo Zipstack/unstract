@@ -1,0 +1,21 @@
+{
+  "name": "unstract-e2e",
+  "version": "1.0.0",
+  "description": "E2E tests for Unstract platform",
+  "scripts": {
+    "test": "playwright test",
+    "test:critical": "playwright test --project=critical",
+    "test:chrome": "playwright test --project=chrome",
+    "test:all-browsers": "playwright test --project=chrome --project=firefox",
+    "test:mobile": "playwright test --project=mobile",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "codegen": "playwright codegen"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0",
+    "dotenv": "^16.3.1"
+  }
+}

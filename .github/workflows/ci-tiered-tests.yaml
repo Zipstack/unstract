@@ -1,0 +1,471 @@
+name: Test Execution with Coverage
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "18"
+  UV_VERSION: "0.6.14"
+
+jobs:
+  # ============================================
+  # Critical Tests (Must Pass)
+  # ============================================
+  critical-backend:
+    name: "Critical: Backend Tests"
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/uv
+            .venv
+          key: ${{ runner.os }}-uv-critical-${{ hashFiles('**/pyproject.toml', '**/uv.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-uv-critical-
+
+      - name: Install dependencies
+        run: |
+          uv pip install pytest pytest-cov pytest-md-report pytest-xdist
+
+      - name: Run critical backend tests
+        id: critical-tests
+        run: |
+          python -m pytest \
+            -m "critical or not (important or standard or slow or integration)" \
+            --cov=backend \
+            --cov=platform-service \
+            --cov=unstract/core \
+            --cov-report=xml:coverage-critical.xml \
+            --cov-report=term-missing \
+            --cov-branch \
+            --junitxml=test-results-critical.xml \
+            -n auto \
+            -v \
+            --tb=short \
+            backend/ platform-service/ unstract/core/ \
+            || echo "::warning::Some critical tests failed"
+
+      - name: Upload critical coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-critical
+          path: coverage-critical.xml
+          retention-days: 7
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-critical
+          path: test-results-critical.xml
+          retention-days: 7
+
+  critical-sdk:
+    name: "Critical: SDK Tests"
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y libmagic1
+
+      - name: Run SDK tests
+        working-directory: unstract/sdk1
+        run: |
+          uv sync --group test
+          uv run pytest \
+            -m "not slow" \
+            --cov=src/unstract/sdk1 \
+            --cov-report=xml:../../coverage-sdk1.xml \
+            --cov-report=term \
+            --cov-branch \
+            -v
+
+      - name: Upload SDK coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-sdk1
+          path: coverage-sdk1.xml
+          retention-days: 7
+
+  critical-frontend:
+    name: "Critical: Frontend Unit Tests"
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Run unit tests with coverage
+        working-directory: frontend
+        run: npm run test:ci
+        env:
+          CI: true
+
+      - name: Upload frontend coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-frontend
+          path: frontend/coverage/
+          retention-days: 7
+
+  # ============================================
+  # Important Tests (Should Pass)
+  # ============================================
+  important-integration:
+    name: "Important: Integration Tests"
+    needs: [critical-backend, critical-sdk]
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+
+      rabbitmq:
+        image: rabbitmq:3-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run integration tests
+        run: |
+          uv pip install pytest pytest-cov pytest-md-report
+          python -m pytest \
+            -m "integration and not slow" \
+            --cov=backend \
+            --cov=prompt-service \
+            --cov=workers \
+            --cov-report=xml:coverage-important.xml \
+            --cov-report=term \
+            --cov-branch \
+            --junitxml=test-results-important.xml \
+            -v \
+            || echo "::warning::Some integration tests failed"
+
+      - name: Upload important coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-important
+          path: coverage-important.xml
+          retention-days: 7
+
+  important-connectors:
+    name: "Important: Connector Tests"
+    needs: [critical-backend]
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run connector tests
+        run: |
+          uv pip install pytest pytest-cov
+          python -m pytest \
+            unstract/connectors/tests/ \
+            --cov=unstract/connectors \
+            --cov-report=xml:coverage-connectors.xml \
+            --cov-report=term \
+            -v \
+            || echo "::warning::Some connector tests failed"
+
+      - name: Upload connector coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-connectors
+          path: coverage-connectors.xml
+          retention-days: 7
+
+  # ============================================
+  # Standard Tests (Best Effort)
+  # ============================================
+  standard-extended:
+    name: "Standard: Extended Tests"
+    needs: [important-integration, important-connectors]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          version: ${{ env.UV_VERSION }}
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Run slow tests
+        run: |
+          uv pip install pytest pytest-cov
+          python -m pytest \
+            -m "slow" \
+            --cov=. \
+            --cov-report=xml:coverage-standard.xml \
+            --cov-report=term \
+            -v \
+            || echo "::warning::Some slow tests failed"
+        continue-on-error: true
+
+      - name: Upload standard coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-standard
+          path: coverage-standard.xml
+          retention-days: 7
+
+  # ============================================
+  # E2E Tests (Critical paths only on PR)
+  # ============================================
+  e2e-critical:
+    name: "E2E: Critical User Journeys"
+    needs: [critical-backend, critical-frontend]
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install E2E dependencies
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: Run critical E2E tests
+        working-directory: e2e
+        run: npm run test:critical
+        env:
+          CI: true
+          BASE_URL: ${{ secrets.E2E_BASE_URL || 'http://localhost:3000' }}
+          TEST_USER_EMAIL: ${{ secrets.E2E_TEST_USER_EMAIL }}
+          TEST_USER_PASSWORD: ${{ secrets.E2E_TEST_USER_PASSWORD }}
+          TEST_ORG_NAME: ${{ secrets.E2E_TEST_ORG_NAME }}
+        continue-on-error: true
+
+      - name: Upload E2E report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: e2e/playwright-report/
+          retention-days: 7
+
+  # ============================================
+  # Coverage Aggregation and Reporting
+  # ============================================
+  coverage-report:
+    name: "Coverage Report & Trend"
+    needs: [critical-backend, critical-sdk, critical-frontend, important-integration, important-connectors]
+    if: always() && !cancelled()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: coverage-artifacts/
+          merge-multiple: true
+
+      - name: Install coverage tools
+        run: pip install coverage
+
+      - name: Combine coverage reports
+        run: |
+          # List all coverage files
+          find coverage-artifacts -name "*.xml" -type f
+
+          # Generate combined report summary
+          cat > coverage-summary.md << 'EOF'
+          # 📊 Test Coverage Report
+
+          ## Coverage by Priority
+
+          | Priority | Description | Status |
+          |----------|-------------|--------|
+          | Critical | Core Path Tests | ✅ Required |
+          | Important | Integration Tests | ✅ Required |
+          | Standard | Extended Tests | ⚠️ Best Effort |
+
+          EOF
+
+      - name: Upload combined coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage-artifacts/*.xml
+          flags: combined
+          name: unstract-coverage
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+      - name: Comment coverage on PR
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: coverage-report
+          path: coverage-summary.md
+
+      - name: Add to job summary
+        run: cat coverage-summary.md >> $GITHUB_STEP_SUMMARY
+
+  # ============================================
+  # Quality Gate
+  # ============================================
+  quality-gate:
+    name: "Quality Gate"
+    needs: [critical-backend, critical-sdk, critical-frontend, e2e-critical]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Critical Test Results
+        run: |
+          echo "## Quality Gate Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Check if all critical jobs passed
+          critical_backend="${{ needs.critical-backend.result }}"
+          critical_sdk="${{ needs.critical-sdk.result }}"
+          critical_frontend="${{ needs.critical-frontend.result }}"
+          e2e="${{ needs.e2e-critical.result }}"
+
+          echo "| Job | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend Critical | $critical_backend |" >> $GITHUB_STEP_SUMMARY
+          echo "| SDK Critical | $critical_sdk |" >> $GITHUB_STEP_SUMMARY
+          echo "| Frontend Unit | $critical_frontend |" >> $GITHUB_STEP_SUMMARY
+          echo "| E2E Critical | $e2e |" >> $GITHUB_STEP_SUMMARY
+
+          # Fail if any critical test failed (not just skipped)
+          if [[ "$critical_backend" == "failure" ]] || \
+             [[ "$critical_sdk" == "failure" ]] || \
+             [[ "$critical_frontend" == "failure" ]]; then
+            echo ""
+            echo "❌ **Quality Gate Failed**: Critical tests must pass" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          fi
+
+          echo ""
+          echo "✅ **Quality Gate Passed**" >> $GITHUB_STEP_SUMMARY

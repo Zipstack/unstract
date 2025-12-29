@@ -192,7 +192,56 @@ testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+    "critical: marks tests as critical (must pass for release)",
+    "important: marks tests as important (should pass for release)",
+    "standard: marks tests as standard (best effort)",
 ]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+branch = true
+source = [
+    "backend",
+    "platform-service",
+    "prompt-service",
+    "workers",
+    "unstract",
+]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/conftest.py",
+    "*/*_pb2.py",
+    "*/*_pb2_grpc.py",
+    "*/manage.py",
+    "*/settings/*",
+]
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "@abstractmethod",
+]
+show_missing = true
+precision = 2
+fail_under = 0
+
+[tool.coverage.html]
+directory = "coverage_html"
+
+[tool.coverage.json]
+output = "coverage.json"
+
+[tool.coverage.xml]
+output = "coverage.xml"
 
 [tool.mypy]
 python_version = "3.12"
