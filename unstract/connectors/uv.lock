@@ -853,6 +853,21 @@ wheels = [
 ]
 
 [[package]]
+name = "office365-rest-python-client"
+version = "2.6.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "msal" },
+    { name = "pytz" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bc/04/6dce2d581c54a8e55a3b128cf79a93821a68a62bb9a956e65476c5bb247e/office365_rest_python_client-2.6.2.tar.gz", hash = "sha256:ce27f5a1c0cc3ff97041ccd9b386145692be4c64739f243f7d6ac3edbe0a3c46", size = 659460 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/a4/611155711f8af347875c15b8b83f5fd9e978bd4de45f90085b9a583b684d/Office365_REST_Python_Client-2.6.2-py3-none-any.whl", hash = "sha256:06fc6829c39b503897caa9d881db419d7f97a8e4f1c95c4c2d12db36ea6c955d", size = 1337139 },
+]
+
+[[package]]
 name = "oracledb"
 version = "2.4.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1400,6 +1415,7 @@ dependencies = [
     { name = "google-cloud-secret-manager" },
     { name = "google-cloud-storage" },
     { name = "oauth2client" },
+    { name = "office365-rest-python-client" },
     { name = "oracledb" },
     { name = "psycopg2-binary" },
     { name = "pydrive2", extra = ["fsspec"] },
@@ -1422,6 +1438,7 @@ requires-dist = [
     { name = "google-cloud-secret-manager", specifier = "==2.16.1" },
     { name = "google-cloud-storage", specifier = "==2.9.0" },
     { name = "oauth2client", specifier = "==4.1.3" },
+    { name = "office365-rest-python-client", specifier = "~=2.6.0" },
     { name = "oracledb", specifier = "==2.4.0" },
     { name = "psycopg2-binary", specifier = "==2.9.9" },
     { name = "pydrive2", extras = ["fsspec"], specifier = "==1.15.4" },
