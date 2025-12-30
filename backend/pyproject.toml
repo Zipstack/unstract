@@ -16,6 +16,7 @@ dependencies = [
     "Authlib==1.2.1", # For Auth plugins
     "boto3~=1.34.0", # For Unstract-cloud-storage
     "celery[amqp]>=5.3.4", # For Celery
+    "celery-batches>=0.8.0", # For batch processing metrics events
     "flower>=2.0.1", # Celery Monitoring
     "cron-descriptor==1.4.0", # For cron string description
     "cryptography>=41.0.7",
@@ -140,6 +141,10 @@ help = "Runs the Unstract file processing callback worker"
 [tool.poe.tasks.worker-api-file-processing-callback]
 cmd = "celery -A backend.workers.file_processing_callback worker --loglevel=info -Q api_file_processing_callback --autoscale 4,1"
 help = "Runs the Unstract api file processing callback worker"
+
+[tool.poe.tasks.worker-metrics]
+cmd = "celery -A backend worker --loglevel=info -Q dashboard_metric_events --autoscale 4,1"
+help = "Runs the Unstract dashboard metrics worker"
 
 [tool.poe.tasks.flower]
 cmd = "celery -A backend flower --port=5555"
