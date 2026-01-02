@@ -17,6 +17,26 @@ class ToolStudioErrors:
     DUPLICATE_API = "It appears that a duplicate call may have been made."
     PLATFORM_ERROR = "Seems an error occured in Platform Service."
     PROMPT_NAME_EXISTS = "Prompt with the name already exists"
+    MULTI_LLM_DOCUMENT_LIMIT = (
+        "When using multiple LLM profiles, you can run a maximum of {max_docs} "
+        "documents at a time. Please reduce the number of documents and try again."
+    )
+    MULTI_LLM_PROMPT_LIMIT = (
+        "When using multiple LLM profiles, you can run a maximum of {max_prompts} "
+        "prompts at a time. Please reduce the number of prompts and try again."
+    )
+    PARALLELIZATION_PROFILE_LIMIT = (
+        "You can have a maximum of {max_profiles} profiles at a time. "
+        "Please reduce the number of profiles and try again."
+    )
+    PARALLELIZATION_DOCUMENT_LIMIT = (
+        "You can run a maximum of {max_docs} documents at a time. "
+        "Please reduce the number of documents and try again."
+    )
+    PARALLELIZATION_PROMPT_LIMIT = (
+        "You can run a maximum of {max_prompts} prompts at a time. "
+        "Please reduce the number of prompts and try again."
+    )
 
 
 class ToolStudioPromptKeys:
