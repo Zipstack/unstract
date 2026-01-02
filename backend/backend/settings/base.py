@@ -148,6 +148,16 @@ PROMPT_PORT = os.environ.get("PROMPT_PORT", 3003)
 PROMPT_STUDIO_FILE_PATH = os.environ.get(
     "PROMPT_STUDIO_FILE_PATH", "/app/prompt-studio-data"
 )
+# Prompt Studio Multi-LLM Parallelization Limits
+PROMPT_STUDIO_MULTI_LLM_MAX_DOCUMENTS = int(
+    os.environ.get("PROMPT_STUDIO_MULTI_LLM_MAX_DOCUMENTS", 3)
+)
+PROMPT_STUDIO_MULTI_LLM_MAX_PROMPTS = int(
+    os.environ.get("PROMPT_STUDIO_MULTI_LLM_MAX_PROMPTS", 3)
+)
+PROMPT_STUDIO_MULTI_LLM_MAX_PROFILES = int(
+    os.environ.get("PROMPT_STUDIO_MULTI_LLM_MAX_PROFILES", 3)
+)
 X2TEXT_HOST = os.environ.get("X2TEXT_HOST", "http://localhost")
 X2TEXT_PORT = os.environ.get("X2TEXT_PORT", 3004)
 STRUCTURE_TOOL_IMAGE_URL = get_required_setting("STRUCTURE_TOOL_IMAGE_URL")

@@ -405,6 +405,34 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
+
+        # Validate multi-LLM parallelization limits
+        # Count TOTAL documents and prompts in this project/tool
+        total_documents = DocumentManager.objects.filter(tool_id=custom_tool).count()
+
+        total_prompts = (
+            ToolStudioPrompt.objects.filter(
+                tool_id=custom_tool,
+                active=True,
+            )
+            .exclude(
+                prompt_type=ToolStudioPromptKeys.NOTES,
+            )
+            .exclude(
+                enforce_type__in=[
+                    ToolStudioPromptKeys.TABLE,
+                    ToolStudioPromptKeys.RECORD,
+                ]
+            )
+            .count()
+        )
+
+        PromptStudioHelper.validate_multi_llm_limits(
+            tool=custom_tool,
+            document_count=total_documents,
+            prompt_count=total_prompts,
+        )
+
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
@@ -436,6 +464,38 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+
+        # Validate multi-LLM parallelization limits
+        # Count TOTAL documents and prompts in this project/tool
+        from prompt_studio.prompt_studio_document_manager_v2.models import (
+            DocumentManager,
+        )
+
+        total_documents = DocumentManager.objects.filter(tool_id=custom_tool).count()
+
+        total_prompts = (
+            ToolStudioPrompt.objects.filter(
+                tool_id=custom_tool,
+                active=True,
+            )
+            .exclude(
+                prompt_type=ToolStudioPromptKeys.NOTES,
+            )
+            .exclude(
+                enforce_type__in=[
+                    ToolStudioPromptKeys.TABLE,
+                    ToolStudioPromptKeys.RECORD,
+                ]
+            )
+            .count()
+        )
+
+        PromptStudioHelper.validate_multi_llm_limits(
+            tool=custom_tool,
+            document_count=total_documents,
+            prompt_count=total_prompts,
+        )
+
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()

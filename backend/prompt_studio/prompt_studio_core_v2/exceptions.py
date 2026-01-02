@@ -116,3 +116,11 @@ class PromptNotRun(APIException):
 class DeploymentUsageCheckError(APIException):
     status_code = 500
     default_detail = "Failed to check deployment usage"
+
+
+class ParallelizationLimitExceeded(APIException):
+    status_code = 400
+    default_detail = "Parallelization limit exceeded"
+
+    def __init__(self, detail: str | None = None):
+        super().__init__(detail)

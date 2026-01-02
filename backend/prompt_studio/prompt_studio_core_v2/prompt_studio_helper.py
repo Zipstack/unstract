@@ -28,6 +28,7 @@ from prompt_studio.prompt_studio_core_v2.constants import (
     ExecutionSource,
     IndexingStatus,
     LogLevels,
+    ToolStudioErrors,
     ToolStudioPromptKeys,
 )
 from prompt_studio.prompt_studio_core_v2.constants import IndexingConstants as IKeys
@@ -45,12 +46,11 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     IndexingAPIError,
     NoPromptsFound,
     OperationNotSupported,
+    ParallelizationLimitExceeded,
     PermissionError,
     ToolNotValid,
 )
-from prompt_studio.prompt_studio_core_v2.migration_utils import (
-    SummarizeMigrationUtils,
-)
+from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_core_v2.prompt_variable_service import (
@@ -296,6 +296,89 @@ class PromptStudioHelper:
         """
         prompt_instance: ToolStudioPrompt = ToolStudioPrompt.objects.get(pk=id)
         return prompt_instance
+
+    @staticmethod
+    def _validate_profile_limit(profile_count: int, max_profiles: int) -> None:
+        """Validate profile count limit.
+
+        Args:
+            profile_count: Number of profiles in the tool
+            max_profiles: Maximum allowed profiles
+
+        Raises:
+            ParallelizationLimitExceeded: If profile limit exceeded
+        """
+        if profile_count > max_profiles:
+            raise ParallelizationLimitExceeded(
+                ToolStudioErrors.PARALLELIZATION_PROFILE_LIMIT.format(
+                    max_profiles=max_profiles
+                )
+            )
+
+    @staticmethod
+    def _validate_document_limit(document_count: int, max_docs: int) -> None:
+        """Validate document count limit.
+
+        Args:
+            document_count: Number of documents in the tool
+            max_docs: Maximum allowed documents
+
+        Raises:
+            ParallelizationLimitExceeded: If document limit exceeded
+        """
+        if document_count > max_docs:
+            raise ParallelizationLimitExceeded(
+                ToolStudioErrors.PARALLELIZATION_DOCUMENT_LIMIT.format(max_docs=max_docs)
+            )
+
+    @staticmethod
+    def _validate_prompt_limit(prompt_count: int | None, max_prompts: int) -> None:
+        """Validate prompt count limit.
+
+        Args:
+            prompt_count: Number of prompts in the tool (None = skip validation)
+            max_prompts: Maximum allowed prompts
+
+        Raises:
+            ParallelizationLimitExceeded: If prompt limit exceeded
+        """
+        if prompt_count is not None and prompt_count > max_prompts:
+            raise ParallelizationLimitExceeded(
+                ToolStudioErrors.PARALLELIZATION_PROMPT_LIMIT.format(
+                    max_prompts=max_prompts
+                )
+            )
+
+    @staticmethod
+    def validate_multi_llm_limits(
+        tool: Any,
+        document_count: int = 1,
+        prompt_count: int | None = None,
+    ) -> None:
+        """Validate parallelization limits for prompt runs.
+
+        Args:
+            tool: The CustomTool instance
+            document_count: Total documents in the tool
+            prompt_count: Total active prompts in the tool
+
+        Raises:
+            ParallelizationLimitExceeded: If any limit is exceeded
+        """
+        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+
+        # Get limits from settings
+        max_profiles = settings.PROMPT_STUDIO_MULTI_LLM_MAX_PROFILES
+        max_docs = settings.PROMPT_STUDIO_MULTI_LLM_MAX_DOCUMENTS
+        max_prompts = settings.PROMPT_STUDIO_MULTI_LLM_MAX_PROMPTS
+
+        # Count total profiles
+        profile_count = ProfileManager.objects.filter(prompt_studio_tool=tool).count()
+
+        # Validate each limit using modular helper methods
+        PromptStudioHelper._validate_profile_limit(profile_count, max_profiles)
+        PromptStudioHelper._validate_document_limit(document_count, max_docs)
+        PromptStudioHelper._validate_prompt_limit(prompt_count, max_prompts)
 
     @staticmethod
     def fetch_prompt_from_tool(tool_id: str) -> list[ToolStudioPrompt]:
@@ -1481,12 +1564,16 @@ class PromptStudioHelper:
         default_profile = PromptStudioHelper._get_default_profile(tool)
 
         return {
-            "chunk_size": default_profile.chunk_size
-            if default_profile
-            else DefaultValues.DEFAULT_CHUNK_SIZE,
-            "chunk_overlap": default_profile.chunk_overlap
-            if default_profile
-            else DefaultValues.DEFAULT_CHUNK_OVERLAP,
+            "chunk_size": (
+                default_profile.chunk_size
+                if default_profile
+                else DefaultValues.DEFAULT_CHUNK_SIZE
+            ),
+            "chunk_overlap": (
+                default_profile.chunk_overlap
+                if default_profile
+                else DefaultValues.DEFAULT_CHUNK_OVERLAP
+            ),
             "retrieval_strategy": (
                 default_profile.retrieval_strategy
                 if default_profile
@@ -1497,9 +1584,11 @@ class PromptStudioHelper:
                 if default_profile
                 else DefaultValues.DEFAULT_SIMILARITY_TOP_K
             ),
-            "section": default_profile.section
-            if default_profile
-            else DefaultValues.DEFAULT_SECTION,
+            "section": (
+                default_profile.section
+                if default_profile
+                else DefaultValues.DEFAULT_SECTION
+            ),
             "profile_name": (
                 default_profile.profile_name
                 if default_profile
@@ -1842,13 +1931,15 @@ class PromptStudioHelper:
                     DefaultValues.DEFAULT_EVAL_QUALITY_CORRECTNESS,
                 ),
                 eval_quality_relevance=prompt_data.get(
-                    "eval_quality_relevance", DefaultValues.DEFAULT_EVAL_QUALITY_RELEVANCE
+                    "eval_quality_relevance",
+                    DefaultValues.DEFAULT_EVAL_QUALITY_RELEVANCE,
                 ),
                 eval_security_pii=prompt_data.get(
                     "eval_security_pii", DefaultValues.DEFAULT_EVAL_SECURITY_PII
                 ),
                 eval_guidance_toxicity=prompt_data.get(
-                    "eval_guidance_toxicity", DefaultValues.DEFAULT_EVAL_GUIDANCE_TOXICITY
+                    "eval_guidance_toxicity",
+                    DefaultValues.DEFAULT_EVAL_GUIDANCE_TOXICITY,
                 ),
                 eval_guidance_completeness=prompt_data.get(
                     "eval_guidance_completeness",
