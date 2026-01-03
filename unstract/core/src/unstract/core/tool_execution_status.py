@@ -214,3 +214,12 @@ class ToolExecutionTracker:
                 f"Failed to update TTL for tool execution {tool_execution_data.execution_id}: {e}. "
             )
             return
+
+    def cleanup(self) -> None:
+        """Close Redis connection for graceful shutdown."""
+        try:
+            if self.redis_client:
+                self.redis_client.close()
+                logger.debug("ToolExecutionTracker Redis connection closed")
+        except Exception as e:
+            logger.error(f"Failed to close Redis connection: {e}")
