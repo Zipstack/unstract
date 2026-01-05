@@ -1,10 +1,11 @@
 """API views for Dashboard Metrics."""
+
 import logging
 from collections import defaultdict
 from datetime import timedelta
 
 from django.core.cache import cache
-from django.db.models import Avg, Count, Max, Min, Sum
+from django.db.models import Avg, Max, Min, Sum
 from django.db.models.functions import TruncDay, TruncHour, TruncWeek
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -24,7 +25,6 @@ from .models import EventMetricsHourly
 from .serializers import (
     EventMetricsHourlySerializer,
     MetricsQuerySerializer,
-    MetricsResponseSerializer,
 )
 from .services import MetricsQueryService
 
@@ -343,9 +343,14 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 series.append(
                     {
                         "metric_name": metric_name,
-                        "metric_type": "histogram" if metric_name == "llm_usage" else "counter",
+                        "metric_type": "histogram"
+                        if metric_name == "llm_usage"
+                        else "counter",
                         "data": [
-                            {"timestamp": r["period"].isoformat(), "value": r["value"] or 0}
+                            {
+                                "timestamp": r["period"].isoformat(),
+                                "value": r["value"] or 0,
+                            }
                             for r in data
                         ],
                         "total_value": sum(r["value"] or 0 for r in data),
@@ -411,7 +416,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         }
 
         healthy = all(check.get("status") == "ok" for check in checks.values())
-        http_status = status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
+        http_status = (
+            status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
+        )
 
         return Response(
             {

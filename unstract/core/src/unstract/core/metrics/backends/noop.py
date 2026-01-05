@@ -2,10 +2,11 @@
 
 Used when metrics recording is disabled (default for OSS).
 """
+
 import logging
 
-from .base import AbstractMetricBackend
 from ..types import MetricEvent
+from .base import AbstractMetricBackend
 
 logger = logging.getLogger(__name__)
 

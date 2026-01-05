@@ -2,6 +2,7 @@
 
 Reads environment variables to configure the metric backend.
 """
+
 import logging
 import os
 from functools import lru_cache
@@ -55,9 +56,7 @@ def get_backend() -> AbstractMetricBackend:
 
     queue_name = os.getenv(ENV_METRICS_QUEUE, "dashboard_metric_events")
 
-    logger.info(
-        f"Dashboard metrics enabled with queue backend: {queue_name}"
-    )
+    logger.info(f"Dashboard metrics enabled with queue backend: {queue_name}")
     return QueueBackend(broker_url=broker_url, queue_name=queue_name)
 
 

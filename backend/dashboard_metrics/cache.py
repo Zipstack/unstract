@@ -7,14 +7,15 @@ Cache TTL Strategy:
 - Current hour data: 30 seconds (frequently updating)
 - Historical data: 8 hours (stable, rarely changes)
 """
+
 import hashlib
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
-from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
@@ -221,12 +222,11 @@ class MetricsCacheService:
         new metric data is processed.
         """
         # Import here to avoid circular imports
-        from datetime import datetime
 
+        from django.db.models import Sum
         from django.utils import timezone
 
         from .models import EventMetricsHourly
-        from django.db.models import Sum
 
         try:
             # Warm overview cache

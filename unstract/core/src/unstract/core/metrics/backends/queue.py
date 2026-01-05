@@ -2,17 +2,19 @@
 
 Sends metric events to RabbitMQ as Celery tasks for processing.
 """
+
 import json
 import logging
 import time
 import uuid
 from typing import Any
 
-from kombu import Connection, Exchange, Queue as KombuQueue
+from kombu import Connection, Exchange
+from kombu import Queue as KombuQueue
 from kombu.exceptions import KombuError
 
-from .base import AbstractMetricBackend
 from ..types import MetricEvent
+from .base import AbstractMetricBackend
 
 logger = logging.getLogger(__name__)
 
@@ -101,16 +103,14 @@ class QueueBackend(AbstractMetricBackend):
             except Exception as e:
                 last_error = e
                 if attempt < retries - 1:
-                    sleep_time = delay * (2 ** attempt)
+                    sleep_time = delay * (2**attempt)
                     logger.warning(
                         f"Connection attempt {attempt + 1}/{retries} failed: {e}, "
                         f"retrying in {sleep_time:.1f}s"
                     )
                     time.sleep(sleep_time)
                 else:
-                    logger.error(
-                        f"All {retries} connection attempts failed: {e}"
-                    )
+                    logger.error(f"All {retries} connection attempts failed: {e}")
 
         raise KombuError(f"Failed to connect after {retries} attempts: {last_error}")
 
@@ -187,8 +187,8 @@ class QueueBackend(AbstractMetricBackend):
         # Celery message format (protocol v2)
         message = [
             [event_data],  # args - list of positional arguments
-            {},            # kwargs - dict of keyword arguments
-            {              # embed - task options
+            {},  # kwargs - dict of keyword arguments
+            {  # embed - task options
                 "callbacks": None,
                 "errbacks": None,
                 "chain": None,

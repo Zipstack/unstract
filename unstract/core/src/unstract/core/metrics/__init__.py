@@ -29,11 +29,12 @@ Environment Variables:
     DASHBOARD_METRICS_QUEUE: Queue name (default: dashboard_metric_events)
     CELERY_BROKER_URL: RabbitMQ broker URL (required if enabled)
 """
+
 import logging
 
-from .types import MetricEvent, MetricName, MetricType
-from .registry import validate_metric, get_metric_type, get_all_metrics
 from .config import get_backend, reset_backend
+from .registry import get_all_metrics, get_metric_type, validate_metric
+from .types import MetricEvent, MetricName, MetricType
 
 __all__ = [
     # Public API
