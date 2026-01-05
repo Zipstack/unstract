@@ -11,11 +11,10 @@ capture integration to be completed.
 from datetime import datetime
 from typing import Any
 
-from django.db.models import Count, OuterRef, Subquery, Sum
-from django.db.models.functions import TruncDay, TruncHour, TruncWeek
-
 from account_usage.models import PageUsage
 from api_v2.models import APIDeployment
+from django.db.models import Count, Subquery, Sum
+from django.db.models.functions import TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -403,7 +402,9 @@ class MetricsQueryService:
         return {
             "documents_processed": sum(
                 r["value"]
-                for r in cls.get_documents_processed(organization_id, start_date, end_date)
+                for r in cls.get_documents_processed(
+                    organization_id, start_date, end_date
+                )
             ),
             "pages_processed": sum(
                 r["value"] or 0
@@ -441,8 +442,6 @@ class MetricsQueryService:
             ),
             "prompt_executions": sum(
                 r["value"]
-                for r in cls.get_prompt_executions(
-                    organization_id, start_date, end_date
-                )
+                for r in cls.get_prompt_executions(organization_id, start_date, end_date)
             ),
         }

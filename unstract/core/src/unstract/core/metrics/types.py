@@ -1,4 +1,5 @@
 """Metric types and data structures for the metrics module."""
+
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any

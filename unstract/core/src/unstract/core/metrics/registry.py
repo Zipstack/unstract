@@ -1,13 +1,13 @@
 """Metric registry for validation and type lookup."""
-import logging
-from typing import Set
 
-from .types import MetricName, MetricType, METRIC_TYPE_MAP
+import logging
+
+from .types import METRIC_TYPE_MAP, MetricName, MetricType
 
 logger = logging.getLogger(__name__)
 
 # Set of valid metric names for fast lookup
-_REGISTERED_METRICS: Set[str] = {m.value for m in MetricName}
+_REGISTERED_METRICS: set[str] = {m.value for m in MetricName}
 
 
 def validate_metric(metric_name: str) -> bool:
@@ -57,6 +57,4 @@ def get_metrics_by_type(metric_type: MetricType) -> list[str]:
     Returns:
         List of metric names matching the specified type
     """
-    return [
-        name for name, mtype in METRIC_TYPE_MAP.items() if mtype == metric_type
-    ]
+    return [name for name, mtype in METRIC_TYPE_MAP.items() if mtype == metric_type]

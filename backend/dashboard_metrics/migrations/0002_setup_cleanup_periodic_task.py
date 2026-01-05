@@ -1,4 +1,5 @@
 """Data migration to create the periodic cleanup task for dashboard metrics."""
+
 from django.db import migrations
 
 
@@ -37,7 +38,6 @@ def remove_cleanup_periodic_task(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("dashboard_metrics", "0001_initial"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),

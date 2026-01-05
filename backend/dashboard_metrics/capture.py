@@ -22,6 +22,7 @@ Usage:
     # In LLM call
     MetricsCapture.record_llm_call(org_id, model="gpt-4", cost=0.05)
 """
+
 import logging
 from typing import Any
 
@@ -39,7 +40,7 @@ def _get_metrics_module():
     Returns None if the module is not available (e.g., in OSS without the core module).
     """
     try:
-        from unstract.core.metrics import record, MetricName, MetricType
+        from unstract.core.metrics import MetricName, MetricType, record
 
         return record, MetricName, MetricType
     except ImportError:

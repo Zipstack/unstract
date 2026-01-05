@@ -8,6 +8,7 @@ Tasks:
 This implementation uses celery-batches to efficiently process metric events
 in batches, reducing database contention and improving throughput.
 """
+
 import logging
 from datetime import datetime, timedelta
 from typing import Any

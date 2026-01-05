@@ -1,9 +1,9 @@
 """Django models for Dashboard Metrics."""
+
 import uuid
 
 from django.contrib.postgres.indexes import GinIndex
 from django.db import models
-
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,

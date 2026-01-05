@@ -1,9 +1,8 @@
 """Unit tests for Dashboard Metrics Celery tasks."""
 import uuid
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
 

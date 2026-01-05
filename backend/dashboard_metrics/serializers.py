@@ -1,10 +1,11 @@
 """Serializers for Dashboard Metrics API."""
-from datetime import datetime, timedelta
+
+from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework import serializers
 
-from .models import EventMetricsHourly, MetricType
+from .models import EventMetricsHourly
 
 
 class MetricsQuerySerializer(serializers.Serializer):

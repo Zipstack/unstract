@@ -2,6 +2,7 @@
 
 Updates the hourly cleanup task name and adds a new daily cleanup task.
 """
+
 from django.db import migrations
 
 
@@ -65,7 +66,6 @@ def revert_periodic_tasks(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("dashboard_metrics", "0003_add_daily_monthly_tables"),
         ("django_celery_beat", "0018_improve_crontab_helptext"),

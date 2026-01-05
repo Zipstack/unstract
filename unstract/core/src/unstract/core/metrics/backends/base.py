@@ -1,4 +1,5 @@
 """Base abstract class for metric backends."""
+
 from abc import ABC, abstractmethod
 
 from ..types import MetricEvent
