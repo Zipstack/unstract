@@ -142,6 +142,11 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         db_comment="Flag to enable or disable word-level confidence (depends on enable_highlight)",
         default=False,
     )
+    custom_data = models.JSONField(
+        null=True,
+        blank=True,
+        db_comment="Custom data for variable replacement in prompts using {{custom_data.key}} syntax",
+    )
 
     # Introduced field to establish M2M relation between users and custom_tool.
     # This will introduce intermediary table which relates both the models.

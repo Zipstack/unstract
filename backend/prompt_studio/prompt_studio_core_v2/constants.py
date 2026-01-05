@@ -103,6 +103,7 @@ class ToolStudioPromptKeys:
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
     LINE_ITEM = "line-item"
+    CUSTOM_DATA = "custom_data"
     # Webhook postprocessing settings
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"
     POSTPROCESSING_WEBHOOK_URL = "postprocessing_webhook_url"
@@ -178,6 +179,15 @@ class IndexingConstants:
     TOOL_EXECUTION_METATADA = "tool_execution_metadata"
     EXECUTION_DATA_DIR = "execution_data_dir"
     RUN_ID = "run_id"
+
+
+class DeploymentType:
+    """Deployment types where Prompt Studio tools can be used."""
+
+    API_DEPLOYMENT = "API Deployment"
+    ETL_PIPELINE = "ETL Pipeline"
+    TASK_PIPELINE = "Task Pipeline"
+    HUMAN_QUALITY_REVIEW = "Human in the Loop"
 
 
 class DefaultValues:

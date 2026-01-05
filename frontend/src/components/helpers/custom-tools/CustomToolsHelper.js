@@ -37,6 +37,9 @@ function CustomToolsHelper() {
       llmProfiles: [],
       selectedDoc: null,
       adapters: [],
+      hasUnsavedChanges: false,
+      deploymentUsageInfo: null,
+      lastExportedAt: null,
     };
 
     const reqOpsPromptStudio = {
