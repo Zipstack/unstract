@@ -5,7 +5,7 @@
   align-items: center;
   /* column-gap: 12px; */
   height: min-content;
-  background-color: #F5F7F9;
+  background-color: #f5f7f9;
   padding-block: 8px;
   padding-inline: 12px;
 }
@@ -18,12 +18,13 @@
 
 .appBody {
   background-color: var(--page-bg-2);
-  overflow: hidden;
-  height: 100%;
+  overflow: auto;
+  height: calc(100vh - 60px);
 }
 
 .appBody2 {
   height: 100%;
+  overflow-y: auto;
 }
 .btn_style {
   margin: 0 5px;
@@ -47,7 +48,7 @@
   border-radius: 6px;
   margin: 0 5px;
   border-inline-start-width: 1px;
-  position:  static!important;
+  position: static !important;
 }
 .radio_btn:hover {
   border-inline-start-width: 1px;

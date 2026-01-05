@@ -1,28 +1,31 @@
 import { Route } from "react-router-dom";
 
-import { OnBoardPage } from "../pages/OnBoardPage.jsx";
-import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
-import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
-import { SettingsPage } from "../pages/SettingsPage.jsx";
-import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
-import { UsersPage } from "../pages/UsersPage.jsx";
-import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
-import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
-import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
-import { ProfilePage } from "../pages/ProfilePage.jsx";
-import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
-import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
-import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
-import { AgencyPage } from "../pages/AgencyPage.jsx";
-import { CustomTools } from "../pages/CustomTools.jsx";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
-import { ToolIdePage } from "../pages/ToolIdePage.jsx";
-import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { LogsPage } from "../pages/LogsPage.jsx";
+import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
+import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
+import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
+import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
+import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
+import { AgencyPage } from "../pages/AgencyPage.jsx";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
+import { CustomTools } from "../pages/CustomTools.jsx";
+import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
+import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
+import { LogsPage } from "../pages/LogsPage.jsx";
+import { LookUpsPage } from "../pages/LookUpsPage.jsx";
+import { LookUpProjectList } from "../components/lookups/project-list/LookUpProjectList.jsx";
+import { LookUpProjectDetail } from "../components/lookups/project-detail/LookUpProjectDetail.jsx";
+import { OnBoardPage } from "../pages/OnBoardPage.jsx";
+import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { ProfilePage } from "../pages/ProfilePage.jsx";
+import { SettingsPage } from "../pages/SettingsPage.jsx";
+import { ToolIdePage } from "../pages/ToolIdePage.jsx";
+import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
+import { UsersPage } from "../pages/UsersPage.jsx";
+import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -143,6 +146,10 @@ function useMainAppRoutes() {
           <Route path="" element={<AgencyPage />} />
         </Route>
         <Route path="tools" element={<CustomTools />} />
+        <Route path="lookups" element={<LookUpsPage />}>
+          <Route path="" element={<LookUpProjectList />} />
+          <Route path=":projectId" element={<LookUpProjectDetail />} />
+        </Route>
         <Route path="" element={<CustomToolsHelper />}>
           <Route path="tools/:id" element={<ToolIdePage />} />
           <Route

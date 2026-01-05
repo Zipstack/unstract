@@ -1,0 +1,39 @@
+.lookup-project-detail {
+  padding: 24px;
+  height: 100%;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.project-header {
+  margin-bottom: 24px;
+  flex-shrink: 0;
+}
+
+.project-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+}
+
+/* Ensure tabs content is scrollable */
+.lookup-project-detail .ant-card {
+  flex: 1;
+  overflow: hidden;
+}
+
+.lookup-project-detail .ant-tabs-content {
+  max-height: calc(100vh - 320px);
+  overflow-y: auto;
+}
