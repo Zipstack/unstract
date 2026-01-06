@@ -76,9 +76,6 @@ function PromptCardItems({
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
-  const [enabledProfiles, setEnabledProfiles] = useState(
-    llmProfiles.map((profile) => profile.profile_id)
-  );
   const [isIndexOpen, setIsIndexOpen] = useState(false);
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
@@ -163,13 +160,10 @@ function PromptCardItems({
         .map((profile) => ({
           ...profile,
           isDefault: profile?.profile_id === selectedLlmProfileId,
-          isEnabled: enabledProfiles.includes(profile?.profile_id),
         }))
         .sort((a, b) => {
           if (a?.isDefault) return -1; // Default profile comes first
           if (b?.isDefault) return 1;
-          if (a?.isEnabled && !b?.isEnabled) return -1; // Enabled profiles come before disabled
-          if (!a?.isEnabled && b?.isEnabled) return 1;
           return 0;
         })
     );
@@ -181,7 +175,7 @@ function PromptCardItems({
 
   useEffect(() => {
     getAdapterInfo(adapters);
-  }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
+  }, [llmProfiles, selectedLlmProfileId]);
 
   return (
     <Card
@@ -208,7 +202,6 @@ function PromptCardItems({
             setIsEditingTitle={setIsEditingTitle}
             expandCard={expandCard}
             setExpandCard={setExpandCard}
-            enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
             enforceType={enforceType}
@@ -315,8 +308,6 @@ function PromptCardItems({
               spsLoading={spsLoading}
               llmProfileDetails={llmProfileDetails}
               setOpenIndexProfile={setOpenIndexProfile}
-              enabledProfiles={enabledProfiles}
-              setEnabledProfiles={setEnabledProfiles}
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}

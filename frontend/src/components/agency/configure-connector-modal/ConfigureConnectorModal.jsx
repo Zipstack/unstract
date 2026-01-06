@@ -86,14 +86,17 @@ function ConfigureConnectorModal({
 
   const setUpdatedTabOptions = (tabOption) => {
     setTabItems((prevTabOptions) => {
-      // Check if tabOption already exists in prevTabOptions
-      // Return previous state unchanged if it does or create new array
-      if (prevTabOptions.some((opt) => opt?.key === tabOption?.key)) {
-        return prevTabOptions;
-      } else {
-        const updatedTabOptions = [...prevTabOptions, tabOption];
-        return updatedTabOptions;
+      const existingIndex = prevTabOptions.findIndex(
+        (opt) => opt?.key === tabOption?.key
+      );
+      if (existingIndex === -1) {
+        // Add new tab option
+        return [...prevTabOptions, tabOption];
       }
+      // Update existing tab option (e.g., disabled state may have changed)
+      const updatedTabOptions = [...prevTabOptions];
+      updatedTabOptions[existingIndex] = tabOption;
+      return updatedTabOptions;
     });
   };
 

@@ -12,12 +12,17 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 class VariableType(str, Enum):
     STATIC = "STATIC"
     DYNAMIC = "DYNAMIC"
+    CUSTOM_DATA = "CUSTOM_DATA"
 
 
 class VariableConstants:
     VARIABLE_REGEX = "{{(.+?)}}"
     DYNAMIC_VARIABLE_DATA_REGEX = r"\[(.*?)\]"
-    DYNAMIC_VARIABLE_URL_REGEX = r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))"  # noqa: E501
+    DYNAMIC_VARIABLE_URL_REGEX = (
+        r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»"
+        "'']))"
+    )  # noqa: E501
+    CUSTOM_DATA_VARIABLE_REGEX = r"custom_data\.([a-zA-Z0-9_.]+)"
 
 
 class PromptStudioVariableService:
@@ -45,11 +50,18 @@ class PromptStudioVariableService:
     @staticmethod
     def identify_variable_type(variable: str) -> VariableType:
         variable_type: VariableType
-        pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
-        if re.findall(pattern, variable):
-            variable_type = VariableType.DYNAMIC
+
+        # Check for custom_data variable type first
+        custom_data_pattern = re.compile(VariableConstants.CUSTOM_DATA_VARIABLE_REGEX)
+        if re.findall(custom_data_pattern, variable):
+            variable_type = VariableType.CUSTOM_DATA
         else:
-            variable_type = VariableType.STATIC
+            # Check for dynamic variable type
+            dynamic_pattern = re.compile(VariableConstants.DYNAMIC_VARIABLE_URL_REGEX)
+            if re.findall(dynamic_pattern, variable):
+                variable_type = VariableType.DYNAMIC
+            else:
+                variable_type = VariableType.STATIC
         return variable_type
 
     @staticmethod
@@ -71,6 +83,9 @@ class PromptStudioVariableService:
             variable_type: VariableType = (
                 PromptStudioVariableService.identify_variable_type(variable=variable)
             )
+            # Skip custom_data variables - they are handled by the prompt-service
+            if variable_type == VariableType.CUSTOM_DATA:
+                continue
             if variable_type == VariableType.STATIC:
                 variable_output_map[variable] = (
                     PromptStudioVariableService.fetch_variable_outputs(

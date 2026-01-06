@@ -6,6 +6,7 @@ from typing import Any
 from flask import current_app as app
 
 from unstract.prompt_service.constants import VariableConstants, VariableType
+from unstract.prompt_service.exceptions import CustomDataError
 from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
 
 
@@ -101,7 +102,10 @@ class VariableReplacementHelper:
 
     @staticmethod
     def replace_custom_data_variable(
-        prompt: str, variable: str, custom_data: dict[str, Any]
+        prompt: str,
+        variable: str,
+        custom_data: dict[str, Any],
+        is_ide: bool = True,
     ) -> str:
         """Replace custom_data variable in prompt.
 
@@ -109,26 +113,27 @@ class VariableReplacementHelper:
             prompt: The prompt containing variables
             variable: The variable to replace (e.g., "custom_data.name")
             custom_data: The custom_data data dictionary
+            is_ide: Whether this is running from Prompt Studio IDE (affects error messages)
 
         Returns:
             prompt with variable replaced
         """
-        if not custom_data:
-            error_msg = f"Custom data is empty. Unable to replace variable {variable}"
-            app.logger.error(error_msg)
-            raise ValueError(error_msg)
-
         # Extract the path from custom_data.path.to.value
         custom_data_match = re.search(
             VariableConstants.CUSTOM_DATA_VARIABLE_REGEX, variable
         )
         if not custom_data_match:
-            error_msg = f"Invalid custom_data variable format: {variable}"
-            app.logger.error(error_msg)
-            raise ValueError(error_msg)
+            error_msg = "Invalid variable format."
+            app.logger.error(f"{error_msg}: {variable}")
+            raise CustomDataError(variable=variable, reason=error_msg, is_ide=is_ide)
 
         path_str = custom_data_match.group(1)
         path_parts = path_str.split(".")
+
+        if not custom_data:
+            error_msg = "Custom data is not configured."
+            app.logger.error(error_msg)
+            raise CustomDataError(variable=path_str, reason=error_msg, is_ide=is_ide)
 
         # Navigate through the nested dictionary
         try:
@@ -136,11 +141,11 @@ class VariableReplacementHelper:
             for part in path_parts:
                 value = value[part]
         except (KeyError, TypeError) as e:
-            error_msg = (
-                f"Path {path_str} not found in custom_data for variable {variable}"
-            )
+            error_msg = f"Key '{path_str}' not found in custom data."
             app.logger.error(error_msg)
-            raise ValueError(error_msg) from e
+            raise CustomDataError(
+                variable=path_str, reason=error_msg, is_ide=is_ide
+            ) from e
 
         # Format the value and replace in prompt
         formatted_value = VariableReplacementHelper.handle_json_and_str_types(value)
