@@ -49,7 +49,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${project.id}/data_sources/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/data_sources/`
       );
       setDataSources(response.data || []);
     } catch (error) {
@@ -71,7 +71,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
 
     try {
       await axiosPrivate.post(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${project.id}/upload_reference_data/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/upload_reference_data/`,
         formData,
         {
           headers: {
@@ -109,7 +109,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
       onOk: async () => {
         try {
           await axiosPrivate.delete(
-            `/api/v1/unstract/${sessionDetails?.orgId}/data-sources/${dataSourceId}/`,
+            `/api/v1/unstract/${sessionDetails?.orgId}/lookup/data-sources/${dataSourceId}/`,
             {
               headers: {
                 "X-CSRFToken": sessionDetails?.csrfToken,
@@ -143,7 +143,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
         setIndexing(true);
         try {
           const response = await axiosPrivate.post(
-            `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${project.id}/index_all/`,
+            `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/index_all/`,
             {},
             {
               headers: {

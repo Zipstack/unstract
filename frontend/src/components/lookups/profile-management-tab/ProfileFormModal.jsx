@@ -101,7 +101,7 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
     setLoading(true);
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup-profiles/${profileId}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-profiles/${profileId}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -164,8 +164,8 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
         const requestOptions = {
           method: isEdit ? "PATCH" : "POST",
           url: isEdit
-            ? `/api/v1/unstract/${sessionDetails?.orgId}/lookup-profiles/${profileId}/`
-            : `/api/v1/unstract/${sessionDetails?.orgId}/lookup-profiles/`,
+            ? `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-profiles/${profileId}/`
+            : `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-profiles/`,
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",

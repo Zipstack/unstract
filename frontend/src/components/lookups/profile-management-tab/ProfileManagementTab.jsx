@@ -74,7 +74,7 @@ function ProfileManagementTab({ projectId }) {
     setLoading(true);
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup-profiles/?lookup_project=${projectId}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-profiles/?lookup_project=${projectId}`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -108,7 +108,7 @@ function ProfileManagementTab({ projectId }) {
   const handleSetDefault = (profileId) => {
     const requestOptions = {
       method: "POST",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup-profiles/${profileId}/set-default/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-profiles/${profileId}/set-default/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
@@ -145,7 +145,7 @@ function ProfileManagementTab({ projectId }) {
   const handleDelete = (profileId) => {
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup-profiles/${profileId}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-profiles/${profileId}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

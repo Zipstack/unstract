@@ -109,6 +109,26 @@ const usePromptOutput = () => {
         isSinglePass,
         true
       );
+      // Apply lookup enrichment in-place if available
+      // The lookup_enrichment object is keyed by field name (e.g., {"vendor_name": "Amazon Web Services"})
+      let enrichedOutput = item?.output;
+      const lookupEnrichment = item?.lookup_enrichment;
+      const promptKey = item?.prompt_key;
+
+      if (
+        lookupEnrichment &&
+        Object.keys(lookupEnrichment).length > 0 &&
+        promptKey &&
+        Object.prototype.hasOwnProperty.call(lookupEnrichment, promptKey)
+      ) {
+        // Match prompt_key to enrichment key (works for both individual and single-pass modes)
+        // Each item has its own output value, and we match by the prompt's field name
+        const enrichmentValue = lookupEnrichment[promptKey];
+        if (enrichmentValue && typeof enrichedOutput === "string") {
+          enrichedOutput = enrichmentValue;
+        }
+      }
+
       outputs[key] = {
         runId: item?.run_id,
         promptOutputId: item?.prompt_output_id,
@@ -116,12 +136,16 @@ const usePromptOutput = () => {
         context: item?.context,
         challengeData: item?.challenge_data,
         tokenUsage: item?.token_usage,
-        output: item?.output,
+        output: enrichedOutput,
+        originalOutput: item?.output,
         timer,
         coverage: item?.coverage,
         highlightData: item?.highlight_data,
         confidenceData: item?.confidence_data,
         wordConfidenceData: item?.word_confidence_data,
+        // Lookup enrichment data
+        lookupEnrichment: item?.lookup_enrichment,
+        lookupMetadata: item?._lookup_metadata,
       };
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)

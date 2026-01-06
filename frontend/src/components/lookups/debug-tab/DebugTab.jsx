@@ -44,7 +44,7 @@ export function DebugTab({ project }) {
       }
 
       const response = await axiosPrivate.post(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${project.id}/execute/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/execute/`,
         {
           input_data: parsedInput,
           use_cache: false,

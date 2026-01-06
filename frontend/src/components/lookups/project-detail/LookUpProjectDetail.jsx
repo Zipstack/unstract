@@ -31,7 +31,7 @@ import { ExecutionHistoryTab } from "../execution-history-tab/ExecutionHistoryTa
 import { DebugTab } from "../debug-tab/DebugTab";
 import "./LookUpProjectDetail.css";
 
-const { Title, Text } = Typography;
+const { Title } = Typography;
 const { TextArea } = Input;
 
 const REFERENCE_DATA_TYPES = [
@@ -66,7 +66,7 @@ export function LookUpProjectDetail() {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${projectId}/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${projectId}/`
       );
       setProject(response.data);
     } catch (error) {
@@ -103,7 +103,7 @@ export function LookUpProjectDetail() {
           ?.split("=")[1];
 
       await axiosPrivate.patch(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${projectId}/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${projectId}/`,
         values,
         {
           headers: {
@@ -142,7 +142,7 @@ export function LookUpProjectDetail() {
           ?.split("=")[1];
 
       await axiosPrivate.delete(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${projectId}/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${projectId}/`,
         {
           headers: {
             "X-CSRFToken": csrfToken,
@@ -222,9 +222,6 @@ export function LookUpProjectDetail() {
         <div className="project-info">
           <div>
             <Title level={3}>{project.name}</Title>
-            {project.description && (
-              <Text type="secondary">{project.description}</Text>
-            )}
           </div>
           <Space>
             <Tag color={project.is_active ? "green" : "orange"}>

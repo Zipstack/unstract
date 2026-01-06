@@ -25,6 +25,51 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 logger = logging.getLogger(__name__)
 
 
+def _try_lookup_enrichment(
+    tool_id: str,
+    extracted_data: dict[str, Any],
+    run_id: str | None = None,
+) -> dict[str, Any]:
+    """Attempt Lookup enrichment if available.
+
+    This function safely attempts to enrich extracted data using linked
+    Lookup projects. Returns empty dict if Lookup app is not available.
+
+    Args:
+        tool_id: Prompt Studio project (CustomTool) UUID
+        extracted_data: Dict of extracted field values from prompts
+        run_id: Optional execution run ID for tracking
+
+    Returns:
+        Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
+        or empty dict if Lookup is not available or no links exist.
+    """
+    try:
+        from lookup.services.lookup_integration_service import (
+            LookupIntegrationService,
+        )
+
+        return LookupIntegrationService.enrich_if_linked(
+            prompt_studio_project_id=tool_id,
+            extracted_data=extracted_data,
+            run_id=run_id,
+        )
+    except ImportError:
+        # Lookup app not installed
+        logger.debug("Lookup app not available, skipping enrichment")
+        return {}
+    except Exception as e:
+        # Don't let Lookup errors break PS execution
+        logger.warning(f"Lookup enrichment failed (non-fatal): {e}")
+        return {
+            "lookup_enrichment": {},
+            "_lookup_metadata": {
+                "status": "error",
+                "message": str(e),
+            },
+        }
+
+
 class OutputManagerHelper:
     @staticmethod
     def handle_prompt_output_update(
@@ -192,6 +237,43 @@ class OutputManagerHelper:
             # Serialize the instance
             serializer = PromptStudioOutputSerializer(prompt_output)
             serialized_data.append(serializer.data)
+
+        # Post-processing: Lookup enrichment integration
+        # Build extracted data dict from all prompt outputs for enrichment
+        extracted_data_for_lookup: dict[str, Any] = {}
+        for prompt in prompts:
+            if prompt.prompt_type == PSOMKeys.NOTES:
+                continue
+            output_value = outputs.get(prompt.prompt_key)
+            if output_value is not None:
+                extracted_data_for_lookup[prompt.prompt_key] = output_value
+
+        # Execute Lookup enrichment if linked projects exist
+        if extracted_data_for_lookup:
+            tool_id_str = str(tool.tool_id)
+            logger.info(
+                f"Calling Lookup enrichment for tool {tool_id_str} "
+                f"with data: {extracted_data_for_lookup}"
+            )
+            lookup_result = _try_lookup_enrichment(
+                tool_id=tool_id_str,
+                extracted_data=extracted_data_for_lookup,
+                run_id=run_id,
+            )
+            logger.info(f"Lookup enrichment result: {lookup_result}")
+
+            # Add enrichment data to each serialized result
+            if lookup_result:
+                lookup_enrichment = lookup_result.get("lookup_enrichment", {})
+                lookup_metadata = lookup_result.get("_lookup_metadata", {})
+                logger.info(
+                    f"Adding lookup_enrichment={lookup_enrichment} "
+                    f"to {len(serialized_data)} items"
+                )
+
+                for item in serialized_data:
+                    item["lookup_enrichment"] = lookup_enrichment
+                    item["_lookup_metadata"] = lookup_metadata
 
         return serialized_data
 

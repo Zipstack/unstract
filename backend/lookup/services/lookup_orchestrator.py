@@ -219,6 +219,7 @@ class LookUpOrchestrator:
             f"{conflicts_resolved} conflicts resolved, "
             f"total time {total_execution_time_ms}ms"
         )
+        logger.info(f"Merged enrichment data: {merged_data}")
 
         return {
             "lookup_enrichment": merged_data,

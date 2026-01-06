@@ -75,7 +75,7 @@ export function TemplateTab({ project, onUpdate }) {
   const fetchTemplate = async () => {
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-templates/${project.template.id}/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/${project.template.id}/`
       );
       setTemplate(response.data);
       form.setFieldsValue({
@@ -125,14 +125,14 @@ export function TemplateTab({ project, onUpdate }) {
       if (template) {
         // Update existing
         await axiosPrivate.patch(
-          `/api/v1/unstract/${sessionDetails?.orgId}/lookup-templates/${template.id}/`,
+          `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/${template.id}/`,
           payload,
           { headers }
         );
       } else {
         // Create new
         await axiosPrivate.post(
-          `/api/v1/unstract/${sessionDetails?.orgId}/lookup-templates/`,
+          `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/`,
           payload,
           { headers }
         );
@@ -160,7 +160,7 @@ export function TemplateTab({ project, onUpdate }) {
     try {
       const templateText = form.getFieldValue("template_text");
       const response = await axiosPrivate.post(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-templates/validate/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/validate/`,
         {
           template_text: templateText,
           sample_data: {},
@@ -193,7 +193,7 @@ export function TemplateTab({ project, onUpdate }) {
   const handleTest = async (testData) => {
     try {
       const response = await axiosPrivate.post(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${project.id}/execute/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/execute/`,
         {
           input_data: testData,
           use_cache: false,

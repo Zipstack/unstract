@@ -48,7 +48,7 @@ export function LookUpProjectList() {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/`
       );
       setProjects(response.data.results || response.data || []);
     } catch (error) {
@@ -64,7 +64,7 @@ export function LookUpProjectList() {
   const handleCreateProject = async (values) => {
     try {
       const response = await axiosPrivate.post(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/`,
         values,
         {
           headers: {
@@ -98,7 +98,7 @@ export function LookUpProjectList() {
           ?.split("=")[1];
 
       await axiosPrivate.delete(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-projects/${projectId}/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${projectId}/`,
         {
           headers: {
             "X-CSRFToken": csrfToken,
@@ -139,12 +139,6 @@ export function LookUpProjectList() {
           {text}
         </Button>
       ),
-    },
-    {
-      title: "Description",
-      dataIndex: "description",
-      key: "description",
-      ellipsis: true,
     },
     {
       title: "Type",

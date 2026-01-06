@@ -48,7 +48,7 @@ export function ExecutionHistoryTab({ project }) {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/execution-audits/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/execution-audits/`,
         {
           params: { lookup_project_id: project.id },
         }
@@ -67,7 +67,7 @@ export function ExecutionHistoryTab({ project }) {
   const fetchStatistics = async () => {
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/execution-audits/statistics/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/execution-audits/statistics/`,
         {
           params: { lookup_project_id: project.id },
         }

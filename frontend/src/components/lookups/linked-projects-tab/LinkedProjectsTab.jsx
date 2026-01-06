@@ -48,10 +48,11 @@ export function LinkedProjectsTab({ project }) {
         `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`
       );
       const projects = response.data.results || response.data || [];
-      // Build a map of PS project ID -> tool name
+      // Build a map of PS project tool_id -> tool name
+      // The prompt_studio_project_id in links is the tool_id (UUID)
       const projectsMap = {};
       projects.forEach((proj) => {
-        projectsMap[proj.id] = proj.tool_name || "Unnamed Project";
+        projectsMap[proj.tool_id] = proj.tool_name || "Unnamed Project";
       });
       setPsProjectsMap(projectsMap);
     } catch (error) {
@@ -63,7 +64,7 @@ export function LinkedProjectsTab({ project }) {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-links/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-links/`,
         {
           params: { lookup_project_id: project.id },
         }
@@ -163,7 +164,7 @@ export function LinkedProjectsTab({ project }) {
       }
 
       await axiosPrivate.post(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup-links/`,
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-links/`,
         {
           prompt_studio_project_id: selectedProject,
           lookup_project: project.id,
@@ -205,7 +206,7 @@ export function LinkedProjectsTab({ project }) {
       onOk: async () => {
         try {
           await axiosPrivate.delete(
-            `/api/v1/unstract/${sessionDetails?.orgId}/lookup-links/${linkId}/`,
+            `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-links/${linkId}/`,
             {
               headers: {
                 "X-CSRFToken": sessionDetails?.csrfToken,

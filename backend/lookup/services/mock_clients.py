@@ -144,6 +144,26 @@ class MockStorageClient:
             return content.decode("utf-8")
         return None
 
+    def get(self, path: str) -> str:
+        """Retrieve file content from storage.
+
+        This method implements the StorageClient protocol expected
+        by ReferenceDataLoader.
+
+        Args:
+            path: Storage path
+
+        Returns:
+            Text content of the file
+
+        Raises:
+            FileNotFoundError: If file not found in storage
+        """
+        content = self.get_text_content(path)
+        if content is None:
+            raise FileNotFoundError(f"File not found: {path}")
+        return content
+
     def save_text_content(self, path: str, text: str) -> bool:
         """Save text content to storage.
 
