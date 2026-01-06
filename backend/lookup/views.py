@@ -570,7 +570,7 @@ class LookupDebugView(viewsets.ViewSet):
                     }
                 )
 
-            # Get Look-Up projects
+            # Get Look-Up projects (already ordered by execution_order from query)
             lookup_projects = [link.lookup_project for link in links]
 
             # Initialize services with real clients
@@ -582,8 +582,15 @@ class LookupDebugView(viewsets.ViewSet):
             ref_loader = ReferenceDataLoader(storage_client)
             merger = EnrichmentMerger()
 
+            # Build project order mapping for sorting results later
+            # This ensures enrichments are merged in execution_order priority
+            project_order = {
+                str(project.id): idx for idx, project in enumerate(lookup_projects)
+            }
+
             # Execute each Look-Up with its own LLM profile
-            all_enrichment = {}
+            # Collect results with project IDs for proper ordering
+            enrichment_results = []
             all_metadata = {"lookups_executed": 0, "lookup_details": []}
 
             for project in lookup_projects:
@@ -621,9 +628,14 @@ class LookupDebugView(viewsets.ViewSet):
                         input_data=extracted_data, lookup_projects=[project]
                     )
 
-                    # Merge results
+                    # Collect results with project ID for ordering
                     if result.get("lookup_enrichment"):
-                        all_enrichment.update(result["lookup_enrichment"])
+                        enrichment_results.append(
+                            {
+                                "project_id": str(project.id),
+                                "enrichment": result["lookup_enrichment"],
+                            }
+                        )
 
                     all_metadata["lookups_executed"] += 1
                     all_metadata["lookup_details"].append(
@@ -647,6 +659,17 @@ class LookupDebugView(viewsets.ViewSet):
                             "error": str(e),
                         }
                     )
+
+            # Sort enrichment results by execution order (first lookup has priority)
+            enrichment_results.sort(
+                key=lambda x: project_order.get(x.get("project_id"), 999)
+            )
+
+            # Merge enrichments in REVERSE order so first lookup wins
+            # (later updates overwrite, so process highest priority last)
+            all_enrichment = {}
+            for result in reversed(enrichment_results):
+                all_enrichment.update(result["enrichment"])
 
             # Merge enrichment into extracted data
             enriched_data = {**extracted_data, **all_enrichment}

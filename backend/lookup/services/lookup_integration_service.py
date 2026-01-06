@@ -146,6 +146,7 @@ class LookupIntegrationService:
                 lookup_projects=lookup_projects,
                 input_data=extracted_data,
                 execution_id=run_id or str(uuid.uuid4()),
+                prompt_studio_project_id=prompt_studio_project_id,
             )
             result = future.result(timeout=timeout)
 
@@ -156,6 +157,7 @@ class LookupIntegrationService:
         lookup_projects: list,
         input_data: dict[str, Any],
         execution_id: str,
+        prompt_studio_project_id: str,
     ) -> dict[str, Any]:
         """Execute the lookup orchestrator for all linked projects."""
         from lookup.integrations.file_storage_client import FileStorageClient
@@ -226,10 +228,12 @@ class LookupIntegrationService:
             # Create orchestrator
             orchestrator = LookUpOrchestrator(executor=executor, merger=merger)
 
-            # Execute lookups
+            # Execute lookups with audit context
             result = orchestrator.execute_lookups(
                 input_data=input_data,
                 lookup_projects=lookup_projects,
+                execution_id=execution_id,
+                prompt_studio_project_id=prompt_studio_project_id,
             )
 
             return {

@@ -116,7 +116,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
 
     const checkLinkedLookups = async () => {
       try {
-        const url = `/api/v1/unstract/${sessionDetails?.orgId}/lookup-links/?prompt_studio_project_id=${toolId}`;
+        const url = `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-links/?prompt_studio_project_id=${toolId}`;
         const res = await axiosPrivate.get(url);
         const links = res?.data?.results || res?.data || [];
         setHasLinkedLookups(links.length > 0);
@@ -143,7 +143,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
     setIsEnriching(true);
     try {
       const toolId = details?.tool_id || id;
-      const url = `/api/v1/unstract/${sessionDetails?.orgId}/lookup-debug/enrich_ps_output/`;
+      const url = `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-debug/enrich_ps_output/`;
 
       // Get fresh CSRF token from cookie
       const csrfToken =

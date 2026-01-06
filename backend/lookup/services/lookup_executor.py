@@ -8,6 +8,7 @@ response caching.
 import json
 import logging
 import time
+import uuid
 from typing import Any, Protocol
 
 from lookup.exceptions import (
@@ -16,6 +17,7 @@ from lookup.exceptions import (
     TemplateNotFoundError,
 )
 from lookup.models import LookupProject
+from lookup.services.audit_logger import AuditLogger
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +59,11 @@ class LookUpExecutor:
         self.llm_client = llm_client
 
     def execute(
-        self, lookup_project: LookupProject, input_data: dict[str, Any]
+        self,
+        lookup_project: LookupProject,
+        input_data: dict[str, Any],
+        execution_id: str | None = None,
+        prompt_studio_project_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute single Look-Up.
 
@@ -67,6 +73,8 @@ class LookUpExecutor:
         Args:
             lookup_project: The Look-Up project to execute
             input_data: Input data containing variables to resolve
+            execution_id: Optional UUID to group related executions for audit
+            prompt_studio_project_id: Optional PS project ID for audit tracking
 
         Returns:
             Dictionary containing:
@@ -88,6 +96,16 @@ class LookUpExecutor:
         """
         start_time = time.time()
 
+        # Initialize audit tracking variables
+        exec_id = execution_id or str(uuid.uuid4())
+        resolved_prompt = None
+        llm_response = None
+        llm_time_ms = None
+        reference_data_version = 1
+        llm_provider = "unknown"
+        llm_model = "unknown"
+        _cached = False  # noqa F841
+
         try:
             # Step 1: Load reference data
             try:
@@ -95,16 +113,55 @@ class LookUpExecutor:
                     lookup_project.id
                 )
                 reference_data = reference_data_dict["content"]
+                reference_data_version = reference_data_dict.get("version", 1)
             except ExtractionNotCompleteError as e:
-                return self._failed_result(
+                result = self._failed_result(
                     lookup_project,
                     f"Reference data extraction not complete: {str(e)}",
                     start_time,
                 )
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    llm_response,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    None,
+                    False,
+                    result["error"],
+                )
+                return result
             except Exception as e:
-                return self._failed_result(
+                result = self._failed_result(
                     lookup_project, f"Failed to load reference data: {str(e)}", start_time
                 )
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    llm_response,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    None,
+                    False,
+                    result["error"],
+                )
+                return result
 
             # Step 2: Load prompt template
             try:
@@ -112,10 +169,34 @@ class LookUpExecutor:
                 if not template:
                     raise TemplateNotFoundError("No template configured")
                 template_text = template.template_text
+
+                # Extract LLM info from template config if available
+                if template.llm_config:
+                    llm_provider = template.llm_config.get("provider", "unknown")
+                    llm_model = template.llm_config.get("model", "unknown")
             except (AttributeError, TemplateNotFoundError) as e:
-                return self._failed_result(
+                result = self._failed_result(
                     lookup_project, f"Missing prompt template: {str(e)}", start_time
                 )
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    llm_response,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    None,
+                    False,
+                    result["error"],
+                )
+                return result
 
             # Step 3: Resolve variables
             logger.info(f"Input data received: {input_data}")
@@ -137,13 +218,32 @@ class LookUpExecutor:
                     enrichment_data, confidence = self._parse_llm_response(
                         cached_response
                     )
-                    return self._success_result(
+                    result = self._success_result(
                         lookup_project,
                         enrichment_data,
                         confidence,
                         cached=True,
                         execution_time_ms=0,  # No execution time for cached response
                     )
+                    self._log_audit(
+                        exec_id,
+                        lookup_project,
+                        prompt_studio_project_id,
+                        input_data,
+                        reference_data_version,
+                        llm_provider,
+                        llm_model,
+                        resolved_prompt,
+                        cached_response,
+                        enrichment_data,
+                        "success",
+                        confidence,
+                        0,
+                        None,
+                        True,
+                        None,
+                    )
+                    return result
 
             # Step 5: Call LLM (cache miss or caching disabled)
             try:
@@ -158,37 +258,188 @@ class LookUpExecutor:
                     self.cache.set(cache_key, llm_response)
 
             except TimeoutError as e:
-                return self._failed_result(
+                result = self._failed_result(
                     lookup_project, f"LLM request timed out: {str(e)}", start_time
                 )
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    None,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    llm_time_ms,
+                    False,
+                    result["error"],
+                )
+                return result
             except Exception as e:
-                return self._failed_result(
+                result = self._failed_result(
                     lookup_project, f"LLM request failed: {str(e)}", start_time
                 )
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    None,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    llm_time_ms,
+                    False,
+                    result["error"],
+                )
+                return result
 
             # Step 6: Parse response
             try:
                 enrichment_data, confidence = self._parse_llm_response(llm_response)
             except ParseError as e:
-                return self._failed_result(
+                result = self._failed_result(
                     lookup_project, f"Failed to parse LLM response: {str(e)}", start_time
                 )
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    llm_response,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    llm_time_ms,
+                    False,
+                    result["error"],
+                )
+                return result
 
-            # Step 7: Return result
-            return self._success_result(
+            # Step 7: Return result and log success
+            result = self._success_result(
                 lookup_project,
                 enrichment_data,
                 confidence,
                 cached=False,
                 execution_time_ms=llm_time_ms,
             )
+            self._log_audit(
+                exec_id,
+                lookup_project,
+                prompt_studio_project_id,
+                input_data,
+                reference_data_version,
+                llm_provider,
+                llm_model,
+                resolved_prompt,
+                llm_response,
+                enrichment_data,
+                "success",
+                confidence,
+                llm_time_ms,
+                llm_time_ms,
+                False,
+                None,
+            )
+            return result
 
         except Exception as e:
             # Catch-all for unexpected errors
             logger.exception(f"Unexpected error executing Look-Up {lookup_project.id}")
-            return self._failed_result(
+            result = self._failed_result(
                 lookup_project, f"Unexpected error: {str(e)}", start_time
             )
+            self._log_audit(
+                exec_id,
+                lookup_project,
+                prompt_studio_project_id,
+                input_data,
+                reference_data_version,
+                llm_provider,
+                llm_model,
+                resolved_prompt,
+                llm_response,
+                None,
+                "failed",
+                None,
+                result["execution_time_ms"],
+                llm_time_ms,
+                False,
+                result["error"],
+            )
+            return result
+
+    def _log_audit(
+        self,
+        execution_id: str,
+        lookup_project: LookupProject,
+        prompt_studio_project_id: str | None,
+        input_data: dict[str, Any],
+        reference_data_version: int,
+        llm_provider: str,
+        llm_model: str,
+        llm_prompt: str | None,
+        llm_response: str | None,
+        enriched_output: dict[str, Any] | None,
+        status: str,
+        confidence_score: float | None,
+        execution_time_ms: int | None,
+        llm_call_time_ms: int | None,
+        llm_response_cached: bool,
+        error_message: str | None,
+    ) -> None:
+        """Log execution to audit table.
+
+        This method wraps AuditLogger to capture all execution details
+        for the Execution History tab.
+        """
+        try:
+            audit_logger = AuditLogger()
+            audit_logger.log_execution(
+                execution_id=execution_id,
+                lookup_project_id=lookup_project.id,
+                prompt_studio_project_id=(
+                    uuid.UUID(prompt_studio_project_id)
+                    if prompt_studio_project_id
+                    else None
+                ),
+                input_data=input_data,
+                reference_data_version=reference_data_version,
+                llm_provider=llm_provider,
+                llm_model=llm_model,
+                llm_prompt=llm_prompt or "",
+                llm_response=llm_response,
+                enriched_output=enriched_output,
+                status=status,
+                confidence_score=confidence_score,
+                execution_time_ms=execution_time_ms,
+                llm_call_time_ms=llm_call_time_ms,
+                llm_response_cached=llm_response_cached,
+                error_message=error_message,
+            )
+            logger.debug(
+                f"Audit logged for Look-Up {lookup_project.name} "
+                f"(execution_id={execution_id}, status={status})"
+            )
+        except Exception as e:
+            # Don't fail the execution if audit logging fails
+            logger.warning(f"Failed to log audit for Look-Up execution: {e}")
 
     def _parse_llm_response(self, response_text: str) -> tuple[dict, float | None]:
         """Parse LLM response to extract enrichment data.

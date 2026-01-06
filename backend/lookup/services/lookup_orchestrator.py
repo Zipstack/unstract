@@ -57,7 +57,11 @@ class LookUpOrchestrator:
         )
 
     def execute_lookups(
-        self, input_data: dict[str, Any], lookup_projects: list[LookupProject]
+        self,
+        input_data: dict[str, Any],
+        lookup_projects: list[LookupProject],
+        execution_id: str | None = None,
+        prompt_studio_project_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute all Look-Ups in parallel and merge results.
 
@@ -68,6 +72,8 @@ class LookUpOrchestrator:
         Args:
             input_data: Input data to enrich
             lookup_projects: List of Look-Up projects to execute
+            execution_id: Optional UUID to group related executions for audit
+            prompt_studio_project_id: Optional PS project ID for audit tracking
 
         Returns:
             Dictionary containing:
@@ -91,7 +97,7 @@ class LookUpOrchestrator:
             >>> print(result["_lookup_metadata"]["lookups_successful"])
             2
         """
-        execution_id = str(uuid.uuid4())
+        execution_id = execution_id or str(uuid.uuid4())
         start_time = time.time()
         executed_at = datetime.now(UTC).isoformat()
 
@@ -108,12 +114,21 @@ class LookUpOrchestrator:
         failed_lookups = []
         timeout_count = 0
 
+        # Build project order mapping for sorting results later
+        project_order = {
+            str(project.id): idx for idx, project in enumerate(lookup_projects)
+        }
+
         # Execute Look-Ups in parallel
         with ThreadPoolExecutor(max_workers=self.max_concurrent) as thread_executor:
             # Submit all tasks
             futures = {
                 thread_executor.submit(
-                    self._execute_single, execution_id, input_data, lookup_project
+                    self._execute_single,
+                    execution_id,
+                    input_data,
+                    lookup_project,
+                    prompt_studio_project_id,
                 ): lookup_project
                 for lookup_project in lookup_projects
             }
@@ -194,8 +209,13 @@ class LookUpOrchestrator:
                             }
                         )
 
-        # Merge successful enrichments
+        # Sort successful enrichments by original execution order before merging
+        # This ensures that when there's no confidence score, the lookup with
+        # lower execution_order (higher priority) wins in conflict resolution
         if successful_enrichments:
+            successful_enrichments.sort(
+                key=lambda x: project_order.get(x.get("project_id"), 999)
+            )
             merge_result = self.merger.merge(successful_enrichments)
             merged_data = merge_result["data"]
             conflicts_resolved = merge_result["conflicts_resolved"]
@@ -236,7 +256,11 @@ class LookUpOrchestrator:
         }
 
     def _execute_single(
-        self, execution_id: str, input_data: dict[str, Any], lookup_project: LookupProject
+        self,
+        execution_id: str,
+        input_data: dict[str, Any],
+        lookup_project: LookupProject,
+        prompt_studio_project_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute a single Look-Up project.
 
@@ -247,6 +271,7 @@ class LookUpOrchestrator:
             execution_id: ID of the orchestration execution
             input_data: Input data for enrichment
             lookup_project: Look-Up project to execute
+            prompt_studio_project_id: Optional PS project ID for audit tracking
 
         Returns:
             Enrichment result dictionary from the executor
@@ -256,11 +281,25 @@ class LookUpOrchestrator:
                 f"Executing Look-Up {lookup_project.name} for execution {execution_id}"
             )
 
-            # Execute the Look-Up
-            result = self.executor.execute(lookup_project, input_data)
+            # Execute the Look-Up with audit context
+            result = self.executor.execute(
+                lookup_project=lookup_project,
+                input_data=input_data,
+                execution_id=execution_id,
+                prompt_studio_project_id=prompt_studio_project_id,
+            )
 
             # Add execution context
             result["execution_id"] = execution_id
+
+            # Filter enrichment data to only include fields that actually changed
+            # This prevents a lookup from overwriting fields it didn't canonicalize
+            if result.get("status") == "success" and result.get("data"):
+                result["data"] = self._filter_changed_fields(input_data, result["data"])
+                logger.debug(
+                    f"Filtered enrichment for {lookup_project.name}: "
+                    f"{list(result['data'].keys())}"
+                )
 
             return result
 
@@ -276,6 +315,42 @@ class LookUpOrchestrator:
                 "cached": False,
                 "execution_id": execution_id,
             }
+
+    def _filter_changed_fields(
+        self,
+        input_data: dict[str, Any],
+        enrichment_data: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Filter enrichment data to only include fields that changed.
+
+        When an LLM returns the entire input with modifications, this method
+        identifies which fields actually changed and returns only those.
+        This prevents one lookup from overwriting fields that another lookup
+        is responsible for canonicalizing.
+
+        Args:
+            input_data: Original input data before enrichment
+            enrichment_data: Data returned by the lookup
+
+        Returns:
+            Dictionary containing only fields that differ from input_data,
+            plus any new fields not present in input_data
+        """
+        changed_fields = {}
+
+        for field_name, enriched_value in enrichment_data.items():
+            # Include field if:
+            # 1. It's a new field not in input_data, OR
+            # 2. The value is different from the input value
+            if field_name not in input_data:
+                # New field added by the lookup
+                changed_fields[field_name] = enriched_value
+            elif input_data[field_name] != enriched_value:
+                # Field value was changed by the lookup
+                changed_fields[field_name] = enriched_value
+            # else: field unchanged, don't include it
+
+        return changed_fields
 
     def _empty_result(
         self, execution_id: str, executed_at: str, start_time: float
