@@ -51,7 +51,13 @@
       "type": "boolean",
       "title": "Enable Extended Thinking",
       "default": false,
-      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+      "description": "Enhances reasoning for complex tasks with step-by-step transparency. For more information checkout Anthropic's official [doc](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)."
+    },
+    "enable_extended_context": {
+      "type": "boolean",
+      "title": "Enable Extended Context (1M)",
+      "default": false,
+      "description": "Enables 1 million token context window. Available for Claude Sonnet 4 and Sonnet 4.5 models. Currently in beta for Usage Tier 4 organizations."
     }
   },
   "allOf": [
