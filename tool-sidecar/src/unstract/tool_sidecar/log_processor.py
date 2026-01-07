@@ -34,9 +34,13 @@ def _signal_handler(signum: int, _frame: types.FrameType | None):
     signal_name = sig.name
     logger.warning(f"RECEIVED SIGNAL: {signal_name}")
     logger.warning("Initiating graceful shutdown...")
+    LogProcessor._shutdown_requested = True
 
 
 class LogProcessor:
+    # Class-level flag for signal handler to request shutdown
+    _shutdown_requested = False
+
     def __init__(
         self,
         log_path: str,
@@ -228,6 +232,15 @@ class LogProcessor:
         # Monitor the file for new content
         with open(self.log_path) as f:
             while True:
+                # Check for shutdown signal
+                if LogProcessor._shutdown_requested:
+                    logger.warning("Shutdown requested, exiting monitor loop")
+                    self._update_tool_execution_status(
+                        status=ToolExecutionStatus.FAILED,
+                        error="Process terminated by signal",
+                    )
+                    break
+
                 # Remember current position
                 where = f.tell()
                 line = f.readline()
@@ -250,6 +263,18 @@ class LogProcessor:
                 if log_line.is_terminated:
                     logger.info("Completion signal received")
                     break
+
+    def cleanup(self) -> None:
+        """Clean up resources on shutdown."""
+        logger.info("Cleaning up resources...")
+        try:
+            self.tool_execution_tracker.cleanup()
+        except Exception as e:
+            logger.error(f"Failed to cleanup ToolExecutionTracker: {e}")
+        try:
+            LogPublisher.cleanup()
+        except Exception as e:
+            logger.error(f"Failed to cleanup LogPublisher: {e}")
 
 
 def main():
@@ -316,7 +341,10 @@ def main():
         file_execution_id=file_execution_id,
         container_name=container_name,
     )
-    processor.monitor_logs()
+    try:
+        processor.monitor_logs()
+    finally:
+        processor.cleanup()
 
 
 if __name__ == "__main__":
