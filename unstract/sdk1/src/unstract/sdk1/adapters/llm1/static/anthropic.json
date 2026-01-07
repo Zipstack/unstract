@@ -51,7 +51,7 @@
       "type": "boolean",
       "title": "Enable Extended Thinking",
       "default": false,
-      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+      "description": "Enhances reasoning for complex tasks with step-by-step transparency. For more information checkout Anthropic's official [doc](https://docs.anthropic.com/en/docs/build-with-claude/extended-thinking)."
     },
     "enable_extended_context": {
       "type": "boolean",
