@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -535,6 +536,22 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
         if not enable_thinking and has_thinking_config:
             enable_thinking = True
 
+        # Handle extended context (1M tokens) configuration
+        enable_extended_context = adapter_metadata.get("enable_extended_context", False)
+
+        # If enable_extended_context is not explicitly provided but extra_headers
+        # with context-1m is present, assume it was enabled in a previous validation
+        extra_headers = adapter_metadata.get("extra_headers", {}) or {}
+        anthropic_beta = str(extra_headers.get("anthropic-beta", ""))
+        has_extended_context_header = (
+            "extra_headers" in adapter_metadata
+            and adapter_metadata.get("extra_headers") is not None
+            and "anthropic-beta" in extra_headers
+            and "context-1m" in anthropic_beta
+        )
+        if not enable_extended_context and has_extended_context_header:
+            enable_extended_context = True
+
         # Create a copy to avoid mutating the original metadata
         result_metadata = adapter_metadata.copy()
 
@@ -552,10 +569,15 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
                 result_metadata["temperature"] = 1
 
         # Create validation metadata excluding control fields
+        exclude_fields = (
+            "enable_thinking",
+            "budget_tokens",
+            "thinking",
+            "enable_extended_context",
+            "extra_headers",
+        )
         validation_metadata = {
-            k: v
-            for k, v in result_metadata.items()
-            if k not in ("enable_thinking", "budget_tokens", "thinking")
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
         }
 
         validated = AnthropicLLMParameters(**validation_metadata).model_dump()
@@ -563,6 +585,10 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
         # Add thinking config to final result if enabled
         if enable_thinking and "thinking" in result_metadata:
             validated["thinking"] = result_metadata["thinking"]
+
+        # Add extra_headers for extended context (1M tokens) if enabled
+        if enable_extended_context:
+            validated["extra_headers"] = {"anthropic-beta": "context-1m-2025-08-07"}
 
         return validated
 
