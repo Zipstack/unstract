@@ -9,13 +9,16 @@ class UnstractDBConnectorException(ConnectorBaseException):
     def __init__(
         self,
         detail: Any,
+        default_detail: str = "Error creating/inserting to database. ",
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        default_detail = "Error creating/inserting to database. "
-        user_message = default_detail if not detail else detail
-        super().__init__(*args, user_message=user_message, **kwargs)
-        self.detail = user_message
+        # Combine default_detail with actual detail if detail exists
+        final_detail = (
+            f"{default_detail}\nDetails: {detail}" if detail else default_detail
+        )
+        super().__init__(*args, user_message=final_detail, **kwargs)
+        self.detail = final_detail
 
 
 class InvalidSyntaxException(UnstractDBConnectorException):
@@ -24,19 +27,13 @@ class InvalidSyntaxException(UnstractDBConnectorException):
             f"Error creating/writing to `{database}`. Syntax incorrect. "
             f"Please check your table-name or schema. "
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class InvalidSchemaException(UnstractDBConnectorException):
     def __init__(self, detail: Any, database: str) -> None:
         default_detail = f"Error creating/writing to {database}. Schema not valid. "
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class UnderfinedTableException(UnstractDBConnectorException):
@@ -45,10 +42,7 @@ class UnderfinedTableException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. Undefined table. "
             f"Please check your table-name or schema. "
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class ValueTooLongException(UnstractDBConnectorException):
@@ -57,10 +51,7 @@ class ValueTooLongException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. "
             f"Size of the inserted data exceeds the limit provided by the database. "
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class FeatureNotSupportedException(UnstractDBConnectorException):
@@ -68,10 +59,7 @@ class FeatureNotSupportedException(UnstractDBConnectorException):
         default_detail = (
             f"Error creating/writing to {database}. Feature not supported sql error. "
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class SnowflakeProgrammingException(UnstractDBConnectorException):
@@ -81,10 +69,7 @@ class SnowflakeProgrammingException(UnstractDBConnectorException):
             f"Please make sure all the columns exist in your table as per destination "
             f"DB configuration \n and snowflake credentials are correct.\n"
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class BigQueryForbiddenException(UnstractDBConnectorException):
@@ -93,10 +78,7 @@ class BigQueryForbiddenException(UnstractDBConnectorException):
             f"Error creating/writing to {table_name}. "
             f"Access forbidden in bigquery. Please check your permissions. "
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class BigQueryNotFoundException(UnstractDBConnectorException):
@@ -105,10 +87,7 @@ class BigQueryNotFoundException(UnstractDBConnectorException):
             f"Error creating/writing to {table_name}. "
             f"The requested resource was not found. "
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class ColumnMissingException(UnstractDBConnectorException):
@@ -125,16 +104,10 @@ class ColumnMissingException(UnstractDBConnectorException):
             f"Please make sure all the columns exist in your table "
             f"as per the destination DB configuration.\n"
         )
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
 
 
 class OperationalException(UnstractDBConnectorException):
     def __init__(self, detail: Any, database: str) -> None:
         default_detail = f"Error creating/writing to {database}. Operational error. "
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(detail=final_detail)
+        super().__init__(detail=detail, default_detail=default_detail)
