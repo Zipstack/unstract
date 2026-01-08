@@ -51,7 +51,6 @@ class TestBigQuery(unittest.TestCase):
 
         # Verify the exception message includes both default text and actual error details
         error_msg = str(context.exception.detail)
-        print("********** error_msg ************ ", error_msg)
         self.assertIn("Access forbidden in bigquery", error_msg)
         self.assertIn("Please check your permissions", error_msg)
         self.assertIn("Details:", error_msg)
