@@ -63,6 +63,7 @@ class SettingsKeys:
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     NAME = "name"
     INCLUDE_METADATA = "include_metadata"
     TABLE_SETTINGS = "table_settings"

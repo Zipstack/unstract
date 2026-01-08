@@ -537,7 +537,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
                   File Path:
                 </Text>
                 <Input
-                  placeholder="Search by file path..."
+                  placeholder="File path starts with..."
                   value={filePathFilter}
                   onChange={(e) => setFilePathFilter(e.target.value)}
                   allowClear
