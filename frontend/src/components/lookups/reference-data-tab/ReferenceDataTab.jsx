@@ -3,7 +3,6 @@ import PropTypes from "prop-types";
 import {
   Table,
   Button,
-  Upload,
   Space,
   Tag,
   Typography,
@@ -20,6 +19,7 @@ import {
   CloseCircleOutlined,
   LoadingOutlined,
   DatabaseOutlined,
+  InboxOutlined,
 } from "@ant-design/icons";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -28,7 +28,6 @@ import { useSessionStore } from "../../../store/session-store";
 import "./ReferenceDataTab.css";
 
 const { Title, Text } = Typography;
-const { Dragger } = Upload;
 
 export function ReferenceDataTab({ project, onUpdate }) {
   const [dataSources, setDataSources] = useState([]);
@@ -36,6 +35,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [indexing, setIndexing] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
@@ -63,6 +63,8 @@ export function ReferenceDataTab({ project, onUpdate }) {
   };
 
   const handleUpload = async (file) => {
+    if (!file) return;
+
     setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
@@ -96,8 +98,42 @@ export function ReferenceDataTab({ project, onUpdate }) {
     } finally {
       setUploading(false);
     }
+  };
 
-    return false; // Prevent default upload
+  const handleFileInputChange = (event) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      handleUpload(file);
+    }
+    // Reset input so same file can be selected again
+    event.target.value = "";
+  };
+
+  const handleDragOver = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (!uploading) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragLeave = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setIsDragging(false);
+
+    if (uploading) return;
+
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      handleUpload(file);
+    }
   };
 
   const handleDelete = async (dataSourceId) => {
@@ -280,7 +316,11 @@ export function ReferenceDataTab({ project, onUpdate }) {
           <Button
             type="primary"
             icon={<UploadOutlined />}
-            onClick={() => setUploadModalOpen(true)}
+            onClick={() => {
+              setUploading(false);
+              setIsDragging(false);
+              setUploadModalOpen(true);
+            }}
           >
             Upload Data
           </Button>
@@ -301,19 +341,35 @@ export function ReferenceDataTab({ project, onUpdate }) {
       <Modal
         title="Upload Reference Data"
         open={uploadModalOpen}
-        onCancel={() => setUploadModalOpen(false)}
+        onCancel={() => {
+          setUploadModalOpen(false);
+          setUploading(false);
+          setIsDragging(false);
+        }}
         footer={null}
         width={600}
+        destroyOnClose
       >
-        <Dragger
-          name="file"
-          multiple={false}
-          beforeUpload={handleUpload}
-          disabled={uploading}
+        <input
+          type="file"
+          id="reference-data-file-input"
+          onChange={handleFileInputChange}
           accept=".csv,.json,.txt,.pdf,.xlsx,.xls,.docx,.doc"
+          style={{ display: "none" }}
+          disabled={uploading}
+        />
+        <label
+          htmlFor="reference-data-file-input"
+          className={`upload-dragger ${isDragging ? "dragging" : ""} ${
+            uploading ? "disabled" : ""
+          }`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          style={{ display: "block" }}
         >
           <p className="ant-upload-drag-icon">
-            <UploadOutlined />
+            <InboxOutlined />
           </p>
           <p className="ant-upload-text">
             Click or drag file to this area to upload
@@ -322,7 +378,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
             Support for CSV, JSON, TXT, PDF, Excel, and Word documents. Files
             will be processed for text extraction automatically.
           </p>
-        </Dragger>
+        </label>
         {uploading && (
           <div style={{ marginTop: 16 }}>
             <Progress percent={50} status="active" />

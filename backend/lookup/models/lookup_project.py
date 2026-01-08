@@ -24,15 +24,6 @@ class LookupProject(DefaultOrganizationMixin, BaseModel):
         ("static_data", "Static Data"),
     ]
 
-    REFERENCE_DATA_TYPE_CHOICES = [
-        ("vendor_catalog", "Vendor Catalog"),
-        ("product_catalog", "Product Catalog"),
-        ("customer_database", "Customer Database"),
-        ("pricing_data", "Pricing Data"),
-        ("compliance_rules", "Compliance Rules"),
-        ("custom", "Custom"),
-    ]
-
     LLM_PROVIDER_CHOICES = [
         ("openai", "OpenAI"),
         ("anthropic", "Anthropic"),
@@ -50,11 +41,6 @@ class LookupProject(DefaultOrganizationMixin, BaseModel):
         choices=LOOKUP_TYPE_CHOICES,
         default="static_data",
         help_text="Type of Look-Up (only static_data for POC)",
-    )
-    reference_data_type = models.CharField(
-        max_length=50,
-        choices=REFERENCE_DATA_TYPE_CHOICES,
-        help_text="Category of reference data being stored",
     )
 
     # Template and status

@@ -43,14 +43,12 @@ class PromptStudioLinkingAPITest(TestCase):
         self.lookup1 = LookupProject.objects.create(
             name="Lookup 1",
             description="First lookup",
-            reference_data_type="vendor_catalog",
             template=self.template,
             created_by=self.user
         )
         self.lookup2 = LookupProject.objects.create(
             name="Lookup 2",
             description="Second lookup",
-            reference_data_type="product_catalog",
             template=self.template,
             created_by=self.user
         )

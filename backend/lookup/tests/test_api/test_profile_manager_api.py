@@ -33,7 +33,6 @@ class LookupProfileManagerAPITest(TestCase):
         self.project = LookupProject.objects.create(
             name="Test Lookup Project",
             description="Test Description",
-            reference_data_type="vendor_catalog",
             created_by=self.user
         )
 
@@ -170,7 +169,6 @@ class LookupProfileManagerAPITest(TestCase):
         project2 = LookupProject.objects.create(
             name="Project 2",
             description="Description 2",
-            reference_data_type="product_catalog",
             created_by=self.user
         )
 

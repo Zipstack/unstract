@@ -11,7 +11,6 @@ import {
   Modal,
   Form,
   Input,
-  Select,
   Popconfirm,
 } from "antd";
 import {
@@ -33,15 +32,6 @@ import "./LookUpProjectDetail.css";
 
 const { Title } = Typography;
 const { TextArea } = Input;
-
-const REFERENCE_DATA_TYPES = [
-  { value: "vendor_catalog", label: "Vendor Catalog" },
-  { value: "product_catalog", label: "Product Catalog" },
-  { value: "customer_database", label: "Customer Database" },
-  { value: "pricing_data", label: "Pricing Data" },
-  { value: "compliance_rules", label: "Compliance Rules" },
-  { value: "custom", label: "Custom" },
-];
 
 export function LookUpProjectDetail() {
   const [project, setProject] = useState(null);
@@ -84,7 +74,6 @@ export function LookUpProjectDetail() {
     form.setFieldsValue({
       name: project.name,
       description: project.description || "",
-      reference_data_type: project.reference_data_type,
     });
     setEditModalOpen(true);
   };
@@ -227,9 +216,6 @@ export function LookUpProjectDetail() {
             <Tag color={project.is_active ? "green" : "orange"}>
               {project.is_active ? "Active" : "Inactive"}
             </Tag>
-            <Tag color="blue">
-              {project.reference_data_type?.replace(/_/g, " ").toUpperCase()}
-            </Tag>
             <Button icon={<EditOutlined />} onClick={handleOpenEditModal}>
               Edit
             </Button>
@@ -293,22 +279,6 @@ export function LookUpProjectDetail() {
             <TextArea
               rows={3}
               placeholder="Describe the purpose of this Look-Up project..."
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="reference_data_type"
-            label="Reference Data Type"
-            rules={[
-              {
-                required: true,
-                message: "Please select a reference data type",
-              },
-            ]}
-          >
-            <Select
-              placeholder="Select reference data type"
-              options={REFERENCE_DATA_TYPES}
             />
           </Form.Item>
         </Form>

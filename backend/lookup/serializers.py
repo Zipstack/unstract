@@ -122,7 +122,6 @@ class LookupProjectSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
-            "reference_data_type",
             "template",
             "template_id",
             "is_active",

@@ -53,7 +53,9 @@ export function ExecutionHistoryTab({ project }) {
           params: { lookup_project_id: project.id },
         }
       );
-      setExecutions(response.data.results || []);
+      // Handle both paginated (results array) and non-paginated (direct array) responses
+      const data = response.data.results || response.data || [];
+      setExecutions(Array.isArray(data) ? data : []);
     } catch (error) {
       setAlertDetails({
         type: "error",

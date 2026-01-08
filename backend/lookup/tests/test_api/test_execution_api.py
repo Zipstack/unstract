@@ -47,14 +47,12 @@ class LookupExecutionAPITest(TestCase):
         self.lookup1 = LookupProject.objects.create(
             name="Vendor Lookup",
             description="Vendor enrichment",
-            reference_data_type="vendor_catalog",
             template=self.template,
             created_by=self.user
         )
         self.lookup2 = LookupProject.objects.create(
             name="Product Lookup",
             description="Product enrichment",
-            reference_data_type="product_catalog",
             template=self.template,
             created_by=self.user
         )
@@ -183,7 +181,6 @@ class LookupAuditAPITest(TestCase):
         self.lookup = LookupProject.objects.create(
             name="Test Lookup",
             description="Test",
-            reference_data_type="vendor_catalog",
             template=self.template,
             created_by=self.user
         )

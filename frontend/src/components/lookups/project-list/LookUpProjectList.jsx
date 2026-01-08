@@ -141,14 +141,6 @@ export function LookUpProjectList() {
       ),
     },
     {
-      title: "Type",
-      dataIndex: "reference_data_type",
-      key: "reference_data_type",
-      render: (type) => (
-        <Tag color="blue">{type?.replace(/_/g, " ").toUpperCase()}</Tag>
-      ),
-    },
-    {
       title: "Data Sources",
       dataIndex: "data_source_count",
       key: "data_source_count",

@@ -173,8 +173,11 @@ def auto_increment_version_and_update_latest(sender, instance, **kwargs):
     1. Auto-increments version_number if not set
     2. Marks all previous versions as not latest
     """
-    # If this is a new instance (not updating existing)
-    if not instance.pk:
+    # Check if this is a new instance by querying the database
+    # (instance.pk is always truthy for UUIDField with default=uuid.uuid4)
+    is_new = not LookupDataSource.objects.filter(pk=instance.pk).exists()
+
+    if is_new:
         # Get the highest version number for this project
         max_version = LookupDataSource.objects.filter(project=instance.project).aggregate(
             max_version=models.Max("version_number")

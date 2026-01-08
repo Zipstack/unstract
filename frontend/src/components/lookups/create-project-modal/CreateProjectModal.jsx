@@ -1,16 +1,7 @@
-import { Form, Input, Modal, Select } from "antd";
+import { Form, Input, Modal } from "antd";
 import PropTypes from "prop-types";
 
 const { TextArea } = Input;
-
-const REFERENCE_DATA_TYPES = [
-  { value: "vendor_catalog", label: "Vendor Catalog" },
-  { value: "product_catalog", label: "Product Catalog" },
-  { value: "customer_database", label: "Customer Database" },
-  { value: "pricing_data", label: "Pricing Data" },
-  { value: "compliance_rules", label: "Compliance Rules" },
-  { value: "custom", label: "Custom" },
-];
 
 export function CreateProjectModal({ open, onCancel, onCreate }) {
   const [form] = Form.useForm();
@@ -65,19 +56,6 @@ export function CreateProjectModal({ open, onCancel, onCreate }) {
           <TextArea
             rows={3}
             placeholder="Describe the purpose of this Look-Up project..."
-          />
-        </Form.Item>
-
-        <Form.Item
-          name="reference_data_type"
-          label="Reference Data Type"
-          rules={[
-            { required: true, message: "Please select a reference data type" },
-          ]}
-        >
-          <Select
-            placeholder="Select reference data type"
-            options={REFERENCE_DATA_TYPES}
           />
         </Form.Item>
       </Form>

@@ -41,7 +41,6 @@ class LookupProjectAPITest(TestCase):
         self.project = LookupProject.objects.create(
             name="Test Project",
             description="Test Description",
-            reference_data_type="vendor_catalog",
             template=self.template,
             created_by=self.user
         )
@@ -61,7 +60,6 @@ class LookupProjectAPITest(TestCase):
         data = {
             'name': 'New Project',
             'description': 'New Description',
-            'reference_data_type': 'product_catalog',
             'template_id': str(self.template.id),
             'is_active': True
         }
@@ -87,7 +85,6 @@ class LookupProjectAPITest(TestCase):
         data = {
             'name': 'Updated Project',
             'description': 'Updated Description',
-            'reference_data_type': self.project.reference_data_type,
             'is_active': False
         }
 
@@ -152,7 +149,6 @@ class LookupProjectAPITest(TestCase):
         LookupProject.objects.create(
             name="Inactive Project",
             description="Inactive",
-            reference_data_type="vendor_catalog",
             is_active=False,
             created_by=self.user
         )
