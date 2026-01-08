@@ -13,7 +13,6 @@ class UnstractDBConnectorException(ConnectorBaseException):
         *args: Any,
         **kwargs: Any,
     ) -> None:
-        # Combine default_detail with actual detail if detail exists
         final_detail = (
             f"{default_detail}\nDetails: {detail}" if detail else default_detail
         )
