@@ -168,10 +168,10 @@ function Router() {
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
           )}
         </Route>
+        {verticalsRouter && verticalsRouter()}
       </Route>
       <Route path="*" element={<NotFound />} />
       <Route path="oauth-status" element={<OAuthStatus />} />
-      {verticalsRouter && verticalsRouter()}
     </Routes>
   );
 }
