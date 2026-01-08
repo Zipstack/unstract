@@ -40,6 +40,7 @@ class AuditLogger:
         llm_call_time_ms: int | None = None,
         llm_response_cached: bool = False,
         error_message: str | None = None,
+        file_execution_id: UUID | None = None,
     ) -> LookupExecutionAudit | None:
         """Log execution to database.
 
@@ -63,6 +64,7 @@ class AuditLogger:
             llm_call_time_ms: Time spent calling LLM in milliseconds
             llm_response_cached: Whether response was from cache
             error_message: Error message if execution failed
+            file_execution_id: Optional workflow file execution ID for tracking
 
         Returns:
             Created LookupExecutionAudit instance or None if logging fails
@@ -93,6 +95,7 @@ class AuditLogger:
                 lookup_project=lookup_project,
                 prompt_studio_project_id=prompt_studio_project_id,
                 execution_id=execution_id,
+                file_execution_id=file_execution_id,
                 input_data=input_data,
                 reference_data_version=reference_data_version,
                 enriched_output=enriched_output,

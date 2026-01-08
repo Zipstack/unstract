@@ -1033,6 +1033,14 @@ class FileExecutionTasks:
                 error=processing_error,
             )
 
+            # Execute Look-up enrichment if configured and no processing error
+            if output_result and not processing_error:
+                output_result = cls._try_lookup_enrichment(
+                    workflow=workflow,
+                    output_result=output_result,
+                    file_execution_id=file_execution_id,
+                )
+
             if destination.is_api:
                 execution_metadata = destination.get_metadata(file_history)
             if cls._should_create_file_history(
@@ -1057,6 +1065,68 @@ class FileExecutionTasks:
         return FinalOutputResult(
             output=output_result, metadata=execution_metadata, error=None
         )
+
+    @classmethod
+    def _try_lookup_enrichment(
+        cls,
+        workflow: Workflow,
+        output_result: str | None,
+        file_execution_id: str,
+    ) -> str | None:
+        """Attempt Look-up enrichment for the extraction output.
+
+        This method integrates with the Look-up system to enrich extracted
+        data with reference data matching. It gracefully degrades if
+        Look-up is not configured or fails.
+
+        Args:
+            workflow: The workflow being executed
+            output_result: The extraction result from the tool
+            file_execution_id: File execution ID for tracking
+
+        Returns:
+            Enriched output result if Look-up was successful,
+            original output_result otherwise.
+        """
+        if not output_result:
+            return output_result
+
+        try:
+            from lookup.services.workflow_integration import LookupWorkflowIntegration
+
+            enriched_output, was_enriched = (
+                LookupWorkflowIntegration.process_workflow_enrichment(
+                    workflow_id=str(workflow.id),
+                    original_output=output_result,
+                    file_execution_id=file_execution_id,
+                )
+            )
+
+            if was_enriched:
+                logger.info(
+                    f"Look-up enrichment applied for workflow {workflow.id}, "
+                    f"file execution {file_execution_id}"
+                )
+                # Convert back to string if needed for storage
+                if isinstance(enriched_output, dict):
+                    import json
+
+                    return json.dumps(enriched_output)
+                return enriched_output
+
+            return output_result
+
+        except ImportError:
+            # Look-up module not available - gracefully skip
+            logger.debug("Look-up module not available, skipping enrichment")
+            return output_result
+        except Exception as e:
+            # Log error but don't fail the workflow
+            logger.warning(
+                f"Look-up enrichment failed for workflow {workflow.id}, "
+                f"file execution {file_execution_id}: {e}"
+            )
+            return output_result
 
     @classmethod
     def _should_create_file_history(

@@ -34,6 +34,11 @@ class LookupExecutionAudit(models.Model):
     execution_id = models.UUIDField(
         help_text="Groups all Look-Ups in a single execution batch"
     )
+    file_execution_id = models.UUIDField(
+        null=True,
+        blank=True,
+        help_text="Workflow file execution ID for tracking in API/ETL pipelines",
+    )
 
     # Input/Output
     input_data = models.JSONField(help_text="Input data from Prompt Studio extraction")
@@ -92,6 +97,7 @@ class LookupExecutionAudit(models.Model):
         indexes = [
             models.Index(fields=["lookup_project"]),
             models.Index(fields=["execution_id"]),
+            models.Index(fields=["file_execution_id"]),
             models.Index(fields=["executed_at"]),
             models.Index(fields=["status"]),
         ]

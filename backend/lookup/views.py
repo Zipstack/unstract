@@ -171,7 +171,6 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
         extract_text = upload_serializer.validated_data["extract_text"]
 
         try:
-            from django.conf import settings
             from utils.file_storage.constants import FileStorageKeys
 
             from unstract.sdk1.file_storage.constants import StorageType
@@ -194,14 +193,26 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
             # Upload file to storage following Prompt Studio's path structure
             # Pattern: {base_path}/{org_id}/{project_id}/{filename}
             # Keep Lookup file storage independent of PS project linkage
+            from utils.file_storage.constants import FileStorageConstants
             from utils.user_context import UserContext
 
+            from unstract.core.utilities import UnstractUtils
+
             org_id = UserContext.get_organization_identifier()
-            base_path = settings.PROMPT_STUDIO_FILE_PATH
+            # Use REMOTE path for MinIO storage, not local filesystem path
+            base_path = UnstractUtils.get_env(
+                env_key=FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH
+            )
 
             # Store files under Lookup project ID, not PS tool ID
-            # This ensures files remain accessible regardless of PS linkage changes
+            # This ensures files remains accessible regardless of PS linkage changes
             file_path = f"{base_path}/{org_id}/{project.id}/{file.name}"
+
+            # Debug logging
+            logger.info(
+                f"Upload debug: org_id={org_id}, base_path={base_path}, "
+                f"file_path={file_path}, file.name={file.name}, file.size={file.size}"
+            )
 
             # Create parent directories if they don't exist
             fs_instance.mkdir(f"{base_path}/{org_id}/{project.id}", create_parents=True)
@@ -209,8 +220,12 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
                 f"{base_path}/{org_id}/{project.id}/extract", create_parents=True
             )
 
-            # Upload the file
-            fs_instance.write(path=file_path, mode="wb", data=file.read())
+            # Upload the file - reset file position and handle bytes/file object
+            # Following Prompt Studio's pattern for reliable file upload
+            file.seek(0)  # Reset file position in case it was read during validation
+            file_data = file.read()
+            logger.info(f"File data read: {len(file_data)} bytes")
+            fs_instance.write(path=file_path, mode="wb", data=file_data)
 
             logger.info(f"Uploaded file to storage: {file_path}")
 
@@ -228,10 +243,12 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
             serializer = LookupDataSourceSerializer(data_source)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-        except Exception:
-            logger.exception(f"Error uploading reference data for project {project.id}")
+        except Exception as e:
+            logger.exception(
+                f"Error uploading reference data for project {project.id}: {e}"
+            )
             return Response(
-                {"error": "Failed to upload reference data"},
+                {"error": f"Failed to upload file: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 

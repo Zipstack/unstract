@@ -262,17 +262,27 @@ class OutputManagerHelper:
             )
             logger.info(f"Lookup enrichment result: {lookup_result}")
 
-            # Add enrichment data to each serialized result
+            # Replace output values with enriched values where applicable
             if lookup_result:
                 lookup_enrichment = lookup_result.get("lookup_enrichment", {})
                 lookup_metadata = lookup_result.get("_lookup_metadata", {})
                 logger.info(
-                    f"Adding lookup_enrichment={lookup_enrichment} "
+                    f"Applying lookup_enrichment={lookup_enrichment} "
                     f"to {len(serialized_data)} items"
                 )
 
                 for item in serialized_data:
-                    item["lookup_enrichment"] = lookup_enrichment
+                    prompt_key = item.get("prompt_key")
+                    # If this prompt's field was enriched, replace the output value
+                    if prompt_key and prompt_key in lookup_enrichment:
+                        enriched_value = lookup_enrichment[prompt_key]
+                        if enriched_value is not None:
+                            logger.info(
+                                f"Replacing {prompt_key} output: "
+                                f"'{item.get('output')}' -> '{enriched_value}'"
+                            )
+                            item["output"] = enriched_value
+                    # Add metadata for tracking
                     item["_lookup_metadata"] = lookup_metadata
 
         return serialized_data
