@@ -160,6 +160,9 @@ class StructureTool(BaseTool):
         )
         challenge_llm: str = settings.get(SettingsKeys.CHALLENGE_LLM_ADAPTER_ID, "")
         is_highlight_enabled: bool = settings.get(SettingsKeys.ENABLE_HIGHLIGHT, False)
+        is_word_confidence_enabled: bool = settings.get(
+            SettingsKeys.ENABLE_WORD_CONFIDENCE, False
+        )
         responder: PromptTool = PromptTool(
             tool=self,
             prompt_port=self.get_env_or_die(SettingsKeys.PROMPT_PORT),
@@ -231,6 +234,7 @@ class StructureTool(BaseTool):
         tool_settings[SettingsKeys.ENABLE_SINGLE_PASS_EXTRACTION] = is_single_pass_enabled
         tool_settings[SettingsKeys.SUMMARIZE_AS_SOURCE] = is_summarization_enabled
         tool_settings[SettingsKeys.ENABLE_HIGHLIGHT] = is_highlight_enabled
+        tool_settings[SettingsKeys.ENABLE_WORD_CONFIDENCE] = is_word_confidence_enabled
         _, file_name = os.path.split(input_file)
         if is_summarization_enabled:
             file_name = SettingsKeys.SUMMARIZE

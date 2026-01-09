@@ -15,6 +15,7 @@ import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useListSearch } from "../../../hooks/useListSearch";
 
 const titles = {
   llm: "LLMs",
@@ -33,7 +34,6 @@ const btnText = {
 };
 
 function ToolSettings({ type }) {
-  const [tableRows, setTableRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [adapterDetails, setAdapterDetails] = useState(null);
@@ -48,9 +48,18 @@ function ToolSettings({ type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
+  const {
+    displayList,
+    setDisplayList,
+    setMasterList,
+    updateMasterList,
+    onSearch,
+    clearSearch,
+  } = useListSearch("adapter_name");
 
   useEffect(() => {
-    setTableRows([]);
+    clearSearch();
+    setMasterList([]);
     if (!type) {
       return;
     }
@@ -67,7 +76,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setTableRows(res?.data);
+        setMasterList(res?.data || []);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -79,19 +88,27 @@ function ToolSettings({ type }) {
 
   const addNewItem = (row, isEdit) => {
     if (isEdit) {
-      const rowsModified = [...tableRows].map((tableRow) => {
-        if (tableRow?.id !== row?.id) {
-          return tableRow;
-        }
-        tableRow["adapter_name"] = row?.adapter_name;
-        return tableRow;
-      });
-      setTableRows(rowsModified);
+      updateMasterList((currentList) =>
+        currentList.map((tableRow) => {
+          if (tableRow?.id !== row?.id) {
+            return tableRow;
+          }
+          return { ...tableRow, adapter_name: row?.adapter_name };
+        })
+      );
     } else {
-      const rowsModified = [...tableRows];
-      rowsModified.push(row);
-      setTableRows(rowsModified);
+      updateMasterList((currentList) => [...currentList, row]);
     }
+  };
+
+  const handleDeleteSuccess = (adapterId) => {
+    updateMasterList((currentList) =>
+      currentList.filter((row) => row?.id !== adapterId)
+    );
+    setAlertDetails({
+      type: "success",
+      content: "Successfully deleted",
+    });
   };
 
   const handleDelete = (_event, adapter) => {
@@ -105,20 +122,9 @@ function ToolSettings({ type }) {
 
     setIsLoading(true);
     axiosPrivate(requestOptions)
-      .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== adapter?.id);
-        setTableRows(filteredList);
-        setAlertDetails({
-          type: "success",
-          content: "Successfully deleted",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .then(() => handleDeleteSuccess(adapter?.id))
+      .catch((err) => setAlertDetails(handleException(err)))
+      .finally(() => setIsLoading(false));
   };
 
   const handleShare = (_event, adapter, isEdit) => {
@@ -221,6 +227,10 @@ function ToolSettings({ type }) {
     <div className="plt-tool-settings-layout">
       <ToolNavBar
         title={titles[type]}
+        enableSearch
+        searchKey={type}
+        setSearchList={setDisplayList}
+        onSearch={onSearch}
         CustomButtons={() => {
           return (
             <CustomButton
@@ -237,7 +247,7 @@ function ToolSettings({ type }) {
         <div className="plt-tool-settings-layout-2">
           <div className="plt-tool-settings-body">
             <ViewTools
-              listOfTools={tableRows}
+              listOfTools={displayList}
               isLoading={isLoading}
               handleDelete={handleDelete}
               setOpenAddTool={setOpenAddSourcesModal}
@@ -257,7 +267,7 @@ function ToolSettings({ type }) {
               titleProp="adapter_name"
               descriptionProp="description"
               iconProp="icon"
-              isEmpty={!tableRows?.length}
+              isEmpty={!displayList?.length}
               centered
               isClickable={false}
               handleShare={handleShare}

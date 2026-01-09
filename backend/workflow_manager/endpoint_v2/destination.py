@@ -126,16 +126,24 @@ class DestinationConnector(BaseConnector):
 
     def validate(self) -> None:
         connection_type = self.endpoint.connection_type
-        connector: ConnectorInstance = self.endpoint.connector_instance
+        connector: ConnectorInstance | None = self.endpoint.connector_instance
+
         if connection_type is None:
+            error_msg = "Missing destination connection type"
+            self.workflow_log.log_error(logger, error_msg)
             raise MissingDestinationConnectionType()
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
+            error_msg = f"Invalid destination connection type: {connection_type}"
+            self.workflow_log.log_error(logger, error_msg)
             raise InvalidDestinationConnectionType()
-        if (
+        # Check if connector is required but missing
+        requires_connector = (
             connection_type != WorkflowEndpoint.ConnectionType.API
             and connection_type != WorkflowEndpoint.ConnectionType.MANUALREVIEW
-            and connector is None
-        ):
+        )
+        if requires_connector and connector is None:
+            error_msg = "Destination connector not configured"
+            self.workflow_log.log_error(logger, error_msg)
             raise DestinationConnectorNotConfigured()
 
         # Validate database connection if it's a database destination
@@ -147,10 +155,18 @@ class DestinationConnector(BaseConnector):
                     connector_settings=connector.connector_metadata,
                 )
                 engine = db_class.get_engine()
+                self.workflow_log.log_info(logger, "Database connection test successful")
                 if hasattr(engine, "close"):
                     engine.close()
+            except ConnectorError as e:
+                error_msg = f"Database connector validation failed: {e}"
+                self.workflow_log.log_error(logger, error_msg)
+                logger.exception(error_msg)
+                raise
             except Exception as e:
-                logger.error(f"Database connection failed: {str(e)}")
+                error_msg = f"Unexpected error during database validation: {e}"
+                self.workflow_log.log_error(logger, error_msg)
+                logger.exception(error_msg)
                 raise
 
     def _should_handle_hitl(
@@ -161,7 +177,15 @@ class DestinationConnector(BaseConnector):
         input_file_path: str,
         file_execution_id: str,
     ) -> bool:
-        """Determines if HITL processing should be performed, returning True if data was pushed to the queue."""
+        """Determines if HITL processing should be performed, returning True if data was pushed to the queue.
+
+        The logic is:
+        1. packet_id takes precedence - always push to packet queue
+        2. hitl_queue_name with API rules:
+           - If no API rules configured → Push ALL to HITL (backward compatible)
+           - If API rules exist → Evaluate rules, push only if rules match
+        3. Database destination → Evaluate DB rules
+        """
         # Check packet_id first - it takes precedence over hitl_queue_name
         if self.packet_id:
             logger.info(
@@ -175,26 +199,55 @@ class DestinationConnector(BaseConnector):
             )
             return True
 
-        # Check if API deployment requested HITL override
+        # Check if API deployment requested HITL override with hitl_queue_name
         if self.hitl_queue_name:
-            logger.info(f"API HITL override: pushing to queue for file {file_name}")
-            self._push_data_to_queue(
-                file_name=file_name,
-                workflow=workflow,
-                input_file_path=input_file_path,
-                file_execution_id=file_execution_id,
-            )
-            return True
+            # Check if API rules are configured for this workflow
+            if WorkflowUtil.has_api_rules(workflow):
+                # API rules exist - evaluate them
+                execution_result = self.get_tool_execution_result()
+                if WorkflowUtil.validate_rule_engine(
+                    execution_result,
+                    workflow,
+                    file_hash.file_destination,
+                    rule_type="API",
+                ):
+                    logger.info(
+                        f"API rules matched: pushing to queue for file {file_name}"
+                    )
+                    self._push_data_to_queue(
+                        file_name=file_name,
+                        workflow=workflow,
+                        input_file_path=input_file_path,
+                        file_execution_id=file_execution_id,
+                    )
+                    return True
+                else:
+                    logger.info(
+                        f"API rules not matched: returning result for file {file_name}"
+                    )
+                    return False
+            else:
+                # No API rules configured - backward compatible behavior: push ALL to HITL
+                logger.info(
+                    f"No API rules configured: pushing to queue for file {file_name}"
+                )
+                self._push_data_to_queue(
+                    file_name=file_name,
+                    workflow=workflow,
+                    input_file_path=input_file_path,
+                    file_execution_id=file_execution_id,
+                )
+                return True
 
         # Skip HITL validation if we're using file_history and no execution result is available
         if self.is_api and self.use_file_history:
             return False
 
-        # Otherwise use existing workflow-based HITL logic
+        # Otherwise use existing workflow-based HITL logic for DB destinations
         execution_result = self.get_tool_execution_result()
 
-        if WorkflowUtil.validate_db_rule(
-            execution_result, workflow, file_hash.file_destination
+        if WorkflowUtil.validate_rule_engine(
+            execution_result, workflow, file_hash.file_destination, rule_type="DB"
         ):
             self._push_data_to_queue(
                 file_name=file_name,
@@ -934,6 +987,7 @@ class DestinationConnector(BaseConnector):
         file_execution_id: str,
         meta_data: dict[str, Any] | None = None,
         ttl_seconds: int | None = None,
+        hitl_reason: str | None = None,
     ) -> dict[str, Any]:
         """Create QueueResult dictionary.
 
@@ -944,6 +998,7 @@ class DestinationConnector(BaseConnector):
             file_execution_id: File execution ID
             meta_data: Optional metadata
             ttl_seconds: Optional TTL in seconds
+            hitl_reason: Optional reason why file was sent to HITL
 
         Returns:
             QueueResult as dictionary
@@ -961,6 +1016,7 @@ class DestinationConnector(BaseConnector):
             file_execution_id=file_execution_id,
             extracted_text=extracted_text,
             ttl_seconds=ttl_seconds,
+            hitl_reason=hitl_reason,
         )
         return queue_result_obj.to_dict()
 
