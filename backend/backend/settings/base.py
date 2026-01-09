@@ -342,6 +342,7 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
     "configuration",
+    "dashboard_metrics",
 )
 TENANT_APPS = []
 
