@@ -6,18 +6,11 @@ from unstract.connectors.exceptions import ConnectorBaseException
 class UnstractDBConnectorException(ConnectorBaseException):
     """Base class for database-related exceptions from Unstract connectors."""
 
-    def __init__(
-        self,
-        detail: Any,
-        default_detail: str = "Error creating/inserting to database. ",
-        *args: Any,
-        **kwargs: Any,
-    ) -> None:
-        final_detail = (
-            f"{default_detail}\nDetails: {detail}" if detail else default_detail
-        )
-        super().__init__(*args, user_message=final_detail, **kwargs)
-        self.detail = final_detail
+    def __init__(self, detail: Any, *args: Any, **kwargs: Any) -> None:
+        default_detail = "Error creating/inserting to database. "
+        user_message = default_detail if not detail else detail
+        super().__init__(*args, user_message=user_message, **kwargs)
+        self.detail = user_message
 
 
 class InvalidSyntaxException(UnstractDBConnectorException):
@@ -26,13 +19,15 @@ class InvalidSyntaxException(UnstractDBConnectorException):
             f"Error creating/writing to `{database}`. Syntax incorrect. "
             f"Please check your table-name or schema. "
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class InvalidSchemaException(UnstractDBConnectorException):
     def __init__(self, detail: Any, database: str) -> None:
         default_detail = f"Error creating/writing to {database}. Schema not valid. "
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class UnderfinedTableException(UnstractDBConnectorException):
@@ -41,7 +36,8 @@ class UnderfinedTableException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. Undefined table. "
             f"Please check your table-name or schema. "
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class ValueTooLongException(UnstractDBConnectorException):
@@ -50,7 +46,8 @@ class ValueTooLongException(UnstractDBConnectorException):
             f"Error creating/writing to {database}. "
             f"Size of the inserted data exceeds the limit provided by the database. "
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class FeatureNotSupportedException(UnstractDBConnectorException):
@@ -58,7 +55,8 @@ class FeatureNotSupportedException(UnstractDBConnectorException):
         default_detail = (
             f"Error creating/writing to {database}. Feature not supported sql error. "
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class SnowflakeProgrammingException(UnstractDBConnectorException):
@@ -68,7 +66,8 @@ class SnowflakeProgrammingException(UnstractDBConnectorException):
             f"Please make sure all the columns exist in your table as per destination "
             f"DB configuration \n and snowflake credentials are correct.\n"
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class BigQueryForbiddenException(UnstractDBConnectorException):
@@ -77,7 +76,8 @@ class BigQueryForbiddenException(UnstractDBConnectorException):
             f"Error creating/writing to {table_name}. "
             f"Access forbidden in bigquery. Please check your permissions. "
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class BigQueryNotFoundException(UnstractDBConnectorException):
@@ -86,7 +86,8 @@ class BigQueryNotFoundException(UnstractDBConnectorException):
             f"Error creating/writing to {table_name}. "
             f"The requested resource was not found. "
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class ColumnMissingException(UnstractDBConnectorException):
@@ -103,10 +104,28 @@ class ColumnMissingException(UnstractDBConnectorException):
             f"Please make sure all the columns exist in your table "
             f"as per the destination DB configuration.\n"
         )
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
 
 
 class OperationalException(UnstractDBConnectorException):
     def __init__(self, detail: Any, database: str) -> None:
         default_detail = f"Error creating/writing to {database}. Operational error. "
-        super().__init__(detail=detail, default_detail=default_detail)
+        final_detail = _format_exception_detail(default_detail, detail)
+        super().__init__(detail=final_detail)
+
+
+def _format_exception_detail(default_detail: str, actual_detail: Any) -> str:
+    """Format exception detail by combining default message with actual error details.
+
+    Args:
+        default_detail: The default error message describing the error type
+        actual_detail: The actual error detail from the database library
+
+    Returns:
+        Formatted error message combining both if actual_detail exists,
+        otherwise just the default_detail
+    """
+    return (
+        f"{default_detail}\nDetails: {actual_detail}" if actual_detail else default_detail
+    )
