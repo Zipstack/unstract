@@ -37,6 +37,7 @@ class WorkflowUtil:
         """
         try:
             import random
+
             from pluggable_apps.manual_review_v2.helper import get_db_rules_by_workflow_id
         except ImportError:
             return None
@@ -115,6 +116,7 @@ class WorkflowUtil:
             from plugins.workflow_manager.workflow_v2.rule_engine import (
                 RuleEngineValidator,
             )
+
             return RuleEngineValidator.validate(
                 result, workflow, file_destination, rule_type
             )
@@ -149,6 +151,7 @@ class WorkflowUtil:
         """
         try:
             from pluggable_apps.manual_review_v2.helper import get_db_rules_by_workflow_id
+
             db_rule = get_db_rules_by_workflow_id(workflow=workflow)
             return db_rule is not None and db_rule.rule_string is not None
         except ImportError:
@@ -170,6 +173,7 @@ class WorkflowUtil:
             from pluggable_apps.manual_review_v2.helper import (
                 get_hitl_ttl_seconds_by_workflow,
             )
+
             return get_hitl_ttl_seconds_by_workflow(workflow)
         except ImportError:
             pass

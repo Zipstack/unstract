@@ -31,6 +31,7 @@ class UnstractMigration(MigrationQuery):
             from pluggable_apps.migrations_ext.migrations import (
                 get_extended_public_schema_migrations,
             )
+
             return core_migrations + get_extended_public_schema_migrations(self.v2_schema)
         except ImportError:
             pass
@@ -55,6 +56,7 @@ class UnstractMigration(MigrationQuery):
             from pluggable_apps.migrations_ext.migrations import (
                 get_extended_organization_migrations,
             )
+
             return core_migrations + get_extended_organization_migrations(
                 self.v2_schema, schema, organization_id
             )
