@@ -115,17 +115,15 @@ class OperationalException(UnstractDBConnectorException):
         super().__init__(detail=final_detail)
 
 
-def _format_exception_detail(default_detail: str, actual_detail: Any) -> str:
-    """Format exception detail by combining default message with actual error details.
+def _format_exception_detail(base_error: str, library_error: Any) -> str:
+    """Format exception detail by combining base error with library-specific details.
 
     Args:
-        default_detail: The default error message describing the error type
-        actual_detail: The actual error detail from the database library
+        base_error: The base error message describing the error type
+        library_error: The actual error detail from the database library
 
     Returns:
-        Formatted error message combining both if actual_detail exists,
-        otherwise just the default_detail
+        Formatted error message combining both if library_error exists,
+        otherwise just the base_error
     """
-    return (
-        f"{default_detail}\nDetails: {actual_detail}" if actual_detail else default_detail
-    )
+    return f"{base_error}\nDetails: {library_error}" if library_error else base_error
