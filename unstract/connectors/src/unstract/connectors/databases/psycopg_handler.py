@@ -15,6 +15,13 @@ from unstract.connectors.databases.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+CREATE_TABLE_IF_NOT_EXISTS = "CREATE TABLE IF NOT EXISTS"
+
+
+def _is_create_table_if_not_exists(sql_query: str) -> bool:
+    """Check if query is a CREATE TABLE IF NOT EXISTS statement."""
+    return sql_query.strip().upper().startswith(CREATE_TABLE_IF_NOT_EXISTS)
+
 
 class PsycoPgHandler:
     @staticmethod
@@ -33,6 +40,33 @@ class PsycoPgHandler:
                 else:
                     cursor.execute(sql_query)
             engine.commit()
+        except PsycopgError.DuplicateTable as e:
+            # Handle race condition during concurrent CREATE TABLE IF NOT EXISTS.
+            # When multiple workers create the same table simultaneously,
+            # PostgreSQL may raise DuplicateTable even with IF NOT EXISTS clause
+            # due to race at the pg_type system catalog level.
+            if _is_create_table_if_not_exists(sql_query):
+                logger.info(
+                    f"Table '{table_name}' was created by concurrent process. "
+                    f"Continuing with existing table. (pg_type race condition)"
+                )
+                engine.rollback()
+                return
+            logger.error(f"DuplicateTable error: {e.pgerror}")
+            raise
+        except PsycopgError.UniqueViolation as e:
+            # CREATE TABLE IF NOT EXISTS is idempotent - any UniqueViolation
+            # during this operation indicates a race condition where the table
+            # was created by another process. Safe to suppress and continue.
+            if _is_create_table_if_not_exists(sql_query):
+                logger.info(
+                    f"Table '{table_name}' race condition detected (UniqueViolation). "
+                    f"Continuing with existing table."
+                )
+                engine.rollback()
+                return
+            logger.error(f"UniqueViolation error: {e.pgerror}")
+            raise
         except PsycopgError.InvalidSchemaName as e:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
             raise InvalidSchemaException(detail=e.pgerror, database=database) from e
