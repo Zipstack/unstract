@@ -1,7 +1,6 @@
 from typing import Any
 
 from flask import current_app as app
-
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
 from unstract.prompt_service.helpers.variable_replacement import (

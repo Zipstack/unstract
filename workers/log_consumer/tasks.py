@@ -11,7 +11,6 @@ from celery import shared_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 from shared.utils.api_client_singleton import get_singleton_api_client
-
 from unstract.core.cache.redis_queue_client import RedisQueueClient
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 from unstract.core.log_utils import store_execution_log
