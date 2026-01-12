@@ -1,349 +1,359 @@
-"""Service for integrating Look-up enrichment with workflow execution.
+"""Workflow Integration Service for Look-up enrichment.
 
-This module provides Look-up enrichment for API/ETL/Workflow execution paths,
-which are separate from the Prompt Studio UI path. It hooks into the
-FileExecutionTasks pipeline to enrich extraction results before they are
-sent to the destination.
+This module provides integration between Look-up enrichment and
+workflow file execution (ETL, Workflow, API deployments).
+It handles logging to both WebSocket (real-time) and ExecutionLog
+(file-centric) based on execution context.
 """
 
+import json
 import logging
 import uuid
 from typing import Any
+from uuid import UUID
 
-from django.core.exceptions import ObjectDoesNotExist
+from lookup.models import LookupExecutionAudit, PromptStudioLookupLink
 
 logger = logging.getLogger(__name__)
 
 
 class LookupWorkflowIntegration:
-    """Service for integrating Look-up enrichment with workflow execution.
+    """Service for integrating Look-ups with workflow file execution.
 
-    This service bridges the gap between workflow execution (API/ETL) and
-    the Look-up enrichment system. In Prompt Studio UI, enrichment is handled
-    by OutputManagerHelper._try_lookup_enrichment(). For workflows, this
-    service provides equivalent functionality.
+    This service provides methods to execute Look-ups within workflow
+    contexts (ETL, Workflow, API) with proper logging and audit trail.
 
-    The integration works by:
-    1. Getting the Prompt Studio project ID from the workflow's tool instance
-    2. Checking if any Look-up projects are linked to that PS project
-    3. Executing the Look-up enrichment if links exist
-    4. Merging the enrichment data with the extraction results
+    Example:
+        >>> from workflow_manager.file_execution.models import WorkflowFileExecution
+        >>> file_exec = WorkflowFileExecution.objects.get(id=file_id)
+        >>> result = LookupWorkflowIntegration.execute_lookups_for_file(
+        ...     prompt_studio_project_id=ps_project_id,
+        ...     extraction_output={"vendor": "Acme Corp"},
+        ...     workflow_file_execution=file_exec,
+        ...     organization_id="org-123",
+        ... )
     """
 
-    @staticmethod
-    def get_prompt_studio_project_id(tool_instance_id: str) -> str | None:
-        """Get the Prompt Studio project ID from a tool instance.
+    @classmethod
+    def execute_lookups_for_file(
+        cls,
+        prompt_studio_project_id: UUID,
+        extraction_output: dict[str, Any],
+        workflow_execution_id: UUID,
+        file_execution_id: UUID,
+        organization_id: str,
+        file_name: str | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute linked Look-ups for a file being processed in a workflow.
 
-        The tool instance's tool_id is the PromptStudioRegistry's
-        prompt_registry_id. The registry has a custom_tool FK to CustomTool,
-        which is the actual Prompt Studio project.
+        This method is called from ETL, Workflow, and API execution pipelines
+        after Prompt Studio extraction completes for a file.
 
         Args:
-            tool_instance_id: UUID of the ToolInstance
+            prompt_studio_project_id: The PS project UUID
+            extraction_output: Output from Prompt Studio extraction
+            workflow_execution_id: The workflow execution UUID
+            file_execution_id: The file execution UUID
+            organization_id: Tenant organization ID
+            file_name: Optional file name for logging
+            session_id: Optional WebSocket session for real-time logs
 
         Returns:
-            Prompt Studio project (CustomTool) UUID as string, or None if not found
+            Enriched output with Look-up data merged, or original output
+            if no Look-ups are linked or enrichment fails.
+        """
+        # Check for linked lookups first
+        if not cls.has_linked_lookups(prompt_studio_project_id):
+            logger.debug(f"No linked Look-ups for PS project {prompt_studio_project_id}")
+            return extraction_output
+
+        try:
+            # Execute lookups using the integration service
+            # LookupIntegrationService handles all logging via LookupLogEmitter
+            from lookup.services.lookup_integration_service import (
+                LookupIntegrationService,
+            )
+
+            result = LookupIntegrationService.enrich_if_linked(
+                prompt_studio_project_id=str(prompt_studio_project_id),
+                extracted_data=extraction_output,
+                run_id=str(uuid.uuid4()),
+                session_id=session_id,
+                doc_name=file_name,
+                file_execution_id=str(file_execution_id),
+                workflow_execution_id=str(workflow_execution_id),
+                organization_id=organization_id,
+            )
+
+            # Get enrichment result
+            enrichment = result.get("lookup_enrichment", {})
+
+            # Merge enrichment into extraction output
+            if enrichment:
+                merged_output = extraction_output.copy()
+                merged_output.update(enrichment)
+                return merged_output
+
+            return extraction_output
+
+        except Exception as e:
+            logger.error(
+                f"Look-up enrichment failed for file execution "
+                f"{file_execution_id}: {e}",
+                exc_info=True,
+            )
+            # Return original output on failure
+            return extraction_output
+
+    @classmethod
+    def process_workflow_enrichment(
+        cls,
+        workflow_id: str,
+        original_output: str,
+        file_execution_id: str,
+    ) -> tuple[str | dict[str, Any], bool]:
+        """Process Look-up enrichment for workflow output.
+
+        This method is called from file_execution_tasks._try_lookup_enrichment
+        to enrich extraction output with Look-up data.
+
+        Args:
+            workflow_id: The workflow UUID as string
+            original_output: The extraction output (JSON string or dict)
+            file_execution_id: The file execution UUID as string
+
+        Returns:
+            Tuple of (enriched_output, was_enriched):
+            - enriched_output: The enriched data (same type as input)
+            - was_enriched: True if enrichment was applied
         """
         from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
         from tool_instance_v2.models import ToolInstance
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+        from workflow_manager.workflow_v2.models.workflow import Workflow
 
         try:
-            tool_instance = ToolInstance.objects.get(id=tool_instance_id)
-            tool_id = tool_instance.tool_id
-
-            # Check if this is a Prompt Studio exported tool
-            try:
-                registry = PromptStudioRegistry.objects.get(prompt_registry_id=tool_id)
-                if registry.custom_tool:
-                    return str(registry.custom_tool.tool_id)
-            except (ObjectDoesNotExist, ValueError):
-                # Not a Prompt Studio tool, or invalid UUID
-                logger.debug(f"Tool {tool_id} is not a Prompt Studio exported tool")
-                return None
-
-        except ObjectDoesNotExist:
-            logger.warning(f"ToolInstance {tool_instance_id} not found")
-            return None
-        except Exception as e:
-            logger.error(f"Error getting PS project ID: {e}")
-            return None
-
-        return None
-
-    @staticmethod
-    def get_prompt_studio_project_id_from_workflow(workflow_id: str) -> str | None:
-        """Get the Prompt Studio project ID from a workflow's tool instances.
-
-        Searches through the workflow's tool instances to find one that is
-        a Prompt Studio exported tool.
-
-        Args:
-            workflow_id: UUID of the Workflow
-
-        Returns:
-            Prompt Studio project (CustomTool) UUID as string, or None if not found
-        """
-        from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
-        from tool_instance_v2.constants import ToolInstanceKey
-        from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
-
-        try:
-            tool_instances = ToolInstanceHelper.get_tool_instances_by_workflow(
-                workflow_id, ToolInstanceKey.STEP
+            logger.info(
+                f"[LOOKUP] process_workflow_enrichment called for workflow "
+                f"{workflow_id}, file_execution {file_execution_id}"
             )
 
-            for tool_instance in tool_instances:
-                tool_id = tool_instance.tool_id
-
-                # Check if this is a Prompt Studio exported tool
+            # Parse output if string
+            if isinstance(original_output, str):
                 try:
-                    registry = PromptStudioRegistry.objects.get(
-                        prompt_registry_id=tool_id
-                    )
-                    if registry.custom_tool:
-                        logger.debug(
-                            f"Found PS project {registry.custom_tool.tool_id} "
-                            f"for workflow {workflow_id}"
-                        )
-                        return str(registry.custom_tool.tool_id)
-                except (ObjectDoesNotExist, ValueError):
-                    # Not a Prompt Studio tool, continue to next
-                    continue
-
-            logger.debug(f"No Prompt Studio tool found in workflow {workflow_id}")
-            return None
-
-        except Exception as e:
-            logger.error(f"Error getting PS project ID from workflow {workflow_id}: {e}")
-            return None
-
-    @staticmethod
-    def has_lookup_links(prompt_studio_project_id: str) -> bool:
-        """Check if a Prompt Studio project has any Look-up links.
-
-        Args:
-            prompt_studio_project_id: UUID of the Prompt Studio project
-
-        Returns:
-            True if Look-up links exist, False otherwise
-        """
-        from lookup.models import PromptStudioLookupLink
-
-        try:
-            return PromptStudioLookupLink.objects.filter(
-                prompt_studio_project_id=prompt_studio_project_id
-            ).exists()
-        except Exception as e:
-            logger.error(f"Error checking Look-up links: {e}")
-            return False
-
-    @staticmethod
-    def enrich_workflow_output(
-        workflow_id: str,
-        extracted_data: dict[str, Any],
-        file_execution_id: str | None = None,
-        execution_id: str | None = None,
-    ) -> dict[str, Any]:
-        """Execute Look-up enrichment for workflow execution output.
-
-        This method is the main entry point for workflow-based Look-up
-        enrichment. It:
-        1. Finds the Prompt Studio project from the workflow
-        2. Checks for Look-up links
-        3. Executes enrichment via LookupIntegrationService
-        4. Returns the enrichment result
-
-        Args:
-            workflow_id: UUID of the workflow
-            extracted_data: Dict of extracted field values from the tool
-            file_execution_id: Optional file execution ID for tracking
-            execution_id: Optional workflow execution ID for tracking
-
-        Returns:
-            Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
-            or empty dict if no enrichment was performed.
-        """
-        from lookup.services.lookup_integration_service import LookupIntegrationService
-
-        if not extracted_data:
-            logger.debug("No extracted data provided for workflow enrichment")
-            return {}
-
-        # Get the Prompt Studio project ID from the workflow
-        ps_project_id = (
-            LookupWorkflowIntegration.get_prompt_studio_project_id_from_workflow(
-                workflow_id
-            )
-        )
-
-        if not ps_project_id:
-            logger.debug(f"No Prompt Studio project found for workflow {workflow_id}")
-            return {}
-
-        # Check if there are any Look-up links
-        if not LookupWorkflowIntegration.has_lookup_links(ps_project_id):
-            logger.debug(f"No Look-up links for PS project {ps_project_id}")
-            return {}
-
-        # Generate a run ID for tracking
-        run_id = file_execution_id or execution_id or str(uuid.uuid4())
-
-        logger.info(
-            f"Executing Look-up enrichment for workflow {workflow_id}, "
-            f"PS project {ps_project_id}, run_id {run_id}"
-        )
-
-        # Delegate to the existing LookupIntegrationService
-        return LookupIntegrationService.enrich_if_linked(
-            prompt_studio_project_id=ps_project_id,
-            extracted_data=extracted_data,
-            run_id=run_id,
-        )
-
-    @staticmethod
-    def merge_enrichment_with_output(
-        original_output: dict[str, Any] | str | None,
-        enrichment_result: dict[str, Any],
-    ) -> dict[str, Any] | str | None:
-        """Merge Look-up enrichment data with the original tool output.
-
-        The enrichment values REPLACE the corresponding fields in the original
-        output. For example, if original has {"vendor_name": "Amzn Inc"} and
-        enrichment has {"vendor_name": "AWS"}, the result will have
-        {"vendor_name": "AWS"}.
-
-        Args:
-            original_output: Original tool output (dict, string, or None)
-            enrichment_result: Result from enrich_workflow_output()
-
-        Returns:
-            Merged output with enrichment values replacing original fields
-        """
-        if not enrichment_result:
-            return original_output
-
-        lookup_enrichment = enrichment_result.get("lookup_enrichment", {})
-        lookup_metadata = enrichment_result.get("_lookup_metadata", {})
-
-        if not lookup_enrichment:
-            return original_output
-
-        # If original output is a string, try to parse it as JSON
-        if isinstance(original_output, str):
-            import json
-
-            try:
-                output_dict = json.loads(original_output)
-            except json.JSONDecodeError:
-                # Can't merge with non-JSON string, add enrichment as separate key
-                return {
-                    "extracted_data": original_output,
-                    "lookup_enrichment": lookup_enrichment,
-                    "_lookup_metadata": lookup_metadata,
-                }
-        elif isinstance(original_output, dict):
-            output_dict = original_output.copy()
-        elif original_output is None:
-            output_dict = {}
-        else:
-            # Unknown type, wrap it
-            output_dict = {"extracted_data": original_output}
-
-        # REPLACE original field values with enriched values
-        # This overwrites the original extracted values with the canonicalized ones
-        #
-        # Tool output structure is typically:
-        # {"workflow_id": "...", "elapsed_time": ..., "output": {"vendor_name": "..."}}
-        # We need to replace values INSIDE the "output" dict if it exists
-        if "output" in output_dict and isinstance(output_dict["output"], dict):
-            # Tool wrapped output - replace inside the "output" key
-            for field_name, enriched_value in lookup_enrichment.items():
-                if enriched_value is not None and field_name in output_dict["output"]:
+                    output_data = json.loads(original_output)
                     logger.info(
-                        f"Replacing output[{field_name}]: "
-                        f"'{output_dict['output'].get(field_name)}' -> '{enriched_value}'"
+                        f"[LOOKUP] Parsed output data keys: {list(output_data.keys())}"
                     )
-                    output_dict["output"][field_name] = enriched_value
-        else:
-            # Flat structure - replace at root level
-            for field_name, enriched_value in lookup_enrichment.items():
-                if enriched_value is not None:
-                    logger.info(
-                        f"Replacing {field_name}: "
-                        f"'{output_dict.get(field_name)}' -> '{enriched_value}'"
+                except json.JSONDecodeError:
+                    logger.warning(
+                        f"[LOOKUP] Could not parse output as JSON for workflow {workflow_id}"
                     )
-                    output_dict[field_name] = enriched_value
+                    return original_output, False
+            else:
+                output_data = original_output
+                logger.info(
+                    f"[LOOKUP] Output data keys: {list(output_data.keys()) if isinstance(output_data, dict) else type(output_data)}"
+                )
 
-        # Add metadata for tracking (but not the separate lookup_enrichment key)
-        output_dict["_lookup_metadata"] = lookup_metadata
+            # Get workflow and its prompt studio registry
+            workflow = Workflow.objects.get(id=workflow_id)
+            logger.info(f"[LOOKUP] Found workflow: {workflow.id}")
 
-        return output_dict
+            # Get prompt studio project ID from workflow's tool instance
+            # The tool_id in ToolInstance is the prompt_registry_id
+            tool_instance = ToolInstance.objects.filter(workflow_id=workflow_id).first()
 
-    @staticmethod
-    def process_workflow_enrichment(
-        workflow_id: str,
-        original_output: dict[str, Any] | str | None,
-        file_execution_id: str | None = None,
-        execution_id: str | None = None,
-    ) -> tuple[dict[str, Any] | str | None, bool]:
-        """Complete Look-up enrichment process for workflow output.
-
-        This is a convenience method that combines enrich_workflow_output()
-        and merge_enrichment_with_output() into a single call.
-
-        Args:
-            workflow_id: UUID of the workflow
-            original_output: Original tool output
-            file_execution_id: Optional file execution ID
-            execution_id: Optional workflow execution ID
-
-        Returns:
-            Tuple of (enriched_output, was_enriched)
-        """
-        # Extract data for enrichment - handle different output formats
-        if isinstance(original_output, dict):
-            extracted_data = original_output
-        elif isinstance(original_output, str):
-            import json
-
-            try:
-                extracted_data = json.loads(original_output)
-            except json.JSONDecodeError:
-                logger.debug("Cannot enrich non-JSON string output")
+            if not tool_instance:
+                logger.info(f"[LOOKUP] No tool instance found for workflow {workflow_id}")
                 return original_output, False
-        else:
-            logger.debug(f"Cannot enrich output of type {type(original_output)}")
-            return original_output, False
 
-        # Tool output structure is typically:
-        # {"workflow_id": "...", "elapsed_time": ..., "output": {"vendor_name": "..."}}
-        # We need to extract the "output" dict for enrichment if it exists
-        if "output" in extracted_data and isinstance(extracted_data["output"], dict):
-            data_for_enrichment = extracted_data["output"]
-            logger.debug(
-                f"Extracted 'output' key for enrichment: {list(data_for_enrichment.keys())}"
-            )
-        else:
-            data_for_enrichment = extracted_data
-            logger.debug(
-                f"Using flat structure for enrichment: {list(data_for_enrichment.keys())}"
+            logger.info(
+                f"[LOOKUP] Found tool instance: {tool_instance.id}, tool_id: {tool_instance.tool_id}"
             )
 
-        # Perform enrichment using the actual extraction data
-        enrichment_result = LookupWorkflowIntegration.enrich_workflow_output(
-            workflow_id=workflow_id,
-            extracted_data=data_for_enrichment,
-            file_execution_id=file_execution_id,
-            execution_id=execution_id,
-        )
+            # Get the PromptStudioRegistry to find the custom_tool (PS project)
+            try:
+                prompt_registry = PromptStudioRegistry.objects.get(
+                    prompt_registry_id=tool_instance.tool_id
+                )
+                logger.info(
+                    f"[LOOKUP] Found prompt registry: {prompt_registry.prompt_registry_id}"
+                )
+                if prompt_registry.custom_tool:
+                    prompt_studio_project_id = str(prompt_registry.custom_tool.tool_id)
+                    logger.info(
+                        f"[LOOKUP] Found PS project ID: {prompt_studio_project_id}"
+                    )
+                else:
+                    logger.info(
+                        f"[LOOKUP] No custom tool linked to registry {tool_instance.tool_id}"
+                    )
+                    return original_output, False
+            except PromptStudioRegistry.DoesNotExist:
+                logger.info(
+                    f"[LOOKUP] No prompt registry found for tool {tool_instance.tool_id}"
+                )
+                return original_output, False
 
-        if not enrichment_result or not enrichment_result.get("lookup_enrichment"):
+            if not prompt_studio_project_id:
+                logger.info(
+                    f"[LOOKUP] No Prompt Studio project found for workflow {workflow_id}"
+                )
+                return original_output, False
+
+            # Check for linked lookups
+            if not cls.has_linked_lookups(UUID(prompt_studio_project_id)):
+                logger.info(
+                    f"[LOOKUP] No linked Look-ups for PS project {prompt_studio_project_id}"
+                )
+                return original_output, False
+
+            logger.info(
+                f"[LOOKUP] Found linked lookups for PS project {prompt_studio_project_id}"
+            )
+
+            # Get file execution for context
+            file_execution = WorkflowFileExecution.objects.get(id=file_execution_id)
+            workflow_execution_id = file_execution.workflow_execution_id
+            organization_id = str(workflow.organization_id)
+
+            # Execute lookups with file execution context for Nav bar logging
+            # LookupIntegrationService handles all logging via LookupLogEmitter
+            from lookup.services.lookup_integration_service import (
+                LookupIntegrationService,
+            )
+
+            result = LookupIntegrationService.enrich_if_linked(
+                prompt_studio_project_id=prompt_studio_project_id,
+                extracted_data=output_data,
+                run_id=str(uuid.uuid4()),
+                file_execution_id=file_execution_id,
+                workflow_execution_id=str(workflow_execution_id),
+                organization_id=organization_id,
+                doc_name=file_execution.file_name,
+            )
+
+            # Get result metadata
+            _metadata = result.get("_lookup_metadata", {})  # noqa F841
+            enrichment = result.get("lookup_enrichment", {})
+
+            # Merge enrichment into output
+            if enrichment:
+                merged_output = output_data.copy()
+                merged_output.update(enrichment)
+                return merged_output, True
+
             return original_output, False
 
-        # Merge results
-        enriched_output = LookupWorkflowIntegration.merge_enrichment_with_output(
-            original_output=original_output,
-            enrichment_result=enrichment_result,
+        except Exception as e:
+            logger.error(
+                f"Look-up enrichment failed for workflow {workflow_id}, "
+                f"file execution {file_execution_id}: {e}",
+                exc_info=True,
+            )
+            return original_output, False
+
+    @classmethod
+    def has_linked_lookups(cls, prompt_studio_project_id: UUID) -> bool:
+        """Check if PS project has linked Look-ups.
+
+        Args:
+            prompt_studio_project_id: The PS project UUID
+
+        Returns:
+            True if at least one Look-up is linked
+        """
+        return PromptStudioLookupLink.objects.filter(
+            prompt_studio_project_id=prompt_studio_project_id
+        ).exists()
+
+    @classmethod
+    def _get_enabled_lookup_projects(cls, prompt_studio_project_id: UUID) -> list:
+        """Get enabled lookup projects for a PS project.
+
+        Args:
+            prompt_studio_project_id: The PS project UUID
+
+        Returns:
+            List of enabled LookupProject instances
+        """
+        links = (
+            PromptStudioLookupLink.objects.filter(
+                prompt_studio_project_id=prompt_studio_project_id
+            )
+            .select_related("lookup_project")
+            .order_by("execution_order")
         )
 
-        return enriched_output, True
+        return [link.lookup_project for link in links if link.is_enabled]
+
+    @classmethod
+    def get_lookup_logs_for_file(
+        cls,
+        file_execution_id: UUID,
+    ) -> list[dict]:
+        """Get all Look-up related logs for a file execution.
+
+        Args:
+            file_execution_id: The file execution UUID
+
+        Returns:
+            List of log dictionaries with data and event_time
+        """
+        from workflow_manager.workflow_v2.models import ExecutionLog
+
+        return list(
+            ExecutionLog.objects.filter(
+                file_execution_id=file_execution_id,
+                data__stage="LOOKUP",
+            )
+            .values("data", "event_time")
+            .order_by("event_time")
+        )
+
+    @classmethod
+    def get_lookup_audits_for_file(
+        cls,
+        file_execution_id: UUID,
+    ) -> list[LookupExecutionAudit]:
+        """Get all Look-up audit records for a file execution.
+
+        Args:
+            file_execution_id: The file execution UUID
+
+        Returns:
+            List of LookupExecutionAudit instances
+        """
+        return list(
+            LookupExecutionAudit.objects.filter(file_execution_id=file_execution_id)
+            .select_related("lookup_project")
+            .order_by("executed_at")
+        )
+
+    @classmethod
+    def get_lookup_audits_for_workflow(
+        cls,
+        workflow_execution_id: UUID,
+    ) -> list[LookupExecutionAudit]:
+        """Get all Look-up audit records for a workflow execution.
+
+        Args:
+            workflow_execution_id: The workflow execution UUID
+
+        Returns:
+            List of LookupExecutionAudit instances
+        """
+        # Get all file execution IDs for this workflow
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+
+        file_execution_ids = WorkflowFileExecution.objects.filter(
+            workflow_execution_id=workflow_execution_id
+        ).values_list("id", flat=True)
+
+        return list(
+            LookupExecutionAudit.objects.filter(file_execution_id__in=file_execution_ids)
+            .select_related("lookup_project")
+            .order_by("executed_at")
+        )

@@ -1,6 +1,7 @@
-import { Modal, Table, Tooltip } from "antd";
+import { Modal, Table, Tag, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import { SearchOutlined } from "@ant-design/icons";
 
 import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -35,6 +36,22 @@ function LogModal({
     total: 0,
   });
   const filterOptions = ["INFO", "WARN", "DEBUG", "ERROR"];
+
+  // Get stage-specific styling for visual differentiation
+  const getStageStyle = (stage) => {
+    switch (stage) {
+      case "LOOKUP":
+        return { color: "purple", icon: <SearchOutlined /> };
+      case "RUN":
+        return { color: "blue", icon: null };
+      case "EXTRACT":
+        return { color: "green", icon: null };
+      case "INDEX":
+        return { color: "orange", icon: null };
+      default:
+        return { color: "default", icon: null };
+    }
+  };
 
   const fetchExecutionFileLogs = async (executionId, fileId, page) => {
     try {
@@ -96,6 +113,14 @@ function LogModal({
       title: "Event Stage",
       dataIndex: "eventStage",
       key: "stage",
+      render: (stage) => {
+        const stageStyle = getStageStyle(stage);
+        return (
+          <Tag color={stageStyle.color} icon={stageStyle.icon}>
+            {stage}
+          </Tag>
+        );
+      },
     },
     {
       title: "Log Level",
@@ -170,6 +195,12 @@ function LogModal({
         loading={loading}
         onChange={handleTableChange}
         sortDirections={["ascend", "descend", "ascend"]}
+        rowClassName={(record) => {
+          if (record.eventStage === "LOOKUP") {
+            return "log-modal-row-lookup";
+          }
+          return "";
+        }}
       />
     </Modal>
   );

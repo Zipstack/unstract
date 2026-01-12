@@ -35,6 +35,7 @@ import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { PromptRunTimer } from "./PromptRunTimer";
 import { PromptRunCost } from "./PromptRunCost";
+import { LookupReplacementIndicator } from "./LookupReplacementIndicator";
 
 let TableOutput;
 try {
@@ -112,6 +113,9 @@ function PromptOutput({
             setOpenExpandModal={setOpenExpandModal}
           />
           <div className="prompt-profile-run">
+            <LookupReplacementIndicator
+              lookupReplacement={promptOutputData?.lookupReplacement}
+            />
             <CopyPromptOutputBtn
               copyToClipboard={() =>
                 copyOutputToClipboard(
@@ -204,6 +208,9 @@ function PromptOutput({
             }
           />
           <div className="prompt-profile-run">
+            <LookupReplacementIndicator
+              lookupReplacement={promptOutputData?.lookupReplacement}
+            />
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
               copyToClipboard={() =>
@@ -439,6 +446,11 @@ function PromptOutput({
                           promptDetails={promptDetails}
                         />
                         <div className="prompt-profile-run">
+                          <LookupReplacementIndicator
+                            lookupReplacement={
+                              promptOutputData?.lookupReplacement
+                            }
+                          />
                           <CopyPromptOutputBtn
                             isDisabled={isTableExtraction}
                             copyToClipboard={() =>

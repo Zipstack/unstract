@@ -33,6 +33,11 @@ class LookupIntegrationService:
         extracted_data: dict[str, Any],
         run_id: str | None = None,
         timeout: float | None = None,
+        session_id: str | None = None,
+        doc_name: str | None = None,
+        file_execution_id: str | None = None,
+        workflow_execution_id: str | None = None,
+        organization_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute Lookup enrichment if PS project has linked Lookups.
 
@@ -41,12 +46,19 @@ class LookupIntegrationService:
         - Timeout protection to not block extraction
         - Graceful degradation on errors
         - Full audit logging
+        - WebSocket log emission for Prompt Studio UI
+        - ExecutionLog persistence for Nav bar display (workflow context)
 
         Args:
             prompt_studio_project_id: UUID of Prompt Studio project
             extracted_data: Dict of extracted field values
             run_id: Optional execution run ID for tracking
             timeout: Max seconds to wait (default from settings)
+            session_id: WebSocket session ID for real-time log emission
+            doc_name: Document name being processed
+            file_execution_id: File execution ID for Nav bar logs
+            workflow_execution_id: Workflow execution ID for Nav bar logs
+            organization_id: Organization ID for multi-tenancy
 
         Returns:
             Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
@@ -69,6 +81,11 @@ class LookupIntegrationService:
                 extracted_data=extracted_data,
                 run_id=run_id,
                 timeout=timeout,
+                session_id=session_id,
+                doc_name=doc_name,
+                file_execution_id=file_execution_id,
+                workflow_execution_id=workflow_execution_id,
+                organization_id=organization_id,
             )
         except FuturesTimeoutError:
             logger.warning(
@@ -106,9 +123,25 @@ class LookupIntegrationService:
         extracted_data: dict[str, Any],
         run_id: str | None,
         timeout: float,
+        session_id: str | None = None,
+        doc_name: str | None = None,
+        file_execution_id: str | None = None,
+        workflow_execution_id: str | None = None,
+        organization_id: str | None = None,
     ) -> dict[str, Any]:
         """Internal method to execute enrichment with timeout."""
         from lookup.models import PromptStudioLookupLink
+        from lookup.services.log_emitter import LookupLogEmitter
+
+        # Initialize log emitter for WebSocket and/or ExecutionLog
+        # When file_execution_id is set (workflow context), logs persist to Nav bar
+        log_emitter = LookupLogEmitter(
+            session_id=session_id,
+            execution_id=workflow_execution_id or run_id,
+            file_execution_id=file_execution_id,
+            organization_id=organization_id,
+            doc_name=doc_name,
+        )
 
         # Quick existence check - minimal overhead if no links
         links = (
@@ -123,6 +156,7 @@ class LookupIntegrationService:
             logger.debug(
                 f"No Lookup links found for PS project {prompt_studio_project_id}"
             )
+            log_emitter.emit_no_linked_lookups()
             return {}
 
         # Get enabled lookup projects (those with ready status)
@@ -139,7 +173,17 @@ class LookupIntegrationService:
             f"{prompt_studio_project_id}"
         )
 
+        # Emit orchestration start log
+        lookup_names = [lp.name for lp in lookup_projects]
+        log_emitter.emit_orchestration_start(
+            lookup_count=len(lookup_projects),
+            lookup_names=lookup_names,
+        )
+
         # Execute with timeout protection
+        import time
+
+        start_time = time.time()
         with ThreadPoolExecutor(max_workers=1) as executor:
             future = executor.submit(
                 LookupIntegrationService._run_orchestrator,
@@ -147,8 +191,21 @@ class LookupIntegrationService:
                 input_data=extracted_data,
                 execution_id=run_id or str(uuid.uuid4()),
                 prompt_studio_project_id=prompt_studio_project_id,
+                log_emitter=log_emitter,
             )
             result = future.result(timeout=timeout)
+
+        # Emit orchestration complete log
+        total_time_ms = int((time.time() - start_time) * 1000)
+        metadata = result.get("_lookup_metadata", {})
+        log_emitter.emit_orchestration_complete(
+            total_lookups=len(lookup_projects),
+            successful=metadata.get("lookups_successful", 0),
+            failed=metadata.get("lookups_executed", 0)
+            - metadata.get("lookups_successful", 0),
+            total_time_ms=total_time_ms,
+            total_enriched_fields=len(result.get("lookup_enrichment", {})),
+        )
 
         return result
 
@@ -158,6 +215,7 @@ class LookupIntegrationService:
         input_data: dict[str, Any],
         execution_id: str,
         prompt_studio_project_id: str,
+        log_emitter: Any = None,
     ) -> dict[str, Any]:
         """Execute the lookup orchestrator for all linked projects."""
         from lookup.integrations.file_storage_client import FileStorageClient
@@ -225,8 +283,10 @@ class LookupIntegrationService:
                 llm_client=LLMClientWrapper(llm_client),
             )
 
-            # Create orchestrator
-            orchestrator = LookUpOrchestrator(executor=executor, merger=merger)
+            # Create orchestrator with log emitter for WebSocket logs
+            orchestrator = LookUpOrchestrator(
+                executor=executor, merger=merger, log_emitter=log_emitter
+            )
 
             # Execute lookups with audit context
             result = orchestrator.execute_lookups(

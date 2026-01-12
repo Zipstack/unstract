@@ -1,4 +1,30 @@
-.clear-button{
-    margin-left: 50px;
-    margin-top: 10px;
+.clear-button {
+  margin-left: 50px;
+  margin-top: 10px;
+}
+
+/* Stage-specific row styling */
+.log-modal-row-lookup {
+  background-color: #f9f0ff;
+}
+
+.log-modal-row-lookup:hover td {
+  background-color: #efdbff !important;
+}
+
+/* Log level styling */
+.info {
+  color: #1890ff;
+}
+
+.warn {
+  color: #faad14;
+}
+
+.debug {
+  color: #8c8c8c;
+}
+
+.error {
+  color: #ff4d4f;
 }

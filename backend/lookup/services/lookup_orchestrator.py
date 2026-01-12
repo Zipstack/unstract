@@ -31,6 +31,7 @@ class LookUpOrchestrator:
         executor: LookUpExecutor,
         merger: EnrichmentMerger,
         config: dict[str, Any] = None,
+        log_emitter: Any = None,
     ):
         """Initialize the Look-Up orchestrator.
 
@@ -41,9 +42,11 @@ class LookUpOrchestrator:
                 - max_concurrent_executions: Maximum parallel executions (default 10)
                 - queue_timeout_seconds: Overall queue timeout (default 120)
                 - execution_timeout_seconds: Per-execution timeout (default 30)
+            log_emitter: Optional LookupLogEmitter for WebSocket logging
         """
         self.executor = executor
         self.merger = merger
+        self.log_emitter = log_emitter
 
         config = config or {}
         self.max_concurrent = config.get("max_concurrent_executions", 10)
@@ -147,11 +150,15 @@ class LookUpOrchestrator:
                             logger.debug(
                                 f"Look-Up {lookup_project.name} completed successfully"
                             )
+                            # Emit success log via WebSocket
+                            self._emit_success_log(result, lookup_project)
                         else:
                             failed_lookups.append(result)
                             logger.warning(
                                 f"Look-Up {lookup_project.name} failed: {result.get('error')}"
                             )
+                            # Emit failure log via WebSocket
+                            self._emit_failure_log(result, lookup_project)
 
                     except TimeoutError:
                         # Individual execution timeout
@@ -380,3 +387,52 @@ class LookUpOrchestrator:
                 "enrichments": [],
             },
         }
+
+    def _emit_success_log(
+        self, result: dict[str, Any], lookup_project: LookupProject
+    ) -> None:
+        """Emit success log via WebSocket if log_emitter is available.
+
+        Args:
+            result: Execution result dictionary
+            lookup_project: The Look-Up project that was executed
+        """
+        if not self.log_emitter:
+            return
+
+        try:
+            enriched_count = len(result.get("data", {}))
+            cached = result.get("cached", False)
+            execution_time_ms = result.get("execution_time_ms", 0)
+            confidence = result.get("confidence")
+
+            self.log_emitter.emit_enrichment_success(
+                lookup_project_name=lookup_project.name,
+                enriched_count=enriched_count,
+                cached=cached,
+                execution_time_ms=execution_time_ms,
+                confidence=confidence,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit success log: {e}")
+
+    def _emit_failure_log(
+        self, result: dict[str, Any], lookup_project: LookupProject
+    ) -> None:
+        """Emit failure log via WebSocket if log_emitter is available.
+
+        Args:
+            result: Execution result dictionary
+            lookup_project: The Look-Up project that was executed
+        """
+        if not self.log_emitter:
+            return
+
+        try:
+            error_message = result.get("error", "Unknown error")
+            self.log_emitter.emit_enrichment_failure(
+                lookup_project_name=lookup_project.name,
+                error_message=error_message,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to emit failure log: {e}")

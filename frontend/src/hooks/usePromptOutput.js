@@ -146,6 +146,8 @@ const usePromptOutput = () => {
         // Lookup enrichment data
         lookupEnrichment: item?.lookup_enrichment,
         lookupMetadata: item?._lookup_metadata,
+        // Lookup replacement info for UI indicator
+        lookupReplacement: item?.lookup_replacement,
       };
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)

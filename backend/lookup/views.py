@@ -521,6 +521,63 @@ class LookupExecutionAuditViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "Invalid UUID format"}, status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=["get"])
+    def by_file_execution(self, request):
+        """Get Look-up audits for a specific file execution.
+
+        GET /api/v1/execution-audits/by_file_execution/?file_execution_id={id}
+
+        This endpoint is used by the Nav Bar Logs page to show Look-up
+        enrichment details for a specific file processed in ETL/Workflow/API.
+        """
+        file_execution_id = request.query_params.get("file_execution_id")
+        if not file_execution_id:
+            return Response(
+                {"error": "file_execution_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            audits = self.get_queryset().filter(file_execution_id=file_execution_id)
+            serializer = self.get_serializer(audits, many=True)
+            return Response(serializer.data)
+        except ValueError:
+            return Response(
+                {"error": "Invalid UUID format"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=["get"])
+    def by_workflow_execution(self, request):
+        """Get Look-up audits for an entire workflow execution.
+
+        GET /api/v1/execution-audits/by_workflow_execution/?workflow_execution_id={id}
+
+        This endpoint returns all Look-up audits across all files
+        processed in a workflow execution.
+        """
+        workflow_execution_id = request.query_params.get("workflow_execution_id")
+        if not workflow_execution_id:
+            return Response(
+                {"error": "workflow_execution_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            from workflow_manager.file_execution.models import WorkflowFileExecution
+
+            # Get all file execution IDs for this workflow
+            file_execution_ids = WorkflowFileExecution.objects.filter(
+                workflow_execution_id=workflow_execution_id
+            ).values_list("id", flat=True)
+
+            audits = self.get_queryset().filter(file_execution_id__in=file_execution_ids)
+            serializer = self.get_serializer(audits, many=True)
+            return Response(serializer.data)
+        except ValueError:
+            return Response(
+                {"error": "Invalid UUID format"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class LookupDebugView(viewsets.ViewSet):
     """Debug endpoints for testing Look-Up execution with Prompt Studio."""

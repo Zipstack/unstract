@@ -1088,12 +1088,21 @@ class FileExecutionTasks:
             Enriched output result if Look-up was successful,
             original output_result otherwise.
         """
+        logger.info(
+            f"[LOOKUP] _try_lookup_enrichment called for workflow {workflow.id}, "
+            f"file_execution {file_execution_id}, output_result type: {type(output_result)}"
+        )
+
         if not output_result:
+            logger.info("[LOOKUP] No output_result, skipping enrichment")
             return output_result
 
         try:
             from lookup.services.workflow_integration import LookupWorkflowIntegration
 
+            logger.info(
+                "[LOOKUP] Calling LookupWorkflowIntegration.process_workflow_enrichment"
+            )
             enriched_output, was_enriched = (
                 LookupWorkflowIntegration.process_workflow_enrichment(
                     workflow_id=str(workflow.id),
@@ -1102,9 +1111,13 @@ class FileExecutionTasks:
                 )
             )
 
+            logger.info(
+                f"[LOOKUP] process_workflow_enrichment returned: was_enriched={was_enriched}"
+            )
+
             if was_enriched:
                 logger.info(
-                    f"Look-up enrichment applied for workflow {workflow.id}, "
+                    f"[LOOKUP] Look-up enrichment applied for workflow {workflow.id}, "
                     f"file execution {file_execution_id}"
                 )
                 # Convert back to string if needed for storage
@@ -1116,15 +1129,18 @@ class FileExecutionTasks:
 
             return output_result
 
-        except ImportError:
+        except ImportError as e:
             # Look-up module not available - gracefully skip
-            logger.debug("Look-up module not available, skipping enrichment")
+            logger.info(
+                f"[LOOKUP] Look-up module not available, skipping enrichment: {e}"
+            )
             return output_result
         except Exception as e:
             # Log error but don't fail the workflow
             logger.warning(
-                f"Look-up enrichment failed for workflow {workflow.id}, "
-                f"file execution {file_execution_id}: {e}"
+                f"[LOOKUP] Look-up enrichment failed for workflow {workflow.id}, "
+                f"file execution {file_execution_id}: {e}",
+                exc_info=True,
             )
             return output_result
 

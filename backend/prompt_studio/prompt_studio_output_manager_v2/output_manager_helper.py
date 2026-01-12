@@ -2,7 +2,9 @@ import json
 import logging
 from typing import Any
 
+from account_v2.constants import Common
 from django.core.exceptions import ObjectDoesNotExist
+from utils.local_context import StateStore
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import (
@@ -29,6 +31,8 @@ def _try_lookup_enrichment(
     tool_id: str,
     extracted_data: dict[str, Any],
     run_id: str | None = None,
+    session_id: str | None = None,
+    doc_name: str | None = None,
 ) -> dict[str, Any]:
     """Attempt Lookup enrichment if available.
 
@@ -39,6 +43,8 @@ def _try_lookup_enrichment(
         tool_id: Prompt Studio project (CustomTool) UUID
         extracted_data: Dict of extracted field values from prompts
         run_id: Optional execution run ID for tracking
+        session_id: Optional WebSocket session ID for real-time log emission
+        doc_name: Optional document name being processed
 
     Returns:
         Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
@@ -53,6 +59,8 @@ def _try_lookup_enrichment(
             prompt_studio_project_id=tool_id,
             extracted_data=extracted_data,
             run_id=run_id,
+            session_id=session_id,
+            doc_name=doc_name,
         )
     except ImportError:
         # Lookup app not installed
@@ -241,12 +249,23 @@ class OutputManagerHelper:
         # Post-processing: Lookup enrichment integration
         # Build extracted data dict from all prompt outputs for enrichment
         extracted_data_for_lookup: dict[str, Any] = {}
+        logger.info(
+            f"Building extracted_data_for_lookup from {len(prompts)} prompts, "
+            f"outputs keys: {list(outputs.keys())}"
+        )
         for prompt in prompts:
             if prompt.prompt_type == PSOMKeys.NOTES:
+                logger.debug(f"Skipping NOTES prompt: {prompt.prompt_key}")
                 continue
             output_value = outputs.get(prompt.prompt_key)
+            logger.info(
+                f"Prompt {prompt.prompt_key}: output_value={output_value!r} "
+                f"(type={type(output_value).__name__})"
+            )
             if output_value is not None:
                 extracted_data_for_lookup[prompt.prompt_key] = output_value
+
+        logger.info(f"extracted_data_for_lookup: {extracted_data_for_lookup}")
 
         # Execute Lookup enrichment if linked projects exist
         if extracted_data_for_lookup:
@@ -255,10 +274,15 @@ class OutputManagerHelper:
                 f"Calling Lookup enrichment for tool {tool_id_str} "
                 f"with data: {extracted_data_for_lookup}"
             )
+            # Get session_id for WebSocket log emission
+            session_id = StateStore.get(Common.LOG_EVENTS_ID)
+            doc_name = metadata.get("file_name") or document_manager.document_name
             lookup_result = _try_lookup_enrichment(
                 tool_id=tool_id_str,
                 extracted_data=extracted_data_for_lookup,
                 run_id=run_id,
+                session_id=session_id,
+                doc_name=doc_name,
             )
             logger.info(f"Lookup enrichment result: {lookup_result}")
 
@@ -277,10 +301,17 @@ class OutputManagerHelper:
                     if prompt_key and prompt_key in lookup_enrichment:
                         enriched_value = lookup_enrichment[prompt_key]
                         if enriched_value is not None:
+                            original_value = item.get("output")
                             logger.info(
                                 f"Replacing {prompt_key} output: "
-                                f"'{item.get('output')}' -> '{enriched_value}'"
+                                f"'{original_value}' -> '{enriched_value}'"
                             )
+                            # Store original value and enriched value for UI display
+                            item["lookup_replacement"] = {
+                                "original_value": original_value,
+                                "enriched_value": enriched_value,
+                                "field_name": prompt_key,
+                            }
                             item["output"] = enriched_value
                     # Add metadata for tracking
                     item["_lookup_metadata"] = lookup_metadata
