@@ -1,6 +1,7 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { Space } from "antd";
+import PropTypes from "prop-types";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -14,6 +15,38 @@ import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { ImportTool } from "../import-tool/ImportTool";
+
+const DefaultCustomButtons = ({
+  setOpenImportTool,
+  isImportLoading,
+  handleNewProjectBtnClick,
+}) => {
+  return (
+    <Space gap={16}>
+      <CustomButton
+        type="default"
+        icon={<ArrowDownOutlined />}
+        onClick={() => setOpenImportTool(true)}
+        loading={isImportLoading}
+      >
+        Import Project
+      </CustomButton>
+      <CustomButton
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={handleNewProjectBtnClick}
+      >
+        New Project
+      </CustomButton>
+    </Space>
+  );
+};
+
+DefaultCustomButtons.propTypes = {
+  setOpenImportTool: PropTypes.func.isRequired,
+  isImportLoading: PropTypes.bool.isRequired,
+  handleNewProjectBtnClick: PropTypes.func.isRequired,
+};
 
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
@@ -241,28 +274,6 @@ function ListOfTools() {
       });
   };
 
-  const DefaultCustomButtons = () => {
-    return (
-      <Space gap={16}>
-        <CustomButton
-          type="default"
-          icon={<ArrowDownOutlined />}
-          onClick={() => setOpenImportTool(true)}
-          loading={isImportLoading}
-        >
-          Import Project
-        </CustomButton>
-        <CustomButton
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleNewProjectBtnClick}
-        >
-          New Project
-        </CustomButton>
-      </Space>
-    );
-  };
-
   const handleShare = (_event, promptProject, isEdit) => {
     const requestOptions = {
       method: "GET",
@@ -364,7 +375,13 @@ function ListOfTools() {
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={DefaultCustomButtons}
+        CustomButtons={() => (
+          <DefaultCustomButtons
+            setOpenImportTool={setOpenImportTool}
+            isImportLoading={isImportLoading}
+            handleNewProjectBtnClick={handleNewProjectBtnClick}
+          />
+        )}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>

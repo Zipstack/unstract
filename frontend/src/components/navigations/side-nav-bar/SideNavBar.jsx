@@ -188,7 +188,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Create structured data from unstructured documents",
           image: CustomTools,
           path: `/${orgName}/tools`,
-          active: window.location.pathname.startsWith(`/${orgName}/tools`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/tools`),
         },
         {
           id: 1.3,
@@ -197,7 +197,7 @@ const SideNavBar = ({ collapsed }) => {
           icon: BranchesOutlined,
           image: Workflows,
           path: `/${orgName}/workflows`,
-          active: window.location.pathname.startsWith(`/${orgName}/workflows`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/workflows`),
         },
       ],
     },
@@ -211,7 +211,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Unstructured to structured APIs",
           image: apiDeploy,
           path: `/${orgName}/api`,
-          active: window.location.pathname.startsWith(`/${orgName}/api`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/api`),
         },
         {
           id: 2.3,
@@ -219,7 +219,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Unstructured to structured data pipelines",
           image: etl,
           path: `/${orgName}/etl`,
-          active: window.location.pathname.startsWith(`/${orgName}/etl`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/etl`),
         },
         {
           id: 2.4,
@@ -227,7 +227,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Ad-hoc unstructured data task pipelines",
           image: task,
           path: `/${orgName}/task`,
-          active: window.location.pathname.startsWith(`/${orgName}/task`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/task`),
         },
         {
           id: 1.5,
@@ -235,7 +235,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Records system events for monitoring and debugging",
           image: TerminalIcon,
           path: `/${orgName}/logs`,
-          active: window.location.pathname.startsWith(`/${orgName}/logs`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/logs`),
         },
       ],
     },
@@ -250,7 +250,7 @@ const SideNavBar = ({ collapsed }) => {
           icon: BranchesOutlined,
           image: LlmIcon,
           path: `/${orgName}/settings/llms`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/llms`
           ),
         },
@@ -260,7 +260,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Setup platform wide access to Vector DBs",
           image: VectorDbIcon,
           path: `/${orgName}/settings/vectorDbs`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/vectorDbs`
           ),
         },
@@ -270,7 +270,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Setup platform wide access to Embedding models",
           image: EmbeddingIcon,
           path: `/${orgName}/settings/embedding`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/embedding`
           ),
         },
@@ -280,7 +280,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Setup platform wide access to Text extractor services",
           image: TextExtractorIcon,
           path: `/${orgName}/settings/textExtractor`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/textExtractor`
           ),
         },
@@ -290,7 +290,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Manage connectors for data sources and destinations",
           image: ConnectorsIcon,
           path: `/${orgName}/settings/connectors`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/connectors`
           ),
         },
@@ -301,11 +301,11 @@ const SideNavBar = ({ collapsed }) => {
           image: PlatformSettingsIcon,
           path: `/${orgName}/settings/platform`,
           active:
-            window.location.pathname === `/${orgName}/settings` ||
-            window.location.pathname === `/${orgName}/settings/platform` ||
-            window.location.pathname === `/${orgName}/settings/triad` ||
-            window.location.pathname === `/${orgName}/settings/review` ||
-            window.location.pathname === `/${orgName}/users`,
+            globalThis.location.pathname === `/${orgName}/settings` ||
+            globalThis.location.pathname === `/${orgName}/settings/platform` ||
+            globalThis.location.pathname === `/${orgName}/settings/triad` ||
+            globalThis.location.pathname === `/${orgName}/settings/review` ||
+            globalThis.location.pathname === `/${orgName}/users`,
         },
       ],
     },
@@ -333,7 +333,7 @@ const SideNavBar = ({ collapsed }) => {
       description: "Build and manage AI-powered extraction workflows",
       image: CustomTools,
       path: `/${orgName}/agentic-prompt-studio`,
-      active: window.location.pathname.startsWith(
+      active: globalThis.location.pathname.startsWith(
         `/${orgName}/agentic-prompt-studio`
       ),
     });
