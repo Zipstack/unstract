@@ -157,6 +157,19 @@ function ToolIde() {
     }
   }, [hasUnsavedChanges, checkDeploymentUsage]);
 
+  // Restore unsaved changes from sessionStorage on page reload
+  useEffect(() => {
+    if (details?.tool_id) {
+      const { restoreUnsavedChangesFromSession } =
+        useCustomToolStore.getState();
+      const restored = restoreUnsavedChangesFromSession(details.tool_id);
+      // Reset the check flag so deployment usage check runs after restore
+      if (restored) {
+        hasCheckedForCurrentSessionRef.current = false;
+      }
+    }
+  }, [details?.tool_id]);
+
   // Cleanup abort controller on unmount
   useEffect(() => {
     return () => {
