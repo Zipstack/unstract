@@ -191,7 +191,7 @@ const SideNavBar = ({ collapsed }) => {
           active: window.location.pathname.startsWith(`/${orgName}/tools`),
         },
         {
-          id: 1.2,
+          id: 1.3,
           title: "Workflows",
           description: "Build no-code data workflows for unstructured data",
           icon: BranchesOutlined,
@@ -328,7 +328,7 @@ const SideNavBar = ({ collapsed }) => {
   // Add Agentic Prompt Studio menu item if plugin is available
   if (agenticPromptStudioEnabled) {
     data[0]?.subMenu?.splice(1, 0, {
-      id: 1.15,
+      id: 1.2,
       title: "Agentic Prompt Studio",
       description: "Build and manage AI-powered extraction workflows",
       image: CustomTools,
