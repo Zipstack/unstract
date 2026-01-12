@@ -328,7 +328,7 @@ const SideNavBar = ({ collapsed }) => {
   // Add Agentic Prompt Studio menu item if plugin is available
   if (agenticPromptStudioEnabled) {
     data[0]?.subMenu?.splice(1, 0, {
-      id: 1.2,
+      id: 1.15,
       title: "Agentic Prompt Studio",
       description: "Build and manage AI-powered extraction workflows",
       image: CustomTools,
