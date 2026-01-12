@@ -23,6 +23,22 @@ def _is_create_table_if_not_exists(sql_query: str) -> bool:
     return sql_query.strip().upper().startswith(CREATE_TABLE_IF_NOT_EXISTS)
 
 
+def _is_pg_type_race_condition(sql_query: str, constraint: str | None) -> bool:
+    """Check if UniqueViolation is due to pg_type race during concurrent table creation.
+
+    Args:
+        sql_query: The SQL query that caused the error.
+        constraint: The constraint name from the exception diagnostics.
+
+    Returns:
+        True if this is the pg_type race condition that should be suppressed.
+    """
+    return (
+        _is_create_table_if_not_exists(sql_query)
+        and constraint == "pg_type_typname_nsp_index"
+    )
+
+
 class PsycoPgHandler:
     @staticmethod
     def execute_query(
@@ -42,35 +58,26 @@ class PsycoPgHandler:
             engine.commit()
         except PsycopgError.DuplicateTable as e:
             engine.rollback()  # Always rollback - transaction is in failed state
-            # Handle race condition during concurrent CREATE TABLE IF NOT EXISTS.
-            # When multiple workers create the same table simultaneously,
-            # PostgreSQL may raise DuplicateTable even with IF NOT EXISTS clause
-            # due to race at the pg_type system catalog level.
             if _is_create_table_if_not_exists(sql_query):
                 logger.info(
                     f"Table '{table_name}' was created by concurrent process. "
                     f"Continuing with existing table. (pg_type race condition)"
                 )
                 return
-            logger.error(f"DuplicateTable error: {e.pgerror}")
+            logger.exception(f"DuplicateTable error: {e.pgerror}")
             raise
         except PsycopgError.UniqueViolation as e:
             engine.rollback()  # Always rollback - transaction is in failed state
-            # Check if this is the specific pg_type race condition during CREATE TABLE.
-            # PostgreSQL's CREATE TABLE IF NOT EXISTS can race on pg_type_typname_nsp_index
-            # when multiple workers create the same table concurrently.
             constraint = getattr(getattr(e, "diag", None), "constraint_name", None)
-            is_pg_type_race = (
-                constraint == "pg_type_typname_nsp_index" or constraint is None
-            )
-
-            if _is_create_table_if_not_exists(sql_query) and is_pg_type_race:
+            if _is_pg_type_race_condition(sql_query, constraint):
                 logger.info(
                     f"Table '{table_name}' race condition detected (UniqueViolation, "
                     f"constraint={constraint}). Continuing with existing table."
                 )
                 return
-            logger.error(f"UniqueViolation error (constraint={constraint}): {e.pgerror}")
+            logger.exception(
+                f"UniqueViolation error (constraint={constraint}): {e.pgerror}"
+            )
             raise
         except PsycopgError.InvalidSchemaName as e:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
