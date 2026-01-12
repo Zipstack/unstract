@@ -58,6 +58,14 @@ try {
   // Ignore if hook not available
 }
 
+let agenticPromptStudioEnabled = false;
+try {
+  require("../../../plugins/agentic-prompt-studio");
+  agenticPromptStudioEnabled = true;
+} catch {
+  // Plugin unavailable
+}
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -231,6 +239,20 @@ const SideNavBar = ({ collapsed }) => {
 
   if (getMenuItem && flags?.app_deployment) {
     data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
+  }
+
+  // Add Agentic Prompt Studio menu item if plugin is available
+  if (agenticPromptStudioEnabled) {
+    data[0]?.subMenu?.splice(1, 0, {
+      id: 1.2,
+      title: "Agentic Prompt Studio",
+      description: "Build and manage AI-powered extraction workflows",
+      image: CustomTools,
+      path: `/${orgName}/agentic-prompt-studio`,
+      active: window.location.pathname.startsWith(
+        `/${orgName}/agentic-prompt-studio`
+      ),
+    });
   }
 
   const shouldDisableAll = useMemo(() => {
