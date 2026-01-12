@@ -57,7 +57,7 @@
       "type": "boolean",
       "title": "Enable Extended Context (1M)",
       "default": false,
-      "description": "Enables 1 million token context window. Available for Claude Sonnet 4 and Sonnet 4.5 models. Currently in beta for Usage Tier 4 organizations."
+      "description": "Enables 1M token context window (beta). Available for Sonnet 4 and 4.5. [Learn more](https://platform.claude.com/docs/en/build-with-claude/context-windows#1-m-token-context-window)"
     }
   },
   "allOf": [
