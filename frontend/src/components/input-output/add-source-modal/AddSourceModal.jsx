@@ -1,4 +1,5 @@
-import { Modal } from "antd";
+import { ArrowLeftOutlined } from "@ant-design/icons";
+import { Button, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -146,6 +147,30 @@ function AddSourceModal({
       });
   };
 
+  const handleBack = () => {
+    setSelectedSourceId(null);
+    setMetadata(null);
+  };
+
+  const showBackButton = selectedSourceId && !editItemId;
+  const modalTitle = showBackButton ? (
+    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+      <Button
+        type="text"
+        shape="circle"
+        size="small"
+        icon={<ArrowLeftOutlined />}
+        onClick={handleBack}
+        aria-label="Go back to source selection"
+      />
+      <span>{isConnector ? titles["connectors"] : titles[type]}</span>
+    </div>
+  ) : isConnector ? (
+    titles["connectors"]
+  ) : (
+    titles[type]
+  );
+
   return (
     <Modal
       open={open}
@@ -154,7 +179,7 @@ function AddSourceModal({
         setMetadata(null);
       }}
       maskClosable={false}
-      title={isConnector ? titles["connectors"] : titles[type]}
+      title={modalTitle}
       width={selectedSourceId?.length ? 500 : 1100}
       centered
       footer={null}
