@@ -189,3 +189,19 @@ class LogPublisher:
                 f"Failed to store unified notification log for '{event}' "
                 f"<= {payload}: {e}\n{traceback.format_exc()}"
             )
+
+    @classmethod
+    def cleanup(cls) -> None:
+        """Close publisher connections for graceful shutdown."""
+        try:
+            if cls.kombu_conn:
+                cls.kombu_conn.release()
+                logging.debug("LogPublisher Kombu connection released")
+        except Exception as e:
+            logging.error(f"Failed to close Kombu connection: {e}")
+        try:
+            if cls.r:
+                cls.r.close()
+                logging.debug("LogPublisher Redis connection closed")
+        except Exception as e:
+            logging.error(f"Failed to close Redis connection: {e}")

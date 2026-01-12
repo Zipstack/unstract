@@ -19,6 +19,8 @@ class ToolEntrypoint:
         signal_name = sig.name
         logger.warning(f"RECEIVED SIGNAL: {signal_name}")
         logger.warning("Initiating graceful shutdown...")
+        # Exit with standard signal exit code (128 + signal number)
+        raise SystemExit(128 + signum)
 
     @staticmethod
     def launch(tool: BaseTool, args: list[str]) -> None:
