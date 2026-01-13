@@ -43,7 +43,7 @@ function Profile() {
     };
 
     fetchProfile();
-  }, [sessionDetails.orgId, axiosPrivate]);
+  }, [sessionDetails.orgId]);
 
   const handleCopy = async (text, label) => {
     try {
