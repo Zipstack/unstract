@@ -1,0 +1,20 @@
+# Dependencies for the extraction module
+
+# Core dependencies
+celery>=5.3.0
+requests>=2.31.0
+tiktoken>=0.5.0  # For token counting
+
+# Unstract SDK (should be installed from internal registry)
+# unstract-sdk>=0.77.1
+
+# LlamaIndex for document processing
+llama-index-core>=0.10.0
+
+# Optional dependencies for enhanced functionality
+python-magic>=0.4.27  # For file type detection
+
+# Development dependencies (optional)
+# pytest>=7.0.0
+# pytest-celery>=0.0.0
+# pytest-mock>=3.10.0
