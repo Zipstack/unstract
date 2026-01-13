@@ -155,7 +155,8 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            _get_usage_queryset().filter(
+            _get_usage_queryset()
+            .filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 created_at__gte=start_date,
@@ -190,7 +191,8 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            _get_usage_queryset().filter(
+            _get_usage_queryset()
+            .filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 llm_usage_reason="challenge",
@@ -226,7 +228,8 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            _get_usage_queryset().filter(
+            _get_usage_queryset()
+            .filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 llm_usage_reason="summarize",
@@ -347,7 +350,8 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            _get_usage_queryset().filter(
+            _get_usage_queryset()
+            .filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 created_at__gte=start_date,

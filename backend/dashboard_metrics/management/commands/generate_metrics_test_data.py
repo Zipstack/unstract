@@ -11,11 +11,10 @@ import random
 import uuid
 from datetime import timedelta
 
-from django.core.management.base import BaseCommand
-from django.utils import timezone
-
 from account_usage.models import PageUsage
 from account_v2.models import Organization
+from django.core.management.base import BaseCommand
+from django.utils import timezone
 from usage_v2.models import LLMUsageReason, Usage, UsageType
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -131,7 +130,9 @@ class Command(BaseCommand):
         # Generate data
         total_records = days * records_per_day
 
-        self.stdout.write(f"\nGenerating {total_records} records per table over {days} days...")
+        self.stdout.write(
+            f"\nGenerating {total_records} records per table over {days} days..."
+        )
 
         # 1. Generate WorkflowExecution records
         executions = self._generate_workflow_executions(
@@ -142,9 +143,7 @@ class Command(BaseCommand):
         )
 
         # 2. Generate WorkflowFileExecution records (linked to executions)
-        file_executions = self._generate_file_executions(
-            executions, start_time, end_time
-        )
+        file_executions = self._generate_file_executions(executions, start_time, end_time)
         self.stdout.write(
             self.style.SUCCESS(
                 f"  Created {len(file_executions)} WorkflowFileExecution records"
@@ -169,10 +168,10 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f"\nTest data generation complete!"
-                f"\nNow run: python manage.py shell -c \""
-                f"from dashboard_metrics.tasks import aggregate_metrics_from_sources; "
-                f"print(aggregate_metrics_from_sources())\""
+                "\nTest data generation complete!"
+                '\nNow run: python manage.py shell -c "'
+                "from dashboard_metrics.tasks import aggregate_metrics_from_sources; "
+                'print(aggregate_metrics_from_sources())"'
             )
         )
 
@@ -391,9 +390,7 @@ class Command(BaseCommand):
 
         # Update created_at timestamps (since auto_now_add overrides during bulk_create)
         for usage in usage_records:
-            Usage.objects.filter(id=usage.id).update(
-                created_at=usage._target_created_at
-            )
+            Usage.objects.filter(id=usage.id).update(created_at=usage._target_created_at)
 
         return usage_records
 

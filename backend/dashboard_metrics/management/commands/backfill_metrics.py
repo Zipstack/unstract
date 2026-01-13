@@ -12,11 +12,11 @@ Usage:
 import logging
 from datetime import datetime, timedelta
 
+from account_v2.models import Organization
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
 
-from account_v2.models import Organization
 from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
@@ -39,7 +39,11 @@ class Command(BaseCommand):
         ("challenges", MetricsQueryService.get_challenges, False),
         ("summarization_calls", MetricsQueryService.get_summarization_calls, False),
         ("deployed_api_requests", MetricsQueryService.get_deployed_api_requests, False),
-        ("etl_pipeline_executions", MetricsQueryService.get_etl_pipeline_executions, False),
+        (
+            "etl_pipeline_executions",
+            MetricsQueryService.get_etl_pipeline_executions,
+            False,
+        ),
         ("llm_usage", MetricsQueryService.get_llm_usage_cost, True),
         ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
     ]
@@ -135,34 +139,48 @@ class Command(BaseCommand):
                         h_created, h_updated = self._upsert_hourly(hourly_data)
                         total_stats["hourly"]["created"] += h_created
                         total_stats["hourly"]["updated"] += h_updated
-                        self.stdout.write(f"  Hourly: {h_created} created, {h_updated} updated")
+                        self.stdout.write(
+                            f"  Hourly: {h_created} created, {h_updated} updated"
+                        )
 
                     if not skip_daily:
                         d_created, d_updated = self._upsert_daily(daily_data)
                         total_stats["daily"]["created"] += d_created
                         total_stats["daily"]["updated"] += d_updated
-                        self.stdout.write(f"  Daily: {d_created} created, {d_updated} updated")
+                        self.stdout.write(
+                            f"  Daily: {d_created} created, {d_updated} updated"
+                        )
 
                     if not skip_monthly:
                         m_created, m_updated = self._upsert_monthly(monthly_data)
                         total_stats["monthly"]["created"] += m_created
                         total_stats["monthly"]["updated"] += m_updated
-                        self.stdout.write(f"  Monthly: {m_created} created, {m_updated} updated")
+                        self.stdout.write(
+                            f"  Monthly: {m_created} created, {m_updated} updated"
+                        )
 
             except Exception as e:
-                self.stderr.write(self.style.ERROR(f"  Error processing org {org_id_str}: {e}"))
+                self.stderr.write(
+                    self.style.ERROR(f"  Error processing org {org_id_str}: {e}")
+                )
                 total_stats["errors"] += 1
                 logger.exception(f"Error backfilling org {org_id_str}")
 
         # Print summary
         self.stdout.write("\n" + "=" * 50)
         self.stdout.write(self.style.SUCCESS("BACKFILL COMPLETE"))
-        self.stdout.write(f"Hourly: {total_stats['hourly']['created']} created, "
-                         f"{total_stats['hourly']['updated']} updated")
-        self.stdout.write(f"Daily: {total_stats['daily']['created']} created, "
-                         f"{total_stats['daily']['updated']} updated")
-        self.stdout.write(f"Monthly: {total_stats['monthly']['created']} created, "
-                         f"{total_stats['monthly']['updated']} updated")
+        self.stdout.write(
+            f"Hourly: {total_stats['hourly']['created']} created, "
+            f"{total_stats['hourly']['updated']} updated"
+        )
+        self.stdout.write(
+            f"Daily: {total_stats['daily']['created']} created, "
+            f"{total_stats['daily']['updated']} updated"
+        )
+        self.stdout.write(
+            f"Monthly: {total_stats['monthly']['created']} created, "
+            f"{total_stats['monthly']['updated']} updated"
+        )
         self.stdout.write(f"Errors: {total_stats['errors']}")
 
     def _collect_metrics(
@@ -178,7 +196,9 @@ class Command(BaseCommand):
 
             try:
                 # Query hourly data
-                hourly_results = query_method(org_id, start_date, end_date, granularity="hour")
+                hourly_results = query_method(
+                    org_id, start_date, end_date, granularity="hour"
+                )
                 for row in hourly_results:
                     period = row["period"]
                     value = row["value"] or 0
@@ -196,7 +216,9 @@ class Command(BaseCommand):
                     hourly_agg[key]["count"] += 1
 
                 # Query daily data
-                daily_results = query_method(org_id, start_date, end_date, granularity="day")
+                daily_results = query_method(
+                    org_id, start_date, end_date, granularity="day"
+                )
                 for row in daily_results:
                     period = row["period"]
                     value = row["value"] or 0

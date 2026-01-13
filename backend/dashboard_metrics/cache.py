@@ -27,10 +27,10 @@ from django.core.cache import cache
 from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.response import Response
-
-from dashboard_metrics.models import EventMetricsHourly
 from utils.cache_service import CacheService
 from utils.user_context import UserContext
+
+from dashboard_metrics.models import EventMetricsHourly
 
 logger = logging.getLogger(__name__)
 
@@ -349,9 +349,13 @@ def _build_bucket_key(
     Returns:
         Cache key string
     """
-    bucket_str = bucket_ts.strftime("%Y-%m-%dT%H:00:00") if granularity == "hourly" \
-        else bucket_ts.strftime("%Y-%m-%d") if granularity == "daily" \
+    bucket_str = (
+        bucket_ts.strftime("%Y-%m-%dT%H:00:00")
+        if granularity == "hourly"
+        else bucket_ts.strftime("%Y-%m-%d")
+        if granularity == "daily"
         else bucket_ts.strftime("%Y-%m")
+    )
 
     key = f"{CACHE_PREFIX}:bucket:{granularity}:{org_id}:{bucket_str}"
     if metric_name:
@@ -450,7 +454,7 @@ def mget_metrics_buckets(
         cached_data = {}
         missing_buckets = []
 
-        for bucket_ts, value in zip(buckets, values):
+        for bucket_ts, value in zip(buckets, values, strict=False):
             if value is not None:
                 try:
                     cached_data[bucket_ts] = json.loads(value)

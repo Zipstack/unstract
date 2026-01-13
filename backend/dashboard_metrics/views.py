@@ -22,7 +22,6 @@ from utils.user_context import UserContext
 
 from .cache import (
     cache_metrics_response,
-    generate_time_buckets,
     mget_metrics_buckets,
     mset_metrics_buckets,
 )
@@ -296,15 +295,19 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             summary_list = []
             for name, agg in summary_dict.items():
                 values = agg["values"]
-                summary_list.append({
-                    "metric_name": name,
-                    "metric_type": agg["metric_type"],
-                    "total_value": agg["total_value"],
-                    "total_count": agg["total_count"],
-                    "average_value": agg["total_value"] / len(values) if values else 0,
-                    "min_value": min(values) if values else 0,
-                    "max_value": max(values) if values else 0,
-                })
+                summary_list.append(
+                    {
+                        "metric_name": name,
+                        "metric_type": agg["metric_type"],
+                        "total_value": agg["total_value"],
+                        "total_count": agg["total_count"],
+                        "average_value": agg["total_value"] / len(values)
+                        if values
+                        else 0,
+                        "min_value": min(values) if values else 0,
+                        "max_value": max(values) if values else 0,
+                    }
+                )
             summary_list.sort(key=lambda x: x["metric_name"])
 
         else:
@@ -328,9 +331,11 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             # Add metric_type from the first record of each metric
             summary_list = []
             for row in summary:
-                metric_type_record = queryset.filter(
-                    metric_name=row["metric_name"]
-                ).values("metric_type").first()
+                metric_type_record = (
+                    queryset.filter(metric_name=row["metric_name"])
+                    .values("metric_type")
+                    .first()
+                )
                 row["metric_type"] = (
                     metric_type_record["metric_type"] if metric_type_record else "counter"
                 )
@@ -465,9 +470,18 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                     )
                 else:
                     # Return daily data as-is
-                    series_data = queryset.values(
-                        "metric_name", "metric_type", "project", "tag", "metric_value", "metric_count"
-                    ).annotate(period=TruncDay(ts_field)).order_by("period", "metric_name")
+                    series_data = (
+                        queryset.values(
+                            "metric_name",
+                            "metric_type",
+                            "project",
+                            "tag",
+                            "metric_value",
+                            "metric_count",
+                        )
+                        .annotate(period=TruncDay(ts_field))
+                        .order_by("period", "metric_name")
+                    )
                     series_data = [
                         {
                             "period": row["period"],
@@ -482,9 +496,18 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                     ]
             else:  # monthly
                 # Monthly data - return as-is
-                series_data = queryset.values(
-                    "metric_name", "metric_type", "project", "tag", "metric_value", "metric_count"
-                ).annotate(period=TruncDay(ts_field)).order_by("period", "metric_name")
+                series_data = (
+                    queryset.values(
+                        "metric_name",
+                        "metric_type",
+                        "project",
+                        "tag",
+                        "metric_value",
+                        "metric_count",
+                    )
+                    .annotate(period=TruncDay(ts_field))
+                    .order_by("period", "metric_name")
+                )
                 series_data = [
                     {
                         "period": row["period"],
@@ -521,7 +544,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             period = row["period"]
             series["data"].append(
                 {
-                    "timestamp": period.isoformat() if hasattr(period, "isoformat") else str(period),
+                    "timestamp": period.isoformat()
+                    if hasattr(period, "isoformat")
+                    else str(period),
                     "value": row["value"],
                     "count": row["count"],
                 }
@@ -567,9 +592,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         if start_date_str:
             try:
-                start_date = datetime.fromisoformat(
-                    start_date_str.replace("Z", "+00:00")
-                )
+                start_date = datetime.fromisoformat(start_date_str.replace("Z", "+00:00"))
                 if timezone.is_naive(start_date):
                     start_date = timezone.make_aware(start_date)
             except ValueError:
@@ -612,9 +635,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             date_str = row["day"].isoformat()
             if date_str not in daily_trend_map:
                 daily_trend_map[date_str] = {"date": date_str, "metrics": {}}
-            daily_trend_map[date_str]["metrics"][row["metric_name"]] = row[
-                "total_value"
-            ]
+            daily_trend_map[date_str]["metrics"][row["metric_name"]] = row["total_value"]
 
         # Sort by date
         daily_trend = sorted(daily_trend_map.values(), key=lambda x: x["date"])

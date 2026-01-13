@@ -395,20 +395,18 @@ def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
 
             try:
                 # Use _base_manager to bypass DefaultOrganizationManagerMixin filter
-                obj, was_created = (
-                    EventMetricsHourly._base_manager.update_or_create(
-                        organization_id=org_id,
-                        timestamp=hour_ts,
-                        metric_name=metric_name,
-                        project=project,
-                        tag=tag,
-                        defaults={
-                            "metric_type": agg["metric_type"],
-                            "metric_value": agg["value"],
-                            "metric_count": agg["count"],
-                            "labels": agg["labels"],
-                        },
-                    )
+                obj, was_created = EventMetricsHourly._base_manager.update_or_create(
+                    organization_id=org_id,
+                    timestamp=hour_ts,
+                    metric_name=metric_name,
+                    project=project,
+                    tag=tag,
+                    defaults={
+                        "metric_type": agg["metric_type"],
+                        "metric_value": agg["value"],
+                        "metric_count": agg["count"],
+                        "labels": agg["labels"],
+                    },
                 )
                 if was_created:
                     created += 1
@@ -537,11 +535,19 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
     daily_start = end_date - timedelta(days=7)
     # Include previous month to handle month boundaries
     if end_date.month == 1:
-        monthly_start = end_date.replace(year=end_date.year - 1, month=12, day=1,
-                                         hour=0, minute=0, second=0, microsecond=0)
+        monthly_start = end_date.replace(
+            year=end_date.year - 1,
+            month=12,
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
     else:
-        monthly_start = end_date.replace(month=end_date.month - 1, day=1,
-                                         hour=0, minute=0, second=0, microsecond=0)
+        monthly_start = end_date.replace(
+            month=end_date.month - 1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
 
     # Metric definitions: (name, query_method, is_histogram)
     metric_configs = [
@@ -551,7 +557,11 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
         ("challenges", MetricsQueryService.get_challenges, False),
         ("summarization_calls", MetricsQueryService.get_summarization_calls, False),
         ("deployed_api_requests", MetricsQueryService.get_deployed_api_requests, False),
-        ("etl_pipeline_executions", MetricsQueryService.get_etl_pipeline_executions, False),
+        (
+            "etl_pipeline_executions",
+            MetricsQueryService.get_etl_pipeline_executions,
+            False,
+        ),
         ("llm_usage", MetricsQueryService.get_llm_usage_cost, True),
         ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
     ]
@@ -657,9 +667,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                         }
 
                 except Exception as e:
-                    logger.warning(
-                        f"Error querying {metric_name} for org {org_id}: {e}"
-                    )
+                    logger.warning(f"Error querying {metric_name} for org {org_id}: {e}")
                     stats["errors"] += 1
 
             # Upsert all three tiers

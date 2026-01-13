@@ -34,9 +34,7 @@ def remove_aggregation_task(apps, schema_editor):
     """Remove periodic task on rollback."""
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
 
-    PeriodicTask.objects.filter(
-        name="dashboard_metrics_aggregate_from_sources"
-    ).delete()
+    PeriodicTask.objects.filter(name="dashboard_metrics_aggregate_from_sources").delete()
 
 
 class Migration(migrations.Migration):
