@@ -171,6 +171,33 @@ class PromptTool:
             headers=headers,
         )
 
+    @log_elapsed(operation="AGENTIC_EXTRACTION")
+    @handle_service_exceptions("executing agentic extraction")
+    @retry_prompt_service_call
+    def agentic_extraction(
+        self,
+        payload: dict[str, Any],
+        params: dict[str, str] | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict[str, Any]:
+        """Execute agentic extraction via prompt service.
+
+        Args:
+            payload: Extraction payload containing project_id, json_schema,
+                     prompt_text, adapter IDs, etc.
+            params: Optional query parameters
+            headers: Optional headers
+
+        Returns:
+            dict: Extraction results with data, metadata, and metrics
+        """
+        return self._call_service(
+            url_path="agentic-extraction",
+            payload=payload,
+            params=params,
+            headers=headers,
+        )
+
     def _get_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
         """Get default headers for requests.
 
