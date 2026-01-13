@@ -284,6 +284,17 @@ class PlatformHelper:
                     error_message = response_json["error"]
             elif response.text:
                 error_message = response.text
+
+            # For 404 errors on tool lookups, raise exception to allow fallback
+            # For other errors, exit immediately (existing behavior)
+            if response.status_code == 404 and url_path in [
+                "custom_tool_instance",
+                "agentic_tool_instance",
+            ]:
+                raise RequestException(
+                    f"Error from platform service. {error_message}"
+                ) from e
+
             self.tool.stream_error_and_exit(
                 f"Error from platform service. {error_message}"
             )
