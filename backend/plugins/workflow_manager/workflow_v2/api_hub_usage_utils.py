@@ -1,10 +1,12 @@
 """API Hub usage tracking utilities for workflow execution.
 
 This module provides a clean interface for API Hub usage tracking in workflows.
-Usage tracking functionality is loaded from plugins.verticals_usage if available.
+Usage tracking functionality is loaded via get_plugin if available.
 """
 
 import logging
+
+from plugins import get_plugin
 
 logger = logging.getLogger(__name__)
 
@@ -28,19 +30,18 @@ class APIHubUsageUtil:
         Returns:
             bool: True if tracking succeeded, False otherwise.
         """
-        try:
-            from plugins.verticals_usage.api_hub_headers_cache import (
-                api_hub_headers_cache,
-            )
-            from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
-        except ImportError:
+        verticals_usage_plugin = get_plugin("verticals_usage")
+        if not verticals_usage_plugin:
             return False
 
         try:
-            api_hub_headers = api_hub_headers_cache.get_headers(workflow_execution_id)
+            headers_cache = verticals_usage_plugin["headers_cache_class"]()
+            usage_tracker = verticals_usage_plugin["service_class"]()
+
+            api_hub_headers = headers_cache.get_headers(workflow_execution_id)
 
             if api_hub_headers:
-                return api_hub_usage_tracker.store_usage(
+                return usage_tracker.store_usage(
                     file_execution_id=workflow_file_execution_id,
                     api_hub_headers=api_hub_headers,
                     organization_id=organization_id,
@@ -63,15 +64,13 @@ class APIHubUsageUtil:
         Returns:
             Normalized API hub headers or None if not available.
         """
-        try:
-            from plugins.verticals_usage.usage_tracker import api_hub_usage_tracker
-        except ImportError:
+        verticals_usage_plugin = get_plugin("verticals_usage")
+        if not verticals_usage_plugin:
             return None
 
         try:
-            return api_hub_usage_tracker.extract_api_hub_headers_from_request(
-                request_headers
-            )
+            usage_tracker = verticals_usage_plugin["service_class"]()
+            return usage_tracker.extract_api_hub_headers_from_request(request_headers)
         except Exception as e:
             logger.error(f"Error extracting API hub headers: {e}")
             return None
@@ -92,15 +91,13 @@ class APIHubUsageUtil:
         Returns:
             True if caching succeeded, False otherwise.
         """
-        try:
-            from plugins.verticals_usage.api_hub_headers_cache import (
-                api_hub_headers_cache,
-            )
-        except ImportError:
+        verticals_usage_plugin = get_plugin("verticals_usage")
+        if not verticals_usage_plugin:
             return False
 
         try:
-            return api_hub_headers_cache.store_headers(execution_id, headers)
+            headers_cache = verticals_usage_plugin["headers_cache_class"]()
+            return headers_cache.store_headers(execution_id, headers)
         except Exception as e:
             logger.error(f"Error caching API hub headers: {e}")
             return False
