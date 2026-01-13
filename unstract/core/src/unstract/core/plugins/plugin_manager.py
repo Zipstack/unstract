@@ -165,50 +165,145 @@ class PluginManager:
         Supports both flat plugin structures (plugins/plugin_name/) and nested
         structures (plugins/category/plugin_name/) up to max_depth levels.
         """
-        if not self.plugins_dir or not self.plugins_dir.exists():
-            self.logger.warning(
-                f"Plugins directory not found: {self.plugins_dir}. Skipping plugin loading."
+        self.logger.info("=" * 80)
+        self.logger.info("PLUGIN LOADING STARTED")
+        self.logger.info("=" * 80)
+
+        # Step 1: Validate plugins directory
+        if not self.plugins_dir:
+            self.logger.error(
+                "❌ FATAL: plugins_dir is None or empty. Cannot load plugins."
             )
             return
 
-        self.logger.info(f"Loading plugins from: {self.plugins_dir}")
+        self.logger.info(f"📁 Plugins directory configured: {self.plugins_dir}")
+        self.logger.info(f"📦 Plugins package: {self.plugins_pkg}")
+        self.logger.info(f"🔧 Plugin submodule: {self.plugin_submodule or 'None (root)'}")
 
-        # Recursively discover all potential plugin directories
+        if not self.plugins_dir.exists():
+            self.logger.error(
+                f"❌ FATAL: Plugins directory does not exist: {self.plugins_dir}"
+            )
+            self.logger.error(f"   Absolute path: {self.plugins_dir.absolute()}")
+            self.logger.error("   Skipping plugin loading.")
+            return
+
+        self.logger.info(f"✓ Plugins directory exists: {self.plugins_dir.absolute()}")
+
+        # List directory contents for debugging
+        try:
+            dir_contents = list(self.plugins_dir.iterdir())
+            self.logger.info(f"📂 Directory contains {len(dir_contents)} items:")
+            for item in sorted(dir_contents):
+                item_type = "DIR" if item.is_dir() else "FILE"
+                self.logger.info(f"   [{item_type}] {item.name}")
+        except Exception as e:
+            self.logger.error(f"❌ ERROR: Cannot list directory contents: {e}")
+            return
+
+        # Step 2: Discover plugin candidates
+        self.logger.info("-" * 80)
+        self.logger.info("DISCOVERING PLUGIN CANDIDATES")
+        self.logger.info("-" * 80)
+
         plugin_candidates = self._find_plugin_modules(self.plugins_dir, max_depth=2)
 
-        for plugin_path, module_name in plugin_candidates:
+        if not plugin_candidates:
+            self.logger.warning(
+                "⚠ No plugin candidates found in directory. "
+                "Looking for directories with __init__.py"
+            )
+            self.logger.info("No plugins loaded (OSS mode).")
+            return
+
+        self.logger.info(f"✓ Found {len(plugin_candidates)} plugin candidate(s):")
+        for idx, (plugin_path, module_name) in enumerate(plugin_candidates, 1):
+            self.logger.info(f"   {idx}. {module_name} → {plugin_path}")
+
+        # Step 3: Load each plugin
+        self.logger.info("-" * 80)
+        self.logger.info("LOADING PLUGINS")
+        self.logger.info("-" * 80)
+
+        loaded_count = 0
+        skipped_count = 0
+        failed_count = 0
+
+        for idx, (plugin_path, module_name) in enumerate(plugin_candidates, 1):
+            self.logger.info(
+                f"\n[{idx}/{len(plugin_candidates)}] Processing: {module_name}"
+            )
+            self.logger.info(f"   Path: {plugin_path}")
+
             # Build import path with optional submodule
             if self.plugin_submodule:
                 pkg_anchor = f"{self.plugins_pkg}.{module_name}.{self.plugin_submodule}"
             else:
                 pkg_anchor = f"{self.plugins_pkg}.{module_name}"
 
+            self.logger.info(f"   Import path: {pkg_anchor}")
+
             # Try to import the plugin module
             try:
+                self.logger.info(f"   Attempting to import: {pkg_anchor}")
+
                 module = importlib.import_module(pkg_anchor)
+                self.logger.info("   ✓ Import successful")
             except ImportError as e:
-                self.logger.debug(
-                    f"Could not import {pkg_anchor} (might not be a plugin): {str(e)}"
+                self.logger.info(f"   ⚠ Import failed for {pkg_anchor}: {str(e)}")
+                self.logger.info(f"   Full error: {repr(e)}", exc_info=True)
+                failed_count += 1
+                continue
+            except Exception as e:
+                self.logger.error(
+                    f"   ❌ Unexpected error importing {pkg_anchor}: {str(e)}"
                 )
+                self.logger.error(f"   Error type: {type(e).__name__}")
+                self.logger.debug("   Full traceback:", exc_info=True)
+                failed_count += 1
                 continue
 
             # Validate plugin metadata
+            self.logger.debug("   Checking for 'metadata' attribute...")
             metadata = getattr(module, "metadata", None)
+
             if not metadata:
-                # Not a plugin - just a regular directory with __init__.py
+                self.logger.debug(
+                    f"   ⚠ No 'metadata' found in {pkg_anchor} - not a plugin"
+                )
+                skipped_count += 1
+                continue
+
+            self.logger.info("   ✓ Metadata found:")
+            self.logger.info(f"      - name: {metadata.get('name', 'MISSING')}")
+            self.logger.info(f"      - version: {metadata.get('version', 'MISSING')}")
+            self.logger.info(f"      - disable: {metadata.get('disable', False)}")
+            self.logger.info(f"      - is_active: {metadata.get('is_active', True)}")
+
+            # Check for required metadata keys
+            required_keys = ["name", "version"]
+            missing_keys = [key for key in required_keys if key not in metadata]
+            if missing_keys:
+                self.logger.error(
+                    f"   ❌ Invalid metadata: missing required keys: {missing_keys}"
+                )
+                failed_count += 1
                 continue
 
             # Skip disabled plugins
             if metadata.get("disable", False) or not metadata.get("is_active", True):
                 self.logger.info(
-                    f"Skipping disabled plugin: {module_name} "
+                    f"   ⊗ Skipping disabled plugin: {metadata['name']} "
                     f"v{metadata.get('version', 'unknown')}"
                 )
+                skipped_count += 1
                 continue
 
             # Register plugin
             try:
                 plugin_name = metadata["name"]
+
+                self.logger.debug("   Building plugin data structure...")
                 plugin_data = {
                     "version": metadata.get("version", "unknown"),
                     "module": module,
@@ -216,31 +311,71 @@ class PluginManager:
                 }
 
                 # Add optional fields if present
-                if "entrypoint_cls" in metadata:
-                    plugin_data["entrypoint_cls"] = metadata["entrypoint_cls"]
-                if "exception_cls" in metadata:
-                    plugin_data["exception_cls"] = metadata["exception_cls"]
-                if "service_class" in metadata:
-                    plugin_data["service_class"] = metadata["service_class"]
+                optional_fields = [
+                    "entrypoint_cls",
+                    "exception_cls",
+                    "service_class",
+                    "blueprint",
+                ]
+                for field in optional_fields:
+                    if field in metadata:
+                        plugin_data[field] = metadata[field]
+                        self.logger.debug(f"      - Added {field}: {metadata[field]}")
 
                 self.plugins[plugin_name] = plugin_data
+                self.logger.debug("   ✓ Plugin registered in plugins dict")
 
                 # Call framework-specific registration callback if provided
                 if self.registration_callback:
-                    self.registration_callback(plugin_data)
+                    self.logger.debug("   Calling registration callback...")
+                    try:
+                        self.registration_callback(plugin_data)
+                        self.logger.debug("   ✓ Registration callback completed")
+                    except Exception as e:
+                        self.logger.error(f"   ❌ Registration callback failed: {str(e)}")
+                        self.logger.error(f"   Error type: {type(e).__name__}")
+                        self.logger.debug("   Full traceback:", exc_info=True)
+                        # Remove from plugins dict if callback failed
+                        del self.plugins[plugin_name]
+                        failed_count += 1
+                        continue
 
+                loaded_count += 1
                 self.logger.info(
-                    f"✔ Loaded plugin: {plugin_name} v{plugin_data['version']}"
+                    f"   ✔ Successfully loaded plugin: {plugin_name} v{plugin_data['version']}"
                 )
 
             except KeyError as e:
                 self.logger.error(
-                    f"Invalid metadata for plugin '{module_name}': {str(e)}"
+                    f"   ❌ Invalid metadata for plugin '{module_name}': missing key {str(e)}"
                 )
+                self.logger.debug("   Full traceback:", exc_info=True)
+                failed_count += 1
+            except Exception as e:
+                self.logger.error(
+                    f"   ❌ Unexpected error registering plugin '{module_name}': {str(e)}"
+                )
+                self.logger.error(f"   Error type: {type(e).__name__}")
+                self.logger.debug("   Full traceback:", exc_info=True)
+                failed_count += 1
 
-        # Log appropriate message based on whether plugins were loaded
-        if not self.plugins:
-            self.logger.info("No plugins loaded (OSS mode).")
+        # Final summary
+        self.logger.info("=" * 80)
+        self.logger.info("PLUGIN LOADING SUMMARY")
+        self.logger.info("=" * 80)
+        self.logger.info(f"✔ Successfully loaded: {loaded_count}")
+        self.logger.info(f"⊗ Skipped (disabled): {skipped_count}")
+        self.logger.info(f"❌ Failed to load: {failed_count}")
+        self.logger.info(f"📊 Total candidates: {len(plugin_candidates)}")
+
+        if self.plugins:
+            self.logger.info(f"\n🎉 Active plugins ({len(self.plugins)}):")
+            for name, data in self.plugins.items():
+                self.logger.info(f"   • {name} v{data['version']}")
+        else:
+            self.logger.info("\nNo plugins loaded (OSS mode).")
+
+        self.logger.info("=" * 80)
 
     def get_plugin(self, name: str) -> dict[str, Any]:
         """Get plugin metadata by name.
