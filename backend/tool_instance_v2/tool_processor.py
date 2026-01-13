@@ -17,7 +17,6 @@ from unstract.tool_registry.tool_utils import ToolUtils
 
 # Import agentic registry if available (cloud-only feature)
 try:
-    from pluggable_apps.agentic_studio_registry.models import AgenticStudioRegistry
     from pluggable_apps.agentic_studio_registry.registry_helper import (
         AgenticRegistryHelper,
     )

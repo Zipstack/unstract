@@ -174,9 +174,7 @@ class StructureTool(BaseTool):
             prompt_host=self.get_env_or_die(SettingsKeys.PROMPT_HOST),
             request_id=self.file_execution_id,
         )
-        self.stream_log(
-            f"Fetching exported tool with UUID '{prompt_registry_id}'"
-        )
+        self.stream_log(f"Fetching exported tool with UUID '{prompt_registry_id}'")
 
         platform_helper: PlatformHelper = PlatformHelper(
             tool=self,
@@ -545,24 +543,17 @@ class StructureTool(BaseTool):
         # Get adapter IDs from settings (workflow UI overrides)
         # or fall back to exported defaults
         extractor_llm = settings.get(
-            "extractor_llm_adapter_id",
-            adapter_config.get("extractor_llm")
+            "extractor_llm_adapter_id", adapter_config.get("extractor_llm")
         )
-        agent_llm = settings.get(
-            "agent_llm_adapter_id",
-            adapter_config.get("agent_llm")
-        )
+        agent_llm = settings.get("agent_llm_adapter_id", adapter_config.get("agent_llm"))
         llmwhisperer = settings.get(
-            "llmwhisperer_adapter_id",
-            adapter_config.get("llmwhisperer")
+            "llmwhisperer_adapter_id", adapter_config.get("llmwhisperer")
         )
         lightweight_llm = settings.get(
-            "lightweight_llm_adapter_id",
-            adapter_config.get("lightweight_llm")
+            "lightweight_llm_adapter_id", adapter_config.get("lightweight_llm")
         )
         enable_highlight = settings.get(
-            SettingsKeys.ENABLE_HIGHLIGHT,
-            tool_metadata.get("enable_highlight", False)
+            SettingsKeys.ENABLE_HIGHLIGHT, tool_metadata.get("enable_highlight", False)
         )
 
         # Build extraction payload
@@ -626,22 +617,16 @@ class StructureTool(BaseTool):
             self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
             # Write output to file
-            self.stream_log(
-                "Writing agentic extraction output to workflow storage"
-            )
+            self.stream_log("Writing agentic extraction output to workflow storage")
             output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
-            self.workflow_filestorage.json_dump(
-                path=output_path, data=structured_output
-            )
+            self.workflow_filestorage.json_dump(path=output_path, data=structured_output)
             self.stream_log("Output written successfully to workflow storage")
 
             # Write tool result
             self.write_tool_result(data=structured_output)
 
         except Exception as e:
-            self.stream_error_and_exit(
-                f"Error during agentic extraction: {e}"
-            )
+            self.stream_error_and_exit(f"Error during agentic extraction: {e}")
 
     def _summarize(
         self,
