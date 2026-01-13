@@ -1,19 +1,91 @@
-.grey-body {
+.profile-page {
   background-color: var(--page-bg-2);
-  height: 100%;
-  padding: 14px;
+  min-height: 100%;
+  padding: 24px;
 }
 
-.paper-layout {
+.profile-container {
+  max-width: 600px;
+}
+
+.profile-title {
+  margin-bottom: 24px !important;
+}
+
+.profile-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
   background-color: var(--white);
-  height: 100%;
-  padding: 14px;
+  border-radius: 8px;
 }
 
-.header-text {
-     margin-bottom: 20px;
+.profile-cards {
+  width: 100%;
 }
 
-.header-text .typo-text {
-    font-size: 18px;
+.profile-card {
+  width: 100%;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.profile-card .ant-card-head {
+  background-color: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+}
+
+.card-icon {
+  color: var(--primary-color, #1890ff);
+}
+
+.profile-card .ant-descriptions-item-label {
+  width: 120px;
+  color: #666;
+  font-weight: 500;
+}
+
+.profile-card .ant-descriptions-item-content {
+  color: #333;
+}
+
+.description-value {
+  word-break: break-all;
+}
+
+.org-id {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.copy-icon {
+  color: #999;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.copy-icon:hover {
+  color: var(--primary-color, #1890ff);
+}
+
+.role-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  color: #1890ff;
+  font-size: 13px;
+}
+
+.profile-actions {
+  margin-top: 8px;
 }
