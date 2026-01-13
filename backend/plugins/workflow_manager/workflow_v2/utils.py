@@ -6,6 +6,7 @@ are loaded from pluggable_apps.manual_review_v2 if available.
 """
 
 import logging
+import random
 from typing import Any
 
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -35,13 +36,6 @@ class WorkflowUtil:
         Returns:
             A set of file indices, or None if manual_review_v2 is not available.
         """
-        try:
-            import random
-
-            from pluggable_apps.manual_review_v2.helper import get_db_rules_by_workflow_id
-        except ImportError:
-            return None
-
         num_to_select = max(1, int(n * (percentage / 100)))
         return set(random.sample(range(1, n + 1), num_to_select))
 
