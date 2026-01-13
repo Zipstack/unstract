@@ -230,7 +230,9 @@ class PluginManager:
         failed_count = 0
 
         for idx, (plugin_path, module_name) in enumerate(plugin_candidates, 1):
-            self.logger.info(f"\n[{idx}/{len(plugin_candidates)}] Processing: {module_name}")
+            self.logger.info(
+                f"\n[{idx}/{len(plugin_candidates)}] Processing: {module_name}"
+            )
             self.logger.info(f"   Path: {plugin_path}")
 
             # Build import path with optional submodule
@@ -244,13 +246,11 @@ class PluginManager:
             # Try to import the plugin module
             try:
                 self.logger.info(f"   Attempting to import: {pkg_anchor}")
-                
+
                 module = importlib.import_module(pkg_anchor)
-                self.logger.info(f"   ✓ Import successful")
+                self.logger.info("   ✓ Import successful")
             except ImportError as e:
-                self.logger.info(
-                    f"   ⚠ Import failed for {pkg_anchor}: {str(e)}"
-                )
+                self.logger.info(f"   ⚠ Import failed for {pkg_anchor}: {str(e)}")
                 self.logger.info(f"   Full error: {repr(e)}", exc_info=True)
                 failed_count += 1
                 continue
@@ -259,12 +259,12 @@ class PluginManager:
                     f"   ❌ Unexpected error importing {pkg_anchor}: {str(e)}"
                 )
                 self.logger.error(f"   Error type: {type(e).__name__}")
-                self.logger.debug(f"   Full traceback:", exc_info=True)
+                self.logger.debug("   Full traceback:", exc_info=True)
                 failed_count += 1
                 continue
 
             # Validate plugin metadata
-            self.logger.debug(f"   Checking for 'metadata' attribute...")
+            self.logger.debug("   Checking for 'metadata' attribute...")
             metadata = getattr(module, "metadata", None)
 
             if not metadata:
@@ -274,14 +274,14 @@ class PluginManager:
                 skipped_count += 1
                 continue
 
-            self.logger.info(f"   ✓ Metadata found:")
+            self.logger.info("   ✓ Metadata found:")
             self.logger.info(f"      - name: {metadata.get('name', 'MISSING')}")
             self.logger.info(f"      - version: {metadata.get('version', 'MISSING')}")
             self.logger.info(f"      - disable: {metadata.get('disable', False)}")
             self.logger.info(f"      - is_active: {metadata.get('is_active', True)}")
 
             # Check for required metadata keys
-            required_keys = ['name', 'version']
+            required_keys = ["name", "version"]
             missing_keys = [key for key in required_keys if key not in metadata]
             if missing_keys:
                 self.logger.error(
@@ -303,7 +303,7 @@ class PluginManager:
             try:
                 plugin_name = metadata["name"]
 
-                self.logger.debug(f"   Building plugin data structure...")
+                self.logger.debug("   Building plugin data structure...")
                 plugin_data = {
                     "version": metadata.get("version", "unknown"),
                     "module": module,
@@ -311,25 +311,28 @@ class PluginManager:
                 }
 
                 # Add optional fields if present
-                optional_fields = ["entrypoint_cls", "exception_cls", "service_class", "blueprint"]
+                optional_fields = [
+                    "entrypoint_cls",
+                    "exception_cls",
+                    "service_class",
+                    "blueprint",
+                ]
                 for field in optional_fields:
                     if field in metadata:
                         plugin_data[field] = metadata[field]
                         self.logger.debug(f"      - Added {field}: {metadata[field]}")
 
                 self.plugins[plugin_name] = plugin_data
-                self.logger.debug(f"   ✓ Plugin registered in plugins dict")
+                self.logger.debug("   ✓ Plugin registered in plugins dict")
 
                 # Call framework-specific registration callback if provided
                 if self.registration_callback:
-                    self.logger.debug(f"   Calling registration callback...")
+                    self.logger.debug("   Calling registration callback...")
                     try:
                         self.registration_callback(plugin_data)
-                        self.logger.debug(f"   ✓ Registration callback completed")
+                        self.logger.debug("   ✓ Registration callback completed")
                     except Exception as e:
-                        self.logger.error(
-                            f"   ❌ Registration callback failed: {str(e)}"
-                        )
+                        self.logger.error(f"   ❌ Registration callback failed: {str(e)}")
                         self.logger.error(f"   Error type: {type(e).__name__}")
                         self.logger.debug("   Full traceback:", exc_info=True)
                         # Remove from plugins dict if callback failed
