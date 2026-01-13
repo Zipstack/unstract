@@ -197,7 +197,9 @@ const SideNavBar = ({ collapsed }) => {
           icon: BranchesOutlined,
           image: Workflows,
           path: `/${orgName}/workflows`,
-          active: globalThis.location.pathname.startsWith(`/${orgName}/workflows`),
+          active: globalThis.location.pathname.startsWith(
+            `/${orgName}/workflows`
+          ),
         },
       ],
     },
