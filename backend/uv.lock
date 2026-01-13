@@ -520,9 +520,9 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "celery" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/51/12/30140c5961bd7b9a71d6e20f4ff0c93b6b96fee738c244b8118ca38276ee/celery_batches-0.10.tar.gz", hash = "sha256:2e898dab9bf0fed862107069066179278027fe1b87d4c4ee31a3b81713ed7dd3", size = 8504 }
+sdist = { url = "https://files.pythonhosted.org/packages/51/12/30140c5961bd7b9a71d6e20f4ff0c93b6b96fee738c244b8118ca38276ee/celery_batches-0.10.tar.gz", hash = "sha256:2e898dab9bf0fed862107069066179278027fe1b87d4c4ee31a3b81713ed7dd3", size = 8504, upload-time = "2025-04-04T19:34:47.524Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/c7/609a9877698e9d057076f5d69664e22c72ad15550d6022bd0469d839ae57/celery_batches-0.10-py3-none-any.whl", hash = "sha256:108eb8368797bdbc1792335a090600664951719a9a77b72fa3a90eb91e8d2b86", size = 8697 },
+    { url = "https://files.pythonhosted.org/packages/15/c7/609a9877698e9d057076f5d69664e22c72ad15550d6022bd0469d839ae57/celery_batches-0.10-py3-none-any.whl", hash = "sha256:108eb8368797bdbc1792335a090600664951719a9a77b72fa3a90eb91e8d2b86", size = 8697, upload-time = "2025-04-04T19:34:46.223Z" },
 ]
 
 [[package]]
@@ -3666,7 +3666,7 @@ requires-dist = [
     { name = "azure-mgmt-apimanagement", specifier = "==3.0.0" },
     { name = "boto3", specifier = "~=1.34.0" },
     { name = "celery", extras = ["amqp"], specifier = ">=5.3.4" },
-    { name = "celery-batches", specifier = ">=0.8.0" },
+    { name = "celery-batches", specifier = ">=0.9.0" },
     { name = "cron-descriptor", specifier = "==1.4.0" },
     { name = "croniter", specifier = ">=3.0.3" },
     { name = "cryptography", specifier = ">=41.0.7" },

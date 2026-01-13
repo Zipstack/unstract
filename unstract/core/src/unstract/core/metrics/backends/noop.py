@@ -5,8 +5,8 @@ Used when metrics recording is disabled (default for OSS).
 
 import logging
 
-from ..types import MetricEvent
-from .base import AbstractMetricBackend
+from unstract.core.metrics.backends.base import AbstractMetricBackend
+from unstract.core.metrics.types import MetricEvent
 
 logger = logging.getLogger(__name__)
 

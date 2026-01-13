@@ -18,19 +18,19 @@ class MetricType(models.TextChoices):
     HISTOGRAM = "histogram", "Histogram"
 
 
-class EventMetricsHourlyManager(DefaultOrganizationManagerMixin, models.Manager):
+class EventMetricsHourlyManager(DefaultOrganizationManagerMixin):
     """Manager for EventMetricsHourly with organization filtering."""
 
     pass
 
 
-class EventMetricsDailyManager(DefaultOrganizationManagerMixin, models.Manager):
+class EventMetricsDailyManager(DefaultOrganizationManagerMixin):
     """Manager for EventMetricsDaily with organization filtering."""
 
     pass
 
 
-class EventMetricsMonthlyManager(DefaultOrganizationManagerMixin, models.Manager):
+class EventMetricsMonthlyManager(DefaultOrganizationManagerMixin):
     """Manager for EventMetricsMonthly with organization filtering."""
 
     pass
@@ -95,7 +95,7 @@ class EventMetricsHourly(DefaultOrganizationMixin, BaseModel):
     )
     tag = models.CharField(
         max_length=64,
-        null=True,
+        default="",
         blank=True,
         db_comment="Optional tag for categorization",
     )
@@ -201,7 +201,7 @@ class EventMetricsDaily(DefaultOrganizationMixin, BaseModel):
     )
     tag = models.CharField(
         max_length=64,
-        null=True,
+        default="",
         blank=True,
         db_comment="Optional tag for categorization",
     )
@@ -307,7 +307,7 @@ class EventMetricsMonthly(DefaultOrganizationMixin, BaseModel):
     )
     tag = models.CharField(
         max_length=64,
-        null=True,
+        default="",
         blank=True,
         db_comment="Optional tag for categorization",
     )

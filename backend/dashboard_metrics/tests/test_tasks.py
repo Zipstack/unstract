@@ -146,7 +146,7 @@ class TestBatchProcessing(TransactionTestCase):
     def test_batch_aggregates_same_hour(self):
         """Test that multiple events in the same hour are aggregated."""
         mock_requests = []
-        for i in range(5):
+        for _ in range(5):
             mock_request = MagicMock()
             mock_request.args = [
                 {

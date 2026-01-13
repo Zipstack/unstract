@@ -13,8 +13,8 @@ from kombu import Connection, Exchange
 from kombu import Queue as KombuQueue
 from kombu.exceptions import KombuError
 
-from ..types import MetricEvent
-from .base import AbstractMetricBackend
+from unstract.core.metrics.backends.base import AbstractMetricBackend
+from unstract.core.metrics.types import MetricEvent
 
 logger = logging.getLogger(__name__)
 
@@ -148,11 +148,11 @@ class QueueBackend(AbstractMetricBackend):
             )
             return True
 
-        except KombuError as e:
-            logger.error(f"Failed to queue metric {event.metric_name}: {e}")
+        except KombuError:
+            logger.exception("Failed to queue metric %s", event.metric_name)
             return False
-        except Exception as e:
-            logger.error(f"Unexpected error queuing metric: {e}")
+        except Exception:
+            logger.exception("Unexpected error queuing metric")
             return False
 
     def _create_event_data(self, event: MetricEvent) -> dict[str, Any]:
