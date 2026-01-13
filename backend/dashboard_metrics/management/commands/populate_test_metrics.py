@@ -4,13 +4,14 @@ import random
 from datetime import datetime, timedelta
 
 from account_v2.models import Organization
+from django.core.management.base import BaseCommand, CommandError
+from django.utils import timezone
+
 from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
     MetricType,
 )
-from django.core.management.base import BaseCommand, CommandError
-from django.utils import timezone
 
 
 class Command(BaseCommand):
