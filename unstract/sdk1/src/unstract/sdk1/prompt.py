@@ -192,7 +192,7 @@ class PromptTool:
             dict: Extraction results with data, metadata, and metrics
         """
         return self._call_service(
-            url_path="agentic-extraction",
+            url_path="agentic/extract",
             payload=payload,
             params=params,
             headers=headers,
