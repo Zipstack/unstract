@@ -37,6 +37,15 @@ class MetricsQuerySerializer(serializers.Serializer):
         default="day",
         help_text="Time granularity for aggregation.",
     )
+    source = serializers.ChoiceField(
+        choices=["auto", "hourly", "daily", "monthly"],
+        default="auto",
+        required=False,
+        help_text=(
+            "Data source table. 'auto' selects based on date range: "
+            "≤7 days=hourly, ≤90 days=daily, >90 days=monthly."
+        ),
+    )
 
     def validate(self, attrs):
         """Set defaults and validate date range."""
@@ -50,14 +59,14 @@ class MetricsQuerySerializer(serializers.Serializer):
 
         if attrs["start_date"] > attrs["end_date"]:
             raise serializers.ValidationError(
-                {"start_date": "start_date must be before end_date"}
+                {"start_date": "Start date must be before end date"}
             )
 
-        # Limit query range to 90 days
-        max_range = timedelta(days=90)
+        # Limit query range to 365 days (1 year) for monthly data
+        max_range = timedelta(days=365)
         if attrs["end_date"] - attrs["start_date"] > max_range:
             raise serializers.ValidationError(
-                {"start_date": "Query range cannot exceed 90 days"}
+                {"start_date": "Query range cannot exceed 365 days"}
             )
 
         return attrs

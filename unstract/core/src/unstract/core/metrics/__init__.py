@@ -110,8 +110,8 @@ def record(
             project=project or "default",
             tag=tag,
         )
-    except Exception as e:
-        logger.error(f"Failed to create metric event: {e}")
+    except Exception:
+        logger.exception("Failed to create metric event")
         return False
 
     # Record to backend

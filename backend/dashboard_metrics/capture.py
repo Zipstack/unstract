@@ -81,11 +81,11 @@ class MetricsCapture:
             metric_labels["api_name"] = api_name
 
         return record(
-            MetricName.DEPLOYED_API_REQUESTS,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.DEPLOYED_API_REQUESTS,
+            metric_value=1,
             labels=metric_labels,
+            project=project,
         )
 
     @staticmethod
@@ -118,11 +118,11 @@ class MetricsCapture:
             metric_labels["pipeline_name"] = pipeline_name
 
         return record(
-            MetricName.ETL_PIPELINE_EXECUTIONS,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.ETL_PIPELINE_EXECUTIONS,
+            metric_value=1,
             labels=metric_labels,
+            project=project,
         )
 
     @staticmethod
@@ -158,20 +158,20 @@ class MetricsCapture:
 
         # Record document
         doc_result = record(
-            MetricName.DOCUMENTS_PROCESSED,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.DOCUMENTS_PROCESSED,
+            metric_value=1,
             labels=metric_labels,
+            project=project,
         )
 
         # Record pages
         pages_result = record(
-            MetricName.PAGES_PROCESSED,
             org_id=org_id,
-            value=pages,
-            project=project,
+            metric_name=MetricName.PAGES_PROCESSED,
+            metric_value=pages,
             labels=metric_labels,
+            project=project,
         )
 
         return doc_result and pages_result
@@ -213,21 +213,21 @@ class MetricsCapture:
 
         # Record the call
         call_result = record(
-            MetricName.LLM_CALLS,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.LLM_CALLS,
+            metric_value=1,
             labels=metric_labels,
+            project=project,
         )
 
         # Record usage cost if provided
         if cost > 0:
             record(
-                MetricName.LLM_USAGE,
                 org_id=org_id,
-                value=cost,
-                project=project,
+                metric_name=MetricName.LLM_USAGE,
+                metric_value=cost,
                 labels=metric_labels,
+                project=project,
             )
 
         return call_result
@@ -262,11 +262,11 @@ class MetricsCapture:
             metric_labels["type"] = challenge_type
 
         return record(
-            MetricName.CHALLENGES,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.CHALLENGES,
+            metric_value=1,
             labels=metric_labels,
+            project=project,
         )
 
     @staticmethod
@@ -293,11 +293,11 @@ class MetricsCapture:
             return False
 
         return record(
-            MetricName.SUMMARIZATION_CALLS,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.SUMMARIZATION_CALLS,
+            metric_value=1,
             labels=labels,
+            project=project,
         )
 
     @staticmethod
@@ -330,9 +330,9 @@ class MetricsCapture:
             metric_labels["prompt_name"] = prompt_name
 
         return record(
-            MetricName.PROMPT_EXECUTIONS,
             org_id=org_id,
-            value=1,
-            project=project,
+            metric_name=MetricName.PROMPT_EXECUTIONS,
+            metric_value=1,
             labels=metric_labels,
+            project=project,
         )

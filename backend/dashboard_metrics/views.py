@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.core.cache import cache
 from django.db.models import Avg, Max, Min, Sum
@@ -20,8 +20,13 @@ from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from utils.user_context import UserContext
 
-from .cache import cache_metrics_response
-from .models import EventMetricsHourly
+from .cache import (
+    cache_metrics_response,
+    generate_time_buckets,
+    mget_metrics_buckets,
+    mset_metrics_buckets,
+)
+from .models import EventMetricsDaily, EventMetricsHourly, EventMetricsMonthly
 from .serializers import (
     EventMetricsHourlySerializer,
     MetricsQuerySerializer,
@@ -30,18 +35,26 @@ from .services import MetricsQueryService
 
 logger = logging.getLogger(__name__)
 
+# Enable bucket caching for better cache reuse across overlapping queries
+BUCKET_CACHE_ENABLED = True
+
+# Thresholds for automatic source selection (in days)
+HOURLY_MAX_DAYS = 7  # Use hourly for ≤7 days
+DAILY_MAX_DAYS = 90  # Use daily for ≤90 days, monthly for >90 days
+
 
 class MetricsRateThrottle(UserRateThrottle):
     """Rate throttle for metrics endpoints."""
 
-    rate = "100/hour"
+    rate = "1000/hour"
 
 
 class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     """ViewSet for dashboard metrics API.
 
     Provides read-only access to aggregated metrics data with
-    time series and summary endpoints.
+    time series and summary endpoints. Automatically selects the
+    optimal data source (hourly/daily/monthly) based on date range.
     """
 
     permission_classes = [IsAuthenticated, IsOrganizationMember]
@@ -62,19 +75,187 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         except Exception as e:
             if isinstance(e, PermissionDenied):
                 raise
-            logger.error(f"Error getting metrics queryset: {e}")
-            raise PermissionDenied("Unable to access metrics")
+            logger.exception("Error getting metrics queryset")
+            raise PermissionDenied("Unable to access metrics") from e
+
+    def _get_organization(self):
+        """Get the current organization or raise PermissionDenied."""
+        organization = UserContext.get_organization()
+        if not organization:
+            raise PermissionDenied("No organization context")
+        return organization
+
+    def _select_source(self, params: dict) -> str:
+        """Select the optimal data source based on date range or explicit source.
+
+        Args:
+            params: Validated query parameters containing start_date, end_date, source
+
+        Returns:
+            Source name: 'hourly', 'daily', or 'monthly'
+        """
+        source = params.get("source", "auto")
+        if source != "auto":
+            return source
+
+        # Auto-select based on date range
+        days = (params["end_date"] - params["start_date"]).days
+
+        if days <= HOURLY_MAX_DAYS:
+            return "hourly"
+        elif days <= DAILY_MAX_DAYS:
+            return "daily"
+        else:
+            return "monthly"
+
+    def _get_source_queryset(self, source: str, organization):
+        """Get the queryset for the specified source table.
+
+        Args:
+            source: One of 'hourly', 'daily', 'monthly'
+            organization: Organization instance
+
+        Returns:
+            QuerySet for the appropriate table
+        """
+        if source == "hourly":
+            return EventMetricsHourly.objects.filter(organization=organization)
+        elif source == "daily":
+            return EventMetricsDaily.objects.filter(organization=organization)
+        elif source == "monthly":
+            return EventMetricsMonthly.objects.filter(organization=organization)
+        else:
+            return EventMetricsHourly.objects.filter(organization=organization)
+
+    def _get_timestamp_field(self, source: str) -> str:
+        """Get the timestamp field name for the source table."""
+        if source == "hourly":
+            return "timestamp"
+        elif source == "daily":
+            return "date"
+        elif source == "monthly":
+            return "month"
+        return "timestamp"
+
+    def _apply_source_filters(self, queryset, params: dict, source: str):
+        """Apply filters based on the source table structure."""
+        ts_field = self._get_timestamp_field(source)
+
+        queryset = queryset.filter(
+            **{
+                f"{ts_field}__gte": params["start_date"]
+                if source == "hourly"
+                else params["start_date"].date(),
+                f"{ts_field}__lte": params["end_date"]
+                if source == "hourly"
+                else params["end_date"].date(),
+            }
+        )
+
+        if params.get("metric_name"):
+            queryset = queryset.filter(metric_name=params["metric_name"])
+
+        if params.get("project"):
+            queryset = queryset.filter(project=params["project"])
+
+        if "tag" in params and params["tag"] is not None:
+            queryset = queryset.filter(tag=params["tag"])
+
+        return queryset
+
+    def _fetch_hourly_with_bucket_cache(
+        self,
+        org_id: str,
+        organization,
+        params: dict,
+        metric_name: str | None = None,
+    ) -> list[dict]:
+        """Fetch hourly metrics using bucket-based caching.
+
+        Splits the time range into hourly buckets, fetches from cache,
+        queries DB for missing buckets, and saves to cache.
+
+        Args:
+            org_id: Organization ID string
+            organization: Organization model instance
+            params: Query parameters with start_date, end_date
+            metric_name: Optional metric name filter
+
+        Returns:
+            List of metric records from EventMetricsHourly
+        """
+        start_date = params["start_date"]
+        end_date = params["end_date"]
+
+        # Try to get from bucket cache
+        cached_data, missing_buckets = mget_metrics_buckets(
+            org_id, start_date, end_date, "hourly", metric_name
+        )
+
+        # If we have missing buckets, query them from DB
+        db_data_by_bucket = {}
+        if missing_buckets:
+            for bucket_ts in missing_buckets:
+                # Query this specific hour
+                bucket_end = bucket_ts + timedelta(hours=1)
+                bucket_qs = EventMetricsHourly.objects.filter(
+                    organization=organization,
+                    timestamp__gte=bucket_ts,
+                    timestamp__lt=bucket_end,
+                )
+
+                if metric_name:
+                    bucket_qs = bucket_qs.filter(metric_name=metric_name)
+
+                if params.get("project"):
+                    bucket_qs = bucket_qs.filter(project=params["project"])
+
+                if "tag" in params and params["tag"] is not None:
+                    bucket_qs = bucket_qs.filter(tag=params["tag"])
+
+                # Convert to list of dicts for caching
+                bucket_records = list(
+                    bucket_qs.values(
+                        "metric_name",
+                        "metric_type",
+                        "metric_value",
+                        "metric_count",
+                        "project",
+                        "tag",
+                        "timestamp",
+                    )
+                )
+                db_data_by_bucket[bucket_ts] = bucket_records
+
+            # Save to cache
+            if db_data_by_bucket:
+                mset_metrics_buckets(org_id, db_data_by_bucket, "hourly", metric_name)
+
+        # Combine cached and fresh data
+        all_records = []
+        for bucket_ts, records in cached_data.items():
+            all_records.extend(records)
+        for bucket_ts, records in db_data_by_bucket.items():
+            all_records.extend(records)
+
+        return all_records
 
     @action(detail=False, methods=["get"], url_path="summary")
-    @cache_metrics_response(endpoint="summary")
     def summary(self, request: Request) -> Response:
         """Get summary statistics for all metrics.
+
+        Automatically selects the optimal data source (hourly/daily/monthly)
+        based on the date range, or use ?source= to override.
+
+        Uses bucket-based caching for hourly data to maximize cache reuse
+        across overlapping queries.
 
         Query Parameters:
             start_date: Start of date range (ISO 8601)
             end_date: End of date range (ISO 8601)
             metric_name: Filter by specific metric name
             project: Filter by project identifier
+            source: Data source (auto, hourly, daily, monthly). Default: auto
 
         Returns:
             Summary statistics for each metric including totals,
@@ -84,34 +265,96 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         query_serializer.is_valid(raise_exception=True)
         params = query_serializer.validated_data
 
-        queryset = self._apply_filters(self.get_queryset(), params)
+        organization = self._get_organization()
+        org_id = str(organization.id)
+        source = self._select_source(params)
 
-        # Aggregate by metric name
-        summary = (
-            queryset.values("metric_name")
-            .annotate(
-                total_value=Sum("metric_value"),
-                total_count=Sum("metric_count"),
-                average_value=Avg("metric_value"),
-                min_value=Min("metric_value"),
-                max_value=Max("metric_value"),
+        # Use bucket caching for hourly source (best cache reuse)
+        if source == "hourly" and BUCKET_CACHE_ENABLED:
+            records = self._fetch_hourly_with_bucket_cache(
+                org_id, organization, params, params.get("metric_name")
             )
-            .order_by("metric_name")
-        )
+
+            # Aggregate the records manually
+            summary_dict = defaultdict(
+                lambda: {
+                    "total_value": 0,
+                    "total_count": 0,
+                    "values": [],
+                    "metric_type": "counter",
+                }
+            )
+            for record in records:
+                name = record["metric_name"]
+                value = record.get("metric_value") or 0
+                count = record.get("metric_count") or 0
+                summary_dict[name]["total_value"] += value
+                summary_dict[name]["total_count"] += count
+                summary_dict[name]["values"].append(value)
+                summary_dict[name]["metric_type"] = record.get("metric_type", "counter")
+
+            summary_list = []
+            for name, agg in summary_dict.items():
+                values = agg["values"]
+                summary_list.append({
+                    "metric_name": name,
+                    "metric_type": agg["metric_type"],
+                    "total_value": agg["total_value"],
+                    "total_count": agg["total_count"],
+                    "average_value": agg["total_value"] / len(values) if values else 0,
+                    "min_value": min(values) if values else 0,
+                    "max_value": max(values) if values else 0,
+                })
+            summary_list.sort(key=lambda x: x["metric_name"])
+
+        else:
+            # Use standard queryset for daily/monthly (existing behavior)
+            queryset = self._get_source_queryset(source, organization)
+            queryset = self._apply_source_filters(queryset, params, source)
+
+            # Aggregate by metric name
+            summary = (
+                queryset.values("metric_name")
+                .annotate(
+                    total_value=Sum("metric_value"),
+                    total_count=Sum("metric_count"),
+                    average_value=Avg("metric_value"),
+                    min_value=Min("metric_value"),
+                    max_value=Max("metric_value"),
+                )
+                .order_by("metric_name")
+            )
+
+            # Add metric_type from the first record of each metric
+            summary_list = []
+            for row in summary:
+                metric_type_record = queryset.filter(
+                    metric_name=row["metric_name"]
+                ).values("metric_type").first()
+                row["metric_type"] = (
+                    metric_type_record["metric_type"] if metric_type_record else "counter"
+                )
+                summary_list.append(row)
 
         return Response(
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
-                "summary": list(summary),
+                "source": source,
+                "summary": summary_list,
             },
             status=status.HTTP_200_OK,
         )
 
     @action(detail=False, methods=["get"], url_path="series")
-    @cache_metrics_response(endpoint="series")
     def series(self, request: Request) -> Response:
         """Get time series data for metrics.
+
+        Automatically selects the optimal data source (hourly/daily/monthly)
+        based on the date range, or use ?source= to override.
+
+        Uses bucket-based caching for hourly data to maximize cache reuse
+        across overlapping queries.
 
         Query Parameters:
             start_date: Start of date range (ISO 8601)
@@ -119,6 +362,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             granularity: Time granularity (hour, day, week)
             metric_name: Filter by specific metric name
             project: Filter by project identifier
+            source: Data source (auto, hourly, daily, monthly). Default: auto
 
         Returns:
             Time series data grouped by the specified granularity.
@@ -127,26 +371,132 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         query_serializer.is_valid(raise_exception=True)
         params = query_serializer.validated_data
 
-        queryset = self._apply_filters(self.get_queryset(), params)
+        organization = self._get_organization()
+        org_id = str(organization.id)
+        source = self._select_source(params)
         granularity = params.get("granularity", "day")
 
-        # Apply time truncation based on granularity
-        trunc_func = {
-            "hour": TruncHour,
-            "day": TruncDay,
-            "week": TruncWeek,
-        }.get(granularity, TruncDay)
-
-        # Aggregate by time period and metric
-        series_data = (
-            queryset.annotate(period=trunc_func("timestamp"))
-            .values("period", "metric_name", "metric_type", "project", "tag")
-            .annotate(
-                value=Sum("metric_value"),
-                count=Sum("metric_count"),
+        # Use bucket caching for hourly source (best cache reuse)
+        if source == "hourly" and BUCKET_CACHE_ENABLED:
+            records = self._fetch_hourly_with_bucket_cache(
+                org_id, organization, params, params.get("metric_name")
             )
-            .order_by("period", "metric_name")
-        )
+
+            # Apply granularity-based grouping to cached records
+            from datetime import datetime
+
+            trunc_funcs = {
+                "hour": lambda ts: ts.replace(minute=0, second=0, microsecond=0),
+                "day": lambda ts: ts.replace(hour=0, minute=0, second=0, microsecond=0),
+                "week": lambda ts: (ts - timedelta(days=ts.weekday())).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ),
+            }
+            trunc_fn = trunc_funcs.get(granularity, trunc_funcs["day"])
+
+            # Group records by (period, metric_name, project, tag)
+            grouped = defaultdict(
+                lambda: {"value": 0, "count": 0, "metric_type": "counter"}
+            )
+            for record in records:
+                ts = record.get("timestamp")
+                if isinstance(ts, str):
+                    ts = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                period = trunc_fn(ts)
+                key = (
+                    period,
+                    record["metric_name"],
+                    record.get("project", ""),
+                    record.get("tag"),
+                )
+                grouped[key]["value"] += record.get("metric_value") or 0
+                grouped[key]["count"] += record.get("metric_count") or 0
+                grouped[key]["metric_type"] = record.get("metric_type", "counter")
+
+            # Convert to series_data format
+            series_data = [
+                {
+                    "period": key[0],
+                    "metric_name": key[1],
+                    "project": key[2],
+                    "tag": key[3],
+                    "value": data["value"],
+                    "count": data["count"],
+                    "metric_type": data["metric_type"],
+                }
+                for key, data in grouped.items()
+            ]
+            series_data.sort(key=lambda x: (x["period"], x["metric_name"]))
+
+        else:
+            # Use standard queryset for daily/monthly (existing behavior)
+            queryset = self._get_source_queryset(source, organization)
+            queryset = self._apply_source_filters(queryset, params, source)
+            ts_field = self._get_timestamp_field(source)
+
+            # For daily/monthly tables, data is already at that granularity
+            # For hourly, we can truncate to day/week if requested
+            if source == "hourly":
+                trunc_func = {
+                    "hour": TruncHour,
+                    "day": TruncDay,
+                    "week": TruncWeek,
+                }.get(granularity, TruncDay)
+                series_data = (
+                    queryset.annotate(period=trunc_func(ts_field))
+                    .values("period", "metric_name", "metric_type", "project", "tag")
+                    .annotate(
+                        value=Sum("metric_value"),
+                        count=Sum("metric_count"),
+                    )
+                    .order_by("period", "metric_name")
+                )
+            elif source == "daily":
+                # Daily data - use date directly or truncate to week
+                if granularity == "week":
+                    series_data = (
+                        queryset.annotate(period=TruncWeek(ts_field))
+                        .values("period", "metric_name", "metric_type", "project", "tag")
+                        .annotate(
+                            value=Sum("metric_value"),
+                            count=Sum("metric_count"),
+                        )
+                        .order_by("period", "metric_name")
+                    )
+                else:
+                    # Return daily data as-is
+                    series_data = queryset.values(
+                        "metric_name", "metric_type", "project", "tag", "metric_value", "metric_count"
+                    ).annotate(period=TruncDay(ts_field)).order_by("period", "metric_name")
+                    series_data = [
+                        {
+                            "period": row["period"],
+                            "metric_name": row["metric_name"],
+                            "metric_type": row["metric_type"],
+                            "project": row["project"],
+                            "tag": row["tag"],
+                            "value": row["metric_value"],
+                            "count": row["metric_count"],
+                        }
+                        for row in series_data
+                    ]
+            else:  # monthly
+                # Monthly data - return as-is
+                series_data = queryset.values(
+                    "metric_name", "metric_type", "project", "tag", "metric_value", "metric_count"
+                ).annotate(period=TruncDay(ts_field)).order_by("period", "metric_name")
+                series_data = [
+                    {
+                        "period": row["period"],
+                        "metric_name": row["metric_name"],
+                        "metric_type": row["metric_type"],
+                        "project": row["project"],
+                        "tag": row["tag"],
+                        "value": row["metric_value"],
+                        "count": row["metric_count"],
+                    }
+                    for row in series_data
+                ]
 
         # Group by metric
         series_by_metric = defaultdict(
@@ -168,21 +518,23 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             series["metric_type"] = row["metric_type"]
             series["project"] = row["project"]
             series["tag"] = row["tag"]
+            period = row["period"]
             series["data"].append(
                 {
-                    "timestamp": row["period"].isoformat(),
+                    "timestamp": period.isoformat() if hasattr(period, "isoformat") else str(period),
                     "value": row["value"],
                     "count": row["count"],
                 }
             )
-            series["total_value"] += row["value"]
-            series["total_count"] += row["count"]
+            series["total_value"] += row["value"] or 0
+            series["total_count"] += row["count"] or 0
 
         return Response(
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
                 "granularity": granularity,
+                "source": source,
                 "series": list(series_by_metric.values()),
             },
             status=status.HTTP_200_OK,
@@ -193,10 +545,40 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     def overview(self, request: Request) -> Response:
         """Get a quick overview of recent metrics.
 
-        Returns last 7 days of key metrics for dashboard display.
+        Query Parameters:
+            start_date: Start of date range (ISO 8601, optional)
+            end_date: End of date range (ISO 8601, optional)
+
+        If dates are not provided, defaults to last 7 days.
         """
-        end_date = timezone.now()
-        start_date = end_date - timedelta(days=7)
+        # Parse optional date parameters (default to last 7 days)
+        end_date_str = request.query_params.get("end_date")
+        start_date_str = request.query_params.get("start_date")
+
+        if end_date_str:
+            try:
+                end_date = datetime.fromisoformat(end_date_str.replace("Z", "+00:00"))
+                if timezone.is_naive(end_date):
+                    end_date = timezone.make_aware(end_date)
+            except ValueError:
+                end_date = timezone.now()
+        else:
+            end_date = timezone.now()
+
+        if start_date_str:
+            try:
+                start_date = datetime.fromisoformat(
+                    start_date_str.replace("Z", "+00:00")
+                )
+                if timezone.is_naive(start_date):
+                    start_date = timezone.make_aware(start_date)
+            except ValueError:
+                start_date = end_date - timedelta(days=7)
+        else:
+            start_date = end_date - timedelta(days=7)
+
+        # Calculate days in range for response
+        days = (end_date - start_date).days
 
         queryset = self.get_queryset().filter(
             timestamp__gte=start_date,
@@ -213,33 +595,39 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             .order_by("metric_name")
         )
 
-        # Get daily trend for the period
-        daily_trend = (
+        # Get daily trend per metric for the period
+        daily_trend_query = (
             queryset.annotate(day=TruncDay("timestamp"))
-            .values("day")
+            .values("day", "metric_name")
             .annotate(
                 total_value=Sum("metric_value"),
                 total_count=Sum("metric_count"),
             )
-            .order_by("day")
+            .order_by("day", "metric_name")
         )
+
+        # Restructure to nested format: {date: {metrics: {name: value}}}
+        daily_trend_map = {}
+        for row in daily_trend_query:
+            date_str = row["day"].isoformat()
+            if date_str not in daily_trend_map:
+                daily_trend_map[date_str] = {"date": date_str, "metrics": {}}
+            daily_trend_map[date_str]["metrics"][row["metric_name"]] = row[
+                "total_value"
+            ]
+
+        # Sort by date
+        daily_trend = sorted(daily_trend_map.values(), key=lambda x: x["date"])
 
         return Response(
             {
                 "period": {
                     "start_date": start_date.isoformat(),
                     "end_date": end_date.isoformat(),
-                    "days": 7,
+                    "days": days,
                 },
                 "totals": list(totals),
-                "daily_trend": [
-                    {
-                        "date": row["day"].isoformat(),
-                        "value": row["total_value"],
-                        "count": row["total_count"],
-                    }
-                    for row in daily_trend
-                ],
+                "daily_trend": daily_trend,
             },
             status=status.HTTP_200_OK,
         )
@@ -265,6 +653,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         params = query_serializer.validated_data
 
         organization = UserContext.get_organization()
+        if not organization:
+            logger.warning("No organization context for live_summary request")
+            raise PermissionDenied("No organization context")
         org_id = str(organization.id)
 
         summary = MetricsQueryService.get_all_metrics_summary(
@@ -273,15 +664,27 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             params["end_date"],
         )
 
+        # Format response to match /summary/ endpoint format for frontend compatibility
+        # MetricsTable expects: summary[] with metric_name, metric_type, total_value, etc.
+        summary_list = [
+            {
+                "metric_name": name,
+                "metric_type": "histogram" if name == "llm_usage" else "counter",
+                "total_value": value,
+                "total_count": 1,  # Not available from live queries
+                "average_value": value,  # Same as total for live data
+                "min_value": value,
+                "max_value": value,
+            }
+            for name, value in summary.items()
+        ]
+
         return Response(
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
                 "source": "live",
-                "metrics": [
-                    {"metric_name": name, "total_value": value}
-                    for name, value in summary.items()
-                ],
+                "summary": summary_list,  # Changed from "metrics" to "summary"
             },
             status=status.HTTP_200_OK,
         )
@@ -308,6 +711,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         params = query_serializer.validated_data
 
         organization = UserContext.get_organization()
+        if not organization:
+            logger.warning("No organization context for live_series request")
+            raise PermissionDenied("No organization context")
         org_id = str(organization.id)
         granularity = params.get("granularity", "day")
 
@@ -356,8 +762,8 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                         "total_value": sum(r["value"] or 0 for r in data),
                     }
                 )
-            except Exception as e:
-                logger.error(f"Failed to fetch metric {metric_name}: {e}")
+            except Exception:
+                logger.exception("Failed to fetch metric %s", metric_name)
                 errors.append(metric_name)
                 series.append(
                     {
@@ -435,7 +841,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             EventMetricsHourly.objects.exists()
             return {"status": "ok"}
         except Exception as e:
-            logger.error(f"Database health check failed: {e}")
+            logger.exception("Database health check failed")
             return {"status": "error", "message": str(e)}
 
     def _check_cache(self) -> dict:
@@ -447,5 +853,5 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 return {"status": "ok"}
             return {"status": "error", "message": "Cache read/write mismatch"}
         except Exception as e:
-            logger.error(f"Cache health check failed: {e}")
+            logger.exception("Cache health check failed")
             return {"status": "error", "message": str(e)}

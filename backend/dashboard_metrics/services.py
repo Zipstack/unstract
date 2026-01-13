@@ -6,6 +6,9 @@ instead of relying on the event_metrics_hourly aggregation table.
 
 This enables immediate metrics availability without waiting for real-time
 capture integration to be completed.
+
+Note: Uses _base_manager for models with DefaultOrganizationManagerMixin
+to bypass the UserContext filter when running from Celery tasks.
 """
 
 from datetime import datetime
@@ -19,6 +22,16 @@ from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+
+
+def _get_usage_queryset():
+    """Get Usage queryset bypassing the organization context filter.
+
+    Usage model uses DefaultOrganizationManagerMixin which filters by
+    UserContext.get_organization(). This returns None in Celery tasks,
+    causing queries to return empty results. Use _base_manager instead.
+    """
+    return Usage._base_manager.all()
 
 
 class MetricsQueryService:
@@ -142,7 +155,7 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            Usage.objects.filter(
+            _get_usage_queryset().filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 created_at__gte=start_date,
@@ -177,7 +190,7 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            Usage.objects.filter(
+            _get_usage_queryset().filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 llm_usage_reason="challenge",
@@ -213,7 +226,7 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            Usage.objects.filter(
+            _get_usage_queryset().filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 llm_usage_reason="summarize",
@@ -334,7 +347,7 @@ class MetricsQueryService:
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            Usage.objects.filter(
+            _get_usage_queryset().filter(
                 organization_id=organization_id,
                 usage_type="llm",
                 created_at__gte=start_date,

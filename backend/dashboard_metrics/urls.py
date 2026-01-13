@@ -13,6 +13,7 @@ metrics_series = DashboardMetricsViewSet.as_view({"get": "series"})
 metrics_overview = DashboardMetricsViewSet.as_view({"get": "overview"})
 metrics_live_summary = DashboardMetricsViewSet.as_view({"get": "live_summary"})
 metrics_live_series = DashboardMetricsViewSet.as_view({"get": "live_series"})
+metrics_health = DashboardMetricsViewSet.as_view({"get": "health"})
 
 urlpatterns = format_suffix_patterns(
     [
@@ -27,6 +28,8 @@ urlpatterns = format_suffix_patterns(
         # Live data from source tables
         path("live-summary/", metrics_live_summary, name="metrics-live-summary"),
         path("live-series/", metrics_live_series, name="metrics-live-series"),
+        # Health check endpoint
+        path("health/", metrics_health, name="metrics-health"),
         # Individual metric detail
         path("<uuid:pk>/", metrics_detail, name="metrics-detail"),
     ]
