@@ -75,7 +75,7 @@ class FlaskPluginManager:
             metadata = plugin_data.get("metadata", {})
             if blueprint := metadata.get("blueprint"):
                 self.app.register_blueprint(blueprint)
-                self.app.logger.debug(
+                self.app.logger.info(
                     f"Registered blueprint for plugin: {metadata.get('name', 'unknown')}"
                 )
 
