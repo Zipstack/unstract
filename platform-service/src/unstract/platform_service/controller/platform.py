@@ -472,6 +472,43 @@ def custom_tool_instance() -> Any:
 
 
 @platform_bp.route(
+    "/agentic_tool_instance",
+    methods=["GET"],
+    endpoint="agentic_tool_instance",
+)
+@authentication_middleware
+def agentic_tool_instance() -> Any:
+    """Fetching exported agentic tool instance.
+
+    Sample Usage:
+    curl -X GET
+    -H "Authorization: 0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    http://localhost:3001/db/agentic_tool_instance/agentic_registry_id=id1
+    """
+    bearer_token = get_token_from_auth_header(request)
+    _, organization_id = get_organization_from_bearer_token(bearer_token)
+    if not organization_id:
+        return Env.INVALID_ORGANIZATOIN, 403
+
+    agentic_registry_id = request.args.get("agentic_registry_id")
+
+    try:
+        data_dict = PromptStudioRequestHelper.get_agentic_instance_from_db(
+            organization_id=organization_id,
+            agentic_registry_id=agentic_registry_id,
+        )
+        return jsonify(data_dict)
+    except Exception as e:
+        if isinstance(e, APIError):
+            raise e
+        msg = (
+            f"Error while getting data for Agentic Studio project "
+            f"{agentic_registry_id}: {e}"
+        )
+        raise APIError(message=msg) from e
+
+
+@platform_bp.route(
     "/llm_profile_instance",
     methods=["GET"],
     endpoint="llm_profile_instance",
