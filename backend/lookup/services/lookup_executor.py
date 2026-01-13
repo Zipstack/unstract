@@ -12,6 +12,7 @@ import uuid
 from typing import Any, Protocol
 
 from lookup.exceptions import (
+    ContextWindowExceededError,
     ExtractionNotCompleteError,
     ParseError,
     TemplateNotFoundError,
@@ -257,6 +258,34 @@ class LookUpExecutor:
                 if self.cache and cache_key:
                     self.cache.set(cache_key, llm_response)
 
+            except ContextWindowExceededError as e:
+                # Context window exceeded - provide clear actionable error
+                error_msg = (
+                    f"Context window exceeded: prompt requires {e.token_count:,} "
+                    f"tokens but {e.model} limit is {e.context_limit:,} tokens. "
+                    f"Reduce reference data size or use a model with larger "
+                    f"context window."
+                )
+                result = self._failed_result(lookup_project, error_msg, start_time)
+                self._log_audit(
+                    exec_id,
+                    lookup_project,
+                    prompt_studio_project_id,
+                    input_data,
+                    reference_data_version,
+                    llm_provider,
+                    llm_model,
+                    resolved_prompt,
+                    None,
+                    None,
+                    "failed",
+                    None,
+                    result["execution_time_ms"],
+                    None,
+                    False,
+                    error_msg,
+                )
+                return result
             except TimeoutError as e:
                 result = self._failed_result(
                     lookup_project, f"LLM request timed out: {str(e)}", start_time

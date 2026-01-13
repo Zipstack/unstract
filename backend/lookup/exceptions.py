@@ -58,3 +58,30 @@ class DefaultProfileError(LookupError):
     """
 
     pass
+
+
+class ContextWindowExceededError(LookupError):
+    """Raised when prompt + reference data exceeds LLM context window.
+
+    This exception is raised when the combined size of the prompt template,
+    reference data, and extracted data exceeds the configured LLM's context
+    window limit.
+    """
+
+    def __init__(self, token_count: int, context_limit: int, model: str):
+        """Initialize the exception.
+
+        Args:
+            token_count: Number of tokens in the prompt
+            context_limit: Maximum tokens allowed by the model
+            model: Name of the LLM model
+        """
+        self.token_count = token_count
+        self.context_limit = context_limit
+        self.model = model
+        message = (
+            f"Context window exceeded: prompt requires {token_count:,} tokens "
+            f"but {model} has a limit of {context_limit:,} tokens. "
+            f"Reduce reference data size or use a model with larger context window."
+        )
+        super().__init__(message)

@@ -272,6 +272,44 @@ class LookupLogEmitter:
             error_message=error_message,
         )
 
+    def emit_context_overflow_error(
+        self,
+        lookup_project_name: str,
+        token_count: int,
+        context_limit: int,
+        model: str,
+    ) -> None:
+        """Emit log when context window is exceeded.
+
+        This provides a clear, actionable error message when the prompt
+        (reference data + template + extracted data) exceeds the LLM's
+        context window limit.
+
+        Args:
+            lookup_project_name: Name of the Look-up project
+            token_count: Number of tokens in the prompt
+            context_limit: Maximum tokens allowed by the model
+            model: Name of the LLM model
+        """
+        message = (
+            f"Look-Up '{lookup_project_name}' failed: Context window exceeded - "
+            f"prompt requires {token_count:,} tokens but {model} limit is "
+            f"{context_limit:,} tokens. Reduce reference data size or use a "
+            f"model with larger context window."
+        )
+
+        self.emit_log(
+            level=LogLevel.ERROR.value,
+            state="FAILED",
+            message=message,
+            lookup_project_name=lookup_project_name,
+            error_type="context_window_exceeded",
+            token_count=token_count,
+            context_limit=context_limit,
+            model=model,
+            suggestion="Reduce reference data or use larger context model",
+        )
+
     def emit_enrichment_partial(
         self,
         lookup_project_name: str,

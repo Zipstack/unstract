@@ -357,16 +357,18 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
                   { required: true, message: "Please enter chunk size" },
                   {
                     type: "number",
-                    min: 100,
+                    min: 0,
                     max: 10000,
-                    message: "Chunk size must be between 100 and 10000",
+                    message:
+                      "Chunk size must be between 0 and 10000 (0 = full context mode)",
                   },
                 ]}
+                tooltip="Set to 0 to use full context mode (no chunking)"
               >
                 <InputNumber
                   style={{ width: "100%" }}
                   placeholder="1000"
-                  min={100}
+                  min={0}
                   max={10000}
                 />
               </Form.Item>

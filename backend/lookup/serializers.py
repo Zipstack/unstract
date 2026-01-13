@@ -202,6 +202,7 @@ class LookupExecutionAuditSerializer(serializers.ModelSerializer):
             "lookup_project_name",
             "prompt_studio_project_id",
             "execution_id",
+            "file_execution_id",
             "input_data",
             "enriched_output",
             "reference_data_version",
@@ -218,6 +219,35 @@ class LookupExecutionAuditSerializer(serializers.ModelSerializer):
             "executed_at",
         ]
         read_only_fields = fields  # All fields are read-only for audit records
+
+
+class LookupExecutionAuditSummarySerializer(serializers.ModelSerializer):
+    """Lightweight serializer for lookup audit summaries in log views.
+
+    Used by the Nav Bar Logs page to show lookup enrichment details
+    without the full prompt/response content.
+    """
+
+    lookup_project_name = serializers.CharField(
+        source="lookup_project.name", read_only=True
+    )
+
+    class Meta:
+        model = LookupExecutionAudit
+        fields = [
+            "id",
+            "lookup_project",
+            "lookup_project_name",
+            "execution_id",
+            "file_execution_id",
+            "status",
+            "llm_response_cached",
+            "execution_time_ms",
+            "confidence_score",
+            "error_message",
+            "executed_at",
+        ]
+        read_only_fields = fields
 
 
 class LookupExecutionRequestSerializer(serializers.Serializer):
