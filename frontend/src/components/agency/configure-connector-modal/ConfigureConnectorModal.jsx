@@ -70,6 +70,9 @@ function ConfigureConnectorModal({
   const [initialFormDataConfig, setInitialFormDataConfig] = useState({});
   const [initialConnectorId, setInitialConnectorId] = useState(null);
   const [showUnsavedChangesModal, setShowUnsavedChangesModal] = useState(false);
+  const [hasInitializedFormData, setHasInitializedFormData] = useState(false);
+  const [schemaLoadedForSession, setSchemaLoadedForSession] = useState(false);
+  const [ruleEngineHasChanges, setRuleEngineHasChanges] = useState(false);
 
   const fileExplorerRef = useRef(null);
   const formRef = useRef(null);
@@ -83,14 +86,17 @@ function ConfigureConnectorModal({
 
   const setUpdatedTabOptions = (tabOption) => {
     setTabItems((prevTabOptions) => {
-      // Check if tabOption already exists in prevTabOptions
-      // Return previous state unchanged if it does or create new array
-      if (prevTabOptions.some((opt) => opt?.key === tabOption?.key)) {
-        return prevTabOptions;
-      } else {
-        const updatedTabOptions = [...prevTabOptions, tabOption];
-        return updatedTabOptions;
+      const existingIndex = prevTabOptions.findIndex(
+        (opt) => opt?.key === tabOption?.key
+      );
+      if (existingIndex === -1) {
+        // Add new tab option
+        return [...prevTabOptions, tabOption];
       }
+      // Update existing tab option (e.g., disabled state may have changed)
+      const updatedTabOptions = [...prevTabOptions];
+      updatedTabOptions[existingIndex] = tabOption;
+      return updatedTabOptions;
     });
   };
 
@@ -100,6 +106,8 @@ function ConfigureConnectorModal({
 
   const fetchEndpointConfigSchema = () => {
     if (!endpointDetails?.id) {
+      // No endpoint, so no schema to load - mark as loaded for session
+      setSchemaLoadedForSession(true);
       return;
     }
 
@@ -119,6 +127,7 @@ function ConfigureConnectorModal({
       })
       .finally(() => {
         setIsSpecConfigLoading(false);
+        setSchemaLoadedForSession(true);
       });
   };
 
@@ -274,9 +283,17 @@ function ConfigureConnectorModal({
     folderSectionConfig[connType] || folderSectionConfig.input;
 
   const hasUnsavedChanges = () => {
+    // For API mode, only check RuleEngine's dirty state
+    if (connMode === "API") {
+      return ruleEngineHasChanges;
+    }
+
     const hasConfigChanges = !isEqual(formDataConfig, initialFormDataConfig);
-    const hasConnectorChanged = connDetails?.id !== initialConnectorId;
-    return hasConfigChanges || hasConnectorChanged;
+    // Treat both undefined and null as "no connector" for comparison
+    const currentConnectorId = connDetails?.id || null;
+    const hasConnectorChanged = currentConnectorId !== initialConnectorId;
+    // Also check RuleEngine changes for DATABASE mode
+    return hasConfigChanges || hasConnectorChanged || ruleEngineHasChanges;
   };
 
   const handleValidateAndSubmit = async (validatedFormData) => {
@@ -424,21 +441,41 @@ function ConfigureConnectorModal({
     }
   }, [open, connMode]);
 
-  // Capture initial configuration and connector when modal opens
+  // Reset initialization flags when modal closes
   useEffect(() => {
-    if (open) {
-      if (endpointDetails?.configuration) {
-        setInitialFormDataConfig(cloneDeep(endpointDetails.configuration));
-      }
-      setInitialConnectorId(endpointDetails?.connector_instance?.id || null);
-    } else {
+    if (!open) {
       setInitialFormDataConfig({});
       setInitialConnectorId(null);
+      setHasInitializedFormData(false);
+      setSchemaLoadedForSession(false);
+      setRuleEngineHasChanges(false);
+    }
+  }, [open]);
+
+  // Capture initial configuration and connector after schema has loaded
+  // This ensures we capture after RJSF has had a chance to add defaults
+  useEffect(() => {
+    if (
+      open &&
+      !hasInitializedFormData &&
+      schemaLoadedForSession &&
+      !isSpecConfigLoading
+    ) {
+      // Use a small delay to allow RJSF to process the schema and add defaults
+      const timeoutId = setTimeout(() => {
+        setInitialFormDataConfig(cloneDeep(formDataConfig));
+        setInitialConnectorId(connDetails?.id || null);
+        setHasInitializedFormData(true);
+      }, 100);
+      return () => clearTimeout(timeoutId);
     }
   }, [
     open,
-    endpointDetails?.configuration,
-    endpointDetails?.connector_instance,
+    hasInitializedFormData,
+    schemaLoadedForSession,
+    isSpecConfigLoading,
+    formDataConfig,
+    connDetails?.id,
   ]);
 
   // Helper function to render connector label
@@ -586,7 +623,11 @@ function ConfigureConnectorModal({
 
         {/* API connectors: Show only HITL rules (no connector selection needed) */}
         {connMode === "API" && RuleEngine && (
-          <RuleEngine workflowDetails={workflowDetails} ruleType="API" />
+          <RuleEngine
+            workflowDetails={workflowDetails}
+            ruleType="API"
+            onDirtyStateChange={setRuleEngineHasChanges}
+          />
         )}
 
         {/* Only show configuration form and file browser after a connector is selected */}
@@ -620,6 +661,7 @@ function ConfigureConnectorModal({
                           <RuleEngine
                             workflowDetails={workflowDetails}
                             ruleType="DB"
+                            onDirtyStateChange={setRuleEngineHasChanges}
                           />
                         )}
                       </>

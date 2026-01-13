@@ -324,6 +324,24 @@ class PlatformHelper:
             method="GET",
         )
 
+    def get_agentic_studio_tool(self: Self, agentic_registry_id: str) -> dict[str, Any]:
+        """Get exported agentic tool by the help of unstract DB tool.
+
+        Args:
+            agentic_registry_id (str): ID of the agentic_registry_id
+        Required env variables:
+            PLATFORM_HOST: Host of platform service
+            PLATFORM_PORT: Port of platform service
+        """
+        query_params = {"agentic_registry_id": agentic_registry_id}
+        return self._call_service(
+            url_path="agentic_tool_instance",
+            payload=None,
+            params=query_params,
+            headers=None,
+            method="GET",
+        )
+
     def get_llm_profile(self: Self, llm_profile_id: str) -> dict[str, Any]:
         """Get llm profile by the help of unstract DB tool.
 

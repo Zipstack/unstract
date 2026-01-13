@@ -991,6 +991,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_PATH: doc_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
+            TSPKeys.CUSTOM_DATA: tool.custom_data,
         }
 
         try:
@@ -1284,6 +1285,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_PATH: file_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
+            TSPKeys.CUSTOM_DATA: tool.custom_data,
         }
 
         responder = PromptTool(

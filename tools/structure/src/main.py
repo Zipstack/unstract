@@ -144,6 +144,14 @@ class StructureTool(BaseTool):
         if enable_challenge and not challenge_llm:
             raise ValueError("Challenge LLM is not set after enabling Challenge")
 
+    def _is_agentic_project(self, tool_metadata: dict[str, Any]) -> bool:
+        """Check if metadata indicates an agentic project.
+
+        Agentic projects have project_id and json_schema fields.
+        Prompt studio projects have tool_id and outputs fields.
+        """
+        return "project_id" in tool_metadata and "json_schema" in tool_metadata
+
     def run(
         self,
         settings: dict[str, Any],
@@ -166,44 +174,83 @@ class StructureTool(BaseTool):
             prompt_host=self.get_env_or_die(SettingsKeys.PROMPT_HOST),
             request_id=self.file_execution_id,
         )
-        self.stream_log(
-            f"Fetching prompt studio exported tool with UUID '{prompt_registry_id}'"
+        self.stream_log(f"Fetching exported tool with UUID '{prompt_registry_id}'")
+
+        platform_helper: PlatformHelper = PlatformHelper(
+            tool=self,
+            platform_port=self.get_env_or_die(ToolEnv.PLATFORM_PORT),
+            platform_host=self.get_env_or_die(ToolEnv.PLATFORM_HOST),
+            request_id=self.file_execution_id,
         )
+
+        # Try to fetch as prompt studio tool first
+        tool_metadata = None
+        is_agentic = False
+
         try:
-            platform_helper: PlatformHelper = PlatformHelper(
-                tool=self,
-                platform_port=self.get_env_or_die(ToolEnv.PLATFORM_PORT),
-                platform_host=self.get_env_or_die(ToolEnv.PLATFORM_HOST),
-                request_id=self.file_execution_id,
-            )
             exported_tool = platform_helper.get_prompt_studio_tool(
                 prompt_registry_id=prompt_registry_id
             )
-            llm_profile_id = self.get_exec_metadata.get(SettingsKeys.LLM_PROFILE_ID)
-            llm_profile_to_override = None
-            if llm_profile_id:
-                llm_profile = platform_helper.get_llm_profile(llm_profile_id)
-                llm_profile_to_override = llm_profile  # Use the entire profile data
-
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
 
-            # Apply profile overrides if available
-            STHelper.handle_profile_overrides(
-                self,
-                llm_profile_to_override,
-                llm_profile_id,
-                tool_metadata,
-                self._apply_profile_overrides,
-            )
-            ps_project_name = tool_metadata.get("name", prompt_registry_id)
-            # Count only the active (enabled) prompts
-            total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])
-            self.stream_log(
-                f"Retrieved prompt studio exported tool '{ps_project_name}' having "
-                f"'{total_prompt_count}' prompts"
-            )
+            # Check if this is actually an agentic project
+            if self._is_agentic_project(tool_metadata):
+                is_agentic = True
+                self.stream_log(
+                    f"Detected agentic project: {tool_metadata.get('name', prompt_registry_id)}"
+                )
         except Exception as e:
-            self.stream_error_and_exit(f"Error fetching prompt studio project: {e}")
+            # If prompt studio lookup fails, try as agentic project
+            self.stream_log(
+                f"Not found as prompt studio project, trying agentic registry: {e}"
+            )
+            try:
+                agentic_tool = platform_helper.get_agentic_studio_tool(
+                    agentic_registry_id=prompt_registry_id
+                )
+                tool_metadata = agentic_tool[SettingsKeys.TOOL_METADATA]
+                is_agentic = True
+                self.stream_log(
+                    f"Retrieved agentic project: {tool_metadata.get('name', prompt_registry_id)}"
+                )
+            except Exception as agentic_error:
+                self.stream_error_and_exit(
+                    f"Error fetching project from both registries. "
+                    f"Prompt Studio: {e}, Agentic: {agentic_error}"
+                )
+
+        # Route to appropriate extraction method
+        if is_agentic:
+            return self._run_agentic_extraction(
+                tool_metadata=tool_metadata,
+                input_file=input_file,
+                output_dir=output_dir,
+                settings=settings,
+                responder=responder,
+            )
+
+        # Continue with regular prompt studio extraction
+        llm_profile_id = self.get_exec_metadata.get(SettingsKeys.LLM_PROFILE_ID)
+        llm_profile_to_override = None
+        if llm_profile_id:
+            llm_profile = platform_helper.get_llm_profile(llm_profile_id)
+            llm_profile_to_override = llm_profile
+
+        # Apply profile overrides if available
+        STHelper.handle_profile_overrides(
+            self,
+            llm_profile_to_override,
+            llm_profile_id,
+            tool_metadata,
+            self._apply_profile_overrides,
+        )
+        ps_project_name = tool_metadata.get("name", prompt_registry_id)
+        # Count only the active (enabled) prompts
+        total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])
+        self.stream_log(
+            f"Retrieved prompt studio exported tool '{ps_project_name}' having "
+            f"'{total_prompt_count}' prompts"
+        )
 
         active_prompt_count = len(
             [
@@ -460,6 +507,126 @@ class StructureTool(BaseTool):
                 merged_metrics[key] = metrics2[key]
 
         return merged_metrics
+
+    def _run_agentic_extraction(
+        self,
+        tool_metadata: dict[str, Any],
+        input_file: str,
+        output_dir: str,
+        settings: dict[str, Any],
+        responder: PromptTool,
+    ) -> None:
+        """Execute agentic extraction pipeline.
+
+        Args:
+            tool_metadata: Complete agentic project metadata
+            input_file: Path to input document
+            output_dir: Directory for output files
+            settings: Workflow settings (contains adapter overrides)
+            responder: PromptTool instance for API calls
+        """
+        # Extract agentic-specific metadata
+        project_id = tool_metadata.get("project_id")
+        project_name = tool_metadata.get("name", project_id)
+        json_schema = tool_metadata.get("json_schema", {})
+        prompt_text = tool_metadata.get("prompt_text", "")
+        prompt_version = tool_metadata.get("prompt_version", 1)
+        schema_version = tool_metadata.get("schema_version", 1)
+        adapter_config = tool_metadata.get("adapter_config", {})
+        canary_fields = tool_metadata.get("canary_fields")
+
+        self.stream_log(
+            f"Executing agentic extraction for project '{project_name}' "
+            f"(schema v{schema_version}, prompt v{prompt_version})"
+        )
+
+        # Get adapter IDs from settings (workflow UI overrides)
+        # or fall back to exported defaults
+        extractor_llm = settings.get(
+            "extractor_llm_adapter_id", adapter_config.get("extractor_llm")
+        )
+        agent_llm = settings.get("agent_llm_adapter_id", adapter_config.get("agent_llm"))
+        llmwhisperer = settings.get(
+            "llmwhisperer_adapter_id", adapter_config.get("llmwhisperer")
+        )
+        lightweight_llm = settings.get(
+            "lightweight_llm_adapter_id", adapter_config.get("lightweight_llm")
+        )
+        enable_highlight = settings.get(
+            SettingsKeys.ENABLE_HIGHLIGHT, tool_metadata.get("enable_highlight", False)
+        )
+
+        # Build extraction payload
+        payload = {
+            "project_id": project_id,
+            "json_schema": json_schema,
+            "prompt_text": prompt_text,
+            "input_file": input_file,
+            "extractor_llm": extractor_llm,
+            "agent_llm": agent_llm,
+            "llmwhisperer": llmwhisperer,
+            "lightweight_llm": lightweight_llm,
+            "canary_fields": canary_fields,
+            "enable_highlight": enable_highlight,
+            "run_id": self.file_execution_id,
+            "execution_id": self.execution_id,
+            "file_name": self.source_file_name,
+        }
+
+        # Update GUI
+        input_log = (
+            f"## Loaded Agentic Project '{project_name}'\n"
+            f"- **Project ID**: {project_id}\n"
+            f"- **Schema Version**: {schema_version}\n"
+            f"- **Prompt Version**: {prompt_version}\n"
+            f"- **Extractor LLM**: {extractor_llm}\n"
+            f"- **Agent LLM**: {agent_llm}\n"
+        )
+        output_log = (
+            f"## Processing '{self.source_file_name}'\n"
+            "Executing agentic extraction pipeline...\n"
+            "- Document processing\n"
+            "- Schema-based extraction\n"
+            "- Agent validation\n"
+        )
+        self.stream_update(input_log, state=LogState.INPUT_UPDATE)
+        self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
+
+        try:
+            self.stream_log("Calling agentic extraction endpoint...")
+            structured_output = responder.agentic_extraction(payload=payload)
+
+            # Ensure metadata section exists
+            if SettingsKeys.METADATA not in structured_output:
+                structured_output[SettingsKeys.METADATA] = {}
+
+            # Add file name to metadata
+            structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
+                self.source_file_name
+            )
+            structured_output[SettingsKeys.METADATA]["project_id"] = project_id
+            structured_output[SettingsKeys.METADATA]["schema_version"] = schema_version
+            structured_output[SettingsKeys.METADATA]["prompt_version"] = prompt_version
+
+            # Update GUI with results
+            output_log = (
+                f"## Agentic Extraction Complete\n"
+                f"Successfully extracted data from '{self.source_file_name}'\n"
+                f"{json_to_markdown(structured_output)}\n"
+            )
+            self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
+
+            # Write output to file
+            self.stream_log("Writing agentic extraction output to workflow storage")
+            output_path = Path(output_dir) / f"{Path(self.source_file_name).stem}.json"
+            self.workflow_filestorage.json_dump(path=output_path, data=structured_output)
+            self.stream_log("Output written successfully to workflow storage")
+
+            # Write tool result
+            self.write_tool_result(data=structured_output)
+
+        except Exception as e:
+            self.stream_error_and_exit(f"Error during agentic extraction: {e}")
 
     def _summarize(
         self,
