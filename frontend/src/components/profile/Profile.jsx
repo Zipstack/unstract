@@ -36,17 +36,22 @@ function Profile() {
         setProfileData(response.data?.user);
       } catch (error) {
         console.error("Failed to fetch profile:", error);
+        message.warning("Could not refresh profile data");
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchProfile();
-  }, [sessionDetails.orgId]);
+  }, [sessionDetails.orgId, axiosPrivate]);
 
-  const handleCopy = (text, label) => {
-    navigator.clipboard.writeText(text || "");
-    message.success(`${label} copied to clipboard`);
+  const handleCopy = async (text, label) => {
+    try {
+      await navigator.clipboard.writeText(text || "");
+      message.success(`${label} copied to clipboard`);
+    } catch {
+      message.error(`Failed to copy ${label}`);
+    }
   };
 
   const renderCopyButton = (value, label) => (
@@ -123,9 +128,11 @@ function Profile() {
                 <span className="description-value org-id">{orgId}</span>
                 {renderCopyButton(orgId, "Organization ID")}
               </Descriptions.Item>
-              <Descriptions.Item label="Your Role">
-                <span className="role-badge">{role}</span>
-              </Descriptions.Item>
+              {role && (
+                <Descriptions.Item label="Your Role">
+                  <span className="role-badge">{role}</span>
+                </Descriptions.Item>
+              )}
             </Descriptions>
           </Card>
 
