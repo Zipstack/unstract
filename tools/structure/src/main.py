@@ -525,6 +525,8 @@ class StructureTool(BaseTool):
             settings: Workflow settings (contains adapter overrides)
             responder: PromptTool instance for API calls
         """
+        from unstract.sdk1.x2txt import X2Text
+
         # Extract agentic-specific metadata
         project_id = tool_metadata.get("project_id")
         project_name = tool_metadata.get("name", project_id)
@@ -533,7 +535,6 @@ class StructureTool(BaseTool):
         prompt_version = tool_metadata.get("prompt_version", 1)
         schema_version = tool_metadata.get("schema_version", 1)
         adapter_config = tool_metadata.get("adapter_config", {})
-        canary_fields = tool_metadata.get("canary_fields")
 
         self.stream_log(
             f"Executing agentic extraction for project '{project_name}' "
@@ -545,33 +546,25 @@ class StructureTool(BaseTool):
         extractor_llm = settings.get(
             "extractor_llm_adapter_id", adapter_config.get("extractor_llm")
         )
-        agent_llm = settings.get("agent_llm_adapter_id", adapter_config.get("agent_llm"))
         llmwhisperer = settings.get(
             "llmwhisperer_adapter_id", adapter_config.get("llmwhisperer")
-        )
-        lightweight_llm = settings.get(
-            "lightweight_llm_adapter_id", adapter_config.get("lightweight_llm")
         )
         enable_highlight = settings.get(
             SettingsKeys.ENABLE_HIGHLIGHT, tool_metadata.get("enable_highlight", False)
         )
 
-        # Build extraction payload
-        payload = {
-            "project_id": project_id,
-            "json_schema": json_schema,
-            "prompt_text": prompt_text,
-            "input_file": input_file,
-            "extractor_llm": extractor_llm,
-            "agent_llm": agent_llm,
-            "llmwhisperer": llmwhisperer,
-            "lightweight_llm": lightweight_llm,
-            "canary_fields": canary_fields,
-            "enable_highlight": enable_highlight,
-            "run_id": self.file_execution_id,
-            "execution_id": self.execution_id,
-            "file_name": self.source_file_name,
-        }
+        # Get platform details for organization_id
+        platform_helper: PlatformHelper = PlatformHelper(
+            tool=self,
+            platform_port=self.get_env_or_die(ToolEnv.PLATFORM_PORT),
+            platform_host=self.get_env_or_die(ToolEnv.PLATFORM_HOST),
+            request_id=self.file_execution_id,
+        )
+        platform_details = platform_helper.get_platform_details()
+        organization_id = platform_details.get("organization_id") if platform_details else None
+
+        if not organization_id:
+            self.stream_error_and_exit("Failed to get organization_id from platform")
 
         # Update GUI
         input_log = (
@@ -580,33 +573,73 @@ class StructureTool(BaseTool):
             f"- **Schema Version**: {schema_version}\n"
             f"- **Prompt Version**: {prompt_version}\n"
             f"- **Extractor LLM**: {extractor_llm}\n"
-            f"- **Agent LLM**: {agent_llm}\n"
         )
         output_log = (
             f"## Processing '{self.source_file_name}'\n"
             "Executing agentic extraction pipeline...\n"
-            "- Document processing\n"
-            "- Schema-based extraction\n"
-            "- Agent validation\n"
+            "- Extracting document text\n"
+            "- Running LLM extraction\n"
         )
         self.stream_update(input_log, state=LogState.INPUT_UPDATE)
         self.stream_update(output_log, state=LogState.OUTPUT_UPDATE)
 
         try:
-            self.stream_log("Calling agentic extraction endpoint...")
-            structured_output = responder.agentic_extraction(payload=payload)
+            # Step 1: Extract text from document using X2Text/LLMWhisperer
+            self.stream_log("Extracting text from document...")
+            x2text = X2Text(tool=self, adapter_instance_id=llmwhisperer)
 
-            # Ensure metadata section exists
-            if SettingsKeys.METADATA not in structured_output:
-                structured_output[SettingsKeys.METADATA] = {}
-
-            # Add file name to metadata
-            structured_output[SettingsKeys.METADATA][SettingsKeys.FILE_NAME] = (
-                self.source_file_name
+            extraction_result = x2text.process(
+                input_file_path=input_file,
+                enable_highlight=enable_highlight,
+                fs=self.workflow_filestorage,
             )
-            structured_output[SettingsKeys.METADATA]["project_id"] = project_id
-            structured_output[SettingsKeys.METADATA]["schema_version"] = schema_version
-            structured_output[SettingsKeys.METADATA]["prompt_version"] = prompt_version
+
+            document_text = extraction_result.extracted_text
+            line_metadata = extraction_result.metadata.get("line_metadata") if hasattr(extraction_result, "metadata") else None
+
+            self.stream_log(f"Extracted {len(document_text)} characters of text")
+
+            # Step 2: Build extraction payload for /agentic/extract endpoint
+            payload = {
+                "document_id": self.file_execution_id,  # Use run ID as document ID
+                "prompt_text": prompt_text,
+                "document_text": document_text,
+                "schema": json_schema,
+                "organization_id": organization_id,
+                "adapter_instance_id": extractor_llm,
+                "include_source_refs": enable_highlight,
+            }
+
+            # Add line_metadata if available for highlighting
+            if line_metadata and enable_highlight:
+                payload["line_metadata"] = line_metadata
+                self.stream_log(f"Including {len(line_metadata)} line metadata entries for highlighting")
+
+            # Step 3: Call agentic extraction endpoint
+            self.stream_log("Calling agentic extraction endpoint...")
+            extraction_response = responder.agentic_extraction(payload=payload)
+
+            # Step 4: Transform response to match expected structure
+            # Cloud endpoint returns: {document_id, extracted_data, highlights, highlight_data, ...}
+            # We need: {data: {...}, metadata: {...}}
+            extracted_data = extraction_response.get("extracted_data", {})
+
+            structured_output = {
+                "data": extracted_data,
+                SettingsKeys.METADATA: {
+                    SettingsKeys.FILE_NAME: self.source_file_name,
+                    "project_id": project_id,
+                    "schema_version": schema_version,
+                    "prompt_version": prompt_version,
+                    "document_id": self.file_execution_id,
+                }
+            }
+
+            # Add highlight data if available
+            if "highlights" in extraction_response:
+                structured_output["highlights"] = extraction_response["highlights"]
+            if "highlight_data" in extraction_response:
+                structured_output["highlight_data"] = extraction_response["highlight_data"]
 
             # Update GUI with results
             output_log = (
