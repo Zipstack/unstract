@@ -186,31 +186,44 @@ class StructureTool(BaseTool):
         # Try to fetch as prompt studio tool first
         tool_metadata = None
         is_agentic = False
+        exported_tool = None
 
         try:
             exported_tool = platform_helper.get_prompt_studio_tool(
                 prompt_registry_id=prompt_registry_id
             )
-            tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
-            is_agentic = False
         except Exception as e:
             # If prompt studio lookup fails, try as agentic project
             self.stream_log(
                 f"Not found as prompt studio project, trying agentic registry: {e}"
             )
+
+        if exported_tool and SettingsKeys.TOOL_METADATA in exported_tool:
+            tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
+            is_agentic = False
+            # Explicitly mark metadata for clarity
+            tool_metadata["is_agentic"] = False
+        else:
+            # Try agentic registry as fallback
             try:
                 agentic_tool = platform_helper.get_agentic_studio_tool(
                     agentic_registry_id=prompt_registry_id
                 )
+                if not agentic_tool or SettingsKeys.TOOL_METADATA not in agentic_tool:
+                    self.stream_error_and_exit(
+                        f"Error fetching project: Registry returned empty response for {prompt_registry_id}"
+                    )
                 tool_metadata = agentic_tool[SettingsKeys.TOOL_METADATA]
                 is_agentic = True
+                # Explicitly mark metadata for clarity
+                tool_metadata["is_agentic"] = True
                 self.stream_log(
                     f"Retrieved agentic project: {tool_metadata.get('name', prompt_registry_id)}"
                 )
             except Exception as agentic_error:
                 self.stream_error_and_exit(
-                    f"Error fetching project from both registries. "
-                    f"Prompt Studio: {e}, Agentic: {agentic_error}"
+                    f"Error fetching project from both registries "
+                    f"for ID '{prompt_registry_id}': {agentic_error}"
                 )
 
         # Route to appropriate extraction method
