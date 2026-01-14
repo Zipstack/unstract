@@ -1,21 +1,21 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, Spin, Tooltip, message } from "antd";
 import {
-  Button,
-  Card,
-  Descriptions,
-  Space,
-  Spin,
-  Tooltip,
-  Typography,
-  message,
-} from "antd";
-import { CopyOutlined, UserOutlined, BankOutlined } from "@ant-design/icons";
+  ArrowLeftOutlined,
+  CopyOutlined,
+  UserOutlined,
+  BankOutlined,
+  MailOutlined,
+  CheckCircleOutlined,
+} from "@ant-design/icons";
 import "./Profile.css";
 
 import { useSessionStore } from "../../store/session-store.js";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
 
 function Profile() {
+  const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const [profileData, setProfileData] = useState(null);
@@ -54,20 +54,22 @@ function Profile() {
     }
   };
 
-  const renderCopyButton = (value, label) => (
-    <Tooltip title={`Copy ${label}`}>
-      <CopyOutlined
-        className="copy-icon"
-        onClick={() => handleCopy(value, label)}
-      />
-    </Tooltip>
-  );
-
   if (isLoading) {
     return (
       <div className="profile-page">
-        <div className="profile-loading">
-          <Spin size="large" />
+        {/* Secondary header bar - outside white container */}
+        <div className="profile-secondary-header">
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(-1)}
+          />
+          <span className="profile-header-title">Profile</span>
+        </div>
+        <div className="profile-outer-container">
+          <div className="profile-loading">
+            <Spin size="large" />
+          </div>
         </div>
       </div>
     );
@@ -81,65 +83,99 @@ function Profile() {
 
   return (
     <div className="profile-page">
-      <div className="profile-container">
-        <Typography.Title level={4} className="profile-title">
-          Profile
-        </Typography.Title>
+      {/* Secondary header bar - outside white container */}
+      <div className="profile-secondary-header">
+        <Button
+          type="text"
+          icon={<ArrowLeftOutlined />}
+          onClick={() => navigate(-1)}
+        />
+        <span className="profile-header-title">Profile</span>
+      </div>
+      {/* White container with cards only */}
+      <div className="profile-outer-container">
+        <div className="profile-content">
+          <div className="profile-cards-row">
+            {/* User Information Card */}
+            <div className="profile-card">
+              <div className="card-header">
+                <div className="card-icon-circle user-icon">
+                  <UserOutlined />
+                </div>
+                <div className="card-header-text">
+                  <div className="card-title">User Information</div>
+                  <div className="card-subtitle">
+                    Your personal account details
+                  </div>
+                </div>
+              </div>
+              <div className="card-content">
+                <div className="field-group">
+                  <label className="field-label">Full Name</label>
+                  <div className="field-box">
+                    <span className="field-value">{userName}</span>
+                    <UserOutlined className="field-icon" />
+                  </div>
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Email Address</label>
+                  <div className="field-box">
+                    <span className="field-value">{email}</span>
+                    <MailOutlined className="field-icon" />
+                  </div>
+                </div>
+              </div>
+            </div>
 
-        <Space direction="vertical" size="middle" className="profile-cards">
-          <Card
-            title={
-              <span className="card-title">
-                <UserOutlined className="card-icon" />
-                User Information
-              </span>
-            }
-            className="profile-card"
-          >
-            <Descriptions column={1} colon={false}>
-              <Descriptions.Item label="User Name">
-                {userName}
-              </Descriptions.Item>
-              <Descriptions.Item label="Email">{email}</Descriptions.Item>
-            </Descriptions>
-          </Card>
-
-          <Card
-            title={
-              <span className="card-title">
-                <BankOutlined className="card-icon" />
-                Organization
-              </span>
-            }
-            className="profile-card"
-          >
-            <Descriptions column={1} colon={false}>
-              <Descriptions.Item
-                label="Name"
-                contentStyle={{ display: "flex", alignItems: "center", gap: 8 }}
-              >
-                <span className="description-value">{orgName}</span>
-                {renderCopyButton(orgName, "Organization name")}
-              </Descriptions.Item>
-              <Descriptions.Item
-                label="ID"
-                contentStyle={{ display: "flex", alignItems: "center", gap: 8 }}
-              >
-                <span className="description-value org-id">{orgId}</span>
-                {renderCopyButton(orgId, "Organization ID")}
-              </Descriptions.Item>
-              {role && (
-                <Descriptions.Item label="Your Role">
-                  <span className="role-badge">{role}</span>
-                </Descriptions.Item>
-              )}
-            </Descriptions>
-          </Card>
-
-          <div className="profile-actions">
-            <Button disabled>Reset Password</Button>
+            {/* Organisation Card */}
+            <div className="profile-card">
+              <div className="card-header">
+                <div className="card-icon-circle org-icon">
+                  <BankOutlined />
+                </div>
+                <div className="card-header-text">
+                  <div className="card-title">Organisation</div>
+                  <div className="card-subtitle">
+                    Workspace and role information
+                  </div>
+                </div>
+              </div>
+              <div className="card-content">
+                <div className="field-group">
+                  <label className="field-label">Organization Name</label>
+                  <div className="field-box">
+                    <span className="field-value">{orgName}</span>
+                  </div>
+                </div>
+                <div className="field-group">
+                  <label className="field-label">Organisation ID</label>
+                  <div className="field-with-action">
+                    <div className="field-box">
+                      <span className="field-value org-id">{orgId}</span>
+                    </div>
+                    <Tooltip title="Copy Organisation ID">
+                      <Button
+                        type="text"
+                        icon={<CopyOutlined />}
+                        className="copy-button"
+                        onClick={() => handleCopy(orgId, "Organisation ID")}
+                      />
+                    </Tooltip>
+                  </div>
+                </div>
+                {role && (
+                  <div className="field-group">
+                    <label className="field-label">Your Role</label>
+                    <span className="role-badge">
+                      <CheckCircleOutlined />
+                      {role}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </Space>
+        </div>
       </div>
     </div>
   );
