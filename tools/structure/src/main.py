@@ -473,6 +473,26 @@ class StructureTool(BaseTool):
             self.stream_error_and_exit(f"Error encoding JSON: {e}")
         self.write_tool_result(data=structured_output)
 
+    def _remove_source_refs(self, data: Any) -> Any:
+        """Recursively remove _source_refs from data structure.
+
+        Args:
+            data: Data structure (dict, list, or primitive) to clean
+
+        Returns:
+            Cleaned data structure without _source_refs fields
+        """
+        if isinstance(data, dict):
+            return {
+                key: self._remove_source_refs(value)
+                for key, value in data.items()
+                if key != "_source_refs"
+            }
+        elif isinstance(data, list):
+            return [self._remove_source_refs(item) for item in data]
+        else:
+            return data
+
     def _merge_metrics(self, metrics1: dict, metrics2: dict) -> dict:
         """Intelligently merge two metrics dictionaries.
 
@@ -623,6 +643,9 @@ class StructureTool(BaseTool):
             # Cloud endpoint returns: {document_id, extracted_data, highlights, highlight_data, ...}
             # We need: {data: {...}, metadata: {...}}
             extracted_data = extraction_response.get("extracted_data", {})
+
+            # Remove _source_refs from extracted data
+            extracted_data = self._remove_source_refs(extracted_data)
 
             structured_output = {
                 "data": extracted_data,
