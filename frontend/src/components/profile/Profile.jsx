@@ -111,14 +111,14 @@ function Profile() {
               </div>
               <div className="card-content">
                 <div className="field-group">
-                  <label className="field-label">Full Name</label>
+                  <span className="field-label">Full Name</span>
                   <div className="field-box">
                     <span className="field-value">{userName}</span>
                     <UserOutlined className="field-icon" />
                   </div>
                 </div>
                 <div className="field-group">
-                  <label className="field-label">Email Address</label>
+                  <span className="field-label">Email Address</span>
                   <div className="field-box">
                     <span className="field-value">{email}</span>
                     <MailOutlined className="field-icon" />
@@ -142,13 +142,13 @@ function Profile() {
               </div>
               <div className="card-content">
                 <div className="field-group">
-                  <label className="field-label">Organization Name</label>
+                  <span className="field-label">Organization Name</span>
                   <div className="field-box">
                     <span className="field-value">{orgName}</span>
                   </div>
                 </div>
                 <div className="field-group">
-                  <label className="field-label">Organisation ID</label>
+                  <span className="field-label">Organisation ID</span>
                   <div className="field-with-action">
                     <div className="field-box">
                       <span className="field-value org-id">{orgId}</span>
@@ -165,7 +165,7 @@ function Profile() {
                 </div>
                 {role && (
                   <div className="field-group">
-                    <label className="field-label">Your Role</label>
+                    <span className="field-label">Your Role</span>
                     <span className="role-badge">
                       <CheckCircleOutlined />
                       {role}

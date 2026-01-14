@@ -7,7 +7,7 @@
 /* Outer white container */
 .profile-outer-container {
   background: #fff !important;
-  border-radius: 14px !important;
+  border-radius: 0;
   border: 1px solid #d0d5dd !important;
   overflow: hidden;
   min-height: calc(100vh - 160px);
@@ -104,12 +104,12 @@
 
 .card-icon-circle.user-icon {
   background-color: #e6f6fd;
-  color: #1890ff;
+  color: #0958d9;
 }
 
 .card-icon-circle.org-icon {
   background-color: #f2f8e6;
-  color: #52c41a;
+  color: #389e0d;
 }
 
 .card-header-text {
