@@ -104,8 +104,13 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
 
         try:
             # Get the LLM adapter from Lookup profile
+            from utils.user_context import UserContext
+
             from .integrations.file_storage_client import FileStorageClient
             from .integrations.unstract_llm_client import UnstractLLMClient
+
+            # Get organization ID for RAG retrieval (must match what was used during indexing)
+            org_id = UserContext.get_organization_identifier()
 
             # Get profile for this project
             profile = LookupProfileManager.objects.filter(lookup_project=project).first()
@@ -128,6 +133,7 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
                 cache_manager=cache,
                 reference_loader=ref_loader,
                 llm_client=llm_client,
+                org_id=org_id,
             )
 
             orchestrator = LookUpOrchestrator(
@@ -171,16 +177,10 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
         extract_text = upload_serializer.validated_data["extract_text"]
 
         try:
-            from utils.file_storage.constants import FileStorageKeys
-
-            from unstract.sdk1.file_storage.constants import StorageType
-            from unstract.sdk1.file_storage.env_helper import EnvHelper
-
-            # Get file storage instance
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+            from utils.file_storage.helpers.prompt_studio_file_helper import (
+                PromptStudioFileHelper,
             )
+            from utils.user_context import UserContext
 
             # Determine file type from extension
             file_ext = file.name.split(".")[-1].lower()
@@ -190,42 +190,37 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
                 else "txt"
             )
 
-            # Upload file to storage following Prompt Studio's path structure
-            # Pattern: {base_path}/{org_id}/{project_id}/{filename}
-            # Keep Lookup file storage independent of PS project linkage
+            org_id = UserContext.get_organization_identifier()
+            # Use a fixed user_id for lookup uploads to match PS path structure
+            # Path: {base_path}/{org_id}/{user_id}/{tool_id}/{filename}
+            user_id = "lookup"
+            tool_id = str(project.id)
+
+            logger.info(
+                f"Upload via PromptStudioFileHelper: org_id={org_id}, "
+                f"user_id={user_id}, tool_id={tool_id}, file={file.name}"
+            )
+
+            # Use PromptStudioFileHelper - exact same code path as working PS upload
+            PromptStudioFileHelper.upload_for_ide(
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                file_name=file.name,
+                file_data=file,
+            )
+
+            # Build file_path for database record (matching PS helper's path structure)
+            from pathlib import Path
+
             from utils.file_storage.constants import FileStorageConstants
-            from utils.user_context import UserContext
 
             from unstract.core.utilities import UnstractUtils
 
-            org_id = UserContext.get_organization_identifier()
-            # Use REMOTE path for MinIO storage, not local filesystem path
             base_path = UnstractUtils.get_env(
                 env_key=FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH
             )
-
-            # Store files under Lookup project ID, not PS tool ID
-            # This ensures files remains accessible regardless of PS linkage changes
-            file_path = f"{base_path}/{org_id}/{project.id}/{file.name}"
-
-            # Debug logging
-            logger.info(
-                f"Upload debug: org_id={org_id}, base_path={base_path}, "
-                f"file_path={file_path}, file.name={file.name}, file.size={file.size}"
-            )
-
-            # Create parent directories if they don't exist
-            fs_instance.mkdir(f"{base_path}/{org_id}/{project.id}", create_parents=True)
-            fs_instance.mkdir(
-                f"{base_path}/{org_id}/{project.id}/extract", create_parents=True
-            )
-
-            # Upload the file - reset file position and handle bytes/file object
-            # Following Prompt Studio's pattern for reliable file upload
-            file.seek(0)  # Reset file position in case it was read during validation
-            file_data = file.read()
-            logger.info(f"File data read: {len(file_data)} bytes")
-            fs_instance.write(path=file_path, mode="wb", data=file_data)
+            file_path = str(Path(base_path) / org_id / user_id / tool_id / file.name)
 
             logger.info(f"Uploaded file to storage: {file_path}")
 
@@ -648,8 +643,13 @@ class LookupDebugView(viewsets.ViewSet):
             lookup_projects = [link.lookup_project for link in links]
 
             # Initialize services with real clients
+            from utils.user_context import UserContext
+
             from .integrations.file_storage_client import FileStorageClient
             from .integrations.unstract_llm_client import UnstractLLMClient
+
+            # Get organization ID for RAG retrieval
+            org_id = UserContext.get_organization_identifier()
 
             storage_client = FileStorageClient()
             cache = LLMResponseCache()
@@ -693,6 +693,7 @@ class LookupDebugView(viewsets.ViewSet):
                         cache_manager=cache,
                         reference_loader=ref_loader,
                         llm_client=llm_client,
+                        org_id=org_id,
                     )
 
                     orchestrator = LookUpOrchestrator(executor=executor, merger=merger)
@@ -797,7 +798,12 @@ class LookupDebugView(viewsets.ViewSet):
             lookup_projects = [link.lookup_project for link in links]
 
             # Initialize services
+            from utils.user_context import UserContext
+
             from .services.mock_clients import MockLLMClient, MockStorageClient
+
+            # Get organization ID for RAG retrieval
+            org_id = UserContext.get_organization_identifier()
 
             llm_client = MockLLMClient()
             storage_client = MockStorageClient()
@@ -810,6 +816,7 @@ class LookupDebugView(viewsets.ViewSet):
                 cache_manager=cache,
                 reference_loader=ref_loader,
                 llm_client=llm_client,
+                org_id=org_id,
             )
 
             orchestrator = LookUpOrchestrator(executor=executor, merger=merger)
@@ -825,6 +832,179 @@ class LookupDebugView(viewsets.ViewSet):
             logger.exception(f"Error in debug execution for PS project {ps_project_id}")
             return Response(
                 {"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=["post"])
+    def check_indexing_status(self, request):
+        """Check indexing status and optionally test vector DB retrieval.
+
+        POST /api/v1/lookup-debug/check_indexing_status/
+
+        Request body:
+            {
+                "project_id": "uuid",
+                "test_query": "optional query to test retrieval"
+            }
+
+        Returns detailed status of data sources, index managers, and vector DB.
+        """
+        from lookup.models import LookupIndexManager
+
+        project_id = request.data.get("project_id")
+        test_query = request.data.get("test_query")
+
+        if not project_id:
+            return Response(
+                {"error": "project_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            project = LookupProject.objects.get(id=project_id)
+        except LookupProject.DoesNotExist:
+            return Response(
+                {"error": f"Project not found: {project_id}"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Get profile
+        try:
+            profile = LookupProfileManager.get_default_profile(project)
+        except Exception as e:
+            return Response(
+                {"error": f"No default profile: {e}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        result = {
+            "project": {
+                "id": str(project.id),
+                "name": project.name,
+            },
+            "profile": {
+                "name": profile.profile_name,
+                "chunk_size": profile.chunk_size,
+                "chunk_overlap": profile.chunk_overlap,
+                "similarity_top_k": profile.similarity_top_k,
+                "vector_store_id": str(profile.vector_store.id),
+                "embedding_model_id": str(profile.embedding_model.id),
+                "rag_enabled": profile.chunk_size > 0,
+            },
+            "data_sources": [],
+            "index_managers": [],
+            "retrieval_test": None,
+        }
+
+        # Check data sources
+        data_sources = LookupDataSource.objects.filter(project_id=project_id).order_by(
+            "-created_at"
+        )
+
+        for ds in data_sources:
+            result["data_sources"].append(
+                {
+                    "id": str(ds.id),
+                    "file_name": ds.file_name,
+                    "extraction_status": ds.extraction_status,
+                    "is_latest": ds.is_latest,
+                    "file_path": ds.file_path,
+                }
+            )
+
+        # Check index managers
+        index_managers = LookupIndexManager.objects.filter(
+            data_source__project_id=project_id,
+            profile_manager=profile,
+        ).select_related("data_source")
+
+        for im in index_managers:
+            result["index_managers"].append(
+                {
+                    "data_source": im.data_source.file_name,
+                    "raw_index_id": im.raw_index_id,
+                    "has_index": im.raw_index_id is not None,
+                    "extraction_status": im.extraction_status,
+                    "index_ids_history": im.index_ids_history,
+                }
+            )
+
+        # Test retrieval if query provided
+        if test_query and profile.chunk_size > 0:
+            try:
+                from utils.user_context import UserContext
+
+                from lookup.services.lookup_retrieval_service import (
+                    LookupRetrievalService,
+                )
+
+                org_id = UserContext.get_organization_identifier()
+                service = LookupRetrievalService(profile, org_id=org_id)
+                context = service.retrieve_context(test_query, str(project.id))
+
+                result["retrieval_test"] = {
+                    "query": test_query,
+                    "success": bool(context),
+                    "context_length": len(context) if context else 0,
+                    "context_preview": context[:500] if context else None,
+                }
+            except Exception as e:
+                logger.exception("Retrieval test failed")
+                result["retrieval_test"] = {
+                    "query": test_query,
+                    "success": False,
+                    "error": str(e),
+                }
+
+        return Response(result)
+
+    @action(detail=False, methods=["post"])
+    def force_reindex(self, request):
+        """Force re-indexing of all data sources for a project.
+
+        POST /api/v1/lookup-debug/force_reindex/
+
+        Request body:
+            {
+                "project_id": "uuid"
+            }
+        """
+        from utils.user_context import UserContext
+
+        from lookup.services.indexing_service import IndexingService
+
+        project_id = request.data.get("project_id")
+
+        if not project_id:
+            return Response(
+                {"error": "project_id is required"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            org_id = UserContext.get_organization_identifier()
+            user_id = str(request.user.id) if request.user else None
+
+            result = IndexingService.index_with_default_profile(
+                project_id=project_id,
+                org_id=org_id,
+                user_id=user_id,
+            )
+
+            return Response(
+                {
+                    "status": "success",
+                    "total": result["total"],
+                    "success": result["success"],
+                    "failed": result["failed"],
+                    "errors": result.get("errors", []),
+                }
+            )
+
+        except Exception as e:
+            logger.exception(f"Re-indexing failed for project {project_id}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 

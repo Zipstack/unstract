@@ -17,8 +17,9 @@ from lookup.exceptions import (
     ParseError,
     TemplateNotFoundError,
 )
-from lookup.models import LookupProject
+from lookup.models import LookupProfileManager, LookupProject
 from lookup.services.audit_logger import AuditLogger
+from lookup.services.lookup_retrieval_service import LookupRetrievalService
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class LookUpExecutor:
         cache_manager,
         reference_loader,
         llm_client: LLMClient,
+        org_id: str | None = None,
     ):
         """Initialize the Look-Up executor.
 
@@ -53,11 +55,14 @@ class LookUpExecutor:
             cache_manager: LLMResponseCache instance
             reference_loader: ReferenceDataLoader instance
             llm_client: LLM provider client implementing LLMClient protocol
+            org_id: Organization ID for multi-tenancy (used in RAG retrieval)
         """
         self.variable_resolver_class = variable_resolver
         self.cache = cache_manager
         self.ref_loader = reference_loader
         self.llm_client = llm_client
+        self.org_id = org_id
+        logger.info(f"LookUpExecutor initialized with org_id='{org_id}'")
 
     def execute(
         self,
@@ -108,13 +113,57 @@ class LookUpExecutor:
         _cached = False  # noqa F841
 
         try:
-            # Step 1: Load reference data
+            # Step 1: Load reference data (RAG or full context based on chunk_size)
             try:
-                reference_data_dict = self.ref_loader.load_latest_for_project(
-                    lookup_project.id
+                # Get the default profile to check chunk_size
+                profile = LookupProfileManager.get_default_profile(lookup_project)
+
+                # Log profile configuration for debugging
+                logger.info(
+                    f"Profile config for {lookup_project.name}: "
+                    f"chunk_size={profile.chunk_size}, "
+                    f"chunk_overlap={profile.chunk_overlap}, "
+                    f"similarity_top_k={profile.similarity_top_k}, "
+                    f"vector_store={profile.vector_store.id}, "
+                    f"embedding_model={profile.embedding_model.id}"
                 )
-                reference_data = reference_data_dict["content"]
-                reference_data_version = reference_data_dict.get("version", 1)
+
+                if profile.chunk_size > 0:
+                    # RAG Mode: Retrieve relevant chunks from vector DB
+                    logger.info(
+                        f"Using RAG mode (chunk_size={profile.chunk_size}) "
+                        f"for project {lookup_project.name}"
+                    )
+                    reference_data = self._retrieve_rag_context(
+                        lookup_project=lookup_project,
+                        profile=profile,
+                        input_data=input_data,
+                    )
+                    reference_data_version = 1  # RAG mode doesn't have versions
+                    logger.info(
+                        f"RAG retrieval returned {len(reference_data)} chars "
+                        f"for project {lookup_project.name}"
+                    )
+
+                    # Warn if RAG returned empty - likely indexing issue
+                    if not reference_data.strip():
+                        logger.warning(
+                            f"RAG returned EMPTY context for project {lookup_project.name}. "
+                            "Check: 1) Data sources are uploaded, 2) Extraction completed, "
+                            "3) Indexing completed with chunk_size > 0"
+                        )
+                else:
+                    # Full Context Mode: Load all reference data (existing behavior)
+                    logger.info(
+                        f"Using full context mode (chunk_size=0) "
+                        f"for project {lookup_project.name}"
+                    )
+                    reference_data_dict = self.ref_loader.load_latest_for_project(
+                        lookup_project.id
+                    )
+                    reference_data = reference_data_dict["content"]
+                    reference_data_version = reference_data_dict.get("version", 1)
+
             except ExtractionNotCompleteError as e:
                 result = self._failed_result(
                     lookup_project,
@@ -413,6 +462,85 @@ class LookUpExecutor:
                 result["error"],
             )
             return result
+
+    def _retrieve_rag_context(
+        self,
+        lookup_project: LookupProject,
+        profile: LookupProfileManager,
+        input_data: dict[str, Any],
+    ) -> str:
+        """Retrieve context using RAG when chunk_size > 0.
+
+        Builds a semantic query from input_data and retrieves relevant
+        chunks from the vector DB using similarity search.
+
+        Args:
+            lookup_project: The lookup project being executed
+            profile: Profile with RAG configuration (vector store, embeddings, etc.)
+            input_data: Input data to build the retrieval query from
+
+        Returns:
+            Retrieved context as a string (concatenated chunks)
+        """
+        query = self._build_retrieval_query(input_data)
+
+        retrieval_service = LookupRetrievalService(profile, org_id=self.org_id)
+        context = retrieval_service.retrieve_context(
+            query=query,
+            project_id=str(lookup_project.id),
+        )
+
+        if not context:
+            logger.warning(
+                f"RAG retrieval returned empty for project {lookup_project.id}. "
+                "Ensure data sources are indexed with chunk_size > 0."
+            )
+
+        return context
+
+    def _build_retrieval_query(self, input_data: dict[str, Any]) -> str:
+        """Build retrieval query from input data fields with semantic context.
+
+        Includes field names with values to preserve semantic meaning for
+        vector similarity search. This allows the embedding model to understand
+        the context of each value (e.g., "vendor: Slack" vs just "Slack").
+
+        Args:
+            input_data: Dictionary of extracted input fields
+
+        Returns:
+            Query string for vector retrieval with field context
+
+        Example:
+            >>> executor._build_retrieval_query({"vendor": "Slack", "type": "SaaS"})
+            'vendor: Slack, type: SaaS'
+        """
+        query_parts = []
+
+        for key, value in input_data.items():
+            if value is not None:
+                # Include field name to preserve semantic context
+                if isinstance(value, dict):
+                    # For nested dicts, include key-value pairs
+                    nested_parts = [f"{k}: {v}" for k, v in value.items() if v]
+                    if nested_parts:
+                        query_parts.append(f"{key}: {', '.join(nested_parts)}")
+                elif isinstance(value, list):
+                    # For lists, join values with the field name
+                    list_values = [str(v) for v in value if v]
+                    if list_values:
+                        query_parts.append(f"{key}: {', '.join(list_values)}")
+                else:
+                    # Simple key-value pair
+                    query_parts.append(f"{key}: {value}")
+
+        query = ", ".join(query_parts)
+
+        if not query.strip():
+            query = "find relevant reference data"
+
+        logger.info(f"Built retrieval query: {query[:200]}...")
+        return query
 
     def _log_audit(
         self,

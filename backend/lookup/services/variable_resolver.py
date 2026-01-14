@@ -20,8 +20,19 @@ class VariableResolver:
         Args:
             input_data: Extracted data from Prompt Studio
             reference_data: Concatenated text from all reference files
+
+        Note:
+            Variables can be accessed in templates as:
+            - {{reference_data}} - the full reference data string
+            - {{input_data.field_name}} - explicit input_data prefix
+            - {{field_name}} - shorthand for input_data fields (auto-resolved)
         """
         self.context = {"input_data": input_data, "reference_data": reference_data}
+        # Also add input_data fields at top level for shorthand access
+        # This allows {{vendor_name}} instead of {{input_data.vendor_name}}
+        for key, value in input_data.items():
+            if key not in self.context:  # Don't override reference_data
+                self.context[key] = value
 
     def resolve(self, template: str) -> str:
         r"""Replace all {{variable}} references in template with actual values.

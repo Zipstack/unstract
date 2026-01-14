@@ -192,6 +192,7 @@ class LookupIntegrationService:
                 execution_id=run_id or str(uuid.uuid4()),
                 prompt_studio_project_id=prompt_studio_project_id,
                 log_emitter=log_emitter,
+                organization_id=organization_id,
             )
             result = future.result(timeout=timeout)
 
@@ -216,6 +217,7 @@ class LookupIntegrationService:
         execution_id: str,
         prompt_studio_project_id: str,
         log_emitter: Any = None,
+        organization_id: str | None = None,
     ) -> dict[str, Any]:
         """Execute the lookup orchestrator for all linked projects."""
         from lookup.integrations.file_storage_client import FileStorageClient
@@ -281,6 +283,7 @@ class LookupIntegrationService:
                 cache_manager=cache,
                 reference_loader=ref_loader,
                 llm_client=LLMClientWrapper(llm_client),
+                org_id=organization_id,
             )
 
             # Create orchestrator with log emitter for WebSocket logs

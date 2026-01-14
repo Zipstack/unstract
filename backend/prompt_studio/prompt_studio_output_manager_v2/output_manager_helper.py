@@ -51,9 +51,14 @@ def _try_lookup_enrichment(
         or empty dict if Lookup is not available or no links exist.
     """
     try:
+        from utils.user_context import UserContext
+
         from lookup.services.lookup_integration_service import (
             LookupIntegrationService,
         )
+
+        # Get organization ID from user context for RAG retrieval
+        organization_id = UserContext.get_organization_identifier()
 
         return LookupIntegrationService.enrich_if_linked(
             prompt_studio_project_id=tool_id,
@@ -61,6 +66,7 @@ def _try_lookup_enrichment(
             run_id=run_id,
             session_id=session_id,
             doc_name=doc_name,
+            organization_id=organization_id,
         )
     except ImportError:
         # Lookup app not installed

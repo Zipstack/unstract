@@ -85,3 +85,13 @@ class ContextWindowExceededError(LookupError):
             f"Reduce reference data size or use a model with larger context window."
         )
         super().__init__(message)
+
+
+class RetrievalError(LookupError):
+    """Raised when RAG retrieval fails.
+
+    This exception is raised when the vector similarity search fails
+    to retrieve context from indexed reference data.
+    """
+
+    pass
