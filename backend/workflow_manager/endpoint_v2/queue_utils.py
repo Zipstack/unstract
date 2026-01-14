@@ -31,12 +31,34 @@ class QueueUtils:
         For HITL operations, this can return PostgreSQL, Hybrid, or Redis connectors
         based on the HITL_QUEUE_BACKEND setting.
         """
+        # Check if caller explicitly wants the default (non-HITL) backend
+        # This is used by HybridQueue to get the actual Redis connector without recursion
+        force_default = connector_settings.get("force_default_backend", False)
+        if force_default:
+            # Strip the flag and return default Redis connector
+            clean_settings = {
+                k: v
+                for k, v in connector_settings.items()
+                if k != "force_default_backend"
+            }
+            if not queue_connectors:
+                raise UnstractQueueException(detail="Queue connector not exists")
+            queue_connector_key = next(iter(queue_connectors))
+            connector = queue_connectors[queue_connector_key][Common.METADATA][
+                Common.CONNECTOR
+            ]
+            return connector(clean_settings)
+
         # Check if this is for HITL operations
         is_hitl = connector_settings.get("use_hitl_backend", False)
 
+        # Auto-detect HITL backend if HITL_QUEUE_BACKEND is set to hybrid/postgresql
+        hitl_backend = getattr(settings, "HITL_QUEUE_BACKEND", "redis")
+        if not is_hitl and hitl_backend in ("hybrid", "postgresql"):
+            is_hitl = True
+
         if is_hitl:
             # Use HITL-specific queue backend
-            hitl_backend = getattr(settings, "HITL_QUEUE_BACKEND", "hybrid")
             return QueueUtils.get_hitl_queue_inst(hitl_backend, connector_settings)
 
         # Default behavior for non-HITL operations
