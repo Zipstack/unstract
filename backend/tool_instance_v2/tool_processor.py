@@ -21,7 +21,7 @@ try:
         AgenticRegistryHelper,
     )
 
-    AGENTIC_REGISTRY_AVAILABLE = True
+    IS_AGENTIC_REGISTRY_AVAILABLE = True
 except ImportError:
     AGENTIC_REGISTRY_AVAILABLE = False
 
