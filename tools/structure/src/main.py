@@ -192,13 +192,7 @@ class StructureTool(BaseTool):
                 prompt_registry_id=prompt_registry_id
             )
             tool_metadata = exported_tool[SettingsKeys.TOOL_METADATA]
-
-            # Check if this is actually an agentic project
-            if self._is_agentic_project(tool_metadata):
-                is_agentic = True
-                self.stream_log(
-                    f"Detected agentic project: {tool_metadata.get('name', prompt_registry_id)}"
-                )
+            is_agentic = False
         except Exception as e:
             # If prompt studio lookup fails, try as agentic project
             self.stream_log(
