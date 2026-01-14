@@ -23,12 +23,13 @@ function ListOfTools() {
   const [editItem, setEditItem] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { setPostHogCustomEvent } = usePostHogEvents();
+
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
-  const handleException = useExceptionHandler();
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
+  const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -241,7 +242,7 @@ function ListOfTools() {
       });
   };
 
-  const DefaultCustomButtons = () => {
+  const CustomButtons = () => {
     return (
       <Space gap={16}>
         <CustomButton
@@ -337,25 +338,6 @@ function ListOfTools() {
       });
   };
 
-  const defaultContent = (
-    <div className="list-of-tools-body">
-      <ViewTools
-        isLoading={isListLoading}
-        isEmpty={!listOfTools?.length}
-        listOfTools={filteredListOfTools}
-        setOpenAddTool={setOpenAddTool}
-        handleEdit={handleEdit}
-        handleDelete={handleDelete}
-        titleProp="tool_name"
-        descriptionProp="description"
-        iconProp="icon"
-        idProp="tool_id"
-        type="Prompt Project"
-        handleShare={handleShare}
-      />
-    </div>
-  );
-
   return (
     <>
       <ToolNavBar
@@ -364,10 +346,27 @@ function ListOfTools() {
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={DefaultCustomButtons}
+        CustomButtons={CustomButtons}
       />
       <div className="list-of-tools-layout">
-        <div className="list-of-tools-island">{defaultContent}</div>
+        <div className="list-of-tools-island">
+          <div className="list-of-tools-body">
+            <ViewTools
+              isLoading={isListLoading}
+              isEmpty={!listOfTools?.length}
+              listOfTools={filteredListOfTools}
+              setOpenAddTool={setOpenAddTool}
+              handleEdit={handleEdit}
+              handleDelete={handleDelete}
+              titleProp="tool_name"
+              descriptionProp="description"
+              iconProp="icon"
+              idProp="tool_id"
+              type="Prompt Project"
+              handleShare={handleShare}
+            />
+          </div>
+        </div>
       </div>
       {openAddTool && (
         <AddCustomToolFormModal
