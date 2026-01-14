@@ -21,9 +21,9 @@ try:
         AgenticRegistryHelper,
     )
 
-    AGENTIC_REGISTRY_AVAILABLE = True
+    IS_AGENTIC_REGISTRY_AVAILABLE = True
 except ImportError:
-    AGENTIC_REGISTRY_AVAILABLE = False
+    IS_AGENTIC_REGISTRY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +47,7 @@ class ToolProcessor:
             )
 
         # Check if it's an agentic studio tool (cloud-only feature)
-        if not tool and AGENTIC_REGISTRY_AVAILABLE:
+        if not tool and IS_AGENTIC_REGISTRY_AVAILABLE:
             tool = AgenticRegistryHelper.get_tool_by_registry_id(
                 agentic_registry_id=tool_uid
             )
@@ -140,7 +140,7 @@ class ToolProcessor:
         tool_list = tool_list + prompt_studio_tools
 
         # Add agentic studio tools if available (cloud-only feature)
-        if AGENTIC_REGISTRY_AVAILABLE:
+        if IS_AGENTIC_REGISTRY_AVAILABLE:
             agentic_tools: list[dict[str, Any]] = (
                 AgenticRegistryHelper.fetch_registry_list(user)
             )

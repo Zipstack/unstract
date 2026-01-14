@@ -232,18 +232,21 @@ class StructureTool(BaseTool):
         # Continue with regular prompt studio extraction
         llm_profile_id = self.get_exec_metadata.get(SettingsKeys.LLM_PROFILE_ID)
         llm_profile_to_override = None
-        if llm_profile_id:
-            llm_profile = platform_helper.get_llm_profile(llm_profile_id)
-            llm_profile_to_override = llm_profile
+        try:
+            if llm_profile_id:
+                llm_profile = platform_helper.get_llm_profile(llm_profile_id)
+                llm_profile_to_override = llm_profile
 
-        # Apply profile overrides if available
-        STHelper.handle_profile_overrides(
-            self,
-            llm_profile_to_override,
-            llm_profile_id,
-            tool_metadata,
-            self._apply_profile_overrides,
-        )
+            # Apply profile overrides if available
+            STHelper.handle_profile_overrides(
+                self,
+                llm_profile_to_override,
+                llm_profile_id,
+                tool_metadata,
+                self._apply_profile_overrides,
+            )
+        except Exception as e:
+            self.stream_error_and_exit(f"Error fetching prompt studio project: {e}")
         ps_project_name = tool_metadata.get("name", prompt_registry_id)
         # Count only the active (enabled) prompts
         total_prompt_count = len(tool_metadata[SettingsKeys.OUTPUTS])
@@ -653,7 +656,14 @@ class StructureTool(BaseTool):
             extracted_data = extraction_response.get("extracted_data", {})
 
             # Remove _source_refs from extracted data
-            extracted_data = self._remove_source_refs(extracted_data)
+            try:
+                extracted_data = self._remove_source_refs(extracted_data)
+            except Exception as e:
+                self.stream_log(
+                    f"Warning: Failed to remove _source_refs: {e}. "
+                    "Proceeding with original data."
+                )
+                # Continue with original extracted_data if removal fails
 
             structured_output = {
                 "data": extracted_data,
