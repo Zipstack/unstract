@@ -581,7 +581,9 @@ class StructureTool(BaseTool):
             request_id=self.file_execution_id,
         )
         platform_details = platform_helper.get_platform_details()
-        organization_id = platform_details.get("organization_id") if platform_details else None
+        organization_id = (
+            platform_details.get("organization_id") if platform_details else None
+        )
 
         if not organization_id:
             self.stream_error_and_exit("Failed to get organization_id from platform")
@@ -615,7 +617,11 @@ class StructureTool(BaseTool):
             )
 
             document_text = extraction_result.extracted_text
-            line_metadata = extraction_result.metadata.get("line_metadata") if hasattr(extraction_result, "metadata") else None
+            line_metadata = (
+                extraction_result.metadata.get("line_metadata")
+                if hasattr(extraction_result, "metadata")
+                else None
+            )
 
             self.stream_log(f"Extracted {len(document_text)} characters of text")
 
@@ -633,7 +639,9 @@ class StructureTool(BaseTool):
             # Add line_metadata if available for highlighting
             if line_metadata and enable_highlight:
                 payload["line_metadata"] = line_metadata
-                self.stream_log(f"Including {len(line_metadata)} line metadata entries for highlighting")
+                self.stream_log(
+                    f"Including {len(line_metadata)} line metadata entries for highlighting"
+                )
 
             # Step 3: Call agentic extraction endpoint
             self.stream_log("Calling agentic extraction endpoint...")
@@ -655,14 +663,16 @@ class StructureTool(BaseTool):
                     "schema_version": schema_version,
                     "prompt_version": prompt_version,
                     "document_id": self.file_execution_id,
-                }
+                },
             }
 
             # Add highlight data if available
             if "highlights" in extraction_response:
                 structured_output["highlights"] = extraction_response["highlights"]
             if "highlight_data" in extraction_response:
-                structured_output["highlight_data"] = extraction_response["highlight_data"]
+                structured_output["highlight_data"] = extraction_response[
+                    "highlight_data"
+                ]
 
             # Update GUI with results
             output_log = (
