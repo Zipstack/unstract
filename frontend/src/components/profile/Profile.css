@@ -69,7 +69,7 @@
   align-items: stretch;
 }
 
-/* Cards - fixed dimensions per Figma (363.5px x 352px) */
+/* Cards - max-width: 400px for responsiveness */
 .profile-card {
   flex: 1;
   max-width: 400px;
@@ -109,7 +109,7 @@
 
 .card-icon-circle.org-icon {
   background-color: #f2f8e6;
-  color: #389e0d;
+  color: #256d09;
 }
 
 .card-header-text {
@@ -151,7 +151,7 @@
   font-size: 14px;
   color: #6a7282;
   font-weight: 500;
-  line-height: 14px;
+  line-height: 20px;
 }
 
 /* Field boxes with subtle shadow like Figma */

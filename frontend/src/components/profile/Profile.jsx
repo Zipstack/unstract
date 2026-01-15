@@ -5,13 +5,13 @@ import {
   ArrowLeftOutlined,
   CopyOutlined,
   UserOutlined,
-  BankOutlined,
   MailOutlined,
   CheckCircleOutlined,
 } from "@ant-design/icons";
 import "./Profile.css";
 
 import { useSessionStore } from "../../store/session-store.js";
+import { OrganizationIcon } from "../../assets";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
 
 function Profile() {
@@ -43,7 +43,7 @@ function Profile() {
     };
 
     fetchProfile();
-  }, [sessionDetails.orgId]);
+  }, [sessionDetails.orgId, axiosPrivate]);
 
   const handleCopy = async (text, label) => {
     try {
@@ -127,14 +127,14 @@ function Profile() {
               </div>
             </div>
 
-            {/* Organisation Card */}
+            {/* Organization Card */}
             <div className="profile-card">
               <div className="card-header">
                 <div className="card-icon-circle org-icon">
-                  <BankOutlined />
+                  <OrganizationIcon />
                 </div>
                 <div className="card-header-text">
-                  <div className="card-title">Organisation</div>
+                  <div className="card-title">Organization</div>
                   <div className="card-subtitle">
                     Workspace and role information
                   </div>
@@ -148,17 +148,17 @@ function Profile() {
                   </div>
                 </div>
                 <div className="field-group">
-                  <span className="field-label">Organisation ID</span>
+                  <span className="field-label">Organization ID</span>
                   <div className="field-with-action">
                     <div className="field-box">
                       <span className="field-value org-id">{orgId}</span>
                     </div>
-                    <Tooltip title="Copy Organisation ID">
+                    <Tooltip title="Copy Organization ID">
                       <Button
                         type="text"
                         icon={<CopyOutlined />}
                         className="copy-button"
-                        onClick={() => handleCopy(orgId, "Organisation ID")}
+                        onClick={() => handleCopy(orgId, "Organization ID")}
                       />
                     </Tooltip>
                   </div>
