@@ -36,7 +36,6 @@ import { ReactComponent as ExportToolIcon } from "./export-tool.svg";
 import { ReactComponent as PlaceholderImg } from "./placeholder.svg";
 import { ReactComponent as CustomToolIcon } from "./custom-tools-icon.svg";
 import { ReactComponent as ETLIcon } from "./etl.svg";
-import { ReactComponent as OrganizationIcon } from "./organization-icon.svg";
 
 export {
   SunIcon,
@@ -77,5 +76,6 @@ export {
   CustomToolIcon,
   ETLIcon,
   Task,
-  OrganizationIcon,
 };
+
+export { ReactComponent as OrganizationIcon } from "./organization-icon.svg";
