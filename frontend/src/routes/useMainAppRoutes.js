@@ -39,12 +39,19 @@ let Manage;
 let UnstractUsagePage;
 let UnstractSubscriptionPage;
 let UnstractSubscriptionCheck;
+let AgenticPromptStudio;
 
 try {
   RequirePlatformAdmin =
     require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
   PlatformAdminPage =
     require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
+} catch (err) {
+  // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  AgenticPromptStudio = require("../plugins/agentic-prompt-studio").default;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
@@ -150,6 +157,12 @@ function useMainAppRoutes() {
             element={<OutputAnalyzerPage />}
           />
         </Route>
+        {AgenticPromptStudio && (
+          <Route
+            path="agentic-prompt-studio/*"
+            element={<AgenticPromptStudio />}
+          />
+        )}
         <Route path="logs" element={<LogsPage />} />
         <Route path="logs/:type/:id/" element={<LogsPage />} />
         <Route
