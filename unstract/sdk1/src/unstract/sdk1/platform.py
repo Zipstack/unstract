@@ -284,6 +284,17 @@ class PlatformHelper:
                     error_message = response_json["error"]
             elif response.text:
                 error_message = response.text
+
+            # For 404 errors on tool lookups, raise exception to allow fallback
+            # For other errors, exit immediately (existing behavior)
+            if response.status_code == 404 and url_path in [
+                "custom_tool_instance",
+                "agentic_tool_instance",
+            ]:
+                raise RequestException(
+                    f"Error from platform service. {error_message}"
+                ) from e
+
             self.tool.stream_error_and_exit(
                 f"Error from platform service. {error_message}"
             )
@@ -318,6 +329,24 @@ class PlatformHelper:
         query_params = {PromptStudioKeys.PROMPT_REGISTRY_ID: prompt_registry_id}
         return self._call_service(
             url_path="custom_tool_instance",
+            payload=None,
+            params=query_params,
+            headers=None,
+            method="GET",
+        )
+
+    def get_agentic_studio_tool(self: Self, agentic_registry_id: str) -> dict[str, Any]:
+        """Get exported agentic tool by the help of unstract DB tool.
+
+        Args:
+            agentic_registry_id (str): ID of the agentic_registry_id
+        Required env variables:
+            PLATFORM_HOST: Host of platform service
+            PLATFORM_PORT: Port of platform service
+        """
+        query_params = {"agentic_registry_id": agentic_registry_id}
+        return self._call_service(
+            url_path="agentic_tool_instance",
             payload=None,
             params=query_params,
             headers=None,
