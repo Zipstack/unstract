@@ -98,6 +98,16 @@ class OrganizationUserViewSet(viewsets.ViewSet):
                 org_member.is_prompt_studio_onboarding_msg
             )
 
+            # Add role and organization details
+            serialized_user_info["role"] = role.role
+
+            org_id = UserSessionUtils.get_organization_id(request)
+            if org_id:
+                org = auth_controller.get_organization_info(org_id)
+                if org:
+                    serialized_user_info["organization_name"] = org.display_name
+                    serialized_user_info["organization_id"] = org.organization_id
+
             return Response(
                 status=status.HTTP_200_OK, data={"user": serialized_user_info}
             )
