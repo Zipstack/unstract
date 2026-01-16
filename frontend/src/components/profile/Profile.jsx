@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Spin, Tooltip, message } from "antd";
+import { Button, Spin, Tooltip, Typography } from "antd";
 import {
   ArrowLeftOutlined,
   CopyOutlined,
@@ -11,12 +11,14 @@ import {
 import "./Profile.css";
 
 import { useSessionStore } from "../../store/session-store.js";
+import { useAlertStore } from "../../store/alert-store.js";
 import { OrganizationIcon } from "../../assets";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
 
 function Profile() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
+  const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const [profileData, setProfileData] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -34,23 +36,31 @@ function Profile() {
           method: "GET",
         });
         setProfileData(response.data?.user);
-      } catch (error) {
-        console.error("Failed to fetch profile:", error);
-        message.warning("Could not refresh profile data");
+      } catch {
+        setAlertDetails({
+          type: "error",
+          content: "Could not refresh profile data",
+        });
       } finally {
         setIsLoading(false);
       }
     };
 
     fetchProfile();
-  }, [sessionDetails.orgId, axiosPrivate]);
+  }, [sessionDetails.orgId, axiosPrivate, setAlertDetails]);
 
   const handleCopy = async (text, label) => {
     try {
       await navigator.clipboard.writeText(text || "");
-      message.success(`${label} copied to clipboard`);
+      setAlertDetails({
+        type: "success",
+        content: `${label} copied to clipboard`,
+      });
     } catch {
-      message.error(`Failed to copy ${label}`);
+      setAlertDetails({
+        type: "error",
+        content: `Failed to copy ${label}`,
+      });
     }
   };
 
@@ -64,7 +74,9 @@ function Profile() {
             icon={<ArrowLeftOutlined />}
             onClick={() => navigate(-1)}
           />
-          <span className="profile-header-title">Profile</span>
+          <Typography.Text strong className="profile-header-title">
+            Profile
+          </Typography.Text>
         </div>
         <div className="profile-outer-container">
           <div className="profile-loading">
@@ -90,7 +102,9 @@ function Profile() {
           icon={<ArrowLeftOutlined />}
           onClick={() => navigate(-1)}
         />
-        <span className="profile-header-title">Profile</span>
+        <Typography.Text strong className="profile-header-title">
+          Profile
+        </Typography.Text>
       </div>
       {/* White container with cards only */}
       <div className="profile-outer-container">
@@ -103,24 +117,34 @@ function Profile() {
                   <UserOutlined />
                 </div>
                 <div className="card-header-text">
-                  <div className="card-title">User Information</div>
-                  <div className="card-subtitle">
+                  <Typography.Text strong className="card-title">
+                    User Information
+                  </Typography.Text>
+                  <Typography.Text type="secondary" className="card-subtitle">
                     Your personal account details
-                  </div>
+                  </Typography.Text>
                 </div>
               </div>
               <div className="card-content">
                 <div className="field-group">
-                  <span className="field-label">Full Name</span>
+                  <Typography.Text type="secondary" className="field-label">
+                    Full Name
+                  </Typography.Text>
                   <div className="field-box">
-                    <span className="field-value">{userName}</span>
+                    <Typography.Text className="field-value">
+                      {userName}
+                    </Typography.Text>
                     <UserOutlined className="field-icon" />
                   </div>
                 </div>
                 <div className="field-group">
-                  <span className="field-label">Email Address</span>
+                  <Typography.Text type="secondary" className="field-label">
+                    Email Address
+                  </Typography.Text>
                   <div className="field-box">
-                    <span className="field-value">{email}</span>
+                    <Typography.Text className="field-value">
+                      {email}
+                    </Typography.Text>
                     <MailOutlined className="field-icon" />
                   </div>
                 </div>
@@ -134,24 +158,34 @@ function Profile() {
                   <OrganizationIcon />
                 </div>
                 <div className="card-header-text">
-                  <div className="card-title">Organization</div>
-                  <div className="card-subtitle">
+                  <Typography.Text strong className="card-title">
+                    Organization
+                  </Typography.Text>
+                  <Typography.Text type="secondary" className="card-subtitle">
                     Workspace and role information
-                  </div>
+                  </Typography.Text>
                 </div>
               </div>
               <div className="card-content">
                 <div className="field-group">
-                  <span className="field-label">Organization Name</span>
+                  <Typography.Text type="secondary" className="field-label">
+                    Organization Name
+                  </Typography.Text>
                   <div className="field-box">
-                    <span className="field-value">{orgName}</span>
+                    <Typography.Text className="field-value">
+                      {orgName}
+                    </Typography.Text>
                   </div>
                 </div>
                 <div className="field-group">
-                  <span className="field-label">Organization ID</span>
+                  <Typography.Text type="secondary" className="field-label">
+                    Organization ID
+                  </Typography.Text>
                   <div className="field-with-action">
                     <div className="field-box">
-                      <span className="field-value org-id">{orgId}</span>
+                      <Typography.Text className="field-value org-id">
+                        {orgId}
+                      </Typography.Text>
                     </div>
                     <Tooltip title="Copy Organization ID">
                       <Button
@@ -165,11 +199,13 @@ function Profile() {
                 </div>
                 {role && (
                   <div className="field-group">
-                    <span className="field-label">Your Role</span>
-                    <span className="role-badge">
+                    <Typography.Text type="secondary" className="field-label">
+                      Your Role
+                    </Typography.Text>
+                    <Typography.Text strong className="role-badge">
                       <CheckCircleOutlined />
                       {role}
-                    </span>
+                    </Typography.Text>
                   </div>
                 )}
               </div>
