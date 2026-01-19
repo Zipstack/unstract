@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Spin, Tooltip, Typography } from "antd";
+import { Button, Card, Col, Row, Space, Spin, Tooltip, Typography } from "antd";
 import {
   ArrowLeftOutlined,
   CopyOutlined,
@@ -109,108 +109,120 @@ function Profile() {
       {/* White container with cards only */}
       <div className="profile-outer-container">
         <div className="profile-content">
-          <div className="profile-cards-row">
+          <Row gutter={[16, 16]}>
             {/* User Information Card */}
-            <div className="profile-card">
-              <div className="card-header">
-                <div className="card-icon-circle user-icon">
-                  <UserOutlined />
-                </div>
-                <div className="card-header-text">
-                  <Typography.Text strong className="card-title">
-                    User Information
-                  </Typography.Text>
-                  <Typography.Text type="secondary" className="card-subtitle">
-                    Your personal account details
-                  </Typography.Text>
-                </div>
-              </div>
-              <div className="card-content">
-                <div className="field-group">
-                  <Typography.Text type="secondary" className="field-label">
-                    Full Name
-                  </Typography.Text>
-                  <div className="field-box">
-                    <Typography.Text className="field-value">
-                      {userName}
+            <Col xs={24} md={12}>
+              <Card className="profile-card">
+                <Space size={12} className="card-header">
+                  <div className="card-icon-circle user-icon">
+                    <UserOutlined />
+                  </div>
+                  <Space direction="vertical" size={0}>
+                    <Typography.Text strong className="card-title">
+                      User Information
                     </Typography.Text>
-                    <UserOutlined className="field-icon" />
-                  </div>
-                </div>
-                <div className="field-group">
-                  <Typography.Text type="secondary" className="field-label">
-                    Email Address
-                  </Typography.Text>
-                  <div className="field-box">
-                    <Typography.Text className="field-value">
-                      {email}
+                    <Typography.Text type="secondary" className="card-subtitle">
+                      Your personal account details
                     </Typography.Text>
-                    <MailOutlined className="field-icon" />
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Organization Card */}
-            <div className="profile-card">
-              <div className="card-header">
-                <div className="card-icon-circle org-icon">
-                  <OrganizationIcon />
-                </div>
-                <div className="card-header-text">
-                  <Typography.Text strong className="card-title">
-                    Organization
-                  </Typography.Text>
-                  <Typography.Text type="secondary" className="card-subtitle">
-                    Workspace and role information
-                  </Typography.Text>
-                </div>
-              </div>
-              <div className="card-content">
-                <div className="field-group">
-                  <Typography.Text type="secondary" className="field-label">
-                    Organization Name
-                  </Typography.Text>
-                  <div className="field-box">
-                    <Typography.Text className="field-value">
-                      {orgName}
-                    </Typography.Text>
-                  </div>
-                </div>
-                <div className="field-group">
-                  <Typography.Text type="secondary" className="field-label">
-                    Organization ID
-                  </Typography.Text>
-                  <div className="field-with-action">
-                    <div className="field-box">
-                      <Typography.Text className="field-value org-id">
-                        {orgId}
-                      </Typography.Text>
-                    </div>
-                    <Tooltip title="Copy Organization ID">
-                      <Button
-                        type="text"
-                        icon={<CopyOutlined />}
-                        className="copy-button"
-                        onClick={() => handleCopy(orgId, "Organization ID")}
-                      />
-                    </Tooltip>
-                  </div>
-                </div>
-                {role && (
+                  </Space>
+                </Space>
+                <Space
+                  direction="vertical"
+                  size={16}
+                  className="card-content width-100"
+                >
                   <div className="field-group">
                     <Typography.Text type="secondary" className="field-label">
-                      Your Role
+                      Full Name
                     </Typography.Text>
-                    <Typography.Text strong className="role-badge">
-                      <CheckCircleOutlined />
-                      {role}
-                    </Typography.Text>
+                    <div className="field-box">
+                      <Typography.Text className="field-value">
+                        {userName}
+                      </Typography.Text>
+                      <UserOutlined className="field-icon" />
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
+                  <div className="field-group">
+                    <Typography.Text type="secondary" className="field-label">
+                      Email Address
+                    </Typography.Text>
+                    <div className="field-box">
+                      <Typography.Text className="field-value">
+                        {email}
+                      </Typography.Text>
+                      <MailOutlined className="field-icon" />
+                    </div>
+                  </div>
+                </Space>
+              </Card>
+            </Col>
+
+            {/* Organization Card */}
+            <Col xs={24} md={12}>
+              <Card className="profile-card">
+                <Space size={12} className="card-header">
+                  <div className="card-icon-circle org-icon">
+                    <OrganizationIcon />
+                  </div>
+                  <Space direction="vertical" size={0}>
+                    <Typography.Text strong className="card-title">
+                      Organization
+                    </Typography.Text>
+                    <Typography.Text type="secondary" className="card-subtitle">
+                      Workspace and role information
+                    </Typography.Text>
+                  </Space>
+                </Space>
+                <Space
+                  direction="vertical"
+                  size={16}
+                  className="card-content width-100"
+                >
+                  <div className="field-group">
+                    <Typography.Text type="secondary" className="field-label">
+                      Organization Name
+                    </Typography.Text>
+                    <div className="field-box">
+                      <Typography.Text className="field-value">
+                        {orgName}
+                      </Typography.Text>
+                    </div>
+                  </div>
+                  <div className="field-group">
+                    <Typography.Text type="secondary" className="field-label">
+                      Organization ID
+                    </Typography.Text>
+                    <div className="field-with-action">
+                      <div className="field-box">
+                        <Typography.Text className="field-value org-id">
+                          {orgId}
+                        </Typography.Text>
+                      </div>
+                      <Tooltip title="Copy Organization ID">
+                        <Button
+                          type="text"
+                          icon={<CopyOutlined />}
+                          className="copy-button"
+                          onClick={() => handleCopy(orgId, "Organization ID")}
+                        />
+                      </Tooltip>
+                    </div>
+                  </div>
+                  {role && (
+                    <div className="field-group">
+                      <Typography.Text type="secondary" className="field-label">
+                        Your Role
+                      </Typography.Text>
+                      <Typography.Text strong className="role-badge">
+                        <CheckCircleOutlined />
+                        {role}
+                      </Typography.Text>
+                    </div>
+                  )}
+                </Space>
+              </Card>
+            </Col>
+          </Row>
         </div>
       </div>
     </div>
