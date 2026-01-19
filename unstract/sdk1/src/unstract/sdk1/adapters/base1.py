@@ -626,7 +626,9 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = OllamaLLMParameters.validate_model(adapter_metadata)
-        adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
+        adapter_metadata["api_base"] = adapter_metadata.get(
+            "base_url", adapter_metadata.get("api_base", "")
+        )
 
         return OllamaLLMParameters(**adapter_metadata).model_dump()
 
@@ -772,11 +774,16 @@ class OllamaEmbeddingParameters(BaseEmbeddingParameters):
         adapter_metadata["model"] = OllamaEmbeddingParameters.validate_model(
             adapter_metadata
         )
-        adapter_metadata["api_base"] = adapter_metadata.get("base_url", "")
+        adapter_metadata["api_base"] = adapter_metadata.get(
+            "base_url", adapter_metadata.get("api_base", "")
+        )
 
         return OllamaEmbeddingParameters(**adapter_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = adapter_metadata.get("model_name", "")
-        return model
+        model = adapter_metadata.get("model_name", adapter_metadata.get("model", ""))
+        if model.startswith("ollama/"):
+            return model
+        else:
+            return f"ollama/{model}"

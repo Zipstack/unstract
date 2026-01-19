@@ -2,6 +2,11 @@ import { create } from "zustand";
 
 import { promptType } from "../helpers/GetStaticData";
 
+// SessionStorage key prefix for persisting unsaved changes across page reloads
+const UNSAVED_CHANGES_KEY_PREFIX = "unstract-unsaved-changes-";
+const getSessionStorageKey = (toolId) =>
+  `${UNSAVED_CHANGES_KEY_PREFIX}${toolId}`;
+
 const defaultState = {
   dropdownItems: {},
   selectedDoc: null,
@@ -114,6 +119,14 @@ const useCustomToolStore = create((setState, getState) => ({
     setState(existingState);
   },
   setHasUnsavedChanges: (hasChanges) => {
+    const toolId = getState().details?.tool_id;
+    if (toolId) {
+      if (hasChanges) {
+        sessionStorage.setItem(getSessionStorageKey(toolId), "true");
+      } else {
+        sessionStorage.removeItem(getSessionStorageKey(toolId));
+      }
+    }
     setState({ hasUnsavedChanges: hasChanges });
   },
   setLastExportedAt: (timestamp) => {
@@ -123,10 +136,24 @@ const useCustomToolStore = create((setState, getState) => ({
     setState({ deploymentUsageInfo: info });
   },
   markChangesAsExported: () => {
+    const toolId = getState().details?.tool_id;
+    if (toolId) {
+      sessionStorage.removeItem(getSessionStorageKey(toolId));
+    }
     setState({
       hasUnsavedChanges: false,
       lastExportedAt: new Date().toISOString(),
     });
+  },
+  restoreUnsavedChangesFromSession: (toolId) => {
+    if (toolId) {
+      const savedState = sessionStorage.getItem(getSessionStorageKey(toolId));
+      if (savedState === "true") {
+        setState({ hasUnsavedChanges: true });
+        return true;
+      }
+    }
+    return false;
   },
 }));
 
