@@ -3,7 +3,6 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-import redis
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request, jsonify, make_response, request
 from flask import current_app as app
@@ -12,7 +11,7 @@ from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
 from unstract.platform_service.env import Env
-from unstract.platform_service.extensions import db
+from unstract.platform_service.extensions import db, get_redis_client
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
@@ -70,28 +69,30 @@ def get_organization_from_bearer_token(token: str) -> tuple[int | None, str]:
 
 def execute_query(query: str, params: tuple = ()) -> Any:
     cursor = db.execute_sql(query, params)
-    result_row = cursor.fetchone()
-    cursor.close()
-    if not result_row or len(result_row) == 0:
-        return None
-    return result_row[0]
+    try:
+        result_row = cursor.fetchone()
+        if not result_row or len(result_row) == 0:
+            return None
+        return result_row[0]
+    finally:
+        cursor.close()
 
 
 def validate_bearer_token(token: str | None) -> bool:
+    if token is None:
+        app.logger.error("Authentication failed. Empty bearer token")
+        return False
+
+    platform_key_table = DBTable.PLATFORM_KEY
+    query = f"""
+        SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
+        WHERE key = '{token}'
+    """
+
+    cursor = None
     try:
-        if token is None:
-            app.logger.error("Authentication failed. Empty bearer token")
-            return False
-
-        platform_key_table = DBTable.PLATFORM_KEY
-        query = f"""
-            SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
-            WHERE key = '{token}'
-        """
-
         cursor = db.execute_sql(query)
         result_row = cursor.fetchone()
-        cursor.close()
         if not result_row or len(result_row) == 0:
             app.logger.error(f"Authentication failed. bearer token not found {token}")
             return False
@@ -105,7 +106,7 @@ def validate_bearer_token(token: str | None) -> bool:
         if platform_key != token:
             app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
             return False
-
+        return True
     except Exception as e:
         app.logger.error(
             f"Error while validating bearer token: {e}",
@@ -113,7 +114,9 @@ def validate_bearer_token(token: str | None) -> bool:
             exc_info=True,
         )
         return False
-    return True
+    finally:
+        if cursor is not None:
+            cursor.close()
 
 
 @platform_bp.route("/page-usage", methods=["POST"], endpoint="page_usage")
@@ -322,6 +325,10 @@ def cache() -> Any:
     """
     bearer_token = get_token_from_auth_header(request)
     _, account_id = get_organization_from_bearer_token(bearer_token)
+
+    # Use shared Redis connection pool
+    r = get_redis_client()
+
     if request.method == "POST":
         payload: dict[Any, Any] | None = request.json
         if not payload:
@@ -331,49 +338,27 @@ def cache() -> Any:
         if key is None or value is None:
             return Env.BAD_REQUEST, 400
         try:
-            r = redis.Redis(
-                host=Env.REDIS_HOST,
-                port=Env.REDIS_PORT,
-                username=Env.REDIS_USERNAME,
-                password=Env.REDIS_PASSWORD,
-            )
             redis_key = f"{account_id}:{key}"
             r.set(redis_key, value)
-            r.close()
         except Exception as e:
             raise APIError(message=f"Error while caching data: {e}") from e
     elif request.method == "GET":
         key = request.args.get("key")
         try:
-            r = redis.Redis(
-                host=Env.REDIS_HOST,
-                port=Env.REDIS_PORT,
-                username=Env.REDIS_USERNAME,
-                password=Env.REDIS_PASSWORD,
-            )
             redis_key = f"{account_id}:{key}"
             app.logger.info(f"Getting cached data for key: {redis_key}")
             value = r.get(redis_key)
-            r.close()
             if value is None:
                 return "Not Found", 404
-            else:
-                return value, 200
+            return value, 200
         except Exception as e:
             raise APIError(message=f"Error while getting cached data: {e}") from e
     elif request.method == "DELETE":
         key = request.args.get("key")
         try:
-            r = redis.Redis(
-                host=Env.REDIS_HOST,
-                port=Env.REDIS_PORT,
-                username=Env.REDIS_USERNAME,
-                password=Env.REDIS_PASSWORD,
-            )
             redis_key = f"{account_id}:{key}"
             app.logger.info(f"Deleting cached data for key: {redis_key}")
             r.delete(redis_key)
-            r.close()
             return "OK", 200
         except Exception as e:
             raise APIError(message=f"Error while deleting cached data: {e}") from e

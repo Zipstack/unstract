@@ -31,10 +31,14 @@ class AdapterInstanceRequestHelper:
             f"organization_id='{organization_uid}'"
         )
         cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        if not result_row:
-            raise APIError(message=f"Adapter '{adapter_instance_id}' not found", code=404)
-        columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
-        cursor.close()
-        return data_dict
+        try:
+            result_row = cursor.fetchone()
+            if not result_row:
+                raise APIError(
+                    message=f"Adapter '{adapter_instance_id}' not found", code=404
+                )
+            columns = [desc[0] for desc in cursor.description]
+            data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
+            return data_dict
+        finally:
+            cursor.close()

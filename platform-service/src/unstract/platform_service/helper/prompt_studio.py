@@ -30,16 +30,18 @@ class PromptStudioRequestHelper:
             f"WHERE prompt_registry_id='{prompt_registry_id}'"
         )
         cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        if not result_row:
-            raise APIError(
-                message=f"Prompt studio project with UUID '{prompt_registry_id}' is not found.",
-                code=404,
-            )
-        columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
-        cursor.close()
-        return data_dict
+        try:
+            result_row = cursor.fetchone()
+            if not result_row:
+                raise APIError(
+                    message=f"Prompt studio project with UUID '{prompt_registry_id}' is not found.",
+                    code=404,
+                )
+            columns = [desc[0] for desc in cursor.description]
+            data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
+            return data_dict
+        finally:
+            cursor.close()
 
     @staticmethod
     def get_llm_profile_instance_from_db(
@@ -61,13 +63,15 @@ class PromptStudioRequestHelper:
             f"WHERE profile_id='{llm_profile_id}'"
         )
         cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        if not result_row:
-            raise APIError(
-                message=f"LLM profile with UUID '{llm_profile_id}' is not found.",
-                code=404,
-            )
-        columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
-        cursor.close()
-        return data_dict
+        try:
+            result_row = cursor.fetchone()
+            if not result_row:
+                raise APIError(
+                    message=f"LLM profile with UUID '{llm_profile_id}' is not found.",
+                    code=404,
+                )
+            columns = [desc[0] for desc in cursor.description]
+            data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
+            return data_dict
+        finally:
+            cursor.close()
