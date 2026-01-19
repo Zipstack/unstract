@@ -50,8 +50,16 @@ function Profile() {
   }, [sessionDetails.orgId, axiosPrivate, setAlertDetails]);
 
   const handleCopy = async (text, label) => {
+    if (!text) {
+      setAlertDetails({
+        type: "error",
+        content: `No ${label} available to copy`,
+      });
+      return;
+    }
+
     try {
-      await navigator.clipboard.writeText(text || "");
+      await navigator.clipboard.writeText(text);
       setAlertDetails({
         type: "success",
         content: `${label} copied to clipboard`,
@@ -198,12 +206,19 @@ function Profile() {
                           {orgId}
                         </Typography.Text>
                       </div>
-                      <Tooltip title="Copy Organization ID">
+                      <Tooltip
+                        title={
+                          orgId
+                            ? "Copy Organization ID"
+                            : "No Organization ID available"
+                        }
+                      >
                         <Button
                           type="text"
                           icon={<CopyOutlined />}
                           className="copy-button"
                           onClick={() => handleCopy(orgId, "Organization ID")}
+                          disabled={!orgId}
                         />
                       </Tooltip>
                     </div>
