@@ -221,6 +221,7 @@ class LookupLogEmitter:
         cached: bool,
         execution_time_ms: int,
         confidence: float | None = None,
+        context_type: str = "full",
     ) -> None:
         """Emit log when Look-up enrichment succeeds.
 
@@ -230,11 +231,14 @@ class LookupLogEmitter:
             cached: Whether the response was from cache
             execution_time_ms: Execution time in milliseconds
             confidence: Optional confidence score (0.0-1.0)
+            context_type: Type of context used - "rag" or "full"
         """
         cache_msg = " (cached)" if cached else ""
+        # Display context type clearly: RAG-based or Full context
+        context_display = "RAG" if context_type == "rag" else "Full context"
         message = (
-            f"Look-Up '{lookup_project_name}' enriched {enriched_count} "
-            f"field(s){cache_msg} in {execution_time_ms}ms"
+            f"Look-Up '{lookup_project_name}' [{context_display}] enriched "
+            f"{enriched_count} field(s){cache_msg} in {execution_time_ms}ms"
         )
 
         if confidence is not None:
@@ -249,6 +253,7 @@ class LookupLogEmitter:
             execution_time_ms=execution_time_ms,
             enriched_count=enriched_count,
             confidence=confidence,
+            context_type=context_type,
         )
 
     def emit_enrichment_failure(
@@ -317,6 +322,7 @@ class LookupLogEmitter:
         execution_time_ms: int,
         warning_message: str,
         confidence: float | None = None,
+        context_type: str = "full",
     ) -> None:
         """Emit log when Look-up enrichment partially succeeds.
 
@@ -326,9 +332,12 @@ class LookupLogEmitter:
             execution_time_ms: Execution time in milliseconds
             warning_message: Warning message about partial success
             confidence: Optional confidence score (0.0-1.0)
+            context_type: Type of context used - "rag" or "full"
         """
+        # Display context type clearly: RAG-based or Full context
+        context_display = "RAG" if context_type == "rag" else "Full context"
         message = (
-            f"Look-Up '{lookup_project_name}' partial success: "
+            f"Look-Up '{lookup_project_name}' [{context_display}] partial success: "
             f"enriched {enriched_count} field(s) in {execution_time_ms}ms - "
             f"{warning_message}"
         )
@@ -342,6 +351,7 @@ class LookupLogEmitter:
             execution_time_ms=execution_time_ms,
             warning_message=warning_message,
             confidence=confidence,
+            context_type=context_type,
         )
 
     def emit_no_linked_lookups(self) -> None:

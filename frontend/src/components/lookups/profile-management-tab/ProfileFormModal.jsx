@@ -7,6 +7,7 @@ import {
   Row,
   Col,
   Typography,
+  Alert,
 } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
@@ -29,6 +30,8 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
   const [embeddingItems, setEmbeddingItems] = useState([]);
   const [x2TextItems, setX2TextItems] = useState([]);
   const [adaptersLoaded, setAdaptersLoaded] = useState(false);
+  const [originalChunkSize, setOriginalChunkSize] = useState(null);
+  const [showReindexWarning, setShowReindexWarning] = useState(false);
 
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -111,6 +114,10 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
       .then((res) => {
         const profile = res?.data;
 
+        // Store original chunk_size for reindex warning check
+        console.log("Profile data loaded, chunk_size:", profile?.chunk_size);
+        setOriginalChunkSize(profile?.chunk_size);
+
         // Find adapter IDs by matching adapter names from the profile response
         // The API returns adapter names as strings (e.g., "Azure LLM")
         const llmItem = llmItems.find((item) => item?.label === profile?.llm);
@@ -175,11 +182,39 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
 
         axiosPrivate(requestOptions)
           .then(() => {
-            setAlertDetails({
-              type: "success",
-              content: `Profile ${isEdit ? "updated" : "created"} successfully`,
+            // Check if reindexing warning should be shown (only for edit mode)
+            // Show warning if chunk_size was > 0 before OR after the change
+            // This means RAG mode is/was being used and config changes require reindexing
+            const newChunkSize = values.chunk_size;
+            const originalWasRag =
+              originalChunkSize !== null && originalChunkSize > 0;
+            const newIsRag = newChunkSize !== null && newChunkSize > 0;
+            const needsReindex = isEdit && (originalWasRag || newIsRag);
+
+            console.log("Reindex check:", {
+              isEdit,
+              originalChunkSize,
+              newChunkSize,
+              originalWasRag,
+              newIsRag,
+              needsReindex,
             });
-            onClose(true); // Close and refresh
+
+            if (needsReindex) {
+              setShowReindexWarning(true);
+              setAlertDetails({
+                type: "success",
+                content: "Profile updated successfully",
+              });
+            } else {
+              setAlertDetails({
+                type: "success",
+                content: `Profile ${
+                  isEdit ? "updated" : "created"
+                } successfully`,
+              });
+              onClose(true); // Close and refresh
+            }
           })
           .catch((err) => {
             handleException(
@@ -195,6 +230,54 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
         console.log("Validation Failed:", info);
       });
   };
+
+  const handleCloseWithWarning = () => {
+    setShowReindexWarning(false);
+    onClose(true); // Close and refresh
+  };
+
+  // If showing reindex warning, render the warning modal instead
+  if (showReindexWarning) {
+    return (
+      <Modal
+        title="Profile Updated - Reindexing Required"
+        open={true}
+        onOk={handleCloseWithWarning}
+        onCancel={handleCloseWithWarning}
+        width={600}
+        okText="Got it"
+        cancelButtonProps={{ style: { display: "none" } }}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          message="Reindexing Required"
+          description={
+            <div>
+              <p>
+                Your profile settings have been updated successfully. However,
+                since this profile uses <strong>RAG mode</strong> (chunk_size
+                &gt; 0), the changes to chunking configuration, embedding model,
+                or vector database will only take effect after you re-index the
+                reference data.
+              </p>
+              <p style={{ marginBottom: 0 }}>
+                <strong>Action needed:</strong> Go to the{" "}
+                <strong>Reference Data</strong> tab and click{" "}
+                <strong>Index</strong> to re-index your data with the new
+                profile settings.
+              </p>
+            </div>
+          }
+          style={{ marginBottom: 16 }}
+        />
+        <Typography.Text type="secondary">
+          Note: If you skip re-indexing, the Look-Up will continue using the
+          previously indexed data until you manually trigger re-indexing.
+        </Typography.Text>
+      </Modal>
+    );
+  }
 
   return (
     <Modal

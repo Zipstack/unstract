@@ -405,6 +405,7 @@ class LookUpOrchestrator:
             cached = result.get("cached", False)
             execution_time_ms = result.get("execution_time_ms", 0)
             confidence = result.get("confidence")
+            context_type = result.get("context_type", "full")
 
             self.log_emitter.emit_enrichment_success(
                 lookup_project_name=lookup_project.name,
@@ -412,6 +413,7 @@ class LookUpOrchestrator:
                 cached=cached,
                 execution_time_ms=execution_time_ms,
                 confidence=confidence,
+                context_type=context_type,
             )
         except Exception as e:
             logger.warning(f"Failed to emit success log: {e}")

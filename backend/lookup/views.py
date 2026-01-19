@@ -86,6 +86,35 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
         # Note: organization is set automatically by DefaultOrganizationMixin's save() method
         serializer.save(created_by=self.request.user)
 
+    def destroy(self, request, *args, **kwargs):
+        """Delete a Look-Up project.
+
+        Prevents deletion if the project is linked to any Prompt Studio projects.
+        """
+        instance = self.get_object()
+
+        # Check if the project is linked to any Prompt Studio projects
+        linked_ps_projects = instance.ps_links.all()
+        if linked_ps_projects.exists():
+            # Get linked project IDs for the error message
+            linked_ids = list(
+                linked_ps_projects.values_list("prompt_studio_project_id", flat=True)
+            )
+            return Response(
+                {
+                    "error": "Cannot delete Look-Up project that is linked to "
+                    "Prompt Studio projects",
+                    "detail": f"This Look-Up project is linked to {len(linked_ids)} "
+                    f"Prompt Studio project(s). Please unlink it from all Prompt "
+                    f"Studio projects before deleting.",
+                    "linked_prompt_studio_projects": [str(id) for id in linked_ids],
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Proceed with deletion
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=True, methods=["post"])
     def execute(self, request, pk=None):
         """Execute a Look-Up project with provided input data.

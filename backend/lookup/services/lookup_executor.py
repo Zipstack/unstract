@@ -111,6 +111,7 @@ class LookUpExecutor:
         llm_provider = "unknown"
         llm_model = "unknown"
         _cached = False  # noqa F841
+        context_type = "full"  # Track whether using RAG or full context
 
         try:
             # Step 1: Load reference data (RAG or full context based on chunk_size)
@@ -130,6 +131,7 @@ class LookUpExecutor:
 
                 if profile.chunk_size > 0:
                     # RAG Mode: Retrieve relevant chunks from vector DB
+                    context_type = "rag"
                     logger.info(
                         f"Using RAG mode (chunk_size={profile.chunk_size}) "
                         f"for project {lookup_project.name}"
@@ -274,6 +276,7 @@ class LookUpExecutor:
                         confidence,
                         cached=True,
                         execution_time_ms=0,  # No execution time for cached response
+                        context_type=context_type,
                     )
                     self._log_audit(
                         exec_id,
@@ -416,6 +419,7 @@ class LookUpExecutor:
                 confidence,
                 cached=False,
                 execution_time_ms=llm_time_ms,
+                context_type=context_type,
             )
             self._log_audit(
                 exec_id,
@@ -666,8 +670,21 @@ class LookUpExecutor:
         confidence: float | None,
         cached: bool,
         execution_time_ms: int,
+        context_type: str = "full",
     ) -> dict[str, Any]:
-        """Build success result dictionary."""
+        """Build success result dictionary.
+
+        Args:
+            project: The LookupProject that was executed
+            data: Enrichment data from the LLM response
+            confidence: Confidence score (0.0-1.0) if available
+            cached: Whether the response was from cache
+            execution_time_ms: Execution time in milliseconds
+            context_type: Type of context used - "rag" or "full"
+
+        Returns:
+            Dictionary with execution results including context_type
+        """
         return {
             "status": "success",
             "project_id": str(project.id),  # Convert UUID to string for JSON
@@ -676,6 +693,7 @@ class LookUpExecutor:
             "confidence": confidence,
             "cached": cached,
             "execution_time_ms": execution_time_ms,
+            "context_type": context_type,
         }
 
     def _failed_result(
