@@ -173,7 +173,6 @@ class PromptTool:
 
     @log_elapsed(operation="AGENTIC_EXTRACTION")
     @handle_service_exceptions("executing agentic extraction")
-    @retry_prompt_service_call
     def agentic_extraction(
         self,
         payload: dict[str, Any],

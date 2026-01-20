@@ -234,6 +234,7 @@ class StructureTool(BaseTool):
                 output_dir=output_dir,
                 settings=settings,
                 responder=responder,
+                platform_helper=platform_helper,
             )
 
         # Continue with regular prompt studio extraction
@@ -545,6 +546,7 @@ class StructureTool(BaseTool):
         output_dir: str,
         settings: dict[str, Any],
         responder: PromptTool,
+        platform_helper: PlatformHelper,
     ) -> None:
         """Execute agentic extraction pipeline.
 
@@ -554,6 +556,7 @@ class StructureTool(BaseTool):
             output_dir: Directory for output files
             settings: Workflow settings (contains adapter overrides)
             responder: PromptTool instance for API calls
+            platform_helper: PlatformHelper instance for platform API calls
         """
         from unstract.sdk1.x2txt import X2Text
 
@@ -584,12 +587,6 @@ class StructureTool(BaseTool):
         )
 
         # Get platform details for organization_id
-        platform_helper: PlatformHelper = PlatformHelper(
-            tool=self,
-            platform_port=self.get_env_or_die(ToolEnv.PLATFORM_PORT),
-            platform_host=self.get_env_or_die(ToolEnv.PLATFORM_HOST),
-            request_id=self.file_execution_id,
-        )
         platform_details = platform_helper.get_platform_details()
         organization_id = (
             platform_details.get("organization_id") if platform_details else None
@@ -628,8 +625,8 @@ class StructureTool(BaseTool):
 
             document_text = extraction_result.extracted_text
             line_metadata = (
-                extraction_result.metadata.get("line_metadata")
-                if hasattr(extraction_result, "metadata")
+                extraction_result.extraction_metadata.line_metadata
+                if extraction_result.extraction_metadata
                 else None
             )
 

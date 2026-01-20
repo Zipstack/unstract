@@ -491,6 +491,8 @@ def agentic_tool_instance() -> Any:
         return Env.INVALID_ORGANIZATOIN, 403
 
     agentic_registry_id = request.args.get("agentic_registry_id")
+    if not agentic_registry_id:
+        raise APIError(message="agentic_registry_id is required", code=400)
 
     try:
         data_dict = PromptStudioRequestHelper.get_agentic_instance_from_db(
