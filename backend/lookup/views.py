@@ -294,6 +294,72 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     @action(detail=True, methods=["post"])
+    def cleanup_stale_indexes(self, request, pk=None):
+        """Manually trigger cleanup of stale vector DB indexes for a project.
+
+        POST /api/v1/lookup-projects/{id}/cleanup_stale_indexes/
+
+        Cleans up vector DB nodes that are marked as stale or no longer needed.
+        This is useful for reclaiming storage and ensuring data consistency.
+
+        Returns:
+            Summary of cleanup operations performed.
+        """
+        project = self.get_object()
+
+        try:
+            from lookup.models import LookupIndexManager
+            from lookup.services.vector_db_cleanup_service import (
+                VectorDBCleanupService,
+            )
+
+            cleanup_service = VectorDBCleanupService()
+            total_deleted = 0
+            total_failed = 0
+            errors = []
+
+            # Get all index managers for this project that need cleanup
+            index_managers = LookupIndexManager.objects.filter(
+                data_source__project=project
+            ).select_related("profile_manager", "data_source")
+
+            for index_manager in index_managers:
+                if not index_manager.profile_manager:
+                    continue
+
+                # Clean up stale indexes (keeping only the current one)
+                result = cleanup_service.cleanup_stale_indexes(
+                    index_manager=index_manager, keep_current=True
+                )
+                total_deleted += result.get("deleted", 0)
+                total_failed += result.get("failed", 0)
+                if result.get("errors"):
+                    errors.extend(result["errors"])
+
+                # Reset reindex_required flag if cleanup was successful
+                if result.get("success"):
+                    index_manager.reindex_required = False
+                    index_manager.save(update_fields=["reindex_required"])
+
+            return Response(
+                {
+                    "message": "Cleanup completed",
+                    "project_id": str(project.id),
+                    "indexes_deleted": total_deleted,
+                    "indexes_failed": total_failed,
+                    "errors": errors[:10] if errors else [],  # Limit errors shown
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.exception(f"Error during cleanup for project {project.id}")
+            return Response(
+                {"error": f"Cleanup failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=True, methods=["post"])
     def index_all(self, request, pk=None):
         """Index all reference data using the project's default profile.
 
@@ -1049,6 +1115,84 @@ class LookupDataSourceViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = CustomPagination
 
+    @action(detail=True, methods=["post"])
+    def cleanup_indexes(self, request, pk=None):
+        """Clean up vector DB indexes for a specific data source.
+
+        POST /api/v1/data-sources/{id}/cleanup_indexes/
+
+        Cleans up all vector DB nodes associated with this data source.
+        Use this before re-uploading a data source or when indexes are corrupted.
+
+        Returns:
+            Summary of cleanup operations performed.
+        """
+        data_source = self.get_object()
+
+        try:
+            from lookup.models import LookupIndexManager
+            from lookup.services.vector_db_cleanup_service import (
+                VectorDBCleanupService,
+            )
+
+            cleanup_service = VectorDBCleanupService()
+            total_deleted = 0
+            total_failed = 0
+            errors = []
+
+            # Get all index managers for this data source
+            index_managers = LookupIndexManager.objects.filter(
+                data_source=data_source
+            ).select_related("profile_manager")
+
+            for index_manager in index_managers:
+                if not index_manager.profile_manager:
+                    continue
+
+                if index_manager.index_ids_history:
+                    result = cleanup_service.cleanup_index_ids(
+                        index_ids=index_manager.index_ids_history,
+                        vector_db_instance_id=str(
+                            index_manager.profile_manager.vector_store_id
+                        ),
+                    )
+                    total_deleted += result.get("deleted", 0)
+                    total_failed += result.get("failed", 0)
+                    if result.get("errors"):
+                        errors.extend(result["errors"])
+
+                    # Clear history if cleanup was successful
+                    if result.get("success"):
+                        index_manager.index_ids_history = []
+                        index_manager.raw_index_id = None
+                        index_manager.reindex_required = True
+                        index_manager.save(
+                            update_fields=[
+                                "index_ids_history",
+                                "raw_index_id",
+                                "reindex_required",
+                            ]
+                        )
+
+            return Response(
+                {
+                    "message": "Cleanup completed",
+                    "data_source_id": str(data_source.id),
+                    "file_name": data_source.file_name,
+                    "indexes_deleted": total_deleted,
+                    "indexes_failed": total_failed,
+                    "errors": errors[:10] if errors else [],
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception as e:
+            logger.exception(f"Error during cleanup for data source {data_source.id}")
+            return Response(
+                {"error": f"Cleanup failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     def get_queryset(self):
         """Filter data sources by project if specified."""
         queryset = super().get_queryset()
@@ -1228,3 +1372,79 @@ class LookupProfileManagerViewSet(viewsets.ModelViewSet):
 
         serializer = self.get_serializer(profile)
         return Response(serializer.data)
+
+    def partial_update(self, request, *args, **kwargs):
+        """Update a profile and mark indexes as stale if RAG settings changed.
+
+        When chunk_size, chunk_overlap, embedding_model, or vector_store
+        are changed, existing indexes become stale and need re-indexing.
+        """
+        profile = self.get_object()
+
+        # Track original values for RAG-relevant fields
+        original_values = {
+            "chunk_size": profile.chunk_size,
+            "chunk_overlap": profile.chunk_overlap,
+            "embedding_model": str(profile.embedding_model_id)
+            if profile.embedding_model
+            else None,
+            "vector_store": str(profile.vector_store_id)
+            if profile.vector_store
+            else None,
+        }
+
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # Check if any RAG-relevant fields changed
+        if response.status_code == status.HTTP_200_OK:
+            profile.refresh_from_db()
+
+            new_values = {
+                "chunk_size": profile.chunk_size,
+                "chunk_overlap": profile.chunk_overlap,
+                "embedding_model": str(profile.embedding_model_id)
+                if profile.embedding_model
+                else None,
+                "vector_store": str(profile.vector_store_id)
+                if profile.vector_store
+                else None,
+            }
+
+            # Determine if re-indexing is needed
+            rag_settings_changed = original_values != new_values
+            was_rag_mode = (
+                original_values["chunk_size"] and original_values["chunk_size"] > 0
+            )
+            is_rag_mode = new_values["chunk_size"] and new_values["chunk_size"] > 0
+
+            if rag_settings_changed and (was_rag_mode or is_rag_mode):
+                # Mark all indexes for this profile as requiring re-index
+                from lookup.models import LookupIndexManager
+
+                updated_count = LookupIndexManager.objects.filter(
+                    profile_manager=profile
+                ).update(reindex_required=True)
+
+                if updated_count > 0:
+                    logger.info(
+                        f"Marked {updated_count} index(es) as requiring re-index "
+                        f"for profile {profile.profile_name}"
+                    )
+
+                # If switching from RAG to full context mode, clean up old indexes
+                if was_rag_mode and not is_rag_mode:
+                    from lookup.services.vector_db_cleanup_service import (
+                        VectorDBCleanupService,
+                    )
+
+                    cleanup_service = VectorDBCleanupService()
+                    cleanup_result = cleanup_service.cleanup_for_profile(
+                        str(profile.profile_id)
+                    )
+                    logger.info(
+                        f"Cleaned up {cleanup_result['deleted']} index(es) "
+                        f"after switching profile {profile.profile_name} to full context mode"
+                    )
+
+        return response

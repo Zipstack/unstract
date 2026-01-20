@@ -8,6 +8,7 @@ import logging
 from django.db import transaction
 
 from lookup.models import LookupIndexManager
+from lookup.services.vector_db_cleanup_service import VectorDBCleanupService
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,20 @@ class LookupIndexHelper:
         data_source_id: str,
         profile_manager,
         doc_id: str,
+        cleanup_old_indexes: bool = True,
     ) -> LookupIndexManager:
         """Create or update LookupIndexManager with doc_id.
+
+        When re-indexing (updating existing index manager), this method
+        will clean up old vector DB nodes before adding the new doc_id
+        to prevent stale data accumulation.
 
         Args:
             data_source_id: UUID of the LookupDataSource
             profile_manager: LookupProfileManager instance
             doc_id: Document ID returned from indexing service
+            cleanup_old_indexes: If True, deletes old indexes from vector DB
+                               before adding new doc_id (default: True)
 
         Returns:
             LookupIndexManager instance
@@ -49,15 +57,28 @@ class LookupIndexHelper:
             )
 
             if not created:
-                # Update existing index manager
+                # Re-indexing: Clean up old indexes before adding new one
+                if cleanup_old_indexes and index_manager.index_ids_history:
+                    cleanup_service = VectorDBCleanupService()
+                    cleanup_result = cleanup_service.cleanup_before_reindex(index_manager)
+                    if cleanup_result["deleted"] > 0:
+                        logger.info(
+                            f"Cleaned up {cleanup_result['deleted']} old index(es) "
+                            f"for data source {data_source.file_name}"
+                        )
+                    if cleanup_result["errors"]:
+                        logger.warning(
+                            f"Some cleanup errors occurred: {cleanup_result['errors']}"
+                        )
+
+                # Update with new doc_id
                 index_manager.raw_index_id = doc_id
-
-                # Add to history if not already present
-                if doc_id not in index_manager.index_ids_history:
-                    index_manager.index_ids_history.append(doc_id)
-
-                # Update status
+                # Start fresh history with only the new doc_id
+                index_manager.index_ids_history = [doc_id]
+                # Update status and clear reindex_required flag
                 index_manager.status = {"indexed": True, "error": None}
+                if hasattr(index_manager, "reindex_required"):
+                    index_manager.reindex_required = False
 
                 index_manager.save()
                 logger.debug(f"Updated index manager for data source {data_source_id}")

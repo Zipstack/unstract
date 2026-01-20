@@ -8,10 +8,6 @@ from django.db import models
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from utils.models.base_model import BaseModel
-from utils.user_context import UserContext
-
-from unstract.sdk1.constants import LogLevel
-from unstract.sdk1.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +79,14 @@ class LookupIndexManager(BaseModel):
         db_comment="Extraction and indexing status", null=False, blank=False, default=dict
     )
 
+    # Flag to indicate that indexes are stale and need re-indexing
+    # Set to True when profile settings change (chunk_size, embedding_model, etc.)
+    reindex_required = models.BooleanField(
+        default=False,
+        db_comment="Flag indicating indexes are stale and need re-indexing",
+        help_text="Set to True when profile settings change and re-indexing is needed",
+    )
+
     # Audit fields
     created_by = models.ForeignKey(
         User,
@@ -120,33 +124,24 @@ class LookupIndexManager(BaseModel):
 def delete_from_vector_db(index_ids_history, vector_db_instance_id):
     """Delete index IDs from vector database.
 
+    This function is kept for backward compatibility and signal handler usage.
+    For new code, prefer using VectorDBCleanupService directly.
+
     Args:
         index_ids_history: List of index IDs to delete
         vector_db_instance_id: UUID of the vector DB adapter instance
     """
-    try:
-        from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
-            PromptIdeBaseTool,
-        )
+    from lookup.services.vector_db_cleanup_service import VectorDBCleanupService
 
-        organization_identifier = UserContext.get_organization_identifier()
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=organization_identifier)
+    cleanup_service = VectorDBCleanupService()
+    result = cleanup_service.cleanup_index_ids(
+        index_ids=index_ids_history,
+        vector_db_instance_id=vector_db_instance_id,
+    )
 
-        vector_db = VectorDB(
-            tool=util,
-            adapter_instance_id=vector_db_instance_id,
-        )
-
-        for index_id in index_ids_history:
-            logger.debug(f"Deleting from VectorDB - index id: {index_id}")
-            try:
-                vector_db.delete(ref_doc_id=index_id)
-            except Exception as e:
-                # Log error and continue with the next index id
-                logger.error(f"Error deleting index: {index_id} - {e}")
-
-    except Exception as e:
-        logger.error(f"Error in delete_from_vector_db: {e}", exc_info=True)
+    if result["errors"]:
+        for error in result["errors"]:
+            logger.error(error)
 
 
 # Signal to perform vector DB cleanup on deletion

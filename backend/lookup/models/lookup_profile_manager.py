@@ -1,13 +1,18 @@
 """LookupProfileManager model for managing adapter profiles in Look-Up projects."""
 
+import logging
 import uuid
 
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
+from django.db.models.signals import pre_delete
+from django.dispatch import receiver
 from utils.models.base_model import BaseModel
 
 from lookup.exceptions import DefaultProfileError
+
+logger = logging.getLogger(__name__)
 
 
 class LookupProfileManager(BaseModel):
@@ -155,3 +160,67 @@ class LookupProfileManager(BaseModel):
             raise DefaultProfileError(
                 f"No default profile found for project {project.name}"
             )
+
+
+@receiver(pre_delete, sender=LookupProfileManager)
+def cleanup_profile_indexes(sender, instance, **kwargs):
+    """Clean up all vector DB indexes created with this profile before deletion.
+
+    This signal handler ensures that when a LookupProfileManager is deleted,
+    all associated vector DB indexes are cleaned up to prevent stale data
+    accumulation.
+
+    Args:
+        sender: The model class (LookupProfileManager)
+        instance: The profile instance being deleted
+        **kwargs: Additional arguments from the signal
+    """
+    # Import here to avoid circular imports
+    from lookup.services.vector_db_cleanup_service import VectorDBCleanupService
+
+    try:
+        # Get all index managers associated with this profile
+        index_managers = instance.index_managers.all()
+
+        if not index_managers.exists():
+            logger.debug(
+                f"No index managers found for profile {instance.profile_name}, "
+                "skipping cleanup"
+            )
+            return
+
+        cleanup_service = VectorDBCleanupService()
+        total_deleted = 0
+        total_failed = 0
+        errors = []
+
+        for index_manager in index_managers:
+            if index_manager.index_ids_history:
+                result = cleanup_service.cleanup_index_ids(
+                    index_ids=index_manager.index_ids_history,
+                    vector_db_instance_id=str(instance.vector_store.id),
+                )
+                total_deleted += result.get("deleted", 0)
+                total_failed += result.get("failed", 0)
+                if result.get("errors"):
+                    errors.extend(result["errors"])
+
+        if total_deleted > 0:
+            logger.info(
+                f"Profile deletion cleanup for '{instance.profile_name}': "
+                f"deleted {total_deleted} indexes from vector DB"
+            )
+
+        if total_failed > 0:
+            logger.warning(
+                f"Profile deletion cleanup for '{instance.profile_name}': "
+                f"failed to delete {total_failed} indexes. Errors: {errors}"
+            )
+
+    except Exception as e:
+        # Log error but don't block deletion - cleanup is best-effort
+        logger.error(
+            f"Error during profile deletion cleanup for '{instance.profile_name}': "
+            f"{str(e)}",
+            exc_info=True,
+        )
