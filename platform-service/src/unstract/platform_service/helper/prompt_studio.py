@@ -2,7 +2,7 @@ from typing import Any
 
 from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
-from unstract.platform_service.extensions import db
+from unstract.platform_service.extensions import safe_cursor
 from unstract.platform_service.utils import EnvManager
 
 DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract")
@@ -27,10 +27,9 @@ class PromptStudioRequestHelper:
             "SELECT prompt_registry_id, tool_spec, "
             "tool_metadata, tool_property FROM "
             f'"{DB_SCHEMA}".{DBTable.PROMPT_STUDIO_REGISTRY} x '
-            f"WHERE prompt_registry_id='{prompt_registry_id}'"
+            "WHERE prompt_registry_id=%s"
         )
-        cursor = db.execute_sql(query)
-        try:
+        with safe_cursor(query, (prompt_registry_id,)) as cursor:
             result_row = cursor.fetchone()
             if not result_row:
                 raise APIError(
@@ -40,8 +39,6 @@ class PromptStudioRequestHelper:
             columns = [desc[0] for desc in cursor.description]
             data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
             return data_dict
-        finally:
-            cursor.close()
 
     @staticmethod
     def get_llm_profile_instance_from_db(
@@ -60,10 +57,9 @@ class PromptStudioRequestHelper:
         query = (
             "SELECT * FROM "
             f'"{DB_SCHEMA}".{DBTable.LLM_PROFILE_MANAGER} x '
-            f"WHERE profile_id='{llm_profile_id}'"
+            "WHERE profile_id=%s"
         )
-        cursor = db.execute_sql(query)
-        try:
+        with safe_cursor(query, (llm_profile_id,)) as cursor:
             result_row = cursor.fetchone()
             if not result_row:
                 raise APIError(
@@ -73,5 +69,3 @@ class PromptStudioRequestHelper:
             columns = [desc[0] for desc in cursor.description]
             data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
             return data_dict
-        finally:
-            cursor.close()

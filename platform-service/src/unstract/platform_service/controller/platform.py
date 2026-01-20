@@ -11,7 +11,7 @@ from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
 from unstract.platform_service.env import Env
-from unstract.platform_service.extensions import db, get_redis_client
+from unstract.platform_service.extensions import db, get_redis_client, safe_cursor
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
@@ -68,14 +68,11 @@ def get_organization_from_bearer_token(token: str) -> tuple[int | None, str]:
 
 
 def execute_query(query: str, params: tuple = ()) -> Any:
-    cursor = db.execute_sql(query, params)
-    try:
+    with safe_cursor(query, params) as cursor:
         result_row = cursor.fetchone()
         if not result_row or len(result_row) == 0:
             return None
         return result_row[0]
-    finally:
-        cursor.close()
 
 
 def validate_bearer_token(token: str | None) -> bool:
@@ -86,27 +83,26 @@ def validate_bearer_token(token: str | None) -> bool:
     platform_key_table = DBTable.PLATFORM_KEY
     query = f"""
         SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
-        WHERE key = '{token}'
+        WHERE key = %s
     """
 
-    cursor = None
     try:
-        cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        if not result_row or len(result_row) == 0:
-            app.logger.error(f"Authentication failed. bearer token not found {token}")
-            return False
-        platform_key = str(result_row[1])
-        is_active = bool(result_row[2])
-        if not is_active:
-            app.logger.error(
-                f"Token is not active. Activate before using it. token {token}"
-            )
-            return False
-        if platform_key != token:
-            app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
-            return False
-        return True
+        with safe_cursor(query, (token,)) as cursor:
+            result_row = cursor.fetchone()
+            if not result_row or len(result_row) == 0:
+                app.logger.error(f"Authentication failed. bearer token not found {token}")
+                return False
+            platform_key = str(result_row[1])
+            is_active = bool(result_row[2])
+            if not is_active:
+                app.logger.error(
+                    f"Token is not active. Activate before using it. token {token}"
+                )
+                return False
+            if platform_key != token:
+                app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
+                return False
+            return True
     except Exception as e:
         app.logger.error(
             f"Error while validating bearer token: {e}",
@@ -114,9 +110,6 @@ def validate_bearer_token(token: str | None) -> bool:
             exc_info=True,
         )
         return False
-    finally:
-        if cursor is not None:
-            cursor.close()
 
 
 @platform_bp.route("/page-usage", methods=["POST"], endpoint="page_usage")

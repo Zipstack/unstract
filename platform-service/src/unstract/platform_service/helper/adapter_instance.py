@@ -2,7 +2,7 @@ from typing import Any
 
 from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
-from unstract.platform_service.extensions import db
+from unstract.platform_service.extensions import safe_cursor
 from unstract.platform_service.utils import EnvManager
 
 DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA", "unstract")
@@ -27,11 +27,9 @@ class AdapterInstanceRequestHelper:
         query = (
             "SELECT id, adapter_id, adapter_name, adapter_type, adapter_metadata_b"
             f' FROM "{DB_SCHEMA}".{DBTable.ADAPTER_INSTANCE} x '
-            f"WHERE id='{adapter_instance_id}' and "
-            f"organization_id='{organization_uid}'"
+            f"WHERE id=%s and organization_id=%s"
         )
-        cursor = db.execute_sql(query)
-        try:
+        with safe_cursor(query, (adapter_instance_id, organization_uid)) as cursor:
             result_row = cursor.fetchone()
             if not result_row:
                 raise APIError(
@@ -40,5 +38,3 @@ class AdapterInstanceRequestHelper:
             columns = [desc[0] for desc in cursor.description]
             data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
             return data_dict
-        finally:
-            cursor.close()

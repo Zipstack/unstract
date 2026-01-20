@@ -54,7 +54,7 @@ Demonstrates and verifies resource leak fixes by comparing OLD (leaky) vs NEW (f
 | `TestRealWorldScenario` | Simulates 1000 requests with 30% failure rate |
 
 **Sample Output:**
-```
+```text
 [OLD CODE] Open cursors after 100 failed requests: 100  ❌ LEAKED
 [NEW CODE] Open cursors after 100 failed requests: 0    ✅ NO LEAK
 

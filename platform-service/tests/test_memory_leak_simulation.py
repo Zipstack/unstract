@@ -10,13 +10,14 @@ Run with: pytest tests/test_memory_leak_simulation.py -v -s
 
 import gc
 import tracemalloc
+from typing import ClassVar
 from unittest.mock import MagicMock
 
 
 class FakeCursor:
     """Simulates a database cursor that tracks if it was closed."""
 
-    _open_cursors: list["FakeCursor"] = []
+    _open_cursors: ClassVar[list["FakeCursor"]] = []
 
     def __init__(self, result: tuple | None = None, raise_on_fetch: bool = False):
         self.result = result
