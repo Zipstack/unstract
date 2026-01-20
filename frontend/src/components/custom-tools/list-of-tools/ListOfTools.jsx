@@ -1,5 +1,5 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Space } from "antd";
 import PropTypes from "prop-types";
 
@@ -367,6 +367,17 @@ function ListOfTools() {
     </div>
   );
 
+  const CustomButtonsComponent = useCallback(
+    () => (
+      <DefaultCustomButtons
+        setOpenImportTool={setOpenImportTool}
+        isImportLoading={isImportLoading}
+        handleNewProjectBtnClick={handleNewProjectBtnClick}
+      />
+    ),
+    [isImportLoading]
+  );
+
   return (
     <>
       <ToolNavBar
@@ -375,13 +386,7 @@ function ListOfTools() {
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={() => (
-          <DefaultCustomButtons
-            setOpenImportTool={setOpenImportTool}
-            isImportLoading={isImportLoading}
-            handleNewProjectBtnClick={handleNewProjectBtnClick}
-          />
-        )}
+        CustomButtons={CustomButtonsComponent}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>
