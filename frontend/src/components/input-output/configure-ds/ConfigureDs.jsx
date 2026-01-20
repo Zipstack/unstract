@@ -56,6 +56,14 @@ function ConfigureDs({
     metadata && (metadata.access_token || (metadata.provider && metadata.uid));
   const isExistingConnector = Boolean(editItemId || hasOAuthCredentials);
 
+  // Determine if OAuth authentication method is selected
+  const isOAuthMethodSelected = () => {
+    if (!oAuthProvider?.length) return false;
+    // OAuth is selected when Client Credentials fields are NOT present
+    // Client Credentials requires client_id and client_secret
+    return !formData?.client_id && !formData?.client_secret;
+  };
+
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
     if (!oAuthProvider?.length) {
@@ -360,15 +368,6 @@ function ConfigureDs({
 
   return (
     <div className="config-layout">
-      {!isLoading && oAuthProvider?.length > 0 && (
-        <OAuthDs
-          oAuthProvider={oAuthProvider}
-          setCacheKey={handleSetCacheKey}
-          setStatus={handleSetStatus}
-          selectedSourceId={selectedSourceId}
-          isExistingConnector={isExistingConnector}
-        />
-      )}
       <RjsfFormLayout
         schema={spec}
         formData={formData}
@@ -378,6 +377,16 @@ function ConfigureDs({
         formRef={formRef}
         isStateUpdateRequired={true}
       >
+        {!isLoading && oAuthProvider?.length > 0 && (
+          <OAuthDs
+            oAuthProvider={oAuthProvider}
+            setCacheKey={handleSetCacheKey}
+            setStatus={handleSetStatus}
+            selectedSourceId={selectedSourceId}
+            isExistingConnector={isExistingConnector}
+            disabled={!isOAuthMethodSelected()}
+          />
+        )}
         <Row className="config-row">
           <Col span={12} className="config-col1">
             <CustomButton

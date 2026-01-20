@@ -71,6 +71,7 @@ class SharePointFileSystem(AbstractFileSystem):
         refresh_token: str | None = None,
         drive_id: str | None = None,
         is_personal: bool = False,
+        user_email: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -82,6 +83,7 @@ class SharePointFileSystem(AbstractFileSystem):
         self.refresh_token = refresh_token
         self.drive_id = drive_id
         self.is_personal = is_personal
+        self.user_email = user_email
 
         # Lazy initialization
         self._ctx = None
@@ -100,8 +102,7 @@ class SharePointFileSystem(AbstractFileSystem):
 
                     if self.client_secret:
                         # Client credentials flow (app-only)
-                        self._ctx = GraphClient.with_client_credentials(
-                            self.tenant_id,
+                        self._ctx = GraphClient(tenant=self.tenant_id).with_client_secret(
                             self.client_id,
                             self.client_secret,
                         )
@@ -134,21 +135,46 @@ class SharePointFileSystem(AbstractFileSystem):
                 self._drive = ctx.drives.get_by_id(self.drive_id)
             elif self.site_url and "sharepoint.com" in self.site_url.lower():
                 # SharePoint site - get default document library
-                from urllib.parse import urlparse
-
-                parsed = urlparse(self.site_url)
-                # Extract site path from URL like
-                # https://tenant.sharepoint.com/sites/sitename
-                site_path = parsed.path.rstrip("/")
-                if site_path:
-                    self._drive = ctx.sites.get_by_path(site_path).drive
-                else:
-                    self._drive = ctx.sites.root.drive
+                self._drive = self._get_sharepoint_site_drive(ctx)
             else:
-                # OneDrive (Personal or Business) - use /me/drive
-                self._drive = ctx.me.drive
+                # OneDrive - choose method based on auth type
+                self._drive = self._get_onedrive_drive(ctx)
 
         return self._drive
+
+    def _get_sharepoint_site_drive(self, ctx: Any) -> Any:
+        """Get drive from SharePoint site URL."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.site_url)
+        # Extract site path from URL like
+        # https://tenant.sharepoint.com/sites/sitename
+        site_path = parsed.path.rstrip("/")
+        if site_path:
+            return ctx.sites.get_by_path(site_path).drive
+        return ctx.sites.root.drive
+
+    def _get_onedrive_drive(self, ctx: Any) -> Any:
+        """Get OneDrive drive based on authentication method."""
+        # OAuth (delegated auth) - can use /me
+        if self.access_token:
+            return ctx.me.drive
+
+        # Client credentials (app-only) - must use user email
+        if self.client_secret:
+            if not self.user_email:
+                raise ConnectorError(
+                    "OneDrive with client credentials requires 'user_email' parameter. "
+                    "Either provide user_email (e.g., user@company.onmicrosoft.com) "
+                    "or use OAuth with access_token instead.",
+                    treat_as_user_message=True,
+                )
+            return ctx.users[self.user_email].drive
+
+        raise ConnectorError(
+            "Either client_secret or access_token must be provided",
+            treat_as_user_message=True,
+        )
 
     def _normalize_path(self, path: str) -> str:
         """Normalize path for SharePoint API."""
@@ -404,8 +430,21 @@ class SharePointFS(UnstractFileSystem):
         self._access_token = settings.get("access_token", "")
         self._refresh_token = settings.get("refresh_token", "")
 
+        # User email (for OneDrive with client credentials)
+        self._user_email = settings.get("user_email", "")
+
         # Account type (for OneDrive Personal)
         self._is_personal = settings.get("is_personal", False)
+
+        # Validate authentication method
+        has_oauth = bool(self._access_token and self._refresh_token)
+        has_client_creds = bool(self._client_id and self._client_secret)
+
+        if not has_oauth and not has_client_creds:
+            raise ValueError(
+                "Authentication required: Either provide OAuth tokens (access_token, refresh_token) "
+                "or Client Credentials (client_id, client_secret)."
+            )
 
         # Lazy initialization
         self._fs: SharePointFileSystem | None = None
@@ -447,7 +486,7 @@ class SharePointFS(UnstractFileSystem):
 
     @staticmethod
     def requires_oauth() -> bool:
-        return False  # Supports both OAuth and client credentials
+        return True  # Enable OAuth button - also supports client credentials via oneOf
 
     @staticmethod
     def python_social_auth_backend() -> str:
@@ -486,6 +525,7 @@ class SharePointFS(UnstractFileSystem):
                             refresh_token=self._refresh_token or None,
                             drive_id=self._drive_id or None,
                             is_personal=self._is_personal,
+                            user_email=self._user_email or None,
                         )
                         logger.info("SharePoint filesystem initialized")
                     except Exception as e:
@@ -528,7 +568,7 @@ class SharePointFS(UnstractFileSystem):
                 value = metadata[field]
                 if isinstance(value, str):
                     # Remove quotes and version info from eTags
-                    return value.strip('"').split(",")[0]
+                    return value.split(",")[0].strip('"')
                 return str(value)
 
         logger.warning(

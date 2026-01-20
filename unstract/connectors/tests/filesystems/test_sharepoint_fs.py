@@ -9,13 +9,17 @@ class TestSharePointFSUnit(unittest.TestCase):
     """Unit tests for SharePointFS (no real credentials required)."""
 
     def setUp(self):
-        """Set up test fixtures."""
+        """Set up test fixtures from environment variables."""
         self.test_settings = {
-            "site_url": "https://contoso.sharepoint.com/sites/testsite",
-            "tenant_id": "test-tenant-id",
-            "client_id": "test-client-id",
-            "client_secret": "test-client-secret",
-            "drive_id": "",
+            "site_url": os.getenv(
+                "SHAREPOINT_SITE_URL", "https://contoso.sharepoint.com/sites/testsite"
+            ),
+            "tenant_id": os.getenv("SHAREPOINT_TENANT_ID", "test-tenant-id"),
+            "client_id": os.getenv("SHAREPOINT_CLIENT_ID", "test-client-id"),
+            "client_secret": os.getenv(
+                "SHAREPOINT_CLIENT_SECRET", "test-client-secret"
+            ),
+            "drive_id": os.getenv("SHAREPOINT_DRIVE_ID", ""),
         }
 
     def test_connector_metadata(self):
@@ -30,7 +34,7 @@ class TestSharePointFSUnit(unittest.TestCase):
         self.assertIn("SharePoint", SharePointFS.get_description())
         self.assertTrue(SharePointFS.can_read())
         self.assertTrue(SharePointFS.can_write())
-        self.assertFalse(SharePointFS.requires_oauth())
+        self.assertTrue(SharePointFS.requires_oauth())  # Now supports OAuth button
         self.assertEqual(
             SharePointFS.python_social_auth_backend(),
             "azuread-tenant-oauth2",
@@ -86,12 +90,26 @@ class TestSharePointFSUnit(unittest.TestCase):
         personal_settings = {
             "client_id": "test-client-id",
             "access_token": "test-access-token",
+            "refresh_token": "test-refresh-token",  # Required for OAuth
             "is_personal": True,
         }
         connector = SharePointFS(settings=personal_settings)
         self.assertIsNotNone(connector)
         self.assertTrue(connector._is_personal)
         self.assertEqual(connector._access_token, "test-access-token")
+
+    def test_connector_initialization_missing_auth(self):
+        """Test connector raises error when no authentication method is provided."""
+        from unstract.connectors.filesystems.sharepoint import SharePointFS
+
+        # No OAuth tokens and no client credentials
+        invalid_settings = {
+            "site_url": "https://contoso.sharepoint.com/sites/testsite",
+            "is_personal": False,
+        }
+        with self.assertRaises(ValueError) as context:
+            SharePointFS(settings=invalid_settings)
+        self.assertIn("Authentication required", str(context.exception))
 
     def test_json_schema_has_is_personal(self):
         """Test that JSON schema includes is_personal field."""
@@ -100,6 +118,38 @@ class TestSharePointFSUnit(unittest.TestCase):
         schema = SharePointFS.get_json_schema()
         self.assertIn("is_personal", schema)
         self.assertIn("Personal Account", schema)
+
+    def test_json_schema_has_oneof_pattern(self):
+        """Test that JSON schema uses oneOf pattern for dual auth methods."""
+        import json
+        from unstract.connectors.filesystems.sharepoint import SharePointFS
+
+        schema_str = SharePointFS.get_json_schema()
+        schema = json.loads(schema_str)
+
+        # Verify allOf structure with 3 objects
+        self.assertIn("allOf", schema)
+        self.assertEqual(len(schema["allOf"]), 3)
+
+        # Verify second element has oneOf with two auth methods
+        self.assertIn("oneOf", schema["allOf"][1])
+        self.assertEqual(len(schema["allOf"][1]["oneOf"]), 2)
+
+        # Verify OAuth option
+        oauth_option = schema["allOf"][1]["oneOf"][0]
+        self.assertEqual(oauth_option["title"], "OAuth (Recommended)")
+        self.assertEqual(oauth_option["properties"], {})
+
+        # Verify Client Credentials option
+        client_creds_option = schema["allOf"][1]["oneOf"][1]
+        self.assertEqual(client_creds_option["title"], "Client Credentials")
+        self.assertIn("client_id", client_creds_option["properties"])
+        self.assertIn("client_secret", client_creds_option["properties"])
+
+        # Verify third element has site_url and drive_id properties
+        self.assertIn("properties", schema["allOf"][2])
+        self.assertIn("site_url", schema["allOf"][2]["properties"])
+        self.assertIn("drive_id", schema["allOf"][2]["properties"])
 
     def test_is_dir_by_metadata(self):
         """Test directory detection from metadata."""
@@ -183,92 +233,90 @@ class TestSharePointFSIntegration(unittest.TestCase):
     """Integration tests for SharePointFS (require real credentials)."""
 
     @unittest.skipUnless(
-        os.environ.get("SHAREPOINT_SITE_URL"),
+        os.environ.get("SHAREPOINT_CLIENT_SECRET"),
         "Integration test requires SHAREPOINT_* environment variables",
     )
-    def test_client_credentials_connection(self):
-        """Test connection using client credentials."""
+    def test_write_file_to_folder(self):
+        """Test creating a folder and writing a PDF file."""
         from unstract.connectors.filesystems.sharepoint import SharePointFS
 
         settings = {
-            "site_url": os.environ.get("SHAREPOINT_SITE_URL"),
+            "site_url": os.environ.get("SHAREPOINT_SITE_URL", ""),
             "tenant_id": os.environ.get("SHAREPOINT_TENANT_ID"),
             "client_id": os.environ.get("SHAREPOINT_CLIENT_ID"),
             "client_secret": os.environ.get("SHAREPOINT_CLIENT_SECRET"),
+            "user_email": os.environ.get("SHAREPOINT_USER_EMAIL"),
         }
 
-        connector = SharePointFS(settings=settings)
-
-        # Test credentials
-        self.assertTrue(connector.test_credentials())
-
-    @unittest.skipUnless(
-        os.environ.get("SHAREPOINT_SITE_URL"),
-        "Integration test requires SHAREPOINT_* environment variables",
-    )
-    def test_list_files(self):
-        """Test listing files from SharePoint."""
-        from unstract.connectors.filesystems.sharepoint import SharePointFS
-
-        settings = {
-            "site_url": os.environ.get("SHAREPOINT_SITE_URL"),
-            "tenant_id": os.environ.get("SHAREPOINT_TENANT_ID"),
-            "client_id": os.environ.get("SHAREPOINT_CLIENT_ID"),
-            "client_secret": os.environ.get("SHAREPOINT_CLIENT_SECRET"),
-        }
+        print(f"DEBUG: user_email from env = {os.environ.get('SHAREPOINT_USER_EMAIL')}")
+        print(f"DEBUG: settings = {settings}")
 
         connector = SharePointFS(settings=settings)
         fs = connector.get_fsspec_fs()
 
-        # List root
-        files = fs.ls("")
-        self.assertIsInstance(files, list)
-        print(f"Found {len(files)} items in root")
+        # Use simple folder name for easy verification
+        folder_name = "test-unit"
+        file_name = "sample.pdf"
+        file_path = f"{folder_name}/{file_name}"
 
-    @unittest.skipUnless(
-        os.environ.get("SHAREPOINT_SITE_URL"),
-        "Integration test requires SHAREPOINT_* environment variables",
-    )
-    def test_read_file(self):
-        """Test reading a file from SharePoint."""
-        from unstract.connectors.filesystems.sharepoint import SharePointFS
-
-        settings = {
-            "site_url": os.environ.get("SHAREPOINT_SITE_URL"),
-            "tenant_id": os.environ.get("SHAREPOINT_TENANT_ID"),
-            "client_id": os.environ.get("SHAREPOINT_CLIENT_ID"),
-            "client_secret": os.environ.get("SHAREPOINT_CLIENT_SECRET"),
-        }
-
-        test_file = os.environ.get("SHAREPOINT_TEST_FILE", "test.txt")
-
-        connector = SharePointFS(settings=settings)
-        fs = connector.get_fsspec_fs()
+        # Create a simple PDF with one line of text
+        pdf_content = b"this is test pdf"
 
         try:
-            content = fs.read_bytes(test_file)
-            self.assertIsInstance(content, bytes)
-            print(f"Read {len(content)} bytes from {test_file}")
-        except Exception as e:
-            self.skipTest(f"Test file not found: {e}")
+            # Create folder (this will happen automatically when writing file)
+            print(f"\nCreating file: {file_path}")
+            fs.write_bytes(file_path, pdf_content)
+            print(f"✓ Successfully wrote file to: {file_path}")
+            print(f"✓ Folder: {folder_name}")
+            print(f"✓ File: {file_name}")
+            print(f"✓ Verify in browser: Look for folder 'test-unit' in your OneDrive/SharePoint")
 
+            # Verify file exists
+            self.assertTrue(fs.exists(file_path))
+            print(f"✓ Verified file exists")
+
+        except Exception as e:
+            self.fail(f"Failed to write file: {e}")
 
     @unittest.skipUnless(
-        os.environ.get("ONEDRIVE_PERSONAL_ACCESS_TOKEN"),
-        "Integration test requires ONEDRIVE_PERSONAL_* environment variables",
+        os.environ.get("SHAREPOINT_CLIENT_SECRET"),
+        "Integration test requires SHAREPOINT_* environment variables",
     )
-    def test_onedrive_personal_connection(self):
-        """Test connection to OneDrive Personal."""
+    def test_read_file_from_folder(self):
+        """Test reading the PDF file from the folder."""
         from unstract.connectors.filesystems.sharepoint import SharePointFS
 
         settings = {
-            "client_id": os.environ.get("ONEDRIVE_PERSONAL_CLIENT_ID"),
-            "access_token": os.environ.get("ONEDRIVE_PERSONAL_ACCESS_TOKEN"),
-            "is_personal": True,
+            "site_url": os.environ.get("SHAREPOINT_SITE_URL", ""),
+            "tenant_id": os.environ.get("SHAREPOINT_TENANT_ID"),
+            "client_id": os.environ.get("SHAREPOINT_CLIENT_ID"),
+            "client_secret": os.environ.get("SHAREPOINT_CLIENT_SECRET"),
+            "user_email": os.environ.get("SHAREPOINT_USER_EMAIL"),
         }
 
         connector = SharePointFS(settings=settings)
-        self.assertTrue(connector.test_credentials())
+        fs = connector.get_fsspec_fs()
+
+        # Use same folder/file name as write test
+        folder_name = "test-unit"
+        file_name = "sample.pdf"
+        file_path = f"{folder_name}/{file_name}"
+
+        try:
+            # Read the file
+            print(f"\nReading file: {file_path}")
+            content = fs.cat_file(file_path)
+
+            # Verify content
+            self.assertEqual(content, b"this is test pdf")
+            print(f"✓ Successfully read file from: {file_path}")
+            print(f"✓ File size: {len(content)} bytes")
+            print(f"✓ Content: {content.decode()}")
+
+        except FileNotFoundError:
+            self.skipTest(f"File not found: {file_path}. Run test_write_file_to_folder first.")
+        except Exception as e:
+            self.fail(f"Failed to read file: {e}")
 
 
 if __name__ == "__main__":

@@ -10,6 +10,7 @@ import { ListOfSources } from "../list-of-sources/ListOfSources";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import "./AddSourceModal.css";
 
 function AddSourceModal({
   open,
@@ -184,6 +185,7 @@ function AddSourceModal({
       centered
       footer={null}
       closable={true}
+      className="add-source-modal"
     >
       {selectedSourceId ? (
         <AddSource

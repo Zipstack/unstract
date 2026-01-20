@@ -20,6 +20,7 @@ The following filesystems are supported
 - Unstract Cloud Storage
 - Box
 - Dropbox (issues exist around file discovery/listing)
+- SharePoint / OneDrive
 - HTTP(S)
 
 ## Databases
@@ -54,4 +55,27 @@ If the [GCSHelper](/src/unstract/connectors/gcs_helper.py) is used, the followin
 
 ### Running tests
 
-TODO: Use a test framework and document way to run tests
+#### Connector-Specific Testing
+For detailed setup and integration testing:
+1. Copy `sample.env` to `.env` in the connectors directory
+2. Configure connector credentials in `.env`
+
+#### Running Unit Tests
+
+Tests should be run from the **main `unstract` repository directory** to ensure all dependencies are available.
+
+```bash
+# From the main unstract directory
+cd /path/to/unstract
+
+source .venv/bin/activate
+
+# Examples of SharePoint connector
+uv run pytest unstract/connectors/tests/filesystems/test_sharepoint_fs.py::TestSharePointFSUnit -v
+uv run pytest unstract/connectors/tests/filesystems/test_sharepoint_fs.py::TestSharePointFSUnit::test_connector_metadata -v
+
+# Examples of MariaDB connector
+uv run pytest unstract/connectors/tests/databases/test_mariadb.py -v
+uv run pytest unstract/connectors/tests/databases/test_mariadb.py::TestMariaDB::test_ssl_config_from_environment -v
+```
+**Note:** Unit tests don't require credentials. Integration tests (if present) need a configured `.env` file with real credentials.

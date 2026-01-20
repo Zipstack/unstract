@@ -1,0 +1,25 @@
+/* Styles for MicrosoftOAuthButton */
+
+.microsoft-oauth-layout {
+    margin-bottom: 20px;
+}
+
+/* Override library's black background to match UI theme */
+.microsoft-oauth-layout button {
+  background-color: #0958d9 !important; /* Ant Design primary-7 blue */
+}
+
+.microsoft-oauth-layout button:hover {
+  background-color: #1677ff !important; /* Ant Design primary-6 blue */
+}
+
+.microsoft-oauth-layout button:active {
+  background-color: #003eb3 !important; /* Ant Design primary-8 blue */
+}
+
+.microsoft-oauth-layout button:disabled {
+  background-color: #d9d9d9 !important;
+  color: rgba(0, 0, 0, 0.25) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6;
+}
