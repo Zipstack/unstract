@@ -147,14 +147,14 @@ class VariableReplacementHelper:
                 variable=path_str, reason=error_msg, is_ide=is_ide
             ) from e
 
-        # Format the value and replace in prompt
-        formatted_value = VariableReplacementHelper.handle_json_and_str_types(value)
+        # Replace in prompt - let replace_generic_string_value handle formatting
+        # (it only applies json.dumps for non-string values)
         variable_marker_string = "".join(["{{", variable, "}}"])
 
         replaced_prompt = VariableReplacementHelper.replace_generic_string_value(
             prompt=prompt,
             variable=variable_marker_string,
-            value=formatted_value,
+            value=value,
         )
 
         return replaced_prompt
