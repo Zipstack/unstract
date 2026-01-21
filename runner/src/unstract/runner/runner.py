@@ -304,6 +304,13 @@ class UnstractRunner:
             return tool_cmd
 
         # Shell script components
+        # SIGTERM trap to log signal receipt but continue execution
+        sigterm_trap = (
+            "trap '"
+            'echo "[$(date -Iseconds)] SIGTERM received in tool shell '
+            'but ignoring - continuing" >&2'
+            "' TERM"
+        )
         mkdir_cmd = f"mkdir -p {shared_log_dir}"
         run_tool_fn = (
             "run_tool() { "
@@ -316,8 +323,8 @@ class UnstractRunner:
         )
         execute_cmd = f"run_tool > {shared_log_file} 2>&1"
 
-        # Combine all commands
-        shell_script = f"{mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
+        # Combine all commands with SIGTERM trap first
+        shell_script = f"{sigterm_trap}; {mkdir_cmd} && {run_tool_fn}; {execute_cmd}"
         return shell_script
 
     def _handle_tool_execution_status(
