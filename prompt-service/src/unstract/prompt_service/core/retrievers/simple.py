@@ -9,9 +9,6 @@ from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 
 class SimpleRetriever(BaseRetriever):
     def retrieve(self) -> set[str]:
-        app.logger.info(
-            f"Retrieving context for prompt: {self.prompt} with doc_id: {self.doc_id}"
-        )
         context = self._simple_retrieval()
         if not context:
             # UN-1288 For Pinecone, we are seeing an inconsistent case where
@@ -21,6 +18,10 @@ class SimpleRetriever(BaseRetriever):
             # the following sleep is added
             # Note: This will not fix the issue. Since this issue is inconsistent
             # and not reproducible easily, this is just a safety net.
+            app.logger.info(
+                f"[doc_id: {self.doc_id}] Could not retrieve context, "
+                "retrying after 2 secs to handle issues due to lag"
+            )
             time.sleep(2)
             context = self._simple_retrieval()
         return context
