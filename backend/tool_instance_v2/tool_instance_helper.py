@@ -26,9 +26,9 @@ from unstract.tool_registry.tool_utils import ToolUtils
 try:
     from pluggable_apps.agentic_studio_registry.models import AgenticStudioRegistry
 
-    AGENTIC_REGISTRY_AVAILABLE = True
+    IS_AGENTIC_REGISTRY_AVAILABLE = True
 except ImportError:
-    AGENTIC_REGISTRY_AVAILABLE = False
+    IS_AGENTIC_REGISTRY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -539,7 +539,7 @@ class ToolInstanceHelper:
             return
 
         # Try to find the tool in AgenticStudioRegistry if available
-        if AGENTIC_REGISTRY_AVAILABLE:
+        if IS_AGENTIC_REGISTRY_AVAILABLE:
             try:
                 agentic_registry_tool = AgenticStudioRegistry.objects.get(pk=tool_uid)
                 if (
