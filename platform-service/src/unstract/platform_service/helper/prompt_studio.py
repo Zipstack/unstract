@@ -58,19 +58,18 @@ class PromptStudioRequestHelper:
             "SELECT registry_id, tool_spec, "
             "tool_metadata, tool_property FROM "
             f'"{DB_SCHEMA}".{DBTable.AGENTIC_STUDIO_REGISTRY} x '
-            f"WHERE registry_id='{agentic_registry_id}'"
+            "WHERE registry_id=%s"
         )
-        cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        if not result_row:
-            raise APIError(
-                message=f"Agentic studio project with UUID '{agentic_registry_id}' is not found.",
-                code=404,
-            )
-        columns = [desc[0] for desc in cursor.description]
-        data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
-        cursor.close()
-        return data_dict
+        with safe_cursor(query, (agentic_registry_id,)) as cursor:
+            result_row = cursor.fetchone()
+            if not result_row:
+                raise APIError(
+                    message=f"Agentic studio project with UUID '{agentic_registry_id}' is not found.",
+                    code=404,
+                )
+            columns = [desc[0] for desc in cursor.description]
+            data_dict: dict[str, Any] = dict(zip(columns, result_row, strict=False))
+            return data_dict
 
     @staticmethod
     def get_llm_profile_instance_from_db(
