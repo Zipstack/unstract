@@ -5,28 +5,6 @@ from typing import Any
 from json_repair import repair_json
 
 
-def _might_have_multiple_objects(json_str: str) -> bool:
-    """Heuristic: check if string might have comma-separated objects.
-
-    Returns True if the string pattern suggests multiple JSON objects
-    like: {...},{...},{...}
-
-    This avoids unnecessary double parsing for single objects/arrays.
-    """
-    stripped = json_str.strip()
-
-    # Single object - only needs wrap if it has },{ pattern
-    if stripped.startswith("{") and stripped.endswith("}"):
-        return "},{" in stripped
-
-    # Already an array - no wrap needed
-    if stripped.startswith("[") and stripped.endswith("]"):
-        return False
-
-    # Unknown format, try wrap to be safe
-    return True
-
-
 def repair_json_with_best_structure(json_str: str) -> Any:
     """Intelligently repair JSON string using the best parsing strategy.
 
@@ -34,7 +12,7 @@ def repair_json_with_best_structure(json_str: str) -> Any:
     1. As-is (could be valid object, array, or partial JSON)
     2. With array wrapping (useful for comma-separated objects)
 
-    Optimized to skip double parsing when heuristics indicate it's unnecessary.
+    It chooses the result based on structural integrity rather than string length.
 
     Args:
         json_str: The JSON string to repair
@@ -45,13 +23,7 @@ def repair_json_with_best_structure(json_str: str) -> Any:
     # Attempt parsing as-is
     parsed_as_is = repair_json(json_str=json_str, return_objects=True, ensure_ascii=False)
 
-    # Early exit: skip double parsing if as-is is valid and doesn't need wrap
-    if isinstance(parsed_as_is, (dict, list)) and not _might_have_multiple_objects(
-        json_str
-    ):
-        return parsed_as_is
-
-    # Only try array wrap when heuristic suggests it's needed
+    # Attempt parsing with array wrap
     parsed_with_wrap = repair_json(
         json_str="[" + json_str, return_objects=True, ensure_ascii=False
     )
