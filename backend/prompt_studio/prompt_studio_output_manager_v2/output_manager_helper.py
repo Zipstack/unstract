@@ -27,17 +27,41 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 logger = logging.getLogger(__name__)
 
 
+def _build_prompt_lookup_map(
+    prompts: list[ToolStudioPrompt],
+) -> dict[str, str]:
+    """Build mapping of prompt_key to lookup_project_id for prompts with lookups.
+
+    Args:
+        prompts: List of ToolStudioPrompt instances
+
+    Returns:
+        Dict mapping prompt_key to lookup_project_id (as string) for prompts
+        that have a lookup_project assigned.
+    """
+    prompt_lookup_map: dict[str, str] = {}
+    for prompt in prompts:
+        if prompt.lookup_project_id:
+            prompt_lookup_map[prompt.prompt_key] = str(prompt.lookup_project_id)
+    return prompt_lookup_map
+
+
 def _try_lookup_enrichment(
     tool_id: str,
     extracted_data: dict[str, Any],
     run_id: str | None = None,
     session_id: str | None = None,
     doc_name: str | None = None,
+    prompt_lookup_map: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Attempt Lookup enrichment if available.
 
     This function safely attempts to enrich extracted data using linked
     Lookup projects. Returns empty dict if Lookup app is not available.
+
+    Supports prompt-level lookups: if a field has a specific lookup assigned
+    via prompt_lookup_map, only that lookup will enrich it. Fields without
+    specific lookups will use all project-level linked lookups.
 
     Args:
         tool_id: Prompt Studio project (CustomTool) UUID
@@ -45,6 +69,8 @@ def _try_lookup_enrichment(
         run_id: Optional execution run ID for tracking
         session_id: Optional WebSocket session ID for real-time log emission
         doc_name: Optional document name being processed
+        prompt_lookup_map: Optional mapping of field names (prompt_key) to
+            specific lookup_project_id for prompt-level lookup support
 
     Returns:
         Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
@@ -67,6 +93,7 @@ def _try_lookup_enrichment(
             session_id=session_id,
             doc_name=doc_name,
             organization_id=organization_id,
+            prompt_lookup_map=prompt_lookup_map,
         )
     except ImportError:
         # Lookup app not installed
@@ -283,12 +310,19 @@ class OutputManagerHelper:
             # Get session_id for WebSocket log emission
             session_id = StateStore.get(Common.LOG_EVENTS_ID)
             doc_name = metadata.get("file_name") or document_manager.document_name
+
+            # Build prompt-level lookup mapping for per-prompt lookup support
+            prompt_lookup_map = _build_prompt_lookup_map(prompts)
+            if prompt_lookup_map:
+                logger.info(f"Using prompt-level lookups: {prompt_lookup_map}")
+
             lookup_result = _try_lookup_enrichment(
                 tool_id=tool_id_str,
                 extracted_data=extracted_data_for_lookup,
                 run_id=run_id,
                 session_id=session_id,
                 doc_name=doc_name,
+                prompt_lookup_map=prompt_lookup_map,
             )
             logger.info(f"Lookup enrichment result: {lookup_result}")
 

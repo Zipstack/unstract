@@ -38,6 +38,7 @@ class LookupIntegrationService:
         file_execution_id: str | None = None,
         workflow_execution_id: str | None = None,
         organization_id: str | None = None,
+        prompt_lookup_map: dict[str, str] | None = None,
     ) -> dict[str, Any]:
         """Execute Lookup enrichment if PS project has linked Lookups.
 
@@ -48,6 +49,7 @@ class LookupIntegrationService:
         - Full audit logging
         - WebSocket log emission for Prompt Studio UI
         - ExecutionLog persistence for Nav bar display (workflow context)
+        - Prompt-level lookup support: specific lookups per field
 
         Args:
             prompt_studio_project_id: UUID of Prompt Studio project
@@ -59,6 +61,10 @@ class LookupIntegrationService:
             file_execution_id: File execution ID for Nav bar logs
             workflow_execution_id: Workflow execution ID for Nav bar logs
             organization_id: Organization ID for multi-tenancy
+            prompt_lookup_map: Optional mapping of field names (prompt_key) to
+                specific lookup_project_id. Fields with a specific lookup will
+                ONLY be enriched by that lookup. Fields without a specific
+                lookup will use all project-level linked lookups.
 
         Returns:
             Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
@@ -74,6 +80,7 @@ class LookupIntegrationService:
             return {}
 
         timeout = timeout or LOOKUP_ENRICHMENT_TIMEOUT
+        prompt_lookup_map = prompt_lookup_map or {}
 
         try:
             return LookupIntegrationService._execute_enrichment(
@@ -86,6 +93,7 @@ class LookupIntegrationService:
                 file_execution_id=file_execution_id,
                 workflow_execution_id=workflow_execution_id,
                 organization_id=organization_id,
+                prompt_lookup_map=prompt_lookup_map,
             )
         except FuturesTimeoutError:
             logger.warning(
@@ -128,8 +136,14 @@ class LookupIntegrationService:
         file_execution_id: str | None = None,
         workflow_execution_id: str | None = None,
         organization_id: str | None = None,
+        prompt_lookup_map: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Internal method to execute enrichment with timeout."""
+        """Internal method to execute enrichment with timeout.
+
+        Args:
+            prompt_lookup_map: Mapping of field names to specific lookup project IDs.
+                Fields in this map will only be enriched by their specific lookup.
+        """
         from lookup.models import PromptStudioLookupLink
         from lookup.services.log_emitter import LookupLogEmitter
 
@@ -193,6 +207,7 @@ class LookupIntegrationService:
                 prompt_studio_project_id=prompt_studio_project_id,
                 log_emitter=log_emitter,
                 organization_id=organization_id,
+                prompt_lookup_map=prompt_lookup_map or {},
             )
             result = future.result(timeout=timeout)
 
@@ -218,8 +233,23 @@ class LookupIntegrationService:
         prompt_studio_project_id: str,
         log_emitter: Any = None,
         organization_id: str | None = None,
+        prompt_lookup_map: dict[str, str] | None = None,
     ) -> dict[str, Any]:
-        """Execute the lookup orchestrator for all linked projects."""
+        """Execute the lookup orchestrator for all linked projects.
+
+        Supports prompt-level lookups: if a field has a specific lookup assigned
+        via prompt_lookup_map, only that lookup will enrich it. Fields without
+        specific lookups will use all project-level linked lookups.
+
+        Args:
+            lookup_projects: List of LookupProject instances linked at project level
+            input_data: Dict of extracted field values
+            execution_id: Execution run ID for tracking
+            prompt_studio_project_id: UUID of Prompt Studio project
+            log_emitter: Optional log emitter for WebSocket logs
+            organization_id: Organization ID for multi-tenancy
+            prompt_lookup_map: Mapping of field names to specific lookup project IDs
+        """
         from lookup.integrations.file_storage_client import FileStorageClient
         from lookup.integrations.unstract_llm_client import UnstractLLMClient
         from lookup.models import LookupProfileManager
@@ -291,17 +321,80 @@ class LookupIntegrationService:
                 executor=executor, merger=merger, log_emitter=log_emitter
             )
 
-            # Execute lookups with audit context
-            result = orchestrator.execute_lookups(
-                input_data=input_data,
-                lookup_projects=lookup_projects,
-                execution_id=execution_id,
-                prompt_studio_project_id=prompt_studio_project_id,
-            )
+            # Handle prompt-level lookups if mapping is provided
+            prompt_lookup_map = prompt_lookup_map or {}
+
+            # Separate fields by their lookup assignment
+            # Fields with specific lookups: only that lookup enriches them
+            # Fields without specific lookups: all project-level lookups apply
+            fields_with_specific_lookup: dict[str, dict[str, Any]] = {}
+            fields_without_specific_lookup: dict[str, Any] = {}
+
+            for field_name, field_value in input_data.items():
+                if field_name in prompt_lookup_map:
+                    lookup_id = prompt_lookup_map[field_name]
+                    if lookup_id not in fields_with_specific_lookup:
+                        fields_with_specific_lookup[lookup_id] = {}
+                    fields_with_specific_lookup[lookup_id][field_name] = field_value
+                else:
+                    fields_without_specific_lookup[field_name] = field_value
+
+            all_enrichment: dict[str, Any] = {}
+            total_executed = 0
+            total_successful = 0
+
+            # Execute specific lookups for their assigned fields
+            for lookup_id, fields in fields_with_specific_lookup.items():
+                specific_project = next(
+                    (p for p in lookup_projects if str(p.id) == lookup_id), None
+                )
+                if specific_project:
+                    logger.info(
+                        f"Executing prompt-level lookup {specific_project.name} "
+                        f"for fields: {list(fields.keys())}"
+                    )
+                    result = orchestrator.execute_lookups(
+                        input_data=fields,
+                        lookup_projects=[specific_project],
+                        execution_id=execution_id,
+                        prompt_studio_project_id=prompt_studio_project_id,
+                    )
+                    all_enrichment.update(result.get("lookup_enrichment", {}))
+                    metadata = result.get("_lookup_metadata", {})
+                    total_executed += metadata.get("lookups_executed", 0)
+                    total_successful += metadata.get("lookups_successful", 0)
+                else:
+                    logger.warning(
+                        f"Lookup project {lookup_id} not found in linked projects "
+                        f"for fields: {list(fields.keys())}"
+                    )
+
+            # Execute all project-level lookups for remaining fields
+            if fields_without_specific_lookup:
+                logger.info(
+                    f"Executing project-level lookups for fields: "
+                    f"{list(fields_without_specific_lookup.keys())}"
+                )
+                result = orchestrator.execute_lookups(
+                    input_data=fields_without_specific_lookup,
+                    lookup_projects=lookup_projects,
+                    execution_id=execution_id,
+                    prompt_studio_project_id=prompt_studio_project_id,
+                )
+                all_enrichment.update(result.get("lookup_enrichment", {}))
+                metadata = result.get("_lookup_metadata", {})
+                total_executed += metadata.get("lookups_executed", 0)
+                total_successful += metadata.get("lookups_successful", 0)
 
             return {
-                "lookup_enrichment": result.get("lookup_enrichment", {}),
-                "_lookup_metadata": result.get("_lookup_metadata", {}),
+                "lookup_enrichment": all_enrichment,
+                "_lookup_metadata": {
+                    "status": "success",
+                    "lookups_executed": total_executed,
+                    "lookups_successful": total_successful,
+                    "prompt_level_lookups": len(fields_with_specific_lookup),
+                    "project_level_fields": len(fields_without_specific_lookup),
+                },
             }
 
         except Exception as e:
