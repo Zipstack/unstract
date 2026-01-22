@@ -93,7 +93,8 @@ class LLMWhispererV2(X2TextAdapter):
             extra_params=extra_params,
         )
         metadata = TextExtractionMetadata(
-            whisper_hash=response.get(X2TextConstants.WHISPER_HASH_V2, "")
+            whisper_hash=response.get(X2TextConstants.WHISPER_HASH_V2, ""),
+            line_metadata=response.get("line_metadata"),
         )
 
         return TextExtractionResult(

@@ -1,9 +1,11 @@
 from dataclasses import dataclass
+from typing import Any
 
 
 @dataclass
 class TextExtractionMetadata:
     whisper_hash: str
+    line_metadata: dict[Any, Any] | None = None
 
 
 @dataclass
