@@ -431,10 +431,21 @@ class LookUpOrchestrator:
             return
 
         try:
-            error_message = result.get("error", "Unknown error")
-            self.log_emitter.emit_enrichment_failure(
-                lookup_project_name=lookup_project.name,
-                error_message=error_message,
-            )
+            error_type = result.get("error_type")
+
+            # Use specialized log for context window exceeded errors
+            if error_type == "context_window_exceeded":
+                self.log_emitter.emit_context_overflow_error(
+                    lookup_project_name=lookup_project.name,
+                    token_count=result.get("token_count", 0),
+                    context_limit=result.get("context_limit", 0),
+                    model=result.get("model", "unknown"),
+                )
+            else:
+                error_message = result.get("error", "Unknown error")
+                self.log_emitter.emit_enrichment_failure(
+                    lookup_project_name=lookup_project.name,
+                    error_message=error_message,
+                )
         except Exception as e:
             logger.warning(f"Failed to emit failure log: {e}")

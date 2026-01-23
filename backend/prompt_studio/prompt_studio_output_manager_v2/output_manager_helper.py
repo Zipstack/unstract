@@ -46,6 +46,24 @@ def _build_prompt_lookup_map(
     return prompt_lookup_map
 
 
+class LookupEnrichmentError(Exception):
+    """Exception raised when lookup enrichment fails critically.
+
+    This exception is raised for errors that should stop prompt execution
+    and be displayed to the user, such as context window exceeded errors.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        error_type: str | None = None,
+        details: dict[str, Any] | None = None,
+    ):
+        super().__init__(message)
+        self.error_type = error_type
+        self.details = details or {}
+
+
 def _try_lookup_enrichment(
     tool_id: str,
     extracted_data: dict[str, Any],
@@ -75,6 +93,10 @@ def _try_lookup_enrichment(
     Returns:
         Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
         or empty dict if Lookup is not available or no links exist.
+
+    Raises:
+        LookupEnrichmentError: When lookup fails with a critical error that
+            should stop execution (e.g., context window exceeded).
     """
     try:
         from utils.user_context import UserContext
@@ -86,7 +108,7 @@ def _try_lookup_enrichment(
         # Get organization ID from user context for RAG retrieval
         organization_id = UserContext.get_organization_identifier()
 
-        return LookupIntegrationService.enrich_if_linked(
+        result = LookupIntegrationService.enrich_if_linked(
             prompt_studio_project_id=tool_id,
             extracted_data=extracted_data,
             run_id=run_id,
@@ -95,12 +117,50 @@ def _try_lookup_enrichment(
             organization_id=organization_id,
             prompt_lookup_map=prompt_lookup_map,
         )
+
+        # Check if any lookups failed with critical errors
+        metadata = result.get("_lookup_metadata", {})
+        enrichments = metadata.get("enrichments", [])
+
+        logger.info(f"Checking {len(enrichments)} enrichments for critical errors")
+
+        for enrichment in enrichments:
+            logger.info(
+                f"Enrichment status={enrichment.get('status')}, "
+                f"error_type={enrichment.get('error_type')}, "
+                f"error={enrichment.get('error', '')[:100]}"
+            )
+            if enrichment.get("status") == "failed":
+                error_type = enrichment.get("error_type")
+                error_msg = enrichment.get("error", "Unknown lookup error")
+
+                # Context window exceeded is a critical error - raise it
+                if error_type == "context_window_exceeded":
+                    logger.error(
+                        f"Context window exceeded error detected! "
+                        f"Raising LookupEnrichmentError: {error_msg}"
+                    )
+                    raise LookupEnrichmentError(
+                        message=error_msg,
+                        error_type=error_type,
+                        details={
+                            "token_count": enrichment.get("token_count"),
+                            "context_limit": enrichment.get("context_limit"),
+                            "model": enrichment.get("model"),
+                            "project_name": enrichment.get("project_name"),
+                        },
+                    )
+
+        return result
     except ImportError:
         # Lookup app not installed
         logger.debug("Lookup app not available, skipping enrichment")
         return {}
+    except LookupEnrichmentError:
+        # Re-raise critical lookup errors to be handled by caller
+        raise
     except Exception as e:
-        # Don't let Lookup errors break PS execution
+        # Don't let non-critical Lookup errors break PS execution
         logger.warning(f"Lookup enrichment failed (non-fatal): {e}")
         return {
             "lookup_enrichment": {},
@@ -353,6 +413,24 @@ class OutputManagerHelper:
                                 "field_name": prompt_key,
                             }
                             item["output"] = enriched_value
+
+                            # Update the database record with the enriched value
+                            # so combined output also shows the correct lookup data
+                            output_manager_id = item.get("prompt_output_id")
+                            if output_manager_id:
+                                try:
+                                    PromptStudioOutputManager.objects.filter(
+                                        prompt_output_id=output_manager_id
+                                    ).update(output=enriched_value)
+                                    logger.info(
+                                        f"Updated DB record {output_manager_id} "
+                                        f"with enriched value for {prompt_key}"
+                                    )
+                                except Exception as db_err:
+                                    logger.warning(
+                                        f"Failed to update DB with enriched value "
+                                        f"for {prompt_key}: {db_err}"
+                                    )
                     # Add metadata for tracking
                     item["_lookup_metadata"] = lookup_metadata
 

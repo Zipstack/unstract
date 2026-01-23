@@ -319,6 +319,11 @@ class LookUpExecutor:
                     f"context window."
                 )
                 result = self._failed_result(lookup_project, error_msg, start_time)
+                # Add context window error details for specialized logging
+                result["error_type"] = "context_window_exceeded"
+                result["token_count"] = e.token_count
+                result["context_limit"] = e.context_limit
+                result["model"] = e.model
                 self._log_audit(
                     exec_id,
                     lookup_project,

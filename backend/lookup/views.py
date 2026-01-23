@@ -176,6 +176,45 @@ class LookupProjectViewSet(viewsets.ModelViewSet):
                 input_data=input_data, lookup_projects=[project]
             )
 
+            # Check if any lookups failed - return error response if so
+            metadata = result.get("_lookup_metadata", {})
+            enrichments = metadata.get("enrichments", [])
+            failed_enrichments = [e for e in enrichments if e.get("status") == "failed"]
+
+            if failed_enrichments:
+                # Find context window errors first (more specific)
+                context_window_error = next(
+                    (
+                        e
+                        for e in failed_enrichments
+                        if e.get("error_type") == "context_window_exceeded"
+                    ),
+                    None,
+                )
+
+                if context_window_error:
+                    return Response(
+                        {
+                            "error": context_window_error.get("error"),
+                            "error_type": "context_window_exceeded",
+                            "token_count": context_window_error.get("token_count"),
+                            "context_limit": context_window_error.get("context_limit"),
+                            "model": context_window_error.get("model"),
+                            "_lookup_metadata": metadata,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                else:
+                    # Other failure - return first error
+                    first_error = failed_enrichments[0]
+                    return Response(
+                        {
+                            "error": first_error.get("error", "Look-Up execution failed"),
+                            "_lookup_metadata": metadata,
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
             # Serialize response
             response_serializer = LookupExecutionResponseSerializer(data=result)
             response_serializer.is_valid(raise_exception=True)

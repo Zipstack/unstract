@@ -29,7 +29,6 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
   const [vectorDbItems, setVectorDbItems] = useState([]);
   const [embeddingItems, setEmbeddingItems] = useState([]);
   const [x2TextItems, setX2TextItems] = useState([]);
-  const [adaptersLoaded, setAdaptersLoaded] = useState(false);
   const [originalChunkSize, setOriginalChunkSize] = useState(null);
   const [showReindexWarning, setShowReindexWarning] = useState(false);
 
@@ -41,27 +40,17 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
   const isEdit = !!profileId;
   const modalTitle = isEdit ? "Edit Profile" : "Add New Profile";
 
-  // Fetch adapters
+  // Fetch adapters and then load profile data if editing
   useEffect(() => {
-    fetchAdapters();
-  }, []);
+    const fetchAdaptersAndProfile = async () => {
+      setAdaptersLoading(true);
+      const requestOptions = {
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
+      };
 
-  // Load profile data for editing (only after adapters are loaded)
-  useEffect(() => {
-    if (profileId && adaptersLoaded) {
-      fetchProfileData();
-    }
-  }, [profileId, adaptersLoaded]);
-
-  const fetchAdapters = () => {
-    setAdaptersLoading(true);
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter`,
-    };
-
-    axiosPrivate(requestOptions)
-      .then((res) => {
+      try {
+        const res = await axiosPrivate(requestOptions);
         const data = res?.data || [];
 
         const llmList = [];
@@ -90,17 +79,32 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
         setVectorDbItems(vectorDbList);
         setEmbeddingItems(embeddingList);
         setX2TextItems(x2TextList);
-      })
-      .catch((err) => {
-        handleException(err, "Failed to fetch adapters");
-      })
-      .finally(() => {
-        setAdaptersLoading(false);
-        setAdaptersLoaded(true);
-      });
-  };
 
-  const fetchProfileData = () => {
+        // If editing, fetch profile data using the freshly loaded adapter lists
+        if (profileId) {
+          await fetchProfileData(
+            llmList,
+            embeddingList,
+            vectorDbList,
+            x2TextList
+          );
+        }
+      } catch (err) {
+        handleException(err, "Failed to fetch adapters");
+      } finally {
+        setAdaptersLoading(false);
+      }
+    };
+
+    fetchAdaptersAndProfile();
+  }, [profileId]);
+
+  const fetchProfileData = async (
+    llmList,
+    embeddingList,
+    vectorDbList,
+    x2TextList
+  ) => {
     setLoading(true);
     const requestOptions = {
       method: "GET",
@@ -110,44 +114,42 @@ function ProfileFormModal({ projectId, profileId, onClose }) {
       },
     };
 
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const profile = res?.data;
+    try {
+      const res = await axiosPrivate(requestOptions);
+      const profile = res?.data;
 
-        // Store original chunk_size for reindex warning check
-        console.log("Profile data loaded, chunk_size:", profile?.chunk_size);
-        setOriginalChunkSize(profile?.chunk_size);
+      // Store original chunk_size for reindex warning check
+      console.log("Profile data loaded, chunk_size:", profile?.chunk_size);
+      setOriginalChunkSize(profile?.chunk_size);
 
-        // Find adapter IDs by matching adapter names from the profile response
-        // The API returns adapter names as strings (e.g., "Azure LLM")
-        const llmItem = llmItems.find((item) => item?.label === profile?.llm);
-        const embeddingItem = embeddingItems.find(
-          (item) => item?.label === profile?.embedding_model
-        );
-        const vectorDbItem = vectorDbItems.find(
-          (item) => item?.label === profile?.vector_store
-        );
-        const x2textItem = x2TextItems.find(
-          (item) => item?.label === profile?.x2text
-        );
+      // Find adapter IDs by matching adapter names from the profile response
+      // The API returns adapter names as strings (e.g., "Azure LLM")
+      const llmItem = llmList.find((item) => item?.label === profile?.llm);
+      const embeddingItem = embeddingList.find(
+        (item) => item?.label === profile?.embedding_model
+      );
+      const vectorDbItem = vectorDbList.find(
+        (item) => item?.label === profile?.vector_store
+      );
+      const x2textItem = x2TextList.find(
+        (item) => item?.label === profile?.x2text
+      );
 
-        form.setFieldsValue({
-          profile_name: profile?.profile_name,
-          llm: llmItem?.value || null,
-          embedding_model: embeddingItem?.value || null,
-          vector_store: vectorDbItem?.value || null,
-          x2text: x2textItem?.value || null,
-          chunk_size: profile?.chunk_size,
-          chunk_overlap: profile?.chunk_overlap,
-          similarity_top_k: profile?.similarity_top_k,
-        });
-      })
-      .catch((err) => {
-        handleException(err, "Failed to fetch profile data");
-      })
-      .finally(() => {
-        setLoading(false);
+      form.setFieldsValue({
+        profile_name: profile?.profile_name,
+        llm: llmItem?.value || null,
+        embedding_model: embeddingItem?.value || null,
+        vector_store: vectorDbItem?.value || null,
+        x2text: x2textItem?.value || null,
+        chunk_size: profile?.chunk_size,
+        chunk_overlap: profile?.chunk_overlap,
+        similarity_top_k: profile?.similarity_top_k,
       });
+    } catch (err) {
+      handleException(err, "Failed to fetch profile data");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = () => {

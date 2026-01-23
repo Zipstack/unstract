@@ -4,7 +4,7 @@ import uuid
 
 from django.contrib.auth import get_user_model
 from django.db import models
-from django.db.models.signals import pre_save
+from django.db.models.signals import post_delete, pre_save
 from django.dispatch import receiver
 from utils.models.base_model import BaseModel
 
@@ -193,3 +193,28 @@ def auto_increment_version_and_update_latest(sender, instance, **kwargs):
 
         # Ensure new version is marked as latest
         instance.is_latest = True
+
+
+@receiver(post_delete, sender=LookupDataSource)
+def promote_previous_version_to_latest(sender, instance, **kwargs):
+    """Signal to promote the previous version to latest when the current latest is deleted.
+
+    This signal:
+    1. Checks if the deleted instance was the latest version
+    2. If so, promotes the next most recent version to be the latest
+    """
+    # Only act if the deleted instance was the latest
+    if not instance.is_latest:
+        return
+
+    # Find the next most recent data source for this project
+    # (highest version_number among remaining records)
+    next_latest = (
+        LookupDataSource.objects.filter(project_id=instance.project_id)
+        .order_by("-version_number")
+        .first()
+    )
+
+    if next_latest:
+        next_latest.is_latest = True
+        next_latest.save(update_fields=["is_latest"])

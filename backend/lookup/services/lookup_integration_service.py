@@ -340,6 +340,7 @@ class LookupIntegrationService:
                     fields_without_specific_lookup[field_name] = field_value
 
             all_enrichment: dict[str, Any] = {}
+            all_enrichments: list[dict[str, Any]] = []  # Collect all enrichment results
             total_executed = 0
             total_successful = 0
 
@@ -363,6 +364,8 @@ class LookupIntegrationService:
                     metadata = result.get("_lookup_metadata", {})
                     total_executed += metadata.get("lookups_executed", 0)
                     total_successful += metadata.get("lookups_successful", 0)
+                    # Collect enrichment details for error checking
+                    all_enrichments.extend(metadata.get("enrichments", []))
                 else:
                     logger.warning(
                         f"Lookup project {lookup_id} not found in linked projects "
@@ -385,6 +388,8 @@ class LookupIntegrationService:
                 metadata = result.get("_lookup_metadata", {})
                 total_executed += metadata.get("lookups_executed", 0)
                 total_successful += metadata.get("lookups_successful", 0)
+                # Collect enrichment details for error checking
+                all_enrichments.extend(metadata.get("enrichments", []))
 
             return {
                 "lookup_enrichment": all_enrichment,
@@ -394,6 +399,7 @@ class LookupIntegrationService:
                     "lookups_successful": total_successful,
                     "prompt_level_lookups": len(fields_with_specific_lookup),
                     "project_level_fields": len(fields_without_specific_lookup),
+                    "enrichments": all_enrichments,  # Include for error checking
                 },
             }
 

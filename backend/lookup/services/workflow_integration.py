@@ -89,10 +89,23 @@ class LookupWorkflowIntegration:
             # Get enrichment result
             enrichment = result.get("lookup_enrichment", {})
 
-            # Merge enrichment into extraction output
+            # Replace enriched values in extraction output (not add at top level)
+            # The enrichment dict contains {field_name: enriched_value} pairs
+            # These should replace the original values in extraction_output
             if enrichment:
                 merged_output = extraction_output.copy()
-                merged_output.update(enrichment)
+                for field_name, enriched_value in enrichment.items():
+                    if field_name in merged_output:
+                        logger.info(
+                            f"[LOOKUP] Replacing '{field_name}' value: "
+                            f"'{merged_output[field_name]}' -> '{enriched_value}'"
+                        )
+                        merged_output[field_name] = enriched_value
+                    else:
+                        logger.warning(
+                            f"[LOOKUP] Field '{field_name}' not found in extraction_output, "
+                            f"skipping enrichment"
+                        )
                 return merged_output
 
             return extraction_output
@@ -219,6 +232,21 @@ class LookupWorkflowIntegration:
             workflow_execution_id = file_execution.workflow_execution_id
             organization_id = str(workflow.organization_id)
 
+            # Extract the actual output data for enrichment
+            # The workflow output structure is: {metadata: {...}, metrics: {...}, output: {...}}
+            # The extracted fields are inside the 'output' key
+            extracted_fields = output_data.get("output", {})
+            if not extracted_fields or not isinstance(extracted_fields, dict):
+                logger.info(
+                    "[LOOKUP] No 'output' key found or not a dict in output_data, "
+                    "trying to use output_data directly"
+                )
+                extracted_fields = output_data
+
+            logger.info(
+                f"[LOOKUP] Extracted fields for enrichment: {list(extracted_fields.keys())}"
+            )
+
             # Execute lookups with file execution context for Nav bar logging
             # LookupIntegrationService handles all logging via LookupLogEmitter
             from lookup.services.lookup_integration_service import (
@@ -227,7 +255,7 @@ class LookupWorkflowIntegration:
 
             result = LookupIntegrationService.enrich_if_linked(
                 prompt_studio_project_id=prompt_studio_project_id,
-                extracted_data=output_data,
+                extracted_data=extracted_fields,
                 run_id=str(uuid.uuid4()),
                 file_execution_id=file_execution_id,
                 workflow_execution_id=str(workflow_execution_id),
@@ -239,10 +267,42 @@ class LookupWorkflowIntegration:
             _metadata = result.get("_lookup_metadata", {})  # noqa F841
             enrichment = result.get("lookup_enrichment", {})
 
-            # Merge enrichment into output
+            # Replace enriched values in the output structure
+            # The enrichment dict contains {field_name: enriched_value} pairs
             if enrichment:
                 merged_output = output_data.copy()
-                merged_output.update(enrichment)
+                # Check if we need to update inside 'output' key or at top level
+                if "output" in merged_output and isinstance(
+                    merged_output["output"], dict
+                ):
+                    # Update inside the 'output' sub-object
+                    merged_output["output"] = merged_output["output"].copy()
+                    for field_name, enriched_value in enrichment.items():
+                        if field_name in merged_output["output"]:
+                            logger.info(
+                                f"[LOOKUP] Replacing output['{field_name}'] value: "
+                                f"'{merged_output['output'][field_name]}' -> '{enriched_value}'"
+                            )
+                            merged_output["output"][field_name] = enriched_value
+                        else:
+                            logger.warning(
+                                f"[LOOKUP] Field '{field_name}' not found in output, "
+                                f"skipping enrichment"
+                            )
+                else:
+                    # Update at top level (fallback for flat structure)
+                    for field_name, enriched_value in enrichment.items():
+                        if field_name in merged_output:
+                            logger.info(
+                                f"[LOOKUP] Replacing '{field_name}' value: "
+                                f"'{merged_output[field_name]}' -> '{enriched_value}'"
+                            )
+                            merged_output[field_name] = enriched_value
+                        else:
+                            logger.warning(
+                                f"[LOOKUP] Field '{field_name}' not found in output_data, "
+                                f"skipping enrichment"
+                            )
                 return merged_output, True
 
             return original_output, False
