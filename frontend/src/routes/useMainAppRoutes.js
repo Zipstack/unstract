@@ -51,7 +51,8 @@ try {
 }
 
 try {
-  AgenticPromptStudio = require("../plugins/agentic-prompt-studio").default;
+  AgenticPromptStudio =
+    require("../plugins/agentic-prompt-studio").AgenticPromptStudio;
 } catch (err) {
   // Do nothing, Not-found Page will be triggered.
 }
