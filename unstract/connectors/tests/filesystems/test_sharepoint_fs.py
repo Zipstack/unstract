@@ -122,6 +122,7 @@ class TestSharePointFSUnit(unittest.TestCase):
     def test_json_schema_has_oneof_pattern(self):
         """Test that JSON schema uses oneOf pattern for dual auth methods."""
         import json
+
         from unstract.connectors.filesystems.sharepoint import SharePointFS
 
         schema_str = SharePointFS.get_json_schema()
@@ -269,7 +270,9 @@ class TestSharePointFSIntegration(unittest.TestCase):
             print(f"✓ Successfully wrote file to: {file_path}")
             print(f"✓ Folder: {folder_name}")
             print(f"✓ File: {file_name}")
-            print(f"✓ Verify in browser: Look for folder 'test-unit' in your OneDrive/SharePoint")
+            print(
+                f"✓ Verify in browser: Look for folder 'test-unit' in your OneDrive/SharePoint"
+            )
 
             # Verify file exists
             self.assertTrue(fs.exists(file_path))
@@ -287,7 +290,9 @@ class TestSharePointFSIntegration(unittest.TestCase):
         from unstract.connectors.filesystems.sharepoint import SharePointFS
 
         settings = {
-            "site_url": os.environ.get("SHAREPOINT_SITE_URL", ""),
+            "site_url": os.environ.get(
+                "SHAREPOINT_SITE_URL", "https://contoso.sharepoint.com/sites/testsite"
+            ),
             "tenant_id": os.environ.get("SHAREPOINT_TENANT_ID"),
             "client_id": os.environ.get("SHAREPOINT_CLIENT_ID"),
             "client_secret": os.environ.get("SHAREPOINT_CLIENT_SECRET"),
@@ -314,7 +319,9 @@ class TestSharePointFSIntegration(unittest.TestCase):
             print(f"✓ Content: {content.decode()}")
 
         except FileNotFoundError:
-            self.skipTest(f"File not found: {file_path}. Run test_write_file_to_folder first.")
+            self.skipTest(
+                f"File not found: {file_path}. Run test_write_file_to_folder first."
+            )
         except Exception as e:
             self.fail(f"Failed to read file: {e}")
 
