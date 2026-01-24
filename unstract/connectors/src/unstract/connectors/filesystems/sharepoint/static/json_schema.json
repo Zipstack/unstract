@@ -26,28 +26,31 @@
       "oneOf": [
         {
           "title": "OAuth (Recommended)",
-          "description": "Authenticate using your Microsoft account with one click",
+          "description": "",
           "properties": {},
           "required": []
         },
         {
           "title": "Client Credentials",
-          "description": "Use Azure AD app credentials for automation and service accounts",
+          "description": "",
           "properties": {
             "tenant_id": {
               "type": "string",
               "title": "Tenant ID",
+              "default": "",
               "description": "Azure AD Tenant ID (Directory ID). Required for SharePoint and OneDrive for Business. Leave empty for Personal accounts."
             },
             "client_id": {
               "type": "string",
               "title": "Client ID (Application ID)",
+              "default": "",
               "description": "The Application (client) ID from your Azure AD or Microsoft app registration"
             },
             "client_secret": {
               "type": "string",
               "title": "Client Secret",
               "format": "password",
+              "default": "",
               "description": "Client secret from your app registration. Required for app-only (client credentials) authentication."
             },
             "user_email": {

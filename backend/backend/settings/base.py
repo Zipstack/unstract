@@ -603,11 +603,9 @@ SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SCOPE = [
     "profile",
     "offline_access",
     "https://graph.microsoft.com/Files.ReadWrite.All",
-    "https://graph.microsoft.com/Sites.Read.All",
+    "https://graph.microsoft.com/Sites.ReadWrite.All",
 ]
-SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
-    "prompt": "consent",
-}
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_AUTH_EXTRA_ARGUMENTS: dict[str, str] = {}
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

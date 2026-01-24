@@ -59,9 +59,11 @@ function ConfigureDs({
   // Determine if OAuth authentication method is selected
   const isOAuthMethodSelected = () => {
     if (!oAuthProvider?.length) return false;
-    // OAuth is selected when Client Credentials fields are NOT present
-    // Client Credentials requires client_id and client_secret
-    return !formData?.client_id && !formData?.client_secret;
+    // Check if Client Credentials fields EXIST in formData (not their values)
+    // OAuth schema has NO client_id/client_secret properties → keys don't exist
+    // Client Credentials schema HAS those properties → keys exist (even if empty)
+    const data = formData || {};
+    return !("client_id" in data) && !("client_secret" in data);
   };
 
   // Initialize OAuth state from localStorage after keys are available
@@ -158,7 +160,11 @@ function ConfigureDs({
     if (formRef && !formRef.current?.validateForm()) {
       return;
     }
-    if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
+    if (
+      oAuthProvider?.length &&
+      isOAuthMethodSelected() &&
+      (status !== "success" || !cacheKey?.length)
+    ) {
       const providerName =
         oAuthProvider === "google-oauth2" ? "Google" : "OAuth provider";
       setAlertDetails({
@@ -198,7 +204,7 @@ function ConfigureDs({
       }
     }
 
-    if (oAuthProvider?.length > 0) {
+    if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
       body["connector_metadata"] = {
         ...body["connector_metadata"],
         ...{ "oauth-key": cacheKey },
@@ -307,7 +313,7 @@ function ConfigureDs({
       url = `${url}${editItemId}/`;
     }
 
-    if (oAuthProvider?.length > 0) {
+    if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
       const encodedCacheKey = encodeURIComponent(cacheKey);
       url = url + `?oauth-key=${encodedCacheKey}`;
     }
@@ -341,7 +347,7 @@ function ConfigureDs({
           updateSession(type);
         }
 
-        if (oAuthProvider?.length > 0) {
+        if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
           localStorage.removeItem(oauthCacheKey);
           localStorage.removeItem(oauthStatusKey);
         }
@@ -377,14 +383,13 @@ function ConfigureDs({
         formRef={formRef}
         isStateUpdateRequired={true}
       >
-        {!isLoading && oAuthProvider?.length > 0 && (
+        {!isLoading && oAuthProvider?.length > 0 && isOAuthMethodSelected() && (
           <OAuthDs
             oAuthProvider={oAuthProvider}
             setCacheKey={handleSetCacheKey}
             setStatus={handleSetStatus}
             selectedSourceId={selectedSourceId}
             isExistingConnector={isExistingConnector}
-            disabled={!isOAuthMethodSelected()}
           />
         )}
         <Row className="config-row">

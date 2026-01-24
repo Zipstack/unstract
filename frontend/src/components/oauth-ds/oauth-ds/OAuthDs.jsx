@@ -30,7 +30,7 @@ function OAuthDs({
       return "Reauthenticate";
     }
     if (oAuthProvider === O_AUTH_PROVIDERS.MICROSOFT) {
-      return "Authenticate with Microsoft";
+      return "Sign in with Microsoft";
     }
     return "Authenticate with Google";
   };

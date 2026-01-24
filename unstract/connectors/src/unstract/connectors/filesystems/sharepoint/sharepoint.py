@@ -200,7 +200,21 @@ class SharePointFileSystem(AbstractFileSystem):
         """List directory contents."""
         try:
             item = self._get_item_by_path(path)
-            children = item.children.get().execute_query()
+            children = (
+                item.children.select(
+                    [
+                        "id",
+                        "name",
+                        "file",
+                        "folder",
+                        "size",
+                        "lastModifiedDateTime",
+                        "createdDateTime",
+                    ]
+                )
+                .get()
+                .execute_query()
+            )
 
             results = []
             for child in children:
@@ -227,11 +241,16 @@ class SharePointFileSystem(AbstractFileSystem):
         else:
             full_path = name
 
-        is_folder = hasattr(item, "folder") and item.folder is not None
+        # Use the Office365 library's built-in is_folder property which properly
+        # checks if the folder facet was populated in the API response
+        is_folder = item.is_folder
+
+        # Access size from properties dict - Office365 library stores API response data there
+        size = item.properties.get("size", 0) or 0
 
         info = {
             "name": full_path,
-            "size": getattr(item, "size", 0) or 0,
+            "size": size,
             "type": "directory" if is_folder else "file",
             "id": item.id,
         }
@@ -261,7 +280,17 @@ class SharePointFileSystem(AbstractFileSystem):
     def info(self, path: str, **kwargs: Any) -> dict[str, Any]:
         """Get info for a path."""
         item = self._get_item_by_path(path)
-        item.get().execute_query()
+        item.get().select(
+            [
+                "id",
+                "name",
+                "file",
+                "folder",
+                "size",
+                "lastModifiedDateTime",
+                "createdDateTime",
+            ]
+        ).execute_query()
         parent = "/".join(path.strip("/").split("/")[:-1])
         return self._item_to_info(item, parent)
 
@@ -561,7 +590,7 @@ class SharePointFS(UnstractFileSystem):
             File hash string or None
         """
         # Try different hash fields in order of preference
-        hash_fields = ["quickXorHash", "sha256Hash", "cTag", "eTag"]
+        hash_fields = ["quickXorHash", "cTag", "eTag", "id"]
 
         for field in hash_fields:
             if field in metadata and metadata[field]:
