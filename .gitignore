@@ -8,6 +8,7 @@
 !workers/run-worker.sh
 !workers/run-worker-docker.sh
 !workers/log_consumer/scheduler.sh
+!scripts/worktree-setup.sh
 
 ### Django ###
 *.log
