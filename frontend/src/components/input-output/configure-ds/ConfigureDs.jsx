@@ -217,11 +217,6 @@ function ConfigureDs({
             type: "error",
             content: "Test connection failed",
           });
-        } else {
-          setAlertDetails({
-            type: "success",
-            content: "Test connection successful",
-          });
         }
       })
       .catch((err) => {
@@ -323,12 +318,6 @@ function ConfigureDs({
         if (data) {
           addNewItem(data, !!editItemId);
         }
-        setAlertDetails({
-          type: "success",
-          content: `Successfully ${
-            method === "POST" ? "added" : "updated"
-          } connector`,
-        });
         if (!isConnector && method === "POST") {
           updateSession(type);
         }

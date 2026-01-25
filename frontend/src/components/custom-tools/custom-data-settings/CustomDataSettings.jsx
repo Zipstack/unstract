@@ -158,10 +158,6 @@ function CustomDataSettings() {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "Custom data saved successfully",
-        });
         setHasChanges(false);
         // Update the store with the new details
         const updatedDetails = res?.data;

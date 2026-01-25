@@ -163,15 +163,10 @@ function CustomSynonyms() {
       promptGrammar[item.word] = item.synonyms || [];
     });
 
-    let successMsg = "";
-    let failureMsg = "";
-    if (actionType === actionTypes.save) {
-      successMsg = "Saved synonyms successfully";
-      failureMsg = "Failed to save synonyms";
-    } else {
-      successMsg = "Deleted synonyms successfully";
-      failureMsg = "Failed to delete synonyms";
-    }
+    const failureMsg =
+      actionType === actionTypes.save
+        ? "Failed to save synonyms"
+        : "Failed to delete synonyms";
 
     const body = {
       prompt_grammer: promptGrammar,
@@ -193,10 +188,6 @@ function CustomSynonyms() {
         if (actionType === actionTypes.delete) {
           setSynonyms(listOfSynonyms);
         }
-        setAlertDetails({
-          type: "success",
-          content: successMsg,
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, failureMsg));

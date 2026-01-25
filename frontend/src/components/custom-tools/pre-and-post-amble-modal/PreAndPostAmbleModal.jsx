@@ -70,10 +70,6 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
         };
         const updatedDetails = { ...details, ...updatedData };
         updateCustomTool({ details: updatedDetails });
-        setAlertDetails({
-          type: "success",
-          content: "Saved successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update."));
