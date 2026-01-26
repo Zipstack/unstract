@@ -5,6 +5,7 @@ from typing import Any, Self
 import requests
 from requests import RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
+
 from unstract.sdk1.constants import (
     AdapterKeys,
     LogLevel,

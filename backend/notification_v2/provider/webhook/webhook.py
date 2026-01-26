@@ -2,9 +2,9 @@ import logging
 from typing import Any
 
 import requests
+from backend.celery_service import app as celery_app
 from celery import shared_task
 
-from backend.celery_service import app as celery_app
 from notification_v2.enums import AuthorizationType
 from notification_v2.provider.notification_provider import NotificationProvider
 
@@ -71,8 +71,7 @@ class Webhook(NotificationProvider):
             )
         except ValueError:
             raise ValueError(
-                "Unsupported authorization type: "
-                f"{self.notification.authorization_type}"
+                f"Unsupported authorization type: {self.notification.authorization_type}"
             )
         authorization_key = self.notification.authorization_key
         authorization_header = self.notification.authorization_header
