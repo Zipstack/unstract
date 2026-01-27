@@ -4,6 +4,7 @@ import pprint
 from collections.abc import Iterator
 from typing import Any
 
+from docker import DockerClient
 from docker.errors import APIError, ImageNotFound, NotFound
 from docker.models.containers import Container
 from unstract.core.runner.enum import ContainerStatus
@@ -15,8 +16,6 @@ from unstract.runner.clients.interface import (
 from unstract.runner.constants import Env
 from unstract.runner.exception import ToolImageNotFoundError
 from unstract.runner.utils import Utils
-
-from docker import DockerClient
 
 
 class DockerContainer(ContainerInterface):
