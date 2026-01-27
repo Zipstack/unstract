@@ -22,7 +22,11 @@ from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
-from api_v2.exceptions import NoActiveAPIKeyError, RateLimitExceeded
+from api_v2.exceptions import (
+    NoActiveAPIKeyError,
+    RateLimitExceeded,
+    ToolNotFoundInRegistry,
+)
 from api_v2.models import APIDeployment
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
@@ -39,6 +43,50 @@ if notification_plugin:
     from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
+
+# Error patterns that indicate tool not found in registry
+TOOL_NOT_FOUND_PATTERNS = [
+    "not found in container registry",
+    ToolNotFoundInRegistry.ERROR_CODE,
+]
+
+
+def _contains_tool_not_found_error(response: dict | ExecutionResponse) -> bool:
+    """Check if response contains a tool not found in registry error.
+
+    Args:
+        response: Either a dict (from POST) or ExecutionResponse (from GET)
+
+    Returns:
+        bool: True if tool not found error is detected
+    """
+    # Get error and result from response
+    if isinstance(response, dict):
+        error = response.get("error")
+        result = response.get("result", [])
+    else:
+        error = getattr(response, "error", None)
+        result = getattr(response, "result", []) or []
+
+    # Check top-level error
+    if error:
+        error_str = str(error).lower()
+        for pattern in TOOL_NOT_FOUND_PATTERNS:
+            if pattern.lower() in error_str:
+                return True
+
+    # Check file-level errors in result array
+    if isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict):
+                file_error = item.get("error", "")
+                if file_error:
+                    error_str = str(file_error).lower()
+                    for pattern in TOOL_NOT_FOUND_PATTERNS:
+                        if pattern.lower() in error_str:
+                            return True
+
+    return False
 
 
 class DeploymentExecution(views.APIView):
@@ -126,13 +174,28 @@ class DeploymentExecution(views.APIView):
             logger.exception(f"Workflow execution failed: {error}")
             raise
 
-        # Success - signal will handle slot release when workflow completes
-        if "error" in response and response["error"]:
+        # Determine response status based on execution result
+        execution_status = response.get("execution_status", "")
+        has_error = response.get("error") or execution_status == "ERROR"
+
+        if has_error:
+            # Check for tool not found in registry error - return 409 Conflict
+            if _contains_tool_not_found_error(response):
+                logger.error(
+                    "API deployment failed: Tool not found in container registry"
+                )
+                return Response(
+                    {"message": response},
+                    status=status.HTTP_409_CONFLICT,
+                )
+            # Other errors - return 422 Unprocessable Entity
             logger.error("API deployment execution failed")
             return Response(
                 {"message": response},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+
+        # Success
         return Response({"message": response}, status=status.HTTP_200_OK)
 
     @DeploymentHelper.validate_api_key
@@ -152,9 +215,44 @@ class DeploymentExecution(views.APIView):
 
         # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
-        # Determine response status
+
+        # Handle result already acknowledged
+        if response.result_acknowledged:
+            return Response(
+                data={
+                    "status": response.execution_status,
+                    "message": "Result already acknowledged",
+                },
+                status=status.HTTP_406_NOT_ACCEPTABLE,
+            )
+
+        # Determine response status based on execution state
+        execution_status_value = response.execution_status
+
+        # Check for tool not found in registry error - return 409 Conflict
+        if _contains_tool_not_found_error(response):
+            logger.error("Execution failed: Tool not found in container registry")
+            return Response(
+                data={
+                    "status": execution_status_value,
+                    "message": response.result,
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        # Check for ERROR status - return 422 Unprocessable Entity
+        if execution_status_value == "ERROR":
+            return Response(
+                data={
+                    "status": execution_status_value,
+                    "message": response.result,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        # Process completed execution
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
-        if response.execution_status == CeleryTaskState.COMPLETED.value:
+        if execution_status_value == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
             # Check if highlight data should be removed using configuration registry
             api_deployment = deployment_execution_dto.api
@@ -177,9 +275,6 @@ class DeploymentExecution(views.APIView):
                 response.remove_result_metadata_keys()
             if not include_metrics:
                 response.remove_result_metrics()
-        if response.result_acknowledged:
-            response_status = status.HTTP_406_NOT_ACCEPTABLE
-            response.result = "Result already acknowledged"
         return Response(
             data={
                 "status": response.execution_status,

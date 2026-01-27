@@ -87,6 +87,38 @@ class RateLimitExceeded(APIException):
         super().__init__(detail, code)
 
 
+class ToolNotFoundInRegistry(APIException):
+    """Raised when a tool image is not found in the container registry.
+
+    This indicates a platform configuration issue - the requested tool
+    is not available and the platform cannot fulfill the request.
+    HTTP 409 Conflict is used because the platform state conflicts with
+    the request requirements.
+    """
+
+    status_code = 409
+    default_detail = "Tool not found in container registry"
+
+    # Error code used to identify this error in execution results
+    ERROR_CODE = "TOOL_IMAGE_NOT_FOUND"
+
+    def __init__(
+        self,
+        detail: str | None = None,
+        code: str | None = None,
+        tool_name: str = "",
+    ):
+        if detail is None:
+            if tool_name:
+                detail = (
+                    f"Tool '{tool_name}' not found in container registry. "
+                    f"Please ensure the tool is properly deployed."
+                )
+            else:
+                detail = self.default_detail
+        super().__init__(detail, code)
+
+
 class PresignedURLFetchError(APIException):
     default_detail = "Failed to fetch file from presigned URL"
 

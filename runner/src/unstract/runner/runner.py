@@ -6,7 +6,6 @@ from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask
-
 from unstract.core.constants import LogFieldName
 from unstract.core.file_execution_tracker import (
     FileExecutionStage,
@@ -26,7 +25,7 @@ from unstract.runner.clients.interface import (
     ContainerInterface,
 )
 from unstract.runner.constants import Env, LogLevel, LogType, ToolKey
-from unstract.runner.exception import ToolRunException
+from unstract.runner.exception import ToolImageNotFoundError, ToolRunException
 from unstract.runner.utils import Utils
 
 load_dotenv()
@@ -296,8 +295,7 @@ class UnstractRunner:
         settings_json = json.dumps(settings).replace("'", "\\'")
         # Prepare the tool execution command
         tool_cmd = (
-            f"python main.py --command RUN "
-            f"--settings '{settings_json}' --log-level DEBUG"
+            f"python main.py --command RUN --settings '{settings_json}' --log-level DEBUG"
         )
 
         if not self.sidecar_enabled:
@@ -539,6 +537,19 @@ class UnstractRunner:
                 "type": "RESULT",
                 "result": None,
                 "error": str(te.message),
+                "status": "ERROR",
+            }
+        except ToolImageNotFoundError as e:
+            self.logger.error(
+                f"Tool image not found in container registry: {e.image_name}:{e.image_tag}",
+                stack_info=True,
+                exc_info=True,
+            )
+            result = {
+                "type": "RESULT",
+                "result": None,
+                "error": str(e.message),
+                "error_code": "TOOL_IMAGE_NOT_FOUND",
                 "status": "ERROR",
             }
         except Exception as e:
