@@ -1060,8 +1060,18 @@ class FileExecutionTasks:
                     metadata=execution_metadata,
                 )
         except Exception as e:
-            error_msg = f"Final output processing failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
+            # Preserve original processing_error if it exists, as it may contain
+            # important error info (e.g., "tool not found in container registry")
+            if processing_error:
+                error_msg = processing_error
+                logger.error(
+                    f"Final output processing failed with original error: {processing_error}. "
+                    f"Additional error during finalization: {str(e)}",
+                    exc_info=True,
+                )
+            else:
+                error_msg = f"Final output processing failed: {str(e)}"
+                logger.error(error_msg, exc_info=True)
             return FinalOutputResult(output=None, metadata=None, error=error_msg)
 
         return FinalOutputResult(
