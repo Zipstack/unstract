@@ -217,6 +217,11 @@ function ConfigureDs({
             type: "error",
             content: "Test connection failed",
           });
+        } else {
+          setAlertDetails({
+            type: "success",
+            content: "Test connection successful",
+          });
         }
       })
       .catch((err) => {
