@@ -3,7 +3,6 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-import redis
 from cryptography.fernet import Fernet, InvalidToken
 from flask import Blueprint, Request, jsonify, make_response, request
 from flask import current_app as app
@@ -12,7 +11,7 @@ from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.platform_service.constants import DBTable
 from unstract.platform_service.env import Env
-from unstract.platform_service.extensions import db
+from unstract.platform_service.extensions import db, get_redis_client, safe_cursor
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
@@ -69,43 +68,41 @@ def get_organization_from_bearer_token(token: str) -> tuple[int | None, str]:
 
 
 def execute_query(query: str, params: tuple = ()) -> Any:
-    cursor = db.execute_sql(query, params)
-    result_row = cursor.fetchone()
-    cursor.close()
-    if not result_row or len(result_row) == 0:
-        return None
-    return result_row[0]
+    with safe_cursor(query, params) as cursor:
+        result_row = cursor.fetchone()
+        if not result_row or len(result_row) == 0:
+            return None
+        return result_row[0]
 
 
 def validate_bearer_token(token: str | None) -> bool:
+    if token is None:
+        app.logger.error("Authentication failed. Empty bearer token")
+        return False
+
+    platform_key_table = DBTable.PLATFORM_KEY
+    query = f"""
+        SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
+        WHERE key = %s
+    """
+
     try:
-        if token is None:
-            app.logger.error("Authentication failed. Empty bearer token")
-            return False
-
-        platform_key_table = DBTable.PLATFORM_KEY
-        query = f"""
-            SELECT * FROM \"{Env.DB_SCHEMA}\".{platform_key_table}
-            WHERE key = '{token}'
-        """
-
-        cursor = db.execute_sql(query)
-        result_row = cursor.fetchone()
-        cursor.close()
-        if not result_row or len(result_row) == 0:
-            app.logger.error(f"Authentication failed. bearer token not found {token}")
-            return False
-        platform_key = str(result_row[1])
-        is_active = bool(result_row[2])
-        if not is_active:
-            app.logger.error(
-                f"Token is not active. Activate before using it. token {token}"
-            )
-            return False
-        if platform_key != token:
-            app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
-            return False
-
+        with safe_cursor(query, (token,)) as cursor:
+            result_row = cursor.fetchone()
+            if not result_row or len(result_row) == 0:
+                app.logger.error(f"Authentication failed. bearer token not found {token}")
+                return False
+            platform_key = str(result_row[1])
+            is_active = bool(result_row[2])
+            if not is_active:
+                app.logger.error(
+                    f"Token is not active. Activate before using it. token {token}"
+                )
+                return False
+            if platform_key != token:
+                app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
+                return False
+            return True
     except Exception as e:
         app.logger.error(
             f"Error while validating bearer token: {e}",
@@ -113,7 +110,6 @@ def validate_bearer_token(token: str | None) -> bool:
             exc_info=True,
         )
         return False
-    return True
 
 
 @platform_bp.route("/page-usage", methods=["POST"], endpoint="page_usage")
@@ -322,6 +318,10 @@ def cache() -> Any:
     """
     bearer_token = get_token_from_auth_header(request)
     _, account_id = get_organization_from_bearer_token(bearer_token)
+
+    # Use shared Redis connection pool
+    r = get_redis_client()
+
     if request.method == "POST":
         payload: dict[Any, Any] | None = request.json
         if not payload:
@@ -331,49 +331,27 @@ def cache() -> Any:
         if key is None or value is None:
             return Env.BAD_REQUEST, 400
         try:
-            r = redis.Redis(
-                host=Env.REDIS_HOST,
-                port=Env.REDIS_PORT,
-                username=Env.REDIS_USERNAME,
-                password=Env.REDIS_PASSWORD,
-            )
             redis_key = f"{account_id}:{key}"
             r.set(redis_key, value)
-            r.close()
         except Exception as e:
             raise APIError(message=f"Error while caching data: {e}") from e
     elif request.method == "GET":
         key = request.args.get("key")
         try:
-            r = redis.Redis(
-                host=Env.REDIS_HOST,
-                port=Env.REDIS_PORT,
-                username=Env.REDIS_USERNAME,
-                password=Env.REDIS_PASSWORD,
-            )
             redis_key = f"{account_id}:{key}"
             app.logger.info(f"Getting cached data for key: {redis_key}")
             value = r.get(redis_key)
-            r.close()
             if value is None:
                 return "Not Found", 404
-            else:
-                return value, 200
+            return value, 200
         except Exception as e:
             raise APIError(message=f"Error while getting cached data: {e}") from e
     elif request.method == "DELETE":
         key = request.args.get("key")
         try:
-            r = redis.Redis(
-                host=Env.REDIS_HOST,
-                port=Env.REDIS_PORT,
-                username=Env.REDIS_USERNAME,
-                password=Env.REDIS_PASSWORD,
-            )
             redis_key = f"{account_id}:{key}"
             app.logger.info(f"Deleting cached data for key: {redis_key}")
             r.delete(redis_key)
-            r.close()
             return "OK", 200
         except Exception as e:
             raise APIError(message=f"Error while deleting cached data: {e}") from e
@@ -461,12 +439,55 @@ def custom_tool_instance() -> Any:
             prompt_registry_id=prompt_registry_id,
         )
         return jsonify(data_dict)
+    except APIError:
+        # Let APIError propagate naturally
+        raise
     except Exception as e:
-        if isinstance(e, APIError):
-            raise e
+        # Wrap other exceptions
         msg = (
             f"Error while getting data for Prompt Studio project "
             f"{prompt_registry_id}: {e}"
+        )
+        raise APIError(message=msg) from e
+
+
+@platform_bp.route(
+    "/agentic_tool_instance",
+    methods=["GET"],
+    endpoint="agentic_tool_instance",
+)
+@authentication_middleware
+def agentic_tool_instance() -> Any:
+    """Fetching exported agentic tool instance.
+
+    Sample Usage:
+    curl -X GET
+    -H "Authorization: 0xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    http://localhost:3001/db/agentic_tool_instance/agentic_registry_id=id1
+    """
+    bearer_token = get_token_from_auth_header(request)
+    _, organization_id = get_organization_from_bearer_token(bearer_token)
+    if not organization_id:
+        return Env.INVALID_ORGANIZATOIN, 403
+
+    agentic_registry_id = request.args.get("agentic_registry_id")
+    if not agentic_registry_id:
+        raise APIError(message="agentic_registry_id is required", code=400)
+
+    try:
+        data_dict = PromptStudioRequestHelper.get_agentic_instance_from_db(
+            organization_id=organization_id,
+            agentic_registry_id=agentic_registry_id,
+        )
+        return jsonify(data_dict)
+    except APIError:
+        # Let APIError propagate naturally
+        raise
+    except Exception as e:
+        # Wrap other exceptions
+        msg = (
+            f"Error while getting data for Agentic Studio project "
+            f"{agentic_registry_id}: {e}"
         )
         raise APIError(message=msg) from e
 
@@ -492,8 +513,10 @@ def llm_profile_instance() -> Any:
             llm_profile_id=llm_profile_id,
         )
         return jsonify(data_dict)
+    except APIError:
+        # Let APIError propagate naturally
+        raise
     except Exception as e:
-        if isinstance(e, APIError):
-            raise e
+        # Wrap other exceptions
         msg = f"Error while getting data for LLM profile {llm_profile_id}: {e}"
         raise APIError(message=msg) from e
