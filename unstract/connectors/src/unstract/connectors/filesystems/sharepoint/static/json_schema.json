@@ -2,92 +2,87 @@
   "title": "SharePoint / OneDrive",
   "description": "Connect to SharePoint Online document libraries, OneDrive for Business, or OneDrive Personal. Supports Microsoft 365 work/school accounts and personal Microsoft accounts.",
   "type": "object",
-  "allOf": [
-    {
-      "required": [
-        "connectorName"
-      ],
-      "properties": {
-        "connectorName": {
-          "type": "string",
-          "title": "Name of the connector",
-          "default": "SharePoint / OneDrive Connector",
-          "description": "A friendly name to identify this connector"
-        },
-        "is_personal": {
-          "type": "boolean",
-          "title": "Personal Account",
-          "default": false,
-          "description": "Enable for OneDrive Personal (consumer Microsoft accounts). Leave disabled for SharePoint or OneDrive for Business (work/school accounts)."
-        }
-      }
+  "required": ["connectorName"],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "SharePoint / OneDrive Connector",
+      "description": "A friendly name to identify this connector"
     },
-    {
+    "is_personal": {
+      "type": "boolean",
+      "title": "Personal Account",
+      "default": false,
+      "description": "Enable for OneDrive Personal (consumer Microsoft accounts). Leave disabled for SharePoint or OneDrive for Business (work/school accounts)."
+    },
+    "site_url": {
+      "type": "string",
+      "title": "Site URL",
+      "description": "SharePoint site URL (e.g., https://contoso.sharepoint.com/sites/mysite). Leave empty for OneDrive Personal or OneDrive for Business root.",
+      "examples": [
+        "https://contoso.sharepoint.com/sites/mysite",
+        "https://contoso-my.sharepoint.com/personal/user_contoso_com"
+      ]
+    },
+    "drive_id": {
+      "type": "string",
+      "title": "Drive ID (Optional)",
+      "description": "Specific Drive/Document Library ID. Leave empty to use the default drive."
+    },
+    "auth_type": {
+      "type": "string",
+      "title": "Authentication Type",
+      "enum": ["oauth", "client_credentials"],
+      "enumNames": ["OAuth (Recommended)", "Client Credentials"],
+      "default": "oauth"
+    }
+  },
+  "dependencies": {
+    "auth_type": {
       "oneOf": [
         {
-          "title": "OAuth (Recommended)",
-          "description": "",
-          "properties": {},
-          "required": []
+          "properties": {
+            "auth_type": { "enum": ["oauth"] }
+          }
         },
         {
-          "title": "Client Credentials",
-          "description": "",
           "properties": {
-            "tenant_id": {
-              "type": "string",
-              "title": "Tenant ID",
-              "default": "",
-              "description": "Azure AD Tenant ID (Directory ID). Required for SharePoint and OneDrive for Business. Leave empty for Personal accounts."
-            },
+            "auth_type": { "enum": ["client_credentials"] },
             "client_id": {
               "type": "string",
               "title": "Client ID (Application ID)",
               "default": "",
-              "description": "The Application (client) ID from your Azure AD or Microsoft app registration"
+              "description": "The Application (client) ID from your Azure AD or Microsoft app registration."
+            },
+            "tenant_id": {
+              "type": "string",
+              "title": "Tenant ID",
+              "format": "password",
+              "default": "",
+              "description": "Azure AD Tenant ID (Directory ID). Required for Client Credentials authentication."
             },
             "client_secret": {
               "type": "string",
               "title": "Client Secret",
               "format": "password",
               "default": "",
-              "description": "Client secret from your app registration. Required for app-only (client credentials) authentication."
+              "description": "Client secret from your app registration."
             },
             "user_email": {
               "type": "string",
-              "title": "User Email (Required for OneDrive)",
-              "description": "User's email address (e.g., user@company.onmicrosoft.com). Required when using client credentials to access OneDrive.",
+              "title": "User Email",
+              "format": "password",
+              "description": "User's email address. Required ONLY for OneDrive with Client Credentials (not needed for SharePoint).",
               "examples": [
                 "user@company.onmicrosoft.com",
                 "user@company.com"
               ]
             }
           },
-          "required": [
-            "tenant_id",
-            "client_id",
-            "client_secret"
-          ]
+          "required": ["tenant_id", "client_id", "client_secret"]
         }
       ]
-    },
-    {
-      "properties": {
-        "site_url": {
-          "type": "string",
-          "title": "Site URL",
-          "description": "SharePoint site URL (e.g., https://contoso.sharepoint.com/sites/mysite). Leave empty for OneDrive Personal or OneDrive for Business root.",
-          "examples": [
-            "https://contoso.sharepoint.com/sites/mysite",
-            "https://contoso-my.sharepoint.com/personal/user_contoso_com"
-          ]
-        },
-        "drive_id": {
-          "type": "string",
-          "title": "Drive ID (Optional)",
-          "description": "Specific Drive/Document Library ID. Leave empty to use the default drive."
-        }
-      }
     }
-  ]
+  }
 }

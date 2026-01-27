@@ -60,6 +60,8 @@ function AddSourceModal({
         // A delay added in order to avoid glitch in the UI when the modal is closed.
         setSelectedSourceId(null);
         setEditItemId(null);
+        // Clear metadata to prevent stale data when adding a new connector
+        setMetadata({});
       }, 500);
     }
 

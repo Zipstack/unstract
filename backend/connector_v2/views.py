@@ -86,14 +86,14 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
             dict[str, str]: Connector creds dict to connect with
         """
         connector_metadata = None
-        if ConnectorInstance.supportsOAuth(connector_id=connector_id):
-            logger.info(f"Fetching oauth data for {connector_id}")
-            oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
-            if not oauth_key:
-                raise MissingParamException(
-                    "OAuth authentication required. Please sign in with Google first."
-                )
-            logger.info(f"Using OAuth cache key for {connector_id}")
+        oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
+
+        print("*** oauth_key *** ", oauth_key)
+
+        # Only use OAuth flow if connector supports it AND oauth_key is provided
+        if ConnectorInstance.supportsOAuth(connector_id=connector_id) and oauth_key:
+            logger.info("Fetching oauth data for %s", connector_id)
+            logger.info("Using OAuth cache key for %s", connector_id)
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
                 delete_key=False,  # Don't delete yet - wait for successful operation
@@ -102,6 +102,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
+            print("*** connector_metadata *** ", connector_metadata)
         return connector_metadata
 
     def _cleanup_oauth_cache(self, connector_id: str) -> None:

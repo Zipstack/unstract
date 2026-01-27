@@ -116,8 +116,13 @@ class SharePointFileSystem(AbstractFileSystem):
 
                         self._ctx = GraphClient(token_provider)
                     else:
+                        error_msg = (
+                            "Provide either:\n"
+                            "- client_secret (for app-only access)\n"
+                            "- access_token (for delegated access)."
+                        )
                         raise ConnectorError(
-                            "Either client_secret or access_token must be provided",
+                            error_msg,
                             treat_as_user_message=True,
                         )
 
@@ -163,16 +168,24 @@ class SharePointFileSystem(AbstractFileSystem):
         # Client credentials (app-only) - must use user email
         if self.client_secret:
             if not self.user_email:
+                error_msg = (
+                    "OneDrive client credentials require user email. Provide either \n"
+                    "- user_email (e.g., user@company.onmicrosoft.com) \n"
+                    "- OR use OAuth with access_token instead."
+                )
                 raise ConnectorError(
-                    "OneDrive with client credentials requires 'user_email' parameter. "
-                    "Either provide user_email (e.g., user@company.onmicrosoft.com) "
-                    "or use OAuth with access_token instead.",
+                    error_msg,
                     treat_as_user_message=True,
                 )
             return ctx.users[self.user_email].drive
 
+        error_msg = (
+            "SharePoint authentication credentials missing. Provide either:\n"
+            "- client_secret (for app-only access)\n"
+            "- OR access_token (for delegated access)"
+        )
         raise ConnectorError(
-            "Either client_secret or access_token must be provided",
+            error_msg,
             treat_as_user_message=True,
         )
 
@@ -447,32 +460,39 @@ class SharePointFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("SharePoint")
 
-        # Store settings for lazy initialization
-        self._settings = settings
-        self._site_url = settings.get("site_url", "").strip()
-        self._tenant_id = settings.get("tenant_id", "").strip()
-        self._client_id = settings.get("client_id", "").strip()
-        self._client_secret = settings.get("client_secret", "")
-        self._drive_id = settings.get("drive_id", "")
+        # Store settings for lazy initialization (handle None case)
+        self._settings = settings or {}
+        self._site_url = self._settings.get("site_url", "").strip()
+        self._tenant_id = self._settings.get("tenant_id", "").strip()
+        self._client_id = self._settings.get("client_id", "").strip()
+        self._client_secret = self._settings.get("client_secret", "")
+        self._drive_id = self._settings.get("drive_id", "")
 
         # OAuth tokens (for user-delegated access)
-        self._access_token = settings.get("access_token", "")
-        self._refresh_token = settings.get("refresh_token", "")
+        self._access_token = self._settings.get("access_token", "")
+        self._refresh_token = self._settings.get("refresh_token", "")
 
         # User email (for OneDrive with client credentials)
-        self._user_email = settings.get("user_email", "")
+        self._user_email = self._settings.get("user_email", "")
 
         # Account type (for OneDrive Personal)
-        self._is_personal = settings.get("is_personal", False)
+        self._is_personal = self._settings.get("is_personal", False)
 
         # Validate authentication method
         has_oauth = bool(self._access_token and self._refresh_token)
         has_client_creds = bool(self._client_id and self._client_secret)
 
         if not has_oauth and not has_client_creds:
-            raise ValueError(
-                "Authentication required: Either provide OAuth tokens (access_token, refresh_token) "
-                "or Client Credentials (client_id, client_secret)."
+            base_error = "SharePoint connection requires authentication"
+            details = (
+                "Provide either \n"
+                "- OAuth tokens (access_token, refresh_token) \n"
+                "- OR Client Credentials (tenant_id, client_id, client_secret)"
+            )
+            error_msg = f"{base_error}\nDetails: \n```\n{details}\n```"
+            raise ConnectorError(
+                error_msg,
+                treat_as_user_message=True,
             )
 
         # Lazy initialization
@@ -558,8 +578,15 @@ class SharePointFS(UnstractFileSystem):
                         )
                         logger.info("SharePoint filesystem initialized")
                     except Exception as e:
+                        base_error = "Failed to initialize SharePoint connection"
+                        library_error = str(e) if str(e) else None
+                        error_msg = (
+                            f"{base_error}\nDetails: \n```\n{library_error}\n```"
+                            if library_error
+                            else base_error
+                        )
                         raise ConnectorError(
-                            f"Failed to initialize SharePoint connection: {str(e)}",
+                            error_msg,
                             treat_as_user_message=True,
                         ) from e
 
@@ -573,8 +600,15 @@ class SharePointFS(UnstractFileSystem):
             fs.ls("")
             return True
         except Exception as e:
+            base_error = "SharePoint connection test failed"
+            library_error = str(e) if str(e) else None
+            error_msg = (
+                f"{base_error}\nDetails: \n```\n{library_error}\n```"
+                if library_error
+                else base_error
+            )
             raise ConnectorError(
-                f"SharePoint connection test failed: {str(e)}",
+                error_msg,
                 treat_as_user_message=True,
             ) from e
 
