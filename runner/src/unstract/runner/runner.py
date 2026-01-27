@@ -459,45 +459,46 @@ class UnstractRunner:
             tool_container_name=container_name,
         )
 
-        container_config = self.client.get_container_run_config(
-            command=["/bin/sh", "-c", container_command],
-            file_execution_id=file_execution_id,
-            shared_log_dir=shared_log_dir,  # Pass directory for mounting
-            container_name=container_name,
-            envs={**envs, **additional_env},
-            organization_id=organization_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            messaging_channel=messaging_channel,
-            tool_instance_id=tool_instance_id,
-        )
-
-        sidecar_config: dict[str, Any] | None = None
-        if self.sidecar_enabled:
-            sidecar_config = self._get_sidecar_container_config(
-                container_name=container_name,
-                shared_log_dir=shared_log_dir,
-                shared_log_file=shared_log_file,
-                file_execution_id=file_execution_id,
-                execution_id=execution_id,
-                organization_id=organization_id,
-                messaging_channel=messaging_channel,
-                tool_instance_id=tool_instance_id,
-            )
-
-        # Add labels to container for logging with Loki.
-        # This only required for observability.
-        try:
-            labels = ast.literal_eval(os.getenv(Env.TOOL_CONTAINER_LABELS, "[]"))
-            container_config["labels"] = labels
-        except Exception as e:
-            self.logger.info(f"Invalid labels for logging: {e}")
-
         # Run the Docker container
         container = None
         sidecar = None
         result = {"type": "RESULT", "result": None, "status": "RUNNING"}
         try:
+            # Build container config inside try block to catch ToolImageNotFoundError
+            # during image pull in get_container_run_config() -> get_image()
+            container_config = self.client.get_container_run_config(
+                command=["/bin/sh", "-c", container_command],
+                file_execution_id=file_execution_id,
+                shared_log_dir=shared_log_dir,  # Pass directory for mounting
+                container_name=container_name,
+                envs={**envs, **additional_env},
+                organization_id=organization_id,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                messaging_channel=messaging_channel,
+                tool_instance_id=tool_instance_id,
+            )
+
+            sidecar_config: dict[str, Any] | None = None
+            if self.sidecar_enabled:
+                sidecar_config = self._get_sidecar_container_config(
+                    container_name=container_name,
+                    shared_log_dir=shared_log_dir,
+                    shared_log_file=shared_log_file,
+                    file_execution_id=file_execution_id,
+                    execution_id=execution_id,
+                    organization_id=organization_id,
+                    messaging_channel=messaging_channel,
+                    tool_instance_id=tool_instance_id,
+                )
+
+            # Add labels to container for logging with Loki.
+            # This only required for observability.
+            try:
+                labels = ast.literal_eval(os.getenv(Env.TOOL_CONTAINER_LABELS, "[]"))
+                container_config["labels"] = labels
+            except Exception as e:
+                self.logger.info(f"Invalid labels for logging: {e}")
             self.logger.info(
                 f"Execution ID: {execution_id}, running docker "
                 f"container: {container_name}"
@@ -529,7 +530,7 @@ class UnstractRunner:
                 result = {"type": "RESULT", "result": None, "status": "SUCCESS"}
         except ToolRunException as te:
             self.logger.error(
-                f"Error while running docker container {container_config.get('name')}: {te}",
+                f"Error while running docker container {container_name}: {te}",
                 stack_info=True,
                 exc_info=True,
             )
