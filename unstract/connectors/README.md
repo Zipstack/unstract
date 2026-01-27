@@ -62,20 +62,18 @@ For detailed setup and integration testing:
 
 #### Running Unit Tests
 
-Tests should be run from the **main `unstract` repository directory** to ensure all dependencies are available.
-
 ```bash
-# From the main unstract directory
-cd /path/to/unstract
+cd unstract/connectors
 
-source .venv/bin/activate
+# Install test dependencies
+uv sync --group test
 
-# Examples of SharePoint connector
-uv run pytest unstract/connectors/tests/filesystems/test_sharepoint_fs.py::TestSharePointFSUnit -v
-uv run pytest unstract/connectors/tests/filesystems/test_sharepoint_fs.py::TestSharePointFSUnit::test_connector_metadata -v
+# Run all tests for a connector
+uv run pytest tests/filesystems/test_sharepoint_fs.py -v
 
-# Examples of MariaDB connector
-uv run pytest unstract/connectors/tests/databases/test_mariadb.py -v
-uv run pytest unstract/connectors/tests/databases/test_mariadb.py::TestMariaDB::test_ssl_config_from_environment -v
+# Run unit tests only
+uv run pytest tests/filesystems/test_sharepoint_fs.py::TestSharePointFSUnit -v
+
+# Run integration tests (requires .env credentials)
+uv run pytest tests/filesystems/test_sharepoint_fs.py::TestSharePointFSIntegration -v -s
 ```
-**Note:** Unit tests don't require credentials. Integration tests (if present) need a configured `.env` file with real credentials.
