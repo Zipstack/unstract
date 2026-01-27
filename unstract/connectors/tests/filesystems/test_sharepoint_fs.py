@@ -1,8 +1,11 @@
 """Tests for SharePoint/OneDrive filesystem connector."""
 
+import logging
 import os
 import unittest
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 class TestSharePointFSUnit(unittest.TestCase):
@@ -100,6 +103,7 @@ class TestSharePointFSUnit(unittest.TestCase):
 
     def test_connector_initialization_missing_auth(self):
         """Test connector raises error when no authentication method is provided."""
+        from unstract.connectors.exceptions import ConnectorError
         from unstract.connectors.filesystems.sharepoint import SharePointFS
 
         # No OAuth tokens and no client credentials
@@ -107,9 +111,9 @@ class TestSharePointFSUnit(unittest.TestCase):
             "site_url": "https://contoso.sharepoint.com/sites/testsite",
             "is_personal": False,
         }
-        with self.assertRaises(ValueError) as context:
+        with self.assertRaises(ConnectorError) as context:
             SharePointFS(settings=invalid_settings)
-        self.assertIn("Authentication required", str(context.exception))
+        self.assertIn("requires authentication", str(context.exception))
 
     def test_json_schema_has_is_personal(self):
         """Test that JSON schema includes is_personal field."""
@@ -120,7 +124,7 @@ class TestSharePointFSUnit(unittest.TestCase):
         self.assertIn("Personal Account", schema)
 
     def test_json_schema_has_oneof_pattern(self):
-        """Test that JSON schema uses oneOf pattern for dual auth methods."""
+        """Test that JSON schema uses dependencies/oneOf pattern for dual auth methods."""
         import json
 
         from unstract.connectors.filesystems.sharepoint import SharePointFS
@@ -128,29 +132,34 @@ class TestSharePointFSUnit(unittest.TestCase):
         schema_str = SharePointFS.get_json_schema()
         schema = json.loads(schema_str)
 
-        # Verify allOf structure with 3 objects
-        self.assertIn("allOf", schema)
-        self.assertEqual(len(schema["allOf"]), 3)
+        # Verify dependencies structure with auth_type
+        self.assertIn("dependencies", schema)
+        self.assertIn("auth_type", schema["dependencies"])
 
-        # Verify second element has oneOf with two auth methods
-        self.assertIn("oneOf", schema["allOf"][1])
-        self.assertEqual(len(schema["allOf"][1]["oneOf"]), 2)
+        # Verify oneOf with two auth methods
+        auth_deps = schema["dependencies"]["auth_type"]
+        self.assertIn("oneOf", auth_deps)
+        self.assertEqual(len(auth_deps["oneOf"]), 2)
 
         # Verify OAuth option
-        oauth_option = schema["allOf"][1]["oneOf"][0]
-        self.assertEqual(oauth_option["title"], "OAuth (Recommended)")
-        self.assertEqual(oauth_option["properties"], {})
+        oauth_option = auth_deps["oneOf"][0]
+        self.assertIn("properties", oauth_option)
+        self.assertEqual(oauth_option["properties"]["auth_type"]["enum"], ["oauth"])
 
         # Verify Client Credentials option
-        client_creds_option = schema["allOf"][1]["oneOf"][1]
-        self.assertEqual(client_creds_option["title"], "Client Credentials")
+        client_creds_option = auth_deps["oneOf"][1]
+        self.assertEqual(
+            client_creds_option["properties"]["auth_type"]["enum"], ["client_credentials"]
+        )
         self.assertIn("client_id", client_creds_option["properties"])
         self.assertIn("client_secret", client_creds_option["properties"])
+        self.assertIn("tenant_id", client_creds_option["properties"])
 
-        # Verify third element has site_url and drive_id properties
-        self.assertIn("properties", schema["allOf"][2])
-        self.assertIn("site_url", schema["allOf"][2]["properties"])
-        self.assertIn("drive_id", schema["allOf"][2]["properties"])
+        # Verify main properties have site_url and drive_id
+        self.assertIn("properties", schema)
+        self.assertIn("site_url", schema["properties"])
+        self.assertIn("drive_id", schema["properties"])
+        self.assertIn("auth_type", schema["properties"])
 
     def test_is_dir_by_metadata(self):
         """Test directory detection from metadata."""
@@ -172,17 +181,21 @@ class TestSharePointFSUnit(unittest.TestCase):
 
         connector = SharePointFS(settings=self.test_settings)
 
-        # Test with quickXorHash
+        # Test with quickXorHash (preferred)
         metadata = {"quickXorHash": "abc123hash"}
         self.assertEqual(connector.extract_metadata_file_hash(metadata), "abc123hash")
 
-        # Test with sha256Hash
-        metadata = {"sha256Hash": "sha256value"}
-        self.assertEqual(connector.extract_metadata_file_hash(metadata), "sha256value")
+        # Test with cTag
+        metadata = {"cTag": "ctag123value"}
+        self.assertEqual(connector.extract_metadata_file_hash(metadata), "ctag123value")
 
         # Test with eTag
         metadata = {"eTag": '"etag123",version'}
         self.assertEqual(connector.extract_metadata_file_hash(metadata), "etag123")
+
+        # Test with id as fallback
+        metadata = {"id": "item-id-123"}
+        self.assertEqual(connector.extract_metadata_file_hash(metadata), "item-id-123")
 
         # Test with no hash
         metadata = {"name": "file.txt"}
@@ -249,9 +262,6 @@ class TestSharePointFSIntegration(unittest.TestCase):
             "user_email": os.environ.get("SHAREPOINT_USER_EMAIL"),
         }
 
-        print(f"DEBUG: user_email from env = {os.environ.get('SHAREPOINT_USER_EMAIL')}")
-        print(f"DEBUG: settings = {settings}")
-
         connector = SharePointFS(settings=settings)
         fs = connector.get_fsspec_fs()
 
@@ -265,18 +275,18 @@ class TestSharePointFSIntegration(unittest.TestCase):
 
         try:
             # Create folder (this will happen automatically when writing file)
-            print(f"\nCreating file: {file_path}")
+            logger.info("Creating file: %s", file_path)
             fs.write_bytes(file_path, pdf_content)
-            print(f"✓ Successfully wrote file to: {file_path}")
-            print(f"✓ Folder: {folder_name}")
-            print(f"✓ File: {file_name}")
-            print(
-                f"✓ Verify in browser: Look for folder 'test-unit' in your OneDrive/SharePoint"
+            logger.info("Successfully wrote file to: %s", file_path)
+            logger.info("Folder: %s", folder_name)
+            logger.info("File: %s", file_name)
+            logger.info(
+                "Verify in browser: Look for folder 'test-unit' in your OneDrive/SharePoint"
             )
 
             # Verify file exists
             self.assertTrue(fs.exists(file_path))
-            print(f"✓ Verified file exists")
+            logger.info("Verified file exists")
 
         except Exception as e:
             self.fail(f"Failed to write file: {e}")
@@ -309,14 +319,14 @@ class TestSharePointFSIntegration(unittest.TestCase):
 
         try:
             # Read the file
-            print(f"\nReading file: {file_path}")
+            logger.info("Reading file: %s", file_path)
             content = fs.cat_file(file_path)
 
             # Verify content
             self.assertEqual(content, b"this is test pdf")
-            print(f"✓ Successfully read file from: {file_path}")
-            print(f"✓ File size: {len(content)} bytes")
-            print(f"✓ Content: {content.decode()}")
+            logger.info("Successfully read file from: %s", file_path)
+            logger.info("File size: %d bytes", len(content))
+            logger.info("Content: %s", content.decode())
 
         except FileNotFoundError:
             self.skipTest(

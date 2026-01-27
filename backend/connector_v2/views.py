@@ -88,8 +88,6 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
         connector_metadata = None
         oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
 
-        print("*** oauth_key *** ", oauth_key)
-
         # Only use OAuth flow if connector supports it AND oauth_key is provided
         if ConnectorInstance.supportsOAuth(connector_id=connector_id) and oauth_key:
             logger.info("Fetching oauth data for %s", connector_id)
@@ -102,7 +100,6 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
-            print("*** connector_metadata *** ", connector_metadata)
         return connector_metadata
 
     def _cleanup_oauth_cache(self, connector_id: str) -> None:
