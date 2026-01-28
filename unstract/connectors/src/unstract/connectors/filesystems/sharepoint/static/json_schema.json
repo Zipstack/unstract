@@ -52,21 +52,18 @@
             "client_id": {
               "type": "string",
               "title": "Client ID (Application ID)",
-              "default": "",
               "description": "The Application (client) ID from your Azure AD or Microsoft app registration."
             },
             "tenant_id": {
               "type": "string",
               "title": "Tenant ID",
               "format": "password",
-              "default": "",
               "description": "Azure AD Tenant ID (Directory ID). Required for Client Credentials authentication."
             },
             "client_secret": {
               "type": "string",
               "title": "Client Secret",
               "format": "password",
-              "default": "",
               "description": "Client secret from your app registration."
             },
             "user_email": {

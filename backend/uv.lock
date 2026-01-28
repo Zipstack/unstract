@@ -3818,6 +3818,13 @@ requires-dist = [
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "~=3.14.0" },
 ]
 
+[package.metadata.requires-dev]
+test = [
+    { name = "pytest", specifier = ">=8.0.1" },
+    { name = "python-dotenv", specifier = "~=1.0.0" },
+    { name = "unstract-filesystem", editable = "../unstract/filesystem" },
+]
+
 [[package]]
 name = "unstract-core"
 version = "0.0.1"

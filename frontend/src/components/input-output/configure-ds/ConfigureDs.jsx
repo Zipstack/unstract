@@ -59,11 +59,13 @@ function ConfigureDs({
   // Determine if OAuth authentication method is selected
   const isOAuthMethodSelected = () => {
     if (!oAuthProvider?.length) return false;
-    // Check if Client Credentials fields EXIST in formData (not their values)
-    // OAuth schema has NO client_id/client_secret properties → keys don't exist
-    // Client Credentials schema HAS those properties → keys exist (even if empty)
+    // Check if auth_type is set to a non-OAuth value
     const data = formData || {};
-    return !("client_id" in data) && !("client_secret" in data);
+    // If auth_type exists and is not "oauth", then OAuth is not selected
+    if (data.auth_type && data.auth_type !== "oauth") {
+      return false;
+    }
+    return true;
   };
 
   // Initialize OAuth state from localStorage after keys are available
