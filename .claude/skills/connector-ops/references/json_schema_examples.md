@@ -587,6 +587,118 @@ Add SSL options to any schema:
 
 ---
 
+## Pattern: Dual Authentication (OAuth + Client Credentials)
+
+Used by: SharePoint/OneDrive (first connector to implement this pattern)
+
+This pattern allows users to choose between OAuth (user-delegated) or Client Credentials (app-only) authentication. The JSON schema uses `dependencies` to conditionally show/hide fields based on the selected auth type.
+
+**Key features:**
+- `auth_type` field with enum for authentication mode selection
+- `dependencies` block to conditionally reveal additional fields
+- OAuth mode: Only shows common fields (OAuth button handled by frontend)
+- Client Credentials mode: Reveals credential fields (tenant_id, client_id, client_secret)
+
+```json
+{
+  "title": "SharePoint / OneDrive",
+  "description": "Connect to SharePoint Online document libraries, OneDrive for Business, or OneDrive Personal.",
+  "type": "object",
+  "required": ["connectorName"],
+  "properties": {
+    "connectorName": {
+      "type": "string",
+      "title": "Name of the connector",
+      "default": "SharePoint / OneDrive Connector"
+    },
+    "site_url": {
+      "type": "string",
+      "title": "Site URL",
+      "description": "SharePoint site URL. Leave empty for OneDrive."
+    },
+    "auth_type": {
+      "type": "string",
+      "title": "Authentication Type",
+      "enum": ["oauth", "client_credentials"],
+      "enumNames": ["OAuth (Recommended)", "Client Credentials"],
+      "default": "oauth"
+    }
+  },
+  "dependencies": {
+    "auth_type": {
+      "oneOf": [
+        {
+          "properties": {
+            "auth_type": { "enum": ["oauth"] }
+          }
+        },
+        {
+          "properties": {
+            "auth_type": { "enum": ["client_credentials"] },
+            "client_id": {
+              "type": "string",
+              "title": "Client ID (Application ID)",
+              "description": "The Application (client) ID from your Azure AD app registration."
+            },
+            "tenant_id": {
+              "type": "string",
+              "title": "Tenant ID",
+              "format": "password",
+              "description": "Azure AD Tenant ID (Directory ID)."
+            },
+            "client_secret": {
+              "type": "string",
+              "title": "Client Secret",
+              "format": "password",
+              "description": "Client secret from your app registration."
+            },
+            "user_email": {
+              "type": "string",
+              "title": "User Email",
+              "format": "password",
+              "description": "User's email (required for OneDrive with Client Credentials)."
+            }
+          },
+          "required": ["tenant_id", "client_id", "client_secret"]
+        }
+      ]
+    }
+  }
+}
+```
+
+**How it works:**
+1. User selects `auth_type` from dropdown
+2. If "OAuth" selected → only common fields shown, frontend displays OAuth button
+3. If "Client Credentials" selected → credential fields appear, no OAuth button needed
+
+**Frontend integration:**
+- The frontend checks `requires_oauth()` to show the OAuth button
+- When `auth_type = "oauth"`, the OAuth flow populates `access_token` and `refresh_token`
+- When `auth_type = "client_credentials"`, user manually enters credentials
+
+**Connector code handling:**
+```python
+def __init__(self, settings: dict[str, Any]):
+    # OAuth tokens (populated by OAuth flow)
+    self._access_token = settings.get("access_token", "")
+    self._refresh_token = settings.get("refresh_token", "")
+
+    # Client credentials (manually entered)
+    self._tenant_id = settings.get("tenant_id", "")
+    self._client_id = settings.get("client_id", "")
+    self._client_secret = settings.get("client_secret", "")
+
+    # Validate at least one auth method is provided
+    has_oauth = bool(self._access_token and self._refresh_token)
+    has_client_creds = bool(self._client_id and self._client_secret)
+
+    if not has_oauth and not has_client_creds:
+        raise ConnectorError("Provide OAuth tokens OR Client Credentials")
+```
+
+---
+
 ## Field Format Reference
 
 | Format | UI Rendering |

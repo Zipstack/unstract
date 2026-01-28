@@ -474,10 +474,10 @@ def integration_db_config():
 ```bash
 # Run all mock tests (always works)
 cd unstract/connectors
-python -m pytest tests/ -v --ignore=tests/**/test_*_integration.py
+uv run pytest tests/ -v --ignore=tests/**/test_*_integration.py
 
 # Run specific connector tests
-python -m pytest tests/databases/test_postgresql.py -v
+uv run pytest tests/databases/test_postgresql.py -v
 
 # Run integration tests (requires env vars)
 export POSTGRESQL_HOST=localhost
@@ -485,10 +485,10 @@ export POSTGRESQL_PORT=5432
 export POSTGRESQL_DATABASE=testdb
 export POSTGRESQL_USER=testuser
 export POSTGRESQL_PASSWORD=testpass
-python -m pytest tests/databases/test_postgresql_integration.py -v
+uv run pytest tests/databases/test_postgresql_integration.py -v
 
 # Run with coverage
-python -m pytest tests/ -v --cov=src/unstract/connectors --cov-report=html
+uv run pytest tests/ -v --cov=src/unstract/connectors --cov-report=html
 ```
 
 ---
