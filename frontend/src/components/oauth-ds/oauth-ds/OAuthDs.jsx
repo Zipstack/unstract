@@ -32,7 +32,10 @@ function OAuthDs({
     if (oAuthProvider === O_AUTH_PROVIDERS.MICROSOFT) {
       return "Sign in with Microsoft";
     }
-    return "Authenticate with Google";
+    if (oAuthProvider === O_AUTH_PROVIDERS.GOOGLE) {
+      return "Authenticate with Google";
+    }
+    return "Authenticate";
   };
 
   const buttonText = getButtonText();
