@@ -1,6 +1,7 @@
-import { Modal, Table, Tooltip } from "antd";
+import { Button, Modal, Table, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
+import { CopyOutlined } from "@ant-design/icons";
 
 import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -29,6 +30,32 @@ function LogModal({
   const [loading, setLoading] = useState(false);
   const [selectedLogLevel, setSelectedLogLevel] = useState(null);
   const [ordering, setOrdering] = useState(null);
+  const displayId = fileId || executionId;
+
+  const handleCopyToClipboard = (text, label = "Text") => {
+    if (!navigator.clipboard) {
+      setAlertDetails({
+        type: "error",
+        content: "Clipboard not available in this browser",
+      });
+      return;
+    }
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setAlertDetails({
+          type: "success",
+          content: `${label} copied to clipboard`,
+        });
+      },
+      (err) => {
+        setAlertDetails({
+          type: "error",
+          content: `Failed to copy: ${err.message || "Unknown error"}`,
+        });
+      },
+    );
+  };
+
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -150,7 +177,21 @@ function LogModal({
   }, [logDescModalOpen, pagination.current, selectedLogLevel, ordering]);
   return (
     <Modal
-      title={`Execution Log Details - ${fileId || executionId}`}
+      title={
+        <span className="log-modal-title">
+          Execution Log Details - {displayId}
+          <Button
+            className="copy-btn-outlined"
+            icon={<CopyOutlined />}
+            onClick={() =>
+              handleCopyToClipboard(
+                displayId,
+                fileId ? "File Execution ID" : "Execution ID",
+              )
+            }
+          />
+        </span>
+      }
       centered
       open={logDescModalOpen}
       onCancel={handleClose}
