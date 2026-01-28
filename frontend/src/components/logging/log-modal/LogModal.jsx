@@ -162,12 +162,7 @@ function LogModal({
               className="copy-btn-outlined"
               icon={<CopyOutlined />}
               aria-label="Copy execution ID"
-              onClick={() =>
-                copyToClipboard(
-                  displayId,
-                  "File Execution ID"
-                )
-              }
+              onClick={() => copyToClipboard(displayId, "File Execution ID")}
             />
           )}
         </span>

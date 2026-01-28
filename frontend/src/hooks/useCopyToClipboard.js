@@ -23,7 +23,7 @@ function useCopyToClipboard() {
           type: "error",
           content: `Failed to copy: ${err.message || "Unknown error"}`,
         });
-      },
+      }
     );
   };
 

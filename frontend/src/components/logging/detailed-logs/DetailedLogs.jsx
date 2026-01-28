@@ -50,7 +50,7 @@ const StatusMessageCell = ({ text }) => {
     const checkOverflow = () => {
       if (textRef.current) {
         setIsOverflowing(
-          textRef.current.scrollWidth > textRef.current.clientWidth,
+          textRef.current.scrollWidth > textRef.current.clientWidth
         );
       }
     };
@@ -202,7 +202,7 @@ const DetailedLogs = () => {
       }
 
       const response = await axiosPrivate.get(
-        `${url}?${searchParams.toString()}`,
+        `${url}?${searchParams.toString()}`
       );
       setPagination({
         current: page,
