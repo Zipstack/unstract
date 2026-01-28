@@ -21,6 +21,9 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [expandModalVisible, setExpandModalVisible] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const textAreaRef = useRef(null);
   const { details, updateCustomTool, isPublicSource } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
@@ -34,6 +37,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
       setTitle("Postamble Settings");
       setText(details?.postamble || "");
     }
+    setHasChanges(false);
   }, [type, details]);
 
   const setDefaultPrompt = () => {
@@ -42,10 +46,14 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     } else if (type === fieldNames.postamble) {
       setText(DefaultPrompts.postamble);
     }
+    setHasChanges(true);
+    setIsSaved(false);
   };
 
   const handleTextChange = (e) => {
     setText(e.target.value);
+    setHasChanges(true);
+    setIsSaved(false);
   };
 
   const toggleExpandModal = () => {
@@ -61,6 +69,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     if (type === fieldNames.postamble) {
       body["postamble"] = text;
     }
+    setIsLoading(true);
     handleUpdateTool(body)
       .then((res) => {
         const data = res?.data;
@@ -70,9 +79,14 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
         };
         const updatedDetails = { ...details, ...updatedData };
         updateCustomTool({ details: updatedDetails });
+        setHasChanges(false);
+        setIsSaved(true);
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update."));
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   };
 
@@ -145,9 +159,10 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
             <CustomButton
               type="primary"
               onClick={handleSave}
-              disabled={isPublicSource}
+              loading={isLoading}
+              disabled={isPublicSource || !hasChanges}
             >
-              Save
+              {isSaved ? "Saved" : "Save"}
             </CustomButton>
           </Space>
         </div>

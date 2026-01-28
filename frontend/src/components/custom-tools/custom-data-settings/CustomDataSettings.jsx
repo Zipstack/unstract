@@ -55,13 +55,14 @@ function CustomDataSettings() {
   const [jsonError, setJsonError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { details, isPublicSource, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
-  // Initialize editor with current custom_data
+  // Initialize editor with current custom_data (only on tab switch)
   useEffect(() => {
     const customData = details?.custom_data;
     if (customData && Object.keys(customData).length > 0) {
@@ -70,7 +71,8 @@ function CustomDataSettings() {
       setJsonValue("{\n  \n}");
     }
     setHasChanges(false);
-  }, [details?.custom_data]);
+    setIsSaved(false);
+  }, [details?.tool_id]);
 
   // Extract variables from active prompts
   const extractedVariables = useMemo(() => {
@@ -113,6 +115,9 @@ function CustomDataSettings() {
   const handleEditorChange = (value) => {
     setJsonValue(value || "");
     setHasChanges(true);
+    if (isSaved) {
+      setIsSaved(false);
+    }
 
     // Validate JSON
     try {
@@ -159,6 +164,7 @@ function CustomDataSettings() {
     axiosPrivate(requestOptions)
       .then((res) => {
         setHasChanges(false);
+        setIsSaved(true);
         // Update the store with the new details
         const updatedDetails = res?.data;
         if (updatedDetails) {
@@ -288,7 +294,7 @@ function CustomDataSettings() {
               loading={isLoading}
               disabled={isPublicSource || !!jsonError || !hasChanges}
             >
-              Save
+              {isSaved ? "Saved" : "Save"}
             </CustomButton>
           </Space>
         </div>
