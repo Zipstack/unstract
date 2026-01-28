@@ -64,7 +64,7 @@ class LookupIntegrationService:
             prompt_lookup_map: Optional mapping of field names (prompt_key) to
                 specific lookup_project_id. Fields with a specific lookup will
                 ONLY be enriched by that lookup. Fields without a specific
-                lookup will use all project-level linked lookups.
+                lookup will be SKIPPED (no enrichment applied).
 
         Returns:
             Dict with 'lookup_enrichment' and '_lookup_metadata' keys,
@@ -81,6 +81,23 @@ class LookupIntegrationService:
 
         timeout = timeout or LOOKUP_ENRICHMENT_TIMEOUT
         prompt_lookup_map = prompt_lookup_map or {}
+
+        # Skip enrichment if no prompts have lookup enabled (prompt_lookup_map empty)
+        # This ensures lookups only run when explicitly enabled at the prompt level
+        if not prompt_lookup_map:
+            logger.debug(
+                "No prompts have lookup enabled (prompt_lookup_map is empty), "
+                "skipping enrichment"
+            )
+            return {
+                "lookup_enrichment": {},
+                "_lookup_metadata": {
+                    "status": "skipped",
+                    "message": "No prompts have lookup enabled",
+                    "lookups_executed": 0,
+                    "lookups_successful": 0,
+                },
+            }
 
         try:
             return LookupIntegrationService._execute_enrichment(
@@ -239,7 +256,7 @@ class LookupIntegrationService:
 
         Supports prompt-level lookups: if a field has a specific lookup assigned
         via prompt_lookup_map, only that lookup will enrich it. Fields without
-        specific lookups will use all project-level linked lookups.
+        specific lookups will be SKIPPED (no enrichment applied).
 
         Args:
             lookup_projects: List of LookupProject instances linked at project level
@@ -326,9 +343,9 @@ class LookupIntegrationService:
 
             # Separate fields by their lookup assignment
             # Fields with specific lookups: only that lookup enriches them
-            # Fields without specific lookups: all project-level lookups apply
+            # Fields without specific lookups: SKIP enrichment (no lookup enabled)
             fields_with_specific_lookup: dict[str, dict[str, Any]] = {}
-            fields_without_specific_lookup: dict[str, Any] = {}
+            fields_skipped: list[str] = []
 
             for field_name, field_value in input_data.items():
                 if field_name in prompt_lookup_map:
@@ -337,7 +354,14 @@ class LookupIntegrationService:
                         fields_with_specific_lookup[lookup_id] = {}
                     fields_with_specific_lookup[lookup_id][field_name] = field_value
                 else:
-                    fields_without_specific_lookup[field_name] = field_value
+                    # Field has no lookup assigned - skip enrichment entirely
+                    fields_skipped.append(field_name)
+
+            if fields_skipped:
+                logger.info(
+                    f"Skipping enrichment for fields without lookup assigned: "
+                    f"{fields_skipped}"
+                )
 
             all_enrichment: dict[str, Any] = {}
             all_enrichments: list[dict[str, Any]] = []  # Collect all enrichment results
@@ -372,25 +396,6 @@ class LookupIntegrationService:
                         f"for fields: {list(fields.keys())}"
                     )
 
-            # Execute all project-level lookups for remaining fields
-            if fields_without_specific_lookup:
-                logger.info(
-                    f"Executing project-level lookups for fields: "
-                    f"{list(fields_without_specific_lookup.keys())}"
-                )
-                result = orchestrator.execute_lookups(
-                    input_data=fields_without_specific_lookup,
-                    lookup_projects=lookup_projects,
-                    execution_id=execution_id,
-                    prompt_studio_project_id=prompt_studio_project_id,
-                )
-                all_enrichment.update(result.get("lookup_enrichment", {}))
-                metadata = result.get("_lookup_metadata", {})
-                total_executed += metadata.get("lookups_executed", 0)
-                total_successful += metadata.get("lookups_successful", 0)
-                # Collect enrichment details for error checking
-                all_enrichments.extend(metadata.get("enrichments", []))
-
             return {
                 "lookup_enrichment": all_enrichment,
                 "_lookup_metadata": {
@@ -398,7 +403,7 @@ class LookupIntegrationService:
                     "lookups_executed": total_executed,
                     "lookups_successful": total_successful,
                     "prompt_level_lookups": len(fields_with_specific_lookup),
-                    "project_level_fields": len(fields_without_specific_lookup),
+                    "fields_skipped": len(fields_skipped),
                     "enrichments": all_enrichments,  # Include for error checking
                 },
             }

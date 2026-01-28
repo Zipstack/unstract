@@ -4,8 +4,8 @@ import { useEffect, useMemo } from "react";
 import useLogout from "./useLogout";
 
 function useAxiosPrivate() {
-  const axiosPrivate = useMemo(() => axios.create(), []);
   const logout = useLogout();
+  const axiosPrivate = useMemo(() => axios.create(), []);
 
   useEffect(() => {
     const responseInterceptor = axiosPrivate.interceptors.response.use(

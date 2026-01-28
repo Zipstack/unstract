@@ -32,17 +32,33 @@ def _build_prompt_lookup_map(
 ) -> dict[str, str]:
     """Build mapping of prompt_key to lookup_project_id for prompts with lookups.
 
+    This function determines which prompts have lookup enrichment enabled.
+    Lookup is enabled for a prompt when `lookup_project` is assigned.
+    Prompts without `lookup_project` will be skipped (no enrichment).
+
     Args:
         prompts: List of ToolStudioPrompt instances
 
     Returns:
         Dict mapping prompt_key to lookup_project_id (as string) for prompts
-        that have a lookup_project assigned.
+        that have a lookup_project assigned (lookup enabled).
     """
     prompt_lookup_map: dict[str, str] = {}
+    skipped_prompts: list[str] = []
+
     for prompt in prompts:
         if prompt.lookup_project_id:
             prompt_lookup_map[prompt.prompt_key] = str(prompt.lookup_project_id)
+        else:
+            skipped_prompts.append(prompt.prompt_key)
+
+    if skipped_prompts:
+        logger.debug(
+            f"Prompts without lookup enabled (no lookup_project): {skipped_prompts}"
+        )
+    if prompt_lookup_map:
+        logger.info(f"Prompts with lookup enabled: {list(prompt_lookup_map.keys())}")
+
     return prompt_lookup_map
 
 
@@ -79,7 +95,7 @@ def _try_lookup_enrichment(
 
     Supports prompt-level lookups: if a field has a specific lookup assigned
     via prompt_lookup_map, only that lookup will enrich it. Fields without
-    specific lookups will use all project-level linked lookups.
+    specific lookups will be SKIPPED (no enrichment applied).
 
     Args:
         tool_id: Prompt Studio project (CustomTool) UUID
@@ -185,6 +201,17 @@ class OutputManagerHelper:
         """Handles updating prompt outputs in the database and returns
         serialized data.
 
+        This method processes extraction outputs, saves them to the database,
+        and applies lookup enrichment as a post-processing step.
+
+        Lookup Enrichment Behavior:
+            - Lookups run as POST-PROCESSING after extraction completes
+            - Only prompts with `lookup_project` assigned will be enriched
+            - Prompts without `lookup_project` are skipped (no enrichment)
+            - Each prompt can have a different lookup project assigned
+            - Response includes `_lookup_status` for each prompt indicating
+              whether lookup was enabled and if enrichment was applied
+
         Args:
             run_id (str): ID of the run.
             prompts (list[ToolStudioPrompt]): List of prompts to update.
@@ -192,11 +219,15 @@ class OutputManagerHelper:
             document_id (str): ID of the document.
             profile_manager_id (Optional[str]): UUID of the profile manager.
             is_single_pass_extract (bool): Flag indicating if single pass
-            extract is active.
+                extract is active.
             metadata (dict[str, Any]): Metadata for the update.
 
         Returns:
             list[dict[str, Any]]: List of serialized prompt output data.
+                Each item includes `_lookup_status` with:
+                - enabled: Whether lookup was configured for this prompt
+                - lookup_project_id: The assigned lookup project UUID (or None)
+                - was_enriched: Whether the output was actually enriched
         """
 
         def update_or_create_prompt_output(
@@ -360,6 +391,9 @@ class OutputManagerHelper:
 
         logger.info(f"extracted_data_for_lookup: {extracted_data_for_lookup}")
 
+        # Initialize lookup_result for later status tracking
+        lookup_result: dict[str, Any] = {}
+
         # Execute Lookup enrichment if linked projects exist
         if extracted_data_for_lookup:
             tool_id_str = str(tool.tool_id)
@@ -433,6 +467,26 @@ class OutputManagerHelper:
                                     )
                     # Add metadata for tracking
                     item["_lookup_metadata"] = lookup_metadata
+
+        # Add lookup status to each serialized item for debugging/UI
+        # This indicates whether lookup was enabled and if enrichment was applied
+        prompt_by_key = {p.prompt_key: p for p in prompts}
+        lookup_enrichment_keys = set(lookup_result.get("lookup_enrichment", {}).keys())
+        for item in serialized_data:
+            prompt_key = item.get("prompt_key")
+            prompt = prompt_by_key.get(prompt_key)
+            if prompt:
+                lookup_enabled = prompt.lookup_project_id is not None
+                was_enriched = prompt_key in lookup_enrichment_keys
+                item["_lookup_status"] = {
+                    "enabled": lookup_enabled,
+                    "lookup_project_id": (
+                        str(prompt.lookup_project_id)
+                        if prompt.lookup_project_id
+                        else None
+                    ),
+                    "was_enriched": was_enriched,
+                }
 
         return serialized_data
 
