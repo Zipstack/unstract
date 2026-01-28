@@ -25,7 +25,6 @@ from api_v2.dto import DeploymentExecutionDTO
 from api_v2.exceptions import (
     NoActiveAPIKeyError,
     RateLimitExceeded,
-    ToolNotFoundInRegistry,
     contains_tool_not_found_error,
 )
 from api_v2.models import APIDeployment
