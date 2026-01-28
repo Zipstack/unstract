@@ -26,6 +26,7 @@ from api_v2.exceptions import (
     NoActiveAPIKeyError,
     RateLimitExceeded,
     ToolNotFoundInRegistry,
+    contains_tool_not_found_error,
 )
 from api_v2.models import APIDeployment
 from api_v2.rate_limiter import APIDeploymentRateLimiter
@@ -43,50 +44,6 @@ if notification_plugin:
     from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
-
-# Error patterns that indicate tool not found in registry
-TOOL_NOT_FOUND_PATTERNS = [
-    "not found in container registry",
-    ToolNotFoundInRegistry.ERROR_CODE,
-]
-
-
-def _contains_tool_not_found_error(response: dict | ExecutionResponse) -> bool:
-    """Check if response contains a tool not found in registry error.
-
-    Args:
-        response: Either a dict (from POST) or ExecutionResponse (from GET)
-
-    Returns:
-        bool: True if tool not found error is detected
-    """
-    # Get error and result from response
-    if isinstance(response, dict):
-        error = response.get("error")
-        result = response.get("result", [])
-    else:
-        error = getattr(response, "error", None)
-        result = getattr(response, "result", []) or []
-
-    # Check top-level error
-    if error:
-        error_str = str(error).lower()
-        for pattern in TOOL_NOT_FOUND_PATTERNS:
-            if pattern.lower() in error_str:
-                return True
-
-    # Check file-level errors in result array
-    if isinstance(result, list):
-        for item in result:
-            if isinstance(item, dict):
-                file_error = item.get("error", "")
-                if file_error:
-                    error_str = str(file_error).lower()
-                    for pattern in TOOL_NOT_FOUND_PATTERNS:
-                        if pattern.lower() in error_str:
-                            return True
-
-    return False
 
 
 class DeploymentExecution(views.APIView):
@@ -181,7 +138,7 @@ class DeploymentExecution(views.APIView):
         if has_error:
             # Check for tool not found in registry error - return 500 Internal Server Error
             # This is a server-side deployment state issue, not a client-actionable error
-            if _contains_tool_not_found_error(response):
+            if contains_tool_not_found_error(response):
                 logger.error(
                     "API deployment failed: Tool not found in container registry"
                 )
@@ -232,7 +189,7 @@ class DeploymentExecution(views.APIView):
 
         # Check for tool not found in registry error - return 500 Internal Server Error
         # This is a server-side deployment state issue, not a client-actionable error
-        if _contains_tool_not_found_error(response):
+        if contains_tool_not_found_error(response):
             logger.error("Execution failed: Tool not found in container registry")
             return Response(
                 data={

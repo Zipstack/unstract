@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING
+
 from rest_framework.exceptions import APIException
+
+if TYPE_CHECKING:
+    from workflow_manager.workflow_v2.dto import ExecutionResponse
 
 
 class NotFoundException(APIException):
@@ -117,6 +122,53 @@ class ToolNotFoundInRegistry(APIException):
             else:
                 detail = self.default_detail
         super().__init__(detail, code)
+
+
+# Error patterns that indicate tool not found in registry
+TOOL_NOT_FOUND_PATTERNS = [
+    "not found in container registry",
+    ToolNotFoundInRegistry.ERROR_CODE,
+]
+
+
+def contains_tool_not_found_error(
+    response: "dict | ExecutionResponse",
+) -> bool:
+    """Check if response contains a tool not found in registry error.
+
+    Args:
+        response: Either a dict (from POST) or ExecutionResponse (from GET)
+
+    Returns:
+        bool: True if tool not found error is detected
+    """
+    # Get error and result from response
+    if isinstance(response, dict):
+        error = response.get("error")
+        result = response.get("result", [])
+    else:
+        error = getattr(response, "error", None)
+        result = getattr(response, "result", []) or []
+
+    # Check top-level error
+    if error:
+        error_str = str(error).lower()
+        for pattern in TOOL_NOT_FOUND_PATTERNS:
+            if pattern.lower() in error_str:
+                return True
+
+    # Check file-level errors in result array
+    if isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict):
+                file_error = item.get("error", "")
+                if file_error:
+                    error_str = str(file_error).lower()
+                    for pattern in TOOL_NOT_FOUND_PATTERNS:
+                        if pattern.lower() in error_str:
+                            return True
+
+    return False
 
 
 class PresignedURLFetchError(APIException):
