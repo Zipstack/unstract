@@ -13,6 +13,7 @@ import {
 } from "../../../helpers/GetStaticData";
 import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 
 function LogModal({
   executionId,
@@ -25,37 +26,13 @@ function LogModal({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+  const copyToClipboard = useCopyToClipboard();
+  const displayId = fileId || executionId;
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [selectedLogLevel, setSelectedLogLevel] = useState(null);
   const [ordering, setOrdering] = useState(null);
-  const displayId = fileId || executionId;
-
-  const handleCopyToClipboard = (text, label = "Text") => {
-    if (!navigator.clipboard) {
-      setAlertDetails({
-        type: "error",
-        content: "Clipboard not available in this browser",
-      });
-      return;
-    }
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setAlertDetails({
-          type: "success",
-          content: `${label} copied to clipboard`,
-        });
-      },
-      (err) => {
-        setAlertDetails({
-          type: "error",
-          content: `Failed to copy: ${err.message || "Unknown error"}`,
-        });
-      }
-    );
-  };
-
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 10,
@@ -186,9 +163,9 @@ function LogModal({
               icon={<CopyOutlined />}
               aria-label="Copy execution ID"
               onClick={() =>
-                handleCopyToClipboard(
+                copyToClipboard(
                   displayId,
-                  fileId ? "File Execution ID" : "Execution ID"
+                  fileId ? "File Execution ID" : "Execution ID",
                 )
               }
             />

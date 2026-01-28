@@ -39,6 +39,7 @@ import { LogModal } from "../log-modal/LogModal";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
 import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 
 // Component for status message with conditional tooltip (only when truncated)
 const StatusMessageCell = ({ text }) => {
@@ -49,7 +50,7 @@ const StatusMessageCell = ({ text }) => {
     const checkOverflow = () => {
       if (textRef.current) {
         setIsOverflowing(
-          textRef.current.scrollWidth > textRef.current.clientWidth
+          textRef.current.scrollWidth > textRef.current.clientWidth,
         );
       }
     };
@@ -95,6 +96,7 @@ const DetailedLogs = () => {
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
   const { getUrl } = useRequestUrl();
+  const copyToClipboard = useCopyToClipboard();
 
   const [executionDetails, setExecutionDetails] = useState();
   const [executionFiles, setExecutionFiles] = useState();
@@ -121,30 +123,6 @@ const DetailedLogs = () => {
   const isTerminalState =
     executionDetails?.status &&
     TERMINAL_STATES.includes(executionDetails.status.toUpperCase());
-
-  const handleCopyToClipboard = (text, label = "Text") => {
-    if (!navigator.clipboard) {
-      setAlertDetails({
-        type: "error",
-        content: "Clipboard not available in this browser",
-      });
-      return;
-    }
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setAlertDetails({
-          type: "success",
-          content: `${label} copied to clipboard`,
-        });
-      },
-      (err) => {
-        setAlertDetails({
-          type: "error",
-          content: `Failed to copy: ${err.message || "Unknown error"}`,
-        });
-      }
-    );
-  };
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -224,7 +202,7 @@ const DetailedLogs = () => {
       }
 
       const response = await axiosPrivate.get(
-        `${url}?${searchParams.toString()}`
+        `${url}?${searchParams.toString()}`,
       );
       setPagination({
         current: page,
@@ -490,7 +468,7 @@ const DetailedLogs = () => {
           <Button
             className="copy-btn-outlined"
             icon={<CopyOutlined />}
-            onClick={() => handleCopyToClipboard(id, "Execution ID")}
+            onClick={() => copyToClipboard(id, "Execution ID")}
           />
         </Typography.Title>
         <LogsRefreshControls
