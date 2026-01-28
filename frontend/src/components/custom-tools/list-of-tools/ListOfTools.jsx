@@ -177,10 +177,6 @@ function ListOfTools() {
           (filterToll) => filterToll?.tool_id !== tool.tool_id
         );
         setListOfTools(tools);
-        setAlertDetails({
-          type: "success",
-          content: `${tool?.tool_name} - Deleted successfully`,
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to Delete"));
@@ -338,10 +334,6 @@ function ListOfTools() {
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Sharing settings updated successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
