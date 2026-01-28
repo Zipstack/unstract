@@ -178,6 +178,11 @@ export function LookUpProjectDetail() {
       children: <TemplateTab project={project} onUpdate={fetchProject} />,
     },
     {
+      key: "debug",
+      label: "Debug",
+      children: <DebugTab project={project} />,
+    },
+    {
       key: "profiles",
       label: "Profiles",
       children: <ProfileManagementTab projectId={projectId} />,
@@ -191,11 +196,6 @@ export function LookUpProjectDetail() {
       key: "history",
       label: "Execution History",
       children: <ExecutionHistoryTab project={project} />,
-    },
-    {
-      key: "debug",
-      label: "Debug",
-      children: <DebugTab project={project} />,
     },
   ];
 
