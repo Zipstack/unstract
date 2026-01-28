@@ -90,13 +90,13 @@ class RateLimitExceeded(APIException):
 class ToolNotFoundInRegistry(APIException):
     """Raised when a tool image is not found in the container registry.
 
-    This indicates a platform configuration issue - the requested tool
-    is not available and the platform cannot fulfill the request.
-    HTTP 409 Conflict is used because the platform state conflicts with
-    the request requirements.
+    This indicates a server-side platform deployment state issue - the
+    requested tool image is not available in the container registry.
+    HTTP 500 Internal Server Error is used because this is a server-side
+    configuration/deployment problem, not a client-actionable error.
     """
 
-    status_code = 409
+    status_code = 500
     default_detail = "Tool not found in container registry"
 
     # Error code used to identify this error in execution results

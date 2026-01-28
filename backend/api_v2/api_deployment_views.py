@@ -179,14 +179,15 @@ class DeploymentExecution(views.APIView):
         has_error = response.get("error") or execution_status == "ERROR"
 
         if has_error:
-            # Check for tool not found in registry error - return 409 Conflict
+            # Check for tool not found in registry error - return 500 Internal Server Error
+            # This is a server-side deployment state issue, not a client-actionable error
             if _contains_tool_not_found_error(response):
                 logger.error(
                     "API deployment failed: Tool not found in container registry"
                 )
                 return Response(
                     {"message": response},
-                    status=status.HTTP_409_CONFLICT,
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 )
             # Other errors - return 422 Unprocessable Entity
             logger.error("API deployment execution failed")
@@ -229,7 +230,8 @@ class DeploymentExecution(views.APIView):
         # Determine response status based on execution state
         execution_status_value = response.execution_status
 
-        # Check for tool not found in registry error - return 409 Conflict
+        # Check for tool not found in registry error - return 500 Internal Server Error
+        # This is a server-side deployment state issue, not a client-actionable error
         if _contains_tool_not_found_error(response):
             logger.error("Execution failed: Tool not found in container registry")
             return Response(
@@ -237,7 +239,7 @@ class DeploymentExecution(views.APIView):
                     "status": execution_status_value,
                     "message": response.result,
                 },
-                status=status.HTTP_409_CONFLICT,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         # Check for ERROR status - return 422 Unprocessable Entity
