@@ -165,7 +165,7 @@ function LogModal({
               onClick={() =>
                 copyToClipboard(
                   displayId,
-                  fileId ? "File Execution ID" : "Execution ID",
+                  "File Execution ID"
                 )
               }
             />
