@@ -12,7 +12,7 @@ import logging
 import os
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NoReturn
 
 from fsspec import AbstractFileSystem
 from fsspec.spec import AbstractBufferedFile
@@ -578,19 +578,29 @@ class SharePointFS(UnstractFileSystem):
                         )
                         logger.info("SharePoint filesystem initialized")
                     except Exception as e:
-                        base_error = "Failed to initialize SharePoint connection"
-                        library_error = str(e) if str(e) else None
-                        error_msg = (
-                            f"{base_error}\nDetails: \n```\n{library_error}\n```"
-                            if library_error
-                            else base_error
+                        self._raise_connector_error(
+                            "Failed to initialize SharePoint connection", e
                         )
-                        raise ConnectorError(
-                            error_msg,
-                            treat_as_user_message=True,
-                        ) from e
 
         return self._fs
+
+    def _raise_connector_error(self, base_error: str, exception: Exception) -> NoReturn:
+        """Raise ConnectorError with formatted message.
+
+        Args:
+            base_error: The base error message to display.
+            exception: The original exception that occurred.
+
+        Raises:
+            ConnectorError: Always raised with formatted message.
+        """
+        library_error = str(exception) if str(exception) else None
+        error_msg = (
+            f"{base_error}\nDetails: \n```\n{library_error}\n```"
+            if library_error
+            else base_error
+        )
+        raise ConnectorError(error_msg, treat_as_user_message=True) from exception
 
     def test_credentials(self) -> bool:
         """Test SharePoint/OneDrive credentials."""
@@ -600,17 +610,7 @@ class SharePointFS(UnstractFileSystem):
             fs.ls("")
             return True
         except Exception as e:
-            base_error = "SharePoint connection test failed"
-            library_error = str(e) if str(e) else None
-            error_msg = (
-                f"{base_error}\nDetails: \n```\n{library_error}\n```"
-                if library_error
-                else base_error
-            )
-            raise ConnectorError(
-                error_msg,
-                treat_as_user_message=True,
-            ) from e
+            self._raise_connector_error("SharePoint connection test failed", e)
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
         """Extract unique file hash from SharePoint metadata.
