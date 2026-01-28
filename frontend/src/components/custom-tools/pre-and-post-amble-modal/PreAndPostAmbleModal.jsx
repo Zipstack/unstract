@@ -40,6 +40,11 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     setHasChanges(false);
   }, [type, details]);
 
+  // Reset isSaved on tool switch (separate from text initialization)
+  useEffect(() => {
+    setIsSaved(false);
+  }, [details?.tool_id]);
+
   const setDefaultPrompt = () => {
     if (type === fieldNames.preamble) {
       setText(DefaultPrompts.preamble);

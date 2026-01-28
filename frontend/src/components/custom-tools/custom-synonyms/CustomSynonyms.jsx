@@ -53,6 +53,12 @@ function CustomSynonyms() {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
+  // Reset state on tool switch
+  useEffect(() => {
+    setHasChanges(false);
+    setIsSaved(false);
+  }, [details?.tool_id]);
+
   useEffect(() => {
     const promptGrammar = details?.prompt_grammer;
     if (!promptGrammar || Object.keys(promptGrammar).length === 0) {
