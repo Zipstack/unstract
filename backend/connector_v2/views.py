@@ -90,8 +90,6 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
         # Only use OAuth flow if connector supports it AND oauth_key is provided
         if ConnectorInstance.supportsOAuth(connector_id=connector_id) and oauth_key:
-            logger.info("Fetching oauth data for %s", connector_id)
-            logger.info("Using OAuth cache key for %s", connector_id)
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
                 delete_key=False,  # Don't delete yet - wait for successful operation
