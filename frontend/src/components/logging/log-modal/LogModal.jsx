@@ -52,7 +52,7 @@ function LogModal({
           type: "error",
           content: `Failed to copy: ${err.message || "Unknown error"}`,
         });
-      },
+      }
     );
   };
 
@@ -188,7 +188,7 @@ function LogModal({
               onClick={() =>
                 handleCopyToClipboard(
                   displayId,
-                  fileId ? "File Execution ID" : "Execution ID",
+                  fileId ? "File Execution ID" : "Execution ID"
                 )
               }
             />
