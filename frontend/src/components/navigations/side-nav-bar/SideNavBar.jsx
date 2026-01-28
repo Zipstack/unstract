@@ -192,6 +192,16 @@ const SideNavBar = ({ collapsed }) => {
           active: globalThis.location.pathname.startsWith(`/${orgName}/tools`),
         },
         {
+          id: 1.2,
+          title: "Look-Ups",
+          description: "Enrich extracted data with reference lookups",
+          image: LookupsIcon,
+          path: `/${orgName}/lookups`,
+          active: globalThis.location.pathname.startsWith(
+            `/${orgName}/lookups`
+          ),
+        },
+        {
           id: 1.3,
           title: "Workflows",
           description: "Build no-code data workflows for unstructured data",
@@ -201,14 +211,6 @@ const SideNavBar = ({ collapsed }) => {
           active: globalThis.location.pathname.startsWith(
             `/${orgName}/workflows`
           ),
-        },
-        {
-          id: 1.3,
-          title: "Look-Ups",
-          description: "Enrich extracted data with reference lookups",
-          image: LookupsIcon,
-          path: `/${orgName}/lookups`,
-          active: window.location.pathname.startsWith(`/${orgName}/lookups`),
         },
       ],
     },

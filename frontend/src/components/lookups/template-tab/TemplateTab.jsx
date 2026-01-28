@@ -27,6 +27,28 @@ import "./TemplateTab.css";
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
+// Default template that helps users get started
+const DEFAULT_TEMPLATE = `You are an expert at matching and canonicalizing data using reference information.
+
+INPUT DATA:
+Vendor Name: {{vendor_name}}
+
+REFERENCE DATA:
+{{reference_data}}
+
+INSTRUCTIONS:
+Based on the reference data above, find the canonical (standardized) version of the vendor name provided in the input.
+
+If a match is found, return the canonical name from the reference data.
+If no match is found, return the original vendor name.
+
+Return your response as JSON in the following format:
+{
+  "canonical_vendor_name": "<the standardized vendor name>",
+  "match_found": <true or false>,
+  "confidence": <0.0 to 1.0>
+}`;
+
 export function TemplateTab({ project, onUpdate }) {
   const [template, setTemplate] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -48,6 +70,13 @@ export function TemplateTab({ project, onUpdate }) {
   useEffect(() => {
     if (project.template) {
       fetchTemplate();
+    } else {
+      // Set default template for new projects
+      form.setFieldsValue({
+        name: "",
+        template_text: DEFAULT_TEMPLATE,
+      });
+      extractVariables(DEFAULT_TEMPLATE);
     }
   }, [project.template]);
 
@@ -257,22 +286,10 @@ export function TemplateTab({ project, onUpdate }) {
               },
             },
           ]}
+          extra="Use {{variable_name}} syntax for input fields and {{reference_data}} for reference data. The default template above is a starting point - customize it for your use case."
         >
           <TextArea
-            rows={10}
-            placeholder={`Extract vendor information from the input:
-
-Vendor Name: {{vendor_name}}
-
-Reference Data:
-{{reference_data}}
-
-Please canonicalize the vendor name and provide the following:
-- Canonical vendor name
-- Vendor category
-- Confidence score (0-1)
-
-Return as JSON.`}
+            rows={12}
             onChange={(e) => extractVariables(e.target.value)}
           />
         </Form.Item>
