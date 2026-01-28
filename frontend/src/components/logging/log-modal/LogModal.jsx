@@ -179,7 +179,7 @@ function LogModal({
     <Modal
       title={
         <span className="log-modal-title">
-          Execution Log Details {displayId}
+          File Execution ID {displayId}
           {displayId && (
             <Button
               className="copy-btn-outlined"
