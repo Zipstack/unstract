@@ -179,17 +179,20 @@ function LogModal({
     <Modal
       title={
         <span className="log-modal-title">
-          Execution Log Details - {displayId}
-          <Button
-            className="copy-btn-outlined"
-            icon={<CopyOutlined />}
-            onClick={() =>
-              handleCopyToClipboard(
-                displayId,
-                fileId ? "File Execution ID" : "Execution ID",
-              )
-            }
-          />
+          Execution Log Details {displayId}
+          {displayId && (
+            <Button
+              className="copy-btn-outlined"
+              icon={<CopyOutlined />}
+              aria-label="Copy execution ID"
+              onClick={() =>
+                handleCopyToClipboard(
+                  displayId,
+                  fileId ? "File Execution ID" : "Execution ID",
+                )
+              }
+            />
+          )}
         </span>
       }
       centered
