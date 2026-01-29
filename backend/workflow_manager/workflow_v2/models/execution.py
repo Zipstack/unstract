@@ -370,3 +370,55 @@ class WorkflowExecution(BaseModel):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         self._handle_execution_cache()
+
+    @classmethod
+    def get_last_run_statuses(cls, pipeline_id: uuid.UUID, limit: int = 5) -> list[dict]:
+        """Fetch the last N execution statuses for a pipeline.
+
+        Computes PARTIAL_SUCCESS dynamically when execution completed but has
+        both successful and failed files.
+
+        Args:
+            pipeline_id: UUID of the pipeline (ETL or API deployment)
+            limit: Number of recent executions to fetch (default 5)
+
+        Returns:
+            List of dicts with execution_id, status, timestamp, and file counts.
+            Ordered oldest to newest (for left-to-right timeline display).
+        """
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+
+        executions = cls.objects.filter(pipeline_id=pipeline_id).order_by("-created_at")[
+            :limit
+        ]
+
+        result = []
+        for e in executions:
+            # TODO: Optimize by storing successful/failed counts directly in
+            # WorkflowExecution model. Current approach causes N+1 queries
+            # (2 queries per execution). Denormalized counts would eliminate
+            # these queries entirely.
+            successful = WorkflowFileExecution.objects.filter(
+                workflow_execution_id=e.id, status="COMPLETED"
+            ).count()
+            failed = WorkflowFileExecution.objects.filter(
+                workflow_execution_id=e.id, status="ERROR"
+            ).count()
+
+            # Compute display_status: PARTIAL_SUCCESS if completed with mixed results
+            display_status = e.status
+            if e.status == "COMPLETED" and failed > 0 and successful > 0:
+                display_status = "PARTIAL_SUCCESS"
+
+            result.append(
+                {
+                    "execution_id": str(e.id),
+                    "status": display_status,
+                    "timestamp": e.created_at.isoformat() if e.created_at else None,
+                    "successful_files": successful,
+                    "failed_files": failed,
+                }
+            )
+
+        # Reverse to get oldest first (left-to-right timeline)
+        return list(reversed(result))

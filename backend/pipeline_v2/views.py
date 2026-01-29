@@ -17,6 +17,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
+from utils.pagination import CustomPagination
 
 from pipeline_v2.constants import (
     PipelineConstants,
@@ -43,6 +44,7 @@ logger = logging.getLogger(__name__)
 class PipelineViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
+    pagination_class = CustomPagination
 
     def get_permissions(self) -> list[Any]:
         if self.action in ["destroy", "partial_update", "update"]:
@@ -64,6 +66,11 @@ class PipelineViewSet(viewsets.ModelViewSet):
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:
             queryset = queryset.filter(workflow_id=workflow_filter)
+
+        # Search by pipeline name
+        search = self.request.query_params.get("search", None)
+        if search:
+            queryset = queryset.filter(pipeline_name__icontains=search)
 
         return queryset
 
