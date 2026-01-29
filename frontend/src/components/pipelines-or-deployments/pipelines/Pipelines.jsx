@@ -37,6 +37,7 @@ function Pipelines({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
   const { sessionDetails } = useSessionStore();
   const location = useLocation();
   const { setAlertDetails } = useAlertStore();
@@ -108,8 +109,9 @@ function Pipelines({ type }) {
   }, [location.state?.scrollToCardId]);
 
   const handleSearch = (searchText, _setSearchList) => {
-    // Server-side search - pass to API
-    getPipelineList(1, pagination.pageSize, searchText?.trim() || "");
+    const term = searchText?.trim() || "";
+    setSearchTerm(term);
+    getPipelineList(1, pagination.pageSize, term);
   };
 
   const openAddModal = (edit) => {
@@ -158,7 +160,7 @@ function Pipelines({ type }) {
   const handlePaginationChange = (page, pageSize) => {
     // Reset to page 1 if pageSize changed
     const newPage = pageSize !== pagination.pageSize ? 1 : page;
-    getPipelineList(newPage, pageSize);
+    getPipelineList(newPage, pageSize, searchTerm);
   };
 
   const handleSync = (params) => {
@@ -230,7 +232,7 @@ function Pipelines({ type }) {
 
     axiosPrivate(requestOptions)
       .then(() => {
-        getPipelineList(pagination.current, pagination.pageSize);
+        getPipelineList(pagination.current, pagination.pageSize, searchTerm);
       })
       .catch((err) => {
         // Revert on failure
@@ -251,7 +253,7 @@ function Pipelines({ type }) {
       .then(() => {
         setOpenDeleteModal(false);
         // Refresh with current pagination
-        getPipelineList(pagination.current, pagination.pageSize);
+        getPipelineList(pagination.current, pagination.pageSize, searchTerm);
         setAlertDetails({
           type: "success",
           content: "Pipeline Deleted Successfully",
@@ -335,7 +337,7 @@ function Pipelines({ type }) {
         });
         setOpenShareModal(false);
         // Refresh with current pagination
-        getPipelineList(pagination.current, pagination.pageSize);
+        getPipelineList(pagination.current, pagination.pageSize, searchTerm);
       })
       .catch((error) => {
         setAlertDetails(
@@ -440,7 +442,15 @@ function Pipelines({ type }) {
         // Pipeline type for status pill navigation
         pipelineType: type,
       }),
-    [sessionDetails, isClearingFileHistory, location, type]
+    [
+      sessionDetails,
+      isClearingFileHistory,
+      location,
+      type,
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+    ]
   );
 
   // Using the custom hook to manage modal state

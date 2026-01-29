@@ -33,26 +33,50 @@ function CardActionBox({
   deleteTitle = "Delete item?",
   kebabMenuItems,
 }) {
+  const handleEditAction = (e) => {
+    e.stopPropagation();
+    setSelectedItem(item);
+    onEdit?.(item);
+  };
+
+  const handleShareAction = (e) => {
+    e.stopPropagation();
+    setSelectedItem(item);
+    onShare?.(item);
+  };
+
+  const handleEditKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleEditAction(e);
+    }
+  };
+
+  const handleShareKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleShareAction(e);
+    }
+  };
+
   return (
     <div className="card-list-action-box">
       <Tooltip title="Edit">
         <EditOutlined
           className="action-icon-btn edit-icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelectedItem(item);
-            onEdit?.(item);
-          }}
+          role="button"
+          tabIndex={0}
+          onClick={handleEditAction}
+          onKeyDown={handleEditKeyDown}
         />
       </Tooltip>
       <Tooltip title="Share">
         <ShareAltOutlined
           className="action-icon-btn share-icon"
-          onClick={(e) => {
-            e.stopPropagation();
-            setSelectedItem(item);
-            onShare?.(item);
-          }}
+          role="button"
+          tabIndex={0}
+          onClick={handleShareAction}
+          onKeyDown={handleShareKeyDown}
         />
       </Tooltip>
       <Popconfirm
@@ -70,7 +94,10 @@ function CardActionBox({
         <Tooltip title="Delete">
           <DeleteOutlined
             className="action-icon-btn delete-icon"
+            role="button"
+            tabIndex={0}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => e.stopPropagation()}
           />
         </Tooltip>
       </Popconfirm>
@@ -81,7 +108,10 @@ function CardActionBox({
       >
         <MoreOutlined
           className="card-kebab-menu"
+          role="button"
+          tabIndex={0}
           onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
         />
       </Dropdown>
     </div>
@@ -190,13 +220,28 @@ function WorkflowFieldRow({
   location,
   itemId,
 }) {
+  const orgName = sessionDetails?.orgName;
+
+  // Guard against undefined orgName to prevent malformed URLs
+  if (!orgName) {
+    return (
+      <div className="card-list-field-row">
+        <span className="card-list-field-label">Workflow</span>
+        <div className="card-list-field-value">
+          <img src={WorkflowIcon} alt="" className="card-list-meta-icon" />
+          <span className="card-list-workflow-link-row">{workflowName}</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="card-list-field-row">
       <span className="card-list-field-label">Workflow</span>
       <div className="card-list-field-value">
         <img src={WorkflowIcon} alt="" className="card-list-meta-icon" />
         <Link
-          to={`/${sessionDetails?.orgName}/workflows/${workflowId}`}
+          to={`/${orgName}/workflows/${workflowId}`}
           state={{
             from: location?.pathname,
             scrollToCardId: itemId,
