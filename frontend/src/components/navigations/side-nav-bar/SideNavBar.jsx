@@ -389,7 +389,10 @@ const SideNavBar = ({ collapsed }) => {
                     };
 
                     const platformContent = (
-                      <Tooltip title={collapsed ? el.title : ""}>
+                      <Tooltip
+                        title={collapsed ? el.title : ""}
+                        overlayClassName="sidebar-tooltip"
+                      >
                         <Space
                           className={`space-styles ${
                             el.active ? "space-styles-active" : ""
@@ -441,7 +444,11 @@ const SideNavBar = ({ collapsed }) => {
                   }
 
                   return (
-                    <Tooltip key={el.id} title={collapsed ? el.title : ""}>
+                    <Tooltip
+                      key={el.id}
+                      title={collapsed ? el.title : ""}
+                      overlayClassName="sidebar-tooltip"
+                    >
                       <Space
                         className={`space-styles ${
                           el.active ? "space-styles-active" : ""
