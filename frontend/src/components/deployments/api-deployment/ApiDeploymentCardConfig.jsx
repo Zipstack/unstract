@@ -1,38 +1,24 @@
 import {
-  ClockCircleOutlined,
   CloudDownloadOutlined,
   CodeOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ExportOutlined,
   FileSearchOutlined,
-  HistoryOutlined,
   KeyOutlined,
-  MoreOutlined,
   NotificationOutlined,
-  ShareAltOutlined,
   SyncOutlined,
-  UserOutlined,
 } from "@ant-design/icons";
-import {
-  Button,
-  Dropdown,
-  Popconfirm,
-  Switch,
-  Tooltip,
-  Typography,
-} from "antd";
-import { Link } from "react-router-dom";
+import { Switch, Tooltip } from "antd";
 import PropTypes from "prop-types";
 
-import {
-  copyToClipboard,
-  formattedDateTime,
-  shortenApiEndpoint,
-} from "../../../helpers/GetStaticData";
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
-import WorkflowIcon from "../../../assets/Workflows.svg";
+import {
+  CardActionBox,
+  OwnerFieldRow,
+  LastRunFieldRow,
+  Last5RunsFieldRow,
+  WorkflowFieldRow,
+  ApiEndpointSection,
+  CardHeaderRow,
+} from "../../widgets/card-grid-view/CardFieldComponents";
 
 /**
  * Create API deployment card configuration for list mode - Row-based layout
@@ -58,14 +44,8 @@ function createApiDeploymentCardConfig({
       title: (deployment) => deployment.display_name,
       actions: [],
     },
-    expandable: false, // No expand/collapse
-    // Row-based list content
-    listContent: (deployment, { renderActions }) => {
-      const isOwner = deployment.created_by === sessionDetails?.userId;
-      const email = deployment.created_by_email;
-      const ownerDisplay = isOwner ? "You" : email?.split("@")[0] || "Unknown";
-
-      // Kebab menu items for API deployments
+    expandable: false,
+    listContent: (deployment) => {
       const kebabMenuItems = {
         items: [
           {
@@ -105,27 +85,11 @@ function createApiDeploymentCardConfig({
 
       return (
         <div className="card-list-content">
-          {/* Header Row: Name + Actions */}
-          <div className="card-list-header-row">
-            <div className="card-list-title-section">
-              <Tooltip title={deployment.display_name}>
-                <Typography.Text className="card-list-name" strong>
-                  {deployment.display_name}
-                </Typography.Text>
-              </Tooltip>
-              {/* Description as light grey subtext - no label */}
-              {deployment.description && (
-                <Typography.Text
-                  className="card-list-description"
-                  type="secondary"
-                >
-                  {deployment.description}
-                </Typography.Text>
-              )}
-            </div>
-
+          <CardHeaderRow
+            title={deployment.display_name}
+            description={deployment.description}
+          >
             <div className="card-list-actions">
-              {/* Toggle switch */}
               <Tooltip
                 title={
                   deployment.is_active
@@ -142,129 +106,36 @@ function createApiDeploymentCardConfig({
                   }}
                 />
               </Tooltip>
-
-              {/* Action box - Edit, Share, Delete, Kebab */}
-              <div className="card-list-action-box">
-                <Tooltip title="Edit">
-                  <EditOutlined
-                    className="action-icon-btn edit-icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedRow(deployment);
-                      onEdit?.(deployment);
-                    }}
-                  />
-                </Tooltip>
-                <Tooltip title="Share">
-                  <ShareAltOutlined
-                    className="action-icon-btn share-icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedRow(deployment);
-                      onShare?.(deployment);
-                    }}
-                  />
-                </Tooltip>
-                <Popconfirm
-                  title="Delete API deployment?"
-                  description="This action cannot be undone."
-                  onConfirm={() => {
-                    setSelectedRow(deployment);
-                    onDelete?.(deployment);
-                  }}
-                  onCancel={(e) => e?.stopPropagation()}
-                  okText="Delete"
-                  cancelText="Cancel"
-                  okButtonProps={{ danger: true }}
-                >
-                  <Tooltip title="Delete">
-                    <DeleteOutlined
-                      className="action-icon-btn delete-icon"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </Tooltip>
-                </Popconfirm>
-                <Dropdown
-                  menu={kebabMenuItems}
-                  trigger={["click"]}
-                  placement="bottomRight"
-                >
-                  <MoreOutlined
-                    className="card-kebab-menu"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </Dropdown>
-              </div>
+              <CardActionBox
+                item={deployment}
+                setSelectedItem={setSelectedRow}
+                onEdit={onEdit}
+                onShare={onShare}
+                onDelete={onDelete}
+                deleteTitle="Delete API deployment?"
+                kebabMenuItems={kebabMenuItems}
+              />
             </div>
-          </div>
+          </CardHeaderRow>
 
-          {/* Row-based content - No SOURCE/DESTINATION for API deployments */}
           <div className="card-list-row-layout">
-            {/* WORKFLOW row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Workflow</span>
-              <div className="card-list-field-value">
-                <img
-                  src={WorkflowIcon}
-                  alt=""
-                  className="card-list-meta-icon"
-                />
-                <Link
-                  to={`/${sessionDetails?.orgName}/workflows/${deployment.workflow}`}
-                  state={{
-                    from: location?.pathname,
-                    scrollToCardId: deployment.id,
-                  }}
-                  className="card-list-workflow-link-row"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {deployment.workflow_name}
-                  <ExportOutlined />
-                </Link>
-              </div>
-            </div>
-
-            {/* OWNER row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Owner</span>
-              <div className="card-list-field-value">
-                <UserOutlined />
-                <Tooltip title={email}>
-                  <span>{ownerDisplay}</span>
-                </Tooltip>
-              </div>
-            </div>
-
-            {/* LAST RUN row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Last Run</span>
-              <div className="card-list-field-value">
-                <ClockCircleOutlined />
-                <span>
-                  {deployment.last_run_time
-                    ? formattedDateTime(deployment.last_run_time)
-                    : "Never"}
-                </span>
-              </div>
-            </div>
-
-            {/* LAST 5 RUNS row (if has data) */}
-            {deployment.last_5_run_statuses?.length > 0 && (
-              <div className="card-list-field-row">
-                <span className="card-list-field-label">Last 5 Runs</span>
-                <div className="card-list-field-value">
-                  <HistoryOutlined />
-                  <StatusPills
-                    statuses={deployment.last_5_run_statuses}
-                    executionType="API"
-                    pipelineId={deployment.id}
-                  />
-                </div>
-              </div>
-            )}
+            <WorkflowFieldRow
+              workflowId={deployment.workflow}
+              workflowName={deployment.workflow_name}
+              sessionDetails={sessionDetails}
+              location={location}
+              itemId={deployment.id}
+            />
+            <OwnerFieldRow item={deployment} sessionDetails={sessionDetails} />
+            <LastRunFieldRow lastRunTime={deployment.last_run_time} />
+            <Last5RunsFieldRow
+              statuses={deployment.last_5_run_statuses}
+              executionType="API"
+              itemId={deployment.id}
+              StatusPillsComponent={StatusPills}
+            />
           </div>
 
-          {/* Footer: Total Runs */}
           <div className="card-list-footer-row">
             <div className="card-list-footer-item">
               <span className="card-list-footer-label">Total Runs</span>
@@ -275,44 +146,10 @@ function createApiDeploymentCardConfig({
             </div>
           </div>
 
-          {/* API Endpoint with grey wrapper */}
-          {deployment.api_endpoint && (
-            <div className="card-list-endpoint-wrapper">
-              <div className="card-list-endpoint-row">
-                <span className="card-list-field-label">API Endpoint</span>
-                <div className="card-list-endpoint-value">
-                  <Tooltip
-                    title={deployment.api_endpoint}
-                    overlayStyle={{ maxWidth: 500 }}
-                  >
-                    <a
-                      href={deployment.api_endpoint}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {shortenApiEndpoint(deployment.api_endpoint)}
-                    </a>
-                  </Tooltip>
-                  <Tooltip title="Copy endpoint">
-                    <Button
-                      className="copy-btn-outlined"
-                      icon={<CopyOutlined />}
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyToClipboard(deployment.api_endpoint);
-                      }}
-                    />
-                  </Tooltip>
-                </div>
-              </div>
-            </div>
-          )}
+          <ApiEndpointSection apiEndpoint={deployment.api_endpoint} />
         </div>
       );
     },
-    // No expandedContent - all content visible directly
     sections: [],
   };
 }

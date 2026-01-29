@@ -95,10 +95,6 @@ function Pipelines({ type }) {
     getPipelineList();
   }, [type]);
 
-  useEffect(() => {
-    setFilteredData(tableData);
-  }, [tableData]);
-
   // Handle scroll restoration from navigation
   useEffect(() => {
     if (location.state?.scrollToCardId) {
@@ -111,7 +107,7 @@ function Pipelines({ type }) {
     }
   }, [location.state?.scrollToCardId]);
 
-  const handleSearch = (searchText) => {
+  const handleSearch = (searchText, _setSearchList) => {
     // Server-side search - pass to API
     getPipelineList(1, pagination.pageSize, searchText?.trim() || "");
   };
@@ -469,7 +465,6 @@ function Pipelines({ type }) {
         scrollToId={scrollRestoreId}
         enableSearch={true}
         onSearch={handleSearch}
-        setSearchList={setFilteredData}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

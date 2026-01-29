@@ -2,43 +2,30 @@ import {
   CalendarOutlined,
   CheckCircleFilled,
   ClearOutlined,
-  ClockCircleOutlined,
   CloseCircleFilled,
   CloudDownloadOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ExportOutlined,
   FileSearchOutlined,
   HistoryOutlined,
   KeyOutlined,
-  MoreOutlined,
   NotificationOutlined,
   ScheduleOutlined,
-  ShareAltOutlined,
   SyncOutlined,
-  UserOutlined,
 } from "@ant-design/icons";
-import {
-  Button,
-  Dropdown,
-  Image,
-  Popconfirm,
-  Switch,
-  Tooltip,
-  Typography,
-} from "antd";
-import { Link, useNavigate, useLocation } from "react-router-dom";
+import { Image, Switch, Tooltip, Typography } from "antd";
+import { useNavigate, useLocation } from "react-router-dom";
 import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
 
 import { useSessionStore } from "../../../store/session-store";
+import { formattedDateTime } from "../../../helpers/GetStaticData";
 import {
-  copyToClipboard,
-  formattedDateTime,
-  shortenApiEndpoint,
-} from "../../../helpers/GetStaticData";
-import WorkflowIcon from "../../../assets/Workflows.svg";
+  CardActionBox,
+  OwnerFieldRow,
+  LastRunFieldRow,
+  Last5RunsFieldRow,
+  WorkflowFieldRow,
+  ApiEndpointSection,
+} from "../../widgets/card-grid-view/CardFieldComponents";
 
 /**
  * Status badge component for displaying execution status as text badges
@@ -135,8 +122,20 @@ function StatusPills({ statuses = [], executionType, pipelineId }) {
               className={`${config.className}${
                 isClickable ? " status-badge-clickable" : ""
               }`}
+              role={isClickable ? "button" : undefined}
+              tabIndex={isClickable ? 0 : undefined}
               onClick={
                 isClickable ? (e) => handleStatusClick(e, run) : undefined
+              }
+              onKeyDown={
+                isClickable
+                  ? (e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        handleStatusClick(e, run);
+                      }
+                    }
+                  : undefined
               }
             >
               {config.label}
@@ -158,6 +157,38 @@ StatusPills.propTypes = {
   ),
   executionType: PropTypes.string,
   pipelineId: PropTypes.string,
+};
+
+/**
+ * Source/Destination connector field row
+ * @return {JSX.Element} Rendered connector field row
+ */
+function ConnectorFieldRow({ label, icon, instanceName, connectorName }) {
+  return (
+    <div className="card-list-field-row">
+      <span className="card-list-field-label">{label}</span>
+      <div className="card-list-field-value">
+        <div className="card-list-field-icon">
+          <Image src={icon} preview={false} fallback="/default-connector.png" />
+        </div>
+        <div className="card-list-field-text">
+          <span className="card-list-field-instance-name">
+            {instanceName || connectorName}
+          </span>
+          {instanceName && (
+            <span className="card-list-field-subtext">{connectorName}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ConnectorFieldRow.propTypes = {
+  label: PropTypes.string.isRequired,
+  icon: PropTypes.string,
+  instanceName: PropTypes.string,
+  connectorName: PropTypes.string,
 };
 
 /**
@@ -188,14 +219,9 @@ function createPipelineCardConfig({
       title: (pipeline) => pipeline.pipeline_name,
       actions: [],
     },
-    expandable: false, // No expand/collapse
-    // Row-based list content
-    listContent: (pipeline, { renderActions }) => {
-      const isOwner = pipeline.created_by === sessionDetails?.userId;
-      const email = pipeline.created_by_email;
-      const ownerDisplay = isOwner ? "You" : email?.split("@")[0] || "Unknown";
-
-      // Schedule display - wrap in try-catch as cronstrue can throw on invalid cron
+    expandable: false,
+    listContent: (pipeline) => {
+      // Schedule display
       let scheduleDisplay = "Not scheduled";
       if (pipeline.cron_string) {
         try {
@@ -205,7 +231,6 @@ function createPipelineCardConfig({
         }
       }
 
-      // Kebab menu items
       const kebabMenuItems = {
         items: [
           {
@@ -268,7 +293,6 @@ function createPipelineCardConfig({
             </Tooltip>
 
             <div className="card-list-actions">
-              {/* Toggle switch */}
               <Tooltip
                 title={pipeline.active ? "Disable pipeline" : "Enable pipeline"}
               >
@@ -281,160 +305,41 @@ function createPipelineCardConfig({
                   }}
                 />
               </Tooltip>
-
-              {/* Action box - Edit, Share, Delete, Kebab */}
-              <div className="card-list-action-box">
-                <Tooltip title="Edit">
-                  <EditOutlined
-                    className="action-icon-btn edit-icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedPorD(pipeline);
-                      onEdit?.(pipeline);
-                    }}
-                  />
-                </Tooltip>
-                <Tooltip title="Share">
-                  <ShareAltOutlined
-                    className="action-icon-btn share-icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedPorD(pipeline);
-                      onShare?.(pipeline);
-                    }}
-                  />
-                </Tooltip>
-                <Popconfirm
-                  title="Delete pipeline?"
-                  description="This action cannot be undone."
-                  onConfirm={() => {
-                    setSelectedPorD(pipeline);
-                    onDelete?.(pipeline);
-                  }}
-                  onCancel={(e) => e?.stopPropagation()}
-                  okText="Delete"
-                  cancelText="Cancel"
-                  okButtonProps={{ danger: true }}
-                >
-                  <Tooltip title="Delete">
-                    <DeleteOutlined
-                      className="action-icon-btn delete-icon"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </Tooltip>
-                </Popconfirm>
-                <Dropdown
-                  menu={kebabMenuItems}
-                  trigger={["click"]}
-                  placement="bottomRight"
-                >
-                  <MoreOutlined
-                    className="card-kebab-menu"
-                    onClick={(e) => e.stopPropagation()}
-                  />
-                </Dropdown>
-              </div>
+              <CardActionBox
+                item={pipeline}
+                setSelectedItem={setSelectedPorD}
+                onEdit={onEdit}
+                onShare={onShare}
+                onDelete={onDelete}
+                deleteTitle="Delete pipeline?"
+                kebabMenuItems={kebabMenuItems}
+              />
             </div>
           </div>
 
           {/* Row-based content */}
           <div className="card-list-row-layout">
-            {/* SOURCE row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Source</span>
-              <div className="card-list-field-value">
-                <div className="card-list-field-icon">
-                  <Image
-                    src={pipeline.source_icon}
-                    preview={false}
-                    fallback="/default-connector.png"
-                  />
-                </div>
-                <div className="card-list-field-text">
-                  <span className="card-list-field-instance-name">
-                    {pipeline.source_instance_name || pipeline.source_name}
-                  </span>
-                  {pipeline.source_instance_name && (
-                    <span className="card-list-field-subtext">
-                      {pipeline.source_name}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* DESTINATION row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Destination</span>
-              <div className="card-list-field-value">
-                <div className="card-list-field-icon">
-                  <Image
-                    src={pipeline.destination_icon}
-                    preview={false}
-                    fallback="/default-connector.png"
-                  />
-                </div>
-                <div className="card-list-field-text">
-                  <span className="card-list-field-instance-name">
-                    {pipeline.destination_instance_name ||
-                      pipeline.destination_name}
-                  </span>
-                  {pipeline.destination_instance_name && (
-                    <span className="card-list-field-subtext">
-                      {pipeline.destination_name}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* WORKFLOW row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Workflow</span>
-              <div className="card-list-field-value">
-                <img
-                  src={WorkflowIcon}
-                  alt=""
-                  className="card-list-meta-icon"
-                />
-                <Link
-                  to={`/${sessionDetails?.orgName}/workflows/${pipeline.workflow_id}`}
-                  state={{
-                    from: location?.pathname,
-                    scrollToCardId: pipeline.id,
-                  }}
-                  className="card-list-workflow-link-row"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {pipeline.workflow_name}
-                  <ExportOutlined />
-                </Link>
-              </div>
-            </div>
-
-            {/* OWNER row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Owner</span>
-              <div className="card-list-field-value">
-                <UserOutlined />
-                <Tooltip title={email}>
-                  <span>{ownerDisplay}</span>
-                </Tooltip>
-              </div>
-            </div>
-
-            {/* LAST RUN row */}
-            <div className="card-list-field-row">
-              <span className="card-list-field-label">Last Run</span>
-              <div className="card-list-field-value">
-                <ClockCircleOutlined />
-                <span>
-                  {pipeline.last_run_time
-                    ? formattedDateTime(pipeline.last_run_time)
-                    : "Never"}
-                </span>
-              </div>
-            </div>
+            <ConnectorFieldRow
+              label="Source"
+              icon={pipeline.source_icon}
+              instanceName={pipeline.source_instance_name}
+              connectorName={pipeline.source_name}
+            />
+            <ConnectorFieldRow
+              label="Destination"
+              icon={pipeline.destination_icon}
+              instanceName={pipeline.destination_instance_name}
+              connectorName={pipeline.destination_name}
+            />
+            <WorkflowFieldRow
+              workflowId={pipeline.workflow_id}
+              workflowName={pipeline.workflow_name}
+              sessionDetails={sessionDetails}
+              location={location}
+              itemId={pipeline.id}
+            />
+            <OwnerFieldRow item={pipeline} sessionDetails={sessionDetails} />
+            <LastRunFieldRow lastRunTime={pipeline.last_run_time} />
 
             {/* NEXT RUN AT row (only if scheduled) */}
             {pipeline.next_run_time && (
@@ -447,20 +352,12 @@ function createPipelineCardConfig({
               </div>
             )}
 
-            {/* LAST 5 RUNS row (if has data) */}
-            {pipeline.last_5_run_statuses?.length > 0 && (
-              <div className="card-list-field-row">
-                <span className="card-list-field-label">Last 5 Runs</span>
-                <div className="card-list-field-value">
-                  <HistoryOutlined />
-                  <StatusPills
-                    statuses={pipeline.last_5_run_statuses}
-                    executionType={pipelineType?.toUpperCase()}
-                    pipelineId={pipeline.id}
-                  />
-                </div>
-              </div>
-            )}
+            <Last5RunsFieldRow
+              statuses={pipeline.last_5_run_statuses}
+              executionType={pipelineType?.toUpperCase()}
+              itemId={pipeline.id}
+              StatusPillsComponent={StatusPills}
+            />
           </div>
 
           {/* Footer: Schedule | Total Runs */}
@@ -477,44 +374,10 @@ function createPipelineCardConfig({
             </div>
           </div>
 
-          {/* API Endpoint with grey wrapper */}
-          {pipeline.api_endpoint && (
-            <div className="card-list-endpoint-wrapper">
-              <div className="card-list-endpoint-row">
-                <span className="card-list-field-label">API Endpoint</span>
-                <div className="card-list-endpoint-value">
-                  <Tooltip
-                    title={pipeline.api_endpoint}
-                    overlayStyle={{ maxWidth: 500 }}
-                  >
-                    <a
-                      href={pipeline.api_endpoint}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {shortenApiEndpoint(pipeline.api_endpoint)}
-                    </a>
-                  </Tooltip>
-                  <Tooltip title="Copy endpoint">
-                    <Button
-                      className="copy-btn-outlined"
-                      icon={<CopyOutlined />}
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        copyToClipboard(pipeline.api_endpoint);
-                      }}
-                    />
-                  </Tooltip>
-                </div>
-              </div>
-            </div>
-          )}
+          <ApiEndpointSection apiEndpoint={pipeline.api_endpoint} />
         </div>
       );
     },
-    // No expandedContent - all content visible directly
     sections: [],
   };
 }
