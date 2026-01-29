@@ -208,48 +208,28 @@ function AddLlmProfile({
       .then((res) => {
         const data = res?.data;
 
+        const llm = [];
+        const vectorDb = [];
+        const embedding = [];
+        const x2Text = [];
+
         data.forEach((item) => {
+          const option = { value: item?.id, label: item?.adapter_name };
           if (item?.adapter_type === "LLM") {
-            setLlmItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
-          }
-          if (item?.adapter_type === "VECTOR_DB") {
-            setVectorDbItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
-          }
-          if (item?.adapter_type === "EMBEDDING") {
-            setEmbeddingItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
-          }
-          if (item?.adapter_type === "X2TEXT") {
-            setX2TextItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
+            llm.push(option);
+          } else if (item?.adapter_type === "VECTOR_DB") {
+            vectorDb.push(option);
+          } else if (item?.adapter_type === "EMBEDDING") {
+            embedding.push(option);
+          } else if (item?.adapter_type === "X2TEXT") {
+            x2Text.push(option);
           }
         });
+
+        setLlmItems(llm);
+        setVectorDbItems(vectorDb);
+        setEmbeddingItems(embedding);
+        setX2TextItems(x2Text);
         setAreAdaptersReady(true);
       })
       .catch((err) => {

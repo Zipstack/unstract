@@ -69,7 +69,7 @@ PromptCardWrapper.propTypes = {
   allTableSettings: PropTypes.array.isRequired,
   setAllTableSettings: PropTypes.func.isRequired,
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
-  coverageCountData: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.array,
   isChallenge: PropTypes.bool.isRequired,
 };
 

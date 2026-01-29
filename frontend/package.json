@@ -84,6 +84,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.4",
+    "baseline-browser-mapping": "^2.9.19",
     "eslint": "^8.41.0",
     "eslint-config-google": "^0.14.0",
     "eslint-config-prettier": "^8.8.0",

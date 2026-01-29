@@ -78,4 +78,4 @@ export {
   Task,
 };
 
-export { ReactComponent as OrganizationIcon } from "./organization-icon.svg";
+export { default as OrganizationIcon } from "./organization-icon.svg?react";

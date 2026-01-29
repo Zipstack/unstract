@@ -127,7 +127,7 @@ function ListOfSources({
 ListOfSources.propTypes = {
   setSelectedSourceId: PropTypes.func.isRequired,
   sourcesList: PropTypes.array,
-  type: PropTypes.string.isRequired,
+  type: PropTypes.string,
   isConnector: PropTypes.bool,
   connectorMode: PropTypes.string,
 };

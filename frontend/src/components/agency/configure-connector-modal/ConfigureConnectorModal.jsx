@@ -774,7 +774,7 @@ ConfigureConnectorModal.propTypes = {
   connDetails: PropTypes.object,
   setConnDetails: PropTypes.func.isRequired,
   connType: PropTypes.string.isRequired,
-  connMode: PropTypes.string.isRequired,
+  connMode: PropTypes.string,
   workflowDetails: PropTypes.object.isRequired,
   handleEndpointUpdate: PropTypes.func.isRequired,
   endpointDetails: PropTypes.object,

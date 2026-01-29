@@ -104,6 +104,11 @@ export default defineConfig(({ mode }) => {
         '@ant-design/icons',
       ],
       exclude: [],
+      esbuildOptions: {
+        loader: {
+          '.js': 'jsx',
+        },
+      },
     },
   }
 })
