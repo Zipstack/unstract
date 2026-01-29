@@ -654,12 +654,12 @@ class StructureTool(BaseTool):
             self.stream_log("Calling agentic extraction endpoint...")
             extraction_response = responder.agentic_extraction(payload=payload)
 
-            # Step 4: Transform response to match expected structure
-            # Cloud endpoint returns: {document_id, extracted_data, highlights, highlight_data, ...}
-            # We need: {data: {...}, metadata: {...}}
-            extracted_data = extraction_response.get("extracted_data", {})
+            # Step 4: Process response from agentic extraction
+            # Cloud endpoint now returns prompt studio compatible format:
+            # {output: {}, metadata: {}, highlights: [], highlight_data: {}}
+            extracted_data = extraction_response.get(SettingsKeys.OUTPUT, {})
 
-            # Remove _source_refs from extracted data
+            # Remove _source_refs from extracted data (cleanup for API responses)
             try:
                 extracted_data = self._remove_source_refs(extracted_data)
             except Exception as e:
@@ -669,24 +669,23 @@ class StructureTool(BaseTool):
                 )
                 # Continue with original extracted_data if removal fails
 
+            # Build final structured output in prompt studio format
+            # API deployments expect: {output: {}, metadata: {}}
             structured_output = {
-                "data": extracted_data,
+                SettingsKeys.OUTPUT: extracted_data,
                 SettingsKeys.METADATA: {
                     SettingsKeys.FILE_NAME: self.source_file_name,
                     "project_id": project_id,
                     "schema_version": schema_version,
                     "prompt_version": prompt_version,
                     "document_id": self.file_execution_id,
+                    # Merge additional metadata from extraction response
+                    **extraction_response.get(SettingsKeys.METADATA, {}),
                 },
             }
 
-            # Add highlight data if available
-            if "highlights" in extraction_response:
-                structured_output["highlights"] = extraction_response["highlights"]
-            if "highlight_data" in extraction_response:
-                structured_output["highlight_data"] = extraction_response[
-                    "highlight_data"
-                ]
+            # Note: highlight data is already in metadata from extraction response
+            # No need to add separately as it's merged via **extraction_response.get(METADATA)
 
             # Update GUI with results
             output_log = (

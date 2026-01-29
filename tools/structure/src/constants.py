@@ -81,6 +81,7 @@ class SettingsKeys:
     IS_DIRECTORY_MODE = "is_directory_mode"
     LLM_PROFILE_ID = "llm_profile_id"
     CUSTOM_DATA = "custom_data"
+    OUTPUT = "output"  # For API deployment response format compatibility
 
 
 class IndexingConstants:
