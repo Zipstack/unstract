@@ -2,6 +2,46 @@ import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import svgr from 'vite-plugin-svgr'
 import path from 'path'
+import fs from 'fs'
+
+const EMPTY_MODULE_ID = '\0optional-plugin-empty'
+
+// Rollup plugin that resolves missing optional plugin imports to an empty
+// module instead of failing the build.  This lets the existing
+// `try { await import("./plugins/...") } catch {}` pattern work at build
+// time: Rollup will bundle an empty module for any plugin path that does
+// not exist on disk, and the catch block handles the rest at runtime.
+function optionalPluginImports() {
+  return {
+    name: 'optional-plugin-imports',
+    resolveId(source, importer) {
+      if (!importer || !source.includes('plugins/')) return null
+
+      // Only handle relative imports that go through a plugins directory
+      if (!source.startsWith('.')) return null
+
+      const resolved = path.resolve(path.dirname(importer), source)
+
+      // Check common extensions
+      const extensions = ['', '.js', '.jsx', '.ts', '.tsx']
+      const exists = extensions.some(
+        (ext) => fs.existsSync(resolved + ext) || fs.existsSync(path.join(resolved, 'index' + (ext || '.js')))
+      )
+
+      if (!exists) {
+        return EMPTY_MODULE_ID
+      }
+
+      return null
+    },
+    load(id) {
+      if (id === EMPTY_MODULE_ID) {
+        return 'export default undefined;'
+      }
+      return null
+    },
+  }
+}
 
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
@@ -10,6 +50,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      optionalPluginImports(),
       react({
         // Include .js files for JSX transformation
         include: '**/*.{jsx,js}',
