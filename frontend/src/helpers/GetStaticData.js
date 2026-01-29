@@ -545,18 +545,25 @@ const displayURL = (text) => {
   return getBaseUrl() + "/" + text;
 };
 
+// Helper to strip trailing slashes without regex (avoids ReDoS concerns)
+const stripTrailingSlashes = (str) => {
+  let end = str.length;
+  while (end > 0 && str[end - 1] === "/") end--;
+  return str.slice(0, end);
+};
+
 const shortenApiEndpoint = (url) => {
   if (typeof url !== "string" || url.trim() === "") return "";
   try {
     // Parse URL to strip query/hash and get clean pathname
     const parsed = new URL(url, window.location.origin);
-    const path = parsed.pathname.replace(/\/+$/, "");
+    const path = stripTrailingSlashes(parsed.pathname);
     const parts = path.split("/").filter(Boolean);
     const suffix = parts[parts.length - 1] || "";
     return suffix ? `.../${suffix}` : ".../";
   } catch {
     // Fallback for invalid URLs - strip query/hash manually
-    const path = url.split("?")[0].split("#")[0].replace(/\/+$/, "");
+    const path = stripTrailingSlashes(url.split("?")[0].split("#")[0]);
     const parts = path.split("/").filter(Boolean);
     const suffix = parts[parts.length - 1] || "";
     return suffix ? `.../${suffix}` : ".../";
