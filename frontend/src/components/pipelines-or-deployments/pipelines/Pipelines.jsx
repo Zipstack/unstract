@@ -144,8 +144,7 @@ function Pipelines({ type }) {
           ...prev,
           current: page,
           pageSize,
-          total:
-            data.count || (data.results ? data.results.length : data.length),
+          total: data.count ?? data.results?.length ?? data.length ?? 0,
         }));
       })
       .catch((err) => {
@@ -159,7 +158,7 @@ function Pipelines({ type }) {
   // Pagination change handler
   const handlePaginationChange = (page, pageSize) => {
     // Reset to page 1 if pageSize changed
-    const newPage = pageSize !== pagination.pageSize ? 1 : page;
+    const newPage = pageSize === pagination.pageSize ? page : 1;
     getPipelineList(newPage, pageSize, searchTerm);
   };
 

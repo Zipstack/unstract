@@ -160,14 +160,14 @@ function CardItem({
           // Custom render for action
           if (action.render) {
             return (
-              <span
+              <div
                 key={action.key}
-                role="presentation"
+                className="card-action-wrapper"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
                 {action.render(item)}
-              </span>
+              </div>
             );
           }
 
@@ -188,20 +188,13 @@ function CardItem({
     if (!config.expandable || !config.expandedContent) return null;
 
     return (
-      <span
+      <button
+        type="button"
         className="card-expand-chevron"
-        role="button"
-        tabIndex={0}
         onClick={handleToggleExpand}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            handleToggleExpand(e);
-          }
-        }}
       >
         {isExpanded ? <UpOutlined /> : <DownOutlined />}
-      </span>
+      </button>
     );
   };
 

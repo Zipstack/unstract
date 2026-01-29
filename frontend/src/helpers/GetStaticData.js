@@ -556,7 +556,7 @@ const shortenApiEndpoint = (url) => {
   if (typeof url !== "string" || url.trim() === "") return "";
   try {
     // Parse URL to strip query/hash and get clean pathname
-    const parsed = new URL(url, window.location.origin);
+    const parsed = new URL(url, globalThis.location.origin);
     const path = stripTrailingSlashes(parsed.pathname);
     const parts = path.split("/").filter(Boolean);
     const suffix = parts[parts.length - 1] || "";

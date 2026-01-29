@@ -67,7 +67,7 @@
 
 .card-item-subtitle {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   margin-top: 2px;
   white-space: nowrap;
   overflow: hidden;
@@ -138,7 +138,7 @@
 
 .card-field-label {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -191,28 +191,28 @@
 
 .card-status-success {
   background-color: #f6ffed;
-  color: #52c41a;
+  color: #389e0d;
   border: 1px solid #b7eb8f;
 }
 
 .card-status-failure,
 .card-status-failed {
   background-color: #fff2f0;
-  color: #ff4d4f;
+  color: #cf1322;
   border: 1px solid #ffccc7;
 }
 
 .card-status-processing,
 .card-status-running {
   background-color: #e6f7ff;
-  color: #1890ff;
+  color: #096dd9;
   border: 1px solid #91d5ff;
 }
 
 .card-status-pending,
 .card-status-unknown {
   background-color: #fafafa;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   border: 1px solid #d9d9d9;
 }
 
@@ -330,7 +330,7 @@
 /* Description subtext styling */
 .card-list-description {
   font-size: 13px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -388,7 +388,7 @@
 
 .card-list-workflow-link-icon {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .card-list-name {
@@ -430,55 +430,64 @@
 
 .status-badge.success {
   background: #f6ffed;
-  color: #52c41a;
+  color: #389e0d;
   border: 1px solid #b7eb8f;
 }
 
 .status-badge.error {
   background: #fff2f0;
-  color: #ff4d4f;
+  color: #cf1322;
   border: 1px solid #ffccc7;
 }
 
 .status-badge.executing {
   background: #fffbe6;
-  color: #d48806;
+  color: #874d00;
   border: 1px solid #ffe58f;
 }
 
 .status-badge.pending {
   background: #fafafa;
-  color: rgba(0, 0, 0, 0.45);
+  color: #595959;
   border: 1px solid #d9d9d9;
 }
 
 .status-badge.stopped {
   background: #f5f5f5;
-  color: #8c8c8c;
+  color: #595959;
   border: 1px solid #d9d9d9;
 }
 
 .status-badge.unknown {
   background: #fafafa;
-  color: rgba(0, 0, 0, 0.45);
+  color: #595959;
   border: 1px solid #d9d9d9;
 }
 
 .status-badge.partial_success {
   background: #fff7e6;
-  color: #fa8c16;
+  color: #ad4e00;
   border: 1px solid #ffd591;
 }
 
-/* Clickable status badges */
-.status-badge.status-badge-clickable {
+/* Clickable status badges - native button with reset styles */
+button.status-badge.status-badge-clickable {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  background: inherit;
+  border: inherit;
+  font-family: inherit;
+  outline: none;
 }
 
-.status-badge.status-badge-clickable:hover {
+button.status-badge.status-badge-clickable:hover {
   transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+button.status-badge.status-badge-clickable:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
 }
 
 /* Status tooltip styling */
@@ -538,7 +547,7 @@
 /* Meta item labels - light grey, sentence case with icons */
 .card-list-meta-label {
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   letter-spacing: 0.3px;
   font-weight: 500;
   display: inline-flex;
@@ -622,7 +631,7 @@
 /* Connector type name - smaller subtext */
 .connector-flow-type-name {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   white-space: nowrap;
 }
 
@@ -676,28 +685,41 @@
   gap: 16px;
 }
 
+/* Action icon buttons - native button with reset styles */
 .action-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 18px;
   color: #092c4c;
   cursor: pointer;
   transition: color 0.2s ease, transform 0.15s ease;
   padding: 4px;
+  background: none;
+  border: none;
+  outline: none;
 }
 
 .action-icon-btn:hover {
   transform: scale(1.1);
 }
 
+.action-icon-btn:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .action-icon-btn.edit-icon:hover {
-  color: #1890ff;
+  color: #0958d9;
 }
 
 .action-icon-btn.share-icon:hover {
-  color: #1890ff;
+  color: #0958d9;
 }
 
 .action-icon-btn.delete-icon:hover {
-  color: #ff4d4f;
+  color: #cf1322;
 }
 
 /* List mode expanded content - hidden by default, shown on hover */
@@ -723,7 +745,7 @@
   border-top: 1px solid #f0f0f0;
 }
 
-/* Chevron toggle button */
+/* Chevron toggle button - native button with reset styles */
 .card-expand-chevron {
   display: flex;
   align-items: center;
@@ -731,14 +753,22 @@
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   transition: all 0.2s ease;
   font-size: 12px;
+  background: none;
+  border: none;
+  outline: none;
 }
 
 .card-expand-chevron:hover {
   background: rgba(0, 0, 0, 0.04);
   color: rgba(0, 0, 0, 0.88);
+}
+
+.card-expand-chevron:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
 }
 
 /* Expanded content wrapper */
@@ -764,7 +794,7 @@
 .card-list-expanded-label {
   font-family: var(--font-family);
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   letter-spacing: 0.3px;
 }
 
@@ -873,7 +903,7 @@
 
 /* Style Ant Design copyable icon to be grey */
 .card-list-expanded-value .ant-typography-copy {
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .card-list-expanded-value .ant-typography-copy:hover {
@@ -954,7 +984,7 @@
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -993,7 +1023,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 /* Connector text with instance name and type subtext */
@@ -1011,7 +1041,7 @@
 
 .card-list-field-subtext {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 /* Footer row - inline items */
@@ -1039,7 +1069,7 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 .card-list-footer-label {
@@ -1047,7 +1077,7 @@
   flex-shrink: 0;
   font-size: 12px;
   font-weight: 500;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
@@ -1060,7 +1090,7 @@
 
 .card-list-footer-value .anticon {
   font-size: 14px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 /* API Endpoint wrapper - grey background like footer */
@@ -1104,19 +1134,30 @@
   color: rgba(0, 0, 0, 0.85);
 }
 
-/* Kebab menu button */
+/* Kebab menu button - native button with reset styles */
 .card-kebab-menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 18px;
   color: rgba(0, 0, 0, 0.65);
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
   transition: all 0.2s ease;
+  background: none;
+  border: none;
+  outline: none;
 }
 
 .card-kebab-menu:hover {
   background: rgba(0, 0, 0, 0.04);
   color: rgba(0, 0, 0, 0.85);
+}
+
+.card-kebab-menu:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
 }
 
 /* Workflow link in row layout */
@@ -1136,7 +1177,7 @@
 
 .card-list-workflow-link-row .anticon {
   font-size: 11px;
-  color: rgba(0, 0, 0, 0.45);
+  color: rgba(0, 0, 0, 0.55);
 }
 
 /* Responsive adjustments for row layout */

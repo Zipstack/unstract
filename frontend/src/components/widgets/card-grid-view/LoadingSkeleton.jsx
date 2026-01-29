@@ -26,7 +26,7 @@ function LoadingSkeleton({ gridConfig, count = 6 }) {
     <Row gutter={gutter} className="card-skeleton-row">
       {Array.from({ length: count }).map((_, index) => (
         <Col
-          key={index}
+          key={`skeleton-${index}`}
           xs={columns.xs}
           sm={columns.sm}
           md={columns.md}

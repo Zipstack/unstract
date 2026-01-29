@@ -139,7 +139,7 @@ function ApiDeployment() {
   // Pagination change handler
   const handlePaginationChange = (page, pageSize) => {
     // Reset to page 1 if pageSize changed
-    const newPage = pageSize !== pagination.pageSize ? 1 : page;
+    const newPage = pageSize === pagination.pageSize ? page : 1;
     getApiDeploymentList(newPage, pageSize);
   };
 

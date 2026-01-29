@@ -45,39 +45,25 @@ function CardActionBox({
     onShare?.(item);
   };
 
-  const handleEditKeyDown = (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      handleEditAction(e);
-    }
-  };
-
-  const handleShareKeyDown = (e) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      handleShareAction(e);
-    }
-  };
-
   return (
     <div className="card-list-action-box">
       <Tooltip title="Edit">
-        <EditOutlined
+        <button
+          type="button"
           className="action-icon-btn edit-icon"
-          role="button"
-          tabIndex={0}
           onClick={handleEditAction}
-          onKeyDown={handleEditKeyDown}
-        />
+        >
+          <EditOutlined />
+        </button>
       </Tooltip>
       <Tooltip title="Share">
-        <ShareAltOutlined
+        <button
+          type="button"
           className="action-icon-btn share-icon"
-          role="button"
-          tabIndex={0}
           onClick={handleShareAction}
-          onKeyDown={handleShareKeyDown}
-        />
+        >
+          <ShareAltOutlined />
+        </button>
       </Tooltip>
       <Popconfirm
         title={deleteTitle}
@@ -92,13 +78,13 @@ function CardActionBox({
         okButtonProps={{ danger: true }}
       >
         <Tooltip title="Delete">
-          <DeleteOutlined
+          <button
+            type="button"
             className="action-icon-btn delete-icon"
-            role="button"
-            tabIndex={0}
             onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => e.stopPropagation()}
-          />
+          >
+            <DeleteOutlined />
+          </button>
         </Tooltip>
       </Popconfirm>
       <Dropdown
@@ -106,13 +92,13 @@ function CardActionBox({
         trigger={["click"]}
         placement="bottomRight"
       >
-        <MoreOutlined
+        <button
+          type="button"
           className="card-kebab-menu"
-          role="button"
-          tabIndex={0}
           onClick={(e) => e.stopPropagation()}
-          onKeyDown={(e) => e.stopPropagation()}
-        />
+        >
+          <MoreOutlined />
+        </button>
       </Dropdown>
     </div>
   );

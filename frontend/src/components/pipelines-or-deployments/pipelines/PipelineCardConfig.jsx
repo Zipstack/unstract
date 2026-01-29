@@ -86,60 +86,52 @@ function StatusPills({ statuses = [], executionType, pipelineId }) {
 
   return (
     <div className="status-badges-container">
-      {statuses.map((run, index) => {
+      {statuses.map((run) => {
         const config = getStatusConfig(run.status);
         const isClickable = run.execution_id && executionType;
         const hasFileCounts = run.successful_files > 0 || run.failed_files > 0;
-        return (
-          <Tooltip
-            key={index}
-            title={
-              <div className="status-tooltip-content">
-                {hasFileCounts && (
-                  <div className="status-tooltip-counts">
-                    <span className="status-tooltip-count success">
-                      <CheckCircleFilled /> {run.successful_files}
-                    </span>
-                    <span className="status-tooltip-count error">
-                      <CloseCircleFilled /> {run.failed_files}
-                    </span>
-                  </div>
-                )}
-                {run.timestamp && (
-                  <div className="status-tooltip-timestamp">
-                    {formattedDateTime(run.timestamp)}
-                  </div>
-                )}
-                {isClickable && (
-                  <div className="status-tooltip-hint">
-                    Click to view details
-                  </div>
-                )}
+        // Use execution_id for unique key, fallback to timestamp
+        const key = run.execution_id || run.timestamp || config.label;
+        const tooltipContent = (
+          <div className="status-tooltip-content">
+            {hasFileCounts && (
+              <div className="status-tooltip-counts">
+                <span className="status-tooltip-count success">
+                  <CheckCircleFilled /> {run.successful_files}
+                </span>
+                <span className="status-tooltip-count error">
+                  <CloseCircleFilled /> {run.failed_files}
+                </span>
               </div>
-            }
-          >
-            <span
-              className={`${config.className}${
-                isClickable ? " status-badge-clickable" : ""
-              }`}
-              role={isClickable ? "button" : undefined}
-              tabIndex={isClickable ? 0 : undefined}
-              onClick={
-                isClickable ? (e) => handleStatusClick(e, run) : undefined
-              }
-              onKeyDown={
-                isClickable
-                  ? (e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleStatusClick(e, run);
-                      }
-                    }
-                  : undefined
-              }
-            >
-              {config.label}
-            </span>
+            )}
+            {run.timestamp && (
+              <div className="status-tooltip-timestamp">
+                {formattedDateTime(run.timestamp)}
+              </div>
+            )}
+            {isClickable && (
+              <div className="status-tooltip-hint">Click to view details</div>
+            )}
+          </div>
+        );
+
+        if (isClickable) {
+          return (
+            <Tooltip key={key} title={tooltipContent}>
+              <button
+                type="button"
+                className={`${config.className} status-badge-clickable`}
+                onClick={(e) => handleStatusClick(e, run)}
+              >
+                {config.label}
+              </button>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Tooltip key={key} title={tooltipContent}>
+            <span className={config.className}>{config.label}</span>
           </Tooltip>
         );
       })}
