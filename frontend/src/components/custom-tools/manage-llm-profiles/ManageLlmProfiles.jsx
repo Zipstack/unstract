@@ -102,10 +102,6 @@ function ManageLlmProfiles() {
           defaultLlmProfile: data?.default_profile,
         };
         updateCustomTool(updatedState);
-        setAlertDetails({
-          type: "success",
-          content: "Default LLM Profile updated successfully",
-        });
       })
       .catch((err) => {
         handleException(err, "Failed to set default LLM Profile");
