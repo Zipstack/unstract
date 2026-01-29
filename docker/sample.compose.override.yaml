@@ -5,6 +5,9 @@
 #   With debug:  VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml -f compose.debug.yaml watch
 #
 # Memory-optimized settings: reduced workers/threads for local development
+#
+# Requirements:
+#   - Docker Compose 2.24.4+ (for !override directive support)
 
 services:
   #########################################################################################################
@@ -298,6 +301,7 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
+  # No develop.watch - runs bash scheduler script, not Python code
   worker-log-history-scheduler-v2:
     build:
       dockerfile: docker/dockerfiles/worker-unified.Dockerfile
