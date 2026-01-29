@@ -1,5 +1,4 @@
-import { LeftOutlined, RightOutlined } from "@ant-design/icons";
-import { Button, Layout } from "antd";
+import { Layout } from "antd";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import PropTypes from "prop-types";
@@ -26,18 +25,13 @@ function PageLayout({
       <TopNavBar topNavBarOptions={topNavBarOptions} />
       <Layout>
         {!hideSidebar && (
-          <SideNavBar collapsed={collapsed} {...sideBarOptions} />
+          <SideNavBar
+            collapsed={collapsed}
+            setCollapsed={setCollapsed}
+            {...sideBarOptions}
+          />
         )}
         <Layout>
-          {!hideSidebar && (
-            <Button
-              shape="circle"
-              size="small"
-              icon={collapsed ? <RightOutlined /> : <LeftOutlined />}
-              onClick={() => setCollapsed(!collapsed)}
-              className="collapse_btn"
-            />
-          )}
           <Outlet />
           {!hideSidebar && <div className="height-40" />}
           {showLogsAndNotifications && <DisplayLogsAndNotifications />}

@@ -1,6 +1,48 @@
 .side-bar {
   background-color: #0d3a63 !important;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Ant Design's internal wrapper - needs flex layout for scroll */
+.side-bar .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Wrapper for scrollable content */
+.sidebar-content-wrapper {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Pin container - fixed at bottom, centered */
+.sidebar-pin-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+  cursor: pointer;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+}
+
+.sidebar-pin-icon {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+  transition: color 0.2s;
+}
+
+.sidebar-pin-icon:hover {
+  color: white;
+}
+
+.sidebar-pin-icon.pinned {
+  color: #1890ff;
 }
 
 .secondary-list-wrapper {
