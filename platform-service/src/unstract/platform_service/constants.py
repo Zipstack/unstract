@@ -4,6 +4,7 @@ class DBTable:
     ORGANIZATION = "organization"
     ADAPTER_INSTANCE = "adapter_instance"
     PROMPT_STUDIO_REGISTRY = "prompt_studio_registry"
+    AGENTIC_STUDIO_REGISTRY = "agentic_studio_registry"
     PLATFORM_KEY = "platform_key"
     TOKEN_USAGE = "usage"
     PAGE_USAGE = "page_usage"

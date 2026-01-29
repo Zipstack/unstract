@@ -77,3 +77,5 @@ export {
   ETLIcon,
   Task,
 };
+
+export { ReactComponent as OrganizationIcon } from "./organization-icon.svg";

@@ -11,14 +11,8 @@ from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk1.constants import Common as common
-else:
-    from unstract.sdk.adapters.constants import Common as common
-    from unstract.sdk.adapters.enums import AdapterTypes
+from unstract.sdk1.constants import AdapterTypes
+from unstract.sdk1.constants import Common as common
 
 from .models import AdapterInstance, UserDefaultAdapter
 
@@ -74,16 +68,41 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
             adapter_metadata["unstract_key"] = ""
 
         rep[AdapterKeys.ADAPTER_METADATA] = adapter_metadata
-        # Retrieve context window if adapter is a LLM
-        # For other adapter types, context_window is not relevant.
-        if instance.adapter_type == AdapterTypes.LLM.value:
-            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
-                instance.get_context_window_size()
-            )
 
-        rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-            instance.adapter_id, common.ICON
-        )
+        # Add deprecation information
+        rep[AdapterKeys.IS_AVAILABLE] = instance.is_available
+        rep[AdapterKeys.IS_DEPRECATED] = not instance.is_available
+        if not instance.is_available and instance.deprecation_metadata:
+            rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
+
+        # Only retrieve context window and icon for available adapters
+        # Avoid SDK calls for deprecated adapters
+        if instance.is_available:
+            # Retrieve context window if adapter is a LLM
+            # For other adapter types, context_window is not relevant.
+            if instance.adapter_type == AdapterTypes.LLM.value:
+                adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = (
+                    instance.get_context_window_size()
+                )
+
+            try:
+                rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
+                    instance.adapter_id, common.ICON
+                )
+            except Exception as e:
+                # Log error but don't fail serialization
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"
+                )
+                rep[common.ICON] = None
+        else:
+            # For deprecated adapters, use generic warning icon
+            rep[common.ICON] = "🚫"
+            adapter_metadata[AdapterKeys.ADAPTER_CONTEXT_WINDOW_SIZE] = 0
+
         rep[AdapterKeys.ADAPTER_CREATED_BY] = instance.created_by.email
 
         return rep
@@ -126,9 +145,32 @@ class AdapterListSerializer(BaseAdapterSerializer):
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:
         rep: dict[str, str] = super().to_representation(instance)
-        rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
-            instance.adapter_id, common.ICON
-        )
+
+        # Add deprecation information
+        rep[AdapterKeys.IS_AVAILABLE] = instance.is_available
+        rep[AdapterKeys.IS_DEPRECATED] = not instance.is_available
+        if not instance.is_available and instance.deprecation_metadata:
+            rep[AdapterKeys.DEPRECATION_METADATA] = instance.deprecation_metadata
+
+        # Only call SDK for available adapters
+        if instance.is_available:
+            try:
+                rep[common.ICON] = AdapterProcessor.get_adapter_data_with_key(
+                    instance.adapter_id, common.ICON
+                )
+            except Exception as e:
+                # Log error but don't fail serialization
+                import logging
+
+                logger = logging.getLogger(__name__)
+                logger.warning(
+                    f"Failed to retrieve icon for adapter {instance.adapter_id}: {e}"
+                )
+                rep[common.ICON] = "⚠️"  # Fallback icon for SDK errors
+        else:
+            # Use generic warning icon for deprecated adapters
+            rep[common.ICON] = "⚠️"
+
         model = instance.metadata.get("model")
         if model:
             rep["model"] = model
@@ -159,6 +201,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "adapter_type",
             "created_by",
             "shared_users",
+            "shared_to_org",
         )  # type: ignore
 
 

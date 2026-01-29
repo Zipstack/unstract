@@ -2,18 +2,13 @@ from typing import Any
 
 from flask import current_app as app
 
-from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RunLevel, VariableType
 from unstract.prompt_service.helpers.variable_replacement import (
     VariableReplacementHelper,
 )
 from unstract.prompt_service.utils.log import publish_log
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-else:
-    from unstract.sdk.constants import LogLevel
+from unstract.sdk1.constants import LogLevel
 
 
 class VariableReplacementService:
@@ -40,6 +35,7 @@ class VariableReplacementService:
         prompt_name: str,
         doc_name: str,
         custom_data: dict[str, Any] = None,
+        is_ide: bool = True,
     ) -> str:
         """Replaces variables in prompt.
 
@@ -75,6 +71,7 @@ class VariableReplacementService:
                 prompt_text=prompt[PSKeys.PROMPT],
                 variable_map=variable_map,
                 custom_data=custom_data,
+                is_ide=is_ide,
             )
         except KeyError:
             # Executed incase of structured tool and
@@ -83,11 +80,9 @@ class VariableReplacementService:
                 prompt_text=prompt_text,
                 variable_map=structured_output,
                 custom_data=custom_data,
+                is_ide=is_ide,
             )
         finally:
-            app.logger.info(
-                f"[{tool_id}] Prompt after variable replacement: {prompt_text}"
-            )
             publish_log(
                 log_events_id,
                 {
@@ -97,7 +92,7 @@ class VariableReplacementService:
                 },
                 LogLevel.DEBUG,
                 RunLevel.RUN,
-                f"Prompt after variable replacement:{prompt_text} ",
+                f"Variables replaced in prompt with key :{prompt_name}",
             )
         return prompt_text
 
@@ -106,6 +101,7 @@ class VariableReplacementService:
         prompt_text: str,
         variable_map: dict[str, Any],
         custom_data: dict[str, Any] = None,
+        is_ide: bool = True,
     ) -> str:
         variables: list[str] = VariableReplacementHelper.extract_variables_from_prompt(
             prompt_text=prompt_text
@@ -128,10 +124,11 @@ class VariableReplacementService:
                     structured_output=variable_map,
                 )
 
-            elif variable_type == VariableType.CUSTOM_DATA and custom_data:
+            elif variable_type == VariableType.CUSTOM_DATA:
                 prompt_text = VariableReplacementHelper.replace_custom_data_variable(
                     prompt=prompt_text,
                     variable=variable,
-                    custom_data=custom_data,
+                    custom_data=custom_data or {},
+                    is_ide=is_ide,
                 )
         return prompt_text

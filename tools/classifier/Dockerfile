@@ -5,7 +5,9 @@ LABEL maintainer="Zipstack Inc."
 ENV \
     # Extended PYTHONPATH to include all unstract module source directories
     APP_HOME=/app \
-    BUILD_PACKAGES_PATH=unstract
+    BUILD_PACKAGES_PATH=unstract \
+    # Increase timeout for large packages (flipt-client is ~45MB)
+    PIP_DEFAULT_TIMEOUT=120
 
 # Install dependencies for unstructured library's partition
 RUN apt-get update && apt-get --no-install-recommends -y install dumb-init libmagic-dev poppler-utils\
@@ -26,7 +28,9 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     opentelemetry-distro \
     opentelemetry-exporter-otlp \
     platformdirs>=3.0.0 \
-    && opentelemetry-bootstrap -a install
+    && pip install opentelemetry-instrumentation-openai \
+    && opentelemetry-bootstrap -a install \
+    && pip uninstall -y opentelemetry-instrumentation-openai-v2
 
 # Copy the contents of your project directory into the container at /app
 COPY tools/classifier/src /app/src/

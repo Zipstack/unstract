@@ -45,7 +45,7 @@
       "minimum": 0,
       "multipleOf": 1,
       "title": "Max output tokens",
-      "default": 2048,
+      "default": 4096,
       "description": "Maximum number of output tokens to generate. This is limited by the maximum supported by the model and will vary from model to model"
     },
     "safety_settings": {
@@ -53,7 +53,6 @@
       "title": "Safety Settings",
       "description": "Vertex AI's configurable safety filters",
       "properties": {
-        "type": "string",
         "dangerous_content": {
           "type": "string",
           "title": "Dangerous Content",
@@ -125,6 +124,47 @@
           "description": "Settings for HARM_CATEGORY_OTHER"
         }
       }
+    },
+    "enable_thinking": {
+      "type": "boolean",
+      "title": "Enable Extended Thinking",
+      "default": false,
+      "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available for supported Gemini models."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_thinking": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "budget_tokens": {
+            "type": "number",
+            "minimum": -1,
+            "default": 1024,
+            "title": "Thinking Budget Tokens",
+            "description": "Sets the max tokens for Gemini's internal reasoning when thinking is enabled. Use -1 for dynamic thinking budget (model determines optimal token allocation)."
+          }
+        },
+        "required": ["budget_tokens"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_thinking": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
 }

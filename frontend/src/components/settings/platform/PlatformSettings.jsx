@@ -13,8 +13,10 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 import "./PlatformSettings.css";
+import "../settings/Settings.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 
 const defaultKeys = [
   {
@@ -233,100 +235,108 @@ function PlatformSettings() {
   };
 
   return (
-    <>
-      <div className="plt-set-head">
-        <Button size="small" type="text">
-          <ArrowLeftOutlined onClick={() => navigate(-1)} />
-        </Button>
-        <Typography.Text className="plt-set-head-typo">
-          Platform Settings
-        </Typography.Text>
-      </div>
-      <div className="plt-set-layout">
-        <IslandLayout>
-          <div className="plt-set-layout-2">
-            <div>
-              {keys.map((keyDetails, keyIndex) => {
-                return (
-                  <div key={keyDetails?.keyName}>
-                    <div>
-                      <div className="plt-set-key-head">
-                        <Row>
-                          <Col>
-                            <div className="plt-set-key-head-col-1">
-                              <Typography.Text>
-                                {keyDetails?.keyName}
-                              </Typography.Text>
-                            </div>
-                          </Col>
-                          <Col>
-                            <div className="plt-set-key-head-col-2">
-                              <Radio
-                                checked={
-                                  keyDetails?.id && activeKey === keyIndex
-                                }
-                                disabled={keyDetails?.id === null}
-                                onClick={() => handleToggle(keyIndex)}
-                              >
-                                Active Key
-                              </Radio>
-                            </div>
-                          </Col>
-                        </Row>
-                      </div>
+    <SettingsLayout>
+      <div>
+        <div className="plt-set-head">
+          <Button
+            size="small"
+            type="text"
+            onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
+          >
+            <ArrowLeftOutlined />
+          </Button>
+          <Typography.Text className="plt-set-head-typo">
+            Platform Settings
+          </Typography.Text>
+        </div>
+        <div className="plt-set-layout">
+          <IslandLayout>
+            <div className="plt-set-layout-2">
+              <div>
+                {keys.map((keyDetails, keyIndex) => {
+                  return (
+                    <div key={keyDetails?.keyName}>
                       <div>
-                        <Row gutter={10}>
-                          <Col>
-                            <div className="plt-set-key-display">
-                              <Input
-                                size="small"
-                                value={keys[keyIndex].key}
-                                suffix={
-                                  <CopyOutlined
-                                    onClick={() => copyText(keys[keyIndex].key)}
-                                  />
-                                }
-                              />
-                            </div>
-                          </Col>
-                          <Col>
-                            <Button
-                              size="small"
-                              loading={isLoadingIndex === keyIndex}
-                              onClick={() => handleGenerate(keyIndex)}
-                            >
-                              {keyDetails?.id?.length > 0
-                                ? "Refresh"
-                                : "Generate"}
-                            </Button>
-                          </Col>
-                          <Col>
-                            <ConfirmModal
-                              handleConfirm={() => handleDelete(keyIndex)}
-                              content="Want to delete this platform key? This action cannot be undone."
-                              okText="Delete"
-                            >
+                        <div className="plt-set-key-head">
+                          <Row>
+                            <Col>
+                              <div className="plt-set-key-head-col-1">
+                                <Typography.Text>
+                                  {keyDetails?.keyName}
+                                </Typography.Text>
+                              </div>
+                            </Col>
+                            <Col>
+                              <div className="plt-set-key-head-col-2">
+                                <Radio
+                                  checked={
+                                    keyDetails?.id && activeKey === keyIndex
+                                  }
+                                  disabled={keyDetails?.id === null}
+                                  onClick={() => handleToggle(keyIndex)}
+                                >
+                                  Active Key
+                                </Radio>
+                              </div>
+                            </Col>
+                          </Row>
+                        </div>
+                        <div>
+                          <Row gutter={10}>
+                            <Col>
+                              <div className="plt-set-key-display">
+                                <Input
+                                  size="small"
+                                  value={keys[keyIndex].key}
+                                  suffix={
+                                    <CopyOutlined
+                                      onClick={() =>
+                                        copyText(keys[keyIndex].key)
+                                      }
+                                    />
+                                  }
+                                />
+                              </div>
+                            </Col>
+                            <Col>
                               <Button
                                 size="small"
-                                disabled={keyDetails?.id === null}
-                                loading={isDeletingIndex === keyIndex}
+                                loading={isLoadingIndex === keyIndex}
+                                onClick={() => handleGenerate(keyIndex)}
                               >
-                                <DeleteOutlined />
+                                {keyDetails?.id?.length > 0
+                                  ? "Refresh"
+                                  : "Generate"}
                               </Button>
-                            </ConfirmModal>
-                          </Col>
-                        </Row>
+                            </Col>
+                            <Col>
+                              <ConfirmModal
+                                handleConfirm={() => handleDelete(keyIndex)}
+                                content="Want to delete this platform key? This action cannot be undone."
+                                okText="Delete"
+                              >
+                                <Button
+                                  size="small"
+                                  disabled={keyDetails?.id === null}
+                                  loading={isDeletingIndex === keyIndex}
+                                >
+                                  <DeleteOutlined />
+                                </Button>
+                              </ConfirmModal>
+                            </Col>
+                          </Row>
+                        </div>
                       </div>
+                      {keyIndex < keys?.length - 1 && <Divider />}
                     </div>
-                    {keyIndex < keys?.length - 1 && <Divider />}
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        </IslandLayout>
+          </IslandLayout>
+        </div>
       </div>
-    </>
+    </SettingsLayout>
   );
 }
 

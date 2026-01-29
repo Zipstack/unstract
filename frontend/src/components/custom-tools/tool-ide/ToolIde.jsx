@@ -1,5 +1,5 @@
 import { Col, Row } from "antd";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -10,6 +10,7 @@ import { DocumentManager } from "../document-manager/DocumentManager";
 import { Header } from "../header/Header";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
+import { ExportReminderBar } from "../export-reminder-bar/ExportReminderBar";
 import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
@@ -37,6 +38,7 @@ try {
 }
 function ToolIde() {
   const [openSettings, setOpenSettings] = useState(false);
+  const customToolStore = useCustomToolStore();
   const {
     details,
     updateCustomTool,
@@ -47,7 +49,11 @@ function ToolIde() {
     deleteIndexDoc,
     shareId,
     isPublicSource,
-  } = useCustomToolStore();
+    hasUnsavedChanges,
+    deploymentUsageInfo,
+    setDeploymentUsageInfo,
+    markChangesAsExported,
+  } = customToolStore;
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -57,6 +63,11 @@ function ToolIde() {
   const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
   const [openShareModal, setOpenShareModal] = useState(false);
   const [openCloneModal, setOpenCloneModal] = useState(false);
+  const [showExportReminder, setShowExportReminder] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const isCheckingUsageRef = useRef(false);
+  const hasCheckedForCurrentSessionRef = useRef(false);
+  const abortControllerRef = useRef(null);
 
   useEffect(() => {
     if (openShareModal) {
@@ -76,6 +87,149 @@ function ToolIde() {
       setOpenShareLink(false);
     }
   }, [openShareModal]);
+
+  // Check deployment usage when there are unsaved changes (only once per edit session)
+  const checkDeploymentUsage = useCallback(async () => {
+    const currentHasUnsavedChanges =
+      useCustomToolStore.getState().hasUnsavedChanges;
+
+    // Skip if: no tool, no unsaved changes, already checking, or already checked this session
+    if (
+      !details?.tool_id ||
+      !currentHasUnsavedChanges ||
+      isCheckingUsageRef.current ||
+      hasCheckedForCurrentSessionRef.current
+    ) {
+      return;
+    }
+
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    abortControllerRef.current = new AbortController();
+
+    isCheckingUsageRef.current = true;
+    hasCheckedForCurrentSessionRef.current = true;
+
+    try {
+      const response = await axiosPrivate.get(
+        `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`,
+        { signal: abortControllerRef.current.signal }
+      );
+
+      const usageInfo = response.data;
+      setDeploymentUsageInfo(usageInfo);
+
+      // Only show reminder if there are still unsaved changes
+      const stillHasUnsavedChanges =
+        useCustomToolStore.getState().hasUnsavedChanges;
+      if (stillHasUnsavedChanges && usageInfo?.is_used && usageInfo?.message) {
+        setShowExportReminder(true);
+      } else {
+        setShowExportReminder(false);
+      }
+    } catch (error) {
+      // Ignore abort errors
+      if (error.name === "AbortError" || error.name === "CanceledError") {
+        return;
+      }
+      console.error("Error checking deployment usage:", error);
+      setShowExportReminder(false);
+    } finally {
+      isCheckingUsageRef.current = false;
+    }
+  }, [
+    details?.tool_id,
+    axiosPrivate,
+    sessionDetails?.orgId,
+    setDeploymentUsageInfo,
+  ]);
+
+  // Trigger deployment check when unsaved changes are detected
+  useEffect(() => {
+    if (hasUnsavedChanges) {
+      checkDeploymentUsage();
+    } else {
+      // Reset the check flag when changes are cleared (after export)
+      hasCheckedForCurrentSessionRef.current = false;
+      setShowExportReminder(false);
+    }
+  }, [hasUnsavedChanges, checkDeploymentUsage]);
+
+  // Restore unsaved changes from sessionStorage on page reload
+  useEffect(() => {
+    if (details?.tool_id) {
+      const { restoreUnsavedChangesFromSession } =
+        useCustomToolStore.getState();
+      const restored = restoreUnsavedChangesFromSession(details.tool_id);
+      // Reset the check flag so deployment usage check runs after restore
+      if (restored) {
+        hasCheckedForCurrentSessionRef.current = false;
+      }
+    }
+  }, [details?.tool_id]);
+
+  // Cleanup abort controller on unmount
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, []);
+
+  // Handle export from reminder bar
+  const handleExportFromReminder = useCallback(async () => {
+    setIsExporting(true);
+    try {
+      const requestOptions = {
+        method: "POST",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: {
+          is_shared_with_org: false,
+          user_id: [details?.created_by || sessionDetails?.userId],
+          force_export: false,
+        },
+      };
+
+      await axiosPrivate(requestOptions);
+
+      setAlertDetails({
+        type: "success",
+        content: "Custom tool exported successfully",
+      });
+
+      // Mark changes as exported
+      markChangesAsExported();
+      setShowExportReminder(false);
+
+      try {
+        setPostHogCustomEvent("ps_exported_from_reminder", {
+          info: "Exported from reminder bar",
+          tool_name: details?.tool_name,
+        });
+      } catch (err) {
+        // Ignore posthog errors
+      }
+    } catch (err) {
+      setAlertDetails(handleException(err, "Failed to export"));
+    } finally {
+      setIsExporting(false);
+    }
+  }, [
+    axiosPrivate,
+    details,
+    sessionDetails,
+    setAlertDetails,
+    handleException,
+    markChangesAsExported,
+    setPostHogCustomEvent,
+  ]);
 
   const generateIndex = async (doc) => {
     const docId = doc?.document_id;
@@ -186,6 +340,13 @@ function ToolIde() {
     <div className="tool-ide-layout">
       <PageTitle title={details?.tool_name} />
       {isPublicSource && HeaderPublic && <HeaderPublic />}
+      {showExportReminder && deploymentUsageInfo?.message && (
+        <ExportReminderBar
+          message={deploymentUsageInfo.message}
+          onExport={handleExportFromReminder}
+          isExporting={isExporting}
+        />
+      )}
       <div>
         <Header
           handleUpdateTool={handleUpdateTool}

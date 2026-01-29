@@ -16,18 +16,19 @@ from tool_instance_v2.constants import JsonSchemaKey
 from tool_instance_v2.exceptions import ToolSettingValidationError
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.tool_processor import ToolProcessor
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import AdapterTypes
-    from unstract.sdk1.tool.validator import DefaultsGeneratingValidator
-else:
-    from unstract.sdk.adapters.enums import AdapterTypes
-    from unstract.sdk.tool.validator import DefaultsGeneratingValidator
-
+from unstract.sdk1.constants import AdapterTypes
+from unstract.sdk1.tool.validator import DefaultsGeneratingValidator
 from unstract.tool_registry.constants import AdapterPropertyKey
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_utils import ToolUtils
+
+# Import agentic registry if available (cloud-only feature)
+try:
+    from pluggable_apps.agentic_studio_registry.models import AgenticStudioRegistry
+
+    IS_AGENTIC_REGISTRY_AVAILABLE = True
+except ImportError:
+    IS_AGENTIC_REGISTRY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -511,18 +512,53 @@ class ToolInstanceHelper:
         user: User,
         tool_uid: str,
     ) -> None:
-        # HACK: Assume tool_uid is a prompt studio exported tool and query it.
-        # We suppress ValidationError when tool_uid is of a static tool.
+        """Validate user access to a tool (prompt studio or agentic studio).
+
+        Args:
+            user: User requesting access
+            tool_uid: Tool UID (could be prompt_registry_id or agentic_registry_id)
+
+        Raises:
+            PermissionDenied: If user doesn't have access to the tool
+        """
+        # Try to find the tool in PromptStudioRegistry first
         try:
             prompt_registry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
+            if (
+                prompt_registry_tool.shared_to_org
+                or prompt_registry_tool.shared_users.filter(pk=user.pk).exists()
+            ):
+                return
+            raise PermissionDenied("You don't have permission to perform this action.")
+        except PromptStudioRegistry.DoesNotExist:
+            # Not a prompt studio tool, try agentic studio if available
+            pass
         except DjangoValidationError:
+            # Invalid UUID format, might be a static tool
             logger.info(f"Not validating tool access for tool: {tool_uid}")
             return
 
-        if (
-            prompt_registry_tool.shared_to_org
-            or prompt_registry_tool.shared_users.filter(pk=user.pk).exists()
-        ):
-            return
-        else:
-            raise PermissionDenied("You don't have permission to perform this action.")
+        # Try to find the tool in AgenticStudioRegistry if available
+        if IS_AGENTIC_REGISTRY_AVAILABLE:
+            try:
+                agentic_registry_tool = AgenticStudioRegistry.objects.get(pk=tool_uid)
+                if (
+                    agentic_registry_tool.shared_to_org
+                    or agentic_registry_tool.shared_users.filter(pk=user.pk).exists()
+                ):
+                    return
+                raise PermissionDenied(
+                    "You don't have permission to perform this action."
+                )
+            except AgenticStudioRegistry.DoesNotExist:
+                # Not an agentic studio tool either
+                pass
+            except DjangoValidationError:
+                # Invalid UUID format, might be a static tool
+                logger.info(f"Not validating tool access for tool: {tool_uid}")
+                return
+
+        # If we reach here, it's likely a static tool from registry
+        # No validation needed for static tools
+        logger.info(f"Not validating tool access for tool: {tool_uid}")
+        return

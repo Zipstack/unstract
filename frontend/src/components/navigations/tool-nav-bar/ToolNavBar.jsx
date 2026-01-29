@@ -15,6 +15,7 @@ function ToolNavBar({
   segmentFilter,
   segmentOptions,
   onSearch,
+  searchKey,
 }) {
   const navigate = useNavigate();
   const onSearchDebounce = debounce(({ target: { value } }) => {
@@ -36,7 +37,7 @@ function ToolNavBar({
           <Typography
             style={{
               fontWeight: 600,
-              fontSize: "18px",
+              fontSize: "16px",
               display: "inline",
               lineHeight: "24px",
             }}
@@ -55,6 +56,7 @@ function ToolNavBar({
       <Col>
         {enableSearch && (
           <Search
+            key={searchKey}
             className="api-search-input"
             placeholder="Search by name"
             onChange={onSearchDebounce}
@@ -76,6 +78,7 @@ ToolNavBar.propTypes = {
   segmentOptions: PropTypes.array,
   segmentFilter: PropTypes.func,
   onSearch: PropTypes.func,
+  searchKey: PropTypes.string,
 };
 
 export { ToolNavBar };

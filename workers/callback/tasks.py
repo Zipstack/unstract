@@ -66,6 +66,7 @@ class CallbackContext:
         self.pipeline_type: str | None = None
         self.pipeline_data: dict[str, Any] | None = None
         self.api_client: InternalAPIClient | None = None
+        self.file_executions: list[dict[str, Any]] = []
 
 
 def _initialize_performance_managers():
@@ -719,6 +720,7 @@ def _extract_callback_parameters(
             workflow_definition = execution_data.get("workflow_definition", {})
             organization_context = execution_data.get("organization_context", {})
             source_config = execution_data.get("source_config", {})
+            context.file_executions = execution_data.get("file_executions", [])
 
             # 3. Extract parameters with kwargs as fast path, execution data as fallback
             context.pipeline_id = kwargs.get("pipeline_id") or execution_info.get(
@@ -754,6 +756,7 @@ def _extract_callback_parameters(
                 workflow_definition = execution_data.get("workflow_definition", {})
                 organization_context = execution_data.get("organization_context", {})
                 source_config = execution_data.get("source_config", {})
+                context.file_executions = execution_data.get("file_executions", [])
 
                 # Extract organization ID from execution data
                 context.organization_id = organization_context.get(
@@ -772,13 +775,6 @@ def _extract_callback_parameters(
                 context.pipeline_id = kwargs.get("pipeline_id") or execution_info.get(
                     "pipeline_id"
                 )
-                if not context.pipeline_id:
-                    execution_response = api_client.get_workflow_execution(
-                        execution_id=context.execution_id,
-                        file_execution=False,
-                    )
-                    execution_info = execution_response.data.get("execution", {})
-                    context.pipeline_id = execution_info.get("pipeline_id")
             finally:
                 # Clean up temporary client
                 if hasattr(temp_api_client, "close"):
@@ -833,7 +829,9 @@ def _extract_callback_parameters(
             f"Extracted from kwargs: pipeline_id={kwargs.get('pipeline_id')}, org_id={kwargs.get('organization_id')}"
         )
         logger.info(
-            f"Extracted from execution: workflow_id={context.workflow_id}, is_api={is_api_deployment}, pipeline_type={context.pipeline_type}"
+            f"Extracted from execution: workflow_id={context.workflow_id}, "
+            f"is_api={is_api_deployment}, pipeline_type={context.pipeline_type} "
+            f"file_executions={len(context.file_executions)}"
         )
 
     except Exception as e:
@@ -1037,7 +1035,7 @@ def _get_execution_directories(context: CallbackContext) -> list[tuple[str, any,
 
     directories_to_clean = []
 
-    if is_api_execution and context.pipeline_id and context.workflow_id:
+    if is_api_execution and context.workflow_id:
         # API execution - clean BOTH API execution directory AND workflow execution directory
 
         # 1. API execution directory
@@ -1047,7 +1045,9 @@ def _get_execution_directories(context: CallbackContext) -> list[tuple[str, any,
                 execution_id=context.execution_id,
                 organization_id=context.organization_id,
             )
-            directories_to_clean.append((api_execution_dir, FileStorageType.API, "api"))
+            directories_to_clean.append(
+                (api_execution_dir, FileStorageType.API_EXECUTION, "api")
+            )
             logger.info(f"Added API execution directory for cleanup: {api_execution_dir}")
         except Exception as e:
             logger.warning(f"Could not get API execution directory: {e}")
@@ -1266,6 +1266,97 @@ def _cleanup_execution_resources(context: CallbackContext) -> dict[str, Any]:
     }
 
 
+def _track_subscription_usage_if_available(
+    context: CallbackContext,
+    execution_status: str,
+) -> dict[str, Any] | None:
+    """Track subscription usage for successful file executions if plugin available.
+
+    This is a non-blocking operation - errors are logged but do not fail the workflow.
+    Only tracks usage for completed workflows with successful file executions.
+
+    Args:
+        context: Callback execution context with organization and execution IDs
+        execution_status: Final execution status (should be COMPLETED for tracking)
+
+    Returns:
+        dict with status, committed_count, message if tracking attempted
+        None if plugin not available or workflow not completed
+    """
+    # Only track for completed workflows
+    if execution_status != ExecutionStatus.COMPLETED.value:
+        logger.debug(
+            f"Skipping subscription tracking for execution {context.execution_id} "
+            f"with status {execution_status}"
+        )
+        return None
+
+    try:
+        # Try to get subscription_usage client plugin
+        from client_plugin_registry import get_client_plugin
+
+        subscription_plugin = get_client_plugin("subscription_usage")
+
+        if not subscription_plugin:
+            logger.debug(
+                f"Subscription usage plugin not found for execution {context.execution_id} (OSS mode)"
+            )
+            return None
+
+        # Extract successful file execution IDs directly from context.file_executions
+        # Status in database is "COMPLETED" for successful executions
+        successful_file_exec_ids = [
+            file_exec.get("id")
+            for file_exec in context.file_executions
+            if isinstance(file_exec, dict)
+            and file_exec.get("status") == "COMPLETED"
+            and file_exec.get("id")
+            and not file_exec.get("execution_error")
+        ]
+
+        if not successful_file_exec_ids:
+            logger.debug(
+                f"No successful file executions to track for execution {context.execution_id}"
+            )
+            return {
+                "status": "skipped",
+                "committed_count": 0,
+                "message": "No successful file executions",
+            }
+
+        logger.info(
+            f"Committing subscription usage for {len(successful_file_exec_ids)} "
+            f"successful file executions in execution {context.execution_id}"
+        )
+
+        subscription_tracking_result = (
+            subscription_plugin.commit_batch_subscription_usage(
+                organization_id=context.organization_id,
+                file_execution_ids=successful_file_exec_ids,
+            )
+        )
+
+        logger.info(
+            f"Subscription usage committed: "
+            f"{subscription_tracking_result.get('committed_count', 0)}/{len(successful_file_exec_ids)} "
+            f"file executions (status: {subscription_tracking_result.get('status')})"
+        )
+
+        return subscription_tracking_result
+
+    except Exception as tracking_error:
+        logger.error(
+            "Failed to commit subscription usage for execution "
+            f"{context.execution_id} (continuing execution): {tracking_error}",
+            exc_info=True,
+        )
+        return {
+            "status": "error",
+            "committed_count": 0,
+            "error": str(tracking_error),
+        }
+
+
 def _process_batch_callback_core(
     task_instance, results, *args, **kwargs
 ) -> dict[str, Any]:
@@ -1330,6 +1421,12 @@ def _process_batch_callback_core(
                 context, execution_status, is_api_deployment=False
             )
 
+            # Track subscription usage if plugin is present
+            subscription_tracking_result = _track_subscription_usage_if_available(
+                context=context,
+                execution_status=execution_status,
+            )
+
             # Add missing UI logs for cost and final workflow status (matching backend behavior)
             _publish_final_workflow_ui_logs(
                 context=context,
@@ -1349,6 +1446,7 @@ def _process_batch_callback_core(
                 "expected_files": expected_files,
                 "execution_update_result": execution_update_result,
                 "pipeline_result": pipeline_result,
+                "subscription_tracking_result": subscription_tracking_result,
                 "cleanup_result": cleanup_result,
                 "pipeline_id": context.pipeline_id,
                 "unified_callback": True,
@@ -1517,23 +1615,27 @@ def process_batch_callback_api(
 
             # Get pipeline name and type (simplified approach)
             if not pipeline_id:
-                error_msg = f"No pipeline_id provided for API callback. execution_id={execution_id}, workflow_id={workflow_id}"
-                logger.error(error_msg)
-                raise ValueError(error_msg)
-
-            # Use simplified pipeline data fetching
-            pipeline_name, pipeline_type = _fetch_pipeline_data_simplified(
-                pipeline_id, schema_name, api_client, is_api_deployment=True
-            )
-
-            if pipeline_name:
                 logger.info(
-                    f"✅ Found pipeline: name='{pipeline_name}', type='{pipeline_type}'"
+                    f"No pipeline_id provided for API callback (testing mode). "
+                    f"execution_id={execution_id}, workflow_id={workflow_id}. "
+                    f"APIDeployment-specific updates and notifications will be skipped."
                 )
+                pipeline_name = None
+                pipeline_type = None
             else:
-                logger.warning(f"Could not fetch pipeline data for {pipeline_id}")
-                pipeline_name = "Unknown API"
-                pipeline_type = PipelineType.API.value
+                # Use simplified pipeline data fetching
+                pipeline_name, pipeline_type = _fetch_pipeline_data_simplified(
+                    pipeline_id, schema_name, api_client, is_api_deployment=True
+                )
+
+                if pipeline_name:
+                    logger.info(
+                        f"✅ Found pipeline: name='{pipeline_name}', type='{pipeline_type}'"
+                    )
+                else:
+                    logger.warning(f"Could not fetch pipeline data for {pipeline_id}")
+                    pipeline_name = "Unknown API"
+                    pipeline_type = PipelineType.API.value
 
             # Use unified status determination with timeout detection
             aggregated_results, execution_status, expected_files = (
@@ -1563,6 +1665,10 @@ def process_batch_callback_api(
             context.pipeline_name = pipeline_name
             context.pipeline_type = pipeline_type
             context.api_client = api_client
+            context.file_executions = execution_context.get("file_executions", [])
+            context.pipeline_data = {
+                "is_api": True
+            }  # Mark as API execution for cleanup logic
 
             # Add missing UI logs for cost and final workflow status (matching backend behavior)
             _publish_final_workflow_ui_logs_api(
@@ -1571,9 +1677,28 @@ def process_batch_callback_api(
                 execution_status=execution_status,
             )
 
-            # Handle pipeline updates (skip for API deployments)
-            pipeline_result = _handle_pipeline_updates_unified(
-                context=context, final_status=execution_status, is_api_deployment=True
+            # Handle resource cleanup (matching ETL workflow behavior)
+            cleanup_result = _cleanup_execution_resources(context)
+
+            # Handle pipeline updates (only if pipeline_id exists)
+            if context.pipeline_id:
+                pipeline_result = _handle_pipeline_updates_unified(
+                    context=context, final_status=execution_status, is_api_deployment=True
+                )
+            else:
+                logger.info(
+                    f"Skipping pipeline status update for execution {execution_id} "
+                    f"since no APIDeployment record"
+                )
+                pipeline_result = {
+                    "skipped": True,
+                    "reason": "execute without APIDeployment record",
+                }
+
+            # Track subscription usage if plugin is present
+            subscription_tracking_result = _track_subscription_usage_if_available(
+                context=context,
+                execution_status=execution_status,
             )
 
             # Handle notifications using unified function
@@ -1604,6 +1729,8 @@ def process_batch_callback_api(
                 "execution_update": execution_update_result,
                 "pipeline_update": pipeline_result,
                 "notifications": notification_result,
+                "subscription_tracking_result": subscription_tracking_result,
+                "cleanup_result": cleanup_result,
                 "optimization": {
                     "method": "unified_callback_functions",
                     "eliminated_code_duplication": True,

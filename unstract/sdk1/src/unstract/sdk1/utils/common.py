@@ -116,6 +116,22 @@ class TokenCounterCompat:
         self.total_llm_token_count = total_tokens
         self.total_embedding_token_count = 0
 
+    def __str__(self) -> str:
+        """Return concise string representation of token counts."""
+        return (
+            f"prompt={self.prompt_llm_token_count}, "
+            f"completion={self.completion_llm_token_count}, "
+            f"total={self.total_llm_token_count}"
+        )
+
+    def __repr__(self) -> str:
+        """Return detailed representation of TokenCounterCompat instance."""
+        return (
+            f"TokenCounterCompat(prompt_tokens={self.prompt_llm_token_count}, "
+            f"completion_tokens={self.completion_llm_token_count}, "
+            f"total_tokens={self.total_llm_token_count})"
+        )
+
 
 class LLMResponseCompat:
     """Compatibility class to mimic llama-index CompletionResponse interface."""
@@ -132,6 +148,15 @@ class LLMResponseCompat:
         self.raw = None
         self.logprobs = None
         self.delta = None
+
+    def __str__(self) -> str:
+        """Return text for string operations like join()."""
+        return self.text
+
+    def __repr__(self) -> str:
+        """Return detailed representation with text preview."""
+        text_preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
+        return f"LLMResponseCompat(text={text_preview!r})"
 
 
 # Mapping from python log level to Unstract counterpart

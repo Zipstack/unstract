@@ -12,14 +12,8 @@ from utils.user_context import UserContext
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import PromptIdeBaseTool
 from prompt_studio.prompt_studio_document_manager_v2.models import DocumentManager
-from unstract.flags.feature_flag import check_feature_flag_status
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.constants import LogLevel
-    from unstract.sdk1.vector_db import VectorDB
-else:
-    from unstract.sdk.constants import LogLevel
-    from unstract.sdk.vector_db import VectorDB
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.vector_db import VectorDB
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +63,8 @@ class IndexManager(BaseModel):
         null=False,
         blank=False,
     )
+    # TODO: Consider making this an enum instead
+    # A nested JSON of the form {doc_id: {"extracted": True, "enable_highlight": <bool>}}
     extraction_status = models.JSONField(
         db_comment="Extraction status for documents",
         null=False,

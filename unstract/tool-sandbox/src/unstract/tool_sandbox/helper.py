@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
+from celery.exceptions import SoftTimeLimitExceeded
 from requests import Response
 from requests.exceptions import ConnectionError, RequestException
 
@@ -166,20 +167,27 @@ class ToolSandboxHelper:
                     current_tracker_data = tracker.get_data(
                         self.execution_id, file_execution_id
                     )
+                    # Check if already at FINALIZATION or COMPLETED (tool execution done)
                     if (
                         current_tracker_data
                         and current_tracker_data.stage_status.stage
-                        == FileExecutionStage.COMPLETED
+                        in [
+                            FileExecutionStage.FINALIZATION,
+                            FileExecutionStage.COMPLETED,
+                        ]
                     ):
+                        stage = current_tracker_data.stage_status.stage
+                        status = current_tracker_data.stage_status.status
                         logger.warning(
-                            f"File execution COMPLETED by another worker during NOT_FOUND grace period - "
-                            f"duplicate run detected after {not_found_duration:.1f}s for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                            f"File execution already at {stage}:{status} by another worker "
+                            f"during NOT_FOUND grace period - duplicate run detected after {not_found_duration:.1f}s "
+                            f"for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
                         )
                         # Break with ERROR to stop further processing (destination, finalization)
-                        # This is not a real error - the file was successfully processed by another worker
+                        # This is not a real error - the file was already processed by another worker
                         response = self._create_run_response(
                             status=RunnerContainerRunStatus.ERROR,
-                            error="File already completed by another worker (duplicate run avoided)",
+                            error=f"File already processed by another worker (stage: {stage}:{status}, duplicate run avoided)",
                         )
                         break
 
@@ -358,30 +366,68 @@ class ToolSandboxHelper:
         settings: dict[str, Any],
         retry_count: int | None = None,
     ) -> RunnerContainerRunResponse:
-        logger.info(
-            f"Calling runner to run tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
-        )
-        response = self.run_tool_container(
-            file_execution_id=file_execution_id,
-            image_name=image_name,
-            image_tag=image_tag,
-            settings=settings,
-            retry_count=retry_count,
-        )
-        logger.info(
-            f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
-        )
+        """Run container and poll for completion with guaranteed cleanup.
 
-        if response.status == RunnerContainerRunStatus.RUNNING:
+        This method ensures container cleanup happens even if exceptions occur
+        (including SoftTimeLimitExceeded from Celery timeouts).
+        """
+        cleanup_performed = False
+
+        try:
             logger.info(
-                f"Polling tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
+                f"Calling runner to run tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
             )
-            return self.poll_tool_status(file_execution_id)
+            response = self.run_tool_container(
+                file_execution_id=file_execution_id,
+                image_name=image_name,
+                image_tag=image_tag,
+                settings=settings,
+                retry_count=retry_count,
+            )
+            logger.info(
+                f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
+            )
 
-        logger.info(
-            f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
-        )
-        return response
+            if response.status == RunnerContainerRunStatus.RUNNING:
+                logger.info(
+                    f"Polling tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
+                )
+                # poll_tool_status handles its own cleanup on normal completion
+                poll_response = self.poll_tool_status(file_execution_id)
+                cleanup_performed = True
+                return poll_response
+
+            logger.info(
+                f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
+            )
+            return response
+
+        except SoftTimeLimitExceeded:
+            logger.exception(
+                f"SoftTimeLimitExceeded during tool execution for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}. "
+                f"Attempting container cleanup before re-raising."
+            )
+            raise
+
+        except Exception:
+            logger.exception(
+                f"Exception during tool execution for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}. "
+                f"Attempting container cleanup before re-raising."
+            )
+            raise
+
+        finally:
+            if not cleanup_performed:
+                container_name = self._get_container_name_for_cleanup(
+                    file_execution_id=file_execution_id,
+                )
+                self._safe_cleanup_container(
+                    container_name=container_name,
+                    file_execution_id=file_execution_id,
+                    reason="exception_cleanup",
+                )
 
     def cleanup_tool_container(
         self,
@@ -403,6 +449,76 @@ class ToolSandboxHelper:
                 f"Error while calling tool {container_name} reason: {response.reason}"
             )
         return response.json()
+
+    def _get_container_name_for_cleanup(
+        self,
+        file_execution_id: str,
+    ) -> str | None:
+        """Retrieve container name for cleanup from Redis tracker.
+
+        Args:
+            file_execution_id: The file execution ID
+
+        Returns:
+            Container name or None if not available
+        """
+        try:
+            file_execution_tracker = FileExecutionStatusTracker()
+            file_execution_data = file_execution_tracker.get_data(
+                execution_id=self.execution_id,
+                file_execution_id=file_execution_id,
+            )
+            if file_execution_data and file_execution_data.tool_container_name:
+                return file_execution_data.tool_container_name
+        except Exception as e:
+            logger.warning(
+                f"Failed to retrieve container name from tracker for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}: {e}"
+            )
+
+        return None
+
+    def _safe_cleanup_container(
+        self,
+        container_name: str | None,
+        file_execution_id: str,
+        reason: str = "cleanup",
+    ) -> None:
+        """Safely attempt container cleanup, handling all failure cases gracefully.
+
+        Args:
+            container_name: Name of container to clean up (can be None)
+            file_execution_id: File execution ID for logging
+            reason: Reason for cleanup (for logging)
+        """
+        if not container_name:
+            logger.warning(
+                f"Cannot cleanup container - name not available for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
+                f"reason={reason}"
+            )
+            return
+
+        try:
+            logger.info(
+                f"Attempting container cleanup for container={container_name}, "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
+                f"reason={reason}"
+            )
+            self.cleanup_tool_container(
+                container_name=container_name,
+                file_execution_id=file_execution_id,
+            )
+            logger.info(
+                f"Container cleanup completed for container={container_name}, "
+                f"reason={reason}"
+            )
+        except Exception as cleanup_error:
+            logger.error(
+                f"Container cleanup failed for container={container_name}, "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
+                f"reason={reason}, error={cleanup_error}"
+            )
 
     def _update_stage_status(
         self,

@@ -20,7 +20,7 @@ from shared.models.file_processing import FileProcessingContext
 
 # Import shared dataclasses for type safety and consistency
 from unstract.core.data_models import (
-    # DestinationConfig, # remove once verified
+    ExecutionStatus,
     FileHashData,
     FileOperationConstants,
     WorkflowDefinitionResponseData,
@@ -52,6 +52,7 @@ from unstract.workflow_execution.workflow_execution import WorkflowExecutionServ
 
 from ...api.internal_client import InternalAPIClient
 from ...infrastructure.logging import WorkerLogger
+from ...utils.error_utils import get_user_friendly_error_message
 from ..destination_connector import (
     DestinationConfig,
     WorkerDestinationConnector,
@@ -93,6 +94,11 @@ class WorkerWorkflowExecutionService:
         context_setup_time = start_time
         destination_start_time = start_time
         destination_end_time = start_time
+
+        # Configure TTL for COMPLETED stage (shorter TTL to optimize Redis memory)
+        completed_ttl = int(
+            os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 300)
+        )
 
         try:
             logger.info(f"Executing workflow {workflow_id} for file {file_name}")
@@ -409,13 +415,6 @@ class WorkerWorkflowExecutionService:
                         ),
                     )
                     logger.info(f"Marked finalization as successful for {file_name}")
-
-                    # Use shorter TTL for COMPLETED stage to optimize Redis memory
-                    completed_ttl = int(
-                        os.environ.get(
-                            "FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 300
-                        )
-                    )
                     tracker.update_stage_status(
                         execution_id=execution_id,
                         file_execution_id=workflow_file_execution_id,
@@ -441,6 +440,17 @@ class WorkerWorkflowExecutionService:
                             status=FileExecutionStageStatus.FAILED,
                             error=error_msg,
                         ),
+                    )
+                    # Set COMPLETED:FAILED to mark file as done (prevents duplicate processing)
+                    tracker.update_stage_status(
+                        execution_id=execution_id,
+                        file_execution_id=workflow_file_execution_id,
+                        stage_status=FileExecutionStageData(
+                            stage=FileExecutionStage.COMPLETED,
+                            status=FileExecutionStageStatus.FAILED,
+                            error=error_msg,
+                        ),
+                        ttl_in_second=completed_ttl,
                     )
                     logger.info(f"Tracked failed execution for {file_name}: {error_msg}")
                 else:
@@ -587,7 +597,12 @@ class WorkerWorkflowExecutionService:
 
         # Consolidate errors
         final_error = None
-        if execution_error and destination_result and destination_result.error:
+        if (
+            execution_error
+            and destination_result
+            and destination_result.error
+            and execution_error != destination_result.error
+        ):
             final_error = (
                 f"Execution: {execution_error}; Destination: {destination_result.error}"
             )
@@ -840,7 +855,7 @@ class WorkerWorkflowExecutionService:
             logger.error(
                 f"Tool execution failed for file {file_name}: {str(e)}", exc_info=True
             )
-            self._last_execution_error = str(e)
+            self._last_execution_error = get_user_friendly_error_message(e)
             return False
 
     def _compile_workflow(
@@ -1318,8 +1333,9 @@ class WorkerWorkflowExecutionService:
 
             source_connection_type = workflow.source_config.connection_type
 
-            # Add HITL queue name from file_data if present (for API deployments)
+            # Add HITL queue name and packet ID from file_data if present (for API deployments)
             hitl_queue_name = file_data.hitl_queue_name
+            hitl_packet_id = file_data.hitl_packet_id
             destination_config["use_file_history"] = use_file_history
             destination_config["file_execution_id"] = workflow_file_execution_id
             if hitl_queue_name:
@@ -1327,9 +1343,14 @@ class WorkerWorkflowExecutionService:
                 logger.info(
                     f"Added HITL queue name to destination config: {hitl_queue_name}"
                 )
-            else:
+            if hitl_packet_id:
+                destination_config["hitl_packet_id"] = hitl_packet_id
                 logger.info(
-                    "No hitl_queue_name found in file_data, proceeding with normal processing"
+                    f"Added HITL packet ID to destination config: {hitl_packet_id}"
+                )
+            if not hitl_queue_name and not hitl_packet_id:
+                logger.info(
+                    "No hitl_queue_name or hitl_packet_id found in file_data, proceeding with normal processing"
                 )
 
             # Import destination connector
@@ -1430,7 +1451,15 @@ class WorkerWorkflowExecutionService:
                         logger.warning(f"Failed to serialize result: {e}")
                         result_json = str(output_result)
 
-                # Create file history via API
+                # Determine status and error based on processing outcome
+                if processing_error or self._last_execution_error:
+                    file_status = ExecutionStatus.ERROR.value
+                    error_message = str(processing_error or self._last_execution_error)
+                else:
+                    file_status = ExecutionStatus.COMPLETED.value
+                    error_message = ""
+
+                # Create file history via API (for both success and error)
                 file_history_response = self.api_client.create_file_history(
                     file_path=file_hash.file_path if not destination.is_api else None,
                     file_name=file_hash.file_name,
@@ -1441,7 +1470,8 @@ class WorkerWorkflowExecutionService:
                     mime_type=getattr(file_hash, "mime_type", ""),
                     result=result_json,
                     metadata=metadata,
-                    status="COMPLETED",
+                    status=file_status,
+                    error=error_message,
                     provider_file_uuid=getattr(file_hash, "provider_file_uuid", None),
                     is_api=destination.is_api,
                 )
@@ -1484,26 +1514,25 @@ class WorkerWorkflowExecutionService:
     ) -> bool:
         """Determine if file history should be created.
 
-        File history creation rules:
-        - API workflows: Create WITH results only when use_file_history=True
-        - ETL/TASK/MANUAL_REVIEW workflows: Always create WITHOUT results (for tracking)
+        File history creation rules (updated to track execution counts):
+        - Always create file_history for execution count tracking (both success and error)
+        - API workflows: Only create if use_file_history=True
+        - API workflows with success: Only create if there's output result
+        - API workflows with error: Always create for execution count tracking
+        - ETL/TASK workflows: Always create (for both success and error)
         """
-        # Don't create if there is a tool execution error
-        if self._last_execution_error:
-            return False
-
-        # Don't create if there's a processing error
-        if processing_error:
-            return False
-
         # For API workflows, only create if use_file_history is enabled
         if destination.is_api and not destination.use_file_history:
             return False
 
-        # For API workflows, only create if there's a valid output result
-        if destination.is_api and not output_result:
-            return False
+        # For API workflows with success, only create if there's a valid output result
+        # For API workflows with errors, always create for execution count tracking
+        if destination.is_api:
+            has_error = processing_error or self._last_execution_error
+            if not has_error and not output_result:
+                return False
 
+        # Create file_history for both COMPLETED and ERROR statuses
         return True
 
     def _get_destination_config(

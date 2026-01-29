@@ -374,11 +374,42 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
               <div>
                 <Tag color="rgb(45, 183, 245)">
                   Confidence Score:{" "}
-                  {selectedHighlight?.confidence?.[0]?.[0]?.confidence ||
-                    (Array.isArray(selectedHighlight?.confidence?.[0]) &&
-                      selectedHighlight?.confidence?.[0]?.length === 0 &&
-                      "1") ||
-                    "NA"}
+                  {(() => {
+                    const { confidence } = selectedHighlight || {};
+                    // Handle new format: confidence is a number (average)
+                    if (typeof confidence === "number") {
+                      return confidence.toFixed(2);
+                    }
+                    // Handle word confidence format: object with line numbers as keys
+                    if (
+                      confidence &&
+                      typeof confidence === "object" &&
+                      !Array.isArray(confidence)
+                    ) {
+                      const values = Object.values(confidence);
+                      if (
+                        values.length > 0 &&
+                        values.every((v) => typeof v === "number")
+                      ) {
+                        const avg =
+                          values.reduce((sum, val) => sum + val, 0) /
+                          values.length;
+                        return avg.toFixed(2);
+                      }
+                    }
+                    // Handle old format: nested array structure
+                    if (confidence?.[0]?.[0]?.confidence) {
+                      return confidence[0][0].confidence;
+                    }
+                    // Handle old format: empty array means confidence = 1
+                    if (
+                      Array.isArray(confidence?.[0]) &&
+                      confidence[0].length === 0
+                    ) {
+                      return "1";
+                    }
+                    return "NA";
+                  })()}
                 </Tag>
               </div>
             )}

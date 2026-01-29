@@ -46,13 +46,8 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 from unstract.filesystem import FileStorageType, FileSystem
-from unstract.flags.feature_flag import check_feature_flag_status
+from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
-
-if check_feature_flag_status("sdk1"):
-    from unstract.sdk1.file_storage import FileStorage
-else:
-    from unstract.sdk.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
 
@@ -129,11 +124,20 @@ class SourceConnector(BaseConnector):
     def validate(self) -> None:
         connection_type = self.endpoint.connection_type
         connector: ConnectorInstance = self.endpoint.connector_instance
+
         if connection_type is None:
+            error_msg = "Missing source connection type"
+            self.workflow_log.log_error(logger, error_msg)
             raise MissingSourceConnectionType()
+
         if connection_type not in WorkflowEndpoint.ConnectionType.values:
+            error_msg = f"Invalid source connection type: {connection_type}"
+            self.workflow_log.log_error(logger, error_msg)
             raise InvalidSourceConnectionType()
+
         if connection_type != WorkflowEndpoint.ConnectionType.API and connector is None:
+            error_msg = "Source connector not configured"
+            self.workflow_log.log_error(logger, error_msg)
             raise SourceConnectorNotConfigured()
 
     def valid_file_patterns(self, required_patterns: list[Any]) -> list[str]:

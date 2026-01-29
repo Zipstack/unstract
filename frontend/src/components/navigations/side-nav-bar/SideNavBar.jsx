@@ -1,6 +1,14 @@
 import { useMemo } from "react";
 import { BranchesOutlined } from "@ant-design/icons";
-import { Divider, Image, Layout, Space, Tooltip, Typography } from "antd";
+import {
+  Divider,
+  Image,
+  Layout,
+  Popover,
+  Space,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
@@ -19,6 +27,7 @@ import TerminalIcon from "../../../assets/terminal.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 
 import "./SideNavBar.css";
+import "../../settings/settings/Settings.css";
 
 const { Sider } = Layout;
 
@@ -58,6 +67,89 @@ try {
   // Ignore if hook not available
 }
 
+let agenticPromptStudioEnabled = false;
+try {
+  require("../../../plugins/agentic-prompt-studio");
+  agenticPromptStudioEnabled = true;
+} catch {
+  // Plugin unavailable
+}
+
+let manualReviewSettingsEnabled = false;
+try {
+  require("../../../plugins/manual-review/settings/Settings.jsx");
+  manualReviewSettingsEnabled = true;
+} catch {
+  // Plugin unavailable
+}
+
+const getSettingsMenuItems = (orgName) => [
+  {
+    key: "platform",
+    label: "Platform Settings",
+    path: `/${orgName}/settings/platform`,
+  },
+  {
+    key: "users",
+    label: "User Management",
+    path: `/${orgName}/users`,
+  },
+  {
+    key: "triad",
+    label: "Default Triad",
+    path: `/${orgName}/settings/triad`,
+  },
+  ...(manualReviewSettingsEnabled
+    ? [
+        {
+          key: "review",
+          label: "Human In the Loop Settings",
+          path: `/${orgName}/settings/review`,
+        },
+      ]
+    : []),
+];
+
+const getActiveSettingsKey = () => {
+  const currentPath = globalThis.location.pathname;
+  if (currentPath.includes("/settings/platform")) return "platform";
+  if (currentPath.includes("/users")) return "users";
+  if (currentPath.includes("/settings/triad")) return "triad";
+  if (currentPath.includes("/settings/review")) return "review";
+  return "platform";
+};
+
+const SettingsPopoverContent = ({ orgName, navigate }) => {
+  const settingsMenuItems = getSettingsMenuItems(orgName);
+  const currentActiveKey = getActiveSettingsKey();
+
+  const handleMenuClick = (path) => {
+    navigate(path);
+  };
+
+  return (
+    <nav className="settings-sidebar-popover">
+      {settingsMenuItems.map((menuItem) => (
+        <button
+          key={menuItem.key}
+          type="button"
+          className={`settings-menu-item ${
+            currentActiveKey === menuItem.key ? "active" : ""
+          }`}
+          onClick={() => handleMenuClick(menuItem.path)}
+        >
+          {menuItem.label}
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+SettingsPopoverContent.propTypes = {
+  orgName: PropTypes.string.isRequired,
+  navigate: PropTypes.func.isRequired,
+};
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -96,16 +188,18 @@ const SideNavBar = ({ collapsed }) => {
           description: "Create structured data from unstructured documents",
           image: CustomTools,
           path: `/${orgName}/tools`,
-          active: window.location.pathname.startsWith(`/${orgName}/tools`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/tools`),
         },
         {
-          id: 1.2,
+          id: 1.3,
           title: "Workflows",
           description: "Build no-code data workflows for unstructured data",
           icon: BranchesOutlined,
           image: Workflows,
           path: `/${orgName}/workflows`,
-          active: window.location.pathname.startsWith(`/${orgName}/workflows`),
+          active: globalThis.location.pathname.startsWith(
+            `/${orgName}/workflows`
+          ),
         },
       ],
     },
@@ -119,7 +213,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Unstructured to structured APIs",
           image: apiDeploy,
           path: `/${orgName}/api`,
-          active: window.location.pathname.startsWith(`/${orgName}/api`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/api`),
         },
         {
           id: 2.3,
@@ -127,7 +221,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Unstructured to structured data pipelines",
           image: etl,
           path: `/${orgName}/etl`,
-          active: window.location.pathname.startsWith(`/${orgName}/etl`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/etl`),
         },
         {
           id: 2.4,
@@ -135,7 +229,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Ad-hoc unstructured data task pipelines",
           image: task,
           path: `/${orgName}/task`,
-          active: window.location.pathname.startsWith(`/${orgName}/task`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/task`),
         },
         {
           id: 1.5,
@@ -143,7 +237,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Records system events for monitoring and debugging",
           image: TerminalIcon,
           path: `/${orgName}/logs`,
-          active: window.location.pathname.startsWith(`/${orgName}/logs`),
+          active: globalThis.location.pathname.startsWith(`/${orgName}/logs`),
         },
       ],
     },
@@ -158,7 +252,7 @@ const SideNavBar = ({ collapsed }) => {
           icon: BranchesOutlined,
           image: LlmIcon,
           path: `/${orgName}/settings/llms`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/llms`
           ),
         },
@@ -168,7 +262,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Setup platform wide access to Vector DBs",
           image: VectorDbIcon,
           path: `/${orgName}/settings/vectorDbs`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/vectorDbs`
           ),
         },
@@ -178,7 +272,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Setup platform wide access to Embedding models",
           image: EmbeddingIcon,
           path: `/${orgName}/settings/embedding`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/embedding`
           ),
         },
@@ -188,7 +282,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Setup platform wide access to Text extractor services",
           image: TextExtractorIcon,
           path: `/${orgName}/settings/textExtractor`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/textExtractor`
           ),
         },
@@ -198,7 +292,7 @@ const SideNavBar = ({ collapsed }) => {
           description: "Manage connectors for data sources and destinations",
           image: ConnectorsIcon,
           path: `/${orgName}/settings/connectors`,
-          active: window.location.pathname.startsWith(
+          active: globalThis.location.pathname.startsWith(
             `/${orgName}/settings/connectors`
           ),
         },
@@ -207,12 +301,13 @@ const SideNavBar = ({ collapsed }) => {
           title: "Platform",
           description: "Settings for the platform",
           image: PlatformSettingsIcon,
-          path: `/${orgName}/settings`,
+          path: `/${orgName}/settings/platform`,
           active:
-            window.location.pathname === `/${orgName}/settings` ||
-            window.location.pathname === `/${orgName}/settings/platform` ||
-            window.location.pathname === `/${orgName}/settings/triad` ||
-            window.location.pathname === `/${orgName}/users`,
+            globalThis.location.pathname === `/${orgName}/settings` ||
+            globalThis.location.pathname === `/${orgName}/settings/platform` ||
+            globalThis.location.pathname === `/${orgName}/settings/triad` ||
+            globalThis.location.pathname === `/${orgName}/settings/review` ||
+            globalThis.location.pathname === `/${orgName}/users`,
         },
       ],
     },
@@ -230,6 +325,20 @@ const SideNavBar = ({ collapsed }) => {
 
   if (getMenuItem && flags?.app_deployment) {
     data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
+  }
+
+  // Add Agentic Prompt Studio menu item if plugin is available
+  if (agenticPromptStudioEnabled) {
+    data[0]?.subMenu?.splice(1, 0, {
+      id: 1.2,
+      title: "Agentic Prompt Studio",
+      description: "Build and manage AI-powered extraction workflows",
+      image: CustomTools,
+      path: `/${orgName}/agentic-prompt-studio`,
+      active: globalThis.location.pathname.startsWith(
+        `/${orgName}/agentic-prompt-studio`
+      ),
+    });
   }
 
   const shouldDisableAll = useMemo(() => {
@@ -270,37 +379,99 @@ const SideNavBar = ({ collapsed }) => {
                 </Typography>
               )}
               <Space direction="vertical" className="menu-item-body">
-                {item.subMenu.map((el) => (
-                  <Tooltip key={el.id} title={collapsed ? el.title : ""}>
-                    <Space
-                      className={`space-styles ${
-                        el.active ? "space-styles-active" : ""
-                      } ${el.disable ? "space-styles-disable" : ""}`}
-                      onClick={() => {
-                        if (!el.disable) {
-                          navigate(el.path);
+                {item.subMenu.map((el) => {
+                  // Platform item has a hover menu and click navigates to platform settings
+                  if (el.id === 3.6) {
+                    const handlePlatformClick = () => {
+                      if (!el.disable) {
+                        navigate(el.path);
+                      }
+                    };
+
+                    const platformContent = (
+                      <Tooltip title={collapsed ? el.title : ""}>
+                        <Space
+                          className={`space-styles ${
+                            el.active ? "space-styles-active" : ""
+                          } ${el.disable ? "space-styles-disable" : ""}`}
+                          onClick={handlePlatformClick}
+                        >
+                          <Image
+                            src={el.image}
+                            alt="side_icon"
+                            className="menu-item-icon"
+                            preview={false}
+                          />
+                          {!collapsed && (
+                            <div>
+                              <Typography className="sidebar-item-text fs-14">
+                                {el.title}
+                              </Typography>
+                              <Typography className="sidebar-item-text fs-11">
+                                {el.description}
+                              </Typography>
+                            </div>
+                          )}
+                        </Space>
+                      </Tooltip>
+                    );
+
+                    // Don't show popover when disabled
+                    if (el.disable) {
+                      return <div key={el.id}>{platformContent}</div>;
+                    }
+
+                    return (
+                      <Popover
+                        key={el.id}
+                        content={
+                          <SettingsPopoverContent
+                            orgName={orgName}
+                            navigate={navigate}
+                          />
                         }
-                      }}
-                    >
-                      <Image
-                        src={el.image}
-                        alt="side_icon"
-                        className="menu-item-icon"
-                        preview={false}
-                      />
-                      {!collapsed && (
-                        <div>
-                          <Typography className="sidebar-item-text fs-14">
-                            {el.title}
-                          </Typography>
-                          <Typography className="sidebar-item-text fs-11">
-                            {el.description}
-                          </Typography>
-                        </div>
-                      )}
-                    </Space>
-                  </Tooltip>
-                ))}
+                        trigger="hover"
+                        placement="rightTop"
+                        arrow={false}
+                        overlayClassName="settings-popover-overlay"
+                      >
+                        {platformContent}
+                      </Popover>
+                    );
+                  }
+
+                  return (
+                    <Tooltip key={el.id} title={collapsed ? el.title : ""}>
+                      <Space
+                        className={`space-styles ${
+                          el.active ? "space-styles-active" : ""
+                        } ${el.disable ? "space-styles-disable" : ""}`}
+                        onClick={() => {
+                          if (!el.disable) {
+                            navigate(el.path);
+                          }
+                        }}
+                      >
+                        <Image
+                          src={el.image}
+                          alt="side_icon"
+                          className="menu-item-icon"
+                          preview={false}
+                        />
+                        {!collapsed && (
+                          <div>
+                            <Typography className="sidebar-item-text fs-14">
+                              {el.title}
+                            </Typography>
+                            <Typography className="sidebar-item-text fs-11">
+                              {el.description}
+                            </Typography>
+                          </div>
+                        )}
+                      </Space>
+                    </Tooltip>
+                  );
+                })}
               </Space>
               {index < data.length - 1 && (
                 <Divider className="sidebar-divider" />

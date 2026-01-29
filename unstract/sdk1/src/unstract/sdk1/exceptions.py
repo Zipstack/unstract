@@ -1,3 +1,11 @@
+import logging
+import re
+
+import openai
+
+logger = logging.getLogger(__name__)
+
+
 class SdkError(Exception):
     DEFAULT_MESSAGE = "Something went wrong"
     actual_err: Exception | None = None
@@ -30,6 +38,10 @@ class SdkError(Exception):
                 self.status_code = actual_err.status_code
             elif hasattr(actual_err, "http_status"):  # Few providers like Mistral
                 self.status_code = actual_err.http_status
+            elif hasattr(actual_err, "response") and hasattr(
+                actual_err.response, "status_code"
+            ):  # requests.HTTPError
+                self.status_code = actual_err.response.status_code
 
     def __str__(self) -> str:
         """Return string representation of the SdkError."""
@@ -86,3 +98,75 @@ class FileOperationError(SdkError):
         "Please check specific storage error for "
         "further information"
     )
+
+
+def strip_litellm_prefix(error_message: str) -> str:
+    """Remove litellm implementation details from error messages.
+
+    Strips internal litellm prefixes and retry information to show
+    only the actual provider error to users.
+
+    Handles patterns:
+    - "litellm.RateLimitError: message" → "message"
+    - "litellm.AuthenticationError: message" → "message"
+    - "litellm.Timeout: message" → "message"
+    - "message LiteLLM Retried: 3 times" → "message"
+    - "message, LiteLLM Max Retries: 5" → "message"
+
+    Args:
+        error_message: Raw error message from litellm
+
+    Returns:
+        Clean error message without litellm prefix/suffix
+    """
+    logger.info(f"Stripping litellm prefix from error: {error_message}")
+
+    # Strip "litellm.XxxError: " or "litellm.Xxx: "
+    # prefix (handles both error classes and non-error classes like Timeout)
+    cleaned = re.sub(r"^litellm\.\w+:\s*", "", error_message, flags=re.IGNORECASE)
+
+    # Strip retry information suffix
+    cleaned = re.sub(r"\s*LiteLLM\s+(Retried|Max\s+Retries):[^,]*,?\s*", "", cleaned)
+
+    return cleaned.strip()
+
+
+def parse_litellm_err(e: Exception, provider_name: str | None = None) -> SdkError:
+    """Parse litellm errors - both LLM and embedding provider's.
+
+    Wraps provider exceptions with user-friendly messages
+    indicating error is from 3rd party service.
+
+    Args:
+        e: Exception from litellm
+        provider_name: Name of the provider
+
+    Returns:
+        SdkError: Wrapped error with clear message
+    """
+    # litellm derives from OpenAI's error class, avoid parsing other errors
+    if not isinstance(e, openai.APIError):
+        return e
+
+    # Extract status code robustly from provider exceptions
+    status_code = (
+        getattr(e, "status_code", None)
+        or getattr(e, "http_status", None)
+        or getattr(e, "code", None)
+    )
+
+    cleaned_message = strip_litellm_prefix(str(e))
+    err = SdkError(cleaned_message, actual_err=e, status_code=status_code)
+
+    if not provider_name:
+        provider_name = getattr(e, "llm_provider", "")  # litellm handles it this way
+    msg = f"Error from {provider_name}."
+
+    # Add code block for errors from clients
+    if err.actual_err:
+        msg += f"\n```\n{cleaned_message}\n```"
+    else:
+        msg += cleaned_message
+
+    err.message = msg
+    return err

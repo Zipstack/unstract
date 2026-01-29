@@ -8,9 +8,10 @@ from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
-from permissions.permission import IsOwner, IsOwnerOrSharedUser
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
+from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action, api_view
 from rest_framework.request import Request
@@ -19,17 +20,6 @@ from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
 from utils.organization_utils import filter_queryset_by_organization, resolve_organization
-
-try:
-    from plugins.notification.constants import ResourceType
-    from plugins.notification.sharing_notification import SharingNotificationService
-
-    NOTIFICATION_PLUGIN_AVAILABLE = True
-    sharing_notification_service = SharingNotificationService()
-except ImportError:
-    NOTIFICATION_PLUGIN_AVAILABLE = False
-    sharing_notification_service = None
-
 
 from backend.constants import RequestKey
 from unstract.core.data_models import FileHistoryCreateRequest
@@ -68,6 +58,10 @@ from workflow_manager.workflow_v2.workflow_helper import (
     WorkflowSchemaHelper,
 )
 
+notification_plugin = get_plugin("notification")
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
+
 logger = logging.getLogger(__name__)
 
 
@@ -82,7 +76,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
 
-        return [IsOwnerOrSharedUser()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet:
         filter_args = FilterHelper.build_filter_args(
@@ -158,7 +152,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         if (
             response.status_code == 200
             and "shared_users" in request.data
-            and NOTIFICATION_PLUGIN_AVAILABLE
+            and bool(notification_plugin)
         ):
             try:
                 # Get updated workflow to compare shared users
@@ -169,8 +163,10 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 newly_shared_users = new_shared_users - current_shared_users
 
                 if newly_shared_users:
-                    # Send notification to newly shared users
-                    sharing_notification_service.send_sharing_notification(
+                    # Get notification service from plugin and send notification
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
+                    notification_service.send_sharing_notification(
                         resource_type=ResourceType.WORKFLOW.value,
                         resource_name=workflow.workflow_name,
                         resource_id=str(workflow.id),
@@ -279,6 +275,9 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         hash_values_of_files: dict[str, FileHash] = {},
         use_file_history: bool = False,
     ) -> ExecutionResponse:
+        # Detect if this is an API execution by checking connector types
+        is_api_execution = WorkflowEndpointUtils.is_api_workflow(workflow)
+
         if execution_action is not None:
             # Step execution
             execution_response = WorkflowHelper.step_execution(
@@ -299,6 +298,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 execution_mode=WorkflowExecution.Mode.INSTANT,
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
+                is_api_execution=is_api_execution,
             )
         else:
             execution_response = WorkflowHelper.complete_execution(
@@ -308,6 +308,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                 hash_values_of_files=hash_values_of_files,
                 use_file_history=use_file_history,
                 timeout=settings.INSTANT_WF_POLLING_TIMEOUT,
+                is_api_execution=is_api_execution,
             )
         return execution_response
 
@@ -858,11 +859,11 @@ def file_history_batch_lookup_internal(request):
             )
 
             logger.info(
-                f"DEBUG: FileHistoryBatch - File {i+1}: {file_data.get('file_path', 'NO_PATH')}"
+                f"DEBUG: FileHistoryBatch - File {i + 1}: {file_data.get('file_path', 'NO_PATH')}"
                 f" (identifier: {identifier})"
             )
             logger.info(
-                f"DEBUG: FileHistoryBatch - File {i+1} data: cache_key={file_data.get('cache_key')}, "
+                f"DEBUG: FileHistoryBatch - File {i + 1} data: cache_key={file_data.get('cache_key')}, "
                 f"provider_file_uuid={file_data.get('provider_file_uuid')}, "
                 f"file_path={file_data.get('file_path')}"
             )
@@ -879,7 +880,7 @@ def file_history_batch_lookup_internal(request):
                 # Legacy mapping (may have collisions)
                 file_identifiers[file_data["cache_key"]] = identifier
                 logger.info(
-                    f"DEBUG: FileHistoryBatch - File {i+1}: Using cache_key={file_data['cache_key']}, "
+                    f"DEBUG: FileHistoryBatch - File {i + 1}: Using cache_key={file_data['cache_key']}, "
                     f"mapped to identifier={identifier}"
                 )
             elif file_data.get("provider_file_uuid"):
@@ -891,12 +892,12 @@ def file_history_batch_lookup_internal(request):
                 # Legacy mapping (may have collisions)
                 file_identifiers[file_data["provider_file_uuid"]] = identifier
                 logger.info(
-                    f"DEBUG: FileHistoryBatch - File {i+1}: Using provider_file_uuid={file_data['provider_file_uuid']}, "
+                    f"DEBUG: FileHistoryBatch - File {i + 1}: Using provider_file_uuid={file_data['provider_file_uuid']}, "
                     f"mapped to identifier={identifier}"
                 )
             else:
                 logger.warning(
-                    f"DEBUG: FileHistoryBatch - File {i+1}: No cache_key or provider_file_uuid!"
+                    f"DEBUG: FileHistoryBatch - File {i + 1}: No cache_key or provider_file_uuid!"
                 )
                 continue
 
@@ -910,18 +911,18 @@ def file_history_batch_lookup_internal(request):
                 # Combine: match either exact path OR legacy null path
                 filters &= cache_key_filters & (path_filters | fallback_filters)
                 logger.info(
-                    f"DEBUG: FileHistoryBatch - File {i+1}: Added file_path constraint={file_data['file_path']} "
+                    f"DEBUG: FileHistoryBatch - File {i + 1}: Added file_path constraint={file_data['file_path']} "
                     f"with legacy fallback (file_path__isnull=True)"
                 )
             else:
                 # No file_path provided, only search legacy records
                 filters &= cache_key_filters & Q(file_path__isnull=True)
                 logger.info(
-                    f"DEBUG: FileHistoryBatch - File {i+1}: No file_path provided, using legacy fallback only"
+                    f"DEBUG: FileHistoryBatch - File {i + 1}: No file_path provided, using legacy fallback only"
                 )
 
             logger.info(
-                f"DEBUG: FileHistoryBatch - File {i+1}: Final query filters: {filters}"
+                f"DEBUG: FileHistoryBatch - File {i + 1}: Final query filters: {filters}"
             )
 
             queries.append(filters)
@@ -955,7 +956,7 @@ def file_history_batch_lookup_internal(request):
             )
             for i, fh in enumerate(file_histories):
                 logger.info(
-                    f"DEBUG: FileHistoryBatch - DB Record {i+1}: "
+                    f"DEBUG: FileHistoryBatch - DB Record {i + 1}: "
                     f"provider_file_uuid={fh.provider_file_uuid}, "
                     f"cache_key={fh.cache_key}, "
                     f"file_path={fh.file_path}, "
@@ -988,7 +989,7 @@ def file_history_batch_lookup_internal(request):
 
         for i, fh in enumerate(file_histories):
             logger.info(
-                f"DEBUG: FileHistoryBatch - Processing DB record {i+1}: "
+                f"DEBUG: FileHistoryBatch - Processing DB record {i + 1}: "
                 f"cache_key={fh.cache_key}, provider_file_uuid={fh.provider_file_uuid}, file_path={fh.file_path}"
             )
 
@@ -1000,7 +1001,7 @@ def file_history_batch_lookup_internal(request):
                 if composite_key in composite_file_map:
                     matched_identifiers.append(composite_file_map[composite_key])
                     logger.info(
-                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by composite cache_key={composite_key} "
+                        f"DEBUG: FileHistoryBatch - DB record {i + 1}: Matched by composite cache_key={composite_key} "
                         f"-> identifier={composite_file_map[composite_key]}"
                     )
 
@@ -1009,7 +1010,7 @@ def file_history_batch_lookup_internal(request):
                 if composite_key in composite_file_map:
                     matched_identifiers.append(composite_file_map[composite_key])
                     logger.info(
-                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by composite uuid={composite_key} "
+                        f"DEBUG: FileHistoryBatch - DB record {i + 1}: Matched by composite uuid={composite_key} "
                         f"-> identifier={composite_file_map[composite_key]}"
                     )
 
@@ -1018,13 +1019,13 @@ def file_history_batch_lookup_internal(request):
                 if fh.cache_key and fh.cache_key in file_identifiers:
                     matched_identifiers.append(file_identifiers[fh.cache_key])
                     logger.info(
-                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by legacy cache_key={fh.cache_key} "
+                        f"DEBUG: FileHistoryBatch - DB record {i + 1}: Matched by legacy cache_key={fh.cache_key} "
                         f"-> identifier={file_identifiers[fh.cache_key]}"
                     )
                 elif fh.provider_file_uuid and fh.provider_file_uuid in file_identifiers:
                     matched_identifiers.append(file_identifiers[fh.provider_file_uuid])
                     logger.info(
-                        f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by legacy provider_file_uuid={fh.provider_file_uuid} "
+                        f"DEBUG: FileHistoryBatch - DB record {i + 1}: Matched by legacy provider_file_uuid={fh.provider_file_uuid} "
                         f"-> identifier={file_identifiers[fh.provider_file_uuid]}"
                     )
 
@@ -1037,7 +1038,7 @@ def file_history_batch_lookup_internal(request):
                         potential_matches.append((req_identifier, req_data))
 
                 logger.info(
-                    f"DEBUG: FileHistoryBatch - DB record {i+1}: Found {len(potential_matches)} potential UUID matches"
+                    f"DEBUG: FileHistoryBatch - DB record {i + 1}: Found {len(potential_matches)} potential UUID matches"
                 )
 
                 # Try to match by file path
@@ -1046,7 +1047,7 @@ def file_history_batch_lookup_internal(request):
                     if fh.file_path == req_path:
                         matched_identifiers.append(req_identifier)
                         logger.info(
-                            f"DEBUG: FileHistoryBatch - DB record {i+1}: Matched by manual path comparison "
+                            f"DEBUG: FileHistoryBatch - DB record {i + 1}: Matched by manual path comparison "
                             f"db_path={fh.file_path} == req_path={req_path} -> identifier={req_identifier}"
                         )
                         break
@@ -1054,7 +1055,7 @@ def file_history_batch_lookup_internal(request):
                 # If still no exact path match, but we have UUID matches, log for fallback handling
                 if not matched_identifiers and potential_matches:
                     logger.warning(
-                        f"DEBUG: FileHistoryBatch - DB record {i+1}: UUID collision detected! "
+                        f"DEBUG: FileHistoryBatch - DB record {i + 1}: UUID collision detected! "
                         f"DB path={fh.file_path} doesn't match any request paths: "
                         f"{[req_data.get('file_path') for _, req_data in potential_matches]}"
                     )
@@ -1062,29 +1063,35 @@ def file_history_batch_lookup_internal(request):
             # Process all matched identifiers
             if not matched_identifiers:
                 logger.warning(
-                    f"DEBUG: FileHistoryBatch - DB record {i+1}: NO MATCH FOUND! "
+                    f"DEBUG: FileHistoryBatch - DB record {i + 1}: NO MATCH FOUND! "
                     f"cache_key={fh.cache_key}, provider_file_uuid={fh.provider_file_uuid}, file_path={fh.file_path}"
                 )
 
+            # Serialize once for all matches (optimization)
+            is_completed_result = fh.is_completed()
+            serializer = FileHistorySerializer(fh)
+            file_history_data = serializer.data
+
             # Update response data for all matches
             for result_identifier in matched_identifiers:
-                is_completed_result = fh.is_completed()
                 logger.info(
                     f"DEBUG: FileHistoryBatch - Found record for UUID: {fh.provider_file_uuid}, "
                     f"Path: {fh.file_path}, Status: {fh.status}, is_completed(): {is_completed_result}, "
+                    f"has_exceeded_limit: {file_history_data.get('has_exceeded_limit')}, "
                     f"result_identifier: {result_identifier}"
                 )
 
-                serializer = FileHistorySerializer(fh)
                 response_data[result_identifier] = {
                     "found": True,
                     "is_completed": is_completed_result,
-                    "file_history": serializer.data,
+                    "file_history": file_history_data,
                 }
 
                 logger.info(
                     f"DEBUG: FileHistoryBatch - Response updated for {result_identifier}: "
-                    f"found=True, is_completed={is_completed_result}, status={fh.status}"
+                    f"found=True, is_completed={is_completed_result}, status={fh.status}, "
+                    f"max_execution_count={file_history_data.get('max_execution_count')}, "
+                    f"has_exceeded_limit={file_history_data.get('has_exceeded_limit')}"
                 )
 
         logger.info(

@@ -25,6 +25,7 @@ from shared.workflow.execution.tool_validation import validate_workflow_tool_ins
 from worker import app
 
 from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
+from unstract.core.worker_models import ApiDeploymentResultStatus
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -523,15 +524,27 @@ def _run_workflow_api(
                                         )
                                         # Keep as string if all parsing fails
 
+                            # Map ExecutionStatus to ApiDeploymentResultStatus
+                            cached_status = cached_result.get("status")
+                            if cached_status == ExecutionStatus.COMPLETED.value:
+                                api_status = ApiDeploymentResultStatus.SUCCESS.value
+                            else:
+                                # Defensive: shouldn't happen (we only cache COMPLETED)
+                                api_status = ApiDeploymentResultStatus.FAILED.value
+                                logger.warning(
+                                    f"Unexpected status {cached_status} in cached result for {hash_data.file_name}"
+                                )
+
                             api_result = {
                                 "file": hash_data.file_name,
                                 "file_execution_id": hash_data.provider_file_uuid or "",
-                                "status": "Success",  # Cached results are always successful
+                                "status": api_status,
                                 "result": cached_result_data,
-                                "error": None,
+                                "error": cached_result.get("error"),
                                 "metadata": {
                                     "processing_time": 0.0,  # Cached files take no time
                                     "source": "file_history_cache",
+                                    "cached_status": cached_status,
                                 },
                             }
 
@@ -825,19 +838,35 @@ def _create_file_data(
         "rule_json": None,
     }
 
-    # ARCHITECTURE FIX: Skip manual review DB rules for API deployments
-    # API deployments handle manual review through different mechanisms (if supported)
-    # The DB rules endpoint is designed for ETL workflows, not API deployments
-    logger.info(
-        "API deployment workflow detected - skipping manual review DB rules lookup"
-    )
-
-    # For future: API deployments could support manual review through other mechanisms
-    # such as workflow-specific configuration or query parameters passed in the API request
-    logger.info(
-        f"No manual review rules configured for API deployment workflow {workflow_id}"
-    )
+    # Fetch API rules for this workflow (rule_type="API" for API deployments)
+    try:
+        rule_response = api_client.manual_review_client.get_rule_engine_data(
+            workflow_id=workflow_id,
+            _organization_id=organization_id,
+            rule_type="API",
+        )
+        if rule_response and rule_response.success:
+            rule_data = rule_response.data or {}
+            if rule_data.get("review_required") or rule_data.get("percentage", 0) > 0:
+                manual_review_config = {
+                    "review_required": rule_data.get("review_required", False),
+                    "review_percentage": rule_data.get("percentage", 0),
+                    "rule_logic": rule_data.get("rule_logic"),
+                    "rule_json": rule_data.get("rule_json"),
+                }
+                logger.info(
+                    f"API rules configured for workflow {workflow_id}: "
+                    f"percentage={manual_review_config['review_percentage']}, "
+                    f"rule_logic={manual_review_config['rule_logic']}"
+                )
+            else:
+                logger.info(f"No API rules configured for workflow {workflow_id}")
+        else:
+            logger.info(f"No API rules found for workflow {workflow_id}")
+    except Exception as e:
+        logger.warning(f"Failed to fetch API rules for workflow {workflow_id}: {e}")
     hitl_queue_name = kwargs.get("hitl_queue_name")
+    hitl_packet_id = kwargs.get("hitl_packet_id")
     llm_profile_id = kwargs.get("llm_profile_id")
     custom_data = kwargs.get("custom_data")
 
@@ -852,8 +881,9 @@ def _create_file_data(
         single_step=False,
         q_file_no_list=_calculate_q_file_no_list_api(manual_review_config, total_files),
         hitl_queue_name=hitl_queue_name,
+        hitl_packet_id=hitl_packet_id,
         manual_review_config=manual_review_config,
-        is_manualreview_required=bool(hitl_queue_name),
+        is_manualreview_required=bool(hitl_queue_name or hitl_packet_id),
         llm_profile_id=llm_profile_id,
         custom_data=custom_data,
     )
@@ -1150,19 +1180,34 @@ def _check_file_history_api(
                 else:
                     file_name = file_key
 
-                # Store cached result details
+                # Check status before caching - only cache COMPLETED results
                 if file_hash_str in file_history_details:
-                    cached_results[file_hash_str] = {
-                        "file_name": file_name,
-                        "file_key": file_key,
-                        "file_hash_data": file_hash_data,
-                        **file_history_details[file_hash_str],  # result, metadata, etc.
-                    }
+                    file_history = file_history_details[file_hash_str]
+                    status = file_history.get("status")
 
-                skipped_files.append(file_name)
-                logger.info(
-                    f"Using cached result for file: {file_name} (hash: {file_hash_str[:16]}...)"
-                )
+                    # Only cache COMPLETED results, execute fresh for ERROR/STOPPED/etc.
+                    if status == ExecutionStatus.COMPLETED.value:
+                        cached_results[file_hash_str] = {
+                            "file_name": file_name,
+                            "file_key": file_key,
+                            "file_hash_data": file_hash_data,
+                            **file_history,
+                        }
+                        skipped_files.append(file_name)
+                        logger.info(
+                            f"Using cached COMPLETED result for file: {file_name} "
+                            f"(hash: {file_hash_str[:16]}...)"
+                        )
+                    else:
+                        # Non-COMPLETED status (ERROR, STOPPED, etc.) - execute fresh
+                        files_to_process[file_key] = file_hash_data
+                        logger.info(
+                            f"Skipping cached result with status={status} for file: {file_name}, "
+                            f"will execute fresh (hash: {file_hash_str[:16]}...)"
+                        )
+                else:
+                    # Hash in processed_hashes but no file_history_details (shouldn't happen)
+                    files_to_process[file_key] = file_hash_data
             else:
                 files_to_process[file_key] = file_hash_data
 

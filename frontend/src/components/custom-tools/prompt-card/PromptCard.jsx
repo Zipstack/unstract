@@ -171,7 +171,9 @@ const PromptCard = memo(
 
     const addCoordsToFlattened = (coords, flattened) => {
       if (Array.isArray(coords)) {
-        flattened.push(coords);
+        // Strip 5th element (confidence) if present, keep only first 4 elements
+        const coordsOnly = coords.length >= 5 ? coords.slice(0, 4) : coords;
+        flattened.push(coordsOnly);
       }
     };
 
@@ -224,6 +226,7 @@ const PromptCard = memo(
           !Array.isArray(highlightData)
             ? flattenHighlightData(highlightData)
             : highlightData;
+
         updateCustomTool({
           selectedHighlight: {
             highlight: processedHighlight,

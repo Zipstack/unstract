@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv==1.0.1",
     # # Adapter changes
     "tiktoken~=0.9.0",
-    "litellm~=1.76.0",
+    "litellm==1.80.0",  # Fix for bedrock embedding aws_region_name (PR #16547)
     "llama-index==0.13.2",
     "llama-index-vector-stores-postgres==0.6.3",
     "llama-index-vector-stores-milvus==0.9.0",

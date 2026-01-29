@@ -86,6 +86,15 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let LlmWhispererCustomCheckoutPage;
+try {
+  LlmWhispererCustomCheckoutPage =
+    require("../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx").LlmWhispererCustomCheckoutPage;
+} catch (err) {
+  // NOSONAR
+  // Do nothing, Not-found Page will be triggered.
+}
+
 function Router() {
   const MainAppRoute = useMainAppRoutes();
   return (
@@ -147,16 +156,22 @@ function Router() {
             element={<CustomPlanCheckoutPage />}
           />
         )}
+        {LlmWhispererCustomCheckoutPage && (
+          <Route
+            path="/llm-whisperer/custom-checkout"
+            element={<LlmWhispererCustomCheckoutPage />}
+          />
+        )}
         <Route path="" element={<RequireAuth />}>
           {MainAppRoute}
           {llmWhispererRouter && (
             <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
           )}
         </Route>
+        {verticalsRouter && verticalsRouter()}
       </Route>
       <Route path="*" element={<NotFound />} />
       <Route path="oauth-status" element={<OAuthStatus />} />
-      {verticalsRouter && verticalsRouter()}
     </Routes>
   );
 }

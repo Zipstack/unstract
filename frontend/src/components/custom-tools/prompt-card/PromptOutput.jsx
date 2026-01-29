@@ -1,7 +1,5 @@
 import {
-  CheckCircleOutlined,
   DatabaseOutlined,
-  ExclamationCircleFilled,
   InfoCircleOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
@@ -18,7 +16,7 @@ import {
   Typography,
 } from "antd";
 import { motion, AnimatePresence } from "framer-motion";
-import CheckableTag from "antd/es/tag/CheckableTag";
+import { useState } from "react";
 
 import {
   displayPromptResult,
@@ -37,7 +35,6 @@ import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { PromptRunTimer } from "./PromptRunTimer";
 import { PromptRunCost } from "./PromptRunCost";
-import { useState } from "react";
 
 let TableOutput;
 try {
@@ -60,8 +57,6 @@ function PromptOutput({
   handleSelectDefaultLLM,
   llmProfileDetails,
   setOpenIndexProfile,
-  enabledProfiles,
-  setEnabledProfiles,
   isNotSingleLlmProfile,
   setIsIndexOpen,
   enforceType,
@@ -97,14 +92,6 @@ function PromptOutput({
     </div>
   );
 
-  const handleTagChange = (checked, profileId) => {
-    setEnabledProfiles((prevState) =>
-      checked
-        ? [...prevState, profileId]
-        : prevState.filter((id) => id !== profileId)
-    );
-  };
-
   const handleTable = (profileId, promptOutputData) => {
     if (tableSettings?.document_type !== "rent_rolls")
       return <TableOutput output={promptOutputData?.output} />;
@@ -119,6 +106,7 @@ function PromptOutput({
             handleSelectHighlight={handleSelectHighlight}
             highlightData={promptOutputData?.highlightData}
             confidenceData={promptOutputData?.confidenceData}
+            wordConfidenceData={promptOutputData?.wordConfidenceData}
             promptDetails={promptDetails}
             isTable={true}
             setOpenExpandModal={setOpenExpandModal}
@@ -211,6 +199,9 @@ function PromptOutput({
             confidenceData={
               promptOutputData?.confidenceData?.[promptDetails.prompt_key]
             }
+            wordConfidenceData={
+              promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
+            }
           />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
@@ -250,7 +241,6 @@ function PromptOutput({
           const promptId = promptDetails?.prompt_id;
           const docId = selectedDoc?.document_id;
           const profileId = profile?.profile_id;
-          const isChecked = enabledProfiles.includes(profileId);
           const tokenUsageId = promptId + "__" + docId + "__" + profileId;
           let promptOutputData = {};
           if (promptOutputs && Object.keys(promptOutputs)) {
@@ -379,77 +369,53 @@ function PromptOutput({
                     </Typography.Text>
                   </div>
                   <div className="prompt-info">
-                    <div>
-                      <CheckableTag
-                        checked={isChecked}
-                        onChange={(checked) =>
-                          handleTagChange(checked, profileId)
+                    <Tooltip title="Run LLM for current document">
+                      <Button
+                        size="small"
+                        type="text"
+                        className="prompt-card-action-button"
+                        onClick={() =>
+                          handleRun(
+                            PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
+                            promptDetails?.prompt_id,
+                            profileId,
+                            selectedDoc?.document_id
+                          )
                         }
-                        disabled={isPublicSource}
-                        className={isChecked ? "checked" : "unchecked"}
+                        disabled={isPromptLoading || isPublicSource}
                       >
-                        {isChecked ? (
-                          <span>
-                            Enabled
-                            <CheckCircleOutlined className="prompt-output-icon-enabled" />
-                          </span>
-                        ) : (
-                          <span>
-                            Disabled
-                            <ExclamationCircleFilled className="prompt-output-icon-disabled" />
-                          </span>
-                        )}
-                      </CheckableTag>
-                    </div>
-                    <div>
-                      <Tooltip title="Run LLM for current document">
-                        <Button
-                          size="small"
-                          type="text"
-                          className="prompt-card-action-button"
-                          onClick={() =>
-                            handleRun(
-                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
-                              promptDetails?.prompt_id,
-                              profileId,
-                              selectedDoc?.document_id
-                            )
-                          }
-                          disabled={isPromptLoading || isPublicSource}
-                        >
-                          <PlayCircleOutlined className="prompt-card-actions-head" />
-                        </Button>
-                      </Tooltip>
-                      <Tooltip title="Run LLM for all documents">
-                        <Button
-                          size="small"
-                          type="text"
-                          className="prompt-card-action-button"
-                          onClick={() =>
-                            handleRun(
-                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
-                              promptDetails?.prompt_id,
-                              profileId,
-                              null
-                            )
-                          }
-                          disabled={isPromptLoading || isPublicSource}
-                        >
-                          <PlayCircleFilled className="prompt-card-actions-head" />
-                        </Button>
-                      </Tooltip>
-                      <PromptOutputExpandBtn
-                        promptId={promptDetails?.prompt_id}
-                        llmProfiles={llmProfileDetails}
-                        enforceType={enforceType}
-                        tableSettings={tableSettings}
-                        displayLlmProfile={true}
-                        promptOutputs={promptOutputs}
-                        promptRunStatus={promptRunStatus}
-                        openExpandModal={openExpandModal}
-                        setOpenExpandModal={setOpenExpandModal}
-                      />
-                    </div>
+                        <PlayCircleOutlined className="prompt-card-actions-head" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="Run LLM for all documents">
+                      <Button
+                        size="small"
+                        type="text"
+                        className="prompt-card-action-button"
+                        onClick={() =>
+                          handleRun(
+                            PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
+                            promptDetails?.prompt_id,
+                            profileId,
+                            null
+                          )
+                        }
+                        disabled={isPromptLoading || isPublicSource}
+                      >
+                        <PlayCircleFilled className="prompt-card-actions-head" />
+                      </Button>
+                    </Tooltip>
+                    <PromptOutputExpandBtn
+                      promptId={promptDetails?.prompt_id}
+                      llmProfiles={llmProfileDetails}
+                      enforceType={enforceType}
+                      tableSettings={tableSettings}
+                      displayLlmProfile={true}
+                      promptOutputs={promptOutputs}
+                      promptRunStatus={promptRunStatus}
+                      openExpandModal={openExpandModal}
+                      setOpenExpandModal={setOpenExpandModal}
+                    />
                   </div>
                 </Space>
                 <>
@@ -467,6 +433,9 @@ function PromptOutput({
                           handleSelectHighlight={handleSelectHighlight}
                           highlightData={promptOutputData?.highlightData}
                           confidenceData={promptOutputData?.confidenceData}
+                          wordConfidenceData={
+                            promptOutputData?.wordConfidenceData
+                          }
                           promptDetails={promptDetails}
                         />
                         <div className="prompt-profile-run">
@@ -501,8 +470,6 @@ PromptOutput.propTypes = {
   selectedLlmProfileId: PropTypes.string,
   llmProfileDetails: PropTypes.array.isRequired,
   setOpenIndexProfile: PropTypes.func.isRequired,
-  enabledProfiles: PropTypes.array.isRequired,
-  setEnabledProfiles: PropTypes.func.isRequired,
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
   enforceType: PropTypes.string,

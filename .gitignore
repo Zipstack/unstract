@@ -620,31 +620,13 @@ $RECYCLE.BIN/
 
 ### Unstract ###
 
-# Authentication Plugins
-backend/plugins/authentication/*
-!backend/plugins/authentication/auth_sample
-
-# Processor Plugins
-backend/plugins/processor/*
-
-# Subscription Plugins
-backend/plugins/subscription/*
-
-
-# API Deployment Plugins
-backend/plugins/api/**
-
-# Notification Plugin
-backend/plugins/notification/**
-
-# Configuration Plugin
-backend/plugins/configuration/**
-
-# Verticals Usage Plugin
-backend/plugins/verticals_usage/**
-
 # BE pluggable-apps
 backend/pluggable_apps/*
+
+# Workers pluggable workers (cloud-only) - ignore all except structure files
+workers/pluggable_worker/*
+!workers/pluggable_worker/__init__.py
+!workers/pluggable_worker/README.md
 
 # FE Plugins
 frontend/src/plugins/*

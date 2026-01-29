@@ -12,11 +12,13 @@ function Body({ type, columns, tableData, isTableLoading, openAddModal }) {
   }
   if (!tableData?.length) {
     return (
-      <EmptyState
-        text={`Currently you have no ${deploymentsStaticContent[type].addBtn}`}
-        btnText={deploymentsStaticContent[type].addBtn}
-        handleClick={() => openAddModal(false)}
-      />
+      <IslandLayout>
+        <EmptyState
+          text={`Currently you have no ${deploymentsStaticContent[type].addBtn}`}
+          btnText={deploymentsStaticContent[type].addBtn}
+          handleClick={() => openAddModal(false)}
+        />
+      </IslandLayout>
     );
   }
   return (

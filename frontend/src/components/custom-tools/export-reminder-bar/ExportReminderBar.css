@@ -1,0 +1,31 @@
+.export-reminder-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  width: 100%;
+}
+
+.export-reminder-bar .ant-alert {
+  border-radius: 0;
+  border: none;
+  background-color: #fffbe6;
+  border-bottom: 1px solid #ffe58f;
+}
+
+.export-reminder-content {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.export-reminder-text {
+  flex: 1;
+  max-width: 800px;
+  text-align: left;
+}
+
+.export-reminder-button {
+  margin-left: auto;
+}
