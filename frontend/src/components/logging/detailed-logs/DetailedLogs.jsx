@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import PropTypes from "prop-types";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
-  ArrowLeftOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
   CloseCircleFilled,
@@ -94,7 +93,6 @@ const DetailedLogs = () => {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-  const navigate = useNavigate();
   const { getUrl } = useRequestUrl();
   const copyToClipboard = useCopyToClipboard();
 
@@ -458,13 +456,7 @@ const DetailedLogs = () => {
     <div className="detailed-logs-container">
       <div className="detailed-logs-header">
         <Typography.Title className="logs-title" level={4}>
-          <Button
-            type="text"
-            shape="circle"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
-          />
-          {type} Execution ID {id}
+          {type} Execution {id}
           <Button
             className="copy-btn-outlined"
             icon={<CopyOutlined />}

@@ -35,7 +35,17 @@ function MenuLayout({ children }) {
           <Button
             size="small"
             type="text"
-            onClick={() => navigate(`/${sessionDetails.orgName}/workflows`)}
+            onClick={() => {
+              if (location.state?.from) {
+                navigate(location.state.from, {
+                  state: location.state?.scrollToCardId
+                    ? { scrollToCardId: location.state.scrollToCardId }
+                    : undefined,
+                });
+              } else {
+                navigate(`/${sessionDetails.orgName}/workflows`);
+              }
+            }}
           >
             <ArrowLeftOutlined />
           </Button>

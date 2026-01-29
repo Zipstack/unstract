@@ -545,6 +545,14 @@ const displayURL = (text) => {
   return getBaseUrl() + "/" + text;
 };
 
+const shortenApiEndpoint = (url) => {
+  if (!url) return "";
+  // Get the last segment after the final slash (typically the UUID suffix)
+  const parts = url.split("/").filter(Boolean);
+  const suffix = parts[parts.length - 1] || url;
+  return `.../${suffix}`;
+};
+
 const formatNumberWithCommas = (number) => {
   if (!number && number !== 0) return null;
 
@@ -739,6 +747,7 @@ export {
   pollForCompletion,
   getDocIdFromKey,
   displayURL,
+  shortenApiEndpoint,
   formatNumberWithCommas,
   isValidJsonKey,
   PROMPT_RUN_TYPES,
