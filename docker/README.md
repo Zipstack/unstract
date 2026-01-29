@@ -117,10 +117,17 @@ Debug ports per service:
 | Service | Port |
 |---------|------|
 | backend | 5678 |
-| platform-service | 5679 |
-| prompt-service | 5680 |
-| runner | 5681 |
-| x2text-service | 5682 |
+| runner | 5679 |
+| platform-service | 5680 |
+| prompt-service | 5681 |
+| **V2 Workers** | |
+| worker-file-processing-v2 | 5682 |
+| worker-callback-v2 | 5683 |
+| worker-api-deployment-v2 | 5684 |
+| worker-general-v2 | 5685 |
+| worker-notification-v2 | 5686 |
+| worker-log-consumer-v2 | 5687 |
+| worker-scheduler-v2 | 5688 |
 
 ### VSCode Configuration
 
