@@ -262,9 +262,9 @@ function Pipelines({ type }) {
       });
   };
 
-  const clearFileMarkers = async () => {
-    const workflowId = selectedPorD?.workflow_id;
-    const success = await clearFileHistory(workflowId);
+  const clearFileMarkers = async (workflowId) => {
+    const id = workflowId || selectedPorD?.workflow_id;
+    const success = await clearFileHistory(id);
     if (success && openDeleteModal) {
       setOpenDeleteModal(false);
     }
