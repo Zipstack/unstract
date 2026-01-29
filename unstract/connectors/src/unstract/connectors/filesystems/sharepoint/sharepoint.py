@@ -12,7 +12,7 @@ import logging
 import os
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, NoReturn
 
 from fsspec import AbstractFileSystem
 from fsspec.spec import AbstractBufferedFile
@@ -71,6 +71,7 @@ class SharePointFileSystem(AbstractFileSystem):
         refresh_token: str | None = None,
         drive_id: str | None = None,
         is_personal: bool = False,
+        user_email: str | None = None,
         **kwargs: Any,
     ):
         super().__init__(**kwargs)
@@ -82,6 +83,7 @@ class SharePointFileSystem(AbstractFileSystem):
         self.refresh_token = refresh_token
         self.drive_id = drive_id
         self.is_personal = is_personal
+        self.user_email = user_email
 
         # Lazy initialization
         self._ctx = None
@@ -100,8 +102,7 @@ class SharePointFileSystem(AbstractFileSystem):
 
                     if self.client_secret:
                         # Client credentials flow (app-only)
-                        self._ctx = GraphClient.with_client_credentials(
-                            self.tenant_id,
+                        self._ctx = GraphClient(tenant=self.tenant_id).with_client_secret(
                             self.client_id,
                             self.client_secret,
                         )
@@ -115,8 +116,13 @@ class SharePointFileSystem(AbstractFileSystem):
 
                         self._ctx = GraphClient(token_provider)
                     else:
+                        error_msg = (
+                            "Provide either:\n"
+                            "- client_secret (for app-only access)\n"
+                            "- access_token (for delegated access)."
+                        )
                         raise ConnectorError(
-                            "Either client_secret or access_token must be provided",
+                            error_msg,
                             treat_as_user_message=True,
                         )
 
@@ -134,21 +140,54 @@ class SharePointFileSystem(AbstractFileSystem):
                 self._drive = ctx.drives.get_by_id(self.drive_id)
             elif self.site_url and "sharepoint.com" in self.site_url.lower():
                 # SharePoint site - get default document library
-                from urllib.parse import urlparse
-
-                parsed = urlparse(self.site_url)
-                # Extract site path from URL like
-                # https://tenant.sharepoint.com/sites/sitename
-                site_path = parsed.path.rstrip("/")
-                if site_path:
-                    self._drive = ctx.sites.get_by_path(site_path).drive
-                else:
-                    self._drive = ctx.sites.root.drive
+                self._drive = self._get_sharepoint_site_drive(ctx)
             else:
-                # OneDrive (Personal or Business) - use /me/drive
-                self._drive = ctx.me.drive
+                # OneDrive - choose method based on auth type
+                self._drive = self._get_onedrive_drive(ctx)
 
         return self._drive
+
+    def _get_sharepoint_site_drive(self, ctx: Any) -> Any:
+        """Get drive from SharePoint site URL."""
+        from urllib.parse import urlparse
+
+        parsed = urlparse(self.site_url)
+        # Extract site path from URL like
+        # https://tenant.sharepoint.com/sites/sitename
+        site_path = parsed.path.rstrip("/")
+        if site_path:
+            return ctx.sites.get_by_path(site_path).drive
+        return ctx.sites.root.drive
+
+    def _get_onedrive_drive(self, ctx: Any) -> Any:
+        """Get OneDrive drive based on authentication method."""
+        # OAuth (delegated auth) - can use /me
+        if self.access_token:
+            return ctx.me.drive
+
+        # Client credentials (app-only) - must use user email
+        if self.client_secret:
+            if not self.user_email:
+                error_msg = (
+                    "OneDrive client credentials require user email. Provide either \n"
+                    "- user_email (e.g., user@company.onmicrosoft.com) \n"
+                    "- OR use OAuth with access_token instead."
+                )
+                raise ConnectorError(
+                    error_msg,
+                    treat_as_user_message=True,
+                )
+            return ctx.users[self.user_email].drive
+
+        error_msg = (
+            "SharePoint authentication credentials missing. Provide either:\n"
+            "- client_secret (for app-only access)\n"
+            "- OR access_token (for delegated access)"
+        )
+        raise ConnectorError(
+            error_msg,
+            treat_as_user_message=True,
+        )
 
     def _normalize_path(self, path: str) -> str:
         """Normalize path for SharePoint API."""
@@ -174,7 +213,21 @@ class SharePointFileSystem(AbstractFileSystem):
         """List directory contents."""
         try:
             item = self._get_item_by_path(path)
-            children = item.children.get().execute_query()
+            children = (
+                item.children.select(
+                    [
+                        "id",
+                        "name",
+                        "file",
+                        "folder",
+                        "size",
+                        "lastModifiedDateTime",
+                        "createdDateTime",
+                    ]
+                )
+                .get()
+                .execute_query()
+            )
 
             results = []
             for child in children:
@@ -201,11 +254,16 @@ class SharePointFileSystem(AbstractFileSystem):
         else:
             full_path = name
 
-        is_folder = hasattr(item, "folder") and item.folder is not None
+        # Use the Office365 library's built-in is_folder property which properly
+        # checks if the folder facet was populated in the API response
+        is_folder = item.is_folder
+
+        # Access size from properties dict - Office365 library stores API response data there
+        size = item.properties.get("size", 0) or 0
 
         info = {
             "name": full_path,
-            "size": getattr(item, "size", 0) or 0,
+            "size": size,
             "type": "directory" if is_folder else "file",
             "id": item.id,
         }
@@ -235,7 +293,17 @@ class SharePointFileSystem(AbstractFileSystem):
     def info(self, path: str, **kwargs: Any) -> dict[str, Any]:
         """Get info for a path."""
         item = self._get_item_by_path(path)
-        item.get().execute_query()
+        item.get().select(
+            [
+                "id",
+                "name",
+                "file",
+                "folder",
+                "size",
+                "lastModifiedDateTime",
+                "createdDateTime",
+            ]
+        ).execute_query()
         parent = "/".join(path.strip("/").split("/")[:-1])
         return self._item_to_info(item, parent)
 
@@ -392,20 +460,40 @@ class SharePointFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("SharePoint")
 
-        # Store settings for lazy initialization
-        self._settings = settings
-        self._site_url = settings.get("site_url", "").strip()
-        self._tenant_id = settings.get("tenant_id", "").strip()
-        self._client_id = settings.get("client_id", "").strip()
-        self._client_secret = settings.get("client_secret", "")
-        self._drive_id = settings.get("drive_id", "")
+        # Store settings for lazy initialization (handle None case)
+        self._settings = settings or {}
+        self._site_url = self._settings.get("site_url", "").strip()
+        self._tenant_id = self._settings.get("tenant_id", "").strip()
+        self._client_id = self._settings.get("client_id", "").strip()
+        self._client_secret = self._settings.get("client_secret", "")
+        self._drive_id = self._settings.get("drive_id", "")
 
         # OAuth tokens (for user-delegated access)
-        self._access_token = settings.get("access_token", "")
-        self._refresh_token = settings.get("refresh_token", "")
+        self._access_token = self._settings.get("access_token", "")
+        self._refresh_token = self._settings.get("refresh_token", "")
+
+        # User email (for OneDrive with client credentials)
+        self._user_email = self._settings.get("user_email", "")
 
         # Account type (for OneDrive Personal)
-        self._is_personal = settings.get("is_personal", False)
+        self._is_personal = self._settings.get("is_personal", False)
+
+        # Validate authentication method
+        has_oauth = bool(self._access_token and self._refresh_token)
+        has_client_creds = bool(self._client_id and self._client_secret)
+
+        if not has_oauth and not has_client_creds:
+            base_error = "SharePoint connection requires authentication"
+            details = (
+                "Provide either \n"
+                "- OAuth tokens (access_token, refresh_token) \n"
+                "- OR Client Credentials (tenant_id, client_id, client_secret)"
+            )
+            error_msg = f"{base_error}\nDetails: \n```\n{details}\n```"
+            raise ConnectorError(
+                error_msg,
+                treat_as_user_message=True,
+            )
 
         # Lazy initialization
         self._fs: SharePointFileSystem | None = None
@@ -447,7 +535,7 @@ class SharePointFS(UnstractFileSystem):
 
     @staticmethod
     def requires_oauth() -> bool:
-        return False  # Supports both OAuth and client credentials
+        return True  # Enable OAuth button - also supports client credentials via oneOf
 
     @staticmethod
     def python_social_auth_backend() -> str:
@@ -486,15 +574,33 @@ class SharePointFS(UnstractFileSystem):
                             refresh_token=self._refresh_token or None,
                             drive_id=self._drive_id or None,
                             is_personal=self._is_personal,
+                            user_email=self._user_email or None,
                         )
                         logger.info("SharePoint filesystem initialized")
                     except Exception as e:
-                        raise ConnectorError(
-                            f"Failed to initialize SharePoint connection: {str(e)}",
-                            treat_as_user_message=True,
-                        ) from e
+                        self._raise_connector_error(
+                            "Failed to initialize SharePoint connection", e
+                        )
 
         return self._fs
+
+    def _raise_connector_error(self, base_error: str, exception: Exception) -> NoReturn:
+        """Raise ConnectorError with formatted message.
+
+        Args:
+            base_error: The base error message to display.
+            exception: The original exception that occurred.
+
+        Raises:
+            ConnectorError: Always raised with formatted message.
+        """
+        library_error = str(exception) if str(exception) else None
+        error_msg = (
+            f"{base_error}\nDetails: \n```\n{library_error}\n```"
+            if library_error
+            else base_error
+        )
+        raise ConnectorError(error_msg, treat_as_user_message=True) from exception
 
     def test_credentials(self) -> bool:
         """Test SharePoint/OneDrive credentials."""
@@ -504,10 +610,7 @@ class SharePointFS(UnstractFileSystem):
             fs.ls("")
             return True
         except Exception as e:
-            raise ConnectorError(
-                f"SharePoint connection test failed: {str(e)}",
-                treat_as_user_message=True,
-            ) from e
+            self._raise_connector_error("SharePoint connection test failed", e)
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
         """Extract unique file hash from SharePoint metadata.
@@ -521,14 +624,14 @@ class SharePointFS(UnstractFileSystem):
             File hash string or None
         """
         # Try different hash fields in order of preference
-        hash_fields = ["quickXorHash", "sha256Hash", "cTag", "eTag"]
+        hash_fields = ["quickXorHash", "cTag", "eTag", "id"]
 
         for field in hash_fields:
             if field in metadata and metadata[field]:
                 value = metadata[field]
                 if isinstance(value, str):
                     # Remove quotes and version info from eTags
-                    return value.strip('"').split(",")[0]
+                    return value.split(",")[0].strip('"')
                 return str(value)
 
         logger.warning(

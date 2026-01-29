@@ -10,6 +10,7 @@ import { ListOfSources } from "../list-of-sources/ListOfSources";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import "./AddSourceModal.css";
 
 function AddSourceModal({
   open,
@@ -59,6 +60,8 @@ function AddSourceModal({
         // A delay added in order to avoid glitch in the UI when the modal is closed.
         setSelectedSourceId(null);
         setEditItemId(null);
+        // Clear metadata to prevent stale data when adding a new connector
+        setMetadata({});
       }, 500);
     }
 
@@ -184,6 +187,7 @@ function AddSourceModal({
       centered
       footer={null}
       closable={true}
+      className="add-source-modal"
     >
       {selectedSourceId ? (
         <AddSource

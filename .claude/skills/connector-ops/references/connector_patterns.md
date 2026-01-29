@@ -374,3 +374,79 @@ def execute_batch(self, query: str, data: list[tuple], batch_size: int = 1000) -
 
     return total_rows
 ```
+
+---
+
+## Pattern: Dual Authentication (OAuth + Client Credentials)
+
+**Problem**: Some services support both OAuth (user-delegated) and Client Credentials (app-only) authentication. Users need flexibility to choose based on their use case.
+
+**When to use this pattern**:
+- Service supports both OAuth and service account/app authentication
+- OAuth is preferred for user-delegated access (accessing user's own files)
+- Client Credentials is needed for automated/service access without user interaction
+- Examples: Microsoft Graph API (SharePoint, OneDrive), Google APIs
+
+**Solution**: Use `auth_type` field with JSON Schema `dependencies` to conditionally show fields.
+
+```python
+class MyServiceFS(UnstractFileSystem):
+    def __init__(self, settings: dict[str, Any]):
+        super().__init__("MyService")
+
+        # OAuth tokens (populated by OAuth flow when auth_type="oauth")
+        self._access_token = settings.get("access_token", "")
+        self._refresh_token = settings.get("refresh_token", "")
+
+        # Client credentials (entered manually when auth_type="client_credentials")
+        self._tenant_id = settings.get("tenant_id", "")
+        self._client_id = settings.get("client_id", "")
+        self._client_secret = settings.get("client_secret", "")
+
+        # Validate authentication
+        has_oauth = bool(self._access_token and self._refresh_token)
+        has_client_creds = bool(self._client_id and self._client_secret)
+
+        if not has_oauth and not has_client_creds:
+            raise ConnectorError(
+                "Provide either OAuth tokens OR Client Credentials",
+                treat_as_user_message=True,
+            )
+
+        # Lazy initialization
+        self._client = None
+        self._client_lock = threading.Lock()
+
+    def _get_client(self):
+        """Lazy load client based on auth method."""
+        if self._client is None:
+            with self._client_lock:
+                if self._client is None:
+                    if self._client_secret:
+                        # Client credentials flow (app-only)
+                        self._client = self._create_app_client()
+                    elif self._access_token:
+                        # OAuth token-based flow (user-delegated)
+                        self._client = self._create_oauth_client()
+        return self._client
+
+    @staticmethod
+    def requires_oauth() -> bool:
+        # Return True to show OAuth button in frontend
+        # The button is hidden when auth_type="client_credentials"
+        return True
+```
+
+**JSON Schema pattern** (see `json_schema_examples.md` for full example):
+- Use `"auth_type"` enum field with options `["oauth", "client_credentials"]`
+- Use `"dependencies"` to conditionally show credential fields
+- OAuth mode: No additional fields (OAuth button populates tokens)
+- Client Credentials mode: Show tenant_id, client_id, client_secret fields
+
+**Frontend integration notes**:
+- When `requires_oauth()` returns `True`, frontend shows OAuth button
+- OAuth flow populates `access_token` and `refresh_token` automatically
+- When `auth_type = "client_credentials"`, user enters credentials manually
+- Frontend hides OAuth button when client_credentials is selected (via conditional rendering)
+
+**Applies to**: SharePoint/OneDrive, potentially Google APIs, Azure services

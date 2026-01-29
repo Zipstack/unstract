@@ -2,10 +2,7 @@
   "title": "SharePoint / OneDrive",
   "description": "Connect to SharePoint Online document libraries, OneDrive for Business, or OneDrive Personal. Supports Microsoft 365 work/school accounts and personal Microsoft accounts.",
   "type": "object",
-  "required": [
-    "connectorName",
-    "client_id"
-  ],
+  "required": ["connectorName"],
   "properties": {
     "connectorName": {
       "type": "string",
@@ -28,38 +25,61 @@
         "https://contoso-my.sharepoint.com/personal/user_contoso_com"
       ]
     },
-    "tenant_id": {
-      "type": "string",
-      "title": "Tenant ID",
-      "description": "Azure AD Tenant ID (Directory ID). Required for SharePoint and OneDrive for Business. Leave empty for Personal accounts."
-    },
-    "client_id": {
-      "type": "string",
-      "title": "Client ID (Application ID)",
-      "description": "The Application (client) ID from your Azure AD or Microsoft app registration"
-    },
-    "client_secret": {
-      "type": "string",
-      "title": "Client Secret",
-      "format": "password",
-      "description": "Client secret from your app registration. Required for app-only (client credentials) authentication."
-    },
-    "access_token": {
-      "type": "string",
-      "title": "Access Token",
-      "format": "password",
-      "description": "OAuth access token. Use this for user-delegated access when client_secret is not provided."
-    },
-    "refresh_token": {
-      "type": "string",
-      "title": "Refresh Token",
-      "format": "password",
-      "description": "OAuth refresh token for automatic token renewal."
-    },
     "drive_id": {
       "type": "string",
       "title": "Drive ID (Optional)",
       "description": "Specific Drive/Document Library ID. Leave empty to use the default drive."
+    },
+    "auth_type": {
+      "type": "string",
+      "title": "Authentication Type",
+      "enum": ["oauth", "client_credentials"],
+      "enumNames": ["OAuth (Recommended)", "Client Credentials"],
+      "default": "oauth"
+    }
+  },
+  "dependencies": {
+    "auth_type": {
+      "oneOf": [
+        {
+          "properties": {
+            "auth_type": { "enum": ["oauth"] }
+          }
+        },
+        {
+          "properties": {
+            "auth_type": { "enum": ["client_credentials"] },
+            "client_id": {
+              "type": "string",
+              "title": "Client ID (Application ID)",
+              "description": "The Application (client) ID from your Azure AD or Microsoft app registration."
+            },
+            "tenant_id": {
+              "type": "string",
+              "title": "Tenant ID",
+              "format": "password",
+              "description": "Azure AD Tenant ID (Directory ID). Required for Client Credentials authentication."
+            },
+            "client_secret": {
+              "type": "string",
+              "title": "Client Secret",
+              "format": "password",
+              "description": "Client secret from your app registration."
+            },
+            "user_email": {
+              "type": "string",
+              "title": "User Email",
+              "format": "password",
+              "description": "User's email address. Required ONLY for OneDrive with Client Credentials (not needed for SharePoint).",
+              "examples": [
+                "user@company.onmicrosoft.com",
+                "user@company.com"
+              ]
+            }
+          },
+          "required": ["tenant_id", "client_id", "client_secret"]
+        }
+      ]
     }
   }
 }

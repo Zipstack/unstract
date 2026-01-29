@@ -380,6 +380,8 @@ Based on modification type:
 3. Update connector class to handle new auth
 4. Add tests for new auth mode
 
+**Note**: For connectors that support both OAuth and Client Credentials (like SharePoint/OneDrive), use the **Dual Authentication pattern** documented in `references/connector_patterns.md`. This pattern uses an `auth_type` field with JSON Schema `dependencies` to conditionally show/hide credential fields based on the selected authentication method.
+
 **Bug fix:**
 1. Identify root cause
 2. Implement fix

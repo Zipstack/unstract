@@ -50,3 +50,16 @@ dependencies = [
 
 # [tool.hatch.build.targets.wheel]
 # packages = ["src"]
+
+[dependency-groups]
+test = [
+    "pytest>=8.0.1",
+    "python-dotenv~=1.0.0",
+    "unstract-filesystem",
+]
+
+[tool.uv.sources]
+unstract-filesystem = { path = "../filesystem", editable = true }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
