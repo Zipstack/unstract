@@ -318,10 +318,55 @@ function useMetricsSeries(
   return { data, loading, error, refetch };
 }
 
+/**
+ * Hook for fetching recent processing activity.
+ * Real-time data - no caching.
+ *
+ * @param {number} limit - Maximum records to return (default 10)
+ * @return {Object} { data, loading, error, refetch }
+ */
+function useRecentActivity(limit = 10) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
+  const orgId = sessionDetails?.orgId;
+
+  const fetchActivity = useCallback(async () => {
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const url = `/api/v1/unstract/${orgId}/metrics/recent-activity/?limit=${limit}`;
+      const response = await axiosPrivate.get(url);
+      setData(response.data);
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to fetch activity");
+    } finally {
+      setLoading(false);
+    }
+  }, [axiosPrivate, orgId, limit]);
+
+  useEffect(() => {
+    if (orgId) {
+      fetchActivity();
+    }
+  }, [orgId, limit]); // eslint-disable-line
+
+  return { data, loading, error, refetch: fetchActivity };
+}
+
 export {
   useMetricsData,
   useMetricsOverview,
   useMetricsSummary,
   useMetricsSeries,
+  useRecentActivity,
   clearMetricsCache,
 };

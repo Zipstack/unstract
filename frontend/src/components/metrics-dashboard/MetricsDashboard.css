@@ -7,20 +7,34 @@
   overflow-y: auto;
 }
 
-.metrics-header {
+/* Topbar - Full width covering entire space */
+.metrics-topbar {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 24px;
-  flex-wrap: wrap;
-  gap: 16px;
+  align-items: center;
+  margin: -24px -24px 20px -24px;
+  padding: 12px 24px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
 }
 
-.metrics-title-section h3 {
-  margin-bottom: 4px;
+.metrics-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.metrics-controls {
+.metrics-topbar-icon {
+  font-size: 20px;
+  color: #1890ff;
+}
+
+.metrics-topbar-left h4 {
+  font-weight: 600;
+  color: #262626;
+}
+
+.metrics-topbar-right {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -30,14 +44,77 @@
   margin-bottom: 16px;
 }
 
-/* Summary Cards */
+/* Summary Cards - Matching Reference Design */
 .metrics-summary {
-  margin-bottom: 16px;
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 12px;
+  height: 100%;
+  min-height: 90px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.summary-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.summary-card-icon span {
+  font-size: 24px;
+}
+
+.summary-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.summary-card-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-card-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+
+.summary-card-suffix {
+  font-size: 16px;
+  font-weight: 500;
+  color: #666;
+}
+
+/* Chart Card */
+.chart-card .ant-card-head-title {
+  font-weight: 600;
 }
 
 .metric-card {
   height: 100%;
-  transition: box-shadow 0.3s;
+  border-radius: 8px;
+  transition: box-shadow 0.3s ease;
 }
 
 .metric-card:hover {
@@ -144,29 +221,26 @@
   gap: 4px;
 }
 
-/* Table Styles */
-.metrics-table {
-  background: white;
-}
-
-.metric-name-cell {
-  font-weight: 500;
-  text-transform: capitalize;
-}
-
 /* Responsive Adjustments */
 @media (max-width: 768px) {
-  .metrics-header {
+  .metrics-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin: -16px -16px 16px -16px;
+    padding: 12px 16px;
+  }
+
+  .metrics-topbar-left {
+    justify-content: center;
+  }
+
+  .metrics-topbar-right {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .metrics-controls {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .metrics-controls .ant-picker {
+  .metrics-topbar-right .ant-picker {
     width: 100%;
   }
 
@@ -175,15 +249,94 @@
   }
 }
 
-/* Tab Styles */
-.metrics-dashboard .ant-tabs-nav {
-  margin-bottom: 16px;
-}
-
 /* Period Info */
 .period-info {
   margin-bottom: 16px;
   padding: 12px;
   background: white;
   border-radius: 6px;
+}
+
+/* Usage Quota Style - Matching Reference Design */
+.usage-quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.usage-quota-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.usage-quota-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.usage-quota-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #262626;
+}
+
+.usage-quota-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.usage-quota-item .ant-progress {
+  margin: 0;
+}
+
+.usage-quota-item .ant-progress-inner {
+  border-radius: 4px;
+}
+
+.usage-quota-item .ant-progress-bg {
+  border-radius: 4px;
+  height: 8px !important;
+}
+
+/* Recent Activity Styles */
+.recent-activity-item {
+  padding: 10px 0 !important;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.recent-activity-item:last-child {
+  border-bottom: none;
+}
+
+.recent-activity-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.recent-activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recent-activity-type {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+.recent-activity-file {
+  font-size: 13px;
+  color: #595959;
+  max-width: 100%;
+}
+
+.recent-activity-time {
+  font-size: 12px;
 }

@@ -1,8 +1,10 @@
 export { MetricsDashboard } from "./MetricsDashboard";
 export { MetricsSummary } from "./MetricsSummary";
-export { MetricsTable } from "./MetricsTable";
+export { RecentActivity } from "./RecentActivity";
 export {
   MetricsChart,
   MetricsBreakdown,
   MultiSeriesChart,
+  PagesChart,
+  TrendAnalysisChart,
 } from "./MetricsChart";
