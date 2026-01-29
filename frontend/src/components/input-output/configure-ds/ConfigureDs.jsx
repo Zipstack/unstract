@@ -339,12 +339,6 @@ function ConfigureDs({
         if (data) {
           addNewItem(data, !!editItemId);
         }
-        setAlertDetails({
-          type: "success",
-          content: `Successfully ${
-            method === "POST" ? "added" : "updated"
-          } connector`,
-        });
         if (!isConnector && method === "POST") {
           updateSession(type);
         }
