@@ -99,6 +99,7 @@ export default defineConfig(({ mode }) => {
 
     // Build configuration
     build: {
+      target: 'esnext',
       outDir: 'build',
       sourcemap: true,
       // Chunk size warning limit
