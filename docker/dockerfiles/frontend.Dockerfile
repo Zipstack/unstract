@@ -1,7 +1,7 @@
 # Multi-stage build for both development and production
 
 # Base stage with common setup
-FROM node:20-alpine AS base
+FROM oven/bun:1-alpine AS base
 ENV BUILD_CONTEXT_PATH=frontend
 WORKDIR /app
 
@@ -10,15 +10,15 @@ WORKDIR /app
 FROM base AS development
 
 # Copy only package files for dependency caching
-COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
-RUN npm install --ignore-scripts
+COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/bun.lock ./
+RUN bun install --ignore-scripts
 
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ /app/
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["bun", "run", "start"]
 
 ### FOR PRODUCTION ###
 # Builder stage for production build
@@ -26,14 +26,14 @@ FROM base AS builder
 ENV VITE_BACKEND_URL=""
 
 # Copy package files and install dependencies
-COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
-RUN npm install --ignore-scripts
+COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/bun.lock ./
+RUN bun install --ignore-scripts
 
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .
 
 # Build with Vite
-RUN npm run build
+RUN bun run build
 
 # Production stage
 FROM nginx:1.29.1-alpine AS production
