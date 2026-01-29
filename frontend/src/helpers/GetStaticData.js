@@ -546,11 +546,21 @@ const displayURL = (text) => {
 };
 
 const shortenApiEndpoint = (url) => {
-  if (!url) return "";
-  // Get the last segment after the final slash (typically the UUID suffix)
-  const parts = url.split("/").filter(Boolean);
-  const suffix = parts[parts.length - 1] || url;
-  return `.../${suffix}`;
+  if (typeof url !== "string" || url.trim() === "") return "";
+  try {
+    // Parse URL to strip query/hash and get clean pathname
+    const parsed = new URL(url, window.location.origin);
+    const path = parsed.pathname.replace(/\/+$/, "");
+    const parts = path.split("/").filter(Boolean);
+    const suffix = parts[parts.length - 1] || "";
+    return suffix ? `.../${suffix}` : ".../";
+  } catch {
+    // Fallback for invalid URLs - strip query/hash manually
+    const path = url.split("?")[0].split("#")[0].replace(/\/+$/, "");
+    const parts = path.split("/").filter(Boolean);
+    const suffix = parts[parts.length - 1] || "";
+    return suffix ? `.../${suffix}` : ".../";
+  }
 };
 
 const formatNumberWithCommas = (number) => {

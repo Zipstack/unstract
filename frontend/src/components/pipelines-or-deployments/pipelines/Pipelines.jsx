@@ -33,7 +33,6 @@ import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
   const [openEtlOrTaskModal, setOpenEtlOrTaskModal] = useState(false);
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
@@ -50,12 +49,11 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
-  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs");
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
   const pipelineApiService = pipelineService();
-  const { getApiKeys, downloadPostmanCollection, copyUrl } =
-    usePipelineHelper();
+  const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
@@ -191,31 +189,6 @@ function Pipelines({ type }) {
       });
   };
 
-  const handleStatusRefresh = (pipelineId) => {
-    const fieldsToUpdate = {
-      last_run_status: "processing",
-    };
-    handleLoaderInTableData(fieldsToUpdate, pipelineId);
-
-    getPipelineData(pipelineId)
-      .then((res) => {
-        const data = res?.data;
-        fieldsToUpdate["last_run_status"] = data?.last_run_status;
-        fieldsToUpdate["last_run_time"] = data?.last_run_time;
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, `Failed to update pipeline status.`)
-        );
-        const date = new Date();
-        fieldsToUpdate["last_run_status"] = "FAILURE";
-        fieldsToUpdate["last_run_time"] = date.toISOString();
-      })
-      .finally(() => {
-        handleLoaderInTableData(fieldsToUpdate, pipelineId);
-      });
-  };
-
   const handleLoaderInTableData = (updatedFields, pipelineId) => {
     // Use functional update to avoid stale closure issues
     setTableData((prevData) =>
@@ -261,7 +234,7 @@ function Pipelines({ type }) {
 
     axiosPrivate(requestOptions)
       .then(() => {
-        getPipelineList();
+        getPipelineList(pagination.current, pagination.pageSize);
       })
       .catch((err) => {
         // Revert on failure
@@ -290,21 +263,6 @@ function Pipelines({ type }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
-      });
-  };
-
-  const getPipelineData = (pipelineId) => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${pipelineId}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    return axiosPrivate(requestOptions)
-      .then((res) => res)
-      .catch((err) => {
-        throw err;
       });
   };
 

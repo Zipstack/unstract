@@ -195,10 +195,15 @@ function createPipelineCardConfig({
       const email = pipeline.created_by_email;
       const ownerDisplay = isOwner ? "You" : email?.split("@")[0] || "Unknown";
 
-      // Schedule display
-      const scheduleDisplay = pipeline.cron_string
-        ? cronstrue.toString(pipeline.cron_string)
-        : "Not scheduled";
+      // Schedule display - wrap in try-catch as cronstrue can throw on invalid cron
+      let scheduleDisplay = "Not scheduled";
+      if (pipeline.cron_string) {
+        try {
+          scheduleDisplay = cronstrue.toString(pipeline.cron_string);
+        } catch {
+          scheduleDisplay = pipeline.cron_string;
+        }
+      }
 
       // Kebab menu items
       const kebabMenuItems = {

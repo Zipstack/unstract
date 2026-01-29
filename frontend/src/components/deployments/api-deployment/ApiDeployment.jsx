@@ -49,8 +49,7 @@ function ApiDeployment() {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const axiosPrivate = useAxiosPrivate();
-  const { getApiKeys, downloadPostmanCollection, copyUrl } =
-    usePipelineHelper();
+  const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const [openShareModal, setOpenShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);

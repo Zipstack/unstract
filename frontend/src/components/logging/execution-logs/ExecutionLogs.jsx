@@ -26,7 +26,7 @@ import useRequestUrl from "../../../hooks/useRequestUrl";
 function ExecutionLogs() {
   const { RangePicker } = DatePicker;
   const [activeTab, setActiveTab] = useState("ETL");
-  const { id, type } = useParams();
+  const { id } = useParams();
   const location = useLocation();
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();

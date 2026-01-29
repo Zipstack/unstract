@@ -37,11 +37,23 @@ function MenuLayout({ children }) {
             type="text"
             onClick={() => {
               if (location.state?.from) {
-                navigate(location.state.from, {
-                  state: location.state?.scrollToCardId
-                    ? { scrollToCardId: location.state.scrollToCardId }
-                    : undefined,
-                });
+                const from = location.state.from;
+                const fromState =
+                  typeof from === "object" && from.state ? from.state : {};
+                const mergedState = {
+                  ...fromState,
+                  ...(location.state?.scrollToCardId && {
+                    scrollToCardId: location.state.scrollToCardId,
+                  }),
+                };
+                const nextState = Object.keys(mergedState).length
+                  ? mergedState
+                  : undefined;
+                if (typeof from === "object") {
+                  navigate({ ...from, state: nextState });
+                } else {
+                  navigate(from, { state: nextState });
+                }
               } else {
                 navigate(`/${sessionDetails.orgName}/workflows`);
               }

@@ -122,8 +122,12 @@ function CardGridView({
               config={cardConfig}
               onClick={onCardClick}
               listMode={listMode}
-              forceExpanded={forceExpandedId === item.id}
-              scrollIntoView={scrollToId === item.id}
+              forceExpanded={
+                forceExpandedId && String(forceExpandedId) === String(item.id)
+              }
+              scrollIntoView={
+                scrollToId && String(scrollToId) === String(item.id)
+              }
             />
           </Col>
         ))}
@@ -185,8 +189,8 @@ CardGridView.propTypes = {
   className: PropTypes.string,
   rowKey: PropTypes.oneOfType([PropTypes.string, PropTypes.func]),
   listMode: PropTypes.bool,
-  forceExpandedId: PropTypes.string,
-  scrollToId: PropTypes.string,
+  forceExpandedId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+  scrollToId: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
   pagination: PropTypes.shape({
     current: PropTypes.number,
     pageSize: PropTypes.number,

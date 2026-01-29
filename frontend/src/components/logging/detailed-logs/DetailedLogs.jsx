@@ -90,7 +90,6 @@ ActionColumnHeader.propTypes = {
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
   const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
