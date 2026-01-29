@@ -826,6 +826,36 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         return queryset
 
+    @action(detail=False, methods=["get"], url_path="recent-activity")
+    def recent_activity(self, request: Request) -> Response:
+        """Get recent processing activity differentiated by type.
+
+        Returns recent file executions with type classification:
+        - etl: ETL pipeline executions
+        - api: API deployment requests
+        - workflow: Manual workflow/prompt studio executions
+
+        Query Parameters:
+            limit: Maximum records to return (default 10, max 50)
+
+        Returns:
+            200: List of recent activity items
+            500: Error occurred
+        """
+        organization = self._get_organization()
+        org_id = str(organization.id)
+        limit = min(int(request.query_params.get("limit", 10)), 50)
+
+        try:
+            data = MetricsQueryService.get_recent_activity(org_id, limit)
+            return Response({"activity": data})
+        except Exception as e:
+            logger.exception("Error fetching recent activity")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
     @action(detail=False, methods=["get"], url_path="health")
     def health(self, request: Request) -> Response:
         """Health check endpoint for metrics system.

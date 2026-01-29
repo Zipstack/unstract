@@ -16,8 +16,8 @@ from typing import Any
 
 from account_usage.models import PageUsage
 from api_v2.models import APIDeployment
-from django.db.models import Count, Subquery, Sum
-from django.db.models.functions import TruncDay, TruncHour, TruncWeek
+from django.db.models import CharField, Count, OuterRef, Subquery, Sum
+from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -397,6 +397,55 @@ class MetricsQueryService:
             .order_by("period")
         )
 
+    @staticmethod
+    def get_failed_pages(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = "day",
+    ) -> list[dict[str, Any]]:
+        """Query failed pages from workflow_file_execution + page_usage.
+
+        Sums pages_processed for file executions with status='ERROR',
+        grouped by time period based on when the failure occurred.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            List of dicts with 'period' and 'value' keys
+        """
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+
+        # Subquery: get pages for each file execution from page_usage
+        # Join on: page_usage.run_id = workflow_file_execution.id::text
+        pages_subquery = (
+            PageUsage.objects.filter(run_id=Cast(OuterRef("id"), CharField()))
+            .values("run_id")
+            .annotate(total=Sum("pages_processed"))
+            .values("total")[:1]
+        )
+
+        # Main query: failed executions with their pages, grouped by period
+        return list(
+            WorkflowFileExecution.objects.filter(
+                workflow_execution__workflow__organization_id=organization_id,
+                status="ERROR",
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .annotate(
+                pages=Coalesce(Subquery(pages_subquery), 0),
+                period=trunc_func("created_at"),
+            )
+            .values("period")
+            .annotate(value=Sum("pages"))
+            .order_by("period")
+        )
+
     @classmethod
     def get_all_metrics_summary(
         cls,
@@ -461,4 +510,79 @@ class MetricsQueryService:
                 r["value"]
                 for r in cls.get_prompt_executions(organization_id, start_date, end_date)
             ),
+            "failed_pages": sum(
+                r["value"] or 0
+                for r in cls.get_failed_pages(organization_id, start_date, end_date)
+            ),
         }
+
+    @staticmethod
+    def get_recent_activity(
+        organization_id: str,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Get recent processing activity across all execution types.
+
+        Returns recent file executions with type differentiation:
+        - etl: pipeline_id matches ETL Pipeline
+        - api: pipeline_id matches APIDeployment
+        - workflow: pipeline_id is null (manual workflow/prompt studio)
+
+        Args:
+            organization_id: Organization UUID string
+            limit: Maximum number of records to return
+
+        Returns:
+            List of dicts with execution details including type
+        """
+        # Get ETL and API pipeline IDs for this org
+        etl_pipeline_ids = set(
+            Pipeline.objects.filter(
+                organization_id=organization_id,
+                pipeline_type="ETL",
+            ).values_list("id", flat=True)
+        )
+
+        api_deployment_ids = set(
+            APIDeployment.objects.filter(
+                organization_id=organization_id,
+            ).values_list("id", flat=True)
+        )
+
+        # Query recent file executions with related data
+        recent = (
+            WorkflowFileExecution.objects.filter(
+                workflow_execution__workflow__organization_id=organization_id,
+            )
+            .select_related(
+                "workflow_execution",
+                "workflow_execution__workflow",
+            )
+            .order_by("-created_at")[:limit]
+        )
+
+        results = []
+        for execution in recent:
+            pipeline_id = execution.workflow_execution.pipeline_id
+
+            # Determine execution type based on pipeline_id
+            if pipeline_id and pipeline_id in etl_pipeline_ids:
+                exec_type = "etl"
+            elif pipeline_id and pipeline_id in api_deployment_ids:
+                exec_type = "api"
+            else:
+                exec_type = "workflow"
+
+            results.append(
+                {
+                    "id": str(execution.id),
+                    "type": exec_type,
+                    "file_name": execution.file_name,
+                    "status": execution.status,
+                    "workflow_name": execution.workflow_execution.workflow.workflow_name,
+                    "created_at": execution.created_at.isoformat(),
+                    "execution_time": execution.execution_time,
+                }
+            )
+
+        return results

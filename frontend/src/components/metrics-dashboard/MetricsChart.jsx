@@ -1,13 +1,5 @@
-import {
-  Card,
-  Progress,
-  Typography,
-  Row,
-  Col,
-  Empty,
-  Spin,
-  Select,
-} from "antd";
+import { Card, Empty, Spin, Button, Dropdown, Progress } from "antd";
+import { FilterOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 import {
@@ -19,13 +11,11 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
 } from "recharts";
 
 import "./MetricsDashboard.css";
-
-const { Text } = Typography;
 
 // Colors for charts and progress bars
 const TREND_COLORS = [
@@ -92,12 +82,8 @@ CustomTooltip.propTypes = {
   label: PropTypes.string,
 };
 
-// Default metrics to show initially
-const DEFAULT_SELECTED_METRICS = [
-  "documents_processed",
-  "pages_processed",
-  "llm_calls",
-];
+// Metrics for Pages chart (left chart)
+const PAGES_METRICS = ["pages_processed", "failed_pages"];
 
 /**
  * Format metric name for display.
@@ -115,16 +101,12 @@ function formatMetricName(metric) {
  *
  * @return {JSX.Element} The rendered chart component.
  */
-function MetricsChart({
-  data,
-  loading,
-  title = "Daily Activity",
-  showArea = false,
-}) {
+function MetricsChart({ data, loading, title = "Daily Activity" }) {
   // State for selected metrics
-  const [selectedMetrics, setSelectedMetrics] = useState(
-    DEFAULT_SELECTED_METRICS
-  );
+  const [selectedMetrics, setSelectedMetrics] = useState([
+    "pages_processed",
+    "documents_processed",
+  ]);
 
   // Process data and extract available metrics
   const { chartData, availableMetrics } = useMemo(() => {
@@ -194,32 +176,77 @@ function MetricsChart({
     );
   }
 
-  const ChartComponent = showArea ? AreaChart : LineChart;
-  const DataComponent = showArea ? Area : Line;
+  // Bar colors - metric-specific for key metrics, fallback array for others
+  const METRIC_BAR_COLORS = {
+    pages_processed: "#1890ff",
+    documents_processed: "#52c41a",
+    failed_pages: "#ff4d4f", // Red for failures
+    llm_calls: "#722ed1",
+    prompt_executions: "#faad14",
+    llm_usage: "#13c2c2",
+  };
+  const DEFAULT_BAR_COLORS = [
+    "#1890ff",
+    "#faad14",
+    "#52c41a",
+    "#722ed1",
+    "#13c2c2",
+  ];
+  const getBarColor = (metric, idx) =>
+    METRIC_BAR_COLORS[metric] ||
+    DEFAULT_BAR_COLORS[idx % DEFAULT_BAR_COLORS.length];
+
+  // Filter dropdown menu items
+  const filterMenuItems = metricOptions.map((opt) => ({
+    key: opt.value,
+    label: opt.label,
+  }));
+
+  const handleFilterClick = ({ key }) => {
+    if (selectedMetrics.includes(key)) {
+      setSelectedMetrics(selectedMetrics.filter((m) => m !== key));
+    } else {
+      setSelectedMetrics([...selectedMetrics, key]);
+    }
+  };
+
+  // Card extra content with filter dropdown
+  const cardExtra =
+    availableMetrics.length > 1 ? (
+      <Dropdown
+        menu={{
+          items: filterMenuItems,
+          onClick: handleFilterClick,
+          selectable: true,
+          multiple: true,
+          selectedKeys: selectedMetrics,
+        }}
+        trigger={["click"]}
+      >
+        <Button icon={<FilterOutlined />} size="small">
+          Filter
+        </Button>
+      </Dropdown>
+    ) : null;
 
   return (
-    <Card title={title} className="metrics-chart-card">
-      {availableMetrics.length > 1 && (
-        <div style={{ marginBottom: 16 }}>
-          <Select
-            mode="multiple"
-            placeholder="Select metrics to display"
-            value={selectedMetrics}
-            onChange={setSelectedMetrics}
-            options={metricOptions}
-            style={{ width: "100%" }}
-            maxTagCount="responsive"
-            allowClear
-          />
-        </div>
-      )}
+    <Card
+      title={title}
+      extra={cardExtra}
+      className="metrics-chart-card chart-card"
+    >
       <div className="chart-container">
         <ResponsiveContainer width="100%" height={280}>
-          <ChartComponent
+          <BarChart
             data={chartData}
-            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+            margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+            barCategoryGap="15%"
           >
-            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#f0f0f0"
+            />
             <XAxis
               dataKey="date"
               tickFormatter={formatDate}
@@ -233,24 +260,24 @@ function MetricsChart({
               width={50}
             />
             <Tooltip content={<CustomTooltip />} />
-            {metricsToShow.length > 1 && <Legend />}
+            {metricsToShow.length > 1 && (
+              <Legend
+                formatter={(value) => (
+                  <span style={{ color: "#262626" }}>{value}</span>
+                )}
+              />
+            )}
             {metricsToShow.map((metric, idx) => (
-              <DataComponent
+              <Bar
                 key={metric}
-                type="monotone"
                 dataKey={metric}
                 name={formatMetricName(metric)}
-                stroke={TREND_COLORS[idx % TREND_COLORS.length]}
-                fill={
-                  showArea ? TREND_COLORS[idx % TREND_COLORS.length] : undefined
-                }
-                fillOpacity={showArea ? 0.3 : undefined}
-                strokeWidth={2}
-                dot={{ r: 3, strokeWidth: 2 }}
-                activeDot={{ r: 5 }}
+                fill={getBarColor(metric, idx)}
+                radius={[4, 4, 0, 0]}
+                maxBarSize={80}
               />
             ))}
-          </ChartComponent>
+          </BarChart>
         </ResponsiveContainer>
       </div>
     </Card>
@@ -332,11 +359,13 @@ function MultiSeriesChart({ data, loading, title = "Metrics Over Time" }) {
             <Tooltip content={<CustomTooltip />} />
             <Legend
               wrapperStyle={{ paddingTop: 10 }}
-              formatter={(value) =>
-                value
-                  .replace(/_/g, " ")
-                  .replace(/\b\w/g, (l) => l.toUpperCase())
-              }
+              formatter={(value) => (
+                <span style={{ color: "#262626" }}>
+                  {value
+                    .replace(/_/g, " ")
+                    .replace(/\b\w/g, (l) => l.toUpperCase())}
+                </span>
+              )}
             />
             {metricNames.map((metric, idx) => (
               <Line
@@ -359,30 +388,61 @@ function MultiSeriesChart({ data, loading, title = "Metrics Over Time" }) {
 }
 
 /**
- * Metric breakdown component showing distribution of metrics.
+ * Trend Analysis chart showing line trends for metrics over time.
+ * Displays the same data as the bar chart but as lines to show trends.
  *
- * @return {JSX.Element} The rendered breakdown component.
+ * @return {JSX.Element} The rendered trend chart component.
  */
 function MetricsBreakdown({ data, loading }) {
-  const breakdown = useMemo(() => {
-    if (!data?.totals) return [];
+  // State for selected metrics (show pages and documents by default)
+  const [selectedMetrics, setSelectedMetrics] = useState([
+    "pages_processed",
+    "documents_processed",
+  ]);
 
-    const total = data.totals.reduce((sum, m) => sum + (m.total_value || 0), 0);
-    if (total === 0) return [];
+  // Process data for the line chart
+  const { chartData, availableMetrics, metricOptions } = useMemo(() => {
+    if (!data?.daily_trend || data.daily_trend.length === 0) {
+      return { chartData: [], availableMetrics: [], metricOptions: [] };
+    }
 
-    return data.totals.map((metric, index) => ({
-      ...metric,
-      percentage: Math.round(((metric.total_value || 0) / total) * 100),
-      color: TREND_COLORS[index % TREND_COLORS.length],
-      displayName: metric.metric_name
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (l) => l.toUpperCase()),
+    // Collect all unique metric names
+    const metricNamesSet = new Set();
+    data.daily_trend.forEach((item) => {
+      if (item.metrics) {
+        Object.keys(item.metrics).forEach((key) => metricNamesSet.add(key));
+      }
+    });
+    const metricNames = Array.from(metricNamesSet).sort();
+
+    const transformed = data.daily_trend.map((item) => ({
+      date: item.date,
+      ...item.metrics,
     }));
+
+    const options = metricNames.map((metric) => ({
+      label: formatMetricName(metric),
+      value: metric,
+    }));
+
+    return {
+      chartData: transformed,
+      availableMetrics: metricNames,
+      metricOptions: options,
+    };
   }, [data]);
+
+  // Filter to only show selected metrics that exist
+  const metricsToShow = useMemo(() => {
+    return selectedMetrics.filter((m) => availableMetrics.includes(m));
+  }, [selectedMetrics, availableMetrics]);
 
   if (loading) {
     return (
-      <Card title="Metrics Distribution" className="metrics-chart-card">
+      <Card
+        title="Trend Analysis (Last 30 Days)"
+        className="metrics-chart-card"
+      >
         <div className="metrics-loading">
           <Spin />
         </div>
@@ -390,39 +450,414 @@ function MetricsBreakdown({ data, loading }) {
     );
   }
 
-  if (!breakdown.length) {
+  if (!chartData.length) {
     return (
-      <Card title="Metrics Distribution" className="metrics-chart-card">
+      <Card
+        title="Trend Analysis (Last 30 Days)"
+        className="metrics-chart-card"
+      >
+        <Empty description="No trend data available" />
+      </Card>
+    );
+  }
+
+  // Filter dropdown menu items
+  const filterMenuItems = metricOptions.map((opt) => ({
+    key: opt.value,
+    label: opt.label,
+  }));
+
+  const handleFilterClick = ({ key }) => {
+    if (selectedMetrics.includes(key)) {
+      setSelectedMetrics(selectedMetrics.filter((m) => m !== key));
+    } else {
+      setSelectedMetrics([...selectedMetrics, key]);
+    }
+  };
+
+  // Card extra content with filter dropdown
+  const cardExtra =
+    availableMetrics.length > 1 ? (
+      <Dropdown
+        menu={{
+          items: filterMenuItems,
+          onClick: handleFilterClick,
+          selectable: true,
+          multiple: true,
+          selectedKeys: selectedMetrics,
+        }}
+        trigger={["click"]}
+      >
+        <Button icon={<FilterOutlined />} size="small">
+          Filter
+        </Button>
+      </Dropdown>
+    ) : null;
+
+  return (
+    <Card
+      title="Trend Analysis (Last 30 Days)"
+      extra={cardExtra}
+      className="metrics-chart-card chart-card"
+    >
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#f0f0f0"
+            />
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatDate}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+            />
+            <YAxis
+              tickFormatter={formatValue}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+              width={50}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            {metricsToShow.length > 1 && (
+              <Legend
+                formatter={(value) => (
+                  <span style={{ color: "#262626" }}>{value}</span>
+                )}
+              />
+            )}
+            {metricsToShow.map((metric, idx) => (
+              <Line
+                key={metric}
+                type="monotone"
+                dataKey={metric}
+                name={formatMetricName(metric)}
+                stroke={TREND_COLORS[idx % TREND_COLORS.length]}
+                strokeWidth={2}
+                dot={{ r: 3, strokeWidth: 2 }}
+                activeDot={{ r: 5 }}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * Pages Processed chart - shows pages_processed and failed_pages.
+ * Matches the reference design's left chart.
+ *
+ * @return {JSX.Element} The rendered pages chart component.
+ */
+function PagesChart({ data, loading }) {
+  // Process data for the bar chart
+  const chartData = useMemo(() => {
+    if (!data?.daily_trend || data.daily_trend.length === 0) {
+      return [];
+    }
+
+    return data.daily_trend.map((item) => ({
+      date: item.date,
+      pages_processed: item.metrics?.pages_processed || 0,
+      failed_pages: item.metrics?.failed_pages || 0,
+    }));
+  }, [data]);
+
+  if (loading) {
+    return (
+      <Card
+        title="Pages Processed (Last 30 Days)"
+        className="metrics-chart-card"
+      >
+        <div className="metrics-loading">
+          <Spin />
+        </div>
+      </Card>
+    );
+  }
+
+  if (!chartData.length) {
+    return (
+      <Card
+        title="Pages Processed (Last 30 Days)"
+        className="metrics-chart-card"
+      >
         <Empty description="No data available" />
       </Card>
     );
   }
 
   return (
-    <Card title="Metrics Distribution" className="metrics-chart-card">
-      <div className="breakdown-chart">
-        {breakdown.map((metric) => (
-          <div key={metric.metric_name} className="breakdown-item">
-            <Row justify="space-between" align="middle">
-              <Col>
-                <Text>{metric.displayName}</Text>
-              </Col>
-              <Col>
-                <Text strong>{metric.percentage}%</Text>
-              </Col>
-            </Row>
-            <Progress
-              percent={metric.percentage}
-              showInfo={false}
-              strokeColor={metric.color}
-              size="small"
+    <Card
+      title="Pages Processed (Last 30 Days)"
+      className="metrics-chart-card chart-card"
+    >
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#f0f0f0"
             />
-          </div>
-        ))}
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatDate}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+            />
+            <YAxis
+              tickFormatter={formatValue}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+              width={50}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend
+              formatter={(value) => (
+                <span style={{ color: "#262626" }}>{value}</span>
+              )}
+            />
+            <Line
+              type="monotone"
+              dataKey="pages_processed"
+              name="Pages Processed"
+              stroke="#1890ff"
+              strokeWidth={2}
+              dot={{ r: 3, strokeWidth: 2 }}
+              activeDot={{ r: 5 }}
+            />
+            <Line
+              type="monotone"
+              dataKey="failed_pages"
+              name="Failed Pages"
+              stroke="#ff4d4f"
+              strokeWidth={2}
+              dot={{ r: 3, strokeWidth: 2 }}
+              activeDot={{ r: 5 }}
+            />
+          </LineChart>
+        </ResponsiveContainer>
       </div>
     </Card>
   );
 }
+
+PagesChart.propTypes = {
+  data: PropTypes.shape({
+    daily_trend: PropTypes.arrayOf(
+      PropTypes.shape({
+        date: PropTypes.string,
+        metrics: PropTypes.object,
+      })
+    ),
+  }),
+  loading: PropTypes.bool,
+};
+
+/**
+ * Trend Analysis chart - shows other metrics (not pages).
+ * Matches the reference design's right chart.
+ *
+ * @return {JSX.Element} The rendered trend analysis chart component.
+ */
+function TrendAnalysisChart({ data, loading }) {
+  // State for selected metrics
+  const [selectedMetrics, setSelectedMetrics] = useState([
+    "documents_processed",
+    "llm_calls",
+  ]);
+
+  // Process data and extract available metrics (excluding pages metrics)
+  const { chartData, availableMetrics, metricOptions } = useMemo(() => {
+    if (!data?.daily_trend || data.daily_trend.length === 0) {
+      return { chartData: [], availableMetrics: [], metricOptions: [] };
+    }
+
+    // Collect all unique metric names, excluding pages metrics
+    const metricNamesSet = new Set();
+    data.daily_trend.forEach((item) => {
+      if (item.metrics) {
+        Object.keys(item.metrics).forEach((key) => {
+          if (!PAGES_METRICS.includes(key)) {
+            metricNamesSet.add(key);
+          }
+        });
+      }
+    });
+    const metricNames = Array.from(metricNamesSet).sort();
+
+    const transformed = data.daily_trend.map((item) => ({
+      date: item.date,
+      ...item.metrics,
+    }));
+
+    const options = metricNames.map((metric) => ({
+      label: formatMetricName(metric),
+      value: metric,
+    }));
+
+    return {
+      chartData: transformed,
+      availableMetrics: metricNames,
+      metricOptions: options,
+    };
+  }, [data]);
+
+  // Filter to only show selected metrics that exist
+  const metricsToShow = useMemo(() => {
+    return selectedMetrics.filter((m) => availableMetrics.includes(m));
+  }, [selectedMetrics, availableMetrics]);
+
+  if (loading) {
+    return (
+      <Card
+        title="Trend Analysis (Last 30 Days)"
+        className="metrics-chart-card"
+      >
+        <div className="metrics-loading">
+          <Spin />
+        </div>
+      </Card>
+    );
+  }
+
+  if (!chartData.length) {
+    return (
+      <Card
+        title="Trend Analysis (Last 30 Days)"
+        className="metrics-chart-card"
+      >
+        <Empty description="No data available" />
+      </Card>
+    );
+  }
+
+  // Filter dropdown menu items
+  const filterMenuItems = metricOptions.map((opt) => ({
+    key: opt.value,
+    label: opt.label,
+  }));
+
+  const handleFilterClick = ({ key }) => {
+    if (selectedMetrics.includes(key)) {
+      setSelectedMetrics(selectedMetrics.filter((m) => m !== key));
+    } else {
+      setSelectedMetrics([...selectedMetrics, key]);
+    }
+  };
+
+  // Card extra content with filter dropdown
+  const cardExtra =
+    availableMetrics.length > 1 ? (
+      <Dropdown
+        menu={{
+          items: filterMenuItems,
+          onClick: handleFilterClick,
+          selectable: true,
+          multiple: true,
+          selectedKeys: selectedMetrics,
+        }}
+        trigger={["click"]}
+      >
+        <Button icon={<FilterOutlined />} size="small">
+          Filter
+        </Button>
+      </Dropdown>
+    ) : null;
+
+  // Colors for trend metrics
+  const TREND_BAR_COLORS = {
+    documents_processed: "#faad14",
+    llm_calls: "#722ed1",
+    prompt_executions: "#52c41a",
+    deployed_api_requests: "#13c2c2",
+    llm_usage: "#eb2f96",
+    etl_pipeline_executions: "#fa8c16",
+    challenges: "#2f54eb",
+    summarization_calls: "#a0d911",
+  };
+
+  const getTrendColor = (metric, idx) =>
+    TREND_BAR_COLORS[metric] || TREND_COLORS[idx % TREND_COLORS.length];
+
+  return (
+    <Card
+      title="Trend Analysis (Last 30 Days)"
+      extra={cardExtra}
+      className="metrics-chart-card chart-card"
+    >
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height={280}>
+          <LineChart
+            data={chartData}
+            margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#f0f0f0"
+            />
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatDate}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+            />
+            <YAxis
+              tickFormatter={formatValue}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+              width={50}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            {metricsToShow.length > 1 && (
+              <Legend
+                formatter={(value) => (
+                  <span style={{ color: "#262626" }}>{value}</span>
+                )}
+              />
+            )}
+            {metricsToShow.map((metric, idx) => (
+              <Line
+                key={metric}
+                type="monotone"
+                dataKey={metric}
+                name={formatMetricName(metric)}
+                stroke={getTrendColor(metric, idx)}
+                strokeWidth={2}
+                dot={{ r: 3, strokeWidth: 2 }}
+                activeDot={{ r: 5 }}
+              />
+            ))}
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+TrendAnalysisChart.propTypes = {
+  data: PropTypes.shape({
+    daily_trend: PropTypes.arrayOf(
+      PropTypes.shape({
+        date: PropTypes.string,
+        metrics: PropTypes.object,
+      })
+    ),
+  }),
+  loading: PropTypes.bool,
+};
 
 MetricsChart.propTypes = {
   data: PropTypes.shape({
@@ -437,7 +872,6 @@ MetricsChart.propTypes = {
   }),
   loading: PropTypes.bool,
   title: PropTypes.string,
-  showArea: PropTypes.bool,
 };
 
 MultiSeriesChart.propTypes = {
@@ -457,14 +891,138 @@ MultiSeriesChart.propTypes = {
 
 MetricsBreakdown.propTypes = {
   data: PropTypes.shape({
-    totals: PropTypes.arrayOf(
+    daily_trend: PropTypes.arrayOf(
       PropTypes.shape({
-        metric_name: PropTypes.string.isRequired,
-        total_value: PropTypes.number,
+        date: PropTypes.string,
+        metrics: PropTypes.object,
       })
     ),
   }),
   loading: PropTypes.bool,
 };
 
-export { MetricsChart, MetricsBreakdown, MultiSeriesChart };
+// Priority order for metrics comparison display
+const COMPARISON_PRIORITY = [
+  "pages_processed",
+  "documents_processed",
+  "failed_pages",
+  "llm_calls",
+  "prompt_executions",
+  "deployed_api_requests",
+  "llm_usage",
+  "etl_pipeline_executions",
+];
+
+// Colors for progress bars - all blue for consistent UI, red for failed
+const METRIC_COLORS = {
+  pages_processed: "#1890ff",
+  documents_processed: "#1890ff",
+  failed_pages: "#ff4d4f",
+  llm_calls: "#1890ff",
+  prompt_executions: "#1890ff",
+  deployed_api_requests: "#1890ff",
+  llm_usage: "#1890ff",
+  etl_pipeline_executions: "#1890ff",
+  challenges: "#1890ff",
+  summarization_calls: "#1890ff",
+};
+
+/**
+ * Usage quota style component showing metrics with progress bars.
+ * Matches the reference design's "Usage Quota" section.
+ *
+ * @return {JSX.Element} The rendered usage quota component.
+ */
+function MetricsComparison({ data, loading }) {
+  // Process summary data for progress bars
+  const metricsData = useMemo(() => {
+    if (!data?.summary || data.summary.length === 0) {
+      return [];
+    }
+
+    // Sort by priority order
+    const sorted = [...data.summary].sort((a, b) => {
+      const aIndex = COMPARISON_PRIORITY.indexOf(a.metric_name);
+      const bIndex = COMPARISON_PRIORITY.indexOf(b.metric_name);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
+
+    // Find max value for percentage calculation
+    const max = Math.max(...sorted.map((m) => m.total_value || 0), 1);
+
+    return sorted.map((item) => ({
+      ...item,
+      displayName: formatMetricName(item.metric_name),
+      percent: Math.round(((item.total_value || 0) / max) * 100),
+      color: METRIC_COLORS[item.metric_name] || "#1890ff",
+    }));
+  }, [data]);
+
+  if (loading) {
+    return (
+      <Card title="Usage Summary" className="metrics-chart-card">
+        <div className="metrics-loading">
+          <Spin />
+        </div>
+      </Card>
+    );
+  }
+
+  if (!metricsData.length) {
+    return (
+      <Card title="Usage Summary" className="metrics-chart-card">
+        <Empty description="No usage data available" />
+      </Card>
+    );
+  }
+
+  return (
+    <Card title="Usage Summary" className="metrics-chart-card chart-card">
+      <div className="usage-quota-list">
+        {metricsData.map((metric) => (
+          <div key={metric.metric_name} className="usage-quota-item">
+            <div className="usage-quota-header">
+              <span className="usage-quota-label">{metric.displayName}</span>
+              <span className="usage-quota-value">
+                {formatValue(metric.total_value || 0)}
+              </span>
+            </div>
+            <Progress
+              percent={metric.percent}
+              showInfo={false}
+              strokeColor={metric.color}
+              trailColor="#f0f0f0"
+              size="small"
+            />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+MetricsComparison.propTypes = {
+  data: PropTypes.shape({
+    summary: PropTypes.arrayOf(
+      PropTypes.shape({
+        metric_name: PropTypes.string.isRequired,
+        total_value: PropTypes.number,
+        total_count: PropTypes.number,
+        average_value: PropTypes.number,
+      })
+    ),
+  }),
+  loading: PropTypes.bool,
+};
+
+export {
+  MetricsChart,
+  MetricsBreakdown,
+  MultiSeriesChart,
+  MetricsComparison,
+  PagesChart,
+  TrendAnalysisChart,
+};
