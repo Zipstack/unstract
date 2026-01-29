@@ -6,7 +6,7 @@ import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
-function Header({ type, openAddModal }) {
+function Header({ type, openAddModal, enableSearch, onSearch, setSearchList }) {
   const { posthogDeploymentEventText, setPostHogCustomEvent } =
     usePostHogEvents();
 
@@ -37,6 +37,9 @@ function Header({ type, openAddModal }) {
     <ToolNavBar
       title={deploymentsStaticContent[type].title}
       CustomButtons={customButtons}
+      enableSearch={enableSearch}
+      onSearch={onSearch}
+      setSearchList={setSearchList}
     />
   );
 }
@@ -44,6 +47,9 @@ function Header({ type, openAddModal }) {
 Header.propTypes = {
   type: PropTypes.string.isRequired,
   openAddModal: PropTypes.func.isRequired,
+  enableSearch: PropTypes.bool,
+  onSearch: PropTypes.func,
+  setSearchList: PropTypes.func,
 };
 
 export { Header };
