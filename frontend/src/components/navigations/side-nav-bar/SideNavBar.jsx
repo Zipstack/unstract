@@ -168,6 +168,20 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     localStorage.setItem("sidebarPinned", JSON.stringify(isPinned));
   }, [isPinned]);
 
+  // Clear pending collapse timeout on unmount or when isPinned changes
+  useEffect(() => {
+    if (isPinned && collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+    return () => {
+      if (collapseTimeoutRef.current) {
+        clearTimeout(collapseTimeoutRef.current);
+        collapseTimeoutRef.current = null;
+      }
+    };
+  }, [isPinned]);
+
   const handleMouseEnter = () => {
     if (collapseTimeoutRef.current) {
       clearTimeout(collapseTimeoutRef.current);
