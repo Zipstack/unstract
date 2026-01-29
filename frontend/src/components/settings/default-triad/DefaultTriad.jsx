@@ -160,10 +160,6 @@ function DefaultTriad() {
     };
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "Default triad setting saved successfully",
-        });
         fetchData();
         setIsSubmitEnabled(false);
       })

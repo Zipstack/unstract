@@ -105,10 +105,6 @@ function ToolSettings({ type }) {
     updateMasterList((currentList) =>
       currentList.filter((row) => row?.id !== adapterId)
     );
-    setAlertDetails({
-      type: "success",
-      content: "Successfully deleted",
-    });
   };
 
   const handleDelete = (_event, adapter) => {
@@ -201,10 +197,6 @@ function ToolSettings({ type }) {
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Sharing settings updated successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update sharing"));

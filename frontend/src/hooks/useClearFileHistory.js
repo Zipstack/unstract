@@ -20,13 +20,9 @@ const useClearFileHistory = () => {
   /**
    * Clear file history for a workflow
    * @param {string} workflowId - The workflow ID
-   * @param {string} successMessage - Custom success message
    * @return {Promise<boolean>} - Returns true if successful, false otherwise
    */
-  const clearFileHistory = async (
-    workflowId,
-    successMessage = "File history cleared successfully"
-  ) => {
+  const clearFileHistory = async (workflowId) => {
     if (!workflowId) {
       setAlertDetails({
         type: "error",
@@ -38,12 +34,7 @@ const useClearFileHistory = () => {
     setIsClearing(true);
 
     try {
-      const res = await workflowServiceInstance.clearFileMarkers(workflowId);
-      const msg = res?.data || successMessage;
-      setAlertDetails({
-        type: "success",
-        content: msg,
-      });
+      await workflowServiceInstance.clearFileMarkers(workflowId);
       return true;
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to clear file history"));
