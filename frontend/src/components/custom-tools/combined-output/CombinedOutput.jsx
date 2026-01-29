@@ -234,7 +234,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
 CombinedOutput.propTypes = {
   docId: PropTypes.string.isRequired,
   setFilledFields: PropTypes.func,
-  selectedPrompts: PropTypes.object.isRequired,
+  selectedPrompts: PropTypes.object,
 };
 
 export { CombinedOutput };

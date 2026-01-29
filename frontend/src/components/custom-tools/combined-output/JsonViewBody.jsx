@@ -35,7 +35,7 @@ function JsonViewBody({
 JsonViewBody.propTypes = {
   activeKey: PropTypes.string.isRequired,
   selectedProfile: PropTypes.string,
-  llmProfiles: PropTypes.string,
+  llmProfiles: PropTypes.array,
   combinedOutput: PropTypes.object,
   isLoading: PropTypes.bool.isRequired,
 };
