@@ -523,7 +523,18 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
         </div>
       </div>
       <Tooltip title={isPinned ? "Unpin sidebar" : "Keep expanded"}>
-        <div className="sidebar-pin-container" onClick={togglePin}>
+        <div
+          className="sidebar-pin-container"
+          onClick={togglePin}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              togglePin();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
           {isPinned ? (
             <PushpinFilled className="sidebar-pin-icon pinned" />
           ) : (
