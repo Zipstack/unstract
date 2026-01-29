@@ -20,20 +20,20 @@ let SinglePassToggleSwitch;
 let CloneButton;
 let PromptShareButton;
 try {
-  SinglePassToggleSwitch =
-    require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+  const mod = await import("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch");
+  SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
 try {
-  PromptShareButton =
-    require("../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx").PromptShareButton;
+  const mod = await import("../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx");
+  PromptShareButton = mod.PromptShareButton;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
 try {
-  CloneButton =
-    require("../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx").CloneButton;
+  const mod = await import("../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx");
+  CloneButton = mod.CloneButton;
 } catch {
   // The variable will remain undefined if the component is not available.
 }

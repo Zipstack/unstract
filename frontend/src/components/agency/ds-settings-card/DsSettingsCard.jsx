@@ -69,15 +69,17 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
   };
 
   useEffect(() => {
-    try {
-      const inputOption =
-        require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
-      if (flags.app_deployment && inputOption) {
-        setUpdatedInputoptions(inputOption);
+    const loadPlugin = async () => {
+      try {
+        const mod = await import("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions");
+        if (flags.app_deployment && mod.appDeploymentInputOption) {
+          setUpdatedInputoptions(mod.appDeploymentInputOption);
+        }
+      } catch {
+        // The component will remain null of it is not available
       }
-    } catch {
-      // The component will remain null of it is not available
-    }
+    };
+    loadPlugin();
   }, []);
 
   useEffect(() => {

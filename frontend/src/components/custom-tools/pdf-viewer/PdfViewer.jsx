@@ -11,9 +11,9 @@ import { PDF_WORKER_URL } from "../../../helpers/pdfWorkerConfig";
 
 let RenderHighlights;
 try {
-  RenderHighlights =
-    require("../../../plugins/pdf-highlight/RenderHighlights").RenderHighlights;
-} catch (err) {
+  const mod = await import("../../../plugins/pdf-highlight/RenderHighlights");
+  RenderHighlights = mod.RenderHighlights;
+} catch {
   // Do nothing, no plugin will be loaded.
 }
 

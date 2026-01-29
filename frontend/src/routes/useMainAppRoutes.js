@@ -42,67 +42,69 @@ let UnstractSubscriptionCheck;
 let AgenticPromptStudio;
 
 try {
-  RequirePlatformAdmin =
-    require("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx").RequirePlatformAdmin;
-  PlatformAdminPage =
-    require("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx").PlatformAdminPage;
-} catch (err) {
+  const mod1 = await import("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx");
+  RequirePlatformAdmin = mod1.RequirePlatformAdmin;
+  const mod2 = await import("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx");
+  PlatformAdminPage = mod2.PlatformAdminPage;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  AgenticPromptStudio =
-    require("../plugins/agentic-prompt-studio").AgenticPromptStudio;
-} catch (err) {
+  const mod = await import("../plugins/agentic-prompt-studio");
+  AgenticPromptStudio = mod.AgenticPromptStudio;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  AppDeployments =
-    require("../plugins/app-deployment/AppDeployments.jsx").AppDeployments;
-  ChatAppPage =
-    require("../plugins/app-deployment/chat-app/ChatAppPage.jsx").ChatAppPage;
-  ChatAppLayout =
-    require("../plugins/app-deployment/chat-app/ChatAppLayout.jsx").ChatAppLayout;
-} catch (err) {
+  const mod1 = await import("../plugins/app-deployment/AppDeployments.jsx");
+  AppDeployments = mod1.AppDeployments;
+  const mod2 = await import("../plugins/app-deployment/chat-app/ChatAppPage.jsx");
+  ChatAppPage = mod2.ChatAppPage;
+  const mod3 = await import("../plugins/app-deployment/chat-app/ChatAppLayout.jsx");
+  ChatAppLayout = mod3.ChatAppLayout;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  ManualReviewSettings =
-    require("../plugins/manual-review/settings/Settings.jsx").ManualReviewSettings;
-} catch (err) {
+  const mod = await import("../plugins/manual-review/settings/Settings.jsx");
+  ManualReviewSettings = mod.ManualReviewSettings;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  OnboardProduct =
-    require("../plugins/onboard-product/OnboardProduct.jsx").OnboardProduct;
-  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper.js").PRODUCT_NAMES;
-} catch (err) {
+  const mod1 = await import("../plugins/onboard-product/OnboardProduct.jsx");
+  OnboardProduct = mod1.OnboardProduct;
+  const mod2 = await import("../plugins/llm-whisperer/helper.js");
+  PRODUCT_NAMES = mod2.PRODUCT_NAMES;
+} catch {
   // Do nothing.
 }
 
 try {
-  ManualReviewPage =
-    require("../plugins/manual-review/page/ManualReviewPage.jsx").ManualReviewPage;
-  ReviewLayout =
-    require("../plugins/manual-review/review-layout/ReviewLayout.jsx").ReviewLayout;
-  SimpleManualReviewPage =
-    require("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx").SimpleManualReviewPage;
-  Manage = require("../plugins/manual-review/page/manage/Manage.jsx").Manage;
-} catch (err) {
+  const mod1 = await import("../plugins/manual-review/page/ManualReviewPage.jsx");
+  ManualReviewPage = mod1.ManualReviewPage;
+  const mod2 = await import("../plugins/manual-review/review-layout/ReviewLayout.jsx");
+  ReviewLayout = mod2.ReviewLayout;
+  const mod3 = await import("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx");
+  SimpleManualReviewPage = mod3.SimpleManualReviewPage;
+  const mod4 = await import("../plugins/manual-review/page/manage/Manage.jsx");
+  Manage = mod4.Manage;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  UnstractSubscriptionPage =
-    require("../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx").UnstractSubscriptionPage;
-  UnstractUsagePage =
-    require("../plugins/unstract-subscription/pages/UnstractUsagePage.jsx").UnstractUsagePage;
-  UnstractSubscriptionCheck =
-    require("../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx").UnstractSubscriptionCheck;
-} catch (err) {
+  const mod1 = await import("../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx");
+  UnstractSubscriptionPage = mod1.UnstractSubscriptionPage;
+  const mod2 = await import("../plugins/unstract-subscription/pages/UnstractUsagePage.jsx");
+  UnstractUsagePage = mod2.UnstractUsagePage;
+  const mod3 = await import("../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx");
+  UnstractSubscriptionCheck = mod3.UnstractSubscriptionCheck;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 

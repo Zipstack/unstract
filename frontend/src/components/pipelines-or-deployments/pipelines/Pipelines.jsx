@@ -56,6 +56,7 @@ import {
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import * as fetchExecutionLogsModule from "../log-modal/fetchExecutionLogs.js";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -74,7 +75,7 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
-  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const { fetchExecutionLogs } = fetchExecutionLogsModule;
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
   const pipelineApiService = pipelineService();

@@ -15,9 +15,9 @@ import { useCustomToolStore } from "../../../store/custom-tool-store";
 
 let HeaderPublic;
 try {
-  HeaderPublic =
-    require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
-} catch (err) {
+  const mod = await import("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx");
+  HeaderPublic = mod.HeaderPublic;
+} catch {
   // Do nothing if plugins are not loaded.
 }
 

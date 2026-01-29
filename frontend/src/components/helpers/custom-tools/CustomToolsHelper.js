@@ -12,9 +12,9 @@ import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 let shareManagerToolSource;
 try {
-  shareManagerToolSource =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").shareManagerToolSource;
-} catch (err) {
+  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  shareManagerToolSource = mod.shareManagerToolSource;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 function CustomToolsHelper() {

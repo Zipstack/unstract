@@ -23,8 +23,8 @@ import { TABLE } from "./constants";
 
 let TableExtractionSettingsBtn;
 try {
-  TableExtractionSettingsBtn =
-    require("../../../plugins/prompt-card/TableExtractionSettingsBtn").TableExtractionSettingsBtn;
+  const mod = await import("../../../plugins/prompt-card/TableExtractionSettingsBtn");
+  TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
 } catch {
   // The component will remain null of it is not available
 }

@@ -15,8 +15,8 @@ import { PdfViewer } from "../pdf-viewer/PdfViewer";
 
 let publicDocumentApi;
 try {
-  publicDocumentApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  publicDocumentApi = mod.publicDocumentApi;
 } catch {
   // The component will remain null if it is not available
 }

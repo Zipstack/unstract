@@ -27,10 +27,9 @@ import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 let publicOutputsApi;
 let publicAdapterApi;
 try {
-  publicOutputsApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
-  publicAdapterApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
+  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  publicOutputsApi = mod.publicOutputsApi;
+  publicAdapterApi = mod.publicAdapterApi;
 } catch {
   // The component will remain null of it is not available
 }

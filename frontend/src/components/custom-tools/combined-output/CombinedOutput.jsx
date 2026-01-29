@@ -22,10 +22,10 @@ import { JsonView } from "./JsonView";
 let TableView;
 let promptOutputApiSps;
 try {
-  TableView =
-    require("../../../plugins/simple-prompt-studio/TableView").TableView;
-  promptOutputApiSps =
-    require("../../../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+  const tvMod = await import("../../../plugins/simple-prompt-studio/TableView");
+  TableView = tvMod.TableView;
+  const helperMod = await import("../../../plugins/simple-prompt-studio/helper");
+  promptOutputApiSps = helperMod.promptOutputApiSps;
 } catch {
   // The component will remain null if it is not available
 }
@@ -34,12 +34,10 @@ let publicOutputsApi;
 let publicAdapterApi;
 let publicDefaultOutputApi;
 try {
-  publicOutputsApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
-  publicAdapterApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicAdapterApi;
-  publicDefaultOutputApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDefaultOutputApi;
+  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  publicOutputsApi = mod.publicOutputsApi;
+  publicAdapterApi = mod.publicAdapterApi;
+  publicDefaultOutputApi = mod.publicDefaultOutputApi;
 } catch {
   // The component will remain null if it is not available
 }

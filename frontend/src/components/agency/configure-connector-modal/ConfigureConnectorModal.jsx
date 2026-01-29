@@ -29,7 +29,7 @@ let RuleEngine;
 let ruleEngineTabs;
 
 try {
-  const ruleEnginePlugin = require("../../../plugins/manual-review/rule-engine");
+  const ruleEnginePlugin = await import("../../../plugins/manual-review/rule-engine");
   RuleEngine = ruleEnginePlugin.RuleEngine;
   ruleEngineTabs = ruleEnginePlugin.ruleEngineTabs;
 } catch {

@@ -41,9 +41,9 @@ import config from "../../../config";
 
 let TrialDaysInfo;
 try {
-  TrialDaysInfo =
-    require("../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx").default;
-} catch (err) {
+  const mod = await import("../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx");
+  TrialDaysInfo = mod.default;
+} catch {
   // Plugin not found
 }
 
@@ -51,23 +51,23 @@ let selectedProductStore;
 let selectedProduct;
 
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
 
 let PlatformDropdown;
 try {
-  PlatformDropdown =
-    require("../../../plugins/platform-dropdown/PlatformDropDown.jsx").PlatformDropdown;
-} catch (err) {
+  const mod = await import("../../../plugins/platform-dropdown/PlatformDropDown.jsx");
+  PlatformDropdown = mod.PlatformDropdown;
+} catch {
   // Plugin not found
 }
 
 let WhispererLogo;
 try {
-  WhispererLogo =
-    require("../../../plugins/assets/llmWhisperer/index.js").WhispererLogo;
+  const mod = await import("../../../plugins/assets/llmWhisperer/index.js");
+  WhispererLogo = mod.WhispererLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -102,7 +102,8 @@ const CustomLogo = ({ onClick, className }) => {
 };
 let APIHubLogo;
 try {
-  APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
+  const mod = await import("../../../plugins/assets/verticals/index.js");
+  APIHubLogo = mod.APIHubLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -112,12 +113,12 @@ let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 let UnstractPricingMenuLink;
 try {
-  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
-  UNSTRACT_SUBSCRIPTION_PLANS =
-    require("../../../plugins/unstract-subscription/helper/constants").UNSTRACT_SUBSCRIPTION_PLANS;
-  UnstractPricingMenuLink =
-    require("../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx").UnstractPricingMenuLink;
-} catch (err) {
+  unstractSubscriptionPlanStore = await import("../../../plugins/store/unstract-subscription-plan-store");
+  const constantsMod = await import("../../../plugins/unstract-subscription/helper/constants");
+  UNSTRACT_SUBSCRIPTION_PLANS = constantsMod.UNSTRACT_SUBSCRIPTION_PLANS;
+  const menuMod = await import("../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx");
+  UnstractPricingMenuLink = menuMod.UnstractPricingMenuLink;
+} catch {
   // Plugin unavailable.
 }
 
