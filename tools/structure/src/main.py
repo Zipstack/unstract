@@ -655,11 +655,9 @@ class StructureTool(BaseTool):
             extraction_response = responder.agentic_extraction(payload=payload)
 
             # Step 4: Process response from agentic extraction
-            # Cloud endpoint now returns prompt studio compatible format:
-            # {output: {}, metadata: {}, highlights: [], highlight_data: {}}
             extracted_data = extraction_response.get(SettingsKeys.OUTPUT, {})
 
-            # Remove _source_refs from extracted data (cleanup for API responses)
+            # Remove _source_refs from extracted data
             try:
                 extracted_data = self._remove_source_refs(extracted_data)
             except Exception as e:
@@ -667,27 +665,19 @@ class StructureTool(BaseTool):
                     f"Warning: Failed to remove _source_refs: {e}. "
                     "Proceeding with original data."
                 )
-                # Continue with original extracted_data if removal fails
 
             # Build final structured output in prompt studio format
-            # API deployments expect: {output: {}, metadata: {}}
             structured_output = {
                 SettingsKeys.OUTPUT: extracted_data,
                 SettingsKeys.METADATA: {
+                    **extraction_response.get(SettingsKeys.METADATA, {}),
                     SettingsKeys.FILE_NAME: self.source_file_name,
                     "project_id": project_id,
                     "schema_version": schema_version,
                     "prompt_version": prompt_version,
                     "document_id": self.file_execution_id,
-                    # Merge additional metadata from extraction response
-                    **extraction_response.get(SettingsKeys.METADATA, {}),
                 },
             }
-
-            # Note: highlight data is already in metadata from extraction response
-            # No need to add separately as it's merged via **extraction_response.get(METADATA)
-
-            # Update GUI with results
             output_log = (
                 f"## Agentic Extraction Complete\n"
                 f"Successfully extracted data from '{self.source_file_name}'\n"
