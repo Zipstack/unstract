@@ -350,10 +350,12 @@ INSTALLED_APPS = list(SHARED_APPS) + [
 ]
 DEFAULT_MODEL_BACKEND = "django.contrib.auth.backends.ModelBackend"
 GOOGLE_MODEL_BACKEND = "social_core.backends.google.GoogleOAuth2"
+AZUREAD_TENANT_MODEL_BACKEND = "social_core.backends.azuread_tenant.AzureADTenantOAuth2"
 
 AUTHENTICATION_BACKENDS = (
     DEFAULT_MODEL_BACKEND,
     GOOGLE_MODEL_BACKEND,
+    AZUREAD_TENANT_MODEL_BACKEND,
 )
 
 PUBLIC_ORG_ID = "public"
@@ -564,6 +566,9 @@ SOCIAL_AUTH_TRAILING_SLASH = False
 for key in [
     "GOOGLE_OAUTH2_KEY",
     "GOOGLE_OAUTH2_SECRET",
+    "AZUREAD_TENANT_OAUTH2_KEY",
+    "AZUREAD_TENANT_OAUTH2_SECRET",
+    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
@@ -590,6 +595,17 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
     "prompt": "consent",
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
+
+# Social Auth: Azure AD Tenant OAuth2 (SharePoint/OneDrive)
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_RESOURCE = "https://graph.microsoft.com/"
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SCOPE = [
+    "openid",
+    "profile",
+    "offline_access",
+    "https://graph.microsoft.com/Files.ReadWrite.All",
+    "https://graph.microsoft.com/Sites.ReadWrite.All",
+]
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_AUTH_EXTRA_ARGUMENTS: dict[str, str] = {}
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

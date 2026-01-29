@@ -290,6 +290,8 @@ function RjsfFormLayout({
             showErrorList={false}
             onChange={handleChange}
             templates={templates}
+            omitExtraData={true}
+            liveOmit={true}
           >
             {children || <></>}
           </Form>
