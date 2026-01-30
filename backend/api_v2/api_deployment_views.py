@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
+from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
@@ -190,6 +191,8 @@ class DeploymentExecution(views.APIView):
 
 
 class APIDeploymentViewSet(viewsets.ModelViewSet):
+    pagination_class = CustomPagination
+
     def get_permissions(self) -> list[Any]:
         if self.action in ["destroy", "partial_update", "update"]:
             return [IsOwner()]
@@ -202,6 +205,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:
             queryset = queryset.filter(workflow_id=workflow_filter)
+
+        # Search by display name
+        search = self.request.query_params.get("search", None)
+        if search:
+            queryset = queryset.filter(display_name__icontains=search)
 
         return queryset
 
