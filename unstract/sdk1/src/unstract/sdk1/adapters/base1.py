@@ -351,6 +351,10 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Create a copy to avoid mutating the original metadata
         result_metadata = metadata_copy.copy()
 
+        # Check if this is a pro model (pro models cannot have thinking disabled with budget=0)
+        model_name = metadata_copy.get("model", "").lower()
+        is_pro_model = "pro" in model_name
+
         if enable_thinking:
             if has_thinking_config:
                 # Preserve existing thinking config
@@ -363,8 +367,11 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
                     thinking_config["budget_tokens"] = budget_tokens
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
+        elif is_pro_model:
+            # Pro models don't allow disabling thinking with budget_tokens=0
+            # Omit the thinking config entirely to use default behavior
+            pass
         else:
-            # Vertex AI requires explicit disabled state with budget 0
             result_metadata["thinking"] = {"type": "disabled", "budget_tokens": 0}
 
         # Handle safety settings
@@ -423,8 +430,9 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
             if field in result_metadata and field not in validated_data:
                 validated_data[field] = result_metadata[field]
 
-        # Always add thinking config to final result (either enabled or disabled)
-        validated_data["thinking"] = result_metadata["thinking"]
+        # Only add thinking config when thinking is enabled
+        if "thinking" in result_metadata:
+            validated_data["thinking"] = result_metadata["thinking"]
 
         return validated_data
 
