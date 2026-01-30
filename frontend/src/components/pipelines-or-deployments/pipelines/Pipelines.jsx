@@ -229,15 +229,11 @@ function Pipelines({ type }) {
       data: body,
     };
 
-    axiosPrivate(requestOptions)
-      .then(() => {
-        getPipelineList(pagination.current, pagination.pageSize, searchTerm);
-      })
-      .catch((err) => {
-        // Revert on failure
-        handleLoaderInTableData({ active: !value }, id);
-        setAlertDetails(handleException(err));
-      });
+    axiosPrivate(requestOptions).catch((err) => {
+      // Revert optimistic update on failure
+      handleLoaderInTableData({ active: !value }, id);
+      setAlertDetails(handleException(err));
+    });
   };
 
   const deletePipeline = () => {
@@ -441,15 +437,7 @@ function Pipelines({ type }) {
         // Pipeline type for status pill navigation
         pipelineType: type,
       }),
-    [
-      sessionDetails,
-      isClearingFileHistory,
-      location,
-      type,
-      pagination.current,
-      pagination.pageSize,
-      searchTerm,
-    ]
+    [sessionDetails, isClearingFileHistory, location, type]
   );
 
   // Using the custom hook to manage modal state

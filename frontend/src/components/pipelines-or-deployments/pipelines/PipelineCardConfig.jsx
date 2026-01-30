@@ -86,12 +86,13 @@ function StatusPills({ statuses = [], executionType, pipelineId }) {
 
   return (
     <div className="status-badges-container">
-      {statuses.map((run) => {
+      {statuses.map((run, index) => {
         const config = getStatusConfig(run.status);
         const isClickable = run.execution_id && executionType;
         const hasFileCounts = run.successful_files > 0 || run.failed_files > 0;
-        // Use execution_id for unique key, fallback to timestamp
-        const key = run.execution_id || run.timestamp || config.label;
+        // Use execution_id for unique key, fallback to timestamp, then index
+        const key =
+          run.execution_id || run.timestamp || `${config.label}-${index}`;
         const tooltipContent = (
           <div className="status-tooltip-content">
             {hasFileCounts && (

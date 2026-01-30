@@ -7,12 +7,13 @@ from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.key_helper import KeyHelper
 from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -45,6 +46,10 @@ class PipelineViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
     pagination_class = CustomPagination
+    filter_backends = [OrderingFilter]
+    ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
+    # Note: Default ordering with nulls_last is applied in get_queryset()
+    # DRF's ordering attribute doesn't support nulls_last natively
 
     def get_permissions(self) -> list[Any]:
         if self.action in ["destroy", "partial_update", "update"]:
@@ -71,6 +76,13 @@ class PipelineViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get("search", None)
         if search:
             queryset = queryset.filter(pipeline_name__icontains=search)
+
+        # Apply default ordering: last_run_time desc (nulls last), then created_at desc
+        # This ensures pipelines with recent runs appear first, never-run pipelines at end
+        queryset = queryset.order_by(
+            F("last_run_time").desc(nulls_last=True),
+            F("created_at").desc(),
+        )
 
         return queryset
 

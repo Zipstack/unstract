@@ -430,19 +430,19 @@
 
 .status-badge.success {
   background: #f6ffed;
-  color: #389e0d;
+  color: #52c41a;
   border: 1px solid #b7eb8f;
 }
 
 .status-badge.error {
   background: #fff2f0;
-  color: #cf1322;
+  color: #ff4d4f;
   border: 1px solid #ffccc7;
 }
 
 .status-badge.executing {
   background: #fffbe6;
-  color: #874d00;
+  color: #d48806;
   border: 1px solid #ffe58f;
 }
 
@@ -466,7 +466,7 @@
 
 .status-badge.partial_success {
   background: #fff7e6;
-  color: #ad4e00;
+  color: #fa8c16;
   border: 1px solid #ffd591;
 }
 
@@ -474,8 +474,6 @@
 button.status-badge.status-badge-clickable {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  background: inherit;
-  border: inherit;
   font-family: inherit;
   outline: none;
 }
