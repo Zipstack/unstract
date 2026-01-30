@@ -54,7 +54,7 @@ RUN mkdir -p /usr/share/nginx/html/config && \
 RUN sed -i 's|</head>|    <script src="/config/runtime-config.js"></script>\n  </head>|' /usr/share/nginx/html/index.html
 
 # Copy the environment script
-COPY ../frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
+COPY frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
 RUN chmod +x /docker-entrypoint.d/40-env.sh
 
 EXPOSE 80
