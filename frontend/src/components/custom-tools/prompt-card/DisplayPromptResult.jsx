@@ -1,6 +1,6 @@
+import { InfoCircleFilled } from "@ant-design/icons";
 import { Space, Spin, Typography } from "antd";
 import PropTypes from "prop-types";
-import { InfoCircleFilled } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 
 import {
@@ -54,8 +54,8 @@ function DisplayPromptResult({
       displayPromptResult(
         output,
         isFormattingRequired,
-        details?.enable_highlight
-      )
+        details?.enable_highlight,
+      ),
     );
   }, [
     promptRunStatus,
@@ -127,7 +127,7 @@ function DisplayPromptResult({
     confidenceData,
     wordConfidenceData,
     key,
-    keyPath
+    keyPath,
   ) => {
     if (highlightData?.[key]) {
       const shouldUseWordConfidence =
@@ -149,7 +149,7 @@ function DisplayPromptResult({
         const wordConfidence = getNestedValue(wordConfidenceData, key);
         if (wordConfidence && typeof wordConfidence === "object") {
           const values = Object.values(wordConfidence).filter(
-            (v) => typeof v === "number"
+            (v) => typeof v === "number",
           );
           if (values.length > 0) {
             const sum = values.reduce((acc, val) => acc + val, 0);
@@ -160,7 +160,7 @@ function DisplayPromptResult({
 
       if (confidence === undefined) {
         const extractedConfidence = extractConfidenceFromHighlightData(
-          highlightData[key]
+          highlightData[key],
         );
         confidence = extractedConfidence ?? confidenceData?.[key];
       }
@@ -169,7 +169,7 @@ function DisplayPromptResult({
         highlightData[key],
         promptDetails?.prompt_id,
         profileId,
-        confidence
+        confidence,
       );
       setSelectedKey(keyPath);
     }
@@ -185,7 +185,7 @@ function DisplayPromptResult({
     wordConfidenceData,
     indent = 0,
     path = "",
-    isTable = false
+    isTable = false,
   ) => {
     if (isTable) {
       const stringData =
@@ -234,7 +234,7 @@ function DisplayPromptResult({
                   wordConfidenceData?.[index],
                   indent + 1,
                   `${path}[${index}]`,
-                  isTable
+                  isTable,
                 )}
                 {index < data.length - 1 ? "," : ""}
               </div>
@@ -271,7 +271,7 @@ function DisplayPromptResult({
                           confidenceData,
                           wordConfidenceData,
                           key,
-                          newPath
+                          newPath,
                         );
                       }
                     }}
@@ -283,7 +283,7 @@ function DisplayPromptResult({
                       wordConfidenceData?.[key],
                       indent + 1,
                       newPath,
-                      isTable
+                      isTable,
                     )}
                   </Typography.Text>
                   {index < array.length - 1 ? "," : ""}
@@ -309,7 +309,7 @@ function DisplayPromptResult({
           wordConfidenceData,
           0,
           "",
-          isTable
+          isTable,
         )
       ) : (
         <TextResult
@@ -341,7 +341,7 @@ const TextResult = ({
     // Try word confidence first
     if (wordConfidenceData && typeof wordConfidenceData === "object") {
       const values = Object.values(wordConfidenceData).filter(
-        (v) => typeof v === "number"
+        (v) => typeof v === "number",
       );
       if (values.length > 0) {
         const sum = values.reduce((acc, val) => acc + val, 0);

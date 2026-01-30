@@ -1,28 +1,27 @@
 import { Route } from "react-router-dom";
-
-import { OnBoardPage } from "../pages/OnBoardPage.jsx";
-import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
-import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
-import { SettingsPage } from "../pages/SettingsPage.jsx";
-import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
-import { UsersPage } from "../pages/UsersPage.jsx";
-import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
-import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
-import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
-import { ProfilePage } from "../pages/ProfilePage.jsx";
-import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
-import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
-import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
-import { AgencyPage } from "../pages/AgencyPage.jsx";
-import { CustomTools } from "../pages/CustomTools.jsx";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
-import { ToolIdePage } from "../pages/ToolIdePage.jsx";
-import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
-import { LogsPage } from "../pages/LogsPage.jsx";
+import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
+import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
+import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
+import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
+import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
+import { AgencyPage } from "../pages/AgencyPage.jsx";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
+import { CustomTools } from "../pages/CustomTools.jsx";
+import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
+import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
+import { LogsPage } from "../pages/LogsPage.jsx";
+import { OnBoardPage } from "../pages/OnBoardPage.jsx";
+import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { ProfilePage } from "../pages/ProfilePage.jsx";
+import { SettingsPage } from "../pages/SettingsPage.jsx";
+import { ToolIdePage } from "../pages/ToolIdePage.jsx";
+import { ToolsSettingsPage } from "../pages/ToolsSettingsPage.jsx";
 import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
+import { UsersPage } from "../pages/UsersPage.jsx";
+import { WorkflowsPage } from "../pages/WorkflowsPage.jsx";
 
 let RequirePlatformAdmin;
 let PlatformAdminPage;
@@ -42,9 +41,13 @@ let UnstractSubscriptionCheck;
 let AgenticPromptStudio;
 
 try {
-  const mod1 = await import("../plugins/frictionless-onboard/RequirePlatformAdmin.jsx");
+  const mod1 = await import(
+    "../plugins/frictionless-onboard/RequirePlatformAdmin.jsx"
+  );
   RequirePlatformAdmin = mod1.RequirePlatformAdmin;
-  const mod2 = await import("../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx");
+  const mod2 = await import(
+    "../plugins/frictionless-onboard/platform-admin-page/PlatformAdminPage.jsx"
+  );
   PlatformAdminPage = mod2.PlatformAdminPage;
 } catch {
   // Do nothing, Not-found Page will be triggered.
@@ -60,9 +63,13 @@ try {
 try {
   const mod1 = await import("../plugins/app-deployment/AppDeployments.jsx");
   AppDeployments = mod1.AppDeployments;
-  const mod2 = await import("../plugins/app-deployment/chat-app/ChatAppPage.jsx");
+  const mod2 = await import(
+    "../plugins/app-deployment/chat-app/ChatAppPage.jsx"
+  );
   ChatAppPage = mod2.ChatAppPage;
-  const mod3 = await import("../plugins/app-deployment/chat-app/ChatAppLayout.jsx");
+  const mod3 = await import(
+    "../plugins/app-deployment/chat-app/ChatAppLayout.jsx"
+  );
   ChatAppLayout = mod3.ChatAppLayout;
 } catch {
   // Do nothing, Not-found Page will be triggered.
@@ -85,11 +92,17 @@ try {
 }
 
 try {
-  const mod1 = await import("../plugins/manual-review/page/ManualReviewPage.jsx");
+  const mod1 = await import(
+    "../plugins/manual-review/page/ManualReviewPage.jsx"
+  );
   ManualReviewPage = mod1.ManualReviewPage;
-  const mod2 = await import("../plugins/manual-review/review-layout/ReviewLayout.jsx");
+  const mod2 = await import(
+    "../plugins/manual-review/review-layout/ReviewLayout.jsx"
+  );
   ReviewLayout = mod2.ReviewLayout;
-  const mod3 = await import("../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx");
+  const mod3 = await import(
+    "../plugins/manual-review/page/simple/SimpleManualReviewPage.jsx"
+  );
   SimpleManualReviewPage = mod3.SimpleManualReviewPage;
   const mod4 = await import("../plugins/manual-review/page/manage/Manage.jsx");
   Manage = mod4.Manage;
@@ -98,11 +111,17 @@ try {
 }
 
 try {
-  const mod1 = await import("../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx");
+  const mod1 = await import(
+    "../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx"
+  );
   UnstractSubscriptionPage = mod1.UnstractSubscriptionPage;
-  const mod2 = await import("../plugins/unstract-subscription/pages/UnstractUsagePage.jsx");
+  const mod2 = await import(
+    "../plugins/unstract-subscription/pages/UnstractUsagePage.jsx"
+  );
   UnstractUsagePage = mod2.UnstractUsagePage;
-  const mod3 = await import("../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx");
+  const mod3 = await import(
+    "../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx"
+  );
   UnstractSubscriptionCheck = mod3.UnstractSubscriptionCheck;
 } catch {
   // Do nothing, Not-found Page will be triggered.

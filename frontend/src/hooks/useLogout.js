@@ -4,8 +4,8 @@ import { usePostHog } from "posthog-js/react";
 
 import { getSessionData } from "../helpers/GetSessionData";
 import { getBaseUrl } from "../helpers/GetStaticData";
-import { useSessionStore } from "../store/session-store";
 import { useAlertStore } from "../store/alert-store";
+import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "./useExceptionHandler";
 
 function useLogout() {

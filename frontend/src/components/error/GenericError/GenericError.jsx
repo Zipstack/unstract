@@ -25,7 +25,7 @@ function GenericError() {
       },
       USF: {
         title: `We're unable to create your account since an account for your organization ${searchParams.get(
-          "domain"
+          "domain",
         )} already exists.`,
         subtitle:
           "You'll need to contact the admin of your organization's account to get access or you'll need to use a different email address to sign up.",

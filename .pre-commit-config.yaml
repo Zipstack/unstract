@@ -76,6 +76,15 @@ repos:
   #       pass_filenames: false
   #       additional_dependencies: []
 
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check
+        entry: bash -c 'cd frontend && npx @biomejs/biome check --write "${@#frontend/}"' --
+        language: system
+        files: ^frontend/src/
+        types_or: [javascript, jsx, ts, tsx, json]
+
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.42.0
     hooks:

@@ -1,10 +1,11 @@
+import "prismjs";
 import "prismjs/components/prism-json";
 import "prismjs/plugins/line-numbers/prism-line-numbers.css";
 import "prismjs/plugins/line-numbers/prism-line-numbers.js";
 import "prismjs/themes/prism.css";
-import { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
 import PropTypes from "prop-types";
+import { useCallback, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 
 import {
   displayPromptResult,
@@ -24,7 +25,9 @@ let promptOutputApiSps;
 try {
   const tvMod = await import("../../../plugins/simple-prompt-studio/TableView");
   TableView = tvMod.TableView;
-  const helperMod = await import("../../../plugins/simple-prompt-studio/helper");
+  const helperMod = await import(
+    "../../../plugins/simple-prompt-studio/helper"
+  );
   promptOutputApiSps = helperMod.promptOutputApiSps;
 } catch {
   // The component will remain null if it is not available
@@ -34,7 +37,9 @@ let publicOutputsApi;
 let publicAdapterApi;
 let publicDefaultOutputApi;
 try {
-  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
   publicOutputsApi = mod.publicOutputsApi;
   publicAdapterApi = mod.publicAdapterApi;
   publicDefaultOutputApi = mod.publicDefaultOutputApi;
@@ -57,7 +62,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
   const [activeKey, setActiveKey] = useState(
-    singlePassExtractMode ? defaultLlmProfile : "0"
+    singlePassExtractMode ? defaultLlmProfile : "0",
   );
   const [selectedProfile, setSelectedProfile] = useState(defaultLlmProfile);
   const [filteredCombinedOutput, setFilteredCombinedOutput] = useState({});
@@ -82,7 +87,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         setAdapterData(getLLMModelNamesForProfiles(llmProfiles, adapterList));
       } catch (err) {
         setAlertDetails(
-          handleException(err, "Failed to fetch adapter information")
+          handleException(err, "Failed to fetch adapter information"),
         );
       }
     };
@@ -120,7 +125,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
               const outputDetails = data.find(
                 (outputValue) =>
                   outputValue?.prompt_id === item?.prompt_id &&
-                  outputValue?.profile_manager === profileManager
+                  outputValue?.profile_manager === profileManager,
               );
 
               acc[item?.prompt_key] =
@@ -134,7 +139,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         }
       } catch (err) {
         setAlertDetails(
-          handleException(err, "Failed to generate combined output")
+          handleException(err, "Failed to generate combined output"),
         );
       } finally {
         setIsOutputLoading(false);
@@ -154,7 +159,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         null,
         singlePassExtractMode,
         docId,
-        selectedProfile || defaultLlmProfile
+        selectedProfile || defaultLlmProfile,
       );
       if (activeKey === "0") {
         url = publicDefaultOutputApi(id, docId);
@@ -190,19 +195,19 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
       setActiveKey(key);
       setSelectedProfile(key === "0" ? defaultLlmProfile : key);
     },
-    [defaultLlmProfile]
+    [defaultLlmProfile],
   );
 
   // Filter combined output based on selectedPrompts
   useEffect(() => {
     const filteredCombinedOutput = Object.fromEntries(
       Object.entries(combinedOutput).filter(
-        ([key]) => !selectedPrompts || selectedPrompts[key]
-      )
+        ([key]) => !selectedPrompts || selectedPrompts[key],
+      ),
     );
 
     const filledFields = Object.values(filteredCombinedOutput).filter(
-      (value) => value === 0 || (value && value.length > 0)
+      (value) => value === 0 || (value && value.length > 0),
     ).length;
 
     if (setFilledFields) {

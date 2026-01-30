@@ -1,27 +1,27 @@
 import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Row,
-  Space,
-  Typography,
-  Image,
-} from "antd";
-import {
-  UserOutlined,
-  UserSwitchOutlined,
-  LogoutOutlined,
   DownloadOutlined,
   FileProtectOutlined,
   LikeOutlined,
   LoginOutlined,
+  LogoutOutlined,
   SettingOutlined,
+  UserOutlined,
+  UserSwitchOutlined,
 } from "@ant-design/icons";
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import {
+  Alert,
+  Button,
+  Col,
+  Dropdown,
+  Image,
+  Row,
+  Space,
+  Typography,
+} from "antd";
 import axios from "axios";
 import PropTypes from "prop-types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
@@ -34,14 +34,16 @@ import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
 import "./TopNavBar.css";
+import config from "../../../config";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import config from "../../../config";
 
 let TrialDaysInfo;
 try {
-  const mod = await import("../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx");
+  const mod = await import(
+    "../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx"
+  );
   TrialDaysInfo = mod.default;
 } catch {
   // Plugin not found
@@ -51,14 +53,18 @@ let selectedProductStore;
 let selectedProduct;
 
 try {
-  selectedProductStore = await import("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import(
+    "../../../plugins/store/select-product-store.js"
+  );
 } catch {
   // Ignore if hook not available
 }
 
 let PlatformDropdown;
 try {
-  const mod = await import("../../../plugins/platform-dropdown/PlatformDropDown.jsx");
+  const mod = await import(
+    "../../../plugins/platform-dropdown/PlatformDropDown.jsx"
+  );
   PlatformDropdown = mod.PlatformDropdown;
 } catch {
   // Plugin not found
@@ -113,10 +119,16 @@ let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 let UnstractPricingMenuLink;
 try {
-  unstractSubscriptionPlanStore = await import("../../../plugins/store/unstract-subscription-plan-store");
-  const constantsMod = await import("../../../plugins/unstract-subscription/helper/constants");
+  unstractSubscriptionPlanStore = await import(
+    "../../../plugins/store/unstract-subscription-plan-store"
+  );
+  const constantsMod = await import(
+    "../../../plugins/unstract-subscription/helper/constants"
+  );
   UNSTRACT_SUBSCRIPTION_PLANS = constantsMod.UNSTRACT_SUBSCRIPTION_PLANS;
-  const menuMod = await import("../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx");
+  const menuMod = await import(
+    "../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx"
+  );
   UnstractPricingMenuLink = menuMod.UnstractPricingMenuLink;
 } catch {
   // Plugin unavailable.
@@ -139,7 +151,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   if (selectedProductStore) {
     selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state?.selectedProduct
+      (state) => state?.selectedProduct,
     );
   }
 
@@ -147,7 +159,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
       unstractSubscriptionPlan =
         unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
-          (state) => state?.unstractSubscriptionPlan
+          (state) => state?.unstractSubscriptionPlan,
         );
     }
   } catch (error) {
@@ -177,7 +189,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     setShowOnboardBanner(
       !onboardCompleted(sessionDetails?.adapters) &&
         !isReviewer &&
-        !isSupervisor
+        !isSupervisor,
     );
     setApproverStatus(isAdmin || isSupervisor);
     setReviewerStatus(isReviewer);

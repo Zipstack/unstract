@@ -1,7 +1,6 @@
 import PropTypes from "prop-types";
-
-import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 function JsonViewBody({
   activeKey,

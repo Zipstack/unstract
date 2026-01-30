@@ -1,14 +1,13 @@
 import {
   CheckCircleOutlined,
   DeleteOutlined,
+  InfoCircleOutlined,
   LoadingOutlined,
   MoreOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
-  InfoCircleOutlined,
 } from "@ant-design/icons";
-import { useEffect, useState, useRef } from "react";
 import {
   Button,
   Checkbox,
@@ -21,19 +20,22 @@ import {
 } from "antd";
 import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
 
 import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ExpandCardBtn } from "./ExpandCardBtn";
 
 let PromptRunBtnSps;
 try {
-  const mod = await import("../../../plugins/simple-prompt-studio/PromptRunBtnSps");
+  const mod = await import(
+    "../../../plugins/simple-prompt-studio/PromptRunBtnSps"
+  );
   PromptRunBtnSps = mod.PromptRunBtnSps;
 } catch {
   // The component will remain 'undefined' it is not available
@@ -82,11 +84,11 @@ function Header({
         promptId,
         "enable_postprocessing_webhook",
         true,
-        true
+        true,
       ).catch(() => {
         setStateFn(!value);
       });
-    }, 300)
+    }, 300),
   );
 
   const debouncedWebhookUrlChangeRef = useRef(
@@ -96,11 +98,11 @@ function Header({
         promptId,
         "postprocessing_webhook_url",
         true,
-        true
+        true,
       ).catch(() => {
         setStateFn(promptDetails?.postprocessing_webhook_url || "");
       });
-    }, 500)
+    }, 500),
   );
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
@@ -114,7 +116,7 @@ function Header({
     handleChange(check, promptDetails?.prompt_id, "active", true, true).catch(
       () => {
         setIsDisablePrompt(!check);
-      }
+      },
     );
   };
   const handleRequiredChange = (value) => {
@@ -125,7 +127,7 @@ function Header({
       promptDetails?.prompt_id,
       "required",
       true,
-      true
+      true,
     ).catch(() => {
       setRequired(promptDetails?.required || null); // Rollback state in case of error
     });
@@ -138,7 +140,7 @@ function Header({
       newValue,
       promptDetails?.prompt_id,
       handleChange,
-      setWebhookEnabled
+      setWebhookEnabled,
     );
   };
 
@@ -148,7 +150,7 @@ function Header({
       value,
       promptDetails?.prompt_id,
       handleChange,
-      setWebhookUrl
+      setWebhookUrl,
     );
   };
   useEffect(() => {
@@ -351,7 +353,7 @@ function Header({
                 onClick={() =>
                   handleRunBtnClick(
                     PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ONE_DOC,
-                    selectedDoc?.document_id
+                    selectedDoc?.document_id,
                   )
                 }
                 disabled={
@@ -374,7 +376,7 @@ function Header({
                 className="prompt-card-action-button"
                 onClick={() =>
                   handleRunBtnClick(
-                    PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS
+                    PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS,
                   )
                 }
                 disabled={
