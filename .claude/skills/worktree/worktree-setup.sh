@@ -3,7 +3,7 @@
 # Worktree Setup Script for Unstract
 # Copies necessary config files from source repo to a new worktree
 #
-# Usage: ./scripts/worktree-setup.sh <target_worktree_path> [source_repo_path]
+# Usage: ./worktree-setup.sh <target_worktree_path> [source_repo_path]
 #
 
 set -e
@@ -23,7 +23,7 @@ if [ "$1" = "-h" ] || [ "$1" = "--help" ]; then
 fi
 
 TARGET_PATH="$1"
-SOURCE_PATH="${2:-$(cd "$(dirname "$0")/.." && pwd)}"
+SOURCE_PATH="${2:-$(cd "$(dirname "$0")/../../.." && pwd)}"
 
 if [ -z "$TARGET_PATH" ]; then
     show_usage 1
@@ -94,9 +94,59 @@ for file in "${CONFIG_FILES[@]}"; do
 done
 
 echo ""
-echo "Done! Copied: $copied, Skipped: $skipped, Missing: $missing"
+echo "Env files: Copied=$copied, Skipped=$skipped, Missing=$missing"
+echo ""
 
-if [ $missing -gt 0 ]; then
-    echo ""
-    echo "Note: Missing files may need to be created manually or may not exist in your setup."
+# ============================================================
+# Step 2: Copy gitignored backend settings
+# ============================================================
+echo "Copying gitignored backend settings..."
+
+SETTINGS_DIR="backend/backend/settings"
+TRACKED_SETTINGS=("__init__.py" "base.py" "dev.py" "test.py")
+
+settings_copied=0
+settings_skipped=0
+
+if [ -d "$SOURCE_PATH/$SETTINGS_DIR" ]; then
+    for file in "$SOURCE_PATH/$SETTINGS_DIR"/*.py; do
+        [ -f "$file" ] || continue
+        filename=$(basename "$file")
+
+        # Skip tracked files (these come from git)
+        skip=false
+        for tracked in "${TRACKED_SETTINGS[@]}"; do
+            if [ "$filename" = "$tracked" ]; then
+                skip=true
+                break
+            fi
+        done
+        $skip && continue
+
+        # Copy gitignored settings file
+        dest="$TARGET_PATH/$SETTINGS_DIR/$filename"
+        mkdir -p "$(dirname "$dest")"
+
+        if [ -f "$dest" ]; then
+            if ! diff -q "$file" "$dest" > /dev/null 2>&1; then
+                cp "$file" "$dest"
+                echo "  [updated] $filename"
+                settings_copied=$((settings_copied + 1))
+            else
+                echo "  [skipped] $filename (unchanged)"
+                settings_skipped=$((settings_skipped + 1))
+            fi
+        else
+            cp "$file" "$dest"
+            echo "  [copied]  $filename"
+            settings_copied=$((settings_copied + 1))
+        fi
+    done
+else
+    echo "  [warning] $SETTINGS_DIR not found in source"
 fi
+
+echo ""
+echo "Settings: Copied=$settings_copied, Skipped=$settings_skipped"
+echo ""
+echo "Done!"

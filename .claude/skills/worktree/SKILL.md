@@ -3,146 +3,94 @@ name: worktree
 description: Creates git worktrees for isolated development. Use when user wants to "create a worktree", "start a new feature branch", "work on a fix in isolation", or needs a parallel development environment.
 ---
 
-# Git Worktree Management Skill
+# Git Worktree Skill
 
-Create isolated git worktrees for parallel development with automatic config handling.
+Create isolated worktrees for parallel development. Ends by providing commands to continue in the new worktree.
 
 ## Workflow
 
-### Phase 1: Create Worktree
-
 1. **Detect repo info**
    ```bash
-   # Get repo name from git remote or directory
    REPO_NAME=$(basename -s .git $(git config --get remote.origin.url) 2>/dev/null || basename $(pwd))
    SOURCE_REPO=$(git rev-parse --show-toplevel)
    ```
 
 2. **Parse user description**
-   - Extract work type from description: `fix`, `feat`, or `misc`
-   - If user says "fix", "bug", "patch" → type = `fix`
-   - If user says "feature", "add", "implement" → type = `feat`
-   - Otherwise → type = `misc`
-   - Convert remaining description to kebab-case, max 30 chars total for branch name
+   - Type: `fix` (bug, patch, fix) | `feat` (feature, add, implement) | `misc` (default)
+   - Branch: `{type}/{kebab-description}` (max 30 chars)
+   - Folder: `{type}-{kebab-description}`
+   - Path: `{SOURCE_REPO}/../{REPO_NAME}-worktrees/{folder}/`
+   - Version: `{kebab-description}` (for docker image tag)
 
-3. **Generate names**
-   - Branch name: `{type}/{kebab-description}`
-   - Worktree folder: `{type}-{kebab-description}`
-   - Worktree path: `{SOURCE_REPO}/../{REPO_NAME}-worktrees/{worktree-folder}/`
-
-4. **Create worktree**
+3. **Create worktree**
    ```bash
    git fetch origin main
-   WORKTREE_PATH="{source}/../{repo}-worktrees/{folder}"
    mkdir -p "$(dirname "$WORKTREE_PATH")"
    git worktree add -b "{branch}" "$WORKTREE_PATH" origin/main
    ```
 
-5. **Copy config files**
+4. **Copy config files**
+   - **unstract repo:** Run `"$SOURCE_REPO/.claude/skills/worktree/worktree-setup.sh" "$WORKTREE_PATH" "$SOURCE_REPO"`
+   - **Other repos:** Ask user which config files to copy, then copy them
 
-   **If repo is `unstract`:**
-   Run the setup script from the source repo:
-   ```bash
-   "$SOURCE_REPO/scripts/worktree-setup.sh" "$WORKTREE_PATH" "$SOURCE_REPO"
+5. **Detect services from request** (unstract only)
+
+   Match keywords in user's request to services:
+
+   | Keywords | Services |
+   |----------|----------|
+   | frontend, UI, react, component | frontend |
+   | backend, API, django | backend |
+   | platform, adapter, LLM | platform-service |
+   | prompt, studio | prompt-service |
+   | worker, celery, task | backend (includes workers) |
+   | x2text, extraction | x2text-service |
+
+   Default if unclear: `backend frontend`
+
+6. **Print summary with commands**
+
    ```
-
-   **If repo is NOT unstract:**
-   Ask user: "Which config files should I copy to the new worktree? (e.g., .env files, config files)"
-   Then copy specified files from source to worktree.
-
-6. **Switch to worktree**
-   ```bash
-   cd "$WORKTREE_PATH"
-   ```
-
-7. **Print summary**
-   ```
-   Worktree created successfully!
+   Worktree created!
 
    Branch: {branch}
    Path: {worktree_path}
 
-   To switch back to main repo: cd {source_repo}
-   To remove worktree later: git worktree remove {worktree_path}
+   ─────────────────────────────────────────────────────────
+   Continue in new worktree and paste your prompt:
+
+   cd {worktree_path} && claude
+
+   {user_request_slightly_made_better_for_new_agent_to_understand}
+   ─────────────────────────────────────────────────────────
+   Build & run services:
+
+   cd {worktree_path}/docker && \
+   VERSION={version} docker compose -f docker-compose.yaml -f compose.override.yaml build {services} && \
+   VERSION={version} docker compose -f docker-compose.yaml -f compose.override.yaml watch {services}
+   ─────────────────────────────────────────────────────────
+
+   Cleanup later: git worktree remove {worktree_path}
    ```
 
----
-
-### Phase 2: Build & Run (End of Development)
-
-When user is done with changes and wants to build/run:
-
-1. **Detect changed services** (unstract only)
-   ```bash
-   git diff --name-only origin/main
-   ```
-
-2. **Map directories to services**
-
-   | Changed Directory | Docker Services |
-   |-------------------|-----------------|
-   | `frontend/` | frontend |
-   | `backend/` | backend, worker, worker-logging, worker-file-processing, worker-file-processing-callback |
-   | `platform-service/` | platform-service |
-   | `prompt-service/` | prompt-service |
-   | `runner/` | runner |
-   | `workers/` | worker-api-deployment-v2, worker-callback-v2, worker-file-processing-v2, worker-general-v2, worker-notification-v2, worker-log-consumer-v2, worker-scheduler-v2 |
-   | `x2text-service/` | x2text-service |
-   | `unstract/` | backend, platform-service, prompt-service |
-   | `docker/dockerfiles/*.Dockerfile` | Service matching dockerfile name |
-
-3. **Offer to build changed services**
-   ```bash
-   cd docker
-   VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml build {services}
-   ```
-
-4. **Offer to run services**
-
-   With workers-v2 profile:
-   ```bash
-   VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml --profile workers-v2 watch
-   ```
-
-   Without workers-v2 (v1 workers):
-   ```bash
-   VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml watch
-   ```
-
----
+   IMPORTANT: Escape any quotes in `{user_request}` for shell safety.
 
 ## Examples
 
-**User:** "create a worktree for fixing the login bug"
-- Type: `fix`
-- Branch: `fix/login-bug`
-- Folder: `fix-login-bug`
+**User:** "worktree for fixing login validation in frontend"
+- Branch: `fix/login-validation`
+- Version: `login-validation`
+- Services: `frontend`
 
-**User:** "worktree for adding user notifications"
-- Type: `feat`
-- Branch: `feat/user-notifications`
-- Folder: `feat-user-notifications`
+**User:** "create worktree to add workflow export API"
+- Branch: `feat/workflow-export-api`
+- Version: `workflow-export-api`
+- Services: `backend`
 
-**User:** "new worktree for refactoring"
-- Type: `misc`
-- Branch: `misc/refactoring`
-- Folder: `misc-refactoring`
+## Reference
 
----
-
-## Useful Commands Reference
-
-**List worktrees:**
 ```bash
-git worktree list
-```
-
-**Remove worktree:**
-```bash
-git worktree remove {path}
-```
-
-**Prune stale worktrees:**
-```bash
-git worktree prune
+git worktree list          # List worktrees
+git worktree remove {path} # Remove worktree
+git worktree prune         # Prune stale entries
 ```
