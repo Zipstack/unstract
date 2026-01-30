@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import { SearchOutlined } from "@ant-design/icons";
 import {
   Button,
@@ -11,19 +10,21 @@ import {
   Tag,
   Typography,
 } from "antd";
+import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { TABLE } from "./constants";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
-import { TABLE } from "./constants";
 
 let TableExtractionSettingsBtn;
 try {
-  const mod = await import("../../../plugins/prompt-card/TableExtractionSettingsBtn");
+  const mod = await import(
+    "../../../plugins/prompt-card/TableExtractionSettingsBtn"
+  );
   TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
 } catch {
   // The component will remain null of it is not available
@@ -91,7 +92,7 @@ function PromptCardItems({
 
   useEffect(() => {
     setTableSettings(
-      allTableSettings.find((item) => item.prompt_id === promptId) || {}
+      allTableSettings.find((item) => item.prompt_id === promptId) || {},
     );
   }, [allTableSettings]);
 
@@ -107,7 +108,7 @@ function PromptCardItems({
     keys.forEach((key) => {
       const adapterName = profile[key.key];
       const adapter = adapters?.find(
-        (adapter) => adapter?.adapter_name === adapterName
+        (adapter) => adapter?.adapter_name === adapterName,
       );
       if (adapter) {
         result.conf[key.label] =
@@ -165,7 +166,7 @@ function PromptCardItems({
           if (a?.isDefault) return -1; // Default profile comes first
           if (b?.isDefault) return 1;
           return 0;
-        })
+        }),
     );
   };
 

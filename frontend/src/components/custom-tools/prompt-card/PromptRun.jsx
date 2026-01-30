@@ -1,8 +1,8 @@
-import { useEffect } from "react";
 import Cookies from "js-cookie";
-import { usePromptRunQueueStore } from "../../../store/prompt-run-queue-store";
+import { useEffect } from "react";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { usePromptRunQueueStore } from "../../../store/prompt-run-queue-store";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 const MAX_ACTIVE_APIS = 5;
@@ -17,14 +17,14 @@ function PromptRun() {
   const activeApis = usePromptRunQueueStore((state) => state.activeApis);
   const queue = usePromptRunQueueStore((state) => state.queue);
   const setPromptRunQueue = usePromptRunQueueStore(
-    (state) => state.setPromptRunQueue
+    (state) => state.setPromptRunQueue,
   );
   const { runPrompt, syncPromptRunApisAndStatus } = usePromptRun();
   const promptRunStatus = usePromptRunStatusStore(
-    (state) => state.promptRunStatus
+    (state) => state.promptRunStatus,
   );
   const updateCustomTool = useCustomToolStore(
-    (state) => state.updateCustomTool
+    (state) => state.updateCustomTool,
   );
 
   useEffect(() => {

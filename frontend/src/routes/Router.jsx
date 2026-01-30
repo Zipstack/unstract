@@ -3,14 +3,14 @@ import { Route, Routes } from "react-router-dom";
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
 import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
+import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
 import { LandingPage } from "../pages/LandingPage.jsx";
-import { SetOrgPage } from "../pages/SetOrgPage.jsx";
-import { useMainAppRoutes } from "./useMainAppRoutes.js";
-import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
-import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { SetOrgPage } from "../pages/SetOrgPage.jsx";
+import { ToolIdePage } from "../pages/ToolIdePage.jsx";
+import { useMainAppRoutes } from "./useMainAppRoutes.js";
 
 let PublicPromptStudioHelper;
 
@@ -24,19 +24,29 @@ let SelectProduct;
 let UnstractSubscriptionEndPage;
 let CustomPlanCheckoutPage;
 try {
-  const spsHelperMod = await import("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx");
+  const spsHelperMod = await import(
+    "../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx"
+  );
   SimplePromptStudioHelper = spsHelperMod.SimplePromptStudioHelper;
-  const spsMod = await import("../plugins/simple-prompt-studio/SimplePromptStudio.jsx");
+  const spsMod = await import(
+    "../plugins/simple-prompt-studio/SimplePromptStudio.jsx"
+  );
   SimplePromptStudio = spsMod.SimplePromptStudio;
-  const spsLandingMod = await import("../plugins/simple-prompt-studio/SpsLanding.jsx");
+  const spsLandingMod = await import(
+    "../plugins/simple-prompt-studio/SpsLanding.jsx"
+  );
   SpsLanding = spsLandingMod.SpsLanding;
-  const spsUploadMod = await import("../plugins/simple-prompt-studio/SpsUpload.jsx");
+  const spsUploadMod = await import(
+    "../plugins/simple-prompt-studio/SpsUpload.jsx"
+  );
   SpsUpload = spsUploadMod.SpsUpload;
 } catch {
   // Do nothing, Not-found Page will be triggered.
 }
 try {
-  const mod = await import("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js");
+  const mod = await import(
+    "../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js"
+  );
   PublicPromptStudioHelper = mod.PublicPromptStudioHelper;
 } catch {
   // Do nothing, Not-found Page will be triggered.
@@ -66,21 +76,27 @@ try {
 }
 
 try {
-  const mod = await import("../plugins/unstract-subscription/pages/UnstractSubscriptionEndPage.jsx");
+  const mod = await import(
+    "../plugins/unstract-subscription/pages/UnstractSubscriptionEndPage.jsx"
+  );
   UnstractSubscriptionEndPage = mod.UnstractSubscriptionEndPage;
 } catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  const mod = await import("../plugins/unstract-subscription/pages/CustomPlanCheckoutPage.jsx");
+  const mod = await import(
+    "../plugins/unstract-subscription/pages/CustomPlanCheckoutPage.jsx"
+  );
   CustomPlanCheckoutPage = mod.CustomPlanCheckoutPage;
 } catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  const mod = await import("../plugins/payment-successful/PaymentSuccessful.jsx");
+  const mod = await import(
+    "../plugins/payment-successful/PaymentSuccessful.jsx"
+  );
   PaymentSuccessful = mod.PaymentSuccessful;
 } catch {
   // Do nothing, Not-found Page will be triggered.
@@ -88,7 +104,9 @@ try {
 
 let LlmWhispererCustomCheckoutPage;
 try {
-  const mod = await import("../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx");
+  const mod = await import(
+    "../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx"
+  );
   LlmWhispererCustomCheckoutPage = mod.LlmWhispererCustomCheckoutPage;
 } catch {
   // NOSONAR

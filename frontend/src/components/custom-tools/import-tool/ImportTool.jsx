@@ -1,5 +1,5 @@
 import { InboxOutlined } from "@ant-design/icons";
-import { Modal, Upload, Typography, message } from "antd";
+import { Modal, message, Typography, Upload } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
 

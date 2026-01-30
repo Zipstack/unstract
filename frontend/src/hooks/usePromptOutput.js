@@ -15,7 +15,9 @@ try {
 }
 let publicOutputsApi;
 try {
-  const mod = await import("../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  const mod = await import(
+    "../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
   publicOutputsApi = mod.publicOutputsApi;
 } catch {
   // The component will remain null of it is not available
@@ -35,7 +37,7 @@ const usePromptOutput = () => {
     docId,
     llmProfile,
     isSinglePass,
-    isIncludeSinglePass = true
+    isIncludeSinglePass = true,
   ) => {
     let key = `${promptId}__${docId}__${llmProfile}`;
 
@@ -107,7 +109,7 @@ const usePromptOutput = () => {
         docId,
         llmProfile,
         isSinglePass,
-        true
+        true,
       );
       outputs[key] = {
         runId: item?.run_id,
@@ -130,7 +132,7 @@ const usePromptOutput = () => {
       if (item?.is_single_pass_extract) {
         const tokenUsageId = generatePromptOutputKeyForSinglePass(
           llmProfile,
-          docId
+          docId,
         );
         tokenUsageDetails[tokenUsageId] = item?.token_usage;
         tokenUsageDetails[
@@ -148,7 +150,7 @@ const usePromptOutput = () => {
         docId,
         llmProfile,
         false,
-        false
+        false,
       );
       tokenUsageDetails[tokenUsageId] = item?.token_usage;
     });
@@ -190,14 +192,14 @@ const usePromptOutput = () => {
     docId = null,
     promptId = null,
     llmProfile = null,
-    isSinglePassExtract = false
+    isSinglePassExtract = false,
   ) => {
     const url = getUrl(
       toolId,
       docId,
       promptId,
       llmProfile,
-      isSinglePassExtract
+      isSinglePassExtract,
     );
     const requestOptions = {
       method: "GET",

@@ -1,22 +1,23 @@
 import { BarChartOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { Button, Space, Tooltip } from "antd";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useEffect, useRef, useState, useCallback, useMemo } from "react";
-
-import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useAlertStore } from "../../../store/alert-store";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { RunAllPrompts } from "../prompt-card/RunAllPrompts";
 import { PromptsReorderModal } from "../prompts-reorder/PromptsReorderModal";
-import { useSessionStore } from "../../../store/session-store";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useAlertStore } from "../../../store/alert-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 // Import single pass related components
 let RunSinglePassBtn;
 try {
-  const mod = await import("../../../plugins/run-single-pass-btn/RunSinglePassBtn");
+  const mod = await import(
+    "../../../plugins/run-single-pass-btn/RunSinglePassBtn"
+  );
   RunSinglePassBtn = mod.RunSinglePassBtn;
 } catch {
   // The variable will remain undefined if the component is not available
@@ -25,7 +26,9 @@ try {
 // Import simple prompt studio related components
 let AddPromptBtn;
 try {
-  const mod = await import("../../../plugins/simple-prompt-studio/AddPromptBtn");
+  const mod = await import(
+    "../../../plugins/simple-prompt-studio/AddPromptBtn"
+  );
   AddPromptBtn = mod.AddPromptBtn;
 } catch {
   // The variable will remain undefined if the component is not available
@@ -64,7 +67,7 @@ function ToolsMainActionBtns() {
 
   const tokenUsageId = useMemo(
     () => `single_pass__${defaultLlmProfile}__${selectedDoc?.document_id}`,
-    [defaultLlmProfile, selectedDoc?.document_id]
+    [defaultLlmProfile, selectedDoc?.document_id],
   );
 
   const handleOutputAnalyzerBtnClick = useCallback(() => {

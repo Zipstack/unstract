@@ -3,11 +3,11 @@ import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { ConfigureDs } from "../configure-ds/ConfigureDs";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 
 let transformLlmWhispererJsonSchema;
 let LLMW_V2_ID;
@@ -15,13 +15,21 @@ let PLAN_TYPES;
 let unstractSubscriptionPlanStore;
 let llmWhipererAdapterSchema;
 try {
-  const schemaMod = await import("../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema");
+  const schemaMod = await import(
+    "../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema"
+  );
   transformLlmWhispererJsonSchema = schemaMod.transformLlmWhispererJsonSchema;
   LLMW_V2_ID = schemaMod.LLMW_V2_ID;
-  const constantsMod = await import("../../../plugins/unstract-subscription/helper/constants");
+  const constantsMod = await import(
+    "../../../plugins/unstract-subscription/helper/constants"
+  );
   PLAN_TYPES = constantsMod.PLAN_TYPES;
-  unstractSubscriptionPlanStore = await import("../../../plugins/store/unstract-subscription-plan-store");
-  llmWhipererAdapterSchema = await import("../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js");
+  unstractSubscriptionPlanStore = await import(
+    "../../../plugins/store/unstract-subscription-plan-store"
+  );
+  llmWhipererAdapterSchema = await import(
+    "../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js"
+  );
 } catch {
   // Ignore if not available
 }
@@ -57,7 +65,7 @@ function AddSource({
   let planType;
   if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
     planType = unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
-      (state) => state?.unstractSubscriptionPlan?.planType
+      (state) => state?.unstractSubscriptionPlan?.planType,
     );
   }
 

@@ -29,7 +29,9 @@ let RuleEngine;
 let ruleEngineTabs;
 
 try {
-  const ruleEnginePlugin = await import("../../../plugins/manual-review/rule-engine");
+  const ruleEnginePlugin = await import(
+    "../../../plugins/manual-review/rule-engine"
+  );
   RuleEngine = ruleEnginePlugin.RuleEngine;
   ruleEngineTabs = ruleEnginePlugin.ruleEngineTabs;
 } catch {
@@ -87,7 +89,7 @@ function ConfigureConnectorModal({
   const setUpdatedTabOptions = (tabOption) => {
     setTabItems((prevTabOptions) => {
       const existingIndex = prevTabOptions.findIndex(
-        (opt) => opt?.key === tabOption?.key
+        (opt) => opt?.key === tabOption?.key,
       );
       if (existingIndex === -1) {
         // Add new tab option
@@ -183,7 +185,7 @@ function ConfigureConnectorModal({
       setShowAddSourceModal(true);
     } else {
       const selectedConnector = availableConnectors.find(
-        (conn) => conn.value === value
+        (conn) => conn.value === value,
       );
       if (selectedConnector?.connector) {
         setConnDetails(selectedConnector.connector);
@@ -195,7 +197,7 @@ function ConfigureConnectorModal({
             {
               info: `Selected a connector`,
               connector_name: selectedConnector.connector.connector_name,
-            }
+            },
           );
         } catch (err) {
           // If an error occurs while setting custom posthog event, ignore it and continue
@@ -372,7 +374,7 @@ function ConfigureConnectorModal({
     if (hasConnectorChanged) {
       if (initialConnectorId && availableConnectors.length > 0) {
         const originalConnector = availableConnectors.find(
-          (conn) => conn.value === initialConnectorId
+          (conn) => conn.value === initialConnectorId,
         );
         if (originalConnector?.connector) {
           setConnDetails(originalConnector.connector);
@@ -483,7 +485,7 @@ function ConfigureConnectorModal({
     if (!connDetails?.id) return undefined;
 
     const selectedConnector = availableConnectors.find(
-      (conn) => conn.value === connDetails.id
+      (conn) => conn.value === connDetails.id,
     );
 
     return (
@@ -520,7 +522,7 @@ function ConfigureConnectorModal({
         )}
       </>
     ),
-    [addNewOption, handleConnectorSelect]
+    [addNewOption, handleConnectorSelect],
   );
 
   return (
@@ -576,7 +578,7 @@ function ConfigureConnectorModal({
                       value: connDetails.id,
                       label: renderConnectorLabel(
                         connDetails,
-                        availableConnectors
+                        availableConnectors,
                       ),
                     }
                   : undefined

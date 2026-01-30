@@ -1,4 +1,3 @@
-import { Button, Drawer, Menu, Space, Typography } from "antd";
 import {
   ArrowLeftOutlined,
   FilePdfOutlined,
@@ -6,16 +5,18 @@ import {
   LeftOutlined,
   RightOutlined,
 } from "@ant-design/icons";
-import { useNavigate, useParams } from "react-router-dom";
+import { Button, Drawer, Menu, Space, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useMemo, useCallback, useState } from "react";
-
-import { useSessionStore } from "../../../store/session-store";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 
 let HeaderPublic;
 try {
-  const mod = await import("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx");
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx"
+  );
   HeaderPublic = mod.HeaderPublic;
 } catch {
   // Do nothing if plugins are not loaded.
@@ -51,7 +52,7 @@ function OutputAnalyzerHeader({
         key: docIndex.toString(),
         label: doc?.document_name,
       })),
-    [docs]
+    [docs],
   );
 
   const handleNavigate = useCallback(() => {

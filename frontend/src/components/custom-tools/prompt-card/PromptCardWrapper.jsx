@@ -1,12 +1,11 @@
 import PropTypes from "prop-types";
 import { memo } from "react";
-
+import { promptType } from "../../../helpers/GetStaticData";
+import usePromptRun from "../../../hooks/usePromptRun";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 import { NotesCard } from "../notes-card/NotesCard";
 import { PromptCard } from "./PromptCard";
-import { promptType } from "../../../helpers/GetStaticData";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import usePromptRun from "../../../hooks/usePromptRun";
-import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 const PromptCardWrapper = memo(function PromptCardWrapper({
   item,
@@ -23,7 +22,7 @@ const PromptCardWrapper = memo(function PromptCardWrapper({
   const { isSimplePromptStudio } = useCustomToolStore();
   const { handlePromptRunRequest } = usePromptRun();
   const promptRunStatus = usePromptRunStatusStore(
-    (state) => state?.promptRunStatus?.[item?.prompt_id] || {}
+    (state) => state?.promptRunStatus?.[item?.prompt_id] || {},
   );
 
   return (

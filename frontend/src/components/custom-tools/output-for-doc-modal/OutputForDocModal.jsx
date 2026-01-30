@@ -1,33 +1,34 @@
-import { Button, Modal, Table, Tabs, Typography } from "antd";
-import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
 import {
   CheckCircleFilled,
   CloseCircleFilled,
   InfoCircleFilled,
 } from "@ant-design/icons";
-import { useNavigate, useParams } from "react-router-dom";
+import { Button, Modal, Table, Tabs, Typography } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
-
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import "./OutputForDocModal.css";
 import {
   displayPromptResult,
   getDocIdFromKey,
   getLLMModelNamesForProfiles,
 } from "../../../helpers/GetStaticData";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 let publicOutputsApi;
 let publicAdapterApi;
 try {
-  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
   publicOutputsApi = mod.publicOutputsApi;
   publicAdapterApi = mod.publicAdapterApi;
 } catch {
@@ -105,7 +106,7 @@ function OutputForDocModal({
 
     // Find the index of the selected document within the list
     const index = docs.findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
 
     // If the selected document exists in the list and is not already at the top (index 0)
@@ -140,7 +141,7 @@ function OutputForDocModal({
       updatedPromptOutput,
       docId,
       key,
-      index
+      index,
     );
 
     if (index > -1) {
@@ -152,7 +153,7 @@ function OutputForDocModal({
 
   const findPromptOutputIndex = (updatedPromptOutput, docId) => {
     return updatedPromptOutput.findIndex(
-      (promptOutput) => promptOutput?.document_manager === docId
+      (promptOutput) => promptOutput?.document_manager === docId,
     );
   };
 
@@ -160,7 +161,7 @@ function OutputForDocModal({
     updatedPromptOutput,
     docId,
     key,
-    index
+    index,
   ) => {
     let promptOutputInstance = {};
 
@@ -198,7 +199,7 @@ function OutputForDocModal({
         promptId,
         singlePassExtractMode,
         null,
-        profile
+        profile,
       );
     }
     const requestOptions = {
@@ -216,7 +217,7 @@ function OutputForDocModal({
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to loaded the prompt results")
+          handleException(err, "Failed to loaded the prompt results"),
         );
       })
       .finally(() => {

@@ -1,7 +1,7 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
+import React from "react";
+import ReactDOM from "react-dom/client";
 
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
@@ -49,5 +49,5 @@ root.render(
         />
       </SocketProvider>
     </PostHogProvider>
-  </React.StrictMode>
+  </React.StrictMode>,
 );

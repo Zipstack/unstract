@@ -1,10 +1,9 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 
 function Header({ type, openAddModal }) {
   const { posthogDeploymentEventText, setPostHogCustomEvent } =

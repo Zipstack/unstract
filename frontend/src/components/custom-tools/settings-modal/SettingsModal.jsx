@@ -1,6 +1,3 @@
-import { Col, Menu, Modal, Row, Typography } from "antd";
-import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
 import {
   CodeOutlined,
   DatabaseOutlined,
@@ -8,13 +5,15 @@ import {
   FileTextOutlined,
   MessageOutlined,
 } from "@ant-design/icons";
-
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { Col, Menu, Modal, Row, Typography } from "antd";
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 import { getMenuItem } from "../../../helpers/GetStaticData";
-import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
-import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
-import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { CustomDataSettings } from "../custom-data-settings/CustomDataSettings";
+import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
+import { ManageLlmProfiles } from "../manage-llm-profiles/ManageLlmProfiles";
+import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbleModal";
 
 import "./SettingsModal.css";
 
@@ -23,11 +22,17 @@ const EvaluationManager = null;
 let ChallengeManager = null;
 let HighlightManager = null;
 try {
-  const smMod = await import("../../../plugins/summarize-manager/SummarizeManager");
+  const smMod = await import(
+    "../../../plugins/summarize-manager/SummarizeManager"
+  );
   SummarizeManager = smMod.SummarizeManager;
-  const cmMod = await import("../../../plugins/challenge-manager/ChallengeManager");
+  const cmMod = await import(
+    "../../../plugins/challenge-manager/ChallengeManager"
+  );
   ChallengeManager = cmMod.ChallengeManager;
-  const hmMod = await import("../../../plugins/highlight-manager/HighlightManager");
+  const hmMod = await import(
+    "../../../plugins/highlight-manager/HighlightManager"
+  );
   HighlightManager = hmMod.HighlightManager;
 } catch {
   // Component will remain null if it is not present.
@@ -69,7 +74,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("SummarizedExtraction", 2, <FileTextOutlined />)
+        getMenuItem("SummarizedExtraction", 2, <FileTextOutlined />),
       );
       listOfComponents[2] = (
         <SummarizeManager handleUpdateTool={handleUpdateTool} />
@@ -81,7 +86,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />)
+        getMenuItem("Evaluation Manager", 3, <FileTextOutlined />),
       );
       listOfComponents[3] = (
         <EvaluationManager handleUpdateTool={handleUpdateTool} />
@@ -93,7 +98,7 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
       items.splice(
         position,
         0,
-        getMenuItem("LLMChallenge", 4, <FileTextOutlined />)
+        getMenuItem("LLMChallenge", 4, <FileTextOutlined />),
       );
       listOfComponents[4] = (
         <ChallengeManager
