@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import axios from "axios";
-import Cookies from "js-cookie";
 
 import { useSessionStore } from "../../../store/session-store";
 import { Unauthorized } from "../../error/UnAuthorized/Unauthorized.jsx";
@@ -17,10 +16,9 @@ const RequireAdmin = () => {
   useEffect(() => {
     const verifyAdminStatus = async () => {
       try {
-        const csrfToken = Cookies.get("csrftoken");
         const res = await axios.get(
           `/api/v1/unstract/${orgId}/users/profile/`,
-          { headers: { "X-CSRFToken": csrfToken } }
+          { headers: { "X-CSRFToken": sessionDetails?.csrfToken } }
         );
         const currentIsAdmin = res?.data?.user?.is_admin;
         const currentRole = res?.data?.user?.role;
