@@ -100,56 +100,48 @@ This can be useful during development to:
    VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml watch
    ```
 
-1. Make changes to your code in your local editor
-1. Changes are automatically synced to the container and services restart as needed
-1. For debugging:
-   - Configure IDE to connect to the appropriate debugpy port
-   Here's an example `launch.json` (for VSCode) to attach to a the `backend` container on port 5678.
-   It assumes that a workspace involving unstract and unstract-sdk is setup.
-   For more information on this refer [VSCode docs](https://code.visualstudio.com/docs/devcontainers/attach-container#_attach-to-a-docker-container).
+2. Make changes to your code - they're automatically synced and services restart as needed
 
-   ```json
-    {
-      "name": "Docker: Backend Remote Debug",
-      "type": "debugpy",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5678
-      },
-      "pathMappings": [
-        {
-          "localRoot": "${workspaceFolder:unstract}/backend",
-          "remoteRoot": "/app"
-        },
-        {
-          "localRoot": "${workspaceFolder:unstract}/unstract",
-          "remoteRoot": "/unstract"
-        },
-        // Uncomment below to use and debug local version of unstract-sdk
-        // {
-        // 	"localRoot": "${workspaceFolder:unstract-sdk}/src/unstract/sdk",
-        // 	"remoteRoot": "/unstract-sdk/src/unstract/sdk"
-        // },
-      ],
-      "justMyCode": false,
-      "django": true,
-      "presentation": {
-        "group": "docker-debug"
-      }
-    }
-   ```
+3. View logs: `docker compose logs -f [service_name]`
 
-   - Set breakpoints in your code
-   - Trigger the code path and the debugger will pause at your breakpoints
+## Debugging Containers
 
-1. View logs in real-time:
+Enable debugpy by adding `compose.debug.yaml`:
 
-   ```bash
-   docker compose logs -f [service_name]
-   ```
+```bash
+VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml -f compose.debug.yaml watch
+```
 
-This workflow eliminates the need to rebuild containers or manually restart services during development, significantly improving productivity.
+Debug ports per service:
+
+| Service | Port |
+|---------|------|
+| backend | 5678 |
+| platform-service | 5679 |
+| prompt-service | 5680 |
+| runner | 5681 |
+| x2text-service | 5682 |
+
+### VSCode Configuration
+
+Example `launch.json` to attach to the `backend` container:
+
+```json
+{
+  "name": "Docker: Backend Remote Debug",
+  "type": "debugpy",
+  "request": "attach",
+  "connect": { "host": "localhost", "port": 5678 },
+  "pathMappings": [
+    { "localRoot": "${workspaceFolder:unstract}/backend", "remoteRoot": "/app" },
+    { "localRoot": "${workspaceFolder:unstract}/unstract", "remoteRoot": "/unstract" }
+  ],
+  "justMyCode": false,
+  "django": true
+}
+```
+
+See [VSCode docs](https://code.visualstudio.com/docs/devcontainers/attach-container#_attach-to-a-docker-container) for more details.
 
 ## `src` Folder Layout and `gunicorn`
 
