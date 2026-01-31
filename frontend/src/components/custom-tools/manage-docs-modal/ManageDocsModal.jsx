@@ -36,24 +36,24 @@ import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let SummarizeStatusTitle = null;
 try {
-  SummarizeStatusTitle =
-    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
+  const mod = await import("../../../plugins/summarize-status-title/SummarizeStatusTitle");
+  SummarizeStatusTitle = mod.SummarizeStatusTitle;
 } catch {
   // The component will remain null if it is not available
 }
 
 let publicIndexApi = null;
 try {
-  publicIndexApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicIndexApi;
+  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  publicIndexApi = mod.publicIndexApi;
 } catch {
   // The component will remain null if it is not available
 }
 
 let ConfirmMultiDoc = null;
 try {
-  ConfirmMultiDoc =
-    require("../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc").ConfirmMultiDoc;
+  const mod = await import("../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc");
+  ConfirmMultiDoc = mod.ConfirmMultiDoc;
 } catch {
   // The component will remain null if it is not available
 }

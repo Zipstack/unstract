@@ -11,8 +11,8 @@ import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let ProductFruitsManager;
 try {
-  ProductFruitsManager =
-    require("../../../plugins/product-fruits/ProductFruitsManager").ProductFruitsManager;
+  const mod = await import("../../../plugins/product-fruits/ProductFruitsManager");
+  ProductFruitsManager = mod.ProductFruitsManager;
 } catch {
   // The component will remain null of it is not available
 }
@@ -20,7 +20,7 @@ let selectedProductStore;
 let isLlmWhisperer;
 let isVerticals;
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import("../../../plugins/store/select-product-store.js");
 } catch {
   // do nothing
 }

@@ -21,19 +21,19 @@ let CloneTitle;
 let HeaderPublic;
 
 try {
-  PromptShareModal =
-    require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
-  PromptShareLink =
-    require("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx").PromptShareLink;
-  HeaderPublic =
-    require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
-} catch (err) {
+  const shareMod = await import("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx");
+  PromptShareModal = shareMod.PromptShareModal;
+  const linkMod = await import("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx");
+  PromptShareLink = linkMod.PromptShareLink;
+  const headerMod = await import("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx");
+  HeaderPublic = headerMod.HeaderPublic;
+} catch {
   // Do nothing if plugins are not loaded.
 }
 try {
-  CloneTitle =
-    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
-} catch (err) {
+  const mod = await import("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx");
+  CloneTitle = mod.CloneTitle;
+} catch {
   // Do nothing if plugins are not loaded.
 }
 function ToolIde() {

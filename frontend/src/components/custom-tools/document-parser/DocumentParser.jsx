@@ -16,12 +16,12 @@ let promptCardService;
 let promptPatchApiSps;
 let SpsPromptsEmptyState;
 try {
-  promptCardService =
-    require("../../../plugins/prompt-card/prompt-card-service").promptCardService;
-  promptPatchApiSps =
-    require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
-  SpsPromptsEmptyState =
-    require("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState").SpsPromptsEmptyState;
+  const pcMod = await import("../../../plugins/prompt-card/prompt-card-service");
+  promptCardService = pcMod.promptCardService;
+  const helperMod = await import("../../../plugins/simple-prompt-studio/helper");
+  promptPatchApiSps = helperMod.promptPatchApiSps;
+  const spsMod = await import("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState");
+  SpsPromptsEmptyState = spsMod.SpsPromptsEmptyState;
 } catch {
   // The component will remain null of it is not available
 }

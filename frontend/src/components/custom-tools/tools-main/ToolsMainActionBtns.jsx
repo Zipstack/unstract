@@ -16,8 +16,8 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 // Import single pass related components
 let RunSinglePassBtn;
 try {
-  RunSinglePassBtn =
-    require("../../../plugins/run-single-pass-btn/RunSinglePassBtn").RunSinglePassBtn;
+  const mod = await import("../../../plugins/run-single-pass-btn/RunSinglePassBtn");
+  RunSinglePassBtn = mod.RunSinglePassBtn;
 } catch {
   // The variable will remain undefined if the component is not available
 }
@@ -25,16 +25,16 @@ try {
 // Import simple prompt studio related components
 let AddPromptBtn;
 try {
-  AddPromptBtn =
-    require("../../../plugins/simple-prompt-studio/AddPromptBtn").AddPromptBtn;
+  const mod = await import("../../../plugins/simple-prompt-studio/AddPromptBtn");
+  AddPromptBtn = mod.AddPromptBtn;
 } catch {
   // The variable will remain undefined if the component is not available
 }
 
 let ChallengeModal;
 try {
-  ChallengeModal =
-    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+  const mod = await import("../../../plugins/challenge-modal/ChallengeModal");
+  ChallengeModal = mod.ChallengeModal;
 } catch {
   // The component will remain undefined if it is not available
 }

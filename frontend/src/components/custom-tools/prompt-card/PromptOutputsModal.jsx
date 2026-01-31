@@ -9,7 +9,8 @@ import usePromptOutput from "../../../hooks/usePromptOutput";
 
 let TableOutput;
 try {
-  TableOutput = require("../../../plugins/prompt-card/TableOutput").TableOutput;
+  const mod = await import("../../../plugins/prompt-card/TableOutput");
+  TableOutput = mod.TableOutput;
 } catch {
   // The component will remain null of it is not available
 }

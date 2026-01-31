@@ -11,9 +11,9 @@ import { useAlertStore } from "../store/alert-store";
 
 let isPlatformAdmin;
 try {
-  isPlatformAdmin =
-    require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
-} catch (err) {
+  const mod = await import("../plugins/hooks/usePlatformAdmin.js");
+  isPlatformAdmin = mod.usePlatformAdmin();
+} catch {
   // Plugin not available
 }
 
@@ -22,8 +22,9 @@ let selectedProductStore;
 let PRODUCT_NAMES = {};
 
 try {
-  selectedProductStore = require("../plugins/store/select-product-store.js");
-  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
+  selectedProductStore = await import("../plugins/store/select-product-store.js");
+  const helperMod = await import("../plugins/llm-whisperer/helper");
+  PRODUCT_NAMES = helperMod.PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }

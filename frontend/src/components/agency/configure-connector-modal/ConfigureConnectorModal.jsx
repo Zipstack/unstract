@@ -29,7 +29,7 @@ let RuleEngine;
 let ruleEngineTabs;
 
 try {
-  const ruleEnginePlugin = require("../../../plugins/manual-review/rule-engine");
+  const ruleEnginePlugin = await import("../../../plugins/manual-review/rule-engine");
   RuleEngine = ruleEnginePlugin.RuleEngine;
   ruleEngineTabs = ruleEnginePlugin.ruleEngineTabs;
 } catch {
@@ -774,7 +774,7 @@ ConfigureConnectorModal.propTypes = {
   connDetails: PropTypes.object,
   setConnDetails: PropTypes.func.isRequired,
   connType: PropTypes.string.isRequired,
-  connMode: PropTypes.string.isRequired,
+  connMode: PropTypes.string,
   workflowDetails: PropTypes.object.isRequired,
   handleEndpointUpdate: PropTypes.func.isRequired,
   endpointDetails: PropTypes.object,

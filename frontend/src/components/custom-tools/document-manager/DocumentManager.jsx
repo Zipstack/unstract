@@ -46,10 +46,10 @@ const viewTypes = {
 // Import components for the summarize feature
 let SummarizeView = null;
 try {
-  SummarizeView =
-    require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
-  const tabLabel =
-    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+  const svMod = await import("../../../plugins/summarize-view/SummarizeView");
+  SummarizeView = svMod.SummarizeView;
+  const stMod = await import("../../../plugins/summarize-tab/SummarizeTab");
+  const tabLabel = stMod.tabLabel;
   if (tabLabel) {
     items.push({
       key: "3",
@@ -63,15 +63,15 @@ try {
 // Import component for the simple prompt studio feature
 let getDocumentsSps;
 try {
-  getDocumentsSps =
-    require("../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service").getDocumentsSps;
+  const mod = await import("../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service");
+  getDocumentsSps = mod.getDocumentsSps;
 } catch {
   // The component will remain null of it is not available
 }
 let publicDocumentApi;
 try {
-  publicDocumentApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  publicDocumentApi = mod.publicDocumentApi;
 } catch {
   // The component will remain null of it is not available
 }

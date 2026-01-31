@@ -38,14 +38,15 @@ import { PromptRunCost } from "./PromptRunCost";
 
 let TableOutput;
 try {
-  TableOutput = require("../../../plugins/prompt-card/TableOutput").TableOutput;
+  const mod = await import("../../../plugins/prompt-card/TableOutput");
+  TableOutput = mod.TableOutput;
 } catch {
   // The component will remain null of it is not available
 }
 let ChallengeModal;
 try {
-  ChallengeModal =
-    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+  const mod = await import("../../../plugins/challenge-modal/ChallengeModal");
+  ChallengeModal = mod.ChallengeModal;
 } catch {
   // The component will remain null of it is not available
 }

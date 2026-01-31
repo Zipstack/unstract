@@ -421,7 +421,7 @@ DisplayPromptResult.propTypes = {
   docId: PropTypes.string,
   promptRunStatus: PropTypes.object,
   handleSelectHighlight: PropTypes.func,
-  highlightData: PropTypes.object,
+  highlightData: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
   promptDetails: PropTypes.object,
   confidenceData: PropTypes.object,
   wordConfidenceData: PropTypes.object,

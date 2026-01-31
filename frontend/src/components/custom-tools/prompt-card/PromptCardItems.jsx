@@ -23,8 +23,8 @@ import { TABLE } from "./constants";
 
 let TableExtractionSettingsBtn;
 try {
-  TableExtractionSettingsBtn =
-    require("../../../plugins/prompt-card/TableExtractionSettingsBtn").TableExtractionSettingsBtn;
+  const mod = await import("../../../plugins/prompt-card/TableExtractionSettingsBtn");
+  TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
 } catch {
   // The component will remain null of it is not available
 }
@@ -334,9 +334,9 @@ PromptCardItems.propTypes = {
   enforceTypeList: PropTypes.array,
   allTableSettings: PropTypes.array,
   setAllTableSettings: PropTypes.func,
-  promptKey: PropTypes.text,
+  promptKey: PropTypes.string,
   setPromptKey: PropTypes.func.isRequired,
-  promptText: PropTypes.text,
+  promptText: PropTypes.string,
   setPromptText: PropTypes.func.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
@@ -353,7 +353,7 @@ PromptCardItems.propTypes = {
   handleSpsLoading: PropTypes.func.isRequired,
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
-  coverageCountData: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.array,
   isChallenge: PropTypes.bool.isRequired,
   handleSelectHighlight: PropTypes.func.isRequired,
 };

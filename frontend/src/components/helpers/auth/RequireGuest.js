@@ -10,7 +10,7 @@ let selectedProductStore;
 let isLlmWhisperer;
 let isVerticals;
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import("../../../plugins/store/select-product-store.js");
 } catch {
   // do nothing
 }

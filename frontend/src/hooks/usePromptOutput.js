@@ -8,15 +8,15 @@ import { useAxiosPrivate } from "./useAxiosPrivate";
 
 let promptOutputApiSps;
 try {
-  promptOutputApiSps =
-    require("../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+  const mod = await import("../plugins/simple-prompt-studio/helper");
+  promptOutputApiSps = mod.promptOutputApiSps;
 } catch {
   // The component will remain null of it is not available
 }
 let publicOutputsApi;
 try {
-  publicOutputsApi =
-    require("../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+  const mod = await import("../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  publicOutputsApi = mod.publicOutputsApi;
 } catch {
   // The component will remain null of it is not available
 }

@@ -13,10 +13,10 @@ let setSelectedProduct;
 let SELECTED_PRODUCT;
 let PRODUCT_NAMES = {};
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
-  SELECTED_PRODUCT =
-    require("../../../plugins/helpers/common").SELECTED_PRODUCT;
-  PRODUCT_NAMES = require("../../../plugins/helpers/common").PRODUCT_NAMES;
+  selectedProductStore = await import("../../../plugins/store/select-product-store.js");
+  const commonMod = await import("../../../plugins/helpers/common");
+  SELECTED_PRODUCT = commonMod.SELECTED_PRODUCT;
+  PRODUCT_NAMES = commonMod.PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }

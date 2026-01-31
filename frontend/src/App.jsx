@@ -15,8 +15,8 @@ import { useSocketLogsStore } from "./store/socket-logs-store.js";
 
 let GoogleTagManagerHelper;
 try {
-  GoogleTagManagerHelper =
-    require("./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js").GoogleTagManagerHelper;
+  const mod = await import("./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js");
+  GoogleTagManagerHelper = mod.GoogleTagManagerHelper;
 } catch {
   // The component will remain null of it is not available
 }

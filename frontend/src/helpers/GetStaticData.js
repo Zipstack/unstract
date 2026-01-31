@@ -5,9 +5,9 @@ import { v4 as uuidv4 } from "uuid";
 
 let cloudHomePagePath;
 try {
-  cloudHomePagePath =
-    require("../plugins/unstract-subscription/helper/constants").cloudHomePagePath;
-} catch (err) {
+  const mod = await import("../plugins/unstract-subscription/helper/constants");
+  cloudHomePagePath = mod.cloudHomePagePath;
+} catch {
   // Ignore if plugin not available
 }
 

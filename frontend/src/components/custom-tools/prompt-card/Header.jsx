@@ -33,8 +33,8 @@ import { ExpandCardBtn } from "./ExpandCardBtn";
 
 let PromptRunBtnSps;
 try {
-  PromptRunBtnSps =
-    require("../../../plugins/simple-prompt-studio/PromptRunBtnSps").PromptRunBtnSps;
+  const mod = await import("../../../plugins/simple-prompt-studio/PromptRunBtnSps");
+  PromptRunBtnSps = mod.PromptRunBtnSps;
 } catch {
   // The component will remain 'undefined' it is not available
 }

@@ -23,12 +23,12 @@ const EvaluationManager = null;
 let ChallengeManager = null;
 let HighlightManager = null;
 try {
-  SummarizeManager =
-    require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
-  ChallengeManager =
-    require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
-  HighlightManager =
-    require("../../../plugins/highlight-manager/HighlightManager").HighlightManager;
+  const smMod = await import("../../../plugins/summarize-manager/SummarizeManager");
+  SummarizeManager = smMod.SummarizeManager;
+  const cmMod = await import("../../../plugins/challenge-manager/ChallengeManager");
+  ChallengeManager = cmMod.ChallengeManager;
+  const hmMod = await import("../../../plugins/highlight-manager/HighlightManager");
+  HighlightManager = hmMod.HighlightManager;
 } catch {
   // Component will remain null if it is not present.
 }

@@ -33,15 +33,15 @@ const { Sider } = Layout;
 
 let getMenuItem;
 try {
-  getMenuItem = require("../../../plugins/app-deployment/getMenuItem");
-} catch (err) {
+  getMenuItem = await import("../../../plugins/app-deployment/getMenuItem");
+} catch {
   // Plugin unavailable.
 }
 
 let sideMenu;
 try {
-  sideMenu = require("../../../plugins/hooks/useSideMenu");
-} catch (err) {
+  sideMenu = await import("../../../plugins/hooks/useSideMenu");
+} catch {
   // Plugin unavailable.
 }
 
@@ -50,26 +50,26 @@ let unstractSubscriptionPlanStore;
 let dashboardSideMenuItem;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
-  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
-  const unstractSubscriptionConstants = require("../../../plugins/unstract-subscription/helper/constants");
+  unstractSubscriptionPlanStore = await import("../../../plugins/store/unstract-subscription-plan-store");
+  const unstractSubscriptionConstants = await import("../../../plugins/unstract-subscription/helper/constants");
   dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
   UNSTRACT_SUBSCRIPTION_PLANS =
     unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
-} catch (err) {
+} catch {
   // Plugin unavailable.
 }
 
 let selectedProductStore;
 let selectedProduct;
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import("../../../plugins/store/select-product-store.js");
 } catch {
   // Ignore if hook not available
 }
 
 let agenticPromptStudioEnabled = false;
 try {
-  require("../../../plugins/agentic-prompt-studio");
+  await import("../../../plugins/agentic-prompt-studio");
   agenticPromptStudioEnabled = true;
 } catch {
   // Plugin unavailable
@@ -77,7 +77,7 @@ try {
 
 let manualReviewSettingsEnabled = false;
 try {
-  require("../../../plugins/manual-review/settings/Settings.jsx");
+  await import("../../../plugins/manual-review/settings/Settings.jsx");
   manualReviewSettingsEnabled = true;
 } catch {
   // Plugin unavailable
