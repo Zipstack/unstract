@@ -1,5 +1,9 @@
-import { useMemo } from "react";
-import { BranchesOutlined } from "@ant-design/icons";
+import { useMemo, useState, useEffect, useRef } from "react";
+import {
+  BranchesOutlined,
+  PushpinOutlined,
+  PushpinFilled,
+} from "@ant-design/icons";
 import {
   Divider,
   Image,
@@ -150,10 +154,58 @@ SettingsPopoverContent.propTypes = {
   navigate: PropTypes.func.isRequired,
 };
 
-const SideNavBar = ({ collapsed }) => {
+const SideNavBar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
+
+  const [isPinned, setIsPinned] = useState(
+    JSON.parse(localStorage.getItem("sidebarPinned")) || false
+  );
+  const collapseTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem("sidebarPinned", JSON.stringify(isPinned));
+  }, [isPinned]);
+
+  // Clear pending collapse timeout on unmount or when isPinned changes
+  useEffect(() => {
+    if (isPinned && collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+    return () => {
+      if (collapseTimeoutRef.current) {
+        clearTimeout(collapseTimeoutRef.current);
+        collapseTimeoutRef.current = null;
+      }
+    };
+  }, [isPinned]);
+
+  const handleMouseEnter = () => {
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+    }
+    if (!isPinned) {
+      setCollapsed(false);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (!isPinned) {
+      collapseTimeoutRef.current = setTimeout(() => {
+        setCollapsed(true);
+      }, 300);
+    }
+  };
+
+  const togglePin = () => {
+    const newPinned = !isPinned;
+    setIsPinned(newPinned);
+    if (newPinned) {
+      setCollapsed(false);
+    }
+  };
 
   try {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
@@ -373,33 +425,92 @@ const SideNavBar = ({ collapsed }) => {
       className="side-bar"
       width={240}
       collapsedWidth={65}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      <div className="main-slider">
-        <div className="slider-wrap">
-          {data?.map((item, index) => (
-            <div key={item?.id}>
-              {!collapsed && (
-                <Typography className="sidebar-main-heading">
-                  {item.mainTitle}
-                </Typography>
-              )}
-              <Space direction="vertical" className="menu-item-body">
-                {item.subMenu.map((el) => {
-                  // Platform item has a hover menu and click navigates to platform settings
-                  if (el.id === 3.6) {
-                    const handlePlatformClick = () => {
-                      if (!el.disable) {
-                        navigate(el.path);
-                      }
-                    };
+      <div className="sidebar-content-wrapper">
+        <div className="main-slider">
+          <div className="slider-wrap">
+            {data?.map((item, index) => (
+              <div key={item?.id}>
+                {!collapsed && (
+                  <Typography className="sidebar-main-heading">
+                    {item.mainTitle}
+                  </Typography>
+                )}
+                <Space direction="vertical" className="menu-item-body">
+                  {item.subMenu.map((el) => {
+                    // Platform item has a hover menu and click navigates to platform settings
+                    if (el.id === 3.6) {
+                      const handlePlatformClick = () => {
+                        if (!el.disable) {
+                          navigate(el.path);
+                        }
+                      };
 
-                    const platformContent = (
-                      <Tooltip title={collapsed ? el.title : ""}>
+                      const platformContent = (
+                        <Tooltip title={collapsed ? el.title : ""}>
+                          <Space
+                            className={`space-styles ${
+                              el.active ? "space-styles-active" : ""
+                            } ${el.disable ? "space-styles-disable" : ""}`}
+                            onClick={handlePlatformClick}
+                          >
+                            <Image
+                              src={el.image}
+                              alt="side_icon"
+                              className="menu-item-icon"
+                              preview={false}
+                            />
+                            {!collapsed && (
+                              <div>
+                                <Typography className="sidebar-item-text fs-14">
+                                  {el.title}
+                                </Typography>
+                                <Typography className="sidebar-item-text fs-11">
+                                  {el.description}
+                                </Typography>
+                              </div>
+                            )}
+                          </Space>
+                        </Tooltip>
+                      );
+
+                      // Don't show popover when disabled
+                      if (el.disable) {
+                        return <div key={el.id}>{platformContent}</div>;
+                      }
+
+                      return (
+                        <Popover
+                          key={el.id}
+                          content={
+                            <SettingsPopoverContent
+                              orgName={orgName}
+                              navigate={navigate}
+                            />
+                          }
+                          trigger="hover"
+                          placement="rightTop"
+                          arrow={false}
+                          overlayClassName="settings-popover-overlay"
+                        >
+                          {platformContent}
+                        </Popover>
+                      );
+                    }
+
+                    return (
+                      <Tooltip key={el.id} title={collapsed ? el.title : ""}>
                         <Space
                           className={`space-styles ${
                             el.active ? "space-styles-active" : ""
                           } ${el.disable ? "space-styles-disable" : ""}`}
-                          onClick={handlePlatformClick}
+                          onClick={() => {
+                            if (!el.disable) {
+                              navigate(el.path);
+                            }
+                          }}
                         >
                           <Image
                             src={el.image}
@@ -420,77 +531,43 @@ const SideNavBar = ({ collapsed }) => {
                         </Space>
                       </Tooltip>
                     );
-
-                    // Don't show popover when disabled
-                    if (el.disable) {
-                      return <div key={el.id}>{platformContent}</div>;
-                    }
-
-                    return (
-                      <Popover
-                        key={el.id}
-                        content={
-                          <SettingsPopoverContent
-                            orgName={orgName}
-                            navigate={navigate}
-                          />
-                        }
-                        trigger="hover"
-                        placement="rightTop"
-                        arrow={false}
-                        overlayClassName="settings-popover-overlay"
-                      >
-                        {platformContent}
-                      </Popover>
-                    );
-                  }
-
-                  return (
-                    <Tooltip key={el.id} title={collapsed ? el.title : ""}>
-                      <Space
-                        className={`space-styles ${
-                          el.active ? "space-styles-active" : ""
-                        } ${el.disable ? "space-styles-disable" : ""}`}
-                        onClick={() => {
-                          if (!el.disable) {
-                            navigate(el.path);
-                          }
-                        }}
-                      >
-                        <Image
-                          src={el.image}
-                          alt="side_icon"
-                          className="menu-item-icon"
-                          preview={false}
-                        />
-                        {!collapsed && (
-                          <div>
-                            <Typography className="sidebar-item-text fs-14">
-                              {el.title}
-                            </Typography>
-                            <Typography className="sidebar-item-text fs-11">
-                              {el.description}
-                            </Typography>
-                          </div>
-                        )}
-                      </Space>
-                    </Tooltip>
-                  );
-                })}
-              </Space>
-              {index < data.length - 1 && (
-                <Divider className="sidebar-divider" />
-              )}
-            </div>
-          ))}
+                  })}
+                </Space>
+                {index < data.length - 1 && (
+                  <Divider className="sidebar-divider" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+      <Tooltip title={isPinned ? "Unpin sidebar" : "Keep expanded"}>
+        <div
+          className="sidebar-pin-container"
+          onClick={togglePin}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              togglePin();
+            }
+          }}
+          role="button"
+          tabIndex={0}
+        >
+          {isPinned ? (
+            <PushpinFilled className="sidebar-pin-icon pinned" />
+          ) : (
+            <PushpinOutlined className="sidebar-pin-icon" />
+          )}
+        </div>
+      </Tooltip>
     </Sider>
   );
 };
 
 SideNavBar.propTypes = {
   collapsed: PropTypes.bool.isRequired,
+  setCollapsed: PropTypes.func.isRequired,
 };
 
 export default SideNavBar;
