@@ -96,7 +96,6 @@ class LLMWhispererV2(X2TextAdapter):
             whisper_hash=response.get(X2TextConstants.WHISPER_HASH_V2, ""),
             line_metadata=response.get("line_metadata"),
         )
-
         return TextExtractionResult(
             extracted_text=LLMWhispererHelper.extract_text_from_response(
                 output_file_path,
