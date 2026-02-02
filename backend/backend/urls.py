@@ -35,6 +35,7 @@ urlpatterns = [
     path("platform/", include("platform_settings.urls")),
     path("api/", include("api.urls")),
     path("usage/", include("usage.urls")),
+    path("lookup/", include("lookup.urls")),
     path(
         UrlPathConstants.PROMPT_STUDIO,
         include("prompt_studio.prompt_profile_manager.urls"),
