@@ -303,6 +303,11 @@
 }
 
 /* Recent Activity Styles */
+.recent-activity-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
 .recent-activity-item {
   padding: 10px 0 !important;
   border-bottom: 1px solid #f0f0f0;

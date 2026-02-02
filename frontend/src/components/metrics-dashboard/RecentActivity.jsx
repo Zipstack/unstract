@@ -89,6 +89,7 @@ function RecentActivity({ data, loading }) {
   return (
     <Card title="Recent Activity" className="metrics-chart-card chart-card">
       <List
+        className="recent-activity-list"
         dataSource={data.activity}
         size="small"
         split={false}

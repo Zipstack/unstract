@@ -53,7 +53,7 @@ function MetricsDashboard() {
     data: activityData,
     loading: activityLoading,
     refetch: refetchActivity,
-  } = useRecentActivity(10);
+  } = useRecentActivity(5);
 
   // Handle date range change
   const handleDateChange = useCallback((dates) => {
