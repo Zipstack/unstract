@@ -31,7 +31,12 @@ import {
  * Status badge component for displaying execution status as text badges
  * @return {JSX.Element|null} Rendered status pills or null
  */
-function StatusPills({ statuses = [], executionType, pipelineId }) {
+function StatusPills({
+  statuses = [],
+  executionType,
+  pipelineId,
+  listContext = {},
+}) {
   const navigate = useNavigate();
   const location = useLocation();
   const { sessionDetails } = useSessionStore();
@@ -49,6 +54,10 @@ function StatusPills({ statuses = [], executionType, pipelineId }) {
           state: {
             from: location.pathname,
             scrollToCardId: pipelineId,
+            // Include list context for full restoration on back navigation
+            page: listContext.page,
+            pageSize: listContext.pageSize,
+            searchTerm: listContext.searchTerm,
           },
         }
       );
@@ -206,6 +215,7 @@ function createPipelineCardConfig({
   onDownloadPostman,
   isClearingFileHistory,
   pipelineType,
+  listContext,
 }) {
   return {
     header: {
@@ -350,6 +360,7 @@ function createPipelineCardConfig({
               executionType={pipelineType?.toUpperCase()}
               itemId={pipeline.id}
               StatusPillsComponent={StatusPills}
+              listContext={listContext}
             />
           </div>
 

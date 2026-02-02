@@ -96,9 +96,24 @@ function Pipelines({ type }) {
     getPipelineList();
   }, [type]);
 
-  // Handle scroll restoration from navigation
+  // Handle scroll restoration and list context from navigation
   useEffect(() => {
     if (location.state?.scrollToCardId) {
+      // Restore pagination and search state if available
+      const { page, pageSize, searchTerm: savedSearch } = location.state;
+      if (page || pageSize || savedSearch !== undefined) {
+        const restoredPage = page || 1;
+        const restoredPageSize = pageSize || 10;
+        const restoredSearch = savedSearch || "";
+        setSearchTerm(restoredSearch);
+        setPagination((prev) => ({
+          ...prev,
+          current: restoredPage,
+          pageSize: restoredPageSize,
+        }));
+        // Fetch with restored context before scrolling
+        getPipelineList(restoredPage, restoredPageSize, restoredSearch);
+      }
       setScrollRestoreId(location.state.scrollToCardId);
       // Clear after a short delay to prevent re-triggering
       const timer = setTimeout(() => {
@@ -436,8 +451,22 @@ function Pipelines({ type }) {
         isClearingFileHistory,
         // Pipeline type for status pill navigation
         pipelineType: type,
+        // List context for scroll restoration on back navigation
+        listContext: {
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+          searchTerm,
+        },
       }),
-    [sessionDetails, isClearingFileHistory, location, type]
+    [
+      sessionDetails,
+      isClearingFileHistory,
+      location,
+      type,
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+    ]
   );
 
   // Using the custom hook to manage modal state

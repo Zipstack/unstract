@@ -170,6 +170,7 @@ function Last5RunsFieldRow({
   executionType,
   itemId,
   StatusPillsComponent,
+  listContext,
 }) {
   if (!statuses?.length) return null;
 
@@ -182,6 +183,7 @@ function Last5RunsFieldRow({
           statuses={statuses}
           executionType={executionType}
           pipelineId={itemId}
+          listContext={listContext}
         />
       </div>
     </div>
@@ -193,6 +195,7 @@ Last5RunsFieldRow.propTypes = {
   executionType: PropTypes.string,
   itemId: PropTypes.string,
   StatusPillsComponent: PropTypes.elementType.isRequired,
+  listContext: PropTypes.object,
 };
 
 /**
