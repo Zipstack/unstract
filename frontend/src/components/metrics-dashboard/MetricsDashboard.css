@@ -183,43 +183,6 @@
   font-size: 13px;
 }
 
-.trend-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.trend-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.trend-label {
-  font-size: 12px;
-}
-
-.trend-value {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-}
-
-.trend-count {
-  font-size: 12px;
-}
-
-.breakdown-chart {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.breakdown-item {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {
@@ -255,51 +218,6 @@
   padding: 12px;
   background: white;
   border-radius: 6px;
-}
-
-/* Usage Quota Style - Matching Reference Design */
-.usage-quota-list {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 8px 0;
-}
-
-.usage-quota-item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.usage-quota-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.usage-quota-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #262626;
-}
-
-.usage-quota-value {
-  font-size: 14px;
-  font-weight: 600;
-  color: #1a1a1a;
-}
-
-.usage-quota-item .ant-progress {
-  margin: 0;
-}
-
-.usage-quota-item .ant-progress-inner {
-  border-radius: 4px;
-}
-
-.usage-quota-item .ant-progress-bg {
-  border-radius: 4px;
-  height: 8px !important;
 }
 
 /* Recent Activity Styles */

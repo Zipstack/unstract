@@ -564,6 +564,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
         ),
         ("llm_usage", MetricsQueryService.get_llm_usage_cost, True),
         ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
+        ("failed_pages", MetricsQueryService.get_failed_pages, True),
     ]
 
     stats = {
