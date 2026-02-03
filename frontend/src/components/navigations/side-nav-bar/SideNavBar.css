@@ -20,6 +20,11 @@
   overflow-x: hidden;
 }
 
+/* Hide scrollbar when sidebar is collapsed */
+.side-bar.ant-layout-sider-collapsed .sidebar-content-wrapper {
+  overflow-y: hidden;
+}
+
 /* Pin container - fixed at bottom, centered */
 .sidebar-pin-container {
   display: flex;
