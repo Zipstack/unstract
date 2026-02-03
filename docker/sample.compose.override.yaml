@@ -11,11 +11,6 @@
 
 services:
   #########################################################################################################
-  # Database with pg_partman support
-  db:
-    image: 'unstract/db:test'
-
-  #########################################################################################################
   # Frontend - React dev server with hot reload
   frontend:
     image: unstract/frontend:${VERSION}
@@ -326,17 +321,14 @@ services:
 
   # V1 workers disabled by default (use workers-v2 profile instead)
   worker:
-    command: "-A backend worker --loglevel=info -Q celery,celery_periodic_logs,celery_log_task_queue,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
     profiles:
       - workers-v1
 
   worker-file-processing:
-    command: "-A backend.workers.file_processing worker --loglevel=info -Q file_processing,api_file_processing --autoscale=${WORKER_FILE_PROCESSING_AUTOSCALE}"
     profiles:
       - workers-v1
 
   worker-file-processing-callback:
-    command: "-A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback,api_file_processing_callback --autoscale=${WORKER_FILE_PROCESSING_CALLBACK_AUTOSCALE}"
     profiles:
       - workers-v1
 
