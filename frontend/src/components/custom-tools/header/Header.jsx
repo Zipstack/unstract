@@ -1,38 +1,43 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Button, Modal, Tooltip, Typography, Dropdown } from "antd";
+import { Button, Dropdown, Modal, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useState } from "react";
-
-import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
-import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
 import "./Header.css";
 
 let SinglePassToggleSwitch;
 let CloneButton;
 let PromptShareButton;
 try {
-  const mod = await import("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch");
+  const mod = await import(
+    "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
+  );
   SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
 try {
-  const mod = await import("../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx");
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx"
+  );
   PromptShareButton = mod.PromptShareButton;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
 try {
-  const mod = await import("../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx");
+  const mod = await import(
+    "../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx"
+  );
   CloneButton = mod.CloneButton;
 } catch {
   // The variable will remain undefined if the component is not available.
@@ -70,7 +75,7 @@ function Header({
     selectedUsers,
     toolDetail,
     isSharedWithEveryone,
-    forcedExport = false
+    forcedExport = false,
   ) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
@@ -173,7 +178,7 @@ function Header({
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
         return users;
       })
@@ -274,7 +279,7 @@ function Header({
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to check existing deployments")
+          handleException(err, "Failed to check existing deployments"),
         );
         // If check fails, still allow proceeding
         setOpenCreateApiDeploymentModal(true);

@@ -1,21 +1,22 @@
 import { Button, ConfigProvider, notification, theme } from "antd";
-import { BrowserRouter } from "react-router-dom";
-import { HelmetProvider } from "react-helmet-async";
 import { useEffect } from "react";
-
+import { HelmetProvider } from "react-helmet-async";
+import { BrowserRouter } from "react-router-dom";
+import { GenericLoader } from "./components/generic-loader/GenericLoader";
+import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
+import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { THEME } from "./helpers/GetStaticData.js";
+import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 import { Router } from "./routes/Router.jsx";
 import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
-import { GenericLoader } from "./components/generic-loader/GenericLoader";
-import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
-import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
-import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
 import { useSocketLogsStore } from "./store/socket-logs-store.js";
 
 let GoogleTagManagerHelper;
 try {
-  const mod = await import("./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js");
+  const mod = await import(
+    "./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js"
+  );
   GoogleTagManagerHelper = mod.GoogleTagManagerHelper;
 } catch {
   // The component will remain null of it is not available

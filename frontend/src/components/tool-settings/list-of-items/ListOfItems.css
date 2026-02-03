@@ -1,14 +1,14 @@
 /* Styles for ListOfItems */
 
 .list-of-items-empty {
-    height: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
 .cover-img .fit-cover {
-    object-fit: cover;
-    width: 100%;
-    height: auto;
+  object-fit: cover;
+  width: 100%;
+  height: auto;
 }

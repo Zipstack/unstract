@@ -89,14 +89,14 @@ function ListOfSources({
                       : "Databases"
                   }`
                 : searchText
-                ? `No sources found matching "${searchText}"`
-                : localModeFilter
-                ? `No ${
-                    localModeFilter === "FILESYSTEM"
-                      ? "File System"
-                      : "Database"
-                  } connectors available`
-                : "No sources available"}
+                  ? `No sources found matching "${searchText}"`
+                  : localModeFilter
+                    ? `No ${
+                        localModeFilter === "FILESYSTEM"
+                          ? "File System"
+                          : "Database"
+                      } connectors available`
+                    : "No sources available"}
             </p>
             {localModeFilter && (
               <p className="filter-hint">

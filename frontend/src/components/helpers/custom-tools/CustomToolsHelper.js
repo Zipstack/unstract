@@ -7,12 +7,14 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
 let shareManagerToolSource;
 try {
-  const mod = await import("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs");
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
   shareManagerToolSource = mod.shareManagerToolSource;
 } catch {
   // Do nothing, Not-found Page will be triggered.

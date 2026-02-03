@@ -1,11 +1,11 @@
-import PropTypes from "prop-types";
-import { Button } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import { Button } from "antd";
+import PropTypes from "prop-types";
 
 import "./Footer.css";
-import { FooterLayout } from "../footer-layout/FooterLayout";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { FooterLayout } from "../footer-layout/FooterLayout";
 
 function Footer({ activeKey, addPromptInstance }) {
   const { isPublicSource } = useCustomToolStore();
