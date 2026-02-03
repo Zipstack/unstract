@@ -18,6 +18,10 @@ import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
 import { useSessionStore } from "../../../store/session-store";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "../../../helpers/localStorage";
 import Workflows from "../../../assets/Workflows.svg";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
@@ -155,45 +159,13 @@ SettingsPopoverContent.propTypes = {
   navigate: PropTypes.func.isRequired,
 };
 
-const isLocalStorageAvailable = () => {
-  try {
-    return typeof localStorage !== "undefined";
-  } catch {
-    return false;
-  }
-};
-
-const getSafeLocalStorageValue = (key, defaultValue) => {
-  if (!isLocalStorageAvailable()) return defaultValue;
-  try {
-    const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : defaultValue;
-  } catch {
-    try {
-      localStorage.removeItem(key);
-    } catch {
-      // Ignore storage errors
-    }
-    return defaultValue;
-  }
-};
-
-const setSafeLocalStorageValue = (key, value) => {
-  if (!isLocalStorageAvailable()) return;
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Ignore storage errors
-  }
-};
-
 const SideNavBar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
 
   const [isPinned, setIsPinned] = useState(() =>
-    getSafeLocalStorageValue("sidebarPinned", false)
+    getLocalStorageValue("sidebarPinned", false)
   );
   const collapseTimeoutRef = useRef(null);
 
@@ -205,7 +177,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
   };
 
   useEffect(() => {
-    setSafeLocalStorageValue("sidebarPinned", isPinned);
+    setLocalStorageValue("sidebarPinned", isPinned);
     if (isPinned) {
       clearCollapseTimeout();
       setCollapsed(false);

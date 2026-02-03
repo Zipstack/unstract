@@ -7,6 +7,10 @@ import "./PageLayout.css";
 import SideNavBar from "../../components/navigations/side-nav-bar/SideNavBar.jsx";
 import { TopNavBar } from "../../components/navigations/top-nav-bar/TopNavBar.jsx";
 import { DisplayLogsAndNotifications } from "../../components/logs-and-notifications/DisplayLogsAndNotifications.jsx";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "../../helpers/localStorage";
 
 function PageLayout({
   sideBarOptions,
@@ -14,11 +18,11 @@ function PageLayout({
   showLogsAndNotifications = true,
   hideSidebar = false,
 }) {
-  const initialCollapsedValue =
-    JSON.parse(localStorage.getItem("collapsed")) || false;
-  const [collapsed, setCollapsed] = useState(initialCollapsedValue);
+  const [collapsed, setCollapsed] = useState(() =>
+    getLocalStorageValue("collapsed", false)
+  );
   useEffect(() => {
-    localStorage.setItem("collapsed", JSON.stringify(collapsed));
+    setLocalStorageValue("collapsed", collapsed);
   }, [collapsed]);
   return (
     <div className="landingPage">
