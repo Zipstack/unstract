@@ -114,11 +114,10 @@ class LLMWhispererHelper:
             )
             if type == "whisper":
                 response = client.whisper(**params, stream=data)
+                whisper_hash = response.get(X2TextConstants.WHISPER_HASH_V2, "")
+                if whisper_hash:
+                    logger.info(f"LLMWhisperer responded, whisper_hash: {whisper_hash}")
                 if response["status_code"] == 200:
-                    logger.debug(
-                        "Successfully extracted for whisper hash: "
-                        f"{response.get(X2TextConstants.WHISPER_HASH_V2, '')}"
-                    )
                     response["extraction"][X2TextConstants.WHISPER_HASH_V2] = (
                         response.get(X2TextConstants.WHISPER_HASH_V2, "")
                     )

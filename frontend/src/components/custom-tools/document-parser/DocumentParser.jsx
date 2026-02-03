@@ -196,10 +196,6 @@ function DocumentParser({
         );
         modifiedDetails["prompts"] = modifiedPrompts;
         updateCustomTool({ details: modifiedDetails });
-        setAlertDetails({
-          type: "success",
-          content: "Deleted successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to delete"));
