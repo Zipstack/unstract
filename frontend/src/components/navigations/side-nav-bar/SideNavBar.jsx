@@ -154,13 +154,23 @@ SettingsPopoverContent.propTypes = {
   navigate: PropTypes.func.isRequired,
 };
 
+const getSafeLocalStorageValue = (key, defaultValue) => {
+  try {
+    const item = localStorage.getItem(key);
+    return item ? JSON.parse(item) : defaultValue;
+  } catch {
+    localStorage.removeItem(key);
+    return defaultValue;
+  }
+};
+
 const SideNavBar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const { orgName, flags } = sessionDetails;
 
-  const [isPinned, setIsPinned] = useState(
-    JSON.parse(localStorage.getItem("sidebarPinned")) || false
+  const [isPinned, setIsPinned] = useState(() =>
+    getSafeLocalStorageValue("sidebarPinned", false),
   );
   const collapseTimeoutRef = useRef(null);
 
@@ -168,18 +178,22 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     localStorage.setItem("sidebarPinned", JSON.stringify(isPinned));
   }, [isPinned]);
 
-  // Clear pending collapse timeout on unmount or when isPinned changes
+  // Clear pending collapse timeout on unmount
   useEffect(() => {
-    if (isPinned && collapseTimeoutRef.current) {
-      clearTimeout(collapseTimeoutRef.current);
-      collapseTimeoutRef.current = null;
-    }
     return () => {
       if (collapseTimeoutRef.current) {
         clearTimeout(collapseTimeoutRef.current);
         collapseTimeoutRef.current = null;
       }
     };
+  }, []);
+
+  // Clear timeout when sidebar becomes pinned
+  useEffect(() => {
+    if (isPinned && collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
   }, [isPinned]);
 
   const handleMouseEnter = () => {
@@ -211,7 +225,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
       unstractSubscriptionPlan =
         unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
-          (state) => state?.unstractSubscriptionPlan
+          (state) => state?.unstractSubscriptionPlan,
         );
     }
   } catch (error) {
@@ -220,7 +234,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
 
   if (selectedProductStore?.useSelectedProductStore) {
     selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state?.selectedProduct
+      (state) => state?.selectedProduct,
     );
   }
 
@@ -250,7 +264,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: Workflows,
           path: `/${orgName}/workflows`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/workflows`
+            `/${orgName}/workflows`,
           ),
         },
       ],
@@ -305,7 +319,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: LlmIcon,
           path: `/${orgName}/settings/llms`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/llms`
+            `/${orgName}/settings/llms`,
           ),
         },
         {
@@ -315,7 +329,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: VectorDbIcon,
           path: `/${orgName}/settings/vectorDbs`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/vectorDbs`
+            `/${orgName}/settings/vectorDbs`,
           ),
         },
         {
@@ -325,7 +339,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: EmbeddingIcon,
           path: `/${orgName}/settings/embedding`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/embedding`
+            `/${orgName}/settings/embedding`,
           ),
         },
         {
@@ -335,7 +349,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: TextExtractorIcon,
           path: `/${orgName}/settings/textExtractor`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/textExtractor`
+            `/${orgName}/settings/textExtractor`,
           ),
         },
         {
@@ -345,7 +359,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: ConnectorsIcon,
           path: `/${orgName}/settings/connectors`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/connectors`
+            `/${orgName}/settings/connectors`,
           ),
         },
         {
@@ -388,7 +402,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       image: CustomTools,
       path: `/${orgName}/agentic-prompt-studio`,
       active: globalThis.location.pathname.startsWith(
-        `/${orgName}/agentic-prompt-studio`
+        `/${orgName}/agentic-prompt-studio`,
       ),
     });
   }
