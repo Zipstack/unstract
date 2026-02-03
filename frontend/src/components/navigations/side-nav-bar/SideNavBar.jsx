@@ -154,13 +154,35 @@ SettingsPopoverContent.propTypes = {
   navigate: PropTypes.func.isRequired,
 };
 
+const isLocalStorageAvailable = () => {
+  try {
+    return typeof localStorage !== "undefined";
+  } catch {
+    return false;
+  }
+};
+
 const getSafeLocalStorageValue = (key, defaultValue) => {
+  if (!isLocalStorageAvailable()) return defaultValue;
   try {
     const item = localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
   } catch {
-    localStorage.removeItem(key);
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      // Ignore storage errors
+    }
     return defaultValue;
+  }
+};
+
+const setSafeLocalStorageValue = (key, value) => {
+  if (!isLocalStorageAvailable()) return;
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Ignore storage errors
   }
 };
 
@@ -182,7 +204,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
   };
 
   useEffect(() => {
-    localStorage.setItem("sidebarPinned", JSON.stringify(isPinned));
+    setSafeLocalStorageValue("sidebarPinned", isPinned);
     if (isPinned) clearCollapseTimeout();
     return clearCollapseTimeout;
   }, [isPinned]);
@@ -542,24 +564,19 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
         </div>
       </div>
       <Tooltip title={isPinned ? "Unpin sidebar" : "Keep expanded"}>
-        <div
+        <button
+          type="button"
           className="sidebar-pin-container"
           onClick={togglePin}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.preventDefault();
-              togglePin();
-            }
-          }}
-          role="button"
-          tabIndex={0}
+          aria-pressed={isPinned}
+          aria-label={isPinned ? "Unpin sidebar" : "Keep expanded"}
         >
           {isPinned ? (
             <PushpinFilled className="sidebar-pin-icon pinned" />
           ) : (
             <PushpinOutlined className="sidebar-pin-icon" />
           )}
-        </div>
+        </button>
       </Tooltip>
     </Sider>
   );

@@ -27,8 +27,11 @@
   align-items: center;
   padding: 8px;
   cursor: pointer;
+  border: none;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
+  background: transparent;
+  width: 100%;
 }
 
 .sidebar-pin-icon {
