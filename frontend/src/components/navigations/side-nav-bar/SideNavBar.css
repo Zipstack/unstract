@@ -26,17 +26,22 @@
 }
 
 /* Pin container - fixed at bottom, centered */
-.sidebar-pin-container {
+.sidebar-pin-container.ant-btn {
   display: flex;
   justify-content: center;
   align-items: center;
   padding: 8px;
-  cursor: pointer;
+  height: auto;
   border: none;
   border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
   flex-shrink: 0;
   background: transparent;
   width: 100%;
+}
+
+.sidebar-pin-container.ant-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .sidebar-pin-icon {

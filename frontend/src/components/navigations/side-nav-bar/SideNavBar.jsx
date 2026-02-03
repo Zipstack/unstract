@@ -5,6 +5,7 @@ import {
   PushpinFilled,
 } from "@ant-design/icons";
 import {
+  Button,
   Divider,
   Image,
   Layout,
@@ -564,19 +565,20 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
         </div>
       </div>
       <Tooltip title={isPinned ? "Unpin sidebar" : "Keep expanded"}>
-        <button
-          type="button"
+        <Button
+          type="text"
           className="sidebar-pin-container"
           onClick={togglePin}
           aria-pressed={isPinned}
           aria-label={isPinned ? "Unpin sidebar" : "Keep expanded"}
-        >
-          {isPinned ? (
-            <PushpinFilled className="sidebar-pin-icon pinned" />
-          ) : (
-            <PushpinOutlined className="sidebar-pin-icon" />
-          )}
-        </button>
+          icon={
+            isPinned ? (
+              <PushpinFilled className="sidebar-pin-icon pinned" />
+            ) : (
+              <PushpinOutlined className="sidebar-pin-icon" />
+            )
+          }
+        />
       </Tooltip>
     </Sider>
   );
