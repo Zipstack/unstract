@@ -247,12 +247,7 @@ function ApiDeployment() {
     record.is_active = !record?.is_active;
     apiDeploymentsApiService
       .updateApiDeployment(record)
-      .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "Status updated successfully",
-        });
-      })
+      .then(() => {})
       .catch((err) => {
         setAlertDetails(handleException(err));
       })

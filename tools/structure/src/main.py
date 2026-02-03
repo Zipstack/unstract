@@ -654,10 +654,8 @@ class StructureTool(BaseTool):
             self.stream_log("Calling agentic extraction endpoint...")
             extraction_response = responder.agentic_extraction(payload=payload)
 
-            # Step 4: Transform response to match expected structure
-            # Cloud endpoint returns: {document_id, extracted_data, highlights, highlight_data, ...}
-            # We need: {data: {...}, metadata: {...}}
-            extracted_data = extraction_response.get("extracted_data", {})
+            # Step 4: Process response from agentic extraction
+            extracted_data = extraction_response.get(SettingsKeys.OUTPUT, {})
 
             # Remove _source_refs from extracted data
             try:
@@ -667,11 +665,12 @@ class StructureTool(BaseTool):
                     f"Warning: Failed to remove _source_refs: {e}. "
                     "Proceeding with original data."
                 )
-                # Continue with original extracted_data if removal fails
 
+            # Build final structured output in prompt studio format
             structured_output = {
-                "data": extracted_data,
+                SettingsKeys.OUTPUT: extracted_data,
                 SettingsKeys.METADATA: {
+                    **extraction_response.get(SettingsKeys.METADATA, {}),
                     SettingsKeys.FILE_NAME: self.source_file_name,
                     "project_id": project_id,
                     "schema_version": schema_version,
@@ -679,16 +678,6 @@ class StructureTool(BaseTool):
                     "document_id": self.file_execution_id,
                 },
             }
-
-            # Add highlight data if available
-            if "highlights" in extraction_response:
-                structured_output["highlights"] = extraction_response["highlights"]
-            if "highlight_data" in extraction_response:
-                structured_output["highlight_data"] = extraction_response[
-                    "highlight_data"
-                ]
-
-            # Update GUI with results
             output_log = (
                 f"## Agentic Extraction Complete\n"
                 f"Successfully extracted data from '{self.source_file_name}'\n"

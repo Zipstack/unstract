@@ -236,10 +236,6 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
   const handleDeleteSingle = async (fileHistoryId) => {
     try {
       await workflowApiService.deleteFileHistory(workflowId, fileHistoryId);
-      setAlertDetails({
-        type: "success",
-        message: "File history deleted successfully",
-      });
       // Refresh data
       fetchFileHistories(pagination.current, pagination.pageSize);
       setSelectedRowKeys([]);
@@ -262,17 +258,10 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
 
     setLoading(true);
     try {
-      const response = await workflowApiService.bulkDeleteFileHistoriesByIds(
+      await workflowApiService.bulkDeleteFileHistoriesByIds(
         workflowId,
         selectedRowKeys
       );
-
-      setAlertDetails({
-        type: "success",
-        message:
-          response?.data?.message ||
-          `${selectedRowKeys.length} file histories deleted successfully`,
-      });
 
       // Refresh data
       fetchFileHistories(pagination.current, pagination.pageSize);
@@ -358,17 +347,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
         filters.file_path = appliedFilters.filePath;
       }
 
-      const response = await workflowApiService.bulkClearFileHistories(
-        workflowId,
-        filters
-      );
-
-      setAlertDetails({
-        type: "success",
-        message:
-          response?.data?.message ||
-          `${response?.data?.deleted_count} file histories cleared`,
-      });
+      await workflowApiService.bulkClearFileHistories(workflowId, filters);
 
       // Refresh data
       fetchFileHistories(1, pagination.pageSize);
