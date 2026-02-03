@@ -174,42 +174,27 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
   );
   const collapseTimeoutRef = useRef(null);
 
-  useEffect(() => {
-    localStorage.setItem("sidebarPinned", JSON.stringify(isPinned));
-  }, [isPinned]);
-
-  // Clear pending collapse timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (collapseTimeoutRef.current) {
-        clearTimeout(collapseTimeoutRef.current);
-        collapseTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  // Clear timeout when sidebar becomes pinned
-  useEffect(() => {
-    if (isPinned && collapseTimeoutRef.current) {
+  const clearCollapseTimeout = () => {
+    if (collapseTimeoutRef.current) {
       clearTimeout(collapseTimeoutRef.current);
       collapseTimeoutRef.current = null;
     }
+  };
+
+  useEffect(() => {
+    localStorage.setItem("sidebarPinned", JSON.stringify(isPinned));
+    if (isPinned) clearCollapseTimeout();
+    return clearCollapseTimeout;
   }, [isPinned]);
 
   const handleMouseEnter = () => {
-    if (collapseTimeoutRef.current) {
-      clearTimeout(collapseTimeoutRef.current);
-    }
-    if (!isPinned) {
-      setCollapsed(false);
-    }
+    clearCollapseTimeout();
+    if (!isPinned) setCollapsed(false);
   };
 
   const handleMouseLeave = () => {
     if (!isPinned) {
-      collapseTimeoutRef.current = setTimeout(() => {
-        setCollapsed(true);
-      }, 300);
+      collapseTimeoutRef.current = setTimeout(() => setCollapsed(true), 300);
     }
   };
 
