@@ -206,9 +206,12 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
 
   useEffect(() => {
     setSafeLocalStorageValue("sidebarPinned", isPinned);
-    if (isPinned) clearCollapseTimeout();
+    if (isPinned) {
+      clearCollapseTimeout();
+      setCollapsed(false);
+    }
     return clearCollapseTimeout;
-  }, [isPinned]);
+  }, [isPinned, setCollapsed]);
 
   const handleMouseEnter = () => {
     clearCollapseTimeout();
@@ -428,8 +431,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     return unstractSubscriptionPlan?.remainingDays < 0;
   }, [unstractSubscriptionPlan]);
 
-  data.forEach((mainMenuItem) => {
-    mainMenuItem.subMenu.forEach((subMenuItem) => {
+  data?.forEach((mainMenuItem) => {
+    mainMenuItem?.subMenu?.forEach((subMenuItem) => {
       subMenuItem.disable = shouldDisableAll;
     });
   });
@@ -452,11 +455,11 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
               <div key={item?.id}>
                 {!collapsed && (
                   <Typography className="sidebar-main-heading">
-                    {item.mainTitle}
+                    {item?.mainTitle}
                   </Typography>
                 )}
                 <Space direction="vertical" className="menu-item-body">
-                  {item.subMenu.map((el) => {
+                  {item?.subMenu?.map((el) => {
                     // Platform item has a hover menu and click navigates to platform settings
                     if (el.id === 3.6) {
                       const handlePlatformClick = () => {
