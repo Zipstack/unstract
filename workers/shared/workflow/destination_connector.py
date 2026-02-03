@@ -1415,8 +1415,16 @@ class WorkerDestinationConnector:
                 return None
 
             file_type = file_storage.mime_type(path=output_file_path)
+            # Note: INFILE has no extension, so mime_type may return text/plain
+            # Allow text/plain for both JSON and TXT since we validate content anyway
+            allowed_mime_types = [
+                EXT_MIME_MAP[ToolOutputType.JSON.lower()],
+                EXT_MIME_MAP[ToolOutputType.TXT.lower()],
+                "text/plain",  # INFILE has no extension
+            ]
+
             if output_type == ToolOutputType.JSON:
-                if file_type != EXT_MIME_MAP[ToolOutputType.JSON.lower()]:
+                if file_type not in allowed_mime_types:
                     msg = f"Expected tool output type: JSON, got: '{file_type}'"
                     logger.error(msg)
                     raise Exception(msg)
@@ -1424,7 +1432,7 @@ class WorkerDestinationConnector:
                 result = json.loads(file_content)
                 return result
             elif output_type == ToolOutputType.TXT:
-                if file_type != EXT_MIME_MAP[ToolOutputType.TXT.lower()]:
+                if file_type not in allowed_mime_types:
                     msg = f"Expected tool output type: TXT, got: '{file_type}'"
                     logger.error(msg)
                     raise Exception(msg)
@@ -1799,6 +1807,7 @@ class WorkerDestinationConnector:
                 extracted_text=extracted_text,
                 ttl_seconds=ttl_seconds,
                 hitl_reason=hitl_reason,
+                hitl_queue_name=self.hitl_queue_name,
             )
 
             # Only include file_content if provided (backend API will handle it)
