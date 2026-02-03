@@ -150,10 +150,6 @@ function Pipelines({ type }) {
         const data = res?.data?.pipeline;
         fieldsToUpdate.last_run_status = data?.last_run_status;
         fieldsToUpdate.last_run_time = data?.last_run_time;
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline Sync Initiated",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to sync."));
@@ -232,12 +228,6 @@ function Pipelines({ type }) {
     axiosPrivate(requestOptions)
       .then(() => {
         getPipelineList();
-        setAlertDetails({
-          type: "success",
-          content: value
-            ? "Pipeline Enabled Successfully"
-            : "Pipeline Disabled Successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -284,10 +274,7 @@ function Pipelines({ type }) {
 
   const clearFileMarkers = async () => {
     const workflowId = selectedPorD?.workflow_id;
-    const success = await clearFileHistory(
-      workflowId,
-      "Pipeline File History Cleared Successfully"
-    );
+    const success = await clearFileHistory(workflowId);
     if (success && openDeleteModal) {
       setOpenDeleteModal(false);
     }
