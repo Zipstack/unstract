@@ -472,8 +472,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             } ${el.disable ? "space-styles-disable" : ""}`}
                             onClick={handlePlatformClick}
                             data-testid={`sidebar-${el.title
-                              .toLowerCase()
-                              .replace(/\s+/g, "-")}`}
+                              ?.toLowerCase()
+                              ?.replace(/\s+/g, "-")}`}
                           >
                             <Image
                               src={el.image}
@@ -531,8 +531,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             }
                           }}
                           data-testid={`sidebar-${el.title
-                            .toLowerCase()
-                            .replace(/\s+/g, "-")}`}
+                            ?.toLowerCase()
+                            ?.replace(/\s+/g, "-")}`}
                         >
                           <Image
                             src={el.image}
