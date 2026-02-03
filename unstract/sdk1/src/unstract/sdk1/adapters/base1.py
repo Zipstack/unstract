@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -322,6 +323,31 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
     safety_settings: list[dict[str, str]]
 
     @staticmethod
+    def _get_thinking_config(
+        metadata: dict[str, "Any"], enable_thinking: bool, has_existing: bool
+    ) -> dict[str, "Any"] | None:
+        """Build thinking configuration for Vertex AI models.
+
+        Returns None if thinking should not be sent (pro models with disabled).
+        """
+        if enable_thinking:
+            if has_existing:
+                return metadata["thinking"]
+            config = {"type": "enabled"}
+            budget = metadata.get("budget_tokens")
+            if budget is not None:
+                config["budget_tokens"] = budget
+            return config
+
+        # Pro models don't allow disabling thinking with budget_tokens=0
+        model_name = metadata.get("model", "").lower()
+        if "pro" in model_name:
+            return None
+
+        # Non-pro models support disabling thinking with budget_tokens=0
+        return {"type": "disabled", "budget_tokens": 0}
+
+    @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         # Make a copy so we don't modify the original
         metadata_copy = {**adapter_metadata}
@@ -340,8 +366,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Handle Vertex AI thinking configuration (for Gemini models)
         enable_thinking = metadata_copy.get("enable_thinking", False)
 
-        # If enable_thinking is not explicitly provided but thinking config is present,
-        # assume thinking was enabled in a previous validation
+        # If enable_thinking is not explicitly provided but thinking config exists
         has_thinking_config = (
             "thinking" in metadata_copy and metadata_copy.get("thinking") is not None
         )
@@ -351,28 +376,14 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Create a copy to avoid mutating the original metadata
         result_metadata = metadata_copy.copy()
 
-        # Check if this is a pro model (pro models cannot have thinking disabled with budget=0)
-        model_name = metadata_copy.get("model", "").lower()
-        is_pro_model = "pro" in model_name
-
-        if enable_thinking:
-            if has_thinking_config:
-                # Preserve existing thinking config
-                result_metadata["thinking"] = metadata_copy["thinking"]
-            else:
-                # Create new thinking config for enabled state
-                thinking_config = {"type": "enabled"}
-                budget_tokens = metadata_copy.get("budget_tokens")
-                if budget_tokens is not None:
-                    thinking_config["budget_tokens"] = budget_tokens
-                result_metadata["thinking"] = thinking_config
+        # Get thinking config (may be None for pro models with thinking disabled)
+        thinking_config = VertexAILLMParameters._get_thinking_config(
+            metadata_copy, enable_thinking, has_thinking_config
+        )
+        if thinking_config is not None:
+            result_metadata["thinking"] = thinking_config
+            if enable_thinking and not has_thinking_config:
                 result_metadata["temperature"] = 1
-        elif is_pro_model:
-            # Pro models don't allow disabling thinking with budget_tokens=0
-            # Omit the thinking config entirely to use default behavior
-            pass
-        else:
-            result_metadata["thinking"] = {"type": "disabled", "budget_tokens": 0}
 
         # Handle safety settings
         ss_dict = result_metadata.get("safety_settings", {})
@@ -430,7 +441,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
             if field in result_metadata and field not in validated_data:
                 validated_data[field] = result_metadata[field]
 
-        # Only add thinking config when thinking is enabled
+        # Add thinking config only when present (not set for pro models with disabled)
         if "thinking" in result_metadata:
             validated_data["thinking"] = result_metadata["thinking"]
 
