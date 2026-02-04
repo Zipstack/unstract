@@ -1424,6 +1424,7 @@ class WorkerWorkflowExecutionService:
                 )
                 processing_error = str(dest_error)
                 output_result = None
+                metadata = None  # Ensure metadata is defined for file history creation
 
             # Handle metadata for API workflows (matching backend pattern)
             execution_metadata = None
