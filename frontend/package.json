@@ -86,13 +86,13 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
-    "@vitejs/plugin-react": "^4.3.4",
+    "@vitejs/plugin-react": "^4.4.0",
     "baseline-browser-mapping": "^2.9.19",
-    "vite": "^6.0.5",
+    "vite": "^7.0.0",
     "vite-plugin-svgr": "^4.5.0",
-    "vitest": "^2.1.8"
+    "vitest": "^3.2.0"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.19.0"
   }
 }
