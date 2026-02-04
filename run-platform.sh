@@ -71,7 +71,7 @@ display_help() {
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
   echo -e "   -u, --update        Update services version"
-  echo -e "   -w, --workers-v2    Use v2 dedicated worker containers"
+  echo -e "   -w, --workers-v2    Use v2 worker containers (worker-unified image)"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -256,17 +256,28 @@ setup_env() {
 build_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
+  # Set compose profile and scale flags for worker mode
+  if [ "$opt_workers_v2" = true ]; then
+    compose_profile="--profile workers-v2"
+    # Scale old workers to 0 so they don't start alongside v2 workers
+    compose_scale="--scale worker=0 --scale worker-logging=0 --scale worker-file-processing=0 --scale worker-file-processing-callback=0"
+    echo -e "$blue_text""Using v2 workers (worker-unified)""$default_text"
+  else
+    compose_profile=""
+    compose_scale=""
+  fi
+
   if [ "$opt_build_local" = true ]; then
     echo -e "$blue_text""Building""$default_text"" docker images ""$blue_text""$opt_version""$default_text"" locally."
-    VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" build || {
+    VERSION=$opt_version $docker_compose_cmd $compose_profile -f "$script_dir/docker/docker-compose.build.yaml" build || {
       echo -e "$red_text""Failed to build docker images.""$default_text"
       exit 1
     }
   elif [ "$first_setup" = true ] || [ "$opt_update" = true ]; then
     echo -e "$blue_text""Pulling""$default_text"" docker images tag ""$blue_text""$opt_version""$default_text""."
     # Try again on a slow network.
-    VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.yaml" pull ||
-    VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.yaml" pull || {
+    VERSION=$opt_version $docker_compose_cmd $compose_profile -f "$script_dir/docker/docker-compose.yaml" pull ||
+    VERSION=$opt_version $docker_compose_cmd $compose_profile -f "$script_dir/docker/docker-compose.yaml" pull || {
       echo -e "$red_text""Failed to pull docker images.""$default_text"
       echo -e "$red_text""Either version not found or docker is not running.""$default_text"
       echo -e "$red_text""Please check and try again.""$default_text"
@@ -286,12 +297,11 @@ run_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
   if [ "$opt_workers_v2" = true ]; then
-    echo -e "$blue_text""Starting docker containers with V2 dedicated workers in detached mode""$default_text"
-    VERSION=$opt_version $docker_compose_cmd --profile workers-v2 up -d
+    echo -e "$blue_text""Starting docker containers with v2 workers in detached mode""$default_text"
   else
-    echo -e "$blue_text""Starting docker containers with existing backend-based workers in detached mode""$default_text"
-    VERSION=$opt_version $docker_compose_cmd up -d
+    echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
   fi
+  VERSION=$opt_version $docker_compose_cmd $compose_profile up -d $compose_scale
 
   if [ "$opt_update" = true ]; then
     echo ""
