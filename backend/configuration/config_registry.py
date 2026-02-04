@@ -33,7 +33,7 @@ def _load_cloud_config_specs() -> dict[str, ConfigSpec]:
             return cloud_specs
 
         # Check if plugin is active
-        metadata = plugin.get(ConfigPluginConstants.METADATA, {})
+        metadata = plugin.get(ConfigPluginConstants.CONFIG_METADATA, {})
         if not metadata.get(ConfigPluginConstants.METADATA_IS_ACTIVE, False):
             logger.warning("Cloud configuration plugin is not active")
             return cloud_specs
