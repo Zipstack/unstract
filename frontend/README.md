@@ -1,5 +1,9 @@
 # Unstract Frontend
 
+[![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?logo=vite&logoColor=white)](https://vite.dev/)
+[![Bun](https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=white)](https://bun.sh/)
+[![Biome](https://img.shields.io/badge/Biome-2.x-60A5FA?logo=biome&logoColor=white)](https://biomejs.dev/)
+
 The Unstract frontend is built with React 18 and uses [Vite](https://vite.dev) as the build tool for fast development and optimized production builds.
 
 **Migration Note:** This project was migrated from Create React App to Vite on 2025-10-19. See [VITE_MIGRATION.md](docs/VITE_MIGRATION.md) for details.
