@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
 import { Outlet } from "react-router-dom";
-import axios from "axios";
 
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { Unauthorized } from "../../error/UnAuthorized/Unauthorized.jsx";
 import { NotFound } from "../../error/NotFound/NotFound.jsx";
 
 const RequireAdmin = () => {
+  const axiosPrivate = useAxiosPrivate();
   const { sessionDetails, updateSessionDetails } = useSessionStore();
   const [isVerifying, setIsVerifying] = useState(true);
   const orgId = sessionDetails?.orgId;
@@ -16,7 +17,7 @@ const RequireAdmin = () => {
   useEffect(() => {
     const verifyAdminStatus = async () => {
       try {
-        const res = await axios.get(
+        const res = await axiosPrivate.get(
           `/api/v1/unstract/${orgId}/users/profile/`,
           { headers: { "X-CSRFToken": sessionDetails?.csrfToken } }
         );
