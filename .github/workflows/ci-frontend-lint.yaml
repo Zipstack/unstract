@@ -1,0 +1,62 @@
+name: Frontend Lint (Biome)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths:
+      - "frontend/**"
+
+jobs:
+  biome-check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Run Biome check
+        id: biome
+        working-directory: frontend
+        continue-on-error: true
+        run: |
+          bun x @biomejs/biome check src/ --reporter=github 2>&1 | tee biome-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Generate summary report
+        if: always()
+        working-directory: frontend
+        run: |
+          echo "## Frontend Lint Report (Biome)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [ "${{ steps.biome.outputs.exit_code }}" = "0" ]; then
+            echo "✅ **All checks passed!** No linting or formatting issues found." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Issues found.** Please fix the following problems:" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            cat biome-output.txt >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Run \`cd frontend && bun run check:fix\` to auto-fix issues." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Fail if Biome found issues
+        if: steps.biome.outputs.exit_code != '0'
+        run: exit 1
