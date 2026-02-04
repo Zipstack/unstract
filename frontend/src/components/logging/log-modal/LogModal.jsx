@@ -1,7 +1,7 @@
-import { Modal, Table, Tag, Tooltip } from "antd";
+import { Button, Modal, Table, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { SearchOutlined } from "@ant-design/icons";
+import { CopyOutlined } from "@ant-design/icons";
 
 import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -13,6 +13,7 @@ import {
 } from "../../../helpers/GetStaticData";
 import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 
 function LogModal({
   executionId,
@@ -25,6 +26,8 @@ function LogModal({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+  const copyToClipboard = useCopyToClipboard();
+  const displayId = fileId || executionId;
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -175,7 +178,19 @@ function LogModal({
   }, [logDescModalOpen, pagination.current, selectedLogLevel, ordering]);
   return (
     <Modal
-      title={`Execution Log Details - ${fileId || executionId}`}
+      title={
+        <span className="log-modal-title">
+          File Execution ID {displayId}
+          {displayId && (
+            <Button
+              className="copy-btn-outlined"
+              icon={<CopyOutlined />}
+              aria-label="Copy execution ID"
+              onClick={() => copyToClipboard(displayId, "File Execution ID")}
+            />
+          )}
+        </span>
+      }
       centered
       open={logDescModalOpen}
       onCancel={handleClose}

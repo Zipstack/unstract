@@ -3,28 +3,21 @@
   margin-top: 10px;
 }
 
-/* Stage-specific row styling */
-.log-modal-row-lookup {
-  background-color: #f9f0ff;
+.log-modal-title {
+  display: inline-flex;
+  align-items: center;
 }
 
-.log-modal-row-lookup:hover td {
-  background-color: #efdbff !important;
+.log-modal-title .copy-btn-outlined {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.65);
+  margin-left: 8px;
+  height: auto;
+  min-width: auto;
 }
 
-/* Log level styling */
-.info {
-  color: #1890ff;
-}
-
-.warn {
-  color: #faad14;
-}
-
-.debug {
-  color: #8c8c8c;
-}
-
-.error {
-  color: #ff4d4f;
+.log-modal-title .copy-btn-outlined:hover {
+  border-color: #1677ff;
+  color: #1677ff;
 }

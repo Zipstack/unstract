@@ -338,8 +338,14 @@ const SideNavBar = ({ collapsed }) => {
     data[1]?.subMenu?.splice(1, 0, getMenuItem.default(orgName));
   }
 
-  // Add Agentic Prompt Studio menu item if plugin is available
-  if (agenticPromptStudioEnabled) {
+  // Memoize isUnstract calculation to avoid redundant computation
+  const isUnstract = useMemo(
+    () => !(selectedProduct && selectedProduct !== "unstract"),
+    [selectedProduct]
+  );
+
+  // Add Agentic Prompt Studio menu item if plugin is available and product is unstract
+  if (agenticPromptStudioEnabled && isUnstract) {
     data[0]?.subMenu?.splice(1, 0, {
       id: 1.2,
       title: "Agentic Prompt Studio",
@@ -353,7 +359,6 @@ const SideNavBar = ({ collapsed }) => {
   }
 
   const shouldDisableAll = useMemo(() => {
-    const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
     if (
       !unstractSubscriptionPlan ||
       !UNSTRACT_SUBSCRIPTION_PLANS ||
@@ -363,7 +368,7 @@ const SideNavBar = ({ collapsed }) => {
     }
 
     return unstractSubscriptionPlan?.remainingDays < 0;
-  }, [unstractSubscriptionPlan]);
+  }, [unstractSubscriptionPlan, isUnstract]);
 
   data.forEach((mainMenuItem) => {
     mainMenuItem.subMenu.forEach((subMenuItem) => {
