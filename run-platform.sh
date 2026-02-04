@@ -257,7 +257,7 @@ build_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
   # Set compose profile and scale flags for worker mode
-  if [ "$opt_workers_v2" = true ]; then
+  if [[ "$opt_workers_v2" = true ]]; then
     compose_profile="--profile workers-v2"
     # Scale old workers to 0 so they don't start alongside v2 workers
     compose_scale="--scale worker=0 --scale worker-logging=0 --scale worker-file-processing=0 --scale worker-file-processing-callback=0"
@@ -296,7 +296,7 @@ build_services() {
 run_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
-  if [ "$opt_workers_v2" = true ]; then
+  if [[ "$opt_workers_v2" = true ]]; then
     echo -e "$blue_text""Starting docker containers with v2 workers in detached mode""$default_text"
   else
     echo -e "$blue_text""Starting docker containers in detached mode""$default_text"

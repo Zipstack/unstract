@@ -242,31 +242,37 @@ class WorkflowHelper:
                 raise WorkflowExecutionError(exception)
             logger.info(f"Execution {workflow_execution.id} task queued successfully")
         except Exception as e:
-            workflow_execution.update_execution(
-                status=ExecutionStatus.ERROR,
-                error=f"Error while processing files: {str(e)}",
-            )
+            cls._handle_execution_failure(workflow_execution, e)
 
-            # TODO: Remove related code when v1 workers are deprecated and removed
-            from plugins import get_plugin
+    @staticmethod
+    def _handle_execution_failure(
+        workflow_execution: WorkflowExecution,
+        error: Exception,
+    ) -> None:
+        """Handle workflow execution failure with subscription cleanup."""
+        workflow_execution.update_execution(
+            status=ExecutionStatus.ERROR,
+            error=f"Error while processing files: {str(error)}",
+        )
 
-            organization_id = workflow_execution.workflow.organization.organization_id
-            subscription_usage_plugin = get_plugin("subscription_usage")
-            if subscription_usage_plugin:
-                try:
-                    service = subscription_usage_plugin["service_class"]()
-                    service.handle_workflow_execution_failure(
-                        organization_id=organization_id,
-                        execution_id=str(workflow_execution.id),
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error in subscription usage plugin failure handler: {e}"
-                    )
+        # TODO: Remove related code when v1 workers are deprecated and removed
+        from plugins import get_plugin
 
-            logger.error(
-                f"Execution {workflow_execution.id} failed: {str(e)}", exc_info=True
-            )
+        organization_id = workflow_execution.workflow.organization.organization_id
+        subscription_usage_plugin = get_plugin("subscription_usage")
+        if subscription_usage_plugin:
+            try:
+                service = subscription_usage_plugin["service_class"]()
+                service.handle_workflow_execution_failure(
+                    organization_id=organization_id,
+                    execution_id=str(workflow_execution.id),
+                )
+            except Exception as e:
+                logger.error(f"Error in subscription usage plugin failure handler: {e}")
+
+        logger.error(
+            f"Execution {workflow_execution.id} failed: {str(error)}", exc_info=True
+        )
 
     @staticmethod
     def validate_tool_instances_meta(
