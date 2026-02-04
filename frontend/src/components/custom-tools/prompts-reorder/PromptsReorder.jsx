@@ -1,16 +1,16 @@
-import { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import { Space } from "antd";
 import PropTypes from "prop-types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DndProvider } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { Space } from "antd";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import DraggablePrompt from "./DraggablePrompt";
 import "./PromptsReorder.css";
-import { useSessionStore } from "../../../store/session-store";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
 
 function PromptsReorder({ isOpen, updateReorderedStatus }) {
   const [listOfPrompts, setListOfPrompts] = useState([]);
@@ -33,7 +33,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
         prompt_key: prompt.prompt_key,
         prompt_id: prompt.prompt_id,
         sequence_number: prompt.sequence_number,
-      }))
+      })),
     );
   }, [isOpen, details]);
 
@@ -53,7 +53,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
         return updatedPrompts;
       });
     },
-    [listOfPrompts]
+    [listOfPrompts],
   );
 
   const handleDropSuccess = useCallback((data) => {
@@ -87,7 +87,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
       previousListOfPrompts.current = [];
       setAlertDetails(handleException(err, "Failed to reorder the prompts"));
     },
-    [handleException, setAlertDetails]
+    [handleException, setAlertDetails],
   );
 
   const onDrop = useCallback(
@@ -129,7 +129,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
       sessionDetails?.csrfToken,
       sessionDetails?.orgId,
       updateReorderedStatus,
-    ]
+    ],
   );
 
   const cancelDrag = useCallback(() => {
@@ -151,7 +151,7 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
           cancelDrag={cancelDrag}
         />
       )),
-    [listOfPrompts, movePrompt, onDrop, cancelDrag]
+    [listOfPrompts, movePrompt, onDrop, cancelDrag],
   );
 
   return (

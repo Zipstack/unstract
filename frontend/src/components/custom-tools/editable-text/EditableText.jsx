@@ -1,10 +1,11 @@
 import { Input } from "antd";
-import { useCallback, useEffect, useRef, useState } from "react";
-import PropTypes from "prop-types";
 import debounce from "lodash/debounce";
+import PropTypes from "prop-types";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import "./EditableText.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+
 function EditableText({
   isEditing,
   setIsEditing,
@@ -51,7 +52,7 @@ function EditableText({
     debounce((event) => {
       setTriggerHandleChange(true);
     }, 1000),
-    []
+    [],
   );
 
   useEffect(() => {

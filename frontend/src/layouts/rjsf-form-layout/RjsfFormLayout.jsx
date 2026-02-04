@@ -66,21 +66,21 @@ function RjsfFormLayout({
       UpDownWidget,
       URLWidget,
     }),
-    []
+    [],
   );
 
   const fields = useMemo(
     () => ({
       ArrayField,
     }),
-    []
+    [],
   );
 
   const uiSchema = useMemo(
     () => ({
       "ui:classNames": "my-rjsf-form",
     }),
-    [formData]
+    [formData],
   );
 
   const removeBlankDefault = useCallback((schema) => {
@@ -235,7 +235,7 @@ function RjsfFormLayout({
         };
       });
     },
-    [schema, generateEnumMessage, validationMessageGenerators]
+    [schema, generateEnumMessage, validationMessageGenerators],
   );
 
   const handleChange = useCallback(
@@ -246,7 +246,7 @@ function RjsfFormLayout({
       const data = event.formData;
       setFormData(data);
     },
-    [isStateUpdateRequired, setFormData]
+    [isStateUpdateRequired, setFormData],
   );
 
   // Apply CustomObjectFieldTemplate for file connector forms (those with fileReprocessingHandling)
