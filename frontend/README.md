@@ -6,7 +6,7 @@ The Unstract frontend is built with React 18 and uses [Vite](https://vite.dev) a
 
 ## Prerequisites
 
-- **Node.js**: Version 16.x to 19.x (Node 20+ not yet supported)
+- **Node.js**: Version 18.0.0 or higher
 - **npm**: Version 8.19.4 or higher
 
 ## Quick Start
@@ -61,8 +61,7 @@ The application will be available at [http://localhost:3000](http://localhost:30
 
 ### Recommended VSCode Extensions
 
-1. **Prettier** - Code formatter: <https://marketplace.visualstudio.com/items?itemName=esbenp.prettier-vscode>
-2. **ESLint** - JavaScript linter: <https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint>
+1. **Biome** - Linter and formatter: <https://marketplace.visualstudio.com/items?itemName=biomejs.biome>
 
 ## Available Scripts
 
@@ -115,16 +114,20 @@ Runs tests using Vitest in watch mode.
 
 ### Linting and Formatting
 
-The project includes ESLint and Prettier for code quality and formatting.
+The project uses [Biome](https://biomejs.dev/) for linting and formatting - a fast, unified tool that replaces ESLint and Prettier.
 
 **Available commands:**
 
 - `npm run lint` - Check for linting errors
 - `npm run lint:fix` - Auto-fix linting errors
-- `npm run prettier` - Check formatting issues
-- `npm run prettier:fix` - Auto-fix formatting issues
-- `npm run lint:all` - Run both ESLint and Prettier fixes on all files
-- `npm run lint:changed` - Run ESLint and Prettier only on changed files
+- `npm run format` - Check formatting issues
+- `npm run format:fix` - Auto-fix formatting issues
+- `npm run check` - Run both linting and formatting checks
+- `npm run check:fix` - Auto-fix both linting and formatting issues
+- `npm run lint:all` - Run all Biome checks with auto-fix on all files
+- `npm run lint:changed` - Run Biome checks only on changed files
+
+**Configuration:** Biome is configured via `biome.json` in the frontend directory.
 
 **Note:** Make sure to run `npm install` first to install the required dependencies.
 
@@ -467,6 +470,13 @@ If you're working with older branches or need to understand the migration:
 - [Environment Variables in Vite](https://vite.dev/guide/env-and-mode.html)
 - [Vite Build Optimizations](https://vite.dev/guide/build.html)
 
+### Biome Documentation
+
+- [Biome Official Docs](https://biomejs.dev/)
+- [Biome Linter Rules](https://biomejs.dev/linter/rules/)
+- [Biome Formatter](https://biomejs.dev/formatter/)
+- [Biome Configuration](https://biomejs.dev/reference/configuration/)
+
 ### React Documentation
 
 - [React Official Docs](https://react.dev/)
@@ -491,8 +501,7 @@ If you're working with older branches or need to understand the migration:
 ### Pre-commit Hooks
 
 The project may use pre-commit hooks for:
-- ESLint validation
-- Prettier formatting
+- Biome linting and formatting
 - Test execution
 
 ### Pull Request Guidelines
@@ -521,6 +530,7 @@ frontend/
 │   └── index.jsx           # Application entry point
 ├── index.html              # HTML entry point (Vite)
 ├── vite.config.js          # Vite configuration
+├── biome.json              # Biome linter/formatter configuration
 ├── package.json            # Dependencies and scripts
 └── .env                    # Environment variables (VITE_ prefix)
 ```
