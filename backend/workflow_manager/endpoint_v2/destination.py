@@ -290,7 +290,6 @@ class DestinationConnector(BaseConnector):
         """Handle the output based on the connection type."""
         connection_type = self.endpoint.connection_type
         tool_execution_result: str | None = None
-
         if connection_type == WorkflowEndpoint.ConnectionType.FILESYSTEM:
             self.copy_output_to_output_directory()
 
@@ -940,18 +939,30 @@ class DestinationConnector(BaseConnector):
             q_name: Queue name for regular queue
             ttl_seconds: TTL in seconds (optional, for regular queue)
         """
-        # Get queue instance
-        conn = QueueUtils.get_queue_inst()
+        # Get organization_id for proper HITL queue filtering
+        organization_id = UserContext.get_organization_identifier()
 
+        # Get HITL backend queue instance with organization context
+        conn = QueueUtils.get_queue_inst(
+            {"use_hitl_backend": True, "organization_id": organization_id}
+        )
+
+        # Check if this is packet processing
         if self.packet_id:
-            # Route to packet queue
+            # Route to packet queue (Enterprise feature)
+            logger.info(f"Routing {file_name} to packet queue {self.packet_id}")
             success = conn.enqueue_to_packet(
-                packet_id=self.packet_id, queue_result=queue_result
+                packet_id=self.packet_id,
+                queue_result=queue_result,
+                organization_id=organization_id,
             )
             if not success:
                 error_msg = f"Failed to push {file_name} to packet {self.packet_id}"
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
+            logger.info(
+                f"Pushed {file_name} to packet {self.packet_id} with organization_id {organization_id}"
+            )
             return
 
         # Route to regular queue
@@ -959,9 +970,14 @@ class DestinationConnector(BaseConnector):
             conn.enqueue_with_ttl(
                 queue_name=q_name, message=queue_result_json, ttl_seconds=ttl_seconds
             )
+            logger.info(
+                f"Pushed {file_name} to queue {q_name} with organization_id {organization_id} and TTL {ttl_seconds}"
+            )
         else:
             conn.enqueue(queue_name=q_name, message=queue_result_json)
-        logger.info(f"Pushed {file_name} to queue {q_name} with file content")
+            logger.info(
+                f"Pushed {file_name} to queue {q_name} with organization_id {organization_id}"
+            )
 
     def _create_queue_result(
         self,
