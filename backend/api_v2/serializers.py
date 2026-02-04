@@ -425,6 +425,9 @@ class ExecutionQuerySerializer(Serializer):
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
     created_by_email = SerializerMethodField()
+    last_5_run_statuses = SerializerMethodField()
+    run_count = SerializerMethodField()
+    last_run_time = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -439,11 +442,31 @@ class APIDeploymentListSerializer(ModelSerializer):
             "api_name",
             "created_by",
             "created_by_email",
+            "last_5_run_statuses",
+            "run_count",
+            "last_run_time",
         ]
 
     def get_created_by_email(self, obj):
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
+
+    def get_run_count(self, instance) -> int:
+        """Get total execution count for this API deployment."""
+        return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
+
+    def get_last_run_time(self, instance) -> str | None:
+        """Get the timestamp of the most recent execution."""
+        last_execution = (
+            WorkflowExecution.objects.filter(pipeline_id=instance.id)
+            .order_by("-created_at")
+            .first()
+        )
+        return last_execution.created_at.isoformat() if last_execution else None
+
+    def get_last_5_run_statuses(self, instance) -> list[dict]:
+        """Fetch the last 5 execution statuses with timestamps for this API deployment."""
+        return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
 
 
 class APIKeyListSerializer(ModelSerializer):
