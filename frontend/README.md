@@ -10,8 +10,8 @@ The Unstract frontend is built with React 18 and uses [Vite](https://vite.dev) a
 
 ## Prerequisites
 
-- **Node.js**: Version 20.19.0 or higher
-- **npm**: Version 8.19.4 or higher
+- **Bun**: Version 1.0.0 or higher (recommended)
+- **Node.js**: Version 20.19.0 or higher (for compatibility)
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ cd unstract/frontend
 ### 2. Install Dependencies
 
 ```bash
-npm install
+bun install
 ```
 
 ### 3. Configure Environment Variables
@@ -48,13 +48,13 @@ VITE_CUSTOM_LOGO_URL=/path/to/custom/logo.svg
 ### 4. Start Development Server
 
 ```bash
-npm start
+bun start
 ```
 
 Or use the Vite-specific command:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
 The application will be available at [http://localhost:3000](http://localhost:3000).
@@ -71,7 +71,7 @@ The application will be available at [http://localhost:3000](http://localhost:30
 
 ### Development
 
-#### `npm start` or `npm run dev`
+#### `bun start` or `bun run dev`
 
 Starts the Vite development server with Hot Module Replacement (HMR).
 
@@ -82,7 +82,7 @@ Starts the Vite development server with Hot Module Replacement (HMR).
   - On-demand compilation
   - Error overlay for build errors
 
-#### `npm run preview`
+#### `bun run preview`
 
 Locally preview the production build before deployment.
 
@@ -91,7 +91,7 @@ Locally preview the production build before deployment.
 
 ### Building
 
-#### `npm run build`
+#### `bun run build`
 
 Builds the application for production to the `build/` folder.
 
@@ -106,7 +106,7 @@ Builds the application for production to the `build/` folder.
 
 ### Testing
 
-#### `npm test`
+#### `bun test`
 
 Runs tests using Vitest in watch mode.
 
@@ -122,18 +122,18 @@ The project uses [Biome](https://biomejs.dev/) for linting and formatting - a fa
 
 **Available commands:**
 
-- `npm run lint` - Check for linting errors
-- `npm run lint:fix` - Auto-fix linting errors
-- `npm run format` - Check formatting issues
-- `npm run format:fix` - Auto-fix formatting issues
-- `npm run check` - Run both linting and formatting checks
-- `npm run check:fix` - Auto-fix both linting and formatting issues
-- `npm run lint:all` - Run all Biome checks with auto-fix on all files
-- `npm run lint:changed` - Run Biome checks only on changed files
+- `bun run lint` - Check for linting errors
+- `bun run lint:fix` - Auto-fix linting errors
+- `bun run format` - Check formatting issues
+- `bun run format:fix` - Auto-fix formatting issues
+- `bun run check` - Run both linting and formatting checks
+- `bun run check:fix` - Auto-fix both linting and formatting issues
+- `bun run lint:all` - Run all Biome checks with auto-fix on all files
+- `bun run lint:changed` - Run Biome checks only on changed files
 
 **Configuration:** Biome is configured via `biome.json` in the frontend directory.
 
-**Note:** Make sure to run `npm install` first to install the required dependencies.
+**Note:** Make sure to run `bun install` first to install the required dependencies.
 
 ## Environment Variables
 
@@ -286,7 +286,7 @@ Production builds use NGINX to serve the optimized static files:
 docker compose -f docker-compose.build.yaml build frontend
 
 # The build process:
-# 1. npm install dependencies
+# 1. bun install dependencies
 # 2. vite build (outputs to build/ directory)
 # 3. Copy build/ to NGINX html directory
 # 4. Inject runtime config script for dynamic environment variables
@@ -418,8 +418,8 @@ const url = process.env.REACT_APP_BACKEND_URL;
 
 **Solution**:
 1. Verify the import path is correct
-2. Check if the module is installed: `npm list <package-name>`
-3. Clear node_modules and reinstall: `rm -rf node_modules && npm install`
+2. Check if the module is installed: `bun pm ls <package-name>`
+3. Clear node_modules and reinstall: `rm -rf node_modules && bun install`
 4. Clear Vite cache: `rm -rf node_modules/.vite`
 
 #### Port Already in Use
@@ -443,7 +443,7 @@ vite --port 3001
 If you experience slow builds or dev server:
 
 1. **Clear Vite cache**: `rm -rf node_modules/.vite`
-2. **Update dependencies**: `npm update`
+2. **Update dependencies**: `bun update`
 3. **Check for large files** in `src/` directory
 4. **Disable source maps** in `vite.config.js` (development only)
 
@@ -498,8 +498,8 @@ If you're working with older branches or need to understand the migration:
 ### Code Style
 
 - Follow existing code patterns and conventions
-- Run `npm run lint:all` before committing
-- Ensure all tests pass: `npm test`
+- Run `bun run lint:all` before committing
+- Ensure all tests pass: `bun test`
 - Use meaningful component and variable names
 
 ### Pre-commit Hooks
