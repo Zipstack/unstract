@@ -551,7 +551,7 @@ class UnstractRunner:
                 "type": "RESULT",
                 "result": None,
                 "error": str(e.message),
-                "error_code": "TOOL_IMAGE_NOT_FOUND",
+                "error_code": ToolImageNotFoundError.ERROR_CODE,
                 "status": "ERROR",
             }
         except Exception as e:

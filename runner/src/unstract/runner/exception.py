@@ -4,8 +4,11 @@ class ToolRunException(Exception):
         super().__init__(self.message)
 
 
-class ToolImageNotFoundError(Exception):
+class ToolImageNotFoundError(ToolRunException):
     """Raised when a tool image is not found in the container registry."""
+
+    # Error code for deterministic error identification across services
+    ERROR_CODE = "TOOL_IMAGE_NOT_FOUND"
 
     def __init__(self, image_name: str, image_tag: str):
         self.image_name = image_name

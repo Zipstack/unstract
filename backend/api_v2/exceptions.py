@@ -124,17 +124,23 @@ class ToolNotFoundInRegistry(APIException):
         super().__init__(detail, code)
 
 
-# Error patterns that indicate tool not found in registry
-TOOL_NOT_FOUND_PATTERNS = [
-    "not found in container registry",
-    ToolNotFoundInRegistry.ERROR_CODE,
-]
+def _check_error_code(error_value: str | None) -> bool:
+    """Check if error string contains the tool not found error code.
+
+    Uses deterministic error code matching instead of fragile string patterns.
+    """
+    if not error_value:
+        return False
+    return ToolNotFoundInRegistry.ERROR_CODE in str(error_value)
 
 
 def contains_tool_not_found_error(
     response: "dict | ExecutionResponse",
 ) -> bool:
     """Check if response contains a tool not found in registry error.
+
+    Uses deterministic error code matching (TOOL_IMAGE_NOT_FOUND) instead of
+    fragile string pattern matching to identify this specific error condition.
 
     Args:
         response: Either a dict (from POST) or ExecutionResponse (from GET)
@@ -150,23 +156,16 @@ def contains_tool_not_found_error(
         error = getattr(response, "error", None)
         result = getattr(response, "result", []) or []
 
-    # Check top-level error
-    if error:
-        error_str = str(error).lower()
-        for pattern in TOOL_NOT_FOUND_PATTERNS:
-            if pattern.lower() in error_str:
-                return True
+    # Check top-level error for error code
+    if _check_error_code(error):
+        return True
 
     # Check file-level errors in result array
     if isinstance(result, list):
         for item in result:
             if isinstance(item, dict):
-                file_error = item.get("error", "")
-                if file_error:
-                    error_str = str(file_error).lower()
-                    for pattern in TOOL_NOT_FOUND_PATTERNS:
-                        if pattern.lower() in error_str:
-                            return True
+                if _check_error_code(item.get("error")):
+                    return True
 
     return False
 
