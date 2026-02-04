@@ -1,12 +1,15 @@
 # Vite Migration Guide
 
-**Migration Date:** 2025-10-19
+**Initial Migration Date:** 2025-10-19
 **From:** Create React App (react-scripts 5.0.1)
 **To:** Vite 6.0.5 + @vitejs/plugin-react 4.3.4
 
+**Vite 7 Upgrade Date:** 2026-02-04
+**Current Version:** Vite 7.3.1 + @vitejs/plugin-react 4.4.0 + Vitest 3.2.4
+
 ## Overview
 
-The Unstract frontend has been migrated from Create React App to Vite for improved development experience and build performance.
+The Unstract frontend has been migrated from Create React App to Vite for improved development experience and build performance. The project uses **Bun** as the package manager.
 
 ## What Changed
 
@@ -19,9 +22,9 @@ The Unstract frontend has been migrated from Create React App to Vite for improv
 - Webpack and Babel dependencies
 
 #### Added
-- `vite` (v6.0.5)
-- `@vitejs/plugin-react` (v4.3.4)
-- `vitest` (v2.1.8) for testing
+- `vite` (v7.3.1)
+- `@vitejs/plugin-react` (v4.4.0)
+- `vitest` (v3.2.4) for testing
 - `vite.config.js` for build configuration
 
 ### 2. File Structure Changes
@@ -228,8 +231,8 @@ optimizeDeps: {
 - [ ] Update local `.env` files to use `VITE_` prefix
 - [ ] Update any custom environment variables in deployment configs
 - [ ] Verify all `process.env.REACT_APP_*` references are updated to `import.meta.env.VITE_*`
-- [ ] Test development server: `npm start` or `npm run dev`
-- [ ] Test production build: `npm run build`
+- [ ] Test development server: `bun start` or `bun run dev`
+- [ ] Test production build: `bun run build`
 - [ ] Verify HMR works correctly in Docker environment
 - [ ] Check proxy configuration for backend API calls
 
@@ -307,27 +310,27 @@ RUN sed -i 's|</head>|    <script src="/config/runtime-config.js"></script>\n  <
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Start development server
-npm start
+bun start
 # or
-npm run dev
+bun run dev
 
 # Build for production
-npm run build
+bun run build
 
 # Preview production build
-npm run preview
+bun run preview
 
 # Run tests
-npm test
+bun test
 
 # Lint code
-npm run lint
+bun run lint
 
 # Format code
-npm run prettier:fix
+bun run format:fix
 ```
 
 ## TypeScript Support
@@ -349,6 +352,31 @@ interface ImportMeta {
   readonly env: ImportMetaEnv
 }
 ```
+
+## Vite 7 Upgrade (2026-02-04)
+
+### What Changed in Vite 7
+
+- **Node.js requirement**: Minimum Node.js 20.19+ or 22.12+ (Node 18 dropped)
+- **Vitest**: Upgraded from 2.x to 3.2+ (required for Vite 7 compatibility)
+- **Browser target**: Default changed from `'modules'` to `'baseline-widely-available'`
+- **Modernized config**: `__dirname` replaced with `import.meta.dirname`
+
+### Deprecated Features Removed in Vite 7
+
+| Feature | Status |
+|---------|--------|
+| `splitVendorChunkPlugin` | Not used (we use manual `manualChunks`) |
+| Sass legacy API | Not used (no SCSS files in project) |
+
+### Version Updates
+
+| Package | Before | After |
+|---------|--------|-------|
+| vite | ^6.0.5 | ^7.0.0 (7.3.1) |
+| vitest | ^2.1.8 | ^3.2.0 (3.2.4) |
+| @vitejs/plugin-react | ^4.3.4 | ^4.4.0 |
+| Node.js (engines) | >=18.0.0 | >=20.19.0 |
 
 ## Benefits of Vite Migration
 
@@ -375,7 +403,7 @@ If you need to rollback to Create React App:
 3. Restore `public/index.html` and `src/setupProxy.js`
 4. Revert environment variable changes (`VITE_*` → `REACT_APP_*`)
 5. Revert code changes (`import.meta.env` → `process.env`)
-6. Run `npm install` to restore react-scripts
+6. Run `bun install` to restore react-scripts
 
 ## Support
 
