@@ -6,7 +6,7 @@
 
 The Unstract frontend is built with React 18 and uses [Vite](https://vite.dev) as the build tool for fast development and optimized production builds.
 
-**Migration Note:** This project was migrated from Create React App to Vite on 2025-10-19. See [VITE_MIGRATION.md](docs/VITE_MIGRATION.md) for details.
+**Migration Note:** This project was migrated from Create React App to Vite 6 on 2025-10-19, and upgraded to Vite 7 on 2026-02-04. See [VITE_MIGRATION.md](docs/VITE_MIGRATION.md) for details.
 
 ## Prerequisites
 
