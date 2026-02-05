@@ -16,6 +16,10 @@ RUN npm install --ignore-scripts
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ /app/
 
+# Copy the environment script
+COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
+RUN chmod +x /docker-entrypoint.d/40-env.sh
+
 EXPOSE 3000
 
 CMD ["npm", "start"]
@@ -53,7 +57,7 @@ RUN mkdir -p /usr/share/nginx/html/config && \
     chmod 755 /usr/share/nginx/html/config
 
 # Copy the environment script
-COPY ../frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
+COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
 RUN chmod +x /docker-entrypoint.d/40-env.sh
 
 EXPOSE 80

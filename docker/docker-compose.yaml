@@ -175,7 +175,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`)
-      - traefik.http.services.frontend.loadbalancer.server.port=3000
+      - traefik.http.services.frontend.loadbalancer.server.port=80
 
   platform-service:
     image: unstract/platform-service:${VERSION}
