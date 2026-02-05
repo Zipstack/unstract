@@ -1,4 +1,3 @@
-// Use CDN to load the worker file
-// Version must match the installed pdfjs-dist version (3.11.174 via @react-pdf-viewer/core)
-export const PDF_WORKER_URL =
-  "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+// Load the worker file from the installed pdfjs-dist package
+// The ?url suffix tells Webpack 5 to return the URL of the asset
+export { default as PDF_WORKER_URL } from "pdfjs-dist/build/pdf.worker.min.js?url";

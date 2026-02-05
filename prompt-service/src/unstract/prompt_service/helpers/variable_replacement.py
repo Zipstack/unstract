@@ -6,6 +6,7 @@ from typing import Any
 from flask import current_app as app
 
 from unstract.prompt_service.constants import VariableConstants, VariableType
+from unstract.prompt_service.exceptions import CustomDataError
 from unstract.prompt_service.utils.request import HTTPMethod, make_http_request
 
 
@@ -101,7 +102,10 @@ class VariableReplacementHelper:
 
     @staticmethod
     def replace_custom_data_variable(
-        prompt: str, variable: str, custom_data: dict[str, Any]
+        prompt: str,
+        variable: str,
+        custom_data: dict[str, Any],
+        is_ide: bool = True,
     ) -> str:
         """Replace custom_data variable in prompt.
 
@@ -109,26 +113,27 @@ class VariableReplacementHelper:
             prompt: The prompt containing variables
             variable: The variable to replace (e.g., "custom_data.name")
             custom_data: The custom_data data dictionary
+            is_ide: Whether this is running from Prompt Studio IDE (affects error messages)
 
         Returns:
             prompt with variable replaced
         """
-        if not custom_data:
-            error_msg = f"Custom data is empty. Unable to replace variable {variable}"
-            app.logger.error(error_msg)
-            raise ValueError(error_msg)
-
         # Extract the path from custom_data.path.to.value
         custom_data_match = re.search(
             VariableConstants.CUSTOM_DATA_VARIABLE_REGEX, variable
         )
         if not custom_data_match:
-            error_msg = f"Invalid custom_data variable format: {variable}"
-            app.logger.error(error_msg)
-            raise ValueError(error_msg)
+            error_msg = "Invalid variable format."
+            app.logger.error(f"{error_msg}: {variable}")
+            raise CustomDataError(variable=variable, reason=error_msg, is_ide=is_ide)
 
         path_str = custom_data_match.group(1)
         path_parts = path_str.split(".")
+
+        if not custom_data:
+            error_msg = "Custom data is not configured."
+            app.logger.error(error_msg)
+            raise CustomDataError(variable=path_str, reason=error_msg, is_ide=is_ide)
 
         # Navigate through the nested dictionary
         try:
@@ -136,30 +141,53 @@ class VariableReplacementHelper:
             for part in path_parts:
                 value = value[part]
         except (KeyError, TypeError) as e:
-            error_msg = (
-                f"Path {path_str} not found in custom_data for variable {variable}"
-            )
+            error_msg = f"Key '{path_str}' not found in custom data."
             app.logger.error(error_msg)
-            raise ValueError(error_msg) from e
+            raise CustomDataError(
+                variable=path_str, reason=error_msg, is_ide=is_ide
+            ) from e
 
-        # Format the value and replace in prompt
-        formatted_value = VariableReplacementHelper.handle_json_and_str_types(value)
+        # Replace in prompt - let replace_generic_string_value handle formatting
+        # (it only applies json.dumps for non-string values)
         variable_marker_string = "".join(["{{", variable, "}}"])
 
         replaced_prompt = VariableReplacementHelper.replace_generic_string_value(
             prompt=prompt,
             variable=variable_marker_string,
-            value=formatted_value,
+            value=value,
         )
 
         return replaced_prompt
 
     @staticmethod
     @lru_cache(maxsize=128)
+    def _extract_variables_cached(prompt_text: str) -> tuple[str, ...]:
+        """Internal cached extraction - returns tuple for lru_cache compatibility."""
+        return tuple(re.findall(VariableConstants.VARIABLE_REGEX, prompt_text))
+
+    @staticmethod
     def extract_variables_from_prompt(prompt_text: str) -> list[str]:
-        variable: list[str] = []
-        variable = re.findall(VariableConstants.VARIABLE_REGEX, prompt_text)
-        return variable
+        """Extract variables from prompt with caching and stats logging.
+
+        Uses lru_cache internally and logs cache statistics periodically
+        to help determine if caching is beneficial.
+        """
+        result = VariableReplacementHelper._extract_variables_cached(prompt_text)
+
+        # Log stats periodically (every 50 calls)
+        info_after = VariableReplacementHelper._extract_variables_cached.cache_info()
+        total_calls = info_after.hits + info_after.misses
+
+        if total_calls % 50 == 0 and total_calls > 0:
+            hit_rate = info_after.hits / total_calls * 100
+            app.logger.info(
+                f"[VariableCache] total={total_calls} hits={info_after.hits} "
+                f"misses={info_after.misses} hit_rate={hit_rate:.1f}% "
+                f"size={info_after.currsize}/{info_after.maxsize} "
+                f"prompt_chars={len(prompt_text)}"
+            )
+
+        return list(result)
 
     @staticmethod
     def fetch_dynamic_variable_value(url: str, data: str) -> Any:

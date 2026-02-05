@@ -153,7 +153,23 @@ function DocumentParser({
     };
 
     return axiosPrivate(requestOptions)
-      .then((res) => res)
+      .then((res) => {
+        // Update the store with the modified prompt
+        const updatedPrompt = res?.data;
+        if (updatedPrompt) {
+          const modifiedDetails = { ...details };
+          const modifiedPrompts = [...(modifiedDetails?.prompts || [])];
+          const promptIndex = modifiedPrompts.findIndex(
+            (item) => item?.prompt_id === promptId
+          );
+          if (promptIndex !== -1) {
+            modifiedPrompts[promptIndex] = updatedPrompt;
+            modifiedDetails["prompts"] = modifiedPrompts;
+            updateCustomTool({ details: modifiedDetails });
+          }
+        }
+        return res;
+      })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
       });
@@ -180,10 +196,6 @@ function DocumentParser({
         );
         modifiedDetails["prompts"] = modifiedPrompts;
         updateCustomTool({ details: modifiedDetails });
-        setAlertDetails({
-          type: "success",
-          content: "Deleted successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to delete"));

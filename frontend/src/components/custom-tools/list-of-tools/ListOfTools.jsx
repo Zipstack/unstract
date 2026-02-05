@@ -1,6 +1,7 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Space } from "antd";
+import PropTypes from "prop-types";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -15,6 +16,38 @@ import { SharePermission } from "../../widgets/share-permission/SharePermission"
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { ImportTool } from "../import-tool/ImportTool";
 
+const DefaultCustomButtons = ({
+  setOpenImportTool,
+  isImportLoading,
+  handleNewProjectBtnClick,
+}) => {
+  return (
+    <Space gap={16}>
+      <CustomButton
+        type="default"
+        icon={<ArrowDownOutlined />}
+        onClick={() => setOpenImportTool(true)}
+        loading={isImportLoading}
+      >
+        Import Project
+      </CustomButton>
+      <CustomButton
+        type="primary"
+        icon={<PlusOutlined />}
+        onClick={handleNewProjectBtnClick}
+      >
+        New Project
+      </CustomButton>
+    </Space>
+  );
+};
+
+DefaultCustomButtons.propTypes = {
+  setOpenImportTool: PropTypes.func.isRequired,
+  isImportLoading: PropTypes.bool.isRequired,
+  handleNewProjectBtnClick: PropTypes.func.isRequired,
+};
+
 function ListOfTools() {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
@@ -23,13 +56,12 @@ function ListOfTools() {
   const [editItem, setEditItem] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { setPostHogCustomEvent } = usePostHogEvents();
-
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const handleException = useExceptionHandler();
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
-  const handleException = useExceptionHandler();
   const [isEdit, setIsEdit] = useState(false);
   const [promptDetails, setPromptDetails] = useState(null);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
@@ -145,10 +177,6 @@ function ListOfTools() {
           (filterToll) => filterToll?.tool_id !== tool.tool_id
         );
         setListOfTools(tools);
-        setAlertDetails({
-          type: "success",
-          content: `${tool?.tool_name} - Deleted successfully`,
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to Delete"));
@@ -242,28 +270,6 @@ function ListOfTools() {
       });
   };
 
-  const CustomButtons = () => {
-    return (
-      <Space gap={16}>
-        <CustomButton
-          type="default"
-          icon={<ArrowDownOutlined />}
-          onClick={() => setOpenImportTool(true)}
-          loading={isImportLoading}
-        >
-          Import Project
-        </CustomButton>
-        <CustomButton
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={handleNewProjectBtnClick}
-        >
-          New Project
-        </CustomButton>
-      </Space>
-    );
-  };
-
   const handleShare = (_event, promptProject, isEdit) => {
     const requestOptions = {
       method: "GET",
@@ -328,15 +334,41 @@ function ListOfTools() {
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Sharing settings updated successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
       });
   };
+
+  const defaultContent = (
+    <div className="list-of-tools-body">
+      <ViewTools
+        isLoading={isListLoading}
+        isEmpty={!listOfTools?.length}
+        listOfTools={filteredListOfTools}
+        setOpenAddTool={setOpenAddTool}
+        handleEdit={handleEdit}
+        handleDelete={handleDelete}
+        titleProp="tool_name"
+        descriptionProp="description"
+        iconProp="icon"
+        idProp="tool_id"
+        type="Prompt Project"
+        handleShare={handleShare}
+      />
+    </div>
+  );
+
+  const CustomButtonsComponent = useCallback(
+    () => (
+      <DefaultCustomButtons
+        setOpenImportTool={setOpenImportTool}
+        isImportLoading={isImportLoading}
+        handleNewProjectBtnClick={handleNewProjectBtnClick}
+      />
+    ),
+    [isImportLoading]
+  );
 
   return (
     <>
@@ -346,27 +378,10 @@ function ListOfTools() {
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={CustomButtons}
+        CustomButtons={CustomButtonsComponent}
       />
       <div className="list-of-tools-layout">
-        <div className="list-of-tools-island">
-          <div className="list-of-tools-body">
-            <ViewTools
-              isLoading={isListLoading}
-              isEmpty={!listOfTools?.length}
-              listOfTools={filteredListOfTools}
-              setOpenAddTool={setOpenAddTool}
-              handleEdit={handleEdit}
-              handleDelete={handleDelete}
-              titleProp="tool_name"
-              descriptionProp="description"
-              iconProp="icon"
-              idProp="tool_id"
-              type="Prompt Project"
-              handleShare={handleShare}
-            />
-          </div>
-        </div>
+        <div className="list-of-tools-island">{defaultContent}</div>
       </div>
       {openAddTool && (
         <AddCustomToolFormModal
