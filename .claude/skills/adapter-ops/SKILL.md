@@ -278,13 +278,51 @@ Before submitting adapter changes:
 - [ ] Adapter class inherits from correct parameter class AND `BaseAdapter`
 - [ ] `get_id()` returns unique `{provider}|{uuid}` format
 - [ ] `get_metadata()` returns dict with `name`, `version`, `adapter`, `description`, `is_active`
-- [ ] `get_provider()` returns lowercase provider identifier
+- [ ] **CRITICAL: `get_provider()` returns value matching `litellm_provider` in LiteLLM pricing data** (see below)
 - [ ] `get_adapter_type()` returns correct `AdapterTypes.LLM` or `AdapterTypes.EMBEDDING`
 - [ ] JSON schema has `adapter_name` as required field
 - [ ] `validate()` method adds correct model prefix
 - [ ] `validate_model()` method handles prefix idempotently (doesn't double-prefix)
 - [ ] All static methods decorated with `@staticmethod`
 - [ ] Icon path follows pattern `/icons/adapter-icons/{Name}.png`
+
+### Provider Name Verification (MANDATORY)
+
+The `get_provider()` return value is used for **cost calculation**. It MUST match the `litellm_provider` field in LiteLLM's pricing data, otherwise costs will show as $0.
+
+**Before implementing any adapter, verify the provider name:**
+
+```bash
+# Fetch LiteLLM pricing data and check provider name
+curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+  jq 'to_entries | map(select(.value.litellm_provider != null)) |
+      map({key: .key, provider: .value.litellm_provider}) |
+      unique_by(.provider) |
+      sort_by(.provider) |
+      .[].provider' | sort -u
+```
+
+**Common provider name mappings:**
+| Display Name | `get_provider()` Value | LiteLLM Provider |
+|--------------|------------------------|------------------|
+| OpenAI | `openai` | `openai` |
+| Anthropic | `anthropic` | `anthropic` |
+| Azure OpenAI | `azure` | `azure` |
+| Azure AI Foundry | `azure_ai` | `azure_ai` |
+| AWS Bedrock | `bedrock` | `bedrock` |
+| Google VertexAI | `vertex_ai` | `vertex_ai` |
+| Mistral | `mistral` | `mistral` |
+| Ollama | `ollama` | `ollama` |
+
+**Example verification for Azure AI Foundry:**
+```bash
+curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+  jq 'to_entries | map(select(.key | startswith("azure_ai"))) | .[0].value.litellm_provider'
+# Output: "azure_ai"  (NOT "azure_ai_foundry")
+```
+
+**Why this matters:**
+The cost calculation in `platform-service/src/unstract/platform_service/helper/cost_calculation.py` filters models by checking if the provider string is contained in `litellm_provider`. A mismatch (e.g., returning `"azure_ai_foundry"` when LiteLLM uses `"azure_ai"`) causes the cost lookup to fail silently, returning $0.
 
 ## Maintenance Workflow
 

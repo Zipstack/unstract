@@ -114,6 +114,49 @@ api_key, api_base, model, max_tokens, max_retries, timeout
 | Ollama | `ollama_chat/` | `ollama/` |
 | Anyscale | `anyscale/` | N/A |
 
+## LiteLLM Provider Names (for Cost Calculation)
+
+**CRITICAL**: The `get_provider()` method in adapters MUST return a value that matches the `litellm_provider` field in LiteLLM's pricing data. This is required for cost calculation to work correctly.
+
+| Display Name | `get_provider()` Value | Notes |
+|--------------|------------------------|-------|
+| OpenAI | `openai` | Standard OpenAI API |
+| Anthropic | `anthropic` | Claude models |
+| Azure OpenAI | `azure` | Azure-hosted OpenAI models |
+| Azure AI Foundry | `azure_ai` | NOT `azure_ai_foundry` |
+| AWS Bedrock | `bedrock` | Amazon Bedrock service |
+| Google VertexAI | `vertex_ai` | Google Cloud AI Platform |
+| Mistral | `mistral` | Mistral AI API |
+| Ollama | `ollama` | Local Ollama server |
+| Anyscale | `anyscale` | Anyscale Endpoints |
+
+### Verification Command
+
+Always verify the provider name before implementing an adapter:
+
+```bash
+# Check all unique litellm_provider values
+curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+  jq 'to_entries | map(select(.value.litellm_provider != null)) |
+      map(.value.litellm_provider) | unique | sort'
+
+# Check specific provider (e.g., for azure_ai models)
+curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+  jq 'to_entries | map(select(.key | startswith("azure_ai"))) | .[0].value.litellm_provider'
+```
+
+### Why This Matters
+
+The cost calculation flow:
+1. `LLM._record_usage()` calls `Audit.push_usage_data()` with provider from `get_provider()`
+2. Platform service receives usage data with provider name
+3. `CostCalculationHelper.calculate_cost()` filters models where `provider in litellm_provider`
+4. If no match found, cost = $0
+
+**Example bug**: If `get_provider()` returns `"azure_ai_foundry"` but LiteLLM uses `"azure_ai"`:
+- Check: `"azure_ai_foundry" in "azure_ai"` = `False`
+- Result: Cost calculation returns $0
+
 ## Models Supporting Advanced Features
 
 ### Reasoning Models (reasoning_effort)

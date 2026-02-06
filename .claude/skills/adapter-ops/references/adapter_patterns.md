@@ -130,7 +130,15 @@ class NewProviderLLMAdapter(NewProviderLLMParameters, BaseAdapter):
 
     @staticmethod
     def get_provider() -> str:
-        """Return lowercase provider identifier (used for schema path)."""
+        """Return lowercase provider identifier.
+
+        CRITICAL: This value is used for cost calculation and MUST match
+        the `litellm_provider` field in LiteLLM's pricing data.
+
+        Verify with:
+        curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+          jq 'to_entries | map(select(.key | startswith("newprovider"))) | .[0].value.litellm_provider'
+        """
         return "newprovider"
 
     @staticmethod
@@ -560,3 +568,69 @@ print(schema)
 4. **Missing `is_active: True`** - Adapter won't be registered without it
 5. **Wrong inheritance order** - Parameter class must come before BaseAdapter
 6. **Incorrect provider in get_provider()** - Must match filename and schema path
+7. **Provider name not matching LiteLLM pricing data** - Causes $0 cost calculation (see below)
+
+## Provider Name Verification (CRITICAL)
+
+The `get_provider()` return value MUST match the `litellm_provider` field in LiteLLM's pricing JSON. A mismatch causes cost calculation to silently fail, returning $0.
+
+### How to Verify
+
+**Before implementing any new adapter:**
+
+```bash
+# Step 1: Identify the correct provider name from LiteLLM pricing data
+curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+  jq 'to_entries | map(select(.key | startswith("YOUR_PROVIDER"))) | .[0].value.litellm_provider'
+
+# Step 2: Use that exact value in get_provider()
+```
+
+### Real Example: Azure AI Foundry Bug
+
+**Wrong implementation (caused $0 costs):**
+```python
+@staticmethod
+def get_provider() -> str:
+    return "azure_ai_foundry"  # WRONG - doesn't match litellm_provider
+```
+
+**Correct implementation:**
+```python
+@staticmethod
+def get_provider() -> str:
+    return "azure_ai"  # CORRECT - matches litellm_provider in pricing data
+```
+
+**How the bug was found:**
+```bash
+# Check what LiteLLM actually uses for azure_ai models
+curl -s https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json | \
+  jq 'to_entries | map(select(.key | startswith("azure_ai"))) | .[0]'
+
+# Output shows: "litellm_provider": "azure_ai" (NOT "azure_ai_foundry")
+```
+
+### Provider Name Reference
+
+| Provider | Correct `get_provider()` Value |
+|----------|-------------------------------|
+| OpenAI | `openai` |
+| Anthropic | `anthropic` |
+| Azure OpenAI | `azure` |
+| Azure AI Foundry | `azure_ai` |
+| AWS Bedrock | `bedrock` |
+| Google VertexAI | `vertex_ai` |
+| Mistral | `mistral` |
+| Ollama | `ollama` |
+
+### Cost Calculation Flow
+
+Understanding why this matters:
+
+1. **Usage Recording**: `LLM._record_usage()` → `Audit.push_usage_data(provider=get_provider())`
+2. **Platform Service**: Receives provider name with usage data
+3. **Cost Lookup**: `CostCalculationHelper` checks `provider in model_info.get("litellm_provider", "")`
+4. **Result**: If check fails, returns `cost = 0`
+
+The check `"azure_ai_foundry" in "azure_ai"` returns `False`, causing silent failure.

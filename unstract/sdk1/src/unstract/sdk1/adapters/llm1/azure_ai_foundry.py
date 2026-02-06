@@ -29,7 +29,7 @@ class AzureAIFoundryLLMAdapter(AzureAIFoundryLLMParameters, BaseAdapter):
 
     @staticmethod
     def get_provider() -> str:
-        return "azure_ai_foundry"
+        return "azure_ai"
 
     @staticmethod
     def get_icon() -> str:
