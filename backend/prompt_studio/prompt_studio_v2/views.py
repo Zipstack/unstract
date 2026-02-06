@@ -53,3 +53,50 @@ class ToolStudioPromptView(viewsets.ModelViewSet):
         """
         prompt_studio_controller = PromptStudioController()
         return prompt_studio_controller.reorder_prompts(request, ToolStudioPrompt)
+
+    @action(detail=False, methods=["get"])
+    def available_lookups(self, request: Request) -> Response:
+        """Get lookup projects linked to a Prompt Studio project.
+
+        Returns the list of lookup projects that are linked at the project level
+        and can be assigned to individual prompts for enrichment.
+
+        Query Parameters:
+            tool_id: UUID of the Prompt Studio project (CustomTool)
+
+        Returns:
+            Response: List of available lookup projects with id, name, and is_ready status
+        """
+        tool_id = request.query_params.get("tool_id")
+        if not tool_id:
+            return Response(
+                {"error": "tool_id query parameter is required"},
+                status=400,
+            )
+
+        try:
+            from lookup.models import PromptStudioLookupLink
+
+            links = PromptStudioLookupLink.objects.filter(
+                prompt_studio_project_id=tool_id
+            ).select_related("lookup_project")
+
+            available_lookups = [
+                {
+                    "id": str(link.lookup_project.id),
+                    "name": link.lookup_project.name,
+                    "is_ready": link.lookup_project.is_ready,
+                }
+                for link in links
+                if link.lookup_project.is_active
+            ]
+
+            return Response(available_lookups)
+        except ImportError:
+            # Lookup app not installed
+            return Response([])
+        except Exception as e:
+            return Response(
+                {"error": f"Failed to fetch available lookups: {str(e)}"},
+                status=500,
+            )

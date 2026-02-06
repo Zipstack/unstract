@@ -7,6 +7,7 @@ import {
   DiffOutlined,
   FileTextOutlined,
   MessageOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
@@ -22,6 +23,7 @@ let SummarizeManager = null;
 const EvaluationManager = null;
 let ChallengeManager = null;
 let HighlightManager = null;
+let LookupManager = null;
 try {
   SummarizeManager =
     require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
@@ -29,6 +31,8 @@ try {
     require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
   HighlightManager =
     require("../../../plugins/highlight-manager/HighlightManager").HighlightManager;
+  LookupManager =
+    require("../../../plugins/lookup-manager/LookupManager").LookupManager;
 } catch {
   // Component will remain null if it is not present.
 }
@@ -110,6 +114,12 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
           type="highlight"
         />
+      );
+    }
+    if (LookupManager) {
+      items.push(getMenuItem("Lookups", 9, <SearchOutlined />));
+      listOfComponents[9] = (
+        <LookupManager handleUpdateTool={handleUpdateTool} />
       );
     }
     setMenuItems(items);

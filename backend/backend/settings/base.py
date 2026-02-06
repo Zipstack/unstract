@@ -342,6 +342,7 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
     "configuration",
+    "lookup",
 )
 TENANT_APPS = []
 
@@ -599,3 +600,11 @@ if missing_settings:
     raise ValueError(ERROR_MESSAGE)
 
 ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", False)
+
+# Lookup Integration Settings
+# Enable/disable automatic Lookup enrichment after Prompt Studio extraction
+LOOKUP_AUTO_ENRICH_ENABLED = CommonUtils.str_to_bool(
+    os.environ.get("LOOKUP_AUTO_ENRICH_ENABLED", "True")
+)
+# Maximum time (in seconds) to wait for Lookup enrichment before returning
+LOOKUP_ENRICHMENT_TIMEOUT = int(os.environ.get("LOOKUP_ENRICHMENT_TIMEOUT", "30"))

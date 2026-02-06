@@ -1,0 +1,42 @@
+.profile-management-container {
+  padding: 20px 0;
+  height: 100%;
+  max-height: calc(100vh - 380px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.profile-header {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.profile-description {
+  margin-bottom: 16px;
+  font-size: 13px;
+}
+
+.action-buttons-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-icon {
+  font-size: 14px;
+}
+
+.display-flex-right {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-right: 20px;
+}
+
+.display-flex-align-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
