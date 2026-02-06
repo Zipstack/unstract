@@ -10,6 +10,7 @@ unified interface.
 """
 
 import logging
+import threading
 import uuid
 from typing import Any
 from uuid import UUID
@@ -87,6 +88,7 @@ class InternalAPIClient(CachedAPIClientMixin):
 
     # Task counter for periodic singleton reset (FR-3.2)
     _task_counter: int = 0
+    _task_counter_lock: threading.Lock = threading.Lock()
     _last_reset_time: float | None = None
 
     def __init__(self, config: WorkerConfig | None = None):
@@ -259,8 +261,8 @@ class InternalAPIClient(CachedAPIClientMixin):
         if cls._shared_session is not None:
             try:
                 cls._shared_session.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning("Failed to close shared session during reset: %s", e)
             cls._shared_session = None
             cls._shared_base_client = None
             cls._initialization_count = 0
@@ -272,25 +274,26 @@ class InternalAPIClient(CachedAPIClientMixin):
         """Increment task counter and reset singleton if threshold reached.
 
         Called via task_postrun signal after each task completes.
-        In prefork mode, one task per process — no locking needed.
+        Uses a lock for thread safety in case threads/gevent/eventlet pools are used.
         When singleton disabled (default), reset_singleton() is a no-op.
         """
-        cls._task_counter += 1
+        with cls._task_counter_lock:
+            cls._task_counter += 1
 
-        from shared.infrastructure.config.worker_config import WorkerConfig
+            from shared.infrastructure.config.worker_config import WorkerConfig
 
-        threshold = WorkerConfig().singleton_reset_task_threshold
-        if threshold > 0 and cls._task_counter >= threshold:
-            import time
+            threshold = WorkerConfig().singleton_reset_task_threshold
+            if threshold > 0 and cls._task_counter >= threshold:
+                import time
 
-            logger.info(
-                "Task counter reached threshold (%d/%d), resetting singleton session",
-                cls._task_counter,
-                threshold,
-            )
-            cls.reset_singleton()
-            cls._task_counter = 0
-            cls._last_reset_time = time.time()
+                logger.info(
+                    "Task counter reached threshold (%d/%d), resetting singleton session",
+                    cls._task_counter,
+                    threshold,
+                )
+                cls.reset_singleton()
+                cls._task_counter = 0
+                cls._last_reset_time = time.time()
 
     @classmethod
     def get_task_counter_info(cls) -> dict:
