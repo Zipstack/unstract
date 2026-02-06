@@ -344,8 +344,8 @@ class TestTaskCounter:
         ) as mock_reset:
             InternalAPIClient.increment_task_counter()
             mock_reset.assert_called_once()
-            # Counter should be reset to 0 after threshold
-            assert InternalAPIClient._task_counter == 0
+            # Counter zeroing is done inside reset_singleton() itself,
+            # which is mocked here — verified in TestResetSingleton instead
 
     def test_get_task_counter_info(self):
         """get_task_counter_info() should return correct state."""

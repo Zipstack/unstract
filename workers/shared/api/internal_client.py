@@ -257,7 +257,13 @@ class InternalAPIClient(CachedAPIClientMixin):
 
     @classmethod
     def reset_singleton(cls):
-        """Reset shared singleton session state. Safe to call anytime."""
+        """Reset shared singleton session state. Safe to call anytime.
+
+        Note: In thread/gevent/eventlet pools, this may close the session while
+        other threads have in-flight requests. The BaseAPIClient retry logic
+        handles transient connection errors from this race. For prefork pools,
+        this is a non-issue (one task per process).
+        """
         if cls._shared_session is not None:
             try:
                 cls._shared_session.close()
@@ -277,12 +283,11 @@ class InternalAPIClient(CachedAPIClientMixin):
         Uses a lock for thread safety in case threads/gevent/eventlet pools are used.
         When singleton disabled (default), reset_singleton() is a no-op.
         """
+        from shared.infrastructure.config.worker_config import WorkerConfig
+
+        threshold = WorkerConfig().singleton_reset_task_threshold
         with cls._task_counter_lock:
             cls._task_counter += 1
-
-            from shared.infrastructure.config.worker_config import WorkerConfig
-
-            threshold = WorkerConfig().singleton_reset_task_threshold
             if threshold > 0 and cls._task_counter >= threshold:
                 import time
 
@@ -292,7 +297,6 @@ class InternalAPIClient(CachedAPIClientMixin):
                     threshold,
                 )
                 cls.reset_singleton()
-                cls._task_counter = 0
                 cls._last_reset_time = time.time()
 
     @classmethod
