@@ -368,32 +368,31 @@ class TestTaskCounter:
 class TestOnTaskPostrunGuard:
     """Tests for the singleton guard in on_task_postrun."""
 
-    def test_postrun_skips_when_singleton_disabled(self, mock_config):
-        """on_task_postrun should skip entirely when singleton=false."""
-        assert mock_config.enable_api_client_singleton is False
+    def test_postrun_skips_when_singleton_disabled(self):
+        """on_task_postrun should skip increment when singleton=false."""
+        import worker
 
-        with patch(
-            "shared.api.internal_client.InternalAPIClient.increment_task_counter"
-        ) as mock_increment:
-            # Simulate what on_task_postrun does with the guard
-            if not mock_config.enable_api_client_singleton:
-                pass  # Early return
-            else:
-                mock_increment()
+        with patch.object(worker, "config") as mock_cfg:
+            mock_cfg.enable_api_client_singleton = False
+            with patch(
+                "shared.api.internal_client.InternalAPIClient"
+                ".increment_task_counter"
+            ) as mock_increment:
+                worker.on_task_postrun(sender=None, task_id=None)
+                mock_increment.assert_not_called()
 
-            mock_increment.assert_not_called()
-
-    def test_postrun_calls_increment_when_singleton_enabled(
-        self, mock_config_singleton
-    ):
+    def test_postrun_calls_increment_when_singleton_enabled(self):
         """on_task_postrun should call increment when singleton=true."""
-        assert mock_config_singleton.enable_api_client_singleton is True
+        import worker
 
-        with patch(
-            "shared.api.internal_client.InternalAPIClient.increment_task_counter"
-        ) as mock_increment:
-            mock_increment()
-            mock_increment.assert_called_once()
+        with patch.object(worker, "config") as mock_cfg:
+            mock_cfg.enable_api_client_singleton = True
+            with patch(
+                "shared.api.internal_client.InternalAPIClient"
+                ".increment_task_counter"
+            ) as mock_increment:
+                worker.on_task_postrun(sender=None, task_id=None)
+                mock_increment.assert_called_once()
 
 
 # ===========================================================================
