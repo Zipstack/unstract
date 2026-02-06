@@ -1,9 +1,11 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState, useCallback } from "react";
 import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import PropTypes from "prop-types";
 import { highlightPlugin } from "@react-pdf-viewer/highlight";
+import { Result, Button } from "antd";
+import { FileExclamationOutlined, ReloadOutlined } from "@ant-design/icons";
 
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
@@ -17,11 +19,51 @@ try {
   // Do nothing, no plugin will be loaded.
 }
 
-function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
+function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
   const newPlugin = defaultLayoutPlugin();
   const pageNavigationPluginInstance = pageNavigationPlugin();
   const { jumpToPage } = pageNavigationPluginInstance;
   const parentRef = useRef(null);
+
+  // Retry key to force re-render when retrying
+  const [retryKey, setRetryKey] = useState(0);
+  const handleRetry = useCallback(() => {
+    setRetryKey((prev) => prev + 1);
+  }, []);
+
+  // Render error fallback for PDF load failures
+  const renderError = useCallback(
+    (error) => {
+      const errorMessage =
+        error?.message ||
+        "Failed to load PDF document. The file may be corrupted or inaccessible.";
+
+      // Notify parent component of error if callback provided
+      if (onError) {
+        onError(error);
+      }
+
+      return (
+        <div className="pdf-viewer-error">
+          <Result
+            icon={<FileExclamationOutlined style={{ color: "#ff4d4f" }} />}
+            title="Failed to Load PDF"
+            subTitle={errorMessage}
+            extra={
+              <Button
+                type="primary"
+                icon={<ReloadOutlined />}
+                onClick={handleRetry}
+              >
+                Retry
+              </Button>
+            }
+          />
+        </div>
+      );
+    },
+    [onError, handleRetry]
+  );
 
   function removeZerosAndDeleteIfAllZero(highlightData) {
     if (Array.isArray(highlightData))
@@ -97,8 +139,21 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
     }
   }, [highlightData, jumpToPage, currentHighlightIndex]); // Changed dependency to highlightData instead of processedHighlightData
 
+  // Show empty state when no URL is provided
+  if (!fileUrl) {
+    return (
+      <div ref={parentRef} className="doc-manager-body pdf-viewer-error">
+        <Result
+          icon={<FileExclamationOutlined style={{ color: "#faad14" }} />}
+          title="No PDF Available"
+          subTitle="The PDF document URL is not available. Please ensure the document has been processed correctly."
+        />
+      </div>
+    );
+  }
+
   return (
-    <div ref={parentRef} className="doc-manager-body">
+    <div ref={parentRef} className="doc-manager-body" key={retryKey}>
       <Worker workerUrl={PDF_WORKER_URL}>
         <Viewer
           fileUrl={fileUrl}
@@ -107,6 +162,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex }) {
             pageNavigationPluginInstance,
             highlightPluginInstance,
           ]}
+          renderError={renderError}
         />
       </Worker>
     </div>
@@ -117,6 +173,7 @@ PdfViewer.propTypes = {
   fileUrl: PropTypes.any,
   highlightData: PropTypes.array,
   currentHighlightIndex: PropTypes.number,
+  onError: PropTypes.func,
 };
 
 export { PdfViewer };
