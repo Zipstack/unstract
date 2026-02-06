@@ -1,7 +1,7 @@
-import { Button, Modal, Table, Tooltip } from "antd";
+import { Button, Modal, Table, Tag, Tooltip } from "antd";
 import { useEffect, useState } from "react";
 import PropTypes from "prop-types";
-import { CopyOutlined } from "@ant-design/icons";
+import { CopyOutlined, SearchOutlined } from "@ant-design/icons";
 
 import "./LogModal.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
