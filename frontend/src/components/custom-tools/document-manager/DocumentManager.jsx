@@ -25,7 +25,6 @@ import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { TextViewer } from "../text-viewer/TextViewer";
 
 let items = [
   {
