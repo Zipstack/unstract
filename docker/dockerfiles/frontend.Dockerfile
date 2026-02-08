@@ -1,8 +1,11 @@
 # Multi-stage build for both development and production
 
+# Global ARG available to all stages
+ARG BUILD_CONTEXT_PATH=frontend
+
 # Base stage with common setup
 FROM node:20-alpine AS base
-ENV BUILD_CONTEXT_PATH=frontend
+ARG BUILD_CONTEXT_PATH
 WORKDIR /app
 
 ### FOR DEVELOPMENT ###
@@ -43,6 +46,7 @@ RUN npm run build
 
 # Production stage
 FROM nginx:1.29.1-alpine AS production
+ARG BUILD_CONTEXT_PATH
 LABEL maintainer="Zipstack Inc."
 
 # Copy built assets from the builder stage
