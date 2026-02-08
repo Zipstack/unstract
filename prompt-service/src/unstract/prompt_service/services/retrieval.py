@@ -1,6 +1,8 @@
 import datetime
 from typing import Any
 
+from flask import current_app as app
+
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RetrievalStrategy
 from unstract.prompt_service.core.retrievers.automerging import AutomergingRetriever
@@ -32,13 +34,23 @@ class RetrievalService:
         file_path: str,
         context_retrieval_metrics: dict[str, Any],
     ) -> tuple[str, list[str]]:
+        prompt_name = output.get(PSKeys.NAME, "<unknown>")
+        vector_db_id = (
+            getattr(vector_db, "_adapter_instance_id", None) if vector_db else None
+        )
+        app.logger.info(
+            f"[Retrieval] prompt='{prompt_name}' doc_id={doc_id} "
+            f"chunk_size={chunk_size} method={'complete_context' if chunk_size == 0 else 'chunked'}"
+            + (f" vector_db={vector_db_id}" if vector_db_id else "")
+        )
+
         context: list[str]
         if chunk_size == 0:
             context = RetrievalService.retrieve_complete_context(
                 execution_source=execution_source,
                 file_path=file_path,
                 context_retrieval_metrics=context_retrieval_metrics,
-                prompt_key=output[PSKeys.PROMPTX],
+                prompt_key=prompt_name,
             )
         else:
             context = RetrievalService.run_retrieval(
@@ -101,9 +113,14 @@ class RetrievalService:
             llm=llm,
         )
         context = retriever.retrieve()
-        context_retrieval_metrics[prompt_key] = {
-            "time_taken(s)": Metrics.elapsed_time(start_time=retrieval_start_time)
-        }
+        elapsed = Metrics.elapsed_time(start_time=retrieval_start_time)
+        context_retrieval_metrics[prompt_key] = {"time_taken(s)": elapsed}
+
+        app.logger.info(
+            f"[Retrieval] prompt='{prompt_key}' doc_id={doc_id} "
+            f"strategy='{retrieval_type}' top_k={top_k} chunks={len(context)} time={elapsed:.3f}s"
+        )
+
         return list(context)
 
     @staticmethod
@@ -113,18 +130,27 @@ class RetrievalService:
         context_retrieval_metrics: dict[str, Any],
         prompt_key: str,
     ) -> list[str]:
-        """Loads full context from raw file for zero chunk size retrieval
+        """Loads full context from raw file for zero chunk size retrieval.
+
         Args:
-            execution_source (str): Source of execution.
-            file_path (str): Path to the directory containing text file.
+            execution_source: Source of execution (e.g., "api", "workflow").
+            file_path: Path to the extracted text file.
+            context_retrieval_metrics: Dict to store retrieval timing metrics
+                (modified in-place).
+            prompt_key: Name/identifier of the prompt for metrics tracking.
 
         Returns:
-            list[str]: context from extracted file.
+            List containing the complete file content as a single string.
         """
         fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
         retrieval_start_time = datetime.datetime.now()
         context = fs_instance.read(path=file_path, mode="r")
-        context_retrieval_metrics[prompt_key] = {
-            "time_taken(s)": Metrics.elapsed_time(start_time=retrieval_start_time)
-        }
+        elapsed = Metrics.elapsed_time(start_time=retrieval_start_time)
+        context_retrieval_metrics[prompt_key] = {"time_taken(s)": elapsed}
+
+        app.logger.info(
+            f"[Retrieval] prompt='{prompt_key}' complete_context "
+            f"chars={len(context)} time={elapsed:.3f}s"
+        )
+
         return [context]

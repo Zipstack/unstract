@@ -58,10 +58,6 @@ function Users() {
     setConfirmLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "User deleted successfully",
-        });
         setConfirmLoading(false);
         setOpen(false);
         removeUser(selectedUserEmail.email);

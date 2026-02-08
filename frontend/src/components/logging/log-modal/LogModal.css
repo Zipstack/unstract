@@ -1,4 +1,23 @@
-.clear-button{
-    margin-left: 50px;
-    margin-top: 10px;
+.clear-button {
+  margin-left: 50px;
+  margin-top: 10px;
+}
+
+.log-modal-title {
+  display: inline-flex;
+  align-items: center;
+}
+
+.log-modal-title .copy-btn-outlined {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.65);
+  margin-left: 8px;
+  height: auto;
+  min-width: auto;
+}
+
+.log-modal-title .copy-btn-outlined:hover {
+  border-color: #1677ff;
+  color: #1677ff;
 }
