@@ -531,6 +531,22 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name = (
                 f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
             )
+
+        # For ORIGINAL view, check if a converted PDF exists for preview
+        if view_type == FileViewTypes.ORIGINAL and file_converter_plugin:
+            converted_name = f"converted/{filename_without_extension}.pdf"
+            try:
+                contents = PromptStudioFileHelper.fetch_file_contents(
+                    file_name=converted_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                    allowed_content_types=allowed_content_types,
+                )
+                return Response({"data": contents}, status=status.HTTP_200_OK)
+            except (FileNotFoundError, FileNotFound):
+                pass  # No converted file — fall through to return original
+
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
                 file_name=file_name,
@@ -557,15 +573,29 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name = uploaded_file.name
             file_data = uploaded_file
             file_type = uploaded_file.content_type
-            # Convert non-PDF files
+
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
-                file_data, file_name = file_converter_service.process_file(
-                    uploaded_file, file_name
-                )
+                if file_converter_service.should_convert_to_pdf(file_type):
+                    # Convert and store in converted/ subdir for preview
+                    converted_data, converted_name = file_converter_service.process_file(
+                        uploaded_file, file_name
+                    )
+                    PromptStudioFileHelper.upload_converted_for_ide(
+                        org_id=UserSessionUtils.get_organization_id(request),
+                        user_id=custom_tool.created_by.user_id,
+                        tool_id=str(custom_tool.tool_id),
+                        file_name=converted_name,
+                        file_data=converted_data,
+                    )
+                    # Reset uploaded_file for storing original in main dir
+                    uploaded_file.seek(0)
+                    file_data = uploaded_file
+                # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
             logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
 
+            # Store original file in main dir (always the original)
             PromptStudioFileHelper.upload_for_ide(
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
@@ -574,7 +604,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 file_data=file_data,
             )
 
-            # Create a record in the db for the file
+            # Create a record in the db for the file (document_name = original filename)
             document = PromptStudioDocumentHelper.create(
                 tool_id=str(custom_tool.tool_id), document_name=file_name
             )
