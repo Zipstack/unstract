@@ -147,15 +147,12 @@ function Workflows() {
   }
 
   const checkWorkflowUsage = async (id) => {
-    let result = { can_update: false, pipeline_names: [], api_names: [] };
-    await projectApiService.canUpdate(id).then((res) => {
-      result = {
-        can_update: res?.data?.can_update || false,
-        pipeline_names: res?.data?.pipeline_names || [],
-        api_names: res?.data?.api_names || [],
-      };
-    });
-    return result;
+    const res = await projectApiService.canUpdate(id);
+    return {
+      can_update: res?.data?.can_update || false,
+      pipeline_names: res?.data?.pipeline_names || [],
+      api_names: res?.data?.api_names || [],
+    };
   };
 
   const getUsageMessage = (workflowName, pipelineNames, apiNames) => {
@@ -172,31 +169,37 @@ function Workflows() {
   };
 
   const deleteProject = async (_evt, project) => {
-    const usage = await checkWorkflowUsage(project.id);
-    if (usage.can_update) {
-      projectApiService
-        .deleteProject(project.id)
-        .then(() => {
-          getProjectList();
-          setAlertDetails({
-            type: "success",
-            content: "Workflow deleted successfully",
+    try {
+      const usage = await checkWorkflowUsage(project.id);
+      if (usage.can_update) {
+        projectApiService
+          .deleteProject(project.id)
+          .then(() => {
+            getProjectList();
+            setAlertDetails({
+              type: "success",
+              content: "Workflow deleted successfully",
+            });
+          })
+          .catch((err) => {
+            setAlertDetails(
+              handleException(err, `Unable to delete workflow ${project.id}`)
+            );
           });
-        })
-        .catch((err) => {
-          setAlertDetails(
-            handleException(err, `Unable to delete workflow ${project.id}`)
-          );
+      } else {
+        setAlertDetails({
+          type: "error",
+          content: getUsageMessage(
+            project.workflow_name,
+            usage.pipeline_names,
+            usage.api_names
+          ),
         });
-    } else {
-      setAlertDetails({
-        type: "error",
-        content: getUsageMessage(
-          project.workflow_name,
-          usage.pipeline_names,
-          usage.api_names
-        ),
-      });
+      }
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, `Unable to delete workflow ${project.id}`)
+      );
     }
   };
 
