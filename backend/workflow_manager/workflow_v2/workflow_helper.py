@@ -1000,10 +1000,24 @@ class WorkflowHelper:
             workflow: Workflow = Workflow.objects.get(pk=workflow_id)
             if not workflow or workflow is None:
                 raise WorkflowDoesNotExistError()
-            used_count = Pipeline.objects.filter(workflow=workflow).count()
-            if used_count == 0:
-                used_count = APIDeployment.objects.filter(workflow=workflow).count()
-            return {"can_update": used_count == 0}
+
+            pipeline_names = list(
+                Pipeline.objects.filter(workflow=workflow).values_list(
+                    "pipeline_name", flat=True
+                )
+            )
+            api_names = list(
+                APIDeployment.objects.filter(workflow=workflow).values_list(
+                    "display_name", flat=True
+                )
+            )
+            total_usage = len(pipeline_names) + len(api_names)
+
+            return {
+                "can_update": total_usage == 0,
+                "pipeline_names": pipeline_names,
+                "api_names": api_names,
+            }
         except Workflow.DoesNotExist:
             logger.error(f"Error getting workflow: {id}")
             raise WorkflowDoesNotExistError()

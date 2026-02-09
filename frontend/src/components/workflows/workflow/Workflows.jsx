@@ -146,17 +146,34 @@ function Workflows() {
     });
   }
 
-  const canDeleteProject = async (id) => {
-    let status = false;
+  const checkWorkflowUsage = async (id) => {
+    let result = { can_update: false, pipeline_names: [], api_names: [] };
     await projectApiService.canUpdate(id).then((res) => {
-      status = res?.data?.can_update || false;
+      result = {
+        can_update: res?.data?.can_update || false,
+        pipeline_names: res?.data?.pipeline_names || [],
+        api_names: res?.data?.api_names || [],
+      };
     });
-    return status;
+    return result;
+  };
+
+  const getUsageMessage = (workflowName, pipelineNames, apiNames) => {
+    const allNames = [...apiNames, ...pipelineNames];
+    const total = allNames.length;
+    if (total === 0) return "";
+    const firstName = `"${allNames[0]}"`;
+    if (total === 1) {
+      return `Cannot delete "${workflowName}" as it is used in ${firstName}.`;
+    }
+    const remaining = total - 1;
+    const pipelineLabel = remaining === 1 ? "pipeline" : "pipelines";
+    return `Cannot delete "${workflowName}" as it is used in ${firstName} and ${remaining} other ${pipelineLabel}.`;
   };
 
   const deleteProject = async (_evt, project) => {
-    const canDelete = await canDeleteProject(project.id);
-    if (canDelete) {
+    const usage = await checkWorkflowUsage(project.id);
+    if (usage.can_update) {
       projectApiService
         .deleteProject(project.id)
         .then(() => {
@@ -174,8 +191,11 @@ function Workflows() {
     } else {
       setAlertDetails({
         type: "error",
-        content:
-          "Cannot delete this Workflow, since it is used in one or many of the API/ETL/Task pipelines",
+        content: getUsageMessage(
+          project.workflow_name,
+          usage.pipeline_names,
+          usage.api_names
+        ),
       });
     }
   };
