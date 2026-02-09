@@ -168,7 +168,7 @@ function Workflows() {
     }
     const remaining = total - 1;
     const pipelineLabel = remaining === 1 ? "pipeline" : "pipelines";
-    return `Cannot delete "${workflowName}" as it is used in ${firstName} and ${remaining} other ${pipelineLabel}.`;
+    return `Cannot delete "${workflowName}" as it is used in ${firstName} and ${remaining} other API/ETL/Task ${pipelineLabel}.`;
   };
 
   const deleteProject = async (_evt, project) => {
