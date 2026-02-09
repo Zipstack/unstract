@@ -1,12 +1,12 @@
 import {
+  CloudDownloadOutlined,
   CodeOutlined,
   CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   EllipsisOutlined,
-  KeyOutlined,
-  CloudDownloadOutlined,
   FileSearchOutlined,
+  KeyOutlined,
   NotificationOutlined,
   ShareAltOutlined,
 } from "@ant-design/icons";
@@ -15,29 +15,29 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import {
+  useInitialFetchCount,
+  usePromptStudioModal,
+} from "../../../hooks/usePromptStudioFetchCount";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
+import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
+import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
 import { DeleteModal } from "../delete-modal/DeleteModal";
 import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { apiDeploymentsService } from "./api-deployments-service";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
-import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
-import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
-import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
-import {
-  useInitialFetchCount,
-  usePromptStudioModal,
-} from "../../../hooks/usePromptStudioFetchCount";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -71,7 +71,7 @@ function ApiDeployment() {
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   const handleFetchLogs = (page, pageSize) => {
@@ -84,7 +84,7 @@ function ApiDeployment() {
       setExecutionLogsTotalCount,
       setAlertDetails,
       page,
-      pageSize
+      pageSize,
     );
   };
 
@@ -136,7 +136,7 @@ function ApiDeployment() {
             className="workflowName"
             onClick={() =>
               navigate(
-                `/${sessionDetails?.orgName}/workflows/${record?.workflow}`
+                `/${sessionDetails?.orgName}/workflows/${record?.workflow}`,
               )
             }
           >
@@ -288,7 +288,7 @@ function ApiDeployment() {
       setSelectedRow(updatedSelectedRow);
     } catch (err) {
       setAlertDetails(
-        handleException(err, `Unable to fetch sharing information`)
+        handleException(err, `Unable to fetch sharing information`),
       );
       setOpenShareModal(false);
     } finally {
@@ -346,7 +346,7 @@ function ApiDeployment() {
               apiDeploymentsApiService,
               selectedRow?.id,
               setApiKeys,
-              setOpenManageKeysModal
+              setOpenManageKeysModal,
             )
           }
         >
@@ -413,7 +413,7 @@ function ApiDeployment() {
               selectedRow,
               setExecutionLogs,
               setExecutionLogsTotalCount,
-              setAlertDetails
+              setAlertDetails,
             );
           }}
         >
@@ -495,7 +495,7 @@ function ApiDeployment() {
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (

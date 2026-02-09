@@ -1,7 +1,7 @@
 import { Button, Form, Input, Select, Space } from "antd";
 import PropTypes from "prop-types";
-import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useEffect, useState } from "react";
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 
 const DEFAULT_FORM_DETAILS = {
   name: "",
@@ -94,7 +94,7 @@ function CreateNotification({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== changedFieldName
+          (error) => error.attr !== changedFieldName,
         );
         return { ...prevErrors, errors: updatedErrors };
       }
@@ -218,7 +218,7 @@ function CreateNotification({
             >
               {component}
             </Form.Item>
-          )
+          ),
       )}
       <Form.Item className="display-flex-right">
         <Space>

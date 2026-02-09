@@ -1,6 +1,6 @@
-import { useMemo } from "react";
 import { Typography } from "antd";
 import PropTypes from "prop-types";
+import { useMemo } from "react";
 
 const { Text, Link, Paragraph } = Typography;
 

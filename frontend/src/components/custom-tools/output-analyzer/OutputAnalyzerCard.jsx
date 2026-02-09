@@ -1,6 +1,6 @@
 import { Col, Divider, Flex, Row, Space, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { base64toBlob } from "../../../helpers/GetStaticData";
@@ -15,8 +15,10 @@ import { PdfViewer } from "../pdf-viewer/PdfViewer";
 
 let publicDocumentApi;
 try {
-  publicDocumentApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
+  publicDocumentApi = mod.publicDocumentApi;
 } catch {
   // The component will remain null if it is not available
 }

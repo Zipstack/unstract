@@ -1,19 +1,18 @@
 import axios from "axios";
 import Cookies from "js-cookie";
 import { useNavigate } from "react-router-dom";
-
+import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { getSessionData } from "../helpers/GetSessionData";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
+import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
-import { listFlags } from "../helpers/FeatureFlagsData.js";
-import { useAlertStore } from "../store/alert-store";
 
 let isPlatformAdmin;
 try {
-  isPlatformAdmin =
-    require("../plugins/hooks/usePlatformAdmin.js").usePlatformAdmin();
-} catch (err) {
+  const mod = await import("../plugins/hooks/usePlatformAdmin.js");
+  isPlatformAdmin = mod.usePlatformAdmin();
+} catch {
   // Plugin not available
 }
 
@@ -22,8 +21,11 @@ let selectedProductStore;
 let PRODUCT_NAMES = {};
 
 try {
-  selectedProductStore = require("../plugins/store/select-product-store.js");
-  PRODUCT_NAMES = require("../plugins/llm-whisperer/helper").PRODUCT_NAMES;
+  selectedProductStore = await import(
+    "../plugins/store/select-product-store.js"
+  );
+  const helperMod = await import("../plugins/llm-whisperer/helper");
+  PRODUCT_NAMES = helperMod.PRODUCT_NAMES;
 } catch {
   // Ignore if hook not available
 }
@@ -37,7 +39,7 @@ function useSessionValid() {
   try {
     if (selectedProductStore?.useSelectedProductStore) {
       selectedProduct = selectedProductStore?.useSelectedProductStore(
-        (state) => state?.selectedProduct
+        (state) => state?.selectedProduct,
       );
     }
   } catch (error) {
@@ -46,7 +48,7 @@ function useSessionValid() {
   const navToSelectProduct = (
     userSessionData,
     selectedProductStore,
-    selectedProduct
+    selectedProduct,
   ) => {
     if (
       userSessionData &&
@@ -73,7 +75,7 @@ function useSessionValid() {
       const shouldNavigate = navToSelectProduct(
         userSessionData,
         selectedProductStore,
-        selectedProduct
+        selectedProduct,
       );
       if (shouldNavigate) {
         return; // Exit early, don't run the remaining steps
@@ -88,7 +90,7 @@ function useSessionValid() {
       const getOrgsRes = await axios(requestOptions);
       const orgs = getOrgsRes?.data?.organizations;
       if (!orgs?.length) {
-        throw Error("Organizations not available.");
+        throw new Error("Organizations not available.");
       }
       if (orgs?.length > 1 && !signedInOrgId?.length) {
         navigate("/setOrg", { state: orgs });
@@ -146,8 +148,8 @@ function useSessionValid() {
         const adapterTypes = [
           ...new Set(
             getAdapterDetails?.data?.map((obj) =>
-              obj.adapter_type.toLowerCase()
-            )
+              obj.adapter_type.toLowerCase(),
+            ),
           ),
         ];
         userAndOrgDetails["adapters"] = adapterTypes;

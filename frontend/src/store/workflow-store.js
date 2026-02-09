@@ -32,7 +32,7 @@ const useWorkflowStore = create((setState, getState) => ({
       const existingState = { ...getState() };
       const toolInstances = existingState?.details?.tool_instances || [];
       const toolInstance = toolInstances.find(
-        (tool) => tool?.id === toolInstanceId
+        (tool) => tool?.id === toolInstanceId,
       );
       return toolInstance?.metadata;
     } catch {
@@ -69,7 +69,7 @@ const useWorkflowStore = create((setState, getState) => ({
       const existingState = { ...getState() };
       const toolInstances = [...(existingState?.details?.tool_instances || [])];
       const filteredToolInstances = toolInstances.filter(
-        (tool) => tool?.id !== toolId
+        (tool) => tool?.id !== toolId,
       );
       existingState.details["tool_instances"] = [...filteredToolInstances];
       setState({ ...getState(), existingState });

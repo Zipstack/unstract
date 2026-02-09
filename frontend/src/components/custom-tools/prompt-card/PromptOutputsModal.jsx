@@ -1,15 +1,15 @@
 import { Col, Image, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
-
-import { DisplayPromptResult } from "./DisplayPromptResult";
-import { TABLE } from "./constants";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
 import usePromptOutput from "../../../hooks/usePromptOutput";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { TABLE } from "./constants";
+import { DisplayPromptResult } from "./DisplayPromptResult";
 
 let TableOutput;
 try {
-  TableOutput = require("../../../plugins/prompt-card/TableOutput").TableOutput;
+  const mod = await import("../../../plugins/prompt-card/TableOutput");
+  TableOutput = mod.TableOutput;
 } catch {
   // The component will remain null of it is not available
 }
@@ -53,7 +53,7 @@ function PromptOutputsModal({
               docId,
               profileId,
               singlePassExtractMode,
-              true
+              true,
             );
             const promptOutputData = promptOutputs[promptOutputKey];
             return (
