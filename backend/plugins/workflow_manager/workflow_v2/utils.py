@@ -134,5 +134,11 @@ class WorkflowUtil:
             Optional[int]: TTL in seconds if custom TTL is set, None for unlimited TTL.
             For OSS version, always returns None (unlimited TTL).
         """
-        # TTL feature is cloud-only, return None for unlimited TTL in OSS
-        return None
+        try:
+            from pluggable_apps.manual_review_v2.helper import (
+                get_hitl_ttl_seconds_by_workflow,
+            )
+
+            return get_hitl_ttl_seconds_by_workflow(workflow)
+        except ImportError:
+            return None
