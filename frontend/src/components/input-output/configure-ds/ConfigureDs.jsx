@@ -1,4 +1,5 @@
-import { Col, Row } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Col, Popover, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
@@ -357,10 +358,24 @@ function ConfigureDs({
     <div className="config-layout">
       {selectedDocUrl && (
         <div className="config-doc-link">
-          Need help?{" "}
-          <a href={selectedDocUrl} target="_blank" rel="noopener noreferrer">
-            See documentation.
-          </a>
+          <Popover
+            content={
+              <div>
+                Need help?{" "}
+                <a
+                  href={selectedDocUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  See documentation.
+                </a>
+              </div>
+            }
+            trigger="click"
+            placement="bottomRight"
+          >
+            <InfoCircleOutlined className="config-doc-icon" />
+          </Popover>
         </div>
       )}
       {!isLoading && oAuthProvider?.length > 0 && (
