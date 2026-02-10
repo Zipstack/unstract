@@ -1,7 +1,7 @@
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { Col, Input, Row, Typography } from "antd";
-import PropTypes from "prop-types";
 import debounce from "lodash/debounce";
+import PropTypes from "prop-types";
 import "./TopBar.css";
 import { useNavigate } from "react-router-dom";
 

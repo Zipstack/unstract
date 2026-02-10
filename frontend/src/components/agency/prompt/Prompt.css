@@ -1,15 +1,15 @@
 /* Styles for Prompt */
 
 .wf-prompt-btn {
-    margin-top: 5px;
+  margin-top: 5px;
 }
 
 .wf-prompt-textarea-header {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 5px;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
 }
 
 .wf-prompt-textarea-header > .edit-btn {
-    text-align: right;
+  text-align: right;
 }

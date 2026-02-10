@@ -1,35 +1,35 @@
 /* Styles for ManageDocsModal */
 
 .manage-docs-upload {
-    background-color: #0000000A;
+  background-color: #0000000a;
 }
 
 .manage-docs-items-list {
-    max-height: 400px;
-    width: 100%;
-    overflow-y: auto;
+  max-height: 400px;
+  width: 100%;
+  overflow-y: auto;
 }
 
 .manage-docs-item {
-    display: flex;
-    justify-content: space-between;
+  display: flex;
+  justify-content: space-between;
 }
 
 .manage-docs-div {
-    margin: 0;
+  margin: 0;
 }
 
 .summarization-status-circle {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
 }
 
 .summarization-status-enabled {
-    background-color: #52c41a;
+  background-color: #52c41a;
 }
 
 .summarization-status-disabled {
-    background-color: #ff4d4f;
+  background-color: #ff4d4f;
 }

@@ -8,12 +8,11 @@ import { Button, Card, Col, Collapse, Row, Space, Tag, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import "./NotesCard.css";
 import { useEffect, useState } from "react";
-
-import { EditableText } from "../editable-text/EditableText";
-import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { promptStudioUpdateStatus } from "../../../helpers/GetStaticData";
-import { ExpandCardBtn } from "../prompt-card/ExpandCardBtn";
+import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
+import { EditableText } from "../editable-text/EditableText";
 import { handleUpdateStatus } from "../prompt-card/constants";
+import { ExpandCardBtn } from "../prompt-card/ExpandCardBtn";
 
 function NotesCard({
   promptDetails,
@@ -55,7 +54,7 @@ function NotesCard({
     value,
     promptId,
     name,
-    isUpdateStatus = false
+    isUpdateStatus = false,
   ) => {
     const prevPromptDetailsState = { ...promptDetailsState };
 
@@ -66,7 +65,7 @@ function NotesCard({
       isUpdateStatus,
       promptId,
       promptStudioUpdateStatus.isUpdating,
-      setUpdateStatus
+      setUpdateStatus,
     );
     setPromptDetailsState(updatedPromptDetailsState);
 
@@ -81,7 +80,7 @@ function NotesCard({
           isUpdateStatus,
           promptId,
           promptStudioUpdateStatus.done,
-          setUpdateStatus
+          setUpdateStatus,
         );
       })
       .catch(() => {
