@@ -9,7 +9,7 @@ import {
   ShareAltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Popconfirm, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Popconfirm, Space, Tooltip, Typography } from "antd";
 import { Link } from "react-router-dom";
 import PropTypes from "prop-types";
 
@@ -46,24 +46,22 @@ function CardActionBox({
   };
 
   return (
-    <div className="card-list-action-box">
+    <Space className="card-list-action-box">
       <Tooltip title="Edit">
-        <button
-          type="button"
+        <Button
+          type="text"
           className="action-icon-btn edit-icon"
+          icon={<EditOutlined />}
           onClick={handleEditAction}
-        >
-          <EditOutlined />
-        </button>
+        />
       </Tooltip>
       <Tooltip title="Share">
-        <button
-          type="button"
+        <Button
+          type="text"
           className="action-icon-btn share-icon"
+          icon={<ShareAltOutlined />}
           onClick={handleShareAction}
-        >
-          <ShareAltOutlined />
-        </button>
+        />
       </Tooltip>
       <Popconfirm
         title={deleteTitle}
@@ -78,13 +76,12 @@ function CardActionBox({
         okButtonProps={{ danger: true }}
       >
         <Tooltip title="Delete">
-          <button
-            type="button"
+          <Button
+            type="text"
             className="action-icon-btn delete-icon"
+            icon={<DeleteOutlined />}
             onClick={(e) => e.stopPropagation()}
-          >
-            <DeleteOutlined />
-          </button>
+          />
         </Tooltip>
       </Popconfirm>
       <Dropdown
@@ -92,15 +89,14 @@ function CardActionBox({
         trigger={["click"]}
         placement="bottomRight"
       >
-        <button
-          type="button"
+        <Button
+          type="text"
           className="card-kebab-menu"
+          icon={<MoreOutlined />}
           onClick={(e) => e.stopPropagation()}
-        >
-          <MoreOutlined />
-        </button>
+        />
       </Dropdown>
-    </div>
+    </Space>
   );
 }
 

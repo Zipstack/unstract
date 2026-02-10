@@ -409,8 +409,9 @@
   flex-wrap: wrap;
 }
 
-/* Status Badges - Text-based badges for Last 5 runs */
-.status-badge {
+/* Status Badges - AntD Tag for Last 5 runs */
+.status-badge,
+.status-badge.ant-tag {
   padding: 4px 10px;
   border-radius: 4px;
   font-size: 11px;
@@ -421,9 +422,12 @@
   cursor: default;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   white-space: nowrap;
+  margin: 0;
+  line-height: 1.2;
 }
 
-.status-badge:hover {
+.status-badge:hover,
+.status-badge.ant-tag:hover {
   transform: scale(1.05);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
@@ -470,20 +474,21 @@
   border: 1px solid #ffd591;
 }
 
-/* Clickable status badges - native button with reset styles */
-button.status-badge.status-badge-clickable {
+/* Clickable status badges - AntD Tag with click handler */
+.status-badge.status-badge-clickable,
+.status-badge.ant-tag.status-badge-clickable {
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  font-family: inherit;
-  outline: none;
 }
 
-button.status-badge.status-badge-clickable:hover {
+.status-badge.status-badge-clickable:hover,
+.status-badge.ant-tag.status-badge-clickable:hover {
   transform: scale(1.1);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-button.status-badge.status-badge-clickable:focus-visible {
+.status-badge.status-badge-clickable:focus-visible,
+.status-badge.ant-tag.status-badge-clickable:focus-visible {
   outline: 2px solid #1890ff;
   outline-offset: 2px;
 }
@@ -683,8 +688,9 @@ button.status-badge.status-badge-clickable:focus-visible {
   gap: 16px;
 }
 
-/* Action icon buttons - native button with reset styles */
-.action-icon-btn {
+/* Action icon buttons - supports both native button and AntD Button */
+.action-icon-btn,
+.action-icon-btn.ant-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -696,27 +702,36 @@ button.status-badge.status-badge-clickable:focus-visible {
   background: none;
   border: none;
   outline: none;
+  height: auto;
+  width: auto;
 }
 
-.action-icon-btn:hover {
+.action-icon-btn:hover,
+.action-icon-btn.ant-btn:hover {
   transform: scale(1.1);
+  color: #092c4c;
+  background: transparent;
 }
 
-.action-icon-btn:focus-visible {
+.action-icon-btn:focus-visible,
+.action-icon-btn.ant-btn:focus-visible {
   outline: 2px solid #1890ff;
   outline-offset: 2px;
   border-radius: 4px;
 }
 
-.action-icon-btn.edit-icon:hover {
+.action-icon-btn.edit-icon:hover,
+.action-icon-btn.edit-icon.ant-btn:hover {
   color: #0958d9;
 }
 
-.action-icon-btn.share-icon:hover {
+.action-icon-btn.share-icon:hover,
+.action-icon-btn.share-icon.ant-btn:hover {
   color: #0958d9;
 }
 
-.action-icon-btn.delete-icon:hover {
+.action-icon-btn.delete-icon:hover,
+.action-icon-btn.delete-icon.ant-btn:hover {
   color: #cf1322;
 }
 
@@ -743,8 +758,9 @@ button.status-badge.status-badge-clickable:focus-visible {
   border-top: 1px solid #f0f0f0;
 }
 
-/* Chevron toggle button - native button with reset styles */
-.card-expand-chevron {
+/* Chevron toggle button - supports both native button and AntD Button */
+.card-expand-chevron,
+.card-expand-chevron.ant-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -757,14 +773,18 @@ button.status-badge.status-badge-clickable:focus-visible {
   background: none;
   border: none;
   outline: none;
+  height: auto;
+  width: auto;
 }
 
-.card-expand-chevron:hover {
+.card-expand-chevron:hover,
+.card-expand-chevron.ant-btn:hover {
   background: rgba(0, 0, 0, 0.04);
   color: rgba(0, 0, 0, 0.88);
 }
 
-.card-expand-chevron:focus-visible {
+.card-expand-chevron:focus-visible,
+.card-expand-chevron.ant-btn:focus-visible {
   outline: 2px solid #1890ff;
   outline-offset: 2px;
 }
@@ -1132,8 +1152,9 @@ button.status-badge.status-badge-clickable:focus-visible {
   color: rgba(0, 0, 0, 0.85);
 }
 
-/* Kebab menu button - native button with reset styles */
-.card-kebab-menu {
+/* Kebab menu button - supports both native button and AntD Button */
+.card-kebab-menu,
+.card-kebab-menu.ant-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1146,14 +1167,18 @@ button.status-badge.status-badge-clickable:focus-visible {
   background: none;
   border: none;
   outline: none;
+  height: auto;
+  width: auto;
 }
 
-.card-kebab-menu:hover {
+.card-kebab-menu:hover,
+.card-kebab-menu.ant-btn:hover {
   background: rgba(0, 0, 0, 0.04);
   color: rgba(0, 0, 0, 0.85);
 }
 
-.card-kebab-menu:focus-visible {
+.card-kebab-menu:focus-visible,
+.card-kebab-menu.ant-btn:focus-visible {
   outline: 2px solid #1890ff;
   outline-offset: 2px;
 }

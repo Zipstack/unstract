@@ -11,7 +11,7 @@ import {
   ScheduleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Image, Switch, Tooltip, Typography } from "antd";
+import { Image, Space, Switch, Tag, Tooltip, Typography } from "antd";
 import { useNavigate, useLocation } from "react-router-dom";
 import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
@@ -94,7 +94,7 @@ function StatusPills({
   };
 
   return (
-    <div className="status-badges-container">
+    <Space className="status-badges-container" size={6} wrap>
       {statuses.map((run, index) => {
         const config = getStatusConfig(run.status);
         const isClickable = run.execution_id && executionType;
@@ -128,24 +128,23 @@ function StatusPills({
         if (isClickable) {
           return (
             <Tooltip key={key} title={tooltipContent}>
-              <button
-                type="button"
+              <Tag
                 className={`${config.className} status-badge-clickable`}
                 onClick={(e) => handleStatusClick(e, run)}
               >
                 {config.label}
-              </button>
+              </Tag>
             </Tooltip>
           );
         }
 
         return (
           <Tooltip key={key} title={tooltipContent}>
-            <span className={config.className}>{config.label}</span>
+            <Tag className={config.className}>{config.label}</Tag>
           </Tooltip>
         );
       })}
-    </div>
+    </Space>
   );
 }
 
@@ -159,6 +158,7 @@ StatusPills.propTypes = {
   ),
   executionType: PropTypes.string,
   pipelineId: PropTypes.string,
+  listContext: PropTypes.object,
 };
 
 /**

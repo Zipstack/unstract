@@ -12,6 +12,7 @@ import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { LogsModal } from "../log-modal/LogsModal.jsx";
+import { fetchExecutionLogs } from "../log-modal/fetchExecutionLogs.js";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
 import "./Pipelines.css";
@@ -50,7 +51,6 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
-  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs");
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
   const pipelineApiService = pipelineService();

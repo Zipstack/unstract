@@ -1,5 +1,5 @@
 import { DownOutlined, UpOutlined } from "@ant-design/icons";
-import { Card, Tooltip, Typography } from "antd";
+import { Button, Card, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useState, useCallback, useRef, useEffect } from "react";
 
@@ -188,13 +188,12 @@ function CardItem({
     if (!config.expandable || !config.expandedContent) return null;
 
     return (
-      <button
-        type="button"
+      <Button
+        type="text"
         className="card-expand-chevron"
+        icon={isExpanded ? <UpOutlined /> : <DownOutlined />}
         onClick={handleToggleExpand}
-      >
-        {isExpanded ? <UpOutlined /> : <DownOutlined />}
-      </button>
+      />
     );
   };
 
