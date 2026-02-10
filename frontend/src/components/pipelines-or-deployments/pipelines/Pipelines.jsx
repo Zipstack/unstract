@@ -50,6 +50,7 @@ function Pipelines({ type }) {
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
@@ -88,7 +89,8 @@ function Pipelines({ type }) {
       setExecutionLogsTotalCount,
       setAlertDetails,
       page,
-      pageSize
+      pageSize,
+      setIsFetchingLogs
     );
   };
 
@@ -383,7 +385,10 @@ function Pipelines({ type }) {
       pipeline,
       setExecutionLogs,
       setExecutionLogsTotalCount,
-      setAlertDetails
+      setAlertDetails,
+      1,
+      10,
+      setIsFetchingLogs
     );
   };
 
@@ -516,6 +521,7 @@ function Pipelines({ type }) {
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
         fetchExecutionLogs={handleFetchLogs}
+        loading={isFetchingLogs}
       />
       <DeleteModal
         open={openDeleteModal}

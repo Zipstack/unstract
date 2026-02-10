@@ -48,6 +48,7 @@ function ApiDeployment() {
   const [openLogsModal, setOpenLogsModal] = useState(false);
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
+  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const axiosPrivate = useAxiosPrivate();
   const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
@@ -79,7 +80,8 @@ function ApiDeployment() {
       setExecutionLogsTotalCount,
       setAlertDetails,
       page,
-      pageSize
+      pageSize,
+      setIsFetchingLogs
     );
   };
 
@@ -125,7 +127,7 @@ function ApiDeployment() {
           current: page,
           pageSize,
           total:
-            data.count != null
+            data.count !== null && data.count !== undefined
               ? data.count
               : data.results
               ? data.results.length
@@ -262,7 +264,10 @@ function ApiDeployment() {
       deployment,
       setExecutionLogs,
       setExecutionLogsTotalCount,
-      setAlertDetails
+      setAlertDetails,
+      1,
+      10,
+      setIsFetchingLogs
     );
   };
 
@@ -376,6 +381,7 @@ function ApiDeployment() {
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
         fetchExecutionLogs={handleFetchLogs}
+        loading={isFetchingLogs}
       />
       <NotificationModal
         open={openNotificationModal}
