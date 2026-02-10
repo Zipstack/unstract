@@ -257,20 +257,34 @@ WorkflowFieldRow.propTypes = {
 function ApiEndpointSection({ apiEndpoint }) {
   if (!apiEndpoint) return null;
 
+  // Validate URL scheme to prevent javascript: or other malicious protocols
+  const isValidUrl = (() => {
+    try {
+      const parsed = new URL(apiEndpoint, window.location.origin);
+      return ["http:", "https:"].includes(parsed.protocol);
+    } catch {
+      return false;
+    }
+  })();
+
   return (
     <div className="card-list-endpoint-wrapper">
       <div className="card-list-endpoint-row">
         <span className="card-list-field-label">API Endpoint</span>
         <div className="card-list-endpoint-value">
           <Tooltip title={apiEndpoint} overlayStyle={{ maxWidth: 500 }}>
-            <a
-              href={apiEndpoint}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {shortenApiEndpoint(apiEndpoint)}
-            </a>
+            {isValidUrl ? (
+              <a
+                href={apiEndpoint}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {shortenApiEndpoint(apiEndpoint)}
+              </a>
+            ) : (
+              <span>{shortenApiEndpoint(apiEndpoint)}</span>
+            )}
           </Tooltip>
           <Tooltip title="Copy endpoint">
             <Button

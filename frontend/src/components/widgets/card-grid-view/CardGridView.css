@@ -751,7 +751,7 @@
 
 /* Expanded state - triggered via chevron toggle */
 .card-list-expanded.expanded {
-  max-height: 200px;
+  max-height: 500px;
   opacity: 1;
   padding-top: 12px;
   margin-top: 12px;

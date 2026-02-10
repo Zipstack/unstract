@@ -30,15 +30,17 @@ function CardItem({
   const isExpanded = expanded || forceExpanded;
   const shouldScroll = isExpanded || scrollIntoView;
   useEffect(() => {
+    let timerId;
     if (shouldScroll && cardRef.current) {
-      setTimeout(() => {
-        cardRef.current.scrollIntoView({
+      timerId = setTimeout(() => {
+        cardRef.current?.scrollIntoView({
           behavior: "smooth",
           block: "center",
           inline: "nearest",
         });
       }, 50);
     }
+    return () => clearTimeout(timerId);
   }, [shouldScroll]);
 
   const handleCardClick = useCallback(
@@ -269,7 +271,7 @@ function CardItem({
       {config.sections?.map(renderSection)}
 
       {/* Expanded Content */}
-      {expanded && config.expandedContent && (
+      {isExpanded && config.expandedContent && (
         <div className="card-expanded-content">
           {config.expandedContent(item)}
         </div>

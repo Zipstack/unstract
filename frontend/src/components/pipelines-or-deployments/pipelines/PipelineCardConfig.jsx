@@ -131,6 +131,14 @@ function StatusPills({
               <Tag
                 className={`${config.className} status-badge-clickable`}
                 onClick={(e) => handleStatusClick(e, run)}
+                tabIndex={0}
+                role="button"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    handleStatusClick(e, run);
+                  }
+                }}
               >
                 {config.label}
               </Tag>

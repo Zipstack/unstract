@@ -125,7 +125,11 @@ function ApiDeployment() {
           current: page,
           pageSize,
           total:
-            data.count || (data.results ? data.results.length : data.length),
+            data.count != null
+              ? data.count
+              : data.results
+              ? data.results.length
+              : data.length,
         }));
       })
       .catch((err) => {
