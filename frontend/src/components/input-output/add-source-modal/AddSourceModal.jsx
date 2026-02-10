@@ -25,6 +25,7 @@ function AddSourceModal({
   const [metadata, setMetadata] = useState({});
   const [titles, setTitles] = useState({});
   const [selectedSourceName, setSelectedSourceName] = useState("");
+  const [selectedDocUrl, setSelectedDocUrl] = useState("");
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -70,6 +71,7 @@ function AddSourceModal({
       (item) => item?.id === selectedSourceId
     );
     setSelectedSourceName(selectedSource?.name);
+    setSelectedDocUrl(selectedSource?.doc_url || "");
   }, [selectedSourceId]);
 
   const getSourceDetails = () => {
@@ -195,6 +197,7 @@ function AddSourceModal({
           addNewItem={addNewItem}
           editItemId={editItemId}
           metadata={metadata}
+          selectedDocUrl={selectedDocUrl}
         />
       ) : isLoading ? (
         <SpinnerLoader />

@@ -124,6 +124,7 @@ class ConnectorProcessor:
                     ConnectorKeys.CAN_READ: connector.get(ConnectorKeys.CAN_READ),
                     ConnectorKeys.CAN_WRITE: connector.get(ConnectorKeys.CAN_WRITE),
                     CIKey.CONNECTOR_MODE: getattr(mode, "value", None),
+                    ConnectorKeys.DOC_URL: connector.get(ConnectorKeys.DOC_URL, ""),
                 }
             )
 
