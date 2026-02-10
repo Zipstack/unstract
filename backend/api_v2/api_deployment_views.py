@@ -220,6 +220,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     def create(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        # Check deployment count before create for HubSpot notification
+        deployment_count_before = APIDeployment.objects.count()
+
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
@@ -228,12 +231,44 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             {"api_key": api_key.api_key, **serializer.data}
         )
 
+        # Notify HubSpot about API deployment
+        self._notify_hubspot_first_api_deploy(request.user, deployment_count_before)
+
         headers = self.get_success_headers(serializer.data)
         return Response(
             response_serializer.data,
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
+
+    def _notify_hubspot_first_api_deploy(self, user, deployment_count_before: int) -> None:
+        """Notify HubSpot when an API is deployed.
+
+        Checks if HubSpot plugin is available and notifies it about
+        the API deployment. The plugin decides whether to act based
+        on the is_first_for_org flag.
+        """
+        hubspot_plugin = get_plugin("hubspot")
+        if not hubspot_plugin:
+            return
+
+        try:
+            # First API deploy if count was 0 before deploy
+            is_first_for_org = deployment_count_before == 0
+
+            from plugins.integrations.hubspot import HubSpotEvent
+
+            service = hubspot_plugin["service_class"]()
+            service.update_contact(
+                user=user,
+                events=[HubSpotEvent.API_DEPLOY],
+                is_first_for_org=is_first_for_org,
+            )
+        except Exception as e:
+            # Log but don't fail the request
+            logger.warning(
+                f"Failed to notify HubSpot for API deployment: {e}"
+            )
 
     @action(detail=False, methods=["get"])
     def by_prompt_studio_tool(self, request: Request) -> Response:
