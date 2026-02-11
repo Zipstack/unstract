@@ -1252,6 +1252,19 @@ wheels = [
 ]
 
 [[package]]
+name = "llama-index-llms-litellm"
+version = "0.6.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "litellm" },
+    { name = "llama-index-core" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/c1/c12cd1fe83418849b712025fae8861e37a151915653c1bf133946524aeed/llama_index_llms_litellm-0.6.3.tar.gz", hash = "sha256:30a7f156d57998fe29f007490ed7ea9cbd919259eacaf1e5445b2925b560eb7a", size = 10909, upload-time = "2025-09-08T20:47:00.068Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/2e/00492f54e99600c2bea13e8ab25614beff2462191f222cc913d81169e183/llama_index_llms_litellm-0.6.3-py3-none-any.whl", hash = "sha256:407b066462c894fc0cd9e506801fa1411cc070acdafe2d0ed347aa4a649db41c", size = 11134, upload-time = "2025-09-08T20:46:59.026Z" },
+]
+
+[[package]]
 name = "llama-index-llms-openai"
 version = "0.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -2602,6 +2615,7 @@ dependencies = [
     { name = "flask" },
     { name = "json-repair" },
     { name = "llama-index" },
+    { name = "llama-index-llms-litellm" },
     { name = "nltk" },
     { name = "peewee" },
     { name = "python-dotenv" },
@@ -2635,6 +2649,7 @@ requires-dist = [
     { name = "flask", specifier = "~=3.0" },
     { name = "json-repair", specifier = "~=0.42.0" },
     { name = "llama-index", specifier = "==0.13.2" },
+    { name = "llama-index-llms-litellm" },
     { name = "nltk", specifier = "~=3.8" },
     { name = "peewee", specifier = "~=3.16" },
     { name = "python-dotenv", specifier = "==1.0.1" },

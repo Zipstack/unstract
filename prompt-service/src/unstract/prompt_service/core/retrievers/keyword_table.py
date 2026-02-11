@@ -3,7 +3,6 @@ import logging
 from llama_index.core import VectorStoreIndex
 from llama_index.core.indices.keyword_table import KeywordTableIndex
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 from unstract.prompt_service.exceptions import RetrievalError
 
@@ -48,7 +47,7 @@ class KeywordTableRetriever(BaseRetriever):
             keyword_index = KeywordTableIndex(
                 nodes=[node.node for node in all_nodes],
                 show_progress=True,
-                llm=self.llm,  # Use the provided LLM instead of defaulting to OpenAI
+                llm=self.llama_index_llm,
             )
 
             # Create retriever from keyword index
