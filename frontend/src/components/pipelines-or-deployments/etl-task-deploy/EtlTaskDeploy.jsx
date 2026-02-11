@@ -205,10 +205,6 @@ const EtlTaskDeploy = ({
         updatePipelineTable(res?.data);
         setOpen(false);
         clearFormDetails();
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline Updated Successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "", setBackendErrors));

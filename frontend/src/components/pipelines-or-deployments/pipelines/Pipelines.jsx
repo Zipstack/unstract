@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import {
@@ -66,6 +66,7 @@ function Pipelines({ type }) {
 
   // Scroll restoration state
   const [scrollRestoreId, setScrollRestoreId] = useState(null);
+  const pendingScrollIdRef = useRef(null);
 
   // Pagination state
   const [pagination, setPagination] = useState({
@@ -99,31 +100,27 @@ function Pipelines({ type }) {
   }, [type]);
 
   // Handle scroll restoration and list context from navigation
+  // Use location.key to trigger on each navigation (even back to same card)
   useEffect(() => {
     if (location.state?.scrollToCardId) {
+      // Store pending scroll ID - will be activated after data loads
+      pendingScrollIdRef.current = location.state.scrollToCardId;
+
       // Restore pagination and search state if available
       const { page, pageSize, searchTerm: savedSearch } = location.state;
-      if (page || pageSize || savedSearch !== undefined) {
-        const restoredPage = page || 1;
-        const restoredPageSize = pageSize || 10;
-        const restoredSearch = savedSearch || "";
-        setSearchTerm(restoredSearch);
-        setPagination((prev) => ({
-          ...prev,
-          current: restoredPage,
-          pageSize: restoredPageSize,
-        }));
-        // Fetch with restored context before scrolling
-        getPipelineList(restoredPage, restoredPageSize, restoredSearch);
-      }
-      setScrollRestoreId(location.state.scrollToCardId);
-      // Clear after a short delay to prevent re-triggering
-      const timer = setTimeout(() => {
-        setScrollRestoreId(null);
-      }, 500);
-      return () => clearTimeout(timer);
+      const restoredPage = page || 1;
+      const restoredPageSize = pageSize || 10;
+      const restoredSearch = savedSearch || "";
+      setSearchTerm(restoredSearch);
+      setPagination((prev) => ({
+        ...prev,
+        current: restoredPage,
+        pageSize: restoredPageSize,
+      }));
+      // Fetch with restored context - scroll will be set after data loads
+      getPipelineList(restoredPage, restoredPageSize, restoredSearch);
     }
-  }, [location.state?.scrollToCardId]);
+  }, [location.key]);
 
   const handleSearch = (searchText, _setSearchList) => {
     const term = searchText?.trim() || "";
@@ -163,9 +160,18 @@ function Pipelines({ type }) {
           pageSize,
           total: data.count ?? data.results?.length ?? data.length ?? 0,
         }));
+
+        // Activate scroll restoration after data is loaded
+        if (pendingScrollIdRef.current) {
+          setScrollRestoreId(pendingScrollIdRef.current);
+          pendingScrollIdRef.current = null;
+          // Clear after scroll has time to complete
+          setTimeout(() => setScrollRestoreId(null), 500);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+        pendingScrollIdRef.current = null;
       })
       .finally(() => {
         setTableLoading(false);

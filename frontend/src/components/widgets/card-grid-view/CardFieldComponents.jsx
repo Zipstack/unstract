@@ -204,6 +204,7 @@ function WorkflowFieldRow({
   sessionDetails,
   location,
   itemId,
+  listContext,
 }) {
   const orgName = sessionDetails?.orgName;
 
@@ -230,6 +231,9 @@ function WorkflowFieldRow({
           state={{
             from: location?.pathname,
             scrollToCardId: itemId,
+            page: listContext?.page,
+            pageSize: listContext?.pageSize,
+            searchTerm: listContext?.searchTerm,
           }}
           className="card-list-workflow-link-row"
           onClick={(e) => e.stopPropagation()}
@@ -248,6 +252,7 @@ WorkflowFieldRow.propTypes = {
   sessionDetails: PropTypes.object,
   location: PropTypes.object,
   itemId: PropTypes.string,
+  listContext: PropTypes.object,
 };
 
 /**

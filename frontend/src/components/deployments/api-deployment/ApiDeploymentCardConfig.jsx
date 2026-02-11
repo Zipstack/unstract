@@ -38,6 +38,7 @@ function createApiDeploymentCardConfig({
   onSetupNotifications,
   onCodeSnippets,
   onDownloadPostman,
+  listContext,
 }) {
   return {
     header: {
@@ -125,6 +126,7 @@ function createApiDeploymentCardConfig({
               sessionDetails={sessionDetails}
               location={location}
               itemId={deployment.id}
+              listContext={listContext}
             />
             <OwnerFieldRow item={deployment} sessionDetails={sessionDetails} />
             <LastRunFieldRow lastRunTime={deployment.last_run_time} />
@@ -133,6 +135,7 @@ function createApiDeploymentCardConfig({
               executionType="API"
               itemId={deployment.id}
               StatusPillsComponent={StatusPills}
+              listContext={listContext}
             />
           </div>
 
@@ -167,6 +170,7 @@ createApiDeploymentCardConfig.propTypes = {
   onSetupNotifications: PropTypes.func,
   onCodeSnippets: PropTypes.func,
   onDownloadPostman: PropTypes.func,
+  listContext: PropTypes.object,
 };
 
 export { createApiDeploymentCardConfig };

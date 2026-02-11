@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
@@ -58,6 +58,11 @@ function ApiDeployment() {
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
+  // Scroll restoration state
+  const [scrollRestoreId, setScrollRestoreId] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const pendingScrollIdRef = useRef(null);
+
   // Pagination state
   const [pagination, setPagination] = useState({
     current: 1,
@@ -94,9 +99,33 @@ function ApiDeployment() {
     setFilteredData(tableData);
   }, [tableData]);
 
+  // Handle scroll restoration and list context from navigation
+  // Use location.key to trigger on each navigation (even back to same card)
+  useEffect(() => {
+    if (location.state?.scrollToCardId) {
+      // Store pending scroll ID - will be activated after data loads
+      pendingScrollIdRef.current = location.state.scrollToCardId;
+
+      // Restore pagination and search state if available
+      const { page, pageSize, searchTerm: savedSearch } = location.state;
+      const restoredPage = page || 1;
+      const restoredPageSize = pageSize || 10;
+      const restoredSearch = savedSearch || "";
+      setSearchTerm(restoredSearch);
+      setPagination((prev) => ({
+        ...prev,
+        current: restoredPage,
+        pageSize: restoredPageSize,
+      }));
+      // Fetch with restored context - scroll will be set after data loads
+      getApiDeploymentList(restoredPage, restoredPageSize, restoredSearch);
+    }
+  }, [location.key]);
+
   const handleSearch = (searchText) => {
-    // Server-side search - pass to API
-    getApiDeploymentList(1, pagination.pageSize, searchText?.trim() || "");
+    const term = searchText?.trim() || "";
+    setSearchTerm(term);
+    getApiDeploymentList(1, pagination.pageSize, term);
   };
 
   const getWorkflows = () => {
@@ -133,9 +162,18 @@ function ApiDeployment() {
               ? data.results.length
               : data.length,
         }));
+
+        // Activate scroll restoration after data is loaded
+        if (pendingScrollIdRef.current) {
+          setScrollRestoreId(pendingScrollIdRef.current);
+          pendingScrollIdRef.current = null;
+          // Clear after scroll has time to complete
+          setTimeout(() => setScrollRestoreId(null), 500);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+        pendingScrollIdRef.current = null;
       })
       .finally(() => {
         setIsTableLoading(false);
@@ -167,16 +205,24 @@ function ApiDeployment() {
   };
 
   const updateStatus = (record) => {
-    setIsTableLoading(true);
-    record.is_active = !record?.is_active;
+    const newStatus = !record?.is_active;
+    // Optimistic update - no loading spinner
+    setTableData((prev) =>
+      prev.map((item) =>
+        item.id === record.id ? { ...item, is_active: newStatus } : item
+      )
+    );
+
     apiDeploymentsApiService
-      .updateApiDeployment(record)
-      .then(() => {})
+      .updateApiDeployment({ ...record, is_active: newStatus })
       .catch((err) => {
+        // Revert on error
+        setTableData((prev) =>
+          prev.map((item) =>
+            item.id === record.id ? { ...item, is_active: !newStatus } : item
+          )
+        );
         setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsTableLoading(false);
       });
   };
 
@@ -311,8 +357,19 @@ function ApiDeployment() {
         onSetupNotifications: handleSetupNotificationsDeployment,
         onCodeSnippets: handleCodeSnippetsDeployment,
         onDownloadPostman: handleDownloadPostmanDeployment,
+        listContext: {
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+          searchTerm,
+        },
       }),
-    [sessionDetails, location]
+    [
+      sessionDetails,
+      location,
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+    ]
   );
 
   // Using the custom hook to manage modal state
@@ -334,6 +391,7 @@ function ApiDeployment() {
         openAddModal={openAddModal}
         cardConfig={apiDeploymentCardConfig}
         listMode={true}
+        scrollToId={scrollRestoreId}
         enableSearch={true}
         onSearch={handleSearch}
         setSearchList={setFilteredData}

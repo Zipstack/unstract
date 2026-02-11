@@ -82,20 +82,6 @@ const CreateApiDeploymentModal = ({
     setOpen(false);
   };
 
-  const updateTableData = () => {
-    apiDeploymentsApiService
-      .getApiDeploymentsList()
-      .then((res) => {
-        setTableData(res?.data);
-      })
-      .catch((err) => {
-        setAlertDetails({
-          type: "error",
-          content: "Error fetching API deployments",
-        });
-      });
-  };
-
   const createApiDeployment = () => {
     try {
       const wf = workflowEndpointList.find(
@@ -125,7 +111,8 @@ const CreateApiDeploymentModal = ({
             onDeploymentCreated();
           }
         } else {
-          updateTableData();
+          // Add new deployment to list
+          setTableData((prev) => [res?.data, ...prev]);
           setSelectedRow(res?.data);
           openCodeModal(true);
         }
@@ -166,7 +153,16 @@ const CreateApiDeploymentModal = ({
     apiDeploymentsApiService
       .updateApiDeployment(body)
       .then((res) => {
-        updateTableData();
+        // Merge updated record into existing tableData
+        setTableData((prev) => {
+          const index = prev.findIndex((item) => item?.id === res?.data?.id);
+          if (index !== -1) {
+            const newData = [...prev];
+            newData[index] = { ...newData[index], ...res?.data };
+            return newData;
+          }
+          return prev;
+        });
         setOpen(false);
         clearFormDetails();
         setAlertDetails({

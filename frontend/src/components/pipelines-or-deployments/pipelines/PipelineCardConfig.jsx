@@ -348,6 +348,7 @@ function createPipelineCardConfig({
               sessionDetails={sessionDetails}
               location={location}
               itemId={pipeline.id}
+              listContext={listContext}
             />
             <OwnerFieldRow item={pipeline} sessionDetails={sessionDetails} />
             <LastRunFieldRow lastRunTime={pipeline.last_run_time} />

@@ -1,7 +1,7 @@
 import { DownOutlined, UpOutlined } from "@ant-design/icons";
 import { Button, Card, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, memo } from "react";
 
 /**
  * Individual card item renderer for CardGridView
@@ -321,4 +321,6 @@ CardItem.propTypes = {
   scrollIntoView: PropTypes.bool,
 };
 
-export { CardItem };
+// Wrap with memo to prevent unnecessary re-renders when parent array reference changes
+const MemoizedCardItem = memo(CardItem);
+export { MemoizedCardItem as CardItem };
