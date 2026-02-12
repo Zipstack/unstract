@@ -3,7 +3,6 @@ import logging
 from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.schema import QueryBundle
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
-
 from unstract.prompt_service.core.retrievers.base_retriever import BaseRetriever
 from unstract.prompt_service.exceptions import RetrievalError
 
@@ -24,7 +23,7 @@ class SubquestionRetriever(BaseRetriever):
         try:
             logger.info("Initialising vector query engine...")
             vector_query_engine = self.vector_db.get_vector_store_index().as_query_engine(
-                llm=self.llm, similarity_top_k=self.top_k
+                llm=self.llama_index_llm, similarity_top_k=self.top_k
             )
             logger.info(
                 f"Retrieving chunks for {self.doc_id} using SubQuestionQueryEngine."
@@ -42,7 +41,7 @@ class SubquestionRetriever(BaseRetriever):
             query_engine = SubQuestionQueryEngine.from_defaults(
                 query_engine_tools=query_engine_tools,
                 use_async=True,
-                llm=self.llm,
+                llm=self.llama_index_llm,
             )
 
             response = query_engine.query(str_or_query_bundle=query_bundle)

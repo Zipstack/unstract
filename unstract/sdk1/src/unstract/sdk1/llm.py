@@ -1,14 +1,27 @@
 import logging
 import os
 import re
-from collections.abc import Callable, Generator, Mapping
-from typing import cast
+from collections.abc import Callable, Generator, Mapping, Sequence
+from typing import Any, cast
 
 import litellm
 
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
+from llama_index.core.base.llms.types import (
+    ChatMessage,
+    ChatResponse,
+    ChatResponseAsyncGen,
+    ChatResponseGen,
+    CompletionResponse,
+    CompletionResponseAsyncGen,
+    CompletionResponseGen,
+    LLMMetadata,
+    MessageRole,
+)
+from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -510,3 +523,147 @@ class LLM:
                 post_processed_output = {}
 
         return (response_text, post_processed_output)
+
+
+class LLMCompat(LlamaIndexBaseLLM):
+    """Compatibility wrapper that makes SDK1 LLM work with llama-index.
+
+    Llama-index components (KeywordTableIndex, SubQuestionQueryEngine,
+    QueryFusionRetriever, RouterQueryEngine, etc.) expect an instance of
+    ``llama_index.core.llms.llm.LLM``.  SDK1's :class:`LLM` wraps litellm
+    directly and does *not* inherit from the llama-index base class.
+
+    This bridge follows the same pattern as :class:`EmbeddingCompat` in
+    ``unstract.sdk1.embedding``: it inherits from the llama-index base
+    and delegates to litellm using the kwargs already validated by SDK1.
+    """
+
+    def __init__(self, llm: "LLM", **kwargs: Any) -> None:  # noqa: ANN401
+        """Initialize with an SDK1 LLM instance."""
+        super().__init__(**kwargs)
+        self._llm_instance = llm
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        return LLMMetadata(
+            is_chat_model=True,
+            model_name=self._llm_instance.get_model_name(),
+        )
+
+    def _get_completion_kwargs(self) -> dict[str, Any]:
+        return self._llm_instance.adapter.validate({**self._llm_instance.kwargs})
+
+    @staticmethod
+    def _to_litellm_messages(
+        messages: Sequence[ChatMessage],
+    ) -> list[dict[str, str]]:
+        role_map = {
+            MessageRole.SYSTEM: "system",
+            MessageRole.USER: "user",
+            MessageRole.ASSISTANT: "assistant",
+            MessageRole.FUNCTION: "function",
+            MessageRole.TOOL: "tool",
+        }
+        return [
+            {
+                "role": role_map.get(m.role, "user"),
+                "content": m.content or "",
+            }
+            for m in messages
+        ]
+
+    # ── Sync ─────────────────────────────────────────────
+
+    def chat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> ChatResponse:
+        litellm.drop_params = True
+        response = litellm.completion(
+            messages=self._to_litellm_messages(messages),
+            **self._get_completion_kwargs(),
+        )
+        content = response["choices"][0]["message"]["content"]
+        return ChatResponse(
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=content),
+            raw=response,
+        )
+
+    def complete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> CompletionResponse:
+        litellm.drop_params = True
+        response = litellm.completion(
+            messages=[{"role": "user", "content": prompt}],
+            **self._get_completion_kwargs(),
+        )
+        content = response["choices"][0]["message"]["content"]
+        return CompletionResponse(text=content, raw=response)
+
+    def stream_chat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> ChatResponseGen:
+        raise NotImplementedError("Streaming chat is not supported by LLMCompat.")
+
+    def stream_complete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> CompletionResponseGen:
+        raise NotImplementedError("Streaming completion is not supported by LLMCompat.")
+
+    # ── Async ────────────────────────────────────────────
+
+    async def achat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> ChatResponse:
+        litellm.drop_params = True
+        response = await litellm.acompletion(
+            messages=self._to_litellm_messages(messages),
+            **self._get_completion_kwargs(),
+        )
+        content = response["choices"][0]["message"]["content"]
+        return ChatResponse(
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=content),
+            raw=response,
+        )
+
+    async def acomplete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> CompletionResponse:
+        litellm.drop_params = True
+        response = await litellm.acompletion(
+            messages=[{"role": "user", "content": prompt}],
+            **self._get_completion_kwargs(),
+        )
+        content = response["choices"][0]["message"]["content"]
+        return CompletionResponse(text=content, raw=response)
+
+    async def astream_chat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> ChatResponseAsyncGen:
+        raise NotImplementedError("Async streaming chat is not supported by LLMCompat.")
+
+    async def astream_complete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> CompletionResponseAsyncGen:
+        raise NotImplementedError(
+            "Async streaming completion is not supported by LLMCompat."
+        )
