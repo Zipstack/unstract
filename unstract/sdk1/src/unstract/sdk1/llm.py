@@ -21,7 +21,6 @@ from llama_index.core.base.llms.types import (
 )
 from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
 from pydantic import ValidationError
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
