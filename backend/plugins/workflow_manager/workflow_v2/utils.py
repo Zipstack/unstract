@@ -170,6 +170,4 @@ class WorkflowUtil:
 
             return get_hitl_ttl_seconds_by_workflow(workflow)
         except ImportError:
-            pass
-
-        return None
+            return None
