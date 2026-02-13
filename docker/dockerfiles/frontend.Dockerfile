@@ -1,8 +1,11 @@
 # Multi-stage build for both development and production
 
+# Global ARG available to all stages
+ARG BUILD_CONTEXT_PATH=frontend
+
 # Base stage with common setup
 FROM node:20-alpine AS base
-ENV BUILD_CONTEXT_PATH=frontend
+ARG BUILD_CONTEXT_PATH
 WORKDIR /app
 
 ### FOR DEVELOPMENT ###
@@ -16,9 +19,16 @@ RUN npm install --ignore-scripts
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ /app/
 
+# Copy the environment script
+COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
+RUN chmod +x /app/generate-runtime-config.sh
+
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Run the environment config script before starting the
+# dev server, as the node alpine base image does not
+# auto-run /docker-entrypoint.d/*.
+CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && npm start"]
 
 ### FOR PRODUCTION ###
 # Builder stage for production build
@@ -39,6 +49,7 @@ RUN npm run build
 
 # Production stage
 FROM nginx:1.29.1-alpine AS production
+ARG BUILD_CONTEXT_PATH
 LABEL maintainer="Zipstack Inc."
 
 # Copy built assets from the builder stage
@@ -53,7 +64,7 @@ RUN mkdir -p /usr/share/nginx/html/config && \
     chmod 755 /usr/share/nginx/html/config
 
 # Copy the environment script
-COPY ../frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
+COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
 RUN chmod +x /docker-entrypoint.d/40-env.sh
 
 EXPOSE 80
