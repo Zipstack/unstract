@@ -20,12 +20,15 @@ RUN npm install --ignore-scripts
 COPY ${BUILD_CONTEXT_PATH}/ /app/
 
 # Copy the environment script
-COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
-RUN chmod +x /docker-entrypoint.d/40-env.sh
+COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
+RUN chmod +x /app/generate-runtime-config.sh
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+# Run the environment config script before starting the
+# dev server, as the node alpine base image does not
+# auto-run /docker-entrypoint.d/*.
+CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && npm start"]
 
 ### FOR PRODUCTION ###
 # Builder stage for production build
