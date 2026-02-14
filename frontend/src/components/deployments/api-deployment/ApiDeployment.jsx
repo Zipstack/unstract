@@ -149,8 +149,8 @@ function ApiDeployment() {
       .getApiDeploymentsList(page, pageSize, search)
       .then((res) => {
         const data = res?.data;
-        // Handle paginated response
-        setTableData(data.results || data);
+        const results = data.results || data;
+        setTableData(results);
         setPagination((prev) => ({
           ...prev,
           current: page,
@@ -231,36 +231,49 @@ function ApiDeployment() {
     setOpenAddApiModal(true);
   };
 
-  const handleShare = async () => {
+  const handleShare = async (deployment) => {
+    // Use passed deployment directly to avoid stale state issues
+    const deploymentToShare = deployment || selectedRow;
     setIsLoadingShare(true);
-    setOpenShareModal(true);
-    // Fetch all users
     try {
       const [usersResponse, sharedUsersResponse] = await Promise.all([
         apiDeploymentsApiService.getAllUsers(),
-        apiDeploymentsApiService.getSharedUsers(selectedRow.id),
+        apiDeploymentsApiService.getSharedUsers(deploymentToShare.id),
       ]);
 
-      const userList =
-        usersResponse?.data?.members?.map((member) => ({
+      // Robust response handling - check multiple possible structures
+      let userList = [];
+      const responseData = usersResponse?.data;
+      if (Array.isArray(responseData)) {
+        userList = responseData.map((user) => ({
+          id: user.id,
+          email: user.email,
+        }));
+      } else if (responseData?.members && Array.isArray(responseData.members)) {
+        userList = responseData.members.map((member) => ({
           id: member.id,
           email: member.email,
-        })) || [];
+        }));
+      } else if (responseData?.users && Array.isArray(responseData.users)) {
+        userList = responseData.users.map((user) => ({
+          id: user.id,
+          email: user.email,
+        }));
+      }
 
-      // Pass the complete user list - SharePermission component will handle filtering
+      const sharedUsersList = sharedUsersResponse.data?.shared_users || [];
+
+      setSelectedRow({
+        ...deploymentToShare,
+        shared_users: Array.isArray(sharedUsersList) ? sharedUsersList : [],
+      });
       setAllUsers(userList);
-
-      // Update selected row with shared user info for the SharePermission component
-      const updatedSelectedRow = {
-        ...selectedRow,
-        ...sharedUsersResponse.data,
-      };
-      setSelectedRow(updatedSelectedRow);
+      setOpenShareModal(true);
     } catch (err) {
       setAlertDetails(
         handleException(err, `Unable to fetch sharing information`)
       );
-      setOpenShareModal(false);
+      setAllUsers([]);
     } finally {
       setIsLoadingShare(false);
     }
@@ -292,8 +305,8 @@ function ApiDeployment() {
     openAddModal(true);
   };
 
-  const handleShareDeployment = () => {
-    handleShare();
+  const handleShareDeployment = (deployment) => {
+    handleShare(deployment);
   };
 
   const handleDeleteDeployment = () => {

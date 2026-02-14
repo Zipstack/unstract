@@ -47,22 +47,18 @@ function CardActionBox({
 
   return (
     <Space className="card-list-action-box">
-      <Tooltip title="Edit">
-        <Button
-          type="text"
-          className="action-icon-btn edit-icon"
-          icon={<EditOutlined />}
-          onClick={handleEditAction}
-        />
-      </Tooltip>
-      <Tooltip title="Share">
-        <Button
-          type="text"
-          className="action-icon-btn share-icon"
-          icon={<ShareAltOutlined />}
-          onClick={handleShareAction}
-        />
-      </Tooltip>
+      <Button
+        type="text"
+        className="action-icon-btn edit-icon"
+        icon={<EditOutlined />}
+        onClick={handleEditAction}
+      />
+      <Button
+        type="text"
+        className="action-icon-btn share-icon"
+        icon={<ShareAltOutlined />}
+        onClick={handleShareAction}
+      />
       <Popconfirm
         title={deleteTitle}
         description="This action cannot be undone."
@@ -75,14 +71,12 @@ function CardActionBox({
         cancelText="Cancel"
         okButtonProps={{ danger: true }}
       >
-        <Tooltip title="Delete">
-          <Button
-            type="text"
-            className="action-icon-btn delete-icon"
-            icon={<DeleteOutlined />}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </Tooltip>
+        <Button
+          type="text"
+          className="action-icon-btn delete-icon"
+          icon={<DeleteOutlined />}
+          onClick={(e) => e.stopPropagation()}
+        />
       </Popconfirm>
       <Dropdown
         menu={kebabMenuItems}

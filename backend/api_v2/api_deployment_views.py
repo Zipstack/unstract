@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 from configuration.models import Configuration
-from django.db.models import QuerySet
+from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
@@ -18,6 +18,7 @@ from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
@@ -199,7 +200,18 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = APIDeployment.objects.for_user(self.request.user)
+        # Subquery to get last run time for ordering
+        last_run_subquery = (
+            WorkflowExecution.objects.filter(pipeline_id=OuterRef("id"))
+            .order_by("-created_at")
+            .values("created_at")[:1]
+        )
+
+        queryset = (
+            APIDeployment.objects.for_user(self.request.user)
+            .annotate(last_run_time_annotated=Subquery(last_run_subquery))
+            .order_by(F("last_run_time_annotated").desc(nulls_last=True))
+        )
 
         # Filter by workflow ID if provided
         workflow_filter = self.request.query_params.get("workflow", None)
