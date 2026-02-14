@@ -699,7 +699,6 @@
   cursor: pointer;
   transition: color 0.2s ease, transform 0.15s ease;
   padding: 4px;
-  background: none;
   border: none;
   outline: none;
   height: auto;
@@ -710,7 +709,6 @@
 .action-icon-btn.ant-btn:hover {
   transform: scale(1.1);
   color: #092c4c;
-  background: transparent;
 }
 
 .action-icon-btn:focus-visible,
