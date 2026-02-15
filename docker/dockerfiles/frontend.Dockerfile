@@ -23,7 +23,9 @@ COPY ${BUILD_CONTEXT_PATH}/ /app/
 COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
 RUN chmod +x /app/generate-runtime-config.sh
 
-EXPOSE 3000
+# Set dev server to run on port 80 to match production nginx
+ENV PORT=80
+EXPOSE 80
 
 # Run the environment config script before starting the
 # dev server, as the node alpine base image does not
