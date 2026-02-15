@@ -90,7 +90,7 @@ jobs:
 
       # Build and push Docker image
       - name: Build and push ${{ github.event.inputs.service_name }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: ${{ steps.build-config.outputs.context }}
           file: ${{ steps.build-config.outputs.dockerfile }}
