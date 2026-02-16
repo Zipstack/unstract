@@ -33,13 +33,17 @@ Built for teams in finance, insurance, healthcare, KYC/compliance, and much more
 
 If Unstract helps you, star this repo!
 
+![Star Unstract](docs/assets/github_star.gif)
+
 ## Key Features
 
 **Prompt Studio** — Define document extraction schemas with natural language. [Docs](https://docs.unstract.com/unstract/unstract_platform/prompt_studio/prompt_studio_intro/)
 
-![Prompt Studio](docs/assets/prompt_studio.png)
+![Prompt Studio](docs/assets/prompt_studio.gif)
 
 **REST API** — Send a document, get JSON back. [Docs](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_intro/)
+
+![API Deployment](docs/assets/api_deployment.gif)
 
 **ETL Pipeline** — Pull documents from a folder, process them, load to your warehouse. [Docs](https://docs.unstract.com/unstract/unstract_platform/etl_pipeline/unstract_etl_pipeline_intro/)
 
