@@ -37,7 +37,7 @@ If Unstract helps you, star this repo!
 
 ## Key Features
 
-**[Prompt Studio](https://docs.unstract.com/unstract/unstract_platform/features/prompt_studio/prompt_studio_intro/)** — Define document extraction schemas with natural language.
+**Prompt Studio** — Define document extraction schemas with natural language. [Docs](https://docs.unstract.com/unstract/unstract_platform/features/prompt_studio/prompt_studio_intro/)
 
 ![Prompt Studio](docs/assets/prompt_studio.gif)
 
