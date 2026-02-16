@@ -11,6 +11,7 @@ WORKDIR /app
 ### FOR DEVELOPMENT ###
 # Development stage for hot-reloading
 FROM base AS development
+ARG BUILD_CONTEXT_PATH
 
 # Copy only package files for dependency caching
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
@@ -35,6 +36,7 @@ CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && npm start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
+ARG BUILD_CONTEXT_PATH
 ARG REACT_APP_ENABLE_POSTHOG=true
 ENV REACT_APP_BACKEND_URL=""
 ENV REACT_APP_ENABLE_POSTHOG=${REACT_APP_ENABLE_POSTHOG}
