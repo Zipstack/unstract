@@ -11,6 +11,7 @@ WORKDIR /app
 ### FOR DEVELOPMENT ###
 # Development stage for hot-reloading
 FROM base AS development
+ARG BUILD_CONTEXT_PATH
 
 # Copy only package files for dependency caching
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/package-lock.json ./
@@ -23,7 +24,9 @@ COPY ${BUILD_CONTEXT_PATH}/ /app/
 COPY ${BUILD_CONTEXT_PATH}/generate-runtime-config.sh /app/generate-runtime-config.sh
 RUN chmod +x /app/generate-runtime-config.sh
 
-EXPOSE 3000
+# Set dev server to run on port 80 to match production nginx
+ENV PORT=80
+EXPOSE 80
 
 # Run the environment config script before starting the
 # dev server, as the node alpine base image does not
@@ -33,6 +36,7 @@ CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && npm start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
+ARG BUILD_CONTEXT_PATH
 ARG REACT_APP_ENABLE_POSTHOG=true
 ENV REACT_APP_BACKEND_URL=""
 ENV REACT_APP_ENABLE_POSTHOG=${REACT_APP_ENABLE_POSTHOG}
