@@ -7,11 +7,10 @@
 
 [Documentation](https://docs.unstract.com) | [Cloud Edition](https://unstract.com/start-for-free/) | [Enterprise](https://unstract.com/pricing/) | [Slack Community](https://join-slack.unstract.com)
 
-![GitHub License](https://img.shields.io/github/license/Zipstack/unstract)
-<!-- TODO: Eng to finalize badge URLs for Tutorials, Uptime, and DeepWiki -->
-<!-- ![Tutorials](TODO) -->
-<!-- ![Uptime](TODO) -->
-<!-- ![DeepWiki](TODO) -->
+[![License](https://img.shields.io/github/license/Zipstack/unstract)](LICENSE)
+[![Tutorials](https://img.shields.io/badge/tutorials-docs-brightgreen)](https://docs.unstract.com/unstract/unstract_platform/quick_start)
+[![Uptime Status](https://img.shields.io/badge/uptime-status-brightgreen)](https://status.unstract.com)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Zipstack/unstract)
 
 </div>
 
