@@ -37,86 +37,6 @@ services:
       # "host-gateway" is a special string that translates to host docker0 i/f IP.
       - "host.docker.internal:host-gateway"
 
-  # Celery default worker
-  worker:
-    image: unstract/backend:${VERSION}
-    container_name: unstract-worker
-    restart: unless-stopped
-    entrypoint: .venv/bin/celery
-    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
-    env_file:
-      - ../backend/.env
-    depends_on:
-      - rabbitmq
-      - db
-    environment:
-      - ENVIRONMENT=development
-      - APPLICATION_NAME=unstract-worker
-    labels:
-      - traefik.enable=false
-    volumes:
-      - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-
-  # Celery worker for managing logs and periodic tasks
-  worker-logging:
-    image: unstract/backend:${VERSION}
-    container_name: unstract-worker-logging
-    restart: unless-stopped
-    entrypoint: .venv/bin/celery
-    command: "-A backend worker --loglevel=info -Q celery_periodic_logs,celery_log_task_queue --autoscale=${WORKER_LOGGING_AUTOSCALE}"
-    env_file:
-      - ../backend/.env
-    depends_on:
-      - rabbitmq
-      - db
-    environment:
-      - ENVIRONMENT=development
-      - APPLICATION_NAME=unstract-worker-logging
-    labels:
-      - traefik.enable=false
-
-  # Celery worker for handling file processing tasks
-  worker-file-processing:
-    image: unstract/backend:${VERSION}
-    container_name: unstract-worker-file-processing
-    restart: unless-stopped
-    entrypoint: .venv/bin/celery
-    command: "-A backend.workers.file_processing worker --loglevel=info -Q file_processing,api_file_processing --autoscale=${WORKER_FILE_PROCESSING_AUTOSCALE}"
-    env_file:
-      - ../backend/.env
-    depends_on:
-      - rabbitmq
-      - db
-    environment:
-      - ENVIRONMENT=development
-      - APPLICATION_NAME=unstract-worker-file-processing
-    labels:
-      - traefik.enable=false
-    volumes:
-      - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-
-  worker-file-processing-callback:
-    image: unstract/backend:${VERSION}
-    container_name: unstract-worker-file-processing-callback
-    restart: unless-stopped
-    entrypoint: .venv/bin/celery
-    command: "-A backend.workers.file_processing_callback worker --loglevel=info -Q file_processing_callback,api_file_processing_callback --autoscale=${WORKER_FILE_PROCESSING_CALLBACK_AUTOSCALE}"
-    env_file:
-      - ../backend/.env
-    depends_on:
-      - rabbitmq
-      - db
-    environment:
-      - ENVIRONMENT=development
-      - APPLICATION_NAME=unstract-worker-file-processing-callback
-    labels:
-      - traefik.enable=false
-    volumes:
-      - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-
   # Celery Flower
   celery-flower:
     image: unstract/backend:${VERSION}
@@ -127,8 +47,6 @@ services:
     env_file:
       - ../backend/.env
     depends_on:
-      - worker
-      - worker-logging
       - rabbitmq
     labels:
       - traefik.enable=false
@@ -240,7 +158,7 @@ services:
       - traefik.enable=false
 
   # ====================================================================
-  # V2 DEDICATED WORKER SERVICES (opt-in with --workers-v2 flag)
+  # WORKER SERVICES
   # ====================================================================
 
   worker-api-deployment-v2:
@@ -274,8 +192,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
   worker-callback-v2:
     image: unstract/worker-unified:${VERSION}
@@ -302,8 +218,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
   worker-file-processing-v2:
     image: unstract/worker-unified:${VERSION}
@@ -356,8 +270,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
   worker-general-v2:
     image: unstract/worker-unified:${VERSION}
@@ -385,8 +297,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
   worker-notification-v2:
     image: unstract/worker-unified:${VERSION}
@@ -435,8 +345,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
   worker-log-consumer-v2:
     image: unstract/worker-unified:${VERSION}
@@ -486,8 +394,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
   worker-log-history-scheduler-v2:
     image: unstract/worker-unified:${VERSION}
@@ -511,8 +417,6 @@ services:
       - TASK_TRIGGER_COMMAND=${TASK_TRIGGER_COMMAND:-}
     labels:
       - traefik.enable=false
-    profiles:
-      - workers-v2
 
   worker-scheduler-v2:
     image: unstract/worker-unified:${VERSION}
@@ -557,8 +461,6 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
 
 volumes:
   prompt_studio_data:

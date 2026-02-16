@@ -1,21 +1,6 @@
 # Refer https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/
-# Minimize celery workers to reduce memory usage of Unstract (aids development)
+# Override service configurations for development
 services:
-  worker:
-    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments,celery_periodic_logs,celery_log_task_queue,file_processing,api_file_processing,file_processing_callback,api_file_processing_callback --autoscale=${WORKER_AUTOSCALE}"
-
-  worker-logging:
-    profiles:
-      - high_memory
-
-  worker-file-processing:
-    profiles:
-      - high_memory
-
-  worker-file-processing-callback:
-    profiles:
-      - high_memory
-
 # Watch configuration
 # Refer https://docs.docker.com/compose/how-tos/file-watch/
   frontend:
