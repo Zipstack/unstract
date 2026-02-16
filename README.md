@@ -35,7 +35,7 @@ If Unstract helps you, star this repo!
 
 ![Star Unstract](docs/assets/github_star.gif)
 
-## Key Features
+## ✨ Key Features
 
 **Prompt Studio** — Define document extraction schemas with natural language. [Docs](https://docs.unstract.com/unstract/unstract_platform/features/prompt_studio/prompt_studio_intro/)
 
@@ -51,7 +51,7 @@ If Unstract helps you, star this repo!
 
 **n8n Node** — Drop into existing automation workflows. [Docs](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_n8n_custom_node/)
 
-## Quickstart (~5 mins)
+## 🚀 Quickstart (~5 mins)
 
 ### System Requirements & Prerequisites
 
@@ -75,7 +75,7 @@ That's it!
 - Login with username: `unstract` password: `unstract`
 - Start extracting data!
 
-## Other Deployment Options
+## 📦 Other Deployment Options
 
 ### Docker Compose
 
@@ -117,14 +117,14 @@ That's it!
 ./run-platform.sh -d -v v0.1.0
 ```
 
-## Backup Encryption Key
+## 🔐 Backup Encryption Key
 
 > **Warning**
 > Copy the value of `ENCRYPTION_KEY` from `backend/.env` or `platform-service/.env` to a secure location.
 >
 > This key encrypts adapter credentials — losing it makes existing adapters inaccessible!
 
-## Unstract Architecture
+## 🏗️ Unstract Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -144,7 +144,7 @@ That's it!
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## Document File Formats
+## 📄 Document File Formats
 
 | Category | Formats |
 |----------|---------|
@@ -153,7 +153,7 @@ That's it!
 | Presentations | PPTX, PPT, ODP |
 | Images | PNG, JPG, JPEG, TIFF, BMP, GIF, WEBP |
 
-## Connectors & Adapters
+## 🔌 Connectors & Adapters
 
 ### LLM Providers
 
@@ -188,7 +188,7 @@ That's it!
 
 [Full Connector List](https://docs.unstract.com/unstract/unstract_platform/setup_accounts/whats_needed)
 
-## Development
+## 🛠️ Development
 
 ### Change Default Credentials
 
@@ -206,11 +206,11 @@ Follow [these steps](backend/README.md#authentication) to change the default use
 
 [Local Development Guide](https://docs.unstract.com/unstract/unstract_platform/user_guides/run_platform)
 
-## Use Cases by Industry
+## 🏢 Use Cases by Industry
 
 [Finance & Banking](#) | [Insurance](#) | [Healthcare](#) | [Income Tax](#)
 
-## Cloud & Enterprise
+## ☁️ Cloud & Enterprise
 
 For teams that need managed infrastructure, advanced accuracy features, or compliance certifications.
 
@@ -223,7 +223,7 @@ For teams that need managed infrastructure, advanced accuracy features, or compl
 
 [Start a Free Trial](https://unstract.com/start-for-free/) | [Book a Demo](https://unstract.com/schedule-a-demo/)
 
-## Cookbooks
+## 📚 Cookbooks
 
 - [Unstract + PostgreSQL + DeepSeek](#)
 - [Unstract + n8n](#)
@@ -233,7 +233,7 @@ For teams that need managed infrastructure, advanced accuracy features, or compl
 - [Unstract + PydanticAI](#)
 - [Unstract MCP Server](#)
 
-## Contributing
+## 🤝 Contributing
 
 We welcome contributions! The easiest way to start:
 
@@ -242,15 +242,15 @@ We welcome contributions! The easiest way to start:
 
 [Report Bug](https://github.com/Zipstack/unstract/issues/new?template=bug_report.md) | [Request Feature](https://github.com/Zipstack/unstract/issues/new?template=feature_request.md)
 
-## Community
+## 👋 Community
 
 Join the LLM-powered document automation community: [Blog](https://unstract.com/blog/) | [LinkedIn](https://www.linkedin.com/showcase/unstract/) | [Slack](https://join-slack.unstract.com) | [X](https://twitter.com/GetUnstract)
 
-## A Note on Analytics
+## 📊 A Note on Analytics
 
 Unstract integrates Posthog to track minimal usage analytics. Disable by setting `REACT_APP_ENABLE_POSTHOG=false` in the frontend's `.env` file.
 
-## License
+## 📜 License
 
 Unstract is released under the [AGPL-3.0 License](LICENSE).
 
