@@ -190,10 +190,9 @@ setup_env() {
   DEFAULT_AUTH_KEY="unstract"
 
   for service in "${services[@]}"; do
-    # Skip services that are spawned at runtime
-    for ignore_service in "${spawned_services[@]}"; do
+    for ignore_service in "${ignore_services[@]}"; do
       if [[ "$service" == "$ignore_service" ]]; then
-        echo -e "Skipped env for ${blue_text}$service${default_text} as it's generated at runtime"
+        echo -e "Skipped env for ignored service ${blue_text}$service${default_text}"
         continue 2
       fi
     done
@@ -333,7 +332,7 @@ first_setup=false
 services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
 # Add workers manually for env setup
 services+=("workers")
-spawned_services=("tool-structure" "tool-sidecar")
+ignore_services=("tool-structure" "tool-sidecar" "tool-classifier" "tool-text_extractor" "worker-unified")
 current_version=""
 target_branch=""
 
