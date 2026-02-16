@@ -217,7 +217,7 @@ For teams that need managed infrastructure, advanced accuracy features, or compl
 - **SOC 2, HIPAA, ISO 27001, GDPR Compliant** — third-party audited security certifications
 - **Priority Support with SLA** — dedicated support team with response time guarantees
 
-[Start a Free Trial](https://unstract.com/start-for-free/) | [Book a Demo](https://unstract.com/book-a-demo/)
+[Start a Free Trial](https://unstract.com/start-for-free/) | [Book a Demo](https://unstract.com/schedule-a-demo/)
 
 ## Cookbooks
 
