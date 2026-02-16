@@ -16,7 +16,7 @@ from typing import Any
 
 from account_usage.models import PageUsage
 from api_v2.models import APIDeployment
-from django.db.models import CharField, Count, OuterRef, Subquery, Sum
+from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
@@ -328,6 +328,91 @@ class MetricsQueryService:
         )
 
     @staticmethod
+    def get_hitl_reviews(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = "day",
+    ) -> list[dict[str, Any]]:
+        """Query HITL review queue entries created per time period.
+
+        Counts all HITLQueue records created in the date range,
+        representing files sent for human review.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            List of dicts with 'period' and 'value' keys
+        """
+        try:
+            from manual_review_v2.models import HITLQueue
+        except ImportError:
+            return []
+
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+
+        return list(
+            HITLQueue._base_manager.filter(
+                organization_id=organization_id,
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values("period")
+            .annotate(value=Count("id"))
+            .order_by("period")
+        )
+
+    @staticmethod
+    def get_hitl_completions(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = "day",
+    ) -> list[dict[str, Any]]:
+        """Query completed HITL reviews per time period.
+
+        Counts HITLQueue records that reached a terminal state
+        (approved, rejected, or review_finished) based on
+        the approved_at / rejected_at / review_finished_at timestamps.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            List of dicts with 'period' and 'value' keys
+        """
+        try:
+            from manual_review_v2.models import HITLQueue
+        except ImportError:
+            return []
+
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+
+        # Use approved_at as the completion timestamp (most common terminal state)
+        # Fall back to review_finished_at for items that completed review but
+        # haven't gone through approval flow
+        return list(
+            HITLQueue._base_manager.filter(
+                organization_id=organization_id,
+                state__in=["approved", "rejected", "review_finished"],
+                modified_at__gte=start_date,
+                modified_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("modified_at"))
+            .values("period")
+            .annotate(value=Count("id"))
+            .order_by("period")
+        )
+
+    @staticmethod
     def get_llm_usage_cost(
         organization_id: str,
         start_date: datetime,
@@ -582,6 +667,101 @@ class MetricsQueryService:
                     "workflow_name": execution.workflow_execution.workflow.workflow_name,
                     "created_at": execution.created_at.isoformat(),
                     "execution_time": execution.execution_time,
+                }
+            )
+
+        # Batch query: get aggregated token/cost per file execution
+        file_exec_ids = [r["id"] for r in results]
+        usage_agg: dict[str, dict[str, Any]] = {}
+        if file_exec_ids:
+            agg_qs = (
+                _get_usage_queryset()
+                .filter(run_id__in=file_exec_ids)
+                .values("run_id")
+                .annotate(
+                    total_tokens=Sum("total_tokens"),
+                    cost=Sum("cost_in_dollars"),
+                )
+            )
+            usage_agg = {
+                str(row["run_id"]): {
+                    "total_tokens": row["total_tokens"] or 0,
+                    "cost": round(row["cost"] or 0, 4),
+                }
+                for row in agg_qs
+            }
+
+        # Enrich results with LLM usage data
+        for r in results:
+            agg = usage_agg.get(r["id"], {})
+            r["total_tokens"] = agg.get("total_tokens", 0)
+            r["cost"] = agg.get("cost", 0)
+
+        return results
+
+    @staticmethod
+    def get_workflow_token_usage(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict[str, Any]]:
+        """Get per-workflow LLM token usage breakdown.
+
+        Aggregates total_tokens and cost_in_dollars grouped by workflow,
+        with workflow name resolved from the Workflow model.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+
+        Returns:
+            List of dicts with workflow_id, workflow_name, total_tokens,
+            total_cost, and call_count, ordered by total_tokens descending.
+        """
+        from workflow_manager.workflow_v2.models.workflow import Workflow
+
+        # Query Usage grouped by workflow_id
+        usage_qs = (
+            _get_usage_queryset()
+            .filter(
+                organization_id=organization_id,
+                usage_type="llm",
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .exclude(Q(workflow_id__isnull=True) | Q(workflow_id=""))
+            .values("workflow_id")
+            .annotate(
+                total_tokens=Sum("total_tokens"),
+                total_cost=Sum("cost_in_dollars"),
+                call_count=Count("id"),
+            )
+            .order_by("-total_tokens")
+        )
+
+        # Evaluate queryset once to avoid double DB hit
+        usage_rows = list(usage_qs)
+
+        # Resolve workflow names
+        workflow_ids = [row["workflow_id"] for row in usage_rows]
+        workflow_names = {}
+        if workflow_ids:
+            workflows = Workflow.objects.filter(id__in=workflow_ids).values(
+                "id", "workflow_name"
+            )
+            workflow_names = {str(w["id"]): w["workflow_name"] for w in workflows}
+
+        results = []
+        for row in usage_rows:
+            wf_id = row["workflow_id"]
+            results.append(
+                {
+                    "workflow_id": str(wf_id),
+                    "workflow_name": workflow_names.get(str(wf_id), "Unknown"),
+                    "total_tokens": row["total_tokens"] or 0,
+                    "total_cost": round(row["total_cost"] or 0, 4),
+                    "call_count": row["call_count"] or 0,
                 }
             )
 

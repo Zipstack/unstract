@@ -183,7 +183,6 @@
   font-size: 13px;
 }
 
-
 /* Responsive Adjustments */
 @media (max-width: 768px) {
   .metrics-topbar {
@@ -258,6 +257,19 @@
   font-size: 13px;
   color: #595959;
   max-width: 100%;
+}
+
+.recent-activity-meta {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recent-activity-info {
+  font-size: 11px;
+  color: #8c8c8c;
+  cursor: help;
 }
 
 .recent-activity-time {

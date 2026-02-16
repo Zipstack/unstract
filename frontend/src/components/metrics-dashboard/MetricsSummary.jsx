@@ -7,6 +7,8 @@ import {
   RocketOutlined,
   DollarOutlined,
   WarningOutlined,
+  EyeOutlined,
+  CheckCircleOutlined,
 } from "@ant-design/icons";
 
 import "./MetricsDashboard.css";
@@ -95,6 +97,22 @@ const METRIC_CONFIG = {
     iconColor: "#cf1322",
     suffix: "pages",
   },
+  hitl_reviews: {
+    label: "HITL Reviews",
+    icon: <EyeOutlined />,
+    bgColor: "#e8eaf6",
+    iconBg: "#c5cae9",
+    iconColor: "#283593",
+    suffix: "",
+  },
+  hitl_completions: {
+    label: "HITL Completions",
+    icon: <CheckCircleOutlined />,
+    bgColor: "#e0f2f1",
+    iconBg: "#b2dfdb",
+    iconColor: "#00695c",
+    suffix: "",
+  },
 };
 
 // Priority order for displaying metrics (show top 4 first like reference)
@@ -106,6 +124,8 @@ const METRIC_PRIORITY = [
   "prompt_executions",
   "deployed_api_requests",
   "llm_usage",
+  "hitl_reviews",
+  "hitl_completions",
 ];
 
 /**

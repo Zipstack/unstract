@@ -603,9 +603,17 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         # Calculate days in range for response
         days = (end_date - start_date).days
 
-        queryset = self.get_queryset().filter(
-            timestamp__gte=start_date,
-            timestamp__lte=end_date,
+        # Auto-select source based on date range
+        organization = self._get_organization()
+        source = self._select_source(
+            {"start_date": start_date, "end_date": end_date}
+        )
+        ts_field = self._get_timestamp_field(source)
+        queryset = self._get_source_queryset(source, organization).filter(
+            **{
+                f"{ts_field}__gte": start_date if source == "hourly" else start_date.date(),
+                f"{ts_field}__lte": end_date if source == "hourly" else end_date.date(),
+            }
         )
 
         # Get totals per metric
@@ -619,8 +627,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         )
 
         # Get daily trend per metric for the period
+        trunc_func = TruncDay(ts_field)
         daily_trend_query = (
-            queryset.annotate(day=TruncDay("timestamp"))
+            queryset.annotate(day=trunc_func)
             .values("day", "metric_name")
             .annotate(
                 total_value=Sum("metric_value"),
@@ -851,6 +860,51 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"activity": data})
         except Exception as e:
             logger.exception("Error fetching recent activity")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    @action(detail=False, methods=["get"], url_path="workflow-token-usage")
+    @cache_metrics_response(endpoint="workflow_token_usage")
+    def workflow_token_usage(self, request: Request) -> Response:
+        """Get per-workflow LLM token usage breakdown.
+
+        Returns token usage and cost aggregated per workflow for the
+        given date range. Cached for 1 hour; pass ?refresh=true to
+        bypass cache.
+
+        Query Parameters:
+            start_date: Start of date range (ISO 8601)
+            end_date: End of date range (ISO 8601)
+            refresh: If "true", bypass cache and fetch fresh data
+
+        Returns:
+            200: List of workflows with token usage
+            500: Error occurred
+        """
+        query_serializer = MetricsQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        params = query_serializer.validated_data
+
+        organization = self._get_organization()
+        org_id = str(organization.id)
+
+        try:
+            data = MetricsQueryService.get_workflow_token_usage(
+                org_id,
+                params["start_date"],
+                params["end_date"],
+            )
+            return Response(
+                {
+                    "start_date": params["start_date"].isoformat(),
+                    "end_date": params["end_date"].isoformat(),
+                    "workflows": data,
+                }
+            )
+        except Exception as e:
+            logger.exception("Error fetching workflow token usage")
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

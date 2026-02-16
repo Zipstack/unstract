@@ -5,6 +5,8 @@ import { useMemo, useState } from "react";
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -327,6 +329,8 @@ function TrendAnalysisChart({ data, loading }) {
     etl_pipeline_executions: "#fa8c16",
     challenges: "#2f54eb",
     summarization_calls: "#a0d911",
+    hitl_reviews: "#283593",
+    hitl_completions: "#00897b",
   };
 
   const getTrendColor = (metric, idx) =>
@@ -400,4 +404,117 @@ TrendAnalysisChart.propTypes = {
   loading: PropTypes.bool,
 };
 
-export { PagesChart, TrendAnalysisChart };
+/**
+ * HITL Reviews & Completions bar chart.
+ * Reviews as lighter bars, completions as solid bars.
+ *
+ * @return {JSX.Element} The rendered HITL chart component.
+ */
+function HITLChart({ data, loading }) {
+  const chartData = useMemo(() => {
+    if (!data?.daily_trend || data.daily_trend.length === 0) {
+      return [];
+    }
+
+    return data.daily_trend
+      .filter(
+        (item) =>
+          item.metrics?.hitl_reviews > 0 || item.metrics?.hitl_completions > 0
+      )
+      .map((item) => ({
+        date: item.date,
+        hitl_reviews: item.metrics?.hitl_reviews || 0,
+        hitl_completions: item.metrics?.hitl_completions || 0,
+      }));
+  }, [data]);
+
+  if (loading) {
+    return (
+      <Card
+        title="HITL Reviews & Completions (Last 30 Days)"
+        className="metrics-chart-card"
+      >
+        <div className="metrics-loading">
+          <Spin />
+        </div>
+      </Card>
+    );
+  }
+
+  if (!chartData.length) {
+    return (
+      <Card
+        title="HITL Reviews & Completions (Last 30 Days)"
+        className="metrics-chart-card"
+      >
+        <Empty description="No HITL data available" />
+      </Card>
+    );
+  }
+
+  return (
+    <Card
+      title="HITL Reviews & Completions (Last 30 Days)"
+      className="metrics-chart-card chart-card"
+    >
+      <div className="chart-container">
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart
+            data={chartData}
+            margin={{ top: 5, right: 30, left: 10, bottom: 5 }}
+          >
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="#f0f0f0"
+            />
+            <XAxis
+              dataKey="date"
+              tickFormatter={formatDate}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+            />
+            <YAxis
+              tickFormatter={formatValue}
+              tick={{ fontSize: 12 }}
+              stroke="#8c8c8c"
+              width={50}
+            />
+            <Tooltip content={<CustomTooltip />} />
+            <Legend
+              formatter={(value) => (
+                <span style={{ color: "#262626" }}>{value}</span>
+              )}
+            />
+            <Bar
+              dataKey="hitl_reviews"
+              name="Reviews"
+              fill="#c5cae9"
+              radius={[2, 2, 0, 0]}
+            />
+            <Bar
+              dataKey="hitl_completions"
+              name="Completions"
+              fill="#00897b"
+              radius={[2, 2, 0, 0]}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </Card>
+  );
+}
+
+HITLChart.propTypes = {
+  data: PropTypes.shape({
+    daily_trend: PropTypes.arrayOf(
+      PropTypes.shape({
+        date: PropTypes.string,
+        metrics: PropTypes.object,
+      })
+    ),
+  }),
+  loading: PropTypes.bool,
+};
+
+export { PagesChart, TrendAnalysisChart, HITLChart };

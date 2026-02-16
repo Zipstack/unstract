@@ -1,4 +1,4 @@
-import { Card, List, Tag, Empty, Spin, Typography } from "antd";
+import { Card, List, Tag, Empty, Spin, Tooltip, Typography } from "antd";
 import {
   CheckCircleOutlined,
   SyncOutlined,
@@ -6,6 +6,7 @@ import {
   ClockCircleOutlined,
   ApiOutlined,
   BranchesOutlined,
+  InfoCircleOutlined,
   PlayCircleOutlined,
 } from "@ant-design/icons";
 import PropTypes from "prop-types";
@@ -116,6 +117,14 @@ function RecentActivity({ data, loading }) {
                 <Text className="recent-activity-file" ellipsis>
                   {item.file_name}
                 </Text>
+                {item.total_tokens > 0 && (
+                  <Text type="secondary" className="recent-activity-meta">
+                    <span>{item.total_tokens.toLocaleString()} tokens</span>
+                    <Tooltip title="Total LLM tokens used to process this file">
+                      <InfoCircleOutlined className="recent-activity-info" />
+                    </Tooltip>
+                  </Text>
+                )}
                 <Text type="secondary" className="recent-activity-time">
                   {dayjs(item.created_at).fromNow()}
                 </Text>
@@ -139,6 +148,7 @@ RecentActivity.propTypes = {
         workflow_name: PropTypes.string,
         created_at: PropTypes.string.isRequired,
         execution_time: PropTypes.number,
+        total_tokens: PropTypes.number,
       })
     ),
   }),

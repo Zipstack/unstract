@@ -315,7 +315,6 @@ Located in `tasks.py`:
 | `aggregate_metrics_from_sources` | `dashboard_metrics.aggregate_from_sources` | Every 15 min | `dashboard_metric_events` | Aggregate from source tables |
 | `cleanup_hourly_metrics` | `dashboard_metrics.cleanup_hourly_data` | Daily 2:00 AM UTC | `dashboard_metric_events` | Delete hourly data >30 days |
 | `cleanup_daily_metrics` | `dashboard_metrics.cleanup_daily_data` | Weekly Sun 3:00 AM UTC | `dashboard_metric_events` | Delete daily data >365 days |
-| `process_dashboard_metric_events` | `dashboard_metrics.process_events` | On-demand (batched) | `dashboard_metric_events` | Process real-time events |
 
 ### Queue Configuration
 
@@ -328,7 +327,6 @@ task_queues = [
 ]
 
 task_routes = {
-    "dashboard_metrics.process_events": {"queue": "dashboard_metric_events"},
     "dashboard_metrics.aggregate_from_sources": {"queue": "dashboard_metric_events"},
     "dashboard_metrics.cleanup_hourly_data": {"queue": "dashboard_metric_events"},
     "dashboard_metrics.cleanup_daily_data": {"queue": "dashboard_metric_events"},
@@ -505,18 +503,81 @@ DASHBOARD_CACHE_TTL_SERIES = 1800          # 30 minutes
 
 ---
 
-## Frontend Components
+## UI Data Flow — What Shows Where
 
-### Component Hierarchy
+### Overview Tab
 
-```
-MetricsDashboardPage
-└── MetricsDashboard
-    ├── MetricsSummary     (Summary cards - uses totals)
-    ├── MetricsChart       (Line chart - uses daily_trend)
-    ├── MetricsBreakdown   (Distribution - uses totals)
-    └── MetricsTable       (Detailed table - uses summary)
-```
+#### Summary Cards (top row)
+
+- **Component**: `MetricsSummary` → `frontend/src/components/metrics-dashboard/MetricsSummary.jsx`
+- **Hook**: `useMetricsOverview(startDate, endDate)`
+- **API**: `GET /metrics/overview/?start_date=...&end_date=...`
+- **DB**: `event_metrics_daily` (8-90d range) or `event_metrics_hourly` (≤7d) or `event_metrics_monthly` (>90d)
+- **Response field**: `totals[]` — one entry per metric, `SUM(metric_value)` over the date range
+
+| Card | `metric_name` in DB | Display |
+|---|---|---|
+| Total Pages Processed | `pages_processed` | Sum of `metric_value` |
+| Documents Processed | `documents_processed` | Sum of `metric_value` |
+| LLM Calls | `llm_calls` | Sum of `metric_value` |
+| Prompt Executions | `prompt_executions` | Sum of `metric_value` |
+| LLM Usage Cost | `llm_usage` | Sum of `metric_value` ($ prefix) |
+
+Cards appear in priority order. Only metrics with data show up.
+
+#### Pages Processed Chart (left, below cards)
+
+- **Component**: `PagesChart` → `frontend/src/components/metrics-dashboard/MetricsChart.jsx`
+- **Hook**: `useMetricsOverview(chartStart, chartEnd)` (fixed 30-day range)
+- **API**: Same `/metrics/overview/`
+- **Response field**: `daily_trend[]`
+
+| Line | Color | Source |
+|---|---|---|
+| Pages Processed | Blue `#1890ff` | `daily_trend[].metrics.pages_processed` |
+| Failed Pages | Red `#ff4d4f` | `daily_trend[].metrics.failed_pages` |
+
+#### Trend Analysis Chart (bottom left)
+
+- **Component**: `TrendAnalysisChart` → `frontend/src/components/metrics-dashboard/MetricsChart.jsx`
+- **Hook**: Same `useMetricsOverview` as Pages chart (fixed 30-day range)
+- **Response field**: `daily_trend[]` (excludes `pages_processed` and `failed_pages`)
+
+Default lines: `documents_processed` (yellow), `llm_calls` (purple).
+Users toggle metrics via Filter dropdown.
+
+#### Recent Activity (right sidebar)
+
+- **Component**: `RecentActivity` → `frontend/src/components/metrics-dashboard/RecentActivity.jsx`
+- **Hook**: `useRecentActivity(5)`
+- **API**: `GET /metrics/recent-activity/?limit=5`
+- **DB**: `workflow_execution` + `workflow_file_execution` + `usage` (live queries, no pre-aggregation)
+
+| Field | Source |
+|---|---|
+| Type (ETL / API / Workflow) | Determined by pipeline/api_deployment FK presence |
+| Status tag | `workflow_execution.status` |
+| File name | `workflow_file_execution.file_name` |
+| Token count | `SUM(usage.total_tokens)` per execution |
+| Time ago | Relative time from `workflow_file_execution.created_at` |
+
+### LLM Usage Tab
+
+#### LLM Usage by Workflow (table)
+
+- **Component**: `LLMUsageTable` → `frontend/src/components/metrics-dashboard/LLMUsageTable.jsx`
+- **Hook**: `useWorkflowTokenUsage(startDate, endDate)`
+- **API**: `GET /metrics/workflow-token-usage/?start_date=...&end_date=...`
+- **DB**: `usage` table (live query, `usage_type='llm'`, grouped by `workflow_id`)
+
+| Column | Source |
+|---|---|
+| Workflow | `workflow.workflow_name` (resolved via `usage.workflow_id` FK) |
+| Tokens | `SUM(usage.total_tokens)` |
+| LLM Calls | `COUNT(usage.id)` |
+| Cost | `SUM(usage.cost_in_dollars)` |
+
+Sorted by tokens descending. Only rows with non-empty `workflow_id` appear.
 
 ### Data Hooks
 
@@ -524,15 +585,14 @@ Located in `frontend/src/hooks/useMetricsData.js`:
 
 | Hook | Endpoint | Purpose |
 |------|----------|---------|
-| `useMetricsOverview` | `/overview/` | Last 7 days quick stats |
-| `useMetricsSummary` | `/summary/` | Summary with date range |
-| `useMetricsSeries` | `/series/` | Time series with date range |
+| `useMetricsOverview` | `/overview/` | Summary cards + chart data |
+| `useRecentActivity` | `/recent-activity/` | Live recent processing events |
+| `useWorkflowTokenUsage` | `/workflow-token-usage/` | Per-workflow LLM token breakdown |
 
 ### Frontend Caching
 
-Uses localStorage with TTL matching backend:
+Uses localStorage with TTL matching backend (`frontend/src/helpers/metricsCache.js`):
 ```javascript
-// helpers/metricsCache.js
 const CACHE_TTL = {
   overview: 5 * 60 * 1000,    // 5 minutes
   summary: 15 * 60 * 1000,    // 15 minutes
@@ -552,7 +612,6 @@ uv sync
 ```
 
 Required packages in `pyproject.toml`:
-- `celery-batches` - For batched event processing
 - `django-celery-beat` - For periodic task scheduling
 - `django-redis` - For MGET/pipeline operations
 

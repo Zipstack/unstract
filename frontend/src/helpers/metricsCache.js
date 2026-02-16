@@ -12,6 +12,7 @@ const CACHE_TTL = {
   series: 30 * 60 * 1000, // 30 minutes (DASHBOARD_CACHE_TTL_SERIES)
   "live-summary": 15 * 60 * 1000, // Same as summary
   "live-series": 30 * 60 * 1000, // Same as series
+  workflow_token_usage: 60 * 60 * 1000, // 1 hour (DASHBOARD_CACHE_TTL_WORKFLOW_USAGE)
 };
 
 /**

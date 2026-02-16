@@ -67,7 +67,6 @@ class CeleryConfig:
 
     # Task routing for dashboard metrics
     task_routes = {
-        "dashboard_metrics.process_events": {"queue": "dashboard_metric_events"},
         "dashboard_metrics.aggregate_from_sources": {"queue": "dashboard_metric_events"},
         "dashboard_metrics.cleanup_hourly_data": {"queue": "dashboard_metric_events"},
         "dashboard_metrics.cleanup_daily_data": {"queue": "dashboard_metric_events"},

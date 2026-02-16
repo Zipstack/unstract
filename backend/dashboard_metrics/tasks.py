@@ -1,13 +1,9 @@
-"""Celery tasks for Dashboard Metrics processing with batching.
+"""Celery tasks for Dashboard Metrics aggregation and cleanup.
 
 Tasks:
-- process_dashboard_metric_events: Batched processing of metric events
 - aggregate_metrics_from_sources: Periodic aggregation from source tables
 - cleanup_hourly_metrics: Remove hourly metrics older than retention period
 - cleanup_daily_metrics: Remove daily metrics older than retention period
-
-This implementation uses celery-batches to efficiently process metric events
-in batches, reducing database contention and improving throughput.
 """
 
 import logging
@@ -15,9 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from celery import shared_task
-from celery_batches import Batches
 from django.db import transaction
-from django.db.models import F
 from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
 
@@ -76,306 +70,11 @@ def _truncate_to_month(ts: datetime) -> datetime:
     return ts.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-@shared_task(
-    base=Batches,
-    name="dashboard_metrics.process_events",
-    flush_every=100,
-    flush_interval=60,
-    acks_late=True,
-    max_retries=5,
-    autoretry_for=(DatabaseError, OperationalError),
-    retry_backoff=True,
-    retry_backoff_max=600,
-    retry_jitter=True,
-)
-def process_dashboard_metric_events(requests) -> dict[str, Any]:
-    """Process batched metric events into hourly, daily, and monthly aggregations.
-
-    This task uses celery-batches to accumulate events and flush them either:
-    - After 100 events (flush_every=100)
-    - After 60 seconds (flush_interval=60)
-
-    Each batch is aggregated into hourly, daily, and monthly tables simultaneously.
-
-    Args:
-        requests: List of celery-batches Request objects containing metric events
-
-    Returns:
-        Dict with processing summary including counts for each tier
-    """
-    if not requests:
-        return {"processed": 0, "errors": 0}
-
-    # Aggregation buckets
-    hourly_agg: dict[tuple, dict] = {}
-    daily_agg: dict[tuple, dict] = {}
-    monthly_agg: dict[tuple, dict] = {}
-
-    errors = 0
-
-    for request in requests:
-        try:
-            # Extract event from request (celery-batches wraps args)
-            event = request.args[0] if request.args else request.kwargs.get("event", {})
-
-            timestamp = event.get("timestamp", timezone.now().timestamp())
-            org_id = event["org_id"]
-            metric_name = event["metric_name"]
-            metric_value = event.get("metric_value", 1)
-            metric_type = event.get("metric_type", MetricType.COUNTER)
-            labels = event.get("labels", {})
-            project = event.get("project", "default")
-            tag = event.get("tag")
-
-            # Calculate time buckets
-            hour_ts = _truncate_to_hour(timestamp)
-            day_ts = _truncate_to_day(hour_ts)
-            month_ts = _truncate_to_month(hour_ts)
-
-            # Aggregate into hourly bucket
-            hourly_key = (org_id, hour_ts.isoformat(), metric_name, project, tag)
-            if hourly_key not in hourly_agg:
-                hourly_agg[hourly_key] = {
-                    "metric_type": metric_type,
-                    "value": 0,
-                    "count": 0,
-                    "labels": {},
-                }
-            hourly_agg[hourly_key]["value"] += metric_value
-            hourly_agg[hourly_key]["count"] += 1
-            if labels:
-                hourly_agg[hourly_key]["labels"].update(labels)
-
-            # Aggregate into daily bucket
-            daily_key = (org_id, day_ts.date().isoformat(), metric_name, project, tag)
-            if daily_key not in daily_agg:
-                daily_agg[daily_key] = {
-                    "metric_type": metric_type,
-                    "value": 0,
-                    "count": 0,
-                    "labels": {},
-                }
-            daily_agg[daily_key]["value"] += metric_value
-            daily_agg[daily_key]["count"] += 1
-            if labels:
-                daily_agg[daily_key]["labels"].update(labels)
-
-            # Aggregate into monthly bucket
-            monthly_key = (
-                org_id,
-                month_ts.date().isoformat(),
-                metric_name,
-                project,
-                tag,
-            )
-            if monthly_key not in monthly_agg:
-                monthly_agg[monthly_key] = {
-                    "metric_type": metric_type,
-                    "value": 0,
-                    "count": 0,
-                    "labels": {},
-                }
-            monthly_agg[monthly_key]["value"] += metric_value
-            monthly_agg[monthly_key]["count"] += 1
-            if labels:
-                monthly_agg[monthly_key]["labels"].update(labels)
-
-        except KeyError as e:
-            logger.warning(f"Skipping event with missing required field: {e}")
-            errors += 1
-        except Exception as e:
-            logger.warning(f"Error processing event: {e}")
-            errors += 1
-
-    # Bulk upsert to all three tables
-    hourly_created, hourly_updated = _bulk_upsert_hourly(hourly_agg)
-    daily_created, daily_updated = _bulk_upsert_daily(daily_agg)
-    monthly_created, monthly_updated = _bulk_upsert_monthly(monthly_agg)
-
-    logger.info(
-        f"Batch processed: hourly({hourly_created}+{hourly_updated}), "
-        f"daily({daily_created}+{daily_updated}), "
-        f"monthly({monthly_created}+{monthly_updated}), "
-        f"errors={errors}"
-    )
-
-    return {
-        "processed": len(requests) - errors,
-        "errors": errors,
-        "hourly": {"created": hourly_created, "updated": hourly_updated},
-        "daily": {"created": daily_created, "updated": daily_updated},
-        "monthly": {"created": monthly_created, "updated": monthly_updated},
-    }
-
-
-def _bulk_upsert_hourly(aggregations: dict) -> tuple[int, int]:
-    """Bulk upsert hourly aggregations.
-
-    Args:
-        aggregations: Dict of aggregated metric data keyed by
-            (org_id, hour_ts_str, metric_name, project, tag)
-
-    Returns:
-        Tuple of (created_count, updated_count)
-    """
-    created, updated = 0, 0
-    with transaction.atomic():
-        for key, agg in aggregations.items():
-            org_id, hour_ts_str, metric_name, project, tag = key
-            hour_ts = datetime.fromisoformat(hour_ts_str)
-
-            try:
-                obj, was_created = (
-                    EventMetricsHourly.objects.select_for_update().get_or_create(
-                        organization_id=org_id,
-                        timestamp=hour_ts,
-                        metric_name=metric_name,
-                        project=project,
-                        tag=tag,
-                        defaults={
-                            "metric_type": agg["metric_type"],
-                            "metric_value": agg["value"],
-                            "metric_count": agg["count"],
-                            "labels": agg["labels"],
-                        },
-                    )
-                )
-                if was_created:
-                    created += 1
-                else:
-                    obj.metric_value = F("metric_value") + agg["value"]
-                    obj.metric_count = F("metric_count") + agg["count"]
-                    if agg["labels"]:
-                        obj.labels = {**obj.labels, **agg["labels"]}
-                    obj.save(
-                        update_fields=[
-                            "metric_value",
-                            "metric_count",
-                            "labels",
-                            "modified_at",
-                        ]
-                    )
-                    updated += 1
-            except Exception:
-                logger.exception("Error upserting hourly metric %s", key)
-
-    return created, updated
-
-
-def _bulk_upsert_daily(aggregations: dict) -> tuple[int, int]:
-    """Bulk upsert daily aggregations.
-
-    Args:
-        aggregations: Dict of aggregated metric data keyed by
-            (org_id, date_str, metric_name, project, tag)
-
-    Returns:
-        Tuple of (created_count, updated_count)
-    """
-    created, updated = 0, 0
-    with transaction.atomic():
-        for key, agg in aggregations.items():
-            org_id, date_str, metric_name, project, tag = key
-            date_val = datetime.fromisoformat(date_str).date()
-
-            try:
-                obj, was_created = (
-                    EventMetricsDaily.objects.select_for_update().get_or_create(
-                        organization_id=org_id,
-                        date=date_val,
-                        metric_name=metric_name,
-                        project=project,
-                        tag=tag,
-                        defaults={
-                            "metric_type": agg["metric_type"],
-                            "metric_value": agg["value"],
-                            "metric_count": agg["count"],
-                            "labels": agg["labels"],
-                        },
-                    )
-                )
-                if was_created:
-                    created += 1
-                else:
-                    obj.metric_value = F("metric_value") + agg["value"]
-                    obj.metric_count = F("metric_count") + agg["count"]
-                    if agg["labels"]:
-                        obj.labels = {**obj.labels, **agg["labels"]}
-                    obj.save(
-                        update_fields=[
-                            "metric_value",
-                            "metric_count",
-                            "labels",
-                            "modified_at",
-                        ]
-                    )
-                    updated += 1
-            except Exception:
-                logger.exception("Error upserting daily metric %s", key)
-
-    return created, updated
-
-
-def _bulk_upsert_monthly(aggregations: dict) -> tuple[int, int]:
-    """Bulk upsert monthly aggregations.
-
-    Args:
-        aggregations: Dict of aggregated metric data keyed by
-            (org_id, month_str, metric_name, project, tag)
-
-    Returns:
-        Tuple of (created_count, updated_count)
-    """
-    created, updated = 0, 0
-    with transaction.atomic():
-        for key, agg in aggregations.items():
-            org_id, month_str, metric_name, project, tag = key
-            month_val = datetime.fromisoformat(month_str).date()
-
-            try:
-                obj, was_created = (
-                    EventMetricsMonthly.objects.select_for_update().get_or_create(
-                        organization_id=org_id,
-                        month=month_val,
-                        metric_name=metric_name,
-                        project=project,
-                        tag=tag,
-                        defaults={
-                            "metric_type": agg["metric_type"],
-                            "metric_value": agg["value"],
-                            "metric_count": agg["count"],
-                            "labels": agg["labels"],
-                        },
-                    )
-                )
-                if was_created:
-                    created += 1
-                else:
-                    obj.metric_value = F("metric_value") + agg["value"]
-                    obj.metric_count = F("metric_count") + agg["count"]
-                    if agg["labels"]:
-                        obj.labels = {**obj.labels, **agg["labels"]}
-                    obj.save(
-                        update_fields=[
-                            "metric_value",
-                            "metric_count",
-                            "labels",
-                            "modified_at",
-                        ]
-                    )
-                    updated += 1
-            except Exception:
-                logger.exception("Error upserting monthly metric %s", key)
-
-    return created, updated
-
-
 def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
     """Upsert hourly aggregations, replacing existing values.
 
-    Unlike _bulk_upsert_hourly which adds to existing values, this function
-    replaces values entirely. Used for scheduled aggregation where we query
-    the complete data for each time period.
+    Used for scheduled aggregation where we query the complete data for each
+    time period.
 
     Uses _base_manager to bypass DefaultOrganizationManagerMixin which
     filters by UserContext.get_organization() - returns None in Celery context.
@@ -565,6 +264,8 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
         ("llm_usage", MetricsQueryService.get_llm_usage_cost, True),
         ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
         ("failed_pages", MetricsQueryService.get_failed_pages, True),
+        ("hitl_reviews", MetricsQueryService.get_hitl_reviews, False),
+        ("hitl_completions", MetricsQueryService.get_hitl_completions, False),
     ]
 
     stats = {
@@ -596,7 +297,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                         period = row["period"]
                         value = row["value"] or 0
                         hour_ts = _truncate_to_hour(period)
-                        key = (org_id, hour_ts.isoformat(), metric_name, "default", None)
+                        key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
 
                         if key not in hourly_agg:
                             hourly_agg[key] = {
@@ -621,7 +322,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                             day_ts.date().isoformat(),
                             metric_name,
                             "default",
-                            None,
+                            "",
                         )
 
                         if key not in daily_agg:
@@ -658,7 +359,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                             month_key_str,
                             metric_name,
                             "default",
-                            None,
+                            "",
                         )
                         monthly_agg[month_key] = {
                             "metric_type": metric_type,

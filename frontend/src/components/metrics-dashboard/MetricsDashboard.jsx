@@ -1,15 +1,31 @@
 import { useState, useCallback, useMemo } from "react";
-import { Typography, DatePicker, Row, Col, Button, Space, Alert } from "antd";
-import { ReloadOutlined, BarChartOutlined } from "@ant-design/icons";
+import {
+  Typography,
+  DatePicker,
+  Row,
+  Col,
+  Button,
+  Space,
+  Alert,
+  Tabs,
+} from "antd";
+import {
+  ReloadOutlined,
+  BarChartOutlined,
+  DashboardOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
 import dayjs from "dayjs";
 
 import {
   useMetricsOverview,
   useRecentActivity,
+  useWorkflowTokenUsage,
 } from "../../hooks/useMetricsData";
 import { MetricsSummary } from "./MetricsSummary";
-import { PagesChart, TrendAnalysisChart } from "./MetricsChart";
+import { PagesChart, TrendAnalysisChart, HITLChart } from "./MetricsChart";
 import { RecentActivity } from "./RecentActivity";
+import { LLMUsageTable } from "./LLMUsageTable";
 
 import "./MetricsDashboard.css";
 
@@ -55,6 +71,16 @@ function MetricsDashboard() {
     refetch: refetchActivity,
   } = useRecentActivity(5);
 
+  // Per-workflow LLM token usage (uses same date range as summary cards)
+  const {
+    data: tokenUsageData,
+    loading: tokenUsageLoading,
+    refetch: refetchTokenUsage,
+  } = useWorkflowTokenUsage(
+    dateRange[0]?.toISOString(),
+    dateRange[1]?.toISOString()
+  );
+
   // Handle date range change
   const handleDateChange = useCallback((dates) => {
     if (dates && dates.length === 2) {
@@ -67,7 +93,59 @@ function MetricsDashboard() {
     refetchOverview();
     refetchChart();
     refetchActivity();
-  }, [refetchOverview, refetchChart, refetchActivity]);
+    refetchTokenUsage();
+  }, [refetchOverview, refetchChart, refetchActivity, refetchTokenUsage]);
+
+  const tabItems = [
+    {
+      key: "overview",
+      label: (
+        <span>
+          <DashboardOutlined /> Overview
+        </span>
+      ),
+      children: (
+        <>
+          <Row gutter={[16, 16]}>
+            <Col xs={24}>
+              <MetricsSummary data={overviewData} loading={overviewLoading} />
+            </Col>
+            <Col xs={24} lg={16}>
+              <PagesChart data={chartData} loading={chartLoading} />
+            </Col>
+            <Col xs={24} lg={8}>
+              <RecentActivity data={activityData} loading={activityLoading} />
+            </Col>
+            <Col xs={24} lg={16}>
+              <TrendAnalysisChart data={chartData} loading={chartLoading} />
+            </Col>
+            <Col xs={24} lg={8}>
+              <HITLChart data={chartData} loading={chartLoading} />
+            </Col>
+          </Row>
+        </>
+      ),
+    },
+    {
+      key: "llm-usage",
+      label: (
+        <span>
+          <ThunderboltOutlined /> LLM Usage
+        </span>
+      ),
+      children: (
+        <Row gutter={[16, 16]}>
+          <Col xs={24}>
+            <LLMUsageTable
+              data={tokenUsageData}
+              loading={tokenUsageLoading}
+              onRefresh={refetchTokenUsage}
+            />
+          </Col>
+        </Row>
+      ),
+    },
+  ];
 
   return (
     <div className="metrics-dashboard">
@@ -116,20 +194,7 @@ function MetricsDashboard() {
         />
       )}
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24}>
-          <MetricsSummary data={overviewData} loading={overviewLoading} />
-        </Col>
-        <Col xs={24} lg={16}>
-          <PagesChart data={chartData} loading={chartLoading} />
-        </Col>
-        <Col xs={24} lg={8}>
-          <RecentActivity data={activityData} loading={activityLoading} />
-        </Col>
-        <Col xs={24} lg={16}>
-          <TrendAnalysisChart data={chartData} loading={chartLoading} />
-        </Col>
-      </Row>
+      <Tabs items={tabItems} defaultActiveKey="overview" />
     </div>
   );
 }

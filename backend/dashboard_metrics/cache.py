@@ -49,6 +49,9 @@ CACHE_TTL_HISTORICAL = getattr(settings, "DASHBOARD_CACHE_TTL_HISTORICAL", 28800
 CACHE_TTL_OVERVIEW = getattr(settings, "DASHBOARD_CACHE_TTL_OVERVIEW", 300)
 CACHE_TTL_SUMMARY = getattr(settings, "DASHBOARD_CACHE_TTL_SUMMARY", 900)
 CACHE_TTL_SERIES = getattr(settings, "DASHBOARD_CACHE_TTL_SERIES", 1800)
+CACHE_TTL_WORKFLOW_USAGE = getattr(
+    settings, "DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600
+)
 
 # Cache key prefix
 CACHE_PREFIX = "dashboard_metrics"
@@ -122,6 +125,7 @@ def cache_metrics_response(
         "overview": CACHE_TTL_OVERVIEW,
         "summary": CACHE_TTL_SUMMARY,
         "series": CACHE_TTL_SERIES,
+        "workflow_token_usage": CACHE_TTL_WORKFLOW_USAGE,
     }
 
     def decorator(func: Callable) -> Callable:
@@ -135,15 +139,25 @@ def cache_metrics_response(
 
             org_id = str(org.id)
 
-            # Build cache key from query params
-            params = dict(request.query_params.items())
+            # Build cache key from query params (exclude refresh param)
+            params = {
+                k: v
+                for k, v in request.query_params.items()
+                if k != "refresh"
+            }
             cache_key = _build_cache_key(org_id, endpoint, params)
 
-            # Check cache
-            cached = cache.get(cache_key)
-            if cached is not None:
-                logger.debug(f"Cache hit for {endpoint}: {cache_key}")
-                return Response(cached)
+            # Skip cache if refresh=true requested
+            force_refresh = (
+                request.query_params.get("refresh", "").lower() == "true"
+            )
+
+            # Check cache (unless force refresh)
+            if not force_refresh:
+                cached = cache.get(cache_key)
+                if cached is not None:
+                    logger.debug(f"Cache hit for {endpoint}: {cache_key}")
+                    return Response(cached)
 
             # Execute function and cache result
             response = func(self, request, *args, **kwargs)
