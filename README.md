@@ -244,7 +244,9 @@ We welcome contributions! The easiest way to start:
 
 ## 👋 Community
 
-Join the LLM-powered document automation community: [Blog](https://unstract.com/blog/) | [LinkedIn](https://www.linkedin.com/showcase/unstract/) | [Slack](https://join-slack.unstract.com) | [X](https://twitter.com/GetUnstract)
+Join the LLM-powered document automation community:
+
+[![Blog](https://img.shields.io/badge/BLOG-FF6B6B?style=flat-square)](https://unstract.com/blog/) [![LinkedIn](https://img.shields.io/badge/FOLLOW%20US%20ON%20LINKEDIN-C8A2E8?style=flat-square)](https://www.linkedin.com/showcase/unstract/) [![Slack](https://img.shields.io/badge/SLACK-4CAF50?style=flat-square)](https://join-slack.unstract.com) [![X](https://img.shields.io/badge/FOLLOW%20US%20ON%20X-FFD700?style=flat-square)](https://twitter.com/GetUnstract)
 
 ## 📊 A Note on Analytics
 
