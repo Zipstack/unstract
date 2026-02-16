@@ -605,13 +605,13 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         # Auto-select source based on date range
         organization = self._get_organization()
-        source = self._select_source(
-            {"start_date": start_date, "end_date": end_date}
-        )
+        source = self._select_source({"start_date": start_date, "end_date": end_date})
         ts_field = self._get_timestamp_field(source)
         queryset = self._get_source_queryset(source, organization).filter(
             **{
-                f"{ts_field}__gte": start_date if source == "hourly" else start_date.date(),
+                f"{ts_field}__gte": start_date
+                if source == "hourly"
+                else start_date.date(),
                 f"{ts_field}__lte": end_date if source == "hourly" else end_date.date(),
             }
         )

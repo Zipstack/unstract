@@ -12,7 +12,6 @@ This migration:
 
 from django.db import migrations
 
-
 TABLES_WITH_TIME_COL = [
     ("event_metrics_hourly", "timestamp"),
     ("event_metrics_daily", "date"),
@@ -56,9 +55,7 @@ def cleanup_and_fix_nulls(apps, schema_editor):
         )
 
         # Step 3: Update remaining NULL tags to empty string
-        schema_editor.execute(
-            f"""UPDATE "{table}" SET tag = '' WHERE tag IS NULL"""
-        )
+        schema_editor.execute(f"""UPDATE "{table}" SET tag = '' WHERE tag IS NULL""")
 
 
 class Migration(migrations.Migration):
@@ -76,8 +73,7 @@ class Migration(migrations.Migration):
                 "ALTER COLUMN tag SET NOT NULL;"
             ),
             reverse_sql=(
-                "ALTER TABLE event_metrics_hourly "
-                "ALTER COLUMN tag DROP NOT NULL;"
+                "ALTER TABLE event_metrics_hourly " "ALTER COLUMN tag DROP NOT NULL;"
             ),
         ),
         migrations.RunSQL(
@@ -87,8 +83,7 @@ class Migration(migrations.Migration):
                 "ALTER COLUMN tag SET NOT NULL;"
             ),
             reverse_sql=(
-                "ALTER TABLE event_metrics_daily "
-                "ALTER COLUMN tag DROP NOT NULL;"
+                "ALTER TABLE event_metrics_daily " "ALTER COLUMN tag DROP NOT NULL;"
             ),
         ),
         migrations.RunSQL(
@@ -98,8 +93,7 @@ class Migration(migrations.Migration):
                 "ALTER COLUMN tag SET NOT NULL;"
             ),
             reverse_sql=(
-                "ALTER TABLE event_metrics_monthly "
-                "ALTER COLUMN tag DROP NOT NULL;"
+                "ALTER TABLE event_metrics_monthly " "ALTER COLUMN tag DROP NOT NULL;"
             ),
         ),
     ]

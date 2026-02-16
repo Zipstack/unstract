@@ -49,9 +49,7 @@ CACHE_TTL_HISTORICAL = getattr(settings, "DASHBOARD_CACHE_TTL_HISTORICAL", 28800
 CACHE_TTL_OVERVIEW = getattr(settings, "DASHBOARD_CACHE_TTL_OVERVIEW", 300)
 CACHE_TTL_SUMMARY = getattr(settings, "DASHBOARD_CACHE_TTL_SUMMARY", 900)
 CACHE_TTL_SERIES = getattr(settings, "DASHBOARD_CACHE_TTL_SERIES", 1800)
-CACHE_TTL_WORKFLOW_USAGE = getattr(
-    settings, "DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600
-)
+CACHE_TTL_WORKFLOW_USAGE = getattr(settings, "DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600)
 
 # Cache key prefix
 CACHE_PREFIX = "dashboard_metrics"
@@ -140,17 +138,11 @@ def cache_metrics_response(
             org_id = str(org.id)
 
             # Build cache key from query params (exclude refresh param)
-            params = {
-                k: v
-                for k, v in request.query_params.items()
-                if k != "refresh"
-            }
+            params = {k: v for k, v in request.query_params.items() if k != "refresh"}
             cache_key = _build_cache_key(org_id, endpoint, params)
 
             # Skip cache if refresh=true requested
-            force_refresh = (
-                request.query_params.get("refresh", "").lower() == "true"
-            )
+            force_refresh = request.query_params.get("refresh", "").lower() == "true"
 
             # Check cache (unless force refresh)
             if not force_refresh:
