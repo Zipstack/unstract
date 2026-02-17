@@ -482,15 +482,27 @@ class SharedUserListSerializer(ModelSerializer):
     """Serializer for returning API deployment with shared user details."""
 
     shared_users = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
-        fields = ["id", "display_name", "shared_users", "shared_to_org", "created_by"]
+        fields = [
+            "id",
+            "display_name",
+            "shared_users",
+            "co_owners",
+            "shared_to_org",
+            "created_by",
+        ]
 
     def get_shared_users(self, obj):
         """Return list of shared users with id and email."""
         return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
+
+    def get_co_owners(self, obj):
+        """Return list of co-owners with id and email."""
+        return [{"id": user.id, "email": user.email} for user in obj.co_owners.all()]
 
     def get_created_by(self, obj):
         """Return creator details."""

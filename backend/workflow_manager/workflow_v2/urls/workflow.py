@@ -25,6 +25,8 @@ workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
 can_update = WorkflowViewSet.as_view({"get": "can_update"})
 list_shared_users = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
+workflow_add_owner = WorkflowViewSet.as_view({"post": "add_co_owner"})
+workflow_remove_owner = WorkflowViewSet.as_view({"delete": "remove_co_owner"})
 
 # File History views
 file_history_list = FileHistoryViewSet.as_view({"get": "list"})
@@ -49,6 +51,16 @@ urlpatterns = format_suffix_patterns(
             "<uuid:pk>/users/",
             list_shared_users,
             name="list-shared-users",
+        ),
+        path(
+            "<uuid:pk>/owners/",
+            workflow_add_owner,
+            name="workflow-add-owner",
+        ),
+        path(
+            "<uuid:pk>/owners/<uuid:user_id>/",
+            workflow_remove_owner,
+            name="workflow-remove-owner",
         ),
         path("execute/", workflow_execute, name="execute-workflow"),
         path(

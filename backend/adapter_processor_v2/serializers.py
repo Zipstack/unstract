@@ -190,6 +190,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     """
 
     shared_users = UserSerializer(many=True)
+    co_owners = UserSerializer(many=True, read_only=True)
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -200,6 +201,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "created_by",
+            "co_owners",
             "shared_users",
             "shared_to_org",
         )  # type: ignore

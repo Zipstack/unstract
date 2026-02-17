@@ -35,6 +35,7 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager)
 
         return self.filter(
             Q(created_by=user)  # Owned by user
+            | Q(co_owners=user)  # Co-owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()
@@ -95,6 +96,12 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
     # Sharing fields
     shared_users = models.ManyToManyField(
         User, related_name="shared_api_deployments", blank=True
+    )
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_api_deployments",
+        blank=True,
+        help_text="Users with full ownership privileges",
     )
     shared_to_org = models.BooleanField(
         default=False,

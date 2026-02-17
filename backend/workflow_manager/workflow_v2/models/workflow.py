@@ -26,6 +26,7 @@ class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
 
         return self.filter(
             Q(created_by=user)  # Owned by user
+            | Q(co_owners=user)  # Co-owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()
@@ -94,6 +95,12 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
     # Sharing fields
     shared_users = models.ManyToManyField(
         User, related_name="shared_workflows", blank=True
+    )
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_workflows",
+        blank=True,
+        help_text="Users with full ownership privileges",
     )
     shared_to_org = models.BooleanField(
         default=False,

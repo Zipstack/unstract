@@ -10,6 +10,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     """Serializer for returning pipeline with shared user details."""
 
     shared_users = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
     created_by_email = SerializerMethodField()
 
@@ -19,6 +20,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "id",
             "pipeline_name",
             "shared_users",
+            "co_owners",
             "shared_to_org",
             "created_by",
             "created_by_email",
@@ -27,6 +29,10 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     def get_shared_users(self, obj):
         """Get list of shared users with their details."""
         return UserSerializer(obj.shared_users.all(), many=True).data
+
+    def get_co_owners(self, obj):
+        """Get list of co-owners with their details."""
+        return UserSerializer(obj.co_owners.all(), many=True).data
 
     def get_created_by(self, obj):
         """Get the creator's username."""

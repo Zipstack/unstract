@@ -28,16 +28,17 @@ class IsWorkflowOwnerOrShared(BasePermission):
             request._workflow_cache = get_object_or_404(
                 Workflow.objects.select_related(
                     "created_by", "organization"
-                ).prefetch_related("shared_users"),
+                ).prefetch_related("shared_users", "co_owners"),
                 id=workflow_id,
             )
 
         workflow = request._workflow_cache
         user = request.user
 
-        # Check access: owner OR shared user OR shared to organization
+        # Check access: owner OR co-owner OR shared user OR shared to org
         has_access = (
             workflow.created_by == user
+            or user in workflow.co_owners.all()
             or user in workflow.shared_users.all()
             or (workflow.shared_to_org and workflow.organization == user.organization)
         )

@@ -27,6 +27,7 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
         """
         return self.filter(
             Q(created_by=user)  # Owned by user
+            | Q(co_owners=user)  # Co-owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()
@@ -108,6 +109,12 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         related_name="shared_pipelines",
         blank=True,
         db_comment="Users with whom this pipeline is shared",
+    )
+    co_owners = models.ManyToManyField(
+        User,
+        related_name="co_owned_pipelines",
+        blank=True,
+        help_text="Users with full ownership privileges",
     )
     shared_to_org = models.BooleanField(
         default=False,
