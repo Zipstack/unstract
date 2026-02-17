@@ -1,0 +1,8 @@
+.debug-tab {
+  padding: 24px;
+  max-width: 1000px;
+  height: 100%;
+  max-height: calc(100vh - 380px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}

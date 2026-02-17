@@ -1,0 +1,17 @@
+/* Profile Form Modal Styles */
+
+.ant-modal-title {
+  font-weight: 600;
+}
+
+.ant-form-item-label > label {
+  font-weight: 500;
+}
+
+.ant-typography-secondary {
+  font-size: 12px;
+}
+
+.ant-form-vertical .ant-form-item-label {
+  padding: 0 0 4px;
+}

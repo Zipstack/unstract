@@ -399,6 +399,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response
         """
+        from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
+            LookupEnrichmentError,
+        )
+
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
@@ -408,16 +412,25 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
-            id=id,
-            tool_id=tool_id,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=custom_tool.created_by.user_id,
-            document_id=document_id,
-            run_id=run_id,
-            profile_manager_id=profile_manager,
-        )
-        return Response(response, status=status.HTTP_200_OK)
+        try:
+            response: dict[str, Any] = PromptStudioHelper.prompt_responder(
+                id=id,
+                tool_id=tool_id,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=custom_tool.created_by.user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager,
+            )
+            return Response(response, status=status.HTTP_200_OK)
+        except LookupEnrichmentError as e:
+            # Return error response for critical lookup failures
+            error_response = {
+                "error": str(e),
+                "error_type": e.error_type,
+                **e.details,
+            }
+            return Response(error_response, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:

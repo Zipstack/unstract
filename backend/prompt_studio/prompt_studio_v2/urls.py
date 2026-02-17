@@ -13,6 +13,7 @@ prompt_studio_prompt_detail = ToolStudioPromptView.as_view(
 )
 
 reorder_prompts = ToolStudioPromptView.as_view({"post": "reorder_prompts"})
+available_lookups = ToolStudioPromptView.as_view({"get": "available_lookups"})
 
 urlpatterns = format_suffix_patterns(
     [
@@ -25,6 +26,11 @@ urlpatterns = format_suffix_patterns(
             "prompt/reorder/",
             reorder_prompts,
             name="reorder_prompts",
+        ),
+        path(
+            "prompt/available_lookups/",
+            available_lookups,
+            name="available_lookups",
         ),
     ]
 )

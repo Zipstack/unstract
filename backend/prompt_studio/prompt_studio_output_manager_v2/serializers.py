@@ -18,6 +18,9 @@ class PromptStudioOutputSerializer(AuditSerializer):
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
+        # Include prompt_key for frontend to match lookup enrichment
+        if instance.prompt_id:
+            data["prompt_key"] = instance.prompt_id.prompt_key
         try:
             token_usage = UsageHelper.get_aggregated_token_count(instance.run_id)
         except Exception as e:

@@ -25,6 +25,7 @@ import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import TerminalIcon from "../../../assets/terminal.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
+import LookupsIcon from "../../../assets/lookups.svg";
 
 import "./SideNavBar.css";
 import "../../settings/settings/Settings.css";
@@ -189,6 +190,16 @@ const SideNavBar = ({ collapsed }) => {
           image: CustomTools,
           path: `/${orgName}/tools`,
           active: globalThis.location.pathname.startsWith(`/${orgName}/tools`),
+        },
+        {
+          id: 1.2,
+          title: "Look-Ups",
+          description: "Enrich extracted data with reference lookups",
+          image: LookupsIcon,
+          path: `/${orgName}/lookups`,
+          active: globalThis.location.pathname.startsWith(
+            `/${orgName}/lookups`
+          ),
         },
         {
           id: 1.3,
