@@ -1,3 +1,4 @@
+import { Col, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
