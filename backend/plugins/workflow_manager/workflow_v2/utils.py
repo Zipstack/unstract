@@ -154,14 +154,14 @@ class WorkflowUtil:
         return False
 
     @staticmethod
-    def get_hitl_ttl_seconds(workflow: Workflow) -> int | None:
+    def get_hitl_ttl_seconds(workflow: Workflow) -> int:
         """Get TTL in seconds for HITL settings for a workflow.
 
         Args:
             workflow (Workflow): The workflow to get HITL TTL settings for.
 
         Returns:
-            int | None: TTL in seconds if set, None for unlimited TTL.
+            int: TTL in seconds. Defaults to 90 days (2160 hours).
         """
         try:
             from pluggable_apps.manual_review_v2.helper import (
@@ -170,4 +170,4 @@ class WorkflowUtil:
 
             return get_hitl_ttl_seconds_by_workflow(workflow)
         except ImportError:
-            return None
+            return 2160 * 3600
