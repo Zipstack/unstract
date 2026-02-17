@@ -28,11 +28,13 @@
   font-size: 14px;
 }
 
-.display-flex-right {
+.profile-tab-header {
   display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-  padding-right: 20px;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .display-flex-align-center {

@@ -1,25 +1,17 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-import {
-  Table,
-  Button,
-  Space,
-  Tag,
-  Typography,
-  Progress,
-  Modal,
-  Tooltip,
-} from "antd";
+import { Button, Tag, Typography, Progress, Modal } from "antd";
 import {
   UploadOutlined,
-  FileTextOutlined,
   DeleteOutlined,
-  SyncOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
   LoadingOutlined,
-  DatabaseOutlined,
+  SyncOutlined,
+  FileTextOutlined,
   InboxOutlined,
+  CalendarOutlined,
+  FileOutlined,
 } from "@ant-design/icons";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -34,7 +26,6 @@ export function ReferenceDataTab({ project, onUpdate }) {
   const [loading, setLoading] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [indexing, setIndexing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   const axiosPrivate = useAxiosPrivate();
@@ -105,7 +96,6 @@ export function ReferenceDataTab({ project, onUpdate }) {
     if (file) {
       handleUpload(file);
     }
-    // Reset input so same file can be selected again
     event.target.value = "";
   };
 
@@ -168,175 +158,141 @@ export function ReferenceDataTab({ project, onUpdate }) {
     });
   };
 
-  const handleIndexAll = async () => {
-    Modal.confirm({
-      title: "Index All Reference Data",
-      content:
-        "This will index all completed reference data using the default profile. Continue?",
-      okText: "Index All",
-      okType: "primary",
-      onOk: async () => {
-        setIndexing(true);
-        try {
-          const response = await axiosPrivate.post(
-            `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/index_all/`,
-            {},
-            {
-              headers: {
-                "X-CSRFToken": sessionDetails?.csrfToken,
-              },
-            }
-          );
-
-          const results = response.data?.results || {};
-          setAlertDetails({
-            type: "success",
-            content: `Indexing completed: ${results.success || 0} successful, ${
-              results.failed || 0
-            } failed`,
-          });
-
-          fetchDataSources();
-          onUpdate();
-        } catch (error) {
-          setAlertDetails({
-            type: "error",
-            content:
-              error.response?.data?.error || "Failed to index reference data",
-          });
-        } finally {
-          setIndexing(false);
-        }
-      },
-    });
-  };
-
-  const getExtractionStatusIcon = (status) => {
+  const getExtractionStatusTag = (status, record) => {
+    const displayText = record.extraction_status_display || status;
     switch (status) {
       case "complete":
-        return <CheckCircleOutlined style={{ color: "#52c41a" }} />;
+        return (
+          <>
+            <CheckCircleOutlined
+              className="ref-card-icon"
+              style={{ color: "#52c41a" }}
+            />
+            <Tag color="green">{displayText}</Tag>
+          </>
+        );
       case "failed":
-        return <CloseCircleOutlined style={{ color: "#f5222d" }} />;
+        return (
+          <>
+            <CloseCircleOutlined
+              className="ref-card-icon"
+              style={{ color: "#f5222d" }}
+            />
+            <Tag color="red">{displayText}</Tag>
+          </>
+        );
       case "processing":
-        return <LoadingOutlined style={{ color: "#1890ff" }} />;
+        return (
+          <>
+            <LoadingOutlined
+              className="ref-card-icon"
+              style={{ color: "#1890ff" }}
+            />
+            <Tag color="blue">{displayText}</Tag>
+          </>
+        );
       case "pending":
-        return <SyncOutlined style={{ color: "#faad14" }} />;
+        return (
+          <>
+            <SyncOutlined
+              className="ref-card-icon"
+              style={{ color: "#faad14" }}
+            />
+            <Tag color="orange">{displayText}</Tag>
+          </>
+        );
       default:
-        return null;
+        return <Text>{displayText}</Text>;
     }
   };
 
-  const columns = [
-    {
-      title: "File",
-      dataIndex: "file_name",
-      key: "file_name",
-      render: (fileName) => (
-        <Space>
-          <FileTextOutlined />
-          <Text>{fileName}</Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Version",
-      dataIndex: "version_number",
-      key: "version_number",
-      render: (version, record) => (
-        <Space>
-          <Tag color={record.is_latest ? "green" : "default"}>v{version}</Tag>
-          {record.is_latest && <Tag color="blue">Latest</Tag>}
-        </Space>
-      ),
-    },
-    {
-      title: "Extraction Status",
-      dataIndex: "extraction_status",
-      key: "extraction_status",
-      render: (status, record) => (
-        <Space>
-          {getExtractionStatusIcon(status)}
-          <Text>{record.extraction_status_display || status}</Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Size",
-      dataIndex: "file_size",
-      key: "file_size",
-      render: (size) => {
-        if (!size) return "-";
-        const sizeInMB = (size / 1024 / 1024).toFixed(2);
-        return `${sizeInMB} MB`;
-      },
-    },
-    {
-      title: "Uploaded",
-      dataIndex: "created_at",
-      key: "created_at",
-      render: (date) => new Date(date).toLocaleString(),
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      render: (_, record) => (
-        <Space>
-          <Tooltip title="Delete">
-            <Button
-              icon={<DeleteOutlined />}
-              danger
-              size="small"
-              onClick={() => handleDelete(record.id)}
-            />
-          </Tooltip>
-        </Space>
-      ),
-    },
-  ];
-
   return (
     <div className="reference-data-tab">
-      <div className="tab-header">
+      <div className="ref-tab-header">
         <div>
-          <Title level={4}>Reference Data</Title>
+          <Title level={4} className="ref-tab-title">
+            Reference Data
+          </Title>
           <Text type="secondary">
             Upload and manage reference data files for enrichment
           </Text>
         </div>
-        <Space>
-          <Button
-            type="default"
-            icon={<DatabaseOutlined />}
-            onClick={handleIndexAll}
-            loading={indexing}
-            disabled={indexing || dataSources.length === 0}
-          >
-            Index All
-          </Button>
-          <Button
-            type="primary"
-            icon={<UploadOutlined />}
-            onClick={() => {
-              setUploading(false);
-              setIsDragging(false);
-              setUploadModalOpen(true);
-            }}
-          >
-            Upload Data
-          </Button>
-        </Space>
+        <Button
+          type="primary"
+          icon={<UploadOutlined />}
+          onClick={() => {
+            setUploading(false);
+            setIsDragging(false);
+            setUploadModalOpen(true);
+          }}
+        >
+          Upload Data
+        </Button>
       </div>
 
-      <Table
-        columns={columns}
-        dataSource={dataSources}
-        loading={loading}
-        rowKey="id"
-        pagination={{
-          pageSize: 10,
-          showSizeChanger: true,
-        }}
-      />
+      <div className="ref-cards-container">
+        {loading ? (
+          <div className="ref-loading">Loading...</div>
+        ) : dataSources.length === 0 ? (
+          <div className="ref-empty">
+            <Text type="secondary">
+              No reference data yet. Upload a file to get started.
+            </Text>
+          </div>
+        ) : (
+          dataSources.map((ds) => (
+            <div key={ds.id} className="ref-data-card">
+              <div className="ref-card-header">
+                <Text className="ref-card-filename">{ds.file_name}</Text>
+                <Button
+                  type="text"
+                  icon={<DeleteOutlined />}
+                  className="ref-card-delete"
+                  onClick={() => handleDelete(ds.id)}
+                />
+              </div>
+
+              <div className="ref-card-body">
+                <div className="ref-card-row">
+                  <Text className="ref-card-label">VERSION</Text>
+                  <div className="ref-card-value">
+                    <FileTextOutlined className="ref-card-icon" />
+                    <Tag>{`V${ds.version_number}`}</Tag>
+                    {ds.is_latest && <Tag color="blue">Latest</Tag>}
+                  </div>
+                </div>
+
+                <div className="ref-card-row">
+                  <Text className="ref-card-label">EXTRACTION STATUS</Text>
+                  <div className="ref-card-value">
+                    {getExtractionStatusTag(ds.extraction_status, ds)}
+                  </div>
+                </div>
+
+                <div className="ref-card-row">
+                  <Text className="ref-card-label">SIZE</Text>
+                  <div className="ref-card-value">
+                    <FileOutlined className="ref-card-icon" />
+                    <Text>
+                      {ds.file_size
+                        ? `${(ds.file_size / 1024 / 1024).toFixed(2)} MB`
+                        : "-"}
+                    </Text>
+                  </div>
+                </div>
+
+                <div className="ref-card-row">
+                  <Text className="ref-card-label">UPLOADED</Text>
+                  <div className="ref-card-value">
+                    <CalendarOutlined className="ref-card-icon" />
+                    <Text>{new Date(ds.created_at).toLocaleString()}</Text>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
       <Modal
         title="Upload Reference Data"

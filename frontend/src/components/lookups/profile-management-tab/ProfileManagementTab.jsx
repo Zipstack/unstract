@@ -234,17 +234,34 @@ function ProfileManagementTab({ projectId }) {
   return (
     <div className="profile-management-container">
       <SpaceWrapper>
-        <div>
-          <Typography.Text className="profile-header">
-            Profile Settings
-          </Typography.Text>
-          <Typography.Paragraph
-            type="secondary"
-            className="profile-description"
+        <div className="profile-tab-header">
+          <div>
+            <Typography.Text className="profile-header">
+              Profile Settings
+            </Typography.Text>
+            <Typography.Paragraph
+              type="secondary"
+              className="profile-description"
+            >
+              Manage adapter configurations for text extraction, embeddings,
+              vector storage, and LLM processing.
+            </Typography.Paragraph>
+          </div>
+          <Tooltip
+            title={
+              isMaxProfile
+                ? `Max profile count (${MAX_PROFILE_COUNT})`
+                : "Add New Profile"
+            }
           >
-            Manage adapter configurations for text extraction, embeddings,
-            vector storage, and LLM processing.
-          </Typography.Paragraph>
+            <CustomButton
+              type="primary"
+              onClick={() => setIsModalOpen(true)}
+              disabled={isMaxProfile}
+            >
+              Add New Profile
+            </CustomButton>
+          </Tooltip>
         </div>
         <div>
           <Table
@@ -257,23 +274,6 @@ function ProfileManagementTab({ projectId }) {
           />
         </div>
       </SpaceWrapper>
-      <div className="display-flex-right">
-        <Tooltip
-          title={
-            isMaxProfile
-              ? `Max profile count (${MAX_PROFILE_COUNT})`
-              : "Add New Profile"
-          }
-        >
-          <CustomButton
-            type="primary"
-            onClick={() => setIsModalOpen(true)}
-            disabled={isMaxProfile}
-          >
-            Add New Profile
-          </CustomButton>
-        </Tooltip>
-      </div>
 
       {isModalOpen && (
         <ProfileFormModal

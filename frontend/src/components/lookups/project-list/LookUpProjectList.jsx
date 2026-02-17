@@ -1,19 +1,13 @@
-import {
-  Button,
-  Card,
-  Input,
-  Space,
-  Table,
-  Tag,
-  Typography,
-  Popconfirm,
-} from "antd";
+import { Button, Input, Tag, Typography, Popconfirm } from "antd";
 import {
   PlusOutlined,
   SearchOutlined,
-  FileTextOutlined,
-  CloudUploadOutlined,
   DeleteOutlined,
+  ArrowLeftOutlined,
+  CheckCircleOutlined,
+  CalendarOutlined,
+  DatabaseOutlined,
+  FileTextOutlined,
 } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -25,7 +19,6 @@ import { CreateProjectModal } from "../create-project-modal/CreateProjectModal";
 import "./LookUpProjectList.css";
 
 const { Title, Text } = Typography;
-const { Search } = Input;
 
 export function LookUpProjectList() {
   const [projects, setProjects] = useState([]);
@@ -89,7 +82,6 @@ export function LookUpProjectList() {
 
   const handleDeleteProject = async (projectId) => {
     try {
-      // Get CSRF token from cookie as fallback
       const csrfToken =
         sessionDetails?.csrfToken ||
         document.cookie
@@ -125,134 +117,126 @@ export function LookUpProjectList() {
       project.description?.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  const columns = [
-    {
-      title: "Name",
-      dataIndex: "name",
-      key: "name",
-      render: (text, record) => (
-        <Button
-          type="link"
-          onClick={() => navigate(record.id)}
-          style={{ padding: 0 }}
-        >
-          {text}
-        </Button>
-      ),
-    },
-    {
-      title: "Data Sources",
-      dataIndex: "data_source_count",
-      key: "data_source_count",
-      render: (count) => (
-        <Space>
-          <CloudUploadOutlined />
-          <Text>{count || 0}</Text>
-        </Space>
-      ),
-    },
-    {
-      title: "Template",
-      dataIndex: "template",
-      key: "template",
-      render: (template) =>
-        template ? (
-          <Space>
-            <FileTextOutlined />
-            <Text>{template.name}</Text>
-          </Space>
-        ) : (
-          <Text type="secondary">No template</Text>
-        ),
-    },
-    {
-      title: "Status",
-      dataIndex: "is_active",
-      key: "is_active",
-      render: (isActive) => (
-        <Tag color={isActive ? "green" : "orange"}>
-          {isActive ? "Active" : "Inactive"}
-        </Tag>
-      ),
-    },
-    {
-      title: "Created",
-      dataIndex: "created_at",
-      key: "created_at",
-      render: (date) => new Date(date).toLocaleDateString(),
-    },
-    {
-      title: "Actions",
-      key: "actions",
-      width: 100,
-      render: (_, record) => (
-        <Popconfirm
-          title="Delete Project"
-          description="Are you sure you want to delete this project?"
-          onConfirm={(e) => {
-            e.stopPropagation();
-            handleDeleteProject(record.id);
-          }}
-          onCancel={(e) => e.stopPropagation()}
-          okText="Delete"
-          cancelText="Cancel"
-          okButtonProps={{ danger: true }}
-        >
-          <Button
-            type="text"
-            danger
-            icon={<DeleteOutlined />}
-            onClick={(e) => e.stopPropagation()}
-          />
-        </Popconfirm>
-      ),
-    },
-  ];
-
   return (
     <div className="lookup-project-list">
       <div className="lookup-header">
-        <div>
-          <Title level={3}>Look-Up Projects</Title>
-          <Text type="secondary">
-            Manage your static data enrichment projects
-          </Text>
+        <div className="lookup-header-left">
+          <Button
+            type="text"
+            icon={<ArrowLeftOutlined />}
+            onClick={() => navigate(-1)}
+            className="lookup-back-btn"
+          />
+          <Title level={4} className="lookup-title">
+            Look-Up Projects
+          </Title>
         </div>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setCreateModalOpen(true)}
-        >
-          Create Project
-        </Button>
-      </div>
-
-      <Card>
-        <Space direction="vertical" size="large" style={{ width: "100%" }}>
-          <Search
-            placeholder="Search projects..."
+        <div className="lookup-header-right">
+          <Input
+            placeholder="Search any project"
             prefix={<SearchOutlined />}
             allowClear
-            enterButton
-            size="large"
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            style={{ maxWidth: 400 }}
+            className="lookup-search-input"
           />
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={() => setCreateModalOpen(true)}
+          >
+            Create Project
+          </Button>
+        </div>
+      </div>
 
-          <Table
-            columns={columns}
-            dataSource={filteredProjects}
-            loading={loading}
-            rowKey="id"
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => `Total ${total} projects`,
-            }}
-          />
-        </Space>
-      </Card>
+      <div className="lookup-cards-container">
+        {loading ? (
+          <div className="lookup-loading">Loading...</div>
+        ) : filteredProjects.length === 0 ? (
+          <div className="lookup-empty">
+            <Text type="secondary">
+              {searchText
+                ? "No projects match your search"
+                : "No projects yet. Create one to get started."}
+            </Text>
+          </div>
+        ) : (
+          filteredProjects.map((project) => (
+            <div key={project.id} className="lookup-project-card">
+              <div className="lookup-card-header">
+                <Button
+                  type="link"
+                  className="lookup-card-title"
+                  onClick={() => navigate(project.id)}
+                >
+                  {project.name}
+                </Button>
+                <Popconfirm
+                  title="Delete Project"
+                  description="Are you sure you want to delete this project?"
+                  onConfirm={() => handleDeleteProject(project.id)}
+                  okText="Delete"
+                  cancelText="Cancel"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button
+                    type="text"
+                    icon={<DeleteOutlined />}
+                    className="lookup-card-delete"
+                  />
+                </Popconfirm>
+              </div>
+
+              <div className="lookup-card-body">
+                <div className="lookup-card-row">
+                  <Text className="lookup-card-label">DATA SOURCES</Text>
+                  <div className="lookup-card-value">
+                    <DatabaseOutlined className="lookup-card-icon" />
+                    <Text>{project.data_source_count || 0}</Text>
+                  </div>
+                </div>
+
+                <div className="lookup-card-row">
+                  <Text className="lookup-card-label">TEMPLATE</Text>
+                  <div className="lookup-card-value">
+                    <FileTextOutlined className="lookup-card-icon" />
+                    <Text>{project.template?.name || "No template"}</Text>
+                  </div>
+                </div>
+
+                <div className="lookup-card-row">
+                  <Text className="lookup-card-label">STATUS</Text>
+                  <div className="lookup-card-value">
+                    <CheckCircleOutlined
+                      className="lookup-card-icon"
+                      style={{
+                        color: project.is_active ? "#52c41a" : "#faad14",
+                      }}
+                    />
+                    <Tag
+                      color={project.is_active ? "green" : "orange"}
+                      className="lookup-status-tag"
+                    >
+                      {project.is_active ? "Active" : "Inactive"}
+                    </Tag>
+                  </div>
+                </div>
+
+                <div className="lookup-card-row">
+                  <Text className="lookup-card-label">CREATED</Text>
+                  <div className="lookup-card-value">
+                    <CalendarOutlined className="lookup-card-icon" />
+                    <Text>
+                      {new Date(project.created_at).toLocaleDateString()}
+                    </Text>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
       <CreateProjectModal
         open={createModalOpen}

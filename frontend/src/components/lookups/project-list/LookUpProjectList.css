@@ -1,15 +1,147 @@
 .lookup-project-list {
-  padding: 24px;
+  padding: 16px 24px;
   height: 100%;
   max-height: calc(100vh - 120px);
   overflow-y: auto;
   overflow-x: hidden;
 }
 
+/* Header */
 .lookup-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 24px;
+  margin-bottom: 20px;
   flex-shrink: 0;
+}
+
+.lookup-header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lookup-back-btn {
+  color: #000;
+  padding: 4px 8px;
+}
+
+.lookup-title {
+  margin: 0 !important;
+  font-weight: 600 !important;
+}
+
+.lookup-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.lookup-search-input {
+  width: 220px;
+  border-radius: 6px;
+}
+
+/* Cards Container */
+.lookup-cards-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Project Card */
+.lookup-project-card {
+  width: 100%;
+  max-width: 680px;
+}
+
+.lookup-project-card {
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 0;
+  transition: box-shadow 0.2s ease;
+}
+
+.lookup-project-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Card Header */
+.lookup-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.lookup-card-title {
+  padding: 0 !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  height: auto !important;
+}
+
+.lookup-card-delete {
+  color: #8c8c8c;
+  padding: 4px;
+}
+
+.lookup-card-delete:hover {
+  color: #ff4d4f;
+}
+
+/* Card Body */
+.lookup-card-body {
+  padding: 4px 20px 12px 20px;
+}
+
+/* Card Row */
+.lookup-card-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.lookup-card-row:last-child {
+  border-bottom: none;
+}
+
+.lookup-card-label {
+  width: 140px;
+  flex-shrink: 0;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  color: #8c8c8c !important;
+}
+
+.lookup-card-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.lookup-card-icon {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+.lookup-status-tag {
+  margin: 0;
+  font-size: 12px;
+  line-height: 20px;
+  border-radius: 4px;
+}
+
+/* Empty & Loading States */
+.lookup-loading,
+.lookup-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 0;
 }

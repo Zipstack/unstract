@@ -1,5 +1,5 @@
 .lookup-project-detail {
-  padding: 24px;
+  padding: 16px 24px;
   height: 100%;
   max-height: calc(100vh - 120px);
   overflow-y: auto;
@@ -7,17 +7,21 @@
 }
 
 .project-header {
-  margin-bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
   flex-shrink: 0;
 }
 
-.project-info {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 16px;
-  flex-wrap: wrap;
-  gap: 12px;
+.project-back-btn {
+  color: #000;
+  padding: 4px 8px;
+}
+
+.project-name {
+  margin: 0 !important;
+  font-weight: 600 !important;
 }
 
 .loading-container {
@@ -28,12 +32,7 @@
 }
 
 /* Ensure tabs content is scrollable */
-.lookup-project-detail .ant-card {
-  flex: 1;
-  overflow: hidden;
-}
-
 .lookup-project-detail .ant-tabs-content {
-  max-height: calc(100vh - 320px);
+  max-height: calc(100vh - 240px);
   overflow-y: auto;
 }
