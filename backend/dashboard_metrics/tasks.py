@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from celery import shared_task
-from django.db import transaction
 from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
 
@@ -87,32 +86,31 @@ def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
         Tuple of (created_count, updated_count)
     """
     created, updated = 0, 0
-    with transaction.atomic():
-        for key, agg in aggregations.items():
-            org_id, hour_ts_str, metric_name, project, tag = key
-            hour_ts = datetime.fromisoformat(hour_ts_str)
+    for key, agg in aggregations.items():
+        org_id, hour_ts_str, metric_name, project, tag = key
+        hour_ts = datetime.fromisoformat(hour_ts_str)
 
-            try:
-                # Use _base_manager to bypass DefaultOrganizationManagerMixin filter
-                obj, was_created = EventMetricsHourly._base_manager.update_or_create(
-                    organization_id=org_id,
-                    timestamp=hour_ts,
-                    metric_name=metric_name,
-                    project=project,
-                    tag=tag,
-                    defaults={
-                        "metric_type": agg["metric_type"],
-                        "metric_value": agg["value"],
-                        "metric_count": agg["count"],
-                        "labels": agg["labels"],
-                    },
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception:
-                logger.exception("Error upserting hourly metric %s", key)
+        try:
+            # Use _base_manager to bypass DefaultOrganizationManagerMixin filter
+            obj, was_created = EventMetricsHourly._base_manager.update_or_create(
+                organization_id=org_id,
+                timestamp=hour_ts,
+                metric_name=metric_name,
+                project=project,
+                tag=tag,
+                defaults={
+                    "metric_type": agg["metric_type"],
+                    "metric_value": agg["value"],
+                    "metric_count": agg["count"],
+                    "labels": agg["labels"],
+                },
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+        except Exception:
+            logger.exception("Error upserting hourly metric %s", key)
 
     return created, updated
 
@@ -129,31 +127,30 @@ def _upsert_daily_replace(aggregations: dict) -> tuple[int, int]:
         Tuple of (created_count, updated_count)
     """
     created, updated = 0, 0
-    with transaction.atomic():
-        for key, agg in aggregations.items():
-            org_id, date_str, metric_name, project, tag = key
-            date_val = datetime.fromisoformat(date_str).date()
+    for key, agg in aggregations.items():
+        org_id, date_str, metric_name, project, tag = key
+        date_val = datetime.fromisoformat(date_str).date()
 
-            try:
-                obj, was_created = EventMetricsDaily._base_manager.update_or_create(
-                    organization_id=org_id,
-                    date=date_val,
-                    metric_name=metric_name,
-                    project=project,
-                    tag=tag,
-                    defaults={
-                        "metric_type": agg["metric_type"],
-                        "metric_value": agg["value"],
-                        "metric_count": agg["count"],
-                        "labels": agg["labels"],
-                    },
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception:
-                logger.exception("Error upserting daily metric %s", key)
+        try:
+            obj, was_created = EventMetricsDaily._base_manager.update_or_create(
+                organization_id=org_id,
+                date=date_val,
+                metric_name=metric_name,
+                project=project,
+                tag=tag,
+                defaults={
+                    "metric_type": agg["metric_type"],
+                    "metric_value": agg["value"],
+                    "metric_count": agg["count"],
+                    "labels": agg["labels"],
+                },
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+        except Exception:
+            logger.exception("Error upserting daily metric %s", key)
 
     return created, updated
 
@@ -170,31 +167,30 @@ def _upsert_monthly_replace(aggregations: dict) -> tuple[int, int]:
         Tuple of (created_count, updated_count)
     """
     created, updated = 0, 0
-    with transaction.atomic():
-        for key, agg in aggregations.items():
-            org_id, month_str, metric_name, project, tag = key
-            month_val = datetime.fromisoformat(month_str).date()
+    for key, agg in aggregations.items():
+        org_id, month_str, metric_name, project, tag = key
+        month_val = datetime.fromisoformat(month_str).date()
 
-            try:
-                obj, was_created = EventMetricsMonthly._base_manager.update_or_create(
-                    organization_id=org_id,
-                    month=month_val,
-                    metric_name=metric_name,
-                    project=project,
-                    tag=tag,
-                    defaults={
-                        "metric_type": agg["metric_type"],
-                        "metric_value": agg["value"],
-                        "metric_count": agg["count"],
-                        "labels": agg["labels"],
-                    },
-                )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception:
-                logger.exception("Error upserting monthly metric %s", key)
+        try:
+            obj, was_created = EventMetricsMonthly._base_manager.update_or_create(
+                organization_id=org_id,
+                month=month_val,
+                metric_name=metric_name,
+                project=project,
+                tag=tag,
+                defaults={
+                    "metric_type": agg["metric_type"],
+                    "metric_value": agg["value"],
+                    "metric_count": agg["count"],
+                    "labels": agg["labels"],
+                },
+            )
+            if was_created:
+                created += 1
+            else:
+                updated += 1
+        except Exception:
+            logger.exception("Error upserting monthly metric %s", key)
 
     return created, updated
 
