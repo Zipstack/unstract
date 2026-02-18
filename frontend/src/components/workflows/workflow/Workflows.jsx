@@ -148,30 +148,59 @@ function Workflows() {
 
   const checkWorkflowUsage = async (id) => {
     const res = await projectApiService.canUpdate(id);
+    const data = res?.data || {};
     return {
-      can_update: res?.data?.can_update || false,
-      pipeline_names: res?.data?.pipeline_names || [],
-      api_names: res?.data?.api_names || [],
+      canUpdate: data.can_update || false,
+      pipelines: data.pipelines || [],
+      apiNames: data.api_names || [],
+      pipelineCount: data.pipeline_count || 0,
+      apiCount: data.api_count || 0,
     };
   };
 
-  const getUsageMessage = (workflowName, pipelineNames, apiNames) => {
-    const allNames = [...apiNames, ...pipelineNames];
-    const total = allNames.length;
-    if (total === 0) return "";
-    const firstName = `"${allNames[0]}"`;
-    if (total === 1) {
-      return `Cannot delete "${workflowName}" as it is used in ${firstName}.`;
+  const getUsageMessage = (workflowName, usage) => {
+    const { pipelines, apiNames, pipelineCount, apiCount } = usage;
+    const totalCount = pipelineCount + apiCount;
+    if (totalCount === 0) {
+      return `Cannot delete \`${workflowName}\` as it is currently in use.`;
     }
-    const remaining = total - 1;
-    const pipelineLabel = remaining === 1 ? "pipeline" : "pipelines";
-    return `Cannot delete "${workflowName}" as it is used in ${firstName} and ${remaining} other API/ETL/Task ${pipelineLabel}.`;
+
+    const displayLimit = 3;
+    const lines = [];
+
+    if (apiNames.length > 0) {
+      const shown = apiNames.slice(0, displayLimit);
+      shown.forEach((name) => {
+        lines.push(`- \`${name}\` (API Deployment)`);
+      });
+      if (apiCount > shown.length) {
+        lines.push(
+          `- ...and ${apiCount - shown.length} more API deployment(s)`
+        );
+      }
+    }
+
+    if (pipelines.length > 0) {
+      const shown = pipelines.slice(0, displayLimit);
+      shown.forEach((p) => {
+        const name = p.pipeline_name;
+        const type = p.pipeline_type;
+        lines.push(`- \`${name}\` (${type} Pipeline)`);
+      });
+      const remaining = pipelineCount - shown.length;
+      if (remaining > 0) {
+        lines.push(`- ...and ${remaining} more pipeline(s)`);
+      }
+    }
+
+    const details = lines.join("\n");
+    return `Cannot delete \`${workflowName}\` as it is used in:\n${details}`;
   };
 
   const deleteProject = async (_evt, project) => {
     try {
       const usage = await checkWorkflowUsage(project.id);
-      if (usage.can_update) {
+      if (usage.canUpdate) {
         projectApiService
           .deleteProject(project.id)
           .then(() => {
@@ -189,11 +218,7 @@ function Workflows() {
       } else {
         setAlertDetails({
           type: "error",
-          content: getUsageMessage(
-            project.workflow_name,
-            usage.pipeline_names,
-            usage.api_names
-          ),
+          content: getUsageMessage(project.workflow_name, usage),
         });
       }
     } catch (err) {

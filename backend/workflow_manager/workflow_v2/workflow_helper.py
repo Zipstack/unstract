@@ -994,6 +994,8 @@ class WorkflowHelper:
             "info": obj.info,
         }
 
+    USAGE_DISPLAY_LIMIT = 5
+
     @staticmethod
     def can_update_workflow(workflow_id: str) -> dict[str, Any]:
         try:
@@ -1001,25 +1003,31 @@ class WorkflowHelper:
             if not workflow or workflow is None:
                 raise WorkflowDoesNotExistError()
 
-            pipeline_names = list(
-                Pipeline.objects.filter(workflow=workflow).values_list(
-                    "pipeline_name", flat=True
-                )
+            limit = WorkflowHelper.USAGE_DISPLAY_LIMIT
+            pipelines = list(
+                Pipeline.objects.filter(workflow=workflow)
+                .values("pipeline_name", "pipeline_type")[:limit]
             )
-            api_names = list(
-                APIDeployment.objects.filter(workflow=workflow).values_list(
-                    "display_name", flat=True
-                )
+            api_deployments = list(
+                APIDeployment.objects.filter(workflow=workflow)
+                .values_list("display_name", flat=True)[:limit]
             )
-            total_usage = len(pipeline_names) + len(api_names)
+            pipeline_count = Pipeline.objects.filter(
+                workflow=workflow
+            ).count()
+            api_count = APIDeployment.objects.filter(
+                workflow=workflow
+            ).count()
 
             return {
-                "can_update": total_usage == 0,
-                "pipeline_names": pipeline_names,
-                "api_names": api_names,
+                "can_update": (pipeline_count + api_count) == 0,
+                "pipelines": pipelines,
+                "api_names": list(api_deployments),
+                "pipeline_count": pipeline_count,
+                "api_count": api_count,
             }
         except Workflow.DoesNotExist:
-            logger.error(f"Error getting workflow: {id}")
+            logger.error(f"Error getting workflow: {workflow_id}")
             raise WorkflowDoesNotExistError()
 
 
