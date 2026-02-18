@@ -329,8 +329,6 @@ function TrendAnalysisChart({ data, loading }) {
     etl_pipeline_executions: "#fa8c16",
     challenges: "#2f54eb",
     summarization_calls: "#a0d911",
-    hitl_reviews: "#283593",
-    hitl_completions: "#00897b",
   };
 
   const getTrendColor = (metric, idx) =>
@@ -404,11 +402,17 @@ TrendAnalysisChart.propTypes = {
   loading: PropTypes.bool,
 };
 
+// HITL bar colors
+const HITL_COLORS = {
+  hitl_reviews: "#6d28d9",
+  hitl_completions: "#059669",
+};
+
 /**
- * HITL Reviews & Completions bar chart.
- * Reviews as lighter bars, completions as solid bars.
+ * HITL Reviews & Completions chart.
+ * Returns null when no HITL data is available (e.g. on OSS).
  *
- * @return {JSX.Element} The rendered HITL chart component.
+ * @return {JSX.Element|null} The rendered HITL chart or null.
  */
 function HITLChart({ data, loading }) {
   const chartData = useMemo(() => {
@@ -441,15 +445,9 @@ function HITLChart({ data, loading }) {
     );
   }
 
+  // No HITL data — return null so the component doesn't render on OSS
   if (!chartData.length) {
-    return (
-      <Card
-        title="HITL Reviews & Completions (Last 30 Days)"
-        className="metrics-chart-card"
-      >
-        <Empty description="No HITL data available" />
-      </Card>
-    );
+    return null;
   }
 
   return (
@@ -483,20 +481,22 @@ function HITLChart({ data, loading }) {
             <Tooltip content={<CustomTooltip />} />
             <Legend
               formatter={(value) => (
-                <span style={{ color: "#262626" }}>{value}</span>
+                <span style={{ color: "#262626" }}>
+                  {formatMetricName(value)}
+                </span>
               )}
             />
             <Bar
               dataKey="hitl_reviews"
-              name="Reviews"
-              fill="#c5cae9"
-              radius={[2, 2, 0, 0]}
+              name="hitl_reviews"
+              fill={HITL_COLORS.hitl_reviews}
+              radius={[4, 4, 0, 0]}
             />
             <Bar
               dataKey="hitl_completions"
-              name="Completions"
-              fill="#00897b"
-              radius={[2, 2, 0, 0]}
+              name="hitl_completions"
+              fill={HITL_COLORS.hitl_completions}
+              radius={[4, 4, 0, 0]}
             />
           </BarChart>
         </ResponsiveContainer>

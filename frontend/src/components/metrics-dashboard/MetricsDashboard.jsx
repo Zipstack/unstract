@@ -116,11 +116,11 @@ function MetricsDashboard() {
             <Col xs={24} lg={8}>
               <RecentActivity data={activityData} loading={activityLoading} />
             </Col>
-            <Col xs={24} lg={16}>
-              <TrendAnalysisChart data={chartData} loading={chartLoading} />
-            </Col>
-            <Col xs={24} lg={8}>
+            <Col xs={24}>
               <HITLChart data={chartData} loading={chartLoading} />
+            </Col>
+            <Col xs={24}>
+              <TrendAnalysisChart data={chartData} loading={chartLoading} />
             </Col>
           </Row>
         </>

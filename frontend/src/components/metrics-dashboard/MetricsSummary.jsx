@@ -100,17 +100,17 @@ const METRIC_CONFIG = {
   hitl_reviews: {
     label: "HITL Reviews",
     icon: <EyeOutlined />,
-    bgColor: "#e8eaf6",
-    iconBg: "#c5cae9",
-    iconColor: "#283593",
+    bgColor: "#f3e8ff",
+    iconBg: "#e0cffc",
+    iconColor: "#6d28d9",
     suffix: "",
   },
   hitl_completions: {
     label: "HITL Completions",
     icon: <CheckCircleOutlined />,
-    bgColor: "#e0f2f1",
-    iconBg: "#b2dfdb",
-    iconColor: "#00695c",
+    bgColor: "#ecfdf5",
+    iconBg: "#d1fae5",
+    iconColor: "#059669",
     suffix: "",
   },
 };
@@ -164,8 +164,8 @@ function MetricsSummary({ data, loading }) {
     );
   }
 
-  // Sort metrics by priority and take top ones
-  const sortedMetrics = [...data.totals].sort((a, b) => {
+  // Sort metrics by priority, skip zero-value metrics
+  const sortedMetrics = [...data.totals].filter((m) => m.total_value > 0).sort((a, b) => {
     const aIndex = METRIC_PRIORITY.indexOf(a.metric_name);
     const bIndex = METRIC_PRIORITY.indexOf(b.metric_name);
     if (aIndex === -1 && bIndex === -1) return 0;

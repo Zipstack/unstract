@@ -328,91 +328,6 @@ class MetricsQueryService:
         )
 
     @staticmethod
-    def get_hitl_reviews(
-        organization_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        granularity: str = "day",
-    ) -> list[dict[str, Any]]:
-        """Query HITL review queue entries created per time period.
-
-        Counts all HITLQueue records created in the date range,
-        representing files sent for human review.
-
-        Args:
-            organization_id: Organization UUID string
-            start_date: Start of date range
-            end_date: End of date range
-            granularity: Time granularity (hour, day, week)
-
-        Returns:
-            List of dicts with 'period' and 'value' keys
-        """
-        try:
-            from manual_review_v2.models import HITLQueue
-        except ImportError:
-            return []
-
-        trunc_func = MetricsQueryService._get_trunc_func(granularity)
-
-        return list(
-            HITLQueue._base_manager.filter(
-                organization_id=organization_id,
-                created_at__gte=start_date,
-                created_at__lte=end_date,
-            )
-            .annotate(period=trunc_func("created_at"))
-            .values("period")
-            .annotate(value=Count("id"))
-            .order_by("period")
-        )
-
-    @staticmethod
-    def get_hitl_completions(
-        organization_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        granularity: str = "day",
-    ) -> list[dict[str, Any]]:
-        """Query completed HITL reviews per time period.
-
-        Counts HITLQueue records that reached a terminal state
-        (approved, rejected, or review_finished) based on
-        the approved_at / rejected_at / review_finished_at timestamps.
-
-        Args:
-            organization_id: Organization UUID string
-            start_date: Start of date range
-            end_date: End of date range
-            granularity: Time granularity (hour, day, week)
-
-        Returns:
-            List of dicts with 'period' and 'value' keys
-        """
-        try:
-            from manual_review_v2.models import HITLQueue
-        except ImportError:
-            return []
-
-        trunc_func = MetricsQueryService._get_trunc_func(granularity)
-
-        # Use approved_at as the completion timestamp (most common terminal state)
-        # Fall back to review_finished_at for items that completed review but
-        # haven't gone through approval flow
-        return list(
-            HITLQueue._base_manager.filter(
-                organization_id=organization_id,
-                state__in=["approved", "rejected", "review_finished"],
-                modified_at__gte=start_date,
-                modified_at__lte=end_date,
-            )
-            .annotate(period=trunc_func("modified_at"))
-            .values("period")
-            .annotate(value=Count("id"))
-            .order_by("period")
-        )
-
-    @staticmethod
     def get_llm_usage_cost(
         organization_id: str,
         start_date: datetime,
@@ -528,6 +443,85 @@ class MetricsQueryService:
             )
             .values("period")
             .annotate(value=Sum("pages"))
+            .order_by("period")
+        )
+
+    @staticmethod
+    def get_hitl_reviews(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = "day",
+    ) -> list[dict[str, Any]]:
+        """Query HITL review counts from manual_review_v2.
+
+        Returns empty list on OSS where manual_review_v2 is not installed.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            List of dicts with 'period' and 'value' keys
+        """
+        try:
+            from manual_review_v2.models import ManualReviewEntity
+        except ImportError:
+            return []
+
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+
+        return list(
+            ManualReviewEntity.objects.filter(
+                organization_id=organization_id,
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values("period")
+            .annotate(value=Count("id"))
+            .order_by("period")
+        )
+
+    @staticmethod
+    def get_hitl_completions(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = "day",
+    ) -> list[dict[str, Any]]:
+        """Query completed HITL reviews from manual_review_v2.
+
+        Returns empty list on OSS where manual_review_v2 is not installed.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+
+        Returns:
+            List of dicts with 'period' and 'value' keys
+        """
+        try:
+            from manual_review_v2.models import ManualReviewEntity
+        except ImportError:
+            return []
+
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+
+        return list(
+            ManualReviewEntity.objects.filter(
+                organization_id=organization_id,
+                status="APPROVED",
+                modified_at__gte=start_date,
+                modified_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("modified_at"))
+            .values("period")
+            .annotate(value=Count("id"))
             .order_by("period")
         )
 

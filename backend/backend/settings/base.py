@@ -130,22 +130,6 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
 
-# Dashboard Metrics Cache TTL settings (in seconds)
-DASHBOARD_CACHE_TTL_CURRENT_HOUR = int(
-    os.environ.get("DASHBOARD_CACHE_TTL_CURRENT_HOUR", 30)
-)  # For current hour data (frequently updating)
-DASHBOARD_CACHE_TTL_HISTORICAL = int(
-    os.environ.get("DASHBOARD_CACHE_TTL_HISTORICAL", 28800)
-)  # 8 hours for historical data (stable)
-DASHBOARD_CACHE_TTL_OVERVIEW = int(
-    os.environ.get("DASHBOARD_CACHE_TTL_OVERVIEW", 300)
-)  # 5 minutes for overview
-DASHBOARD_CACHE_TTL_SUMMARY = int(
-    os.environ.get("DASHBOARD_CACHE_TTL_SUMMARY", 900)
-)  # 15 minutes for summary
-DASHBOARD_CACHE_TTL_SERIES = int(
-    os.environ.get("DASHBOARD_CACHE_TTL_SERIES", 1800)
-)  # 30 minutes for series data
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")

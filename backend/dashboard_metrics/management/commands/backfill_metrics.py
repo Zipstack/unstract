@@ -46,6 +46,9 @@ class Command(BaseCommand):
         ),
         ("llm_usage", MetricsQueryService.get_llm_usage_cost, True),
         ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
+        ("failed_pages", MetricsQueryService.get_failed_pages, True),
+        ("hitl_reviews", MetricsQueryService.get_hitl_reviews, False),
+        ("hitl_completions", MetricsQueryService.get_hitl_completions, False),
     ]
 
     def add_arguments(self, parser):
@@ -203,7 +206,7 @@ class Command(BaseCommand):
                     period = row["period"]
                     value = row["value"] or 0
                     hour_ts = self._truncate_to_hour(period)
-                    key = (org_id, hour_ts.isoformat(), metric_name, "default", None)
+                    key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
 
                     if key not in hourly_agg:
                         hourly_agg[key] = {
@@ -223,7 +226,7 @@ class Command(BaseCommand):
                     period = row["period"]
                     value = row["value"] or 0
                     day_date = period.date() if hasattr(period, "date") else period
-                    key = (org_id, day_date.isoformat(), metric_name, "default", None)
+                    key = (org_id, day_date.isoformat(), metric_name, "default", "")
 
                     if key not in daily_agg:
                         daily_agg[key] = {
@@ -243,7 +246,7 @@ class Command(BaseCommand):
                         month_date = period.replace(day=1).date()
                     else:
                         month_date = period.replace(day=1)
-                    key = (org_id, month_date.isoformat(), metric_name, "default", None)
+                    key = (org_id, month_date.isoformat(), metric_name, "default", "")
 
                     if key not in monthly_agg:
                         monthly_agg[key] = {
@@ -306,7 +309,7 @@ class Command(BaseCommand):
                 date_val = datetime.fromisoformat(date_str).date()
 
                 try:
-                    obj, was_created = EventMetricsDaily.objects.update_or_create(
+                    obj, was_created = EventMetricsDaily._base_manager.update_or_create(
                         organization_id=org_id,
                         date=date_val,
                         metric_name=metric_name,
@@ -337,7 +340,7 @@ class Command(BaseCommand):
                 month_val = datetime.fromisoformat(month_str).date()
 
                 try:
-                    obj, was_created = EventMetricsMonthly.objects.update_or_create(
+                    obj, was_created = EventMetricsMonthly._base_manager.update_or_create(
                         organization_id=org_id,
                         month=month_val,
                         metric_name=metric_name,
