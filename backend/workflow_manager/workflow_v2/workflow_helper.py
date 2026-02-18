@@ -1005,19 +1005,17 @@ class WorkflowHelper:
 
             limit = WorkflowHelper.USAGE_DISPLAY_LIMIT
             pipelines = list(
-                Pipeline.objects.filter(workflow=workflow)
-                .values("pipeline_name", "pipeline_type")[:limit]
+                Pipeline.objects.filter(workflow=workflow).values(
+                    "pipeline_name", "pipeline_type"
+                )[:limit]
             )
             api_deployments = list(
-                APIDeployment.objects.filter(workflow=workflow)
-                .values_list("display_name", flat=True)[:limit]
+                APIDeployment.objects.filter(workflow=workflow).values_list(
+                    "display_name", flat=True
+                )[:limit]
             )
-            pipeline_count = Pipeline.objects.filter(
-                workflow=workflow
-            ).count()
-            api_count = APIDeployment.objects.filter(
-                workflow=workflow
-            ).count()
+            pipeline_count = Pipeline.objects.filter(workflow=workflow).count()
+            api_count = APIDeployment.objects.filter(workflow=workflow).count()
 
             return {
                 "can_update": (pipeline_count + api_count) == 0,
