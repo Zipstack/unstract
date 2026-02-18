@@ -11,6 +11,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -654,6 +655,45 @@ class LLMCompat:
             model_name=self._llm_instance.get_model_name(),
         )
 
+    # ── Predict methods (llama-index interface) ────────────────────────────────
+
+    def predict(
+        self,
+        prompt: Any,  # noqa: ANN401
+        **prompt_args: Any,  # noqa: ANN401
+    ) -> str:
+        """Predict for a given prompt template (llama-index interface).
+
+        Emulates ``llama_index.core.llms.llm.LLM.predict`` which formats
+        the prompt template and delegates to ``chat()`` or ``complete()``.
+        """
+        if self.metadata.is_chat_model:
+            messages = prompt.format_messages(llm=self, **prompt_args)
+            chat_response = self.chat(messages)
+            return chat_response.message.content or ""
+        else:
+            formatted_prompt = prompt.format(llm=self, **prompt_args)
+            response = self.complete(formatted_prompt, formatted=True)
+            return response.text
+
+    async def apredict(
+        self,
+        prompt: Any,  # noqa: ANN401
+        **prompt_args: Any,  # noqa: ANN401
+    ) -> str:
+        """Async predict for a given prompt template (llama-index interface).
+
+        Emulates ``llama_index.core.llms.llm.LLM.apredict``.
+        """
+        if self.metadata.is_chat_model:
+            messages = prompt.format_messages(llm=self, **prompt_args)
+            chat_response = await self.achat(messages)
+            return chat_response.message.content or ""
+        else:
+            formatted_prompt = prompt.format(llm=self, **prompt_args)
+            response = await self.acomplete(formatted_prompt, formatted=True)
+            return response.text
+
     # ── Sync methods (llama-index interface) ─────────────────────────────────
 
     def chat(
@@ -769,7 +809,7 @@ class LLMCompat:
         """Convert ChatMessage sequence to litellm message format."""
         return [
             {
-                "role": m.role.value if isinstance(m.role, MessageRole) else str(m.role),
+                "role": getattr(m.role, "value", str(m.role)),
                 "content": m.content or "",
             }
             for m in messages
