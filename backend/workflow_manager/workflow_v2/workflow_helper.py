@@ -14,6 +14,7 @@ from configuration.enums import ConfigKey
 from configuration.models import Configuration
 from django.db import IntegrityError
 from pipeline_v2.models import Pipeline
+from plugins import get_plugin
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
 from rest_framework import serializers
 from tool_instance_v2.constants import ToolInstanceKey
@@ -254,9 +255,6 @@ class WorkflowHelper:
             status=ExecutionStatus.ERROR,
             error=f"Error while processing files: {str(error)}",
         )
-
-        # TODO: Remove related code when v1 workers are deprecated and removed
-        from plugins import get_plugin
 
         organization_id = workflow_execution.workflow.organization.organization_id
         subscription_usage_plugin = get_plugin("subscription_usage")
