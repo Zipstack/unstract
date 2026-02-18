@@ -1017,12 +1017,14 @@ class WorkflowHelper:
 
             limit = WorkflowHelper.USAGE_DISPLAY_LIMIT
             pipelines = list(
-                Pipeline.objects.filter(workflow=workflow)
-                .values("pipeline_name", "pipeline_type")[:limit]
+                Pipeline.objects.filter(workflow=workflow).values(
+                    "pipeline_name", "pipeline_type"
+                )[:limit]
             )
             api_names = list(
-                APIDeployment.objects.filter(workflow=workflow)
-                .values_list("display_name", flat=True)[:limit]
+                APIDeployment.objects.filter(workflow=workflow).values_list(
+                    "display_name", flat=True
+                )[:limit]
             )
 
             return {
