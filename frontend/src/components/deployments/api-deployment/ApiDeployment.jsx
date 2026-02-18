@@ -9,6 +9,7 @@ import {
   FileSearchOutlined,
   NotificationOutlined,
   ShareAltOutlined,
+  TeamOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
@@ -26,6 +27,7 @@ import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { apiDeploymentsService } from "./api-deployments-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
@@ -66,6 +68,13 @@ function ApiDeployment() {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [isLoadingShare, setIsLoadingShare] = useState(false);
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
+  const [coOwnerData, setCoOwnerData] = useState({
+    coOwners: [],
+    createdBy: null,
+  });
+  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
+  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
@@ -316,6 +325,77 @@ function ApiDeployment() {
       });
   };
 
+  const handleCoOwner = async () => {
+    setCoOwnerLoading(true);
+    setCoOwnerOpen(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        apiDeploymentsApiService.getAllUsers(),
+        apiDeploymentsApiService.getSharedUsers(selectedRow.id),
+      ]);
+
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setCoOwnerAllUsers(userList);
+      setCoOwnerData({
+        coOwners: sharedUsersResponse.data?.co_owners || [],
+        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, "Unable to fetch co-owner information")
+      );
+      setCoOwnerOpen(false);
+    } finally {
+      setCoOwnerLoading(false);
+    }
+  };
+
+  const refreshCoOwnerData = async (resourceId) => {
+    try {
+      const res = await apiDeploymentsApiService.getSharedUsers(resourceId);
+      setCoOwnerData({
+        coOwners: res.data?.co_owners || [],
+        createdBy: res.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
+    }
+  };
+
+  const onAddCoOwner = async (resourceId, userId) => {
+    try {
+      await apiDeploymentsApiService.addCoOwner(resourceId, userId);
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner added successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getApiDeploymentList();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to add co-owner"));
+    }
+  };
+
+  const onRemoveCoOwner = async (resourceId, userId) => {
+    try {
+      await apiDeploymentsApiService.removeCoOwner(resourceId, userId);
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner removed successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getApiDeploymentList();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to remove co-owner"));
+    }
+  };
+
   const actionItems = [
     // Configuration Section
     {
@@ -372,6 +452,23 @@ function ApiDeployment() {
           </div>
           <div>
             <Typography.Text>Share</Typography.Text>
+          </div>
+        </Space>
+      ),
+    },
+    {
+      key: "co-owner",
+      label: (
+        <Space
+          direction="horizontal"
+          className="action-items"
+          onClick={handleCoOwner}
+        >
+          <div>
+            <TeamOutlined />
+          </div>
+          <div>
+            <Typography.Text>Manage Co-Owners</Typography.Text>
           </div>
         </Space>
       ),
@@ -563,6 +660,18 @@ function ApiDeployment() {
         allUsers={allUsers}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={selectedRow?.id}
+        resourceType="API Deployment"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );

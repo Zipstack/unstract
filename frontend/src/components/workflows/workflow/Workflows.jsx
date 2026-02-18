@@ -59,6 +59,14 @@ function Workflows() {
   const [sharePermissionEdit, setSharePermissionEdit] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
+  const [coOwnerData, setCoOwnerData] = useState({
+    coOwners: [],
+    createdBy: null,
+  });
+  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
+  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
+  const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
 
   const { setAlertDetails } = useAlertStore();
   const sessionDetails = useSessionStore((state) => state?.sessionDetails);
@@ -238,6 +246,79 @@ function Workflows() {
     }
   };
 
+  const handleCoOwner = async (event, workflow) => {
+    event.stopPropagation();
+    setCoOwnerResourceId(workflow.id);
+    setCoOwnerLoading(true);
+    setCoOwnerOpen(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        projectApiService.getAllUsers(),
+        projectApiService.getSharedUsers(workflow.id),
+      ]);
+
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setCoOwnerAllUsers(userList);
+      setCoOwnerData({
+        coOwners: sharedUsersResponse.data?.co_owners || [],
+        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, "Unable to fetch co-owner information")
+      );
+      setCoOwnerOpen(false);
+    } finally {
+      setCoOwnerLoading(false);
+    }
+  };
+
+  const refreshCoOwnerData = async (resourceId) => {
+    try {
+      const res = await projectApiService.getSharedUsers(resourceId);
+      setCoOwnerData({
+        coOwners: res.data?.co_owners || [],
+        createdBy: res.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
+    }
+  };
+
+  const onAddCoOwner = async (resourceId, userId) => {
+    try {
+      await projectApiService.addCoOwner(resourceId, userId);
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner added successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getProjectList();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to add co-owner"));
+    }
+  };
+
+  const onRemoveCoOwner = async (resourceId, userId) => {
+    try {
+      await projectApiService.removeCoOwner(resourceId, userId);
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner removed successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getProjectList();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to remove co-owner"));
+    }
+  };
+
   const handleNewWorkflowBtnClick = () => {
     showNewProject();
     toggleModal(true);
@@ -313,6 +394,7 @@ function Workflows() {
               handleEdit={updateProject}
               handleDelete={deleteProject}
               handleShare={handleShare}
+              handleCoOwner={handleCoOwner}
               titleProp="workflow_name"
               descriptionProp="description"
               idProp="id"
@@ -348,6 +430,26 @@ function Workflows() {
               allUsers={allUsers}
               onApply={onShare}
               isSharableToOrg={true}
+            />
+          )}
+          {coOwnerOpen && (
+            <LazyLoader
+              component={() =>
+                import(
+                  "../../widgets/co-owner-management/CoOwnerManagement.jsx"
+                )
+              }
+              componentName={"CoOwnerManagement"}
+              open={coOwnerOpen}
+              setOpen={setCoOwnerOpen}
+              resourceId={coOwnerResourceId}
+              resourceType="Workflow"
+              allUsers={coOwnerAllUsers}
+              coOwners={coOwnerData.coOwners}
+              createdBy={coOwnerData.createdBy}
+              loading={coOwnerLoading}
+              onAddCoOwner={onAddCoOwner}
+              onRemoveCoOwner={onRemoveCoOwner}
             />
           )}
         </div>

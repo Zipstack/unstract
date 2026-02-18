@@ -13,6 +13,7 @@ import "./ListOfTools.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { ImportTool } from "../import-tool/ImportTool";
 
@@ -69,6 +70,14 @@ function ListOfTools() {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
+  const [coOwnerData, setCoOwnerData] = useState({
+    coOwners: [],
+    createdBy: null,
+  });
+  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
+  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
+  const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
 
   useEffect(() => {
     getListOfTools();
@@ -340,6 +349,101 @@ function ListOfTools() {
       });
   };
 
+  const handleCoOwner = async (_event, tool) => {
+    setCoOwnerResourceId(tool.tool_id);
+    setCoOwnerLoading(true);
+    setCoOwnerOpen(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${tool.tool_id}`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      ]);
+
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setCoOwnerAllUsers(userList);
+      setCoOwnerData({
+        coOwners: sharedUsersResponse.data?.co_owners || [],
+        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, "Unable to fetch co-owner information")
+      );
+      setCoOwnerOpen(false);
+    } finally {
+      setCoOwnerLoading(false);
+    }
+  };
+
+  const refreshCoOwnerData = async (resourceId) => {
+    try {
+      const res = await axiosPrivate({
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${resourceId}`,
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+      });
+      setCoOwnerData({
+        coOwners: res.data?.co_owners || [],
+        createdBy: res.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
+    }
+  };
+
+  const onAddCoOwner = async (resourceId, userId) => {
+    try {
+      await axiosPrivate({
+        method: "POST",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${resourceId}/owners/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: { user_id: userId },
+      });
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner added successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getListOfTools();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to add co-owner"));
+    }
+  };
+
+  const onRemoveCoOwner = async (resourceId, userId) => {
+    try {
+      await axiosPrivate({
+        method: "DELETE",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${resourceId}/owners/${userId}/`,
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+      });
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner removed successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getListOfTools();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to remove co-owner"));
+    }
+  };
+
   const defaultContent = (
     <div className="list-of-tools-body">
       <ViewTools
@@ -355,6 +459,7 @@ function ListOfTools() {
         idProp="tool_id"
         type="Prompt Project"
         handleShare={handleShare}
+        handleCoOwner={handleCoOwner}
       />
     </div>
   );
@@ -407,6 +512,18 @@ function ListOfTools() {
         allUsers={allUserList}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Prompt Project"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );

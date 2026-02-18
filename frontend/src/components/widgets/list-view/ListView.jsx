@@ -14,6 +14,7 @@ import {
   EditOutlined,
   QuestionCircleOutlined,
   ShareAltOutlined,
+  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
@@ -25,6 +26,7 @@ function ListView({
   handleEdit,
   handleDelete,
   handleShare,
+  handleCoOwner,
   titleProp,
   descriptionProp,
   iconProp,
@@ -44,6 +46,11 @@ function ListView({
   const handleShareClick = (event, tool, isEdit) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleShare(event, tool, isEdit);
+  };
+
+  const handleCoOwnerClick = (event, tool) => {
+    event.stopPropagation();
+    handleCoOwner(event, tool);
   };
 
   const renderTitle = (item) => {
@@ -139,6 +146,27 @@ function ListView({
               />
             </Tooltip>
           )}
+          {handleCoOwner && (
+            <Tooltip
+              title={
+                item?.is_deprecated
+                  ? "This adapter is deprecated"
+                  : "Manage Co-Owners"
+              }
+            >
+              <TeamOutlined
+                key={`${item.id}-co-owner`}
+                className={`action-icon-buttons ${
+                  item?.is_deprecated ? "disabled-icon" : ""
+                }`}
+                onClick={(event) => handleCoOwnerClick(event, item)}
+                style={{
+                  cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+                  opacity: item?.is_deprecated ? 0.4 : 1,
+                }}
+              />
+            </Tooltip>
+          )}
           <Popconfirm
             key={`${item.id}-delete`}
             title={`Delete the ${type}`}
@@ -204,6 +232,7 @@ ListView.propTypes = {
   handleEdit: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   handleShare: PropTypes.func,
+  handleCoOwner: PropTypes.func,
   titleProp: PropTypes.string.isRequired,
   descriptionProp: PropTypes.string,
   iconProp: PropTypes.string,
