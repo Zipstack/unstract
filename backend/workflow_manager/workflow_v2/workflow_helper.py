@@ -1003,24 +1003,32 @@ class WorkflowHelper:
             if not workflow or workflow is None:
                 raise WorkflowDoesNotExistError()
 
-            limit = WorkflowHelper.USAGE_DISPLAY_LIMIT
-            pipelines = list(
-                Pipeline.objects.filter(workflow=workflow).values(
-                    "pipeline_name", "pipeline_type"
-                )[:limit]
-            )
-            api_deployments = list(
-                APIDeployment.objects.filter(workflow=workflow).values_list(
-                    "display_name", flat=True
-                )[:limit]
-            )
             pipeline_count = Pipeline.objects.filter(workflow=workflow).count()
             api_count = APIDeployment.objects.filter(workflow=workflow).count()
 
+            if (pipeline_count + api_count) == 0:
+                return {
+                    "can_update": True,
+                    "pipelines": [],
+                    "api_names": [],
+                    "pipeline_count": 0,
+                    "api_count": 0,
+                }
+
+            limit = WorkflowHelper.USAGE_DISPLAY_LIMIT
+            pipelines = list(
+                Pipeline.objects.filter(workflow=workflow)
+                .values("pipeline_name", "pipeline_type")[:limit]
+            )
+            api_names = list(
+                APIDeployment.objects.filter(workflow=workflow)
+                .values_list("display_name", flat=True)[:limit]
+            )
+
             return {
-                "can_update": (pipeline_count + api_count) == 0,
+                "can_update": False,
                 "pipelines": pipelines,
-                "api_names": list(api_deployments),
+                "api_names": api_names,
                 "pipeline_count": pipeline_count,
                 "api_count": api_count,
             }
