@@ -13,6 +13,7 @@ from llama_index.core.base.llms.types import (
     MessageRole,
 )
 from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
+
 from unstract.sdk1.llm import LLM, LLMCompat
 
 
@@ -110,9 +111,7 @@ class RetrieverLLM(LlamaIndexBaseLLM):
         formatted: bool = False,
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
-        result = await self._compat.acomplete(
-            prompt, formatted=formatted, **kwargs
-        )
+        result = await self._compat.acomplete(prompt, formatted=formatted, **kwargs)
         return CompletionResponse(text=result.text, raw=result.raw)
 
     async def astream_chat(
