@@ -64,7 +64,7 @@ class FusionRetriever(BaseRetriever):
                 mode="simple",  # Use simple fusion mode (reciprocal rank fusion)
                 use_async=False,
                 verbose=True,
-                llm=self.llm,  # LLM generates query variations
+                llm=self.llama_index_llm,
             )
 
             # Retrieve nodes using fusion technique
