@@ -30,6 +30,7 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStatusTracker,
 )
 from unstract.core.tool_execution_status import ToolExecutionData, ToolExecutionTracker
+from unstract.tool_sandbox.exceptions import ToolNotFoundInRegistryError
 from unstract.workflow_execution.enums import LogComponent, LogStage, LogState
 from unstract.workflow_execution.exceptions import StopExecution
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -947,6 +948,15 @@ class FileExecutionTasks:
         except StopExecution:
             workflow_file_execution.update_status(status=ExecutionStatus.STOPPED)
             raise
+        except ToolNotFoundInRegistryError as error:
+            # Preserve specific error pattern for API layer detection (HTTP 409)
+            error_msg = f"Tool not found in container registry: {error.message}"
+            tool_execution_result = ToolExecutionResult(
+                error=error_msg,
+                result=None,
+            )
+            logger.error(f"Tool not found in registry: {error.message}", exc_info=True)
+            return tool_execution_result
         except WorkflowExecutionError as error:
             tool_execution_result = ToolExecutionResult(
                 error=str(error),
@@ -1050,8 +1060,18 @@ class FileExecutionTasks:
                     metadata=execution_metadata,
                 )
         except Exception as e:
-            error_msg = f"Final output processing failed: {str(e)}"
-            logger.error(error_msg, exc_info=True)
+            # Preserve original processing_error if it exists, as it may contain
+            # important error info (e.g., "tool not found in container registry")
+            if processing_error:
+                error_msg = processing_error
+                logger.error(
+                    f"Final output processing failed with original error: {processing_error}. "
+                    f"Additional error during finalization: {str(e)}",
+                    exc_info=True,
+                )
+            else:
+                error_msg = f"Final output processing failed: {str(e)}"
+                logger.error(error_msg, exc_info=True)
             return FinalOutputResult(output=None, metadata=None, error=error_msg)
 
         return FinalOutputResult(

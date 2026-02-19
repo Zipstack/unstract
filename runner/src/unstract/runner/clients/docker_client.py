@@ -14,6 +14,7 @@ from unstract.runner.clients.interface import (
     ContainerInterface,
 )
 from unstract.runner.constants import Env
+from unstract.runner.exception import ToolImageNotFoundError
 from unstract.runner.utils import Utils
 
 
@@ -174,26 +175,42 @@ class Client(ContainerClientInterface):
             return image_name_with_tag
 
         self.logger.info("Pulling the container: %s", image_name_with_tag)
-        resp = self.client.api.pull(
-            repository=repository,
-            tag=image_tag,
-            stream=True,
-            decode=True,
-        )
-        counter = 0
-        for line in resp:
-            # The counter is used to print status on every 100th status
-            # Otherwise the output logs will be polluted.
-            if counter < 100:
-                counter += 1
-                continue
-            counter = 0
-            self.logger.info(
-                "CONTAINER PULL STATUS: %s - %s : %s",
-                line.get("status"),
-                line.get("id"),
-                line.get("progress"),
+        try:
+            resp = self.client.api.pull(
+                repository=repository,
+                tag=image_tag,
+                stream=True,
+                decode=True,
             )
+            counter = 0
+            for line in resp:
+                # Check for error in pull response
+                if "error" in line:
+                    error_msg = line.get("error", "Unknown error during image pull")
+                    self.logger.error(
+                        f"Error pulling image {image_name_with_tag}: {error_msg}"
+                    )
+                    raise ToolImageNotFoundError(repository, image_tag)
+                # The counter is used to print status on every 100th status
+                # Otherwise the output logs will be polluted.
+                if counter < 100:
+                    counter += 1
+                    continue
+                counter = 0
+                self.logger.info(
+                    "CONTAINER PULL STATUS: %s - %s : %s",
+                    line.get("status"),
+                    line.get("id"),
+                    line.get("progress"),
+                )
+        except ImageNotFound:
+            self.logger.error(f"Image {image_name_with_tag} not found in registry")
+            raise ToolImageNotFoundError(repository, image_tag)
+        except APIError as e:
+            if e.status_code == 404 or "not found" in str(e).lower():
+                self.logger.error(f"Image {image_name_with_tag} not found in registry")
+                raise ToolImageNotFoundError(repository, image_tag)
+            raise
         self.logger.info("Finished pulling the container: %s", image_name_with_tag)
 
         return image_name_with_tag
@@ -277,7 +294,7 @@ class Client(ContainerClientInterface):
             )
         except ImageNotFound:
             self.logger.error(f"Image {self.image_name}:{self.image_tag} not found")
-            raise
+            raise ToolImageNotFoundError(self.image_name, self.image_tag)
 
     def run_container_with_sidecar(
         self, container_config: dict[str, Any], sidecar_config: dict[str, Any]
@@ -310,7 +327,7 @@ class Client(ContainerClientInterface):
             )
         except ImageNotFound:
             self.logger.error(f"Image {self.image_name}:{self.image_tag} not found")
-            raise
+            raise ToolImageNotFoundError(self.image_name, self.image_tag)
 
     def wait_for_container_stop(
         self,
