@@ -402,5 +402,3 @@ def mset_metrics_buckets(
     except Exception:
         logger.exception("Pipeline MSET failed")
         return 0
-
-
