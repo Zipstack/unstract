@@ -1386,123 +1386,130 @@ def _process_batch_callback_core(
             f"organization_id={context.organization_id}, api_client={context.api_client is not None}"
         )
         raise RuntimeError(f"Invalid context for execution {context.execution_id}")
-    with log_context(
-        task_id=context.task_id,
-        execution_id=context.execution_id,
-        workflow_id=context.workflow_id,
-        organization_id=context.organization_id,
-        pipeline_id=context.pipeline_id,
-    ):
-        logger.info(
-            f"Starting batch callback processing for execution {context.execution_id}"
-        )
-
-        try:
-            # Use unified status determination with timeout detection (shared with API callback)
-            aggregated_results, execution_status, expected_files = (
-                _determine_execution_status_unified(
-                    file_batch_results=results,
-                    api_client=context.api_client,
-                    execution_id=context.execution_id,
-                    organization_id=context.organization_id,
-                )
-            )
-            # Update workflow execution status using unified function
-            execution_update_result = _update_execution_status_unified(
-                api_client=context.api_client,
-                execution_id=context.execution_id,
-                final_status=execution_status,
-                aggregated_results=aggregated_results,
-                organization_id=context.organization_id,
-                error_message=None,
-            )
-            # Handle pipeline updates using unified function (non-API deployment)
-            pipeline_result = _handle_pipeline_updates_unified(
-                context, execution_status, is_api_deployment=False
-            )
-
-            # Track subscription usage if plugin is present
-            subscription_tracking_result = _track_subscription_usage_if_available(
-                context=context,
-                execution_status=execution_status,
-            )
-
-            # Add missing UI logs for cost and final workflow status (matching backend behavior)
-            _publish_final_workflow_ui_logs(
-                context=context,
-                aggregated_results=aggregated_results,
-                execution_status=execution_status,
-            )
-
-            # Handle resource cleanup using existing function
-            cleanup_result = _cleanup_execution_resources(context)
-            callback_result = {
-                "status": "completed",
-                "execution_id": context.execution_id,
-                "workflow_id": context.workflow_id,
-                "task_id": context.task_id,
-                "aggregated_results": aggregated_results,
-                "execution_status": execution_status,
-                "expected_files": expected_files,
-                "execution_update_result": execution_update_result,
-                "pipeline_result": pipeline_result,
-                "subscription_tracking_result": subscription_tracking_result,
-                "cleanup_result": cleanup_result,
-                "pipeline_id": context.pipeline_id,
-                "unified_callback": True,
-                "shared_timeout_detection": True,
-            }
-
+    try:
+        with log_context(
+            task_id=context.task_id,
+            execution_id=context.execution_id,
+            workflow_id=context.workflow_id,
+            organization_id=context.organization_id,
+            pipeline_id=context.pipeline_id,
+        ):
             logger.info(
-                f"Completed unified callback processing for execution {context.execution_id} "
-                f"with status {execution_status}"
+                f"Starting batch callback processing for execution {context.execution_id}"
             )
-            # Handle notifications using unified function (non-critical)
+
             try:
-                notification_result = _handle_notifications_unified(
+                # Use unified status determination with timeout detection (shared with API callback)
+                aggregated_results, execution_status, expected_files = (
+                    _determine_execution_status_unified(
+                        file_batch_results=results,
+                        api_client=context.api_client,
+                        execution_id=context.execution_id,
+                        organization_id=context.organization_id,
+                    )
+                )
+                # Update workflow execution status using unified function
+                execution_update_result = _update_execution_status_unified(
                     api_client=context.api_client,
-                    status=execution_status,
-                    organization_id=context.organization_id,
                     execution_id=context.execution_id,
-                    pipeline_id=context.pipeline_id,
-                    workflow_id=context.workflow_id,
-                    pipeline_name=context.pipeline_name,
-                    pipeline_type=context.pipeline_type,
+                    final_status=execution_status,
+                    aggregated_results=aggregated_results,
+                    organization_id=context.organization_id,
                     error_message=None,
                 )
-                callback_result["notification_result"] = notification_result
-            except Exception as notif_error:
-                logger.warning(f"Failed to handle notifications: {notif_error}")
-                callback_result["notification_result"] = {
-                    "status": "failed",
-                    "error": str(notif_error),
+                # Handle pipeline updates using unified function (non-API deployment)
+                pipeline_result = _handle_pipeline_updates_unified(
+                    context, execution_status, is_api_deployment=False
+                )
+
+                # Track subscription usage if plugin is present
+                subscription_tracking_result = _track_subscription_usage_if_available(
+                    context=context,
+                    execution_status=execution_status,
+                )
+
+                # Add missing UI logs for cost and final workflow status (matching backend behavior)
+                _publish_final_workflow_ui_logs(
+                    context=context,
+                    aggregated_results=aggregated_results,
+                    execution_status=execution_status,
+                )
+
+                # Handle resource cleanup using existing function
+                cleanup_result = _cleanup_execution_resources(context)
+                callback_result = {
+                    "status": "completed",
+                    "execution_id": context.execution_id,
+                    "workflow_id": context.workflow_id,
+                    "task_id": context.task_id,
+                    "aggregated_results": aggregated_results,
+                    "execution_status": execution_status,
+                    "expected_files": expected_files,
+                    "execution_update_result": execution_update_result,
+                    "pipeline_result": pipeline_result,
+                    "subscription_tracking_result": subscription_tracking_result,
+                    "cleanup_result": cleanup_result,
+                    "pipeline_id": context.pipeline_id,
+                    "unified_callback": True,
+                    "shared_timeout_detection": True,
                 }
 
-            return callback_result
-
-        except Exception as e:
-            logger.error(
-                f"Unified batch callback processing failed for execution {context.execution_id}: {e}"
-            )
-
-            # Try to mark execution as failed using unified function
-            try:
-                _update_execution_status_unified(
-                    context.api_client,
-                    context.execution_id,
-                    ExecutionStatus.ERROR.value,
-                    {"error": str(e)[:500]},
-                    context.organization_id,
-                    error_message=str(e)[:500],
-                )
                 logger.info(
-                    f"Marked execution {context.execution_id} as failed using unified function"
+                    f"Completed unified callback processing for execution {context.execution_id} "
+                    f"with status {execution_status}"
                 )
-            except Exception as cleanup_error:
-                logger.error(f"Failed to mark execution as failed: {cleanup_error}")
+                # Handle notifications using unified function (non-critical)
+                try:
+                    notification_result = _handle_notifications_unified(
+                        api_client=context.api_client,
+                        status=execution_status,
+                        organization_id=context.organization_id,
+                        execution_id=context.execution_id,
+                        pipeline_id=context.pipeline_id,
+                        workflow_id=context.workflow_id,
+                        pipeline_name=context.pipeline_name,
+                        pipeline_type=context.pipeline_type,
+                        error_message=None,
+                    )
+                    callback_result["notification_result"] = notification_result
+                except Exception as notif_error:
+                    logger.warning(f"Failed to handle notifications: {notif_error}")
+                    callback_result["notification_result"] = {
+                        "status": "failed",
+                        "error": str(notif_error),
+                    }
 
-            # Re-raise for Celery retry mechanism
-            raise
+                return callback_result
+
+            except Exception as e:
+                logger.error(
+                    f"Unified batch callback processing failed for execution {context.execution_id}: {e}"
+                )
+
+                # Try to mark execution as failed using unified function
+                try:
+                    _update_execution_status_unified(
+                        context.api_client,
+                        context.execution_id,
+                        ExecutionStatus.ERROR.value,
+                        {"error": str(e)[:500]},
+                        context.organization_id,
+                        error_message=str(e)[:500],
+                    )
+                    logger.info(
+                        f"Marked execution {context.execution_id} as failed using unified function"
+                    )
+                except Exception as cleanup_error:
+                    logger.error(f"Failed to mark execution as failed: {cleanup_error}")
+
+                # Re-raise for Celery retry mechanism
+                raise
+    finally:
+        if context.api_client is not None:
+            try:
+                context.api_client.close()
+            except Exception as e:
+                logger.debug("api_client.close() failed during cleanup: %s", e)
 
 
 @app.task(
@@ -1581,194 +1588,200 @@ def process_batch_callback_api(
     api_client = create_api_client(organization_id)
     logger.info(f"Created organization-scoped API client: {organization_id}")
 
-    execution_response = api_client.get_workflow_execution(
-        execution_id, file_execution=False
-    )
-    if not execution_response.success:
-        raise Exception(f"Failed to get execution context: {execution_response.error}")
-    execution_context = execution_response.data
-    workflow_execution = execution_context.get("execution", {})
-    workflow = execution_context.get("workflow", {})
+    try:
+        execution_response = api_client.get_workflow_execution(
+            execution_id, file_execution=False
+        )
+        if not execution_response.success:
+            raise RuntimeError(
+                f"Failed to get execution context: {execution_response.error}"
+            )
+        execution_context = execution_response.data
+        workflow_execution = execution_context.get("execution", {})
+        workflow = execution_context.get("workflow", {})
 
-    # Extract schema_name and workflow_id from context
-    schema_name = organization_id  # For API callbacks, schema_name = organization_id
-    workflow_id = workflow_execution.get("workflow_id") or workflow.get("id")
+        # Extract schema_name and workflow_id from context
+        schema_name = organization_id  # For API callbacks, schema_name = organization_id
+        workflow_id = workflow_execution.get("workflow_id") or workflow.get("id")
 
-    logger.info(
-        f"Extracted context: schema_name={schema_name}, workflow_id={workflow_id}, pipeline_id={pipeline_id}"
-    )
-
-    with log_context(
-        task_id=task_id,
-        execution_id=execution_id,
-        workflow_id=workflow_id,
-        organization_id=organization_id,
-        pipeline_id=pipeline_id,
-    ):
         logger.info(
-            f"Processing API callback for execution {execution_id} with {len(file_batch_results)} batch results"
+            f"Extracted context: schema_name={schema_name}, workflow_id={workflow_id}, pipeline_id={pipeline_id}"
         )
 
-        try:
-            # Create organization-scoped API client using factory pattern
-            api_client = create_api_client(schema_name)
+        with log_context(
+            task_id=task_id,
+            execution_id=execution_id,
+            workflow_id=workflow_id,
+            organization_id=organization_id,
+            pipeline_id=pipeline_id,
+        ):
+            logger.info(
+                f"Processing API callback for execution {execution_id} with {len(file_batch_results)} batch results"
+            )
 
-            # Get pipeline name and type (simplified approach)
-            if not pipeline_id:
-                logger.info(
-                    f"No pipeline_id provided for API callback (testing mode). "
-                    f"execution_id={execution_id}, workflow_id={workflow_id}. "
-                    f"APIDeployment-specific updates and notifications will be skipped."
-                )
-                pipeline_name = None
-                pipeline_type = None
-            else:
-                # Use simplified pipeline data fetching
-                pipeline_name, pipeline_type = _fetch_pipeline_data_simplified(
-                    pipeline_id, schema_name, api_client, is_api_deployment=True
-                )
-
-                if pipeline_name:
+            try:
+                # Get pipeline name and type (simplified approach)
+                if not pipeline_id:
                     logger.info(
-                        f"✅ Found pipeline: name='{pipeline_name}', type='{pipeline_type}'"
+                        f"No pipeline_id provided for API callback (testing mode). "
+                        f"execution_id={execution_id}, workflow_id={workflow_id}. "
+                        f"APIDeployment-specific updates and notifications will be skipped."
                     )
+                    pipeline_name = None
+                    pipeline_type = None
                 else:
-                    logger.warning(f"Could not fetch pipeline data for {pipeline_id}")
-                    pipeline_name = "Unknown API"
-                    pipeline_type = PipelineType.API.value
+                    # Use simplified pipeline data fetching
+                    pipeline_name, pipeline_type = _fetch_pipeline_data_simplified(
+                        pipeline_id, schema_name, api_client, is_api_deployment=True
+                    )
 
-            # Use unified status determination with timeout detection
-            aggregated_results, execution_status, expected_files = (
-                _determine_execution_status_unified(
-                    file_batch_results=file_batch_results,
+                    if pipeline_name:
+                        logger.info(
+                            f"✅ Found pipeline: name='{pipeline_name}', type='{pipeline_type}'"
+                        )
+                    else:
+                        logger.warning(f"Could not fetch pipeline data for {pipeline_id}")
+                        pipeline_name = "Unknown API"
+                        pipeline_type = PipelineType.API.value
+
+                # Use unified status determination with timeout detection
+                aggregated_results, execution_status, expected_files = (
+                    _determine_execution_status_unified(
+                        file_batch_results=file_batch_results,
+                        api_client=api_client,
+                        execution_id=execution_id,
+                        organization_id=organization_id,
+                    )
+                )
+
+                # Update workflow execution status using unified function
+                execution_update_result = _update_execution_status_unified(
                     api_client=api_client,
                     execution_id=execution_id,
+                    final_status=execution_status,
+                    aggregated_results=aggregated_results,
                     organization_id=organization_id,
                 )
-            )
 
-            # Update workflow execution status using unified function
-            execution_update_result = _update_execution_status_unified(
-                api_client=api_client,
-                execution_id=execution_id,
-                final_status=execution_status,
-                aggregated_results=aggregated_results,
-                organization_id=organization_id,
-            )
+                # Create minimal context for unified pipeline handling
+                context = CallbackContext()
+                context.pipeline_id = pipeline_id
+                context.execution_id = execution_id
+                context.organization_id = organization_id
+                context.workflow_id = workflow_id
+                context.pipeline_name = pipeline_name
+                context.pipeline_type = pipeline_type
+                context.api_client = api_client
+                context.file_executions = execution_context.get("file_executions", [])
+                context.pipeline_data = {
+                    "is_api": True
+                }  # Mark as API execution for cleanup logic
 
-            # Create minimal context for unified pipeline handling
-            context = CallbackContext()
-            context.pipeline_id = pipeline_id
-            context.execution_id = execution_id
-            context.organization_id = organization_id
-            context.workflow_id = workflow_id
-            context.pipeline_name = pipeline_name
-            context.pipeline_type = pipeline_type
-            context.api_client = api_client
-            context.file_executions = execution_context.get("file_executions", [])
-            context.pipeline_data = {
-                "is_api": True
-            }  # Mark as API execution for cleanup logic
-
-            # Add missing UI logs for cost and final workflow status (matching backend behavior)
-            _publish_final_workflow_ui_logs_api(
-                context=context,
-                aggregated_results=aggregated_results,
-                execution_status=execution_status,
-            )
-
-            # Handle resource cleanup (matching ETL workflow behavior)
-            cleanup_result = _cleanup_execution_resources(context)
-
-            # Handle pipeline updates (only if pipeline_id exists)
-            if context.pipeline_id:
-                pipeline_result = _handle_pipeline_updates_unified(
-                    context=context, final_status=execution_status, is_api_deployment=True
+                # Add missing UI logs for cost and final workflow status (matching backend behavior)
+                _publish_final_workflow_ui_logs_api(
+                    context=context,
+                    aggregated_results=aggregated_results,
+                    execution_status=execution_status,
                 )
-            else:
-                logger.info(
-                    f"Skipping pipeline status update for execution {execution_id} "
-                    f"since no APIDeployment record"
+
+                # Handle resource cleanup (matching ETL workflow behavior)
+                cleanup_result = _cleanup_execution_resources(context)
+
+                # Handle pipeline updates (only if pipeline_id exists)
+                if context.pipeline_id:
+                    pipeline_result = _handle_pipeline_updates_unified(
+                        context=context,
+                        final_status=execution_status,
+                        is_api_deployment=True,
+                    )
+                else:
+                    logger.info(
+                        f"Skipping pipeline status update for execution {execution_id} "
+                        f"since no APIDeployment record"
+                    )
+                    pipeline_result = {
+                        "skipped": True,
+                        "reason": "execute without APIDeployment record",
+                    }
+
+                # Track subscription usage if plugin is present
+                subscription_tracking_result = _track_subscription_usage_if_available(
+                    context=context,
+                    execution_status=execution_status,
                 )
-                pipeline_result = {
-                    "skipped": True,
-                    "reason": "execute without APIDeployment record",
+
+                # Handle notifications using unified function
+                notification_result = _handle_notifications_unified(
+                    api_client=api_client,
+                    status=execution_status,
+                    organization_id=organization_id,
+                    execution_id=execution_id,
+                    pipeline_id=pipeline_id,
+                    workflow_id=workflow_id,
+                    pipeline_name=pipeline_name,
+                    pipeline_type=pipeline_type,
+                    error_message=None,
+                )
+
+                callback_result = {
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "pipeline_id": pipeline_id,
+                    "status": "completed",
+                    "total_files_processed": aggregated_results.get(
+                        "total_files_processed", 0
+                    ),
+                    "total_execution_time": aggregated_results.get(
+                        "total_execution_time", 0
+                    ),
+                    "batches_processed": len(file_batch_results),
+                    "task_id": task_id,
+                    "expected_files": expected_files,  # Include expected files for debugging
+                    "execution_update": execution_update_result,
+                    "pipeline_update": pipeline_result,
+                    "notifications": notification_result,
+                    "subscription_tracking_result": subscription_tracking_result,
+                    "cleanup_result": cleanup_result,
+                    "optimization": {
+                        "method": "unified_callback_functions",
+                        "eliminated_code_duplication": True,
+                        "shared_timeout_detection": True,
+                    },
                 }
 
-            # Track subscription usage if plugin is present
-            subscription_tracking_result = _track_subscription_usage_if_available(
-                context=context,
-                execution_status=execution_status,
-            )
+                logger.info(
+                    f"Successfully completed API callback for execution {execution_id}"
+                )
+                return callback_result
 
-            # Handle notifications using unified function
-            notification_result = _handle_notifications_unified(
-                api_client=api_client,
-                status=execution_status,
-                organization_id=organization_id,
-                execution_id=execution_id,
-                pipeline_id=pipeline_id,
-                workflow_id=workflow_id,
-                pipeline_name=pipeline_name,
-                pipeline_type=pipeline_type,
-                error_message=None,
-            )
-
-            callback_result = {
-                "execution_id": execution_id,
-                "workflow_id": workflow_id,
-                "pipeline_id": pipeline_id,
-                "status": "completed",
-                "total_files_processed": aggregated_results.get(
-                    "total_files_processed", 0
-                ),
-                "total_execution_time": aggregated_results.get("total_execution_time", 0),
-                "batches_processed": len(file_batch_results),
-                "task_id": task_id,
-                "expected_files": expected_files,  # Include expected files for debugging
-                "execution_update": execution_update_result,
-                "pipeline_update": pipeline_result,
-                "notifications": notification_result,
-                "subscription_tracking_result": subscription_tracking_result,
-                "cleanup_result": cleanup_result,
-                "optimization": {
-                    "method": "unified_callback_functions",
-                    "eliminated_code_duplication": True,
-                    "shared_timeout_detection": True,
-                },
-            }
-
-            logger.info(
-                f"Successfully completed API callback for execution {execution_id}"
-            )
-            return callback_result
-
-        except Exception as e:
-            logger.error(
-                f"API callback processing failed for execution {execution_id}: {e}"
-            )
-
-            # Try to update execution status to failed
-            try:
-                # Create organization-scoped API client for error handling
-                api_client = create_api_client(schema_name)
-                # Update execution status to error
-                api_client.update_workflow_execution_status(
-                    execution_id=execution_id,
-                    status=ExecutionStatus.ERROR.value,
-                    error_message=str(e)[:500],  # Limit error message length
-                    organization_id=schema_name,
+            except Exception as e:
+                logger.error(
+                    f"API callback processing failed for execution {execution_id}: {e}"
                 )
 
-                # OPTIMIZATION: Skip pipeline status update for API deployments on error
-                if pipeline_id:
-                    logger.info(
-                        f"OPTIMIZATION: Skipping pipeline status update for API deployment {pipeline_id} on error (no Pipeline record exists)"
+                # Try to update execution status to failed (reuse existing api_client)
+                try:
+                    api_client.update_workflow_execution_status(
+                        execution_id=execution_id,
+                        status=ExecutionStatus.ERROR.value,
+                        error_message=str(e)[:500],  # Limit error message length
+                        organization_id=schema_name,
                     )
-            except Exception as update_error:
-                logger.error(f"Failed to update execution status: {update_error}")
 
-            raise
+                    # OPTIMIZATION: Skip pipeline status update for API deployments on error
+                    if pipeline_id:
+                        logger.info(
+                            f"OPTIMIZATION: Skipping pipeline status update for API deployment {pipeline_id} on error (no Pipeline record exists)"
+                        )
+                except Exception as update_error:
+                    logger.error(f"Failed to update execution status: {update_error}")
+
+                raise
+    finally:
+        try:
+            api_client.close()
+        except Exception as e:
+            logger.debug("api_client.close() failed during cleanup: %s", e)
 
 
 def _publish_final_workflow_ui_logs(

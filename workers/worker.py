@@ -366,6 +366,50 @@ def on_worker_process_init(**kwargs):
 # ============= END OF WORKER PROCESS INIT HOOK =============
 
 
+# ============= WORKER PROCESS SHUTDOWN HOOK =============
+@signals.worker_process_shutdown.connect
+def on_worker_process_shutdown(**kwargs):
+    """Clean up HTTP sessions during worker shutdown."""
+    logger.info("Cleaning up API client resources (PID: %s)", os.getpid())
+    try:
+        from shared.api.internal_client import InternalAPIClient
+
+        InternalAPIClient.reset_singleton()
+    except Exception as e:
+        logger.warning(f"Failed to reset InternalAPIClient singleton: {e}")
+    try:
+        from shared.patterns.factory.client_factory import ClientFactory
+
+        ClientFactory.reset_shared_state()
+    except Exception as e:
+        logger.warning(f"Failed to reset ClientFactory: {e}")
+
+
+# ============= END OF WORKER PROCESS SHUTDOWN HOOK =============
+
+
+# ============= TASK COMPLETION HOOK (SESSION LIFECYCLE SAFETY VALVE) =============
+@signals.task_postrun.connect
+def on_task_postrun(sender=None, task_id=None, **kwargs):
+    """Increment task counter for periodic singleton session reset (FR-3.2).
+
+    After WORKER_SINGLETON_RESET_THRESHOLD tasks (default: 1000), the singleton
+    session is closed and recreated. Skipped when singleton is disabled (default)
+    since the counter and reset would be no-ops.
+    """
+    if not config.enable_api_client_singleton:
+        return
+    try:
+        from shared.api.internal_client import InternalAPIClient
+
+        InternalAPIClient.increment_task_counter()
+    except Exception as e:
+        logger.warning(f"Failed to increment task counter: {e}")
+
+
+# ============= END OF TASK COMPLETION HOOK =============
+
+
 # ============= REGISTER HEARTBEATKEEPER HERE =============
 # Check if HeartbeatKeeper should be enabled (default: enabled)
 # Uses hierarchical config system: CLI args > worker-specific > global > default
