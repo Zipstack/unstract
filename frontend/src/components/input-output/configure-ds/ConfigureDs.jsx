@@ -1,4 +1,5 @@
-import { Col, Row } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Col, Popover, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
@@ -27,6 +28,7 @@ function ConfigureDs({
   isConnector,
   metadata,
   selectedSourceName,
+  selectedDocUrl,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -354,6 +356,28 @@ function ConfigureDs({
 
   return (
     <div className="config-layout">
+      {selectedDocUrl && (
+        <div className="config-doc-link">
+          <Popover
+            content={
+              <div>
+                Need help?{" "}
+                <a
+                  href={selectedDocUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  See documentation.
+                </a>
+              </div>
+            }
+            trigger="click"
+            placement="bottomRight"
+          >
+            <InfoCircleOutlined className="config-doc-icon" />
+          </Popover>
+        </div>
+      )}
       {!isLoading && oAuthProvider?.length > 0 && (
         <OAuthDs
           oAuthProvider={oAuthProvider}
@@ -415,6 +439,7 @@ ConfigureDs.propTypes = {
   isConnector: PropTypes.bool.isRequired,
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
+  selectedDocUrl: PropTypes.string,
 };
 
 export { ConfigureDs };
