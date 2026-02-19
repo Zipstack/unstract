@@ -14,6 +14,7 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useListSearch } from "../../../hooks/useListSearch";
 
@@ -43,6 +44,14 @@ function ToolSettings({ type }) {
     useState(false);
   const [isPermissonEdit, setIsPermissionEdit] = useState(false);
   const [editItemId, setEditItemId] = useState(null);
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
+  const [coOwnerData, setCoOwnerData] = useState({
+    coOwners: [],
+    createdBy: null,
+  });
+  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
+  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
+  const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -203,6 +212,109 @@ function ToolSettings({ type }) {
       });
   };
 
+  const handleCoOwner = async (_event, adapter) => {
+    if (adapter?.is_deprecated) {
+      setAlertDetails({
+        type: "error",
+        content: "This adapter has been deprecated and cannot be managed.",
+      });
+      return;
+    }
+
+    setCoOwnerResourceId(adapter.id);
+    setCoOwnerLoading(true);
+    setCoOwnerOpen(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      ]);
+
+      const users =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setCoOwnerAllUsers(users);
+      setCoOwnerData({
+        coOwners: sharedUsersResponse.data?.co_owners || [],
+        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, "Unable to fetch co-owner information")
+      );
+      setCoOwnerOpen(false);
+    } finally {
+      setCoOwnerLoading(false);
+    }
+  };
+
+  const refreshCoOwnerData = async (resourceId) => {
+    try {
+      const res = await axiosPrivate({
+        method: "GET",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${resourceId}/`,
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+      });
+      setCoOwnerData({
+        coOwners: res.data?.co_owners || [],
+        createdBy: res.data?.created_by?.id || null,
+      });
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
+    }
+  };
+
+  const onAddCoOwner = async (resourceId, userId) => {
+    try {
+      await axiosPrivate({
+        method: "POST",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${resourceId}/owners/`,
+        headers: {
+          "X-CSRFToken": sessionDetails?.csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: { user_id: userId },
+      });
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner added successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getAdapters();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to add co-owner"));
+    }
+  };
+
+  const onRemoveCoOwner = async (resourceId, userId) => {
+    try {
+      await axiosPrivate({
+        method: "DELETE",
+        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${resourceId}/owners/${userId}/`,
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+      });
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner removed successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getAdapters();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to remove co-owner"));
+    }
+  };
+
   const handleOpenAddSourceModal = () => {
     setOpenAddSourcesModal(true);
 
@@ -263,6 +375,7 @@ function ToolSettings({ type }) {
               centered
               isClickable={false}
               handleShare={handleShare}
+              handleCoOwner={handleCoOwner}
               showOwner={true}
               type="Adapter"
             />
@@ -286,6 +399,18 @@ function ToolSettings({ type }) {
         allUsers={userList}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Adapter"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </div>
   );

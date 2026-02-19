@@ -12,7 +12,6 @@ import {
   CopyOutlined,
   LoadingOutlined,
   ShareAltOutlined,
-  TeamOutlined,
   HistoryOutlined,
 } from "@ant-design/icons";
 import {
@@ -352,14 +351,15 @@ function Pipelines({ type }) {
       });
   };
 
-  const handleCoOwner = async () => {
+  const handleCoOwner = async (record) => {
+    const row = record || selectedPorD;
     setCoOwnerLoading(true);
     setCoOwnerOpen(true);
 
     try {
       const [usersResponse, sharedUsersResponse] = await Promise.all([
         pipelineApiService.getAllUsers(),
-        pipelineApiService.getSharedUsers(selectedPorD.id),
+        pipelineApiService.getSharedUsers(row.id),
       ]);
 
       const userList =
@@ -485,19 +485,6 @@ function Pipelines({ type }) {
         >
           <ShareAltOutlined />
           <Typography.Text>Share</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "co-owner",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={handleCoOwner}
-        >
-          <TeamOutlined />
-          <Typography.Text>Manage Co-Owners</Typography.Text>
         </Space>
       ),
     },
@@ -760,10 +747,21 @@ function Pipelines({ type }) {
       render: (email, record) => {
         const isOwner = record.created_by === sessionDetails?.userId;
         return (
-          <Tooltip title={email}>
-            <Typography.Text className="p-or-d-typography">
+          <Tooltip title="Manage Co-Owners">
+            <span
+              style={{
+                cursor: "pointer",
+                color: "#1890ff",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+              }}
+              onClick={() => {
+                setSelectedPorD(record);
+                handleCoOwner(record);
+              }}
+            >
               {isOwner ? "You" : email?.split("@")[0] || "Unknown"}
-            </Typography.Text>
+            </span>
           </Tooltip>
         );
       },

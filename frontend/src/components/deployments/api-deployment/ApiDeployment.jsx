@@ -9,7 +9,6 @@ import {
   FileSearchOutlined,
   NotificationOutlined,
   ShareAltOutlined,
-  TeamOutlined,
 } from "@ant-design/icons";
 import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
@@ -162,9 +161,22 @@ function ApiDeployment() {
         const currentUser = sessionDetails?.userId;
         const isOwner = record?.created_by === currentUser;
         return (
-          <Space>
-            {isOwner ? "You" : record?.created_by_email || "Unknown"}
-          </Space>
+          <Tooltip title="Manage Co-Owners">
+            <span
+              style={{
+                cursor: "pointer",
+                color: "#1890ff",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+              }}
+              onClick={() => {
+                setSelectedRow(record);
+                handleCoOwner(record);
+              }}
+            >
+              {isOwner ? "You" : record?.created_by_email || "Unknown"}
+            </span>
+          </Tooltip>
         );
       },
       align: "left",
@@ -325,14 +337,15 @@ function ApiDeployment() {
       });
   };
 
-  const handleCoOwner = async () => {
+  const handleCoOwner = async (record) => {
+    const row = record || selectedRow;
     setCoOwnerLoading(true);
     setCoOwnerOpen(true);
 
     try {
       const [usersResponse, sharedUsersResponse] = await Promise.all([
         apiDeploymentsApiService.getAllUsers(),
-        apiDeploymentsApiService.getSharedUsers(selectedRow.id),
+        apiDeploymentsApiService.getSharedUsers(row.id),
       ]);
 
       const userList =
@@ -452,23 +465,6 @@ function ApiDeployment() {
           </div>
           <div>
             <Typography.Text>Share</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "co-owner",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={handleCoOwner}
-        >
-          <div>
-            <TeamOutlined />
-          </div>
-          <div>
-            <Typography.Text>Manage Co-Owners</Typography.Text>
           </div>
         </Space>
       ),

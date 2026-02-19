@@ -47,7 +47,7 @@ urlpatterns = format_suffix_patterns(
             name="adapter-add-owner",
         ),
         path(
-            "adapter/<uuid:pk>/owners/<uuid:user_id>/",
+            "adapter/<uuid:pk>/owners/<int:user_id>/",
             adapter_remove_owner,
             name="adapter-remove-owner",
         ),

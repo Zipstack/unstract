@@ -1,7 +1,6 @@
 """Shared serializers for co-owner management across resource types."""
 
 from typing import Any
-from uuid import UUID
 
 from account_v2.models import User
 from django.db import models
@@ -13,9 +12,9 @@ from utils.user_context import UserContext
 class AddCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
     """Serializer for adding a co-owner to a resource."""
 
-    user_id = serializers.UUIDField()
+    user_id = serializers.IntegerField()
 
-    def validate_user_id(self, value: UUID) -> UUID:
+    def validate_user_id(self, value: int) -> int:
         """Validate user exists in same organization and is not already an owner."""
         resource: models.Model = self.context["resource"]
         organization = UserContext.get_organization()

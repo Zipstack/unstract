@@ -63,7 +63,7 @@ urlpatterns = format_suffix_patterns(
             name="pipeline-add-owner",
         ),
         path(
-            "pipeline/<uuid:pk>/owners/<uuid:user_id>/",
+            "pipeline/<uuid:pk>/owners/<int:user_id>/",
             pipeline_remove_owner,
             name="pipeline-remove-owner",
         ),

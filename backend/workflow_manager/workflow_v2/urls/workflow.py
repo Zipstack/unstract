@@ -58,7 +58,7 @@ urlpatterns = format_suffix_patterns(
             name="workflow-add-owner",
         ),
         path(
-            "<uuid:pk>/owners/<uuid:user_id>/",
+            "<uuid:pk>/owners/<int:user_id>/",
             workflow_remove_owner,
             name="workflow-remove-owner",
         ),

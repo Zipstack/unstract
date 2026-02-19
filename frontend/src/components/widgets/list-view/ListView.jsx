@@ -14,7 +14,6 @@ import {
   EditOutlined,
   QuestionCircleOutlined,
   ShareAltOutlined,
-  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
@@ -90,23 +89,35 @@ function ListView({
             {title}
           </div>
           {showOwner && (
-            <div className="adapters-list-profile-container">
-              <Avatar
-                size={20}
-                className="adapters-list-user-avatar"
-                icon={<UserOutlined />}
-              />
-              <Typography.Text disabled className="adapters-list-user-prefix">
-                Owned By:
-              </Typography.Text>
-              <Typography.Text className="shared-username">
-                {item?.created_by_email
-                  ? item?.created_by_email === sessionDetails.email
-                    ? "Me"
-                    : item?.created_by_email
-                  : "-"}
-              </Typography.Text>
-            </div>
+            <Tooltip title={handleCoOwner ? "Manage Co-Owners" : ""}>
+              <div
+                className={`adapters-list-profile-container${
+                  handleCoOwner ? " owner-clickable" : ""
+                }`}
+                onClick={
+                  handleCoOwner
+                    ? (event) => handleCoOwnerClick(event, item)
+                    : undefined
+                }
+                role={handleCoOwner ? "button" : undefined}
+              >
+                <Avatar
+                  size={20}
+                  className="adapters-list-user-avatar"
+                  icon={<UserOutlined />}
+                />
+                <Typography.Text disabled className="adapters-list-user-prefix">
+                  Owned By:
+                </Typography.Text>
+                <Typography.Text className="shared-username">
+                  {item?.created_by_email
+                    ? item?.created_by_email === sessionDetails.email
+                      ? "Me"
+                      : item?.created_by_email
+                    : "-"}
+                </Typography.Text>
+              </div>
+            </Tooltip>
           )}
         </div>
         <div
@@ -139,27 +150,6 @@ function ListView({
                   item?.is_deprecated ? "disabled-icon" : ""
                 }`}
                 onClick={(event) => handleShareClick(event, item, true)}
-                style={{
-                  cursor: item?.is_deprecated ? "not-allowed" : "pointer",
-                  opacity: item?.is_deprecated ? 0.4 : 1,
-                }}
-              />
-            </Tooltip>
-          )}
-          {handleCoOwner && (
-            <Tooltip
-              title={
-                item?.is_deprecated
-                  ? "This adapter is deprecated"
-                  : "Manage Co-Owners"
-              }
-            >
-              <TeamOutlined
-                key={`${item.id}-co-owner`}
-                className={`action-icon-buttons ${
-                  item?.is_deprecated ? "disabled-icon" : ""
-                }`}
-                onClick={(event) => handleCoOwnerClick(event, item)}
                 style={{
                   cursor: item?.is_deprecated ? "not-allowed" : "pointer",
                   opacity: item?.is_deprecated ? 0.4 : 1,

@@ -71,7 +71,7 @@ urlpatterns = format_suffix_patterns(
             name="api_deployment_add_owner",
         ),
         path(
-            "deployment/<uuid:pk>/owners/<uuid:user_id>/",
+            "deployment/<uuid:pk>/owners/<int:user_id>/",
             deployment_remove_owner,
             name="api_deployment_remove_owner",
         ),
