@@ -149,4 +149,44 @@ fi
 echo ""
 echo "Settings: Copied=$settings_copied, Skipped=$settings_skipped"
 echo ""
+
+# ============================================================
+# Step 3: Copy project-local Claude skills (gitignored ones)
+# ============================================================
+SKILLS_DIR=".claude/skills"
+skills_copied=0
+skills_skipped=0
+
+if [ -d "$SOURCE_PATH/$SKILLS_DIR" ]; then
+    echo "Copying project-local Claude skills..."
+
+    for skill_dir in "$SOURCE_PATH/$SKILLS_DIR"/*/; do
+        [ -d "$skill_dir" ] || continue
+        skill_name=$(basename "$skill_dir")
+        dest_dir="$TARGET_PATH/$SKILLS_DIR/$skill_name"
+
+        # Skip if already present and identical
+        if [ -d "$dest_dir" ] && diff -rq "$skill_dir" "$dest_dir" > /dev/null 2>&1; then
+            echo "  [skipped] $skill_name/ (unchanged)"
+            skills_skipped=$((skills_skipped + 1))
+            continue
+        fi
+
+        mkdir -p "$dest_dir"
+        cp -r "$skill_dir"* "$dest_dir/" 2>/dev/null || true
+        # Copy hidden files/dirs too (e.g. .playwright-cli)
+        cp -r "$skill_dir".* "$dest_dir/" 2>/dev/null || true
+        if [ -d "$dest_dir" ]; then
+            echo "  [copied]  $skill_name/"
+            skills_copied=$((skills_copied + 1))
+        fi
+    done
+
+    echo ""
+    echo "Skills: Copied=$skills_copied, Skipped=$skills_skipped"
+else
+    echo "No $SKILLS_DIR directory found in source, skipping."
+fi
+
+echo ""
 echo "Done!"
