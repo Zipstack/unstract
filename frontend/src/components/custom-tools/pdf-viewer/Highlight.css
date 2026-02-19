@@ -7,3 +7,30 @@
     background-color: yellow;
     opacity: 0.5;
 }
+
+.pdf-viewer-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 400px;
+    background-color: #fafafa;
+    border-radius: 8px;
+}
+
+.pdf-viewer-error .ant-result {
+    padding: 32px 16px;
+}
+
+.pdf-viewer-error .ant-result-title {
+    color: #262626;
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.pdf-viewer-error .ant-result-subtitle {
+    color: #8c8c8c;
+    font-size: 14px;
+    max-width: 400px;
+    margin: 0 auto;
+}
