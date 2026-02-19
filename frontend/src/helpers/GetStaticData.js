@@ -82,6 +82,7 @@ const formatBytes = (bytes, decimals = 1) => {
 
 const O_AUTH_PROVIDERS = {
   GOOGLE: "google-oauth2",
+  MICROSOFT: "azuread-tenant-oauth2",
 };
 
 const CONNECTOR_TYPE_MAP = {

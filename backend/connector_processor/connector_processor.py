@@ -136,16 +136,19 @@ class ConnectorProcessor:
             ConnectorKeys.ID, connector_id
         )[0]
         if connector.get(ConnectorKeys.OAUTH):
-            try:
-                oauth_key = credentials.get(ConnectorAuthKey.OAUTH_KEY)
-                credentials = ConnectorAuthHelper.get_oauth_creds_from_cache(
-                    cache_key=oauth_key, delete_key=False
-                )
-            except Exception as exc:
-                logger.error(
-                    f"Error while testing file based OAuth supported connectors: {exc}"
-                )
-                raise OAuthTimeOut()
+            oauth_key = credentials.get(ConnectorAuthKey.OAUTH_KEY)
+            if oauth_key:  # Only fetch from cache if oauth_key is provided
+                try:
+                    credentials = ConnectorAuthHelper.get_oauth_creds_from_cache(
+                        cache_key=oauth_key, delete_key=False
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Error while testing file based OAuth supported "
+                        "connectors: %s",
+                        exc,
+                    )
+                    raise OAuthTimeOut()
 
         try:
             connector_impl = Connectorkit().get_connector_by_id(connector_id, credentials)
