@@ -971,16 +971,87 @@ class WorkerWorkflowExecutionService:
     def _build_and_execute_workflow(
         self, execution_service: WorkflowExecutionService, file_name: str
     ) -> None:
-        """Build and execute the workflow."""
-        # Build workflow
-        execution_service.build_workflow()
-        logger.info(f"Workflow built successfully for file {file_name}")
+        """Build and execute the workflow.
 
-        # Execute workflow
-        from unstract.workflow_execution.enums import ExecutionType
+        Detects structure tool workflows and routes them to the Celery-based
+        execute_structure_tool task instead of the Docker container flow.
+        """
+        if self._is_structure_tool_workflow(execution_service):
+            self._execute_structure_tool_workflow(execution_service, file_name)
+        else:
+            # Original Docker-based flow (unchanged)
+            execution_service.build_workflow()
+            logger.info(f"Workflow built successfully for file {file_name}")
 
-        execution_service.execute_workflow(ExecutionType.COMPLETE)
+            from unstract.workflow_execution.enums import ExecutionType
+
+            execution_service.execute_workflow(ExecutionType.COMPLETE)
         logger.info(f"Workflow executed successfully for file {file_name}")
+
+    def _is_structure_tool_workflow(
+        self, execution_service: WorkflowExecutionService
+    ) -> bool:
+        """Check if workflow uses the structure tool."""
+        structure_image = os.environ.get(
+            "STRUCTURE_TOOL_IMAGE_NAME", "unstract/tool-structure"
+        )
+        for ti in execution_service.tool_instances:
+            if ti.image_name == structure_image:
+                return True
+        return False
+
+    def _execute_structure_tool_workflow(
+        self, execution_service: WorkflowExecutionService, file_name: str
+    ) -> None:
+        """Execute structure tool as Celery task instead of Docker container.
+
+        Calls execute_structure_tool directly (same process, in-band).
+        Only the inner ExecutionDispatcher calls go through Celery to
+        the executor worker.
+        """
+        from file_processing.structure_tool_task import (
+            execute_structure_tool as _execute_structure_tool,
+        )
+
+        tool_instance = execution_service.tool_instances[0]
+        file_handler = execution_service.file_handler
+
+        # Read metadata from METADATA.json for file_hash and exec_metadata
+        metadata = {}
+        try:
+            metadata = file_handler.get_workflow_metadata()
+        except Exception as e:
+            logger.warning(f"Could not read workflow metadata: {e}")
+
+        params = {
+            "organization_id": execution_service.organization_id,
+            "workflow_id": execution_service.workflow_id,
+            "execution_id": execution_service.execution_id,
+            "file_execution_id": execution_service.file_execution_id,
+            "tool_instance_metadata": tool_instance.metadata,
+            "platform_service_api_key": execution_service.platform_service_api_key,
+            "input_file_path": str(file_handler.infile),
+            "output_dir_path": str(file_handler.execution_dir),
+            "source_file_name": str(
+                os.path.basename(file_handler.source_file)
+                if file_handler.source_file
+                else file_name
+            ),
+            "execution_data_dir": str(file_handler.file_execution_dir),
+            "messaging_channel": getattr(
+                execution_service, "messaging_channel", ""
+            ),
+            "file_hash": metadata.get("source_hash", ""),
+            "exec_metadata": metadata,
+        }
+
+        # Call synchronously (same process, in-band)
+        result = _execute_structure_tool(params)
+
+        if not result.get("success"):
+            raise Exception(
+                f"Structure tool failed: {result.get('error', 'Unknown error')}"
+            )
 
     def _extract_source_connector_details(
         self, source_config: dict[str, Any] | None

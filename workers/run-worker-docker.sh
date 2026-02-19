@@ -35,6 +35,7 @@ declare -A WORKERS=(
     ["log-consumer"]="log_consumer"
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
+    ["executor"]="executor"
     ["all"]="all"
 )
 
@@ -51,6 +52,7 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["log_consumer"]="celery_log_task_queue"
     ["scheduler"]="scheduler"
+    ["executor"]="executor"
 )
 
 # Worker health ports
@@ -62,6 +64,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["log_consumer"]="8084"
     ["notification"]="8085"
     ["scheduler"]="8087"
+    ["executor"]="8088"
 )
 
 # Function to print colored output
@@ -196,6 +199,7 @@ detect_worker_type_from_args() {
         *"notifications"*) echo "notification" ;;
         *"celery_log_task_queue"*) echo "log_consumer" ;;
         *"scheduler"*) echo "scheduler" ;;
+        *"executor"*) echo "executor" ;;
         *"celery"*) echo "general" ;;
         *) echo "general" ;; # fallback
     esac
@@ -259,6 +263,9 @@ run_worker() {
         "scheduler")
             queues="${CELERY_QUEUES_SCHEDULER:-$queues}"
             ;;
+        "executor")
+            queues="${CELERY_QUEUES_EXECUTOR:-$queues}"
+            ;;
     esac
 
     # Get health port
@@ -294,6 +301,10 @@ run_worker() {
             export SCHEDULER_HEALTH_PORT="${health_port}"
             export SCHEDULER_METRICS_PORT="${health_port}"
             ;;
+        "executor")
+            export EXECUTOR_HEALTH_PORT="${health_port}"
+            export EXECUTOR_METRICS_PORT="${health_port}"
+            ;;
         *)
             # Default for pluggable workers
             local worker_type_upper=$(echo "$worker_type" | tr '[:lower:]' '[:upper:]' | tr '-' '_')
@@ -325,6 +336,9 @@ run_worker() {
             ;;
         "scheduler")
             concurrency="${WORKER_SCHEDULER_CONCURRENCY:-2}"
+            ;;
+        "executor")
+            concurrency="${WORKER_EXECUTOR_CONCURRENCY:-2}"
             ;;
         *)
             # Default for pluggable workers or unknown types
@@ -533,6 +547,10 @@ if [[ "$1" == *"celery"* ]] || [[ "$1" == *".venv"* ]]; then
         "scheduler")
             export SCHEDULER_HEALTH_PORT="8087"
             export SCHEDULER_METRICS_PORT="8087"
+            ;;
+        "executor")
+            export EXECUTOR_HEALTH_PORT="8088"
+            export EXECUTOR_METRICS_PORT="8088"
             ;;
         *)
             # Default for pluggable workers - use dynamic port from WORKER_HEALTH_PORTS

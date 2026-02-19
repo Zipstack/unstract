@@ -33,6 +33,12 @@ class TaskName(str, Enum):
     # API deployment worker tasks
     CHECK_API_DEPLOYMENT_STATUS = "check_api_deployment_status"
 
+    # Structure tool task (runs in file_processing worker)
+    EXECUTE_STRUCTURE_TOOL = "execute_structure_tool"
+
+    # Executor worker tasks
+    EXECUTE_EXTRACTION = "execute_extraction"
+
     def __str__(self):
         """Return enum value for Celery task naming."""
         return self.value

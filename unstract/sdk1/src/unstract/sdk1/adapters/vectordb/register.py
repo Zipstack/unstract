@@ -45,5 +45,5 @@ class VectorDBRegistry(AdapterRegistry):
                         Common.MODULE: module,
                         Common.METADATA: metadata,
                     }
-        except ModuleNotFoundError as exception:
-            logger.warning(f"Unable to import vectorDB adapters : {exception}")
+        except Exception as exception:
+            logger.warning(f"Unable to import vectorDB adapter '{adapter}': {exception}")

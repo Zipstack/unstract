@@ -562,6 +562,42 @@ services:
     profiles:
       - workers-v2
 
+  worker-executor-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-executor-v2
+    restart: unless-stopped
+    command: ["executor"]
+    ports:
+      - "8092:8088"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-executor-v2
+      - WORKER_TYPE=executor
+      - WORKER_NAME=executor-worker-v2
+      - EXECUTOR_METRICS_PORT=8088
+      - HEALTH_PORT=8088
+      # Configurable Celery options
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-executor}
+      - CELERY_POOL=${WORKER_EXECUTOR_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_EXECUTOR_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_EXECUTOR_CONCURRENCY:-2}
+      - CELERY_EXTRA_ARGS=${WORKER_EXECUTOR_EXTRA_ARGS:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
+
 volumes:
   prompt_studio_data:
   unstract_data:

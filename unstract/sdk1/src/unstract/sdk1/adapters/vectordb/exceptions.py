@@ -1,5 +1,3 @@
-from qdrant_client.http.exceptions import ApiException as QdrantAPIException
-from unstract.sdk1.adapters.vectordb.qdrant.src import Qdrant
 from unstract.sdk1.adapters.vectordb.vectordb_adapter import VectorDBAdapter
 from unstract.sdk1.exceptions import VectorDBError
 
@@ -20,9 +18,19 @@ def parse_vector_db_err(e: Exception, vector_db: VectorDBAdapter) -> VectorDBErr
     if isinstance(e, VectorDBError):
         return e
 
-    if isinstance(e, QdrantAPIException):
-        err = Qdrant.parse_vector_db_err(e)
-    else:
+    # Lazy import to avoid hard dependency on qdrant_client at module level.
+    # qdrant_client's protobuf files can fail to load depending on the
+    # protobuf runtime version (KeyError: '_POINTID').
+    try:
+        from qdrant_client.http.exceptions import ApiException as QdrantAPIException
+
+        from unstract.sdk1.adapters.vectordb.qdrant.src import Qdrant
+
+        if isinstance(e, QdrantAPIException):
+            err = Qdrant.parse_vector_db_err(e)
+        else:
+            err = VectorDBError(str(e), actual_err=e)
+    except Exception:
         err = VectorDBError(str(e), actual_err=e)
 
     msg = f"Error from vector DB '{vector_db.get_name()}'."

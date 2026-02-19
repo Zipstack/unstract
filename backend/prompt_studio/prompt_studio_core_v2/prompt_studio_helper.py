@@ -28,6 +28,7 @@ from prompt_studio.prompt_studio_core_v2.constants import (
     ExecutionSource,
     IndexingStatus,
     LogLevels,
+    ToolStudioKeys,
     ToolStudioPromptKeys,
 )
 from prompt_studio.prompt_studio_core_v2.constants import IndexingConstants as IKeys
@@ -67,9 +68,10 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
+from unstract.sdk1.execution.context import ExecutionContext
+from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
-from unstract.sdk1.prompt import PromptTool
 from unstract.sdk1.utils.indexing import IndexingUtils
 from unstract.sdk1.utils.tool import ToolUtils
 
@@ -181,6 +183,9 @@ class PromptStudioHelper:
               the action.
         """
         profile_manager_owner = profile_manager.created_by
+        if profile_manager_owner is None:
+            # No owner on this profile manager — skip ownership validation
+            return
 
         is_llm_owned = (
             profile_manager.llm.shared_to_org
@@ -265,6 +270,27 @@ class PromptStudioHelper:
             StateStore.get(Common.LOG_EVENTS_ID),
             LogPublisher.log_prompt(component, level, state, message),
         )
+
+    @staticmethod
+    def _get_dispatcher() -> ExecutionDispatcher:
+        """Get an ExecutionDispatcher backed by the worker Celery app.
+
+        Uses the RabbitMQ-backed Celery app (not the Django Redis one)
+        so tasks reach the worker-v2 executor worker.
+        """
+        from backend.worker_celery import get_worker_celery_app
+
+        return ExecutionDispatcher(celery_app=get_worker_celery_app())
+
+    @staticmethod
+    def _get_platform_api_key(org_id: str) -> str:
+        """Get the platform API key for the given organization."""
+        from platform_settings_v2.platform_auth_service import (
+            PlatformAuthenticationService,
+        )
+
+        platform_key = PlatformAuthenticationService.get_active_platform_key(org_id)
+        return str(platform_key.key)
 
     @staticmethod
     def get_select_fields() -> dict[str, Any]:
@@ -994,24 +1020,28 @@ class PromptStudioHelper:
             TSPKeys.CUSTOM_DATA: tool.custom_data,
         }
 
-        try:
-            responder = PromptTool(
-                tool=util,
-                prompt_host=settings.PROMPT_HOST,
-                prompt_port=settings.PROMPT_PORT,
-                request_id=StateStore.get(Common.REQUEST_ID),
-            )
-            params = {TSPKeys.INCLUDE_METADATA: True}
-            return responder.answer_prompt(payload=payload, params=params)
-        except SdkError as e:
-            msg = str(e)
-            if e.actual_err and hasattr(e.actual_err, "response"):
-                msg = e.actual_err.response.json().get("error", str(e))
+        # Add platform API key and metadata flag for executor
+        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+        payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
+        payload[TSPKeys.INCLUDE_METADATA] = True
+
+        dispatcher = PromptStudioHelper._get_dispatcher()
+        context = ExecutionContext(
+            executor_name="legacy",
+            operation="answer_prompt",
+            run_id=run_id,
+            execution_source="ide",
+            organization_id=org_id,
+            executor_params=payload,
+            request_id=StateStore.get(Common.REQUEST_ID),
+        )
+        result = dispatcher.dispatch(context)
+        if not result.success:
             raise AnswerFetchError(
                 "Error while fetching response for "
-                f"'{prompt.prompt_key}' with '{doc_name}'. {msg}",
-                status_code=int(e.status_code or 500),
+                f"'{prompt.prompt_key}' with '{doc_name}'. {result.error}",
             )
+        return result.data
 
     @staticmethod
     def fetch_table_settings_if_enabled(
@@ -1140,24 +1170,26 @@ class PromptStudioHelper:
                 TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             }
 
-            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+            # Add platform API key for executor
+            platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+            payload["platform_api_key"] = platform_api_key
 
-            try:
-                responder = PromptTool(
-                    tool=util,
-                    prompt_host=settings.PROMPT_HOST,
-                    prompt_port=settings.PROMPT_PORT,
-                    request_id=StateStore.get(Common.REQUEST_ID),
-                )
-                doc_id = responder.index(payload=payload)
-            except SdkError as e:
-                msg = str(e)
-                if e.actual_err and hasattr(e.actual_err, "response"):
-                    msg = e.actual_err.response.json().get("error", str(e))
+            dispatcher = PromptStudioHelper._get_dispatcher()
+            index_context = ExecutionContext(
+                executor_name="legacy",
+                operation="index",
+                run_id=run_id or str(uuid.uuid4()),
+                execution_source="ide",
+                organization_id=org_id,
+                executor_params=payload,
+                request_id=StateStore.get(Common.REQUEST_ID),
+            )
+            result = dispatcher.dispatch(index_context)
+            if not result.success:
                 raise IndexingAPIError(
-                    f"Failed to index '{filename}'. {msg}",
-                    status_code=int(e.status_code or 500),
+                    f"Failed to index '{filename}'. {result.error}",
                 )
+            doc_id = result.data.get("doc_id")
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1221,7 +1253,6 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         directory, filename = os.path.split(input_file_path)
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
@@ -1288,14 +1319,27 @@ class PromptStudioHelper:
             TSPKeys.CUSTOM_DATA: tool.custom_data,
         }
 
-        responder = PromptTool(
-            tool=util,
-            prompt_host=settings.PROMPT_HOST,
-            prompt_port=settings.PROMPT_PORT,
+        # Add platform API key and metadata flag for executor
+        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+        payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
+        payload[TSPKeys.INCLUDE_METADATA] = True
+
+        dispatcher = PromptStudioHelper._get_dispatcher()
+        context = ExecutionContext(
+            executor_name="legacy",
+            operation="single_pass_extraction",
+            run_id=run_id or str(uuid.uuid4()),
+            execution_source="ide",
+            organization_id=org_id,
+            executor_params=payload,
             request_id=StateStore.get(Common.REQUEST_ID),
         )
-        params = {TSPKeys.INCLUDE_METADATA: True}
-        return responder.single_pass_extraction(payload=payload, params=params)
+        result = dispatcher.dispatch(context)
+        if not result.success:
+            raise AnswerFetchError(
+                f"Error fetching single pass response. {result.error}",
+            )
+        return result.data
 
     @staticmethod
     def get_tool_from_tool_id(tool_id: str) -> CustomTool | None:
@@ -1361,32 +1405,23 @@ class PromptStudioHelper:
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
         }
 
-        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+        # Add platform API key for executor
+        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+        payload["platform_api_key"] = platform_api_key
 
-        try:
-            responder = PromptTool(
-                tool=util,
-                prompt_host=settings.PROMPT_HOST,
-                prompt_port=settings.PROMPT_PORT,
-                request_id=StateStore.get(Common.REQUEST_ID),
-            )
-            extracted_text = responder.extract(payload=payload)
-            success = PromptStudioIndexHelper.mark_extraction_status(
-                document_id=document_id,
-                profile_manager=profile_manager,
-                x2text_config_hash=x2text_config_hash,
-                enable_highlight=enable_highlight,
-            )
-            if not success:
-                logger.warning(
-                    f"Failed to mark extraction success for document {document_id}. "
-                    f"Extraction completed but status not saved."
-                )
-        except SdkError as e:
-            msg = str(e)
-            if e.actual_err and hasattr(e.actual_err, "response"):
-                msg = e.actual_err.response.json().get("error", str(e))
-
+        dispatcher = PromptStudioHelper._get_dispatcher()
+        extract_context = ExecutionContext(
+            executor_name="legacy",
+            operation="extract",
+            run_id=run_id or str(uuid.uuid4()),
+            execution_source="ide",
+            organization_id=org_id,
+            executor_params=payload,
+            request_id=StateStore.get(Common.REQUEST_ID),
+        )
+        result = dispatcher.dispatch(extract_context)
+        if not result.success:
+            msg = result.error or "Unknown extraction error"
             success = PromptStudioIndexHelper.mark_extraction_status(
                 document_id=document_id,
                 profile_manager=profile_manager,
@@ -1400,10 +1435,21 @@ class PromptStudioHelper:
                     f"Failed to mark extraction failure for document {document_id}. "
                     f"Extraction failed but status not saved."
                 )
-
             raise ExtractionAPIError(
                 f"Failed to extract '{filename}'. {msg}",
-                status_code=int(e.status_code or 500),
+            )
+
+        extracted_text = result.data.get("extracted_text", "")
+        success = PromptStudioIndexHelper.mark_extraction_status(
+            document_id=document_id,
+            profile_manager=profile_manager,
+            x2text_config_hash=x2text_config_hash,
+            enable_highlight=enable_highlight,
+        )
+        if not success:
+            logger.warning(
+                f"Failed to mark extraction success for document {document_id}. "
+                f"Extraction completed but status not saved."
             )
 
         return extracted_text
