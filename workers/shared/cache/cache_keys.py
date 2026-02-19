@@ -16,6 +16,11 @@ class CacheKeyGenerator:
         return f"worker_cache:workflow:{workflow_id}"
 
     @staticmethod
+    def workflow_definition_key(workflow_id: str) -> str:
+        """Generate cache key for workflow definition (full response)."""
+        return f"worker_cache:workflow_definition:{workflow_id}"
+
+    @staticmethod
     def pipeline_key(pipeline_id: str) -> str:
         """Generate cache key for pipeline type."""
         return f"worker_cache:pipeline:{pipeline_id}"

@@ -466,7 +466,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         return response.data
 
     @with_cache(
-        CacheType.WORKFLOW,
+        CacheType.WORKFLOW_DEFINITION,
         lambda self, workflow_id, organization_id=None: str(workflow_id),
     )
     def get_workflow_definition(
@@ -499,8 +499,8 @@ class InternalAPIClient(CachedAPIClientMixin):
 
     @with_cache(
         CacheType.PIPELINE_DATA,
-        lambda self, pipeline_id, check_active=True, organization_id=None: str(
-            pipeline_id
+        lambda self, pipeline_id, check_active=True, organization_id=None: (
+            f"{pipeline_id}:{check_active}"
         ),
     )
     def get_pipeline_data(

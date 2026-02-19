@@ -7,7 +7,7 @@ import logging
 from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound
+from rest_framework.exceptions import APIException, NotFound
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from utils.organization_utils import filter_queryset_by_organization
@@ -43,8 +43,8 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
         )
         try:
             obj = queryset.get()
-        except WorkflowFileExecution.DoesNotExist:
-            raise NotFound(f"No file execution found with ID {pk}")
+        except WorkflowFileExecution.DoesNotExist as exc:
+            raise NotFound(f"No file execution found with ID {pk}") from exc
         self.check_object_permissions(self.request, obj)
         return obj
 
@@ -85,25 +85,7 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
     def status(self, request, id=None):
         """Update file execution status."""
         try:
-            # Get file execution by ID with organization filtering
-            # Don't use self.get_object() as it applies query parameter filtering
-            base_queryset = WorkflowFileExecution.objects.all()
-            base_queryset = filter_queryset_by_organization(
-                base_queryset, request, "workflow_execution__workflow__organization"
-            )
-
-            try:
-                file_execution = base_queryset.get(id=id)
-            except WorkflowFileExecution.DoesNotExist:
-                logger.warning(f"WorkflowFileExecution {id} not found for status update")
-                return Response(
-                    {
-                        "error": "WorkflowFileExecution not found",
-                        "detail": f"No file execution record found with ID {id}",
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
+            file_execution = self.get_object()
             serializer = FileExecutionStatusUpdateSerializer(data=request.data)
 
             if serializer.is_valid():
@@ -140,6 +122,8 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
 
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+        except APIException:
+            raise
         except Exception as e:
             logger.error(f"Failed to update file execution status {id}: {str(e)}")
             return Response(
@@ -234,23 +218,7 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
     def update_hash(self, request, id=None):
         """Update file execution with computed file hash."""
         try:
-            # Get file execution by ID with organization filtering
-            base_queryset = WorkflowFileExecution.objects.all()
-            base_queryset = filter_queryset_by_organization(
-                base_queryset, request, "workflow_execution__workflow__organization"
-            )
-
-            try:
-                file_execution = base_queryset.get(id=id)
-            except WorkflowFileExecution.DoesNotExist:
-                logger.warning(f"WorkflowFileExecution {id} not found for hash update")
-                return Response(
-                    {
-                        "error": "WorkflowFileExecution not found",
-                        "detail": f"No file execution record found with ID {id}",
-                    },
-                    status=status.HTTP_404_NOT_FOUND,
-                )
+            file_execution = self.get_object()
 
             # Extract update data
             file_hash = request.data.get("file_hash")
@@ -283,6 +251,8 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
 
+        except APIException:
+            raise
         except Exception as e:
             logger.error(f"Failed to update file execution hash {id}: {str(e)}")
             return Response(
