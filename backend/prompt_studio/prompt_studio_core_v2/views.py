@@ -47,7 +47,14 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
+from account_v2.constants import Common
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_core_v2.tasks import (
+    run_fetch_response,
+    run_index_document,
+    run_single_pass_extraction,
+)
+from utils.local_context import StateStore
 from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
     get_retrieval_strategy_metadata,
 )
@@ -369,22 +376,25 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         # Generate a run_id
         run_id = CommonUtils.generate_uuid()
 
-        unique_id = PromptStudioHelper.index_document(
-            tool_id=str(tool.tool_id),
-            file_name=file_name,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=tool.created_by.user_id,
-            document_id=document_id,
-            run_id=run_id,
+        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+        request_id = StateStore.get(Common.REQUEST_ID)
+
+        task = run_index_document.apply_async(
+            kwargs={
+                "tool_id": str(tool.tool_id),
+                "file_name": file_name,
+                "org_id": UserSessionUtils.get_organization_id(request),
+                "user_id": tool.created_by.user_id,
+                "document_id": document_id,
+                "run_id": run_id,
+                "log_events_id": log_events_id,
+                "request_id": request_id,
+            }
         )
-        if unique_id:
-            return Response(
-                {"message": "Document indexed successfully."},
-                status=status.HTTP_200_OK,
-            )
-        else:
-            logger.error("Error occured while indexing. Unique ID is not valid.")
-            raise IndexingAPIError()
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=True, methods=["post"])
     def fetch_response(self, request: HttpRequest, pk: Any = None) -> Response:
@@ -408,16 +418,26 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
-            id=id,
-            tool_id=tool_id,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=custom_tool.created_by.user_id,
-            document_id=document_id,
-            run_id=run_id,
-            profile_manager_id=profile_manager,
+        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+        request_id = StateStore.get(Common.REQUEST_ID)
+
+        task = run_fetch_response.apply_async(
+            kwargs={
+                "tool_id": tool_id,
+                "org_id": UserSessionUtils.get_organization_id(request),
+                "user_id": custom_tool.created_by.user_id,
+                "document_id": document_id,
+                "run_id": run_id,
+                "id": id,
+                "profile_manager_id": profile_manager,
+                "log_events_id": log_events_id,
+                "request_id": request_id,
+            }
         )
-        return Response(response, status=status.HTTP_200_OK)
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
@@ -439,14 +459,52 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
-            tool_id=tool_id,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=custom_tool.created_by.user_id,
-            document_id=document_id,
-            run_id=run_id,
+        log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+        request_id = StateStore.get(Common.REQUEST_ID)
+
+        task = run_single_pass_extraction.apply_async(
+            kwargs={
+                "tool_id": tool_id,
+                "org_id": UserSessionUtils.get_organization_id(request),
+                "user_id": custom_tool.created_by.user_id,
+                "document_id": document_id,
+                "run_id": run_id,
+                "log_events_id": log_events_id,
+                "request_id": request_id,
+            }
         )
-        return Response(response, status=status.HTTP_200_OK)
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=True, methods=["get"])
+    def task_status(self, request: HttpRequest, pk: Any = None, task_id: str = None) -> Response:
+        """Poll the status of an async Prompt Studio task.
+
+        Args:
+            request (HttpRequest)
+            pk: Primary key of the CustomTool (for permission check)
+            task_id: Celery task ID returned by the 202 response
+
+        Returns:
+            Response with {task_id, status} and optionally result or error
+        """
+        from celery.result import AsyncResult
+
+        from backend.celery_service import app as celery_app
+
+        result = AsyncResult(task_id, app=celery_app)
+        if not result.ready():
+            return Response({"task_id": task_id, "status": "processing"})
+        if result.successful():
+            return Response(
+                {"task_id": task_id, "status": "completed", "result": result.result}
+            )
+        return Response(
+            {"task_id": task_id, "status": "failed", "error": str(result.result)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:

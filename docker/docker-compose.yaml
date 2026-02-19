@@ -44,7 +44,7 @@ services:
     container_name: unstract-worker
     restart: unless-stopped
     entrypoint: .venv/bin/celery
-    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments --autoscale=${WORKER_AUTOSCALE}"
+    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments,celery_prompt_studio --autoscale=${WORKER_AUTOSCALE}"
     env_file:
       - ../backend/.env
     depends_on:

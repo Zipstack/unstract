@@ -31,3 +31,11 @@ class CeleryConfig:
     beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
     task_acks_late = True
+
+    # Route long-running Prompt Studio IDE tasks to a dedicated queue
+    # so they don't compete with beat/logging/API-deployment tasks.
+    task_routes = {
+        "prompt_studio_index_document": {"queue": "celery_prompt_studio"},
+        "prompt_studio_fetch_response": {"queue": "celery_prompt_studio"},
+        "prompt_studio_single_pass": {"queue": "celery_prompt_studio"},
+    }

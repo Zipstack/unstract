@@ -59,6 +59,8 @@ prompt_studio_deployment_usage = PromptStudioCoreView.as_view(
     {"get": "check_deployment_usage"}
 )
 
+prompt_studio_task_status = PromptStudioCoreView.as_view({"get": "task_status"})
+
 
 urlpatterns = format_suffix_patterns(
     [
@@ -142,6 +144,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/<uuid:pk>/check_deployment_usage/",
             prompt_studio_deployment_usage,
             name="prompt_studio_deployment_usage",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/task-status/<str:task_id>",
+            prompt_studio_task_status,
+            name="prompt-studio-task-status",
         ),
     ]
 )

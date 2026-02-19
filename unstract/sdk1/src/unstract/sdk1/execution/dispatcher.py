@@ -111,7 +111,14 @@ class ExecutionDispatcher:
         )
 
         try:
-            result_dict = async_result.get(timeout=timeout)
+            # disable_sync_subtasks=False: safe because the executor task
+            # runs on a *different* broker (RabbitMQ) and worker pool
+            # (worker-v2) — no deadlock risk even when dispatch() is
+            # called from inside a Django Celery task (Redis broker).
+            result_dict = async_result.get(
+                timeout=timeout,
+                disable_sync_subtasks=False,
+            )
         except Exception as exc:
             logger.error(
                 "Dispatch failed: executor=%s operation=%s "
