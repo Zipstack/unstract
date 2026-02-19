@@ -431,6 +431,10 @@ class InternalAPIClient(CachedAPIClientMixin):
             response_dict = response
         return WorkflowExecutionResponse.from_api_response(response_dict)
 
+    @with_cache(
+        CacheType.WORKFLOW,
+        lambda self, workflow_id, organization_id=None: str(workflow_id),
+    )
     def get_workflow(
         self, workflow_id: str | uuid.UUID, organization_id: str | None = None
     ) -> WorkflowDefinitionResponseData:
@@ -483,28 +487,29 @@ class InternalAPIClient(CachedAPIClientMixin):
             response_dict = response
         return WorkflowDefinitionResponse.from_api_response(response_dict)
 
+    @with_cache(
+        CacheType.PIPELINE,
+        lambda self, pipeline_id, organization_id=None: str(pipeline_id),
+    )
     def get_pipeline_type(
         self, pipeline_id: str | uuid.UUID, organization_id: str | None = None
     ) -> APIResponse:
         """Get pipeline type by checking APIDeployment and Pipeline models."""
         return self.execution_client.get_pipeline_type(pipeline_id, organization_id)
 
+    @with_cache(
+        CacheType.PIPELINE_DATA,
+        lambda self, pipeline_id, check_active=True, organization_id=None: str(
+            pipeline_id
+        ),
+    )
     def get_pipeline_data(
         self,
         pipeline_id: str | uuid.UUID,
         check_active: bool = True,
         organization_id: str | None = None,
     ) -> APIResponse:
-        """Get pipeline data by checking APIDeployment and Pipeline models.
-
-        Args:
-            pipeline_id: Pipeline ID
-            check_active: Whether to check if pipeline is active (default: True)
-            organization_id: Optional organization ID override
-
-        Returns:
-            APIResponse containing pipeline data
-        """
+        """Get pipeline data by checking APIDeployment and Pipeline models."""
         return self.execution_client.get_pipeline_data(
             pipeline_id=pipeline_id,
             check_active=check_active,

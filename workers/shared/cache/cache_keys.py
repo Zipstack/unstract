@@ -17,8 +17,13 @@ class CacheKeyGenerator:
 
     @staticmethod
     def pipeline_key(pipeline_id: str) -> str:
-        """Generate cache key for pipeline data."""
+        """Generate cache key for pipeline type."""
         return f"worker_cache:pipeline:{pipeline_id}"
+
+    @staticmethod
+    def pipeline_data_key(pipeline_id: str) -> str:
+        """Generate cache key for pipeline data."""
+        return f"worker_cache:pipeline_data:{pipeline_id}"
 
     @staticmethod
     def api_deployment_key(api_id: str, org_id: str) -> str:

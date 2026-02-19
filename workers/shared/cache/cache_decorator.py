@@ -81,6 +81,10 @@ def with_cache(
                         cache_key = CacheKeyGenerator.workflow_endpoints_key(
                             cache_key_suffix
                         )
+                    elif cache_type_str == CacheType.PIPELINE.value:
+                        cache_key = CacheKeyGenerator.pipeline_key(cache_key_suffix)
+                    elif cache_type_str == CacheType.PIPELINE_DATA.value:
+                        cache_key = CacheKeyGenerator.pipeline_data_key(cache_key_suffix)
                     else:
                         cache_key = CacheKeyGenerator.custom_key(
                             cache_type_str, cache_key_suffix
