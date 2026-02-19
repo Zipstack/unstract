@@ -90,7 +90,7 @@ jobs:
 
       # Build and push using Docker Bake
       - name: Build and push image
-        uses: docker/bake-action@v5
+        uses: docker/bake-action@v6
         env:
           VERSION: ${{ env.DOCKER_VERSION_TAG }}
         with:
@@ -274,7 +274,7 @@ jobs:
       # Send summary notification to Slack
       - name: Send Slack summary notification
         if: always()
-        uses: slackapi/slack-github-action@v2.1.0
+        uses: slackapi/slack-github-action@v2.1.1
         with:
           webhook-type: incoming-webhook
           payload: |
