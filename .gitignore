@@ -8,6 +8,7 @@
 !workers/run-worker.sh
 !workers/run-worker-docker.sh
 !workers/log_consumer/scheduler.sh
+!.claude/skills/worktree/worktree-setup.sh
 
 ### Django ###
 *.log
@@ -688,6 +689,7 @@ prompting/
 # Claude
 CLAUDE.md
 .claude/*
+!.claude/skills/
 CONTRIBUTION_GUIDE.md
 .mcp.json
 
