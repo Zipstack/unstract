@@ -2,24 +2,14 @@ import logging
 import os
 import re
 from collections.abc import Callable, Generator, Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, cast
 
 import litellm
 
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
-from llama_index.core.base.llms.types import (
-    ChatMessage,
-    ChatResponse,
-    ChatResponseAsyncGen,
-    ChatResponseGen,
-    CompletionResponse,
-    CompletionResponseAsyncGen,
-    CompletionResponseGen,
-    LLMMetadata,
-    MessageRole,
-)
-from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
@@ -35,6 +25,63 @@ from unstract.sdk1.utils.common import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ── Emulated llama-index types ───────────────────────────────────────────────
+# These types emulate the llama-index interface without requiring the dependency.
+# This allows LLMCompat to work with llama-index components like
+# SubQuestionQueryEngine, QueryFusionRetriever, etc.
+
+
+class MessageRole(str, Enum):
+    """Emulates llama_index.core.base.llms.types.MessageRole."""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    FUNCTION = "function"
+    TOOL = "tool"
+
+
+@dataclass
+class ChatMessage:
+    """Emulates llama_index.core.base.llms.types.ChatMessage."""
+
+    role: MessageRole = MessageRole.USER
+    content: str | None = None
+    additional_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ChatResponse:
+    """Emulates llama_index.core.base.llms.types.ChatResponse."""
+
+    message: ChatMessage = field(default_factory=ChatMessage)
+    raw: Any = None
+    delta: str | None = None
+    additional_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CompletionResponse:
+    """Emulates llama_index.core.base.llms.types.CompletionResponse."""
+
+    text: str = ""
+    raw: Any = None
+    delta: str | None = None
+    additional_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LLMMetadata:
+    """Emulates llama_index.core.base.llms.types.LLMMetadata."""
+
+    context_window: int = 4096
+    num_output: int = 256
+    is_chat_model: bool = True
+    is_function_calling_model: bool = False
+    model_name: str = ""
+    system_role: MessageRole = MessageRole.SYSTEM
 
 
 class LLM:
@@ -524,60 +571,136 @@ class LLM:
         return (response_text, post_processed_output)
 
 
-class LLMCompat(LlamaIndexBaseLLM):
-    """Compatibility wrapper that makes SDK1 LLM work with llama-index.
+class LLMCompat:
+    """Compatibility wrapper that emulates the llama-index LLM interface.
 
-    Llama-index components (KeywordTableIndex, SubQuestionQueryEngine,
-    QueryFusionRetriever, RouterQueryEngine, etc.) expect an instance of
-    ``llama_index.core.llms.llm.LLM``.  SDK1's :class:`LLM` wraps litellm
-    directly and does *not* inherit from the llama-index base class.
+    This class emulates ``llama_index.core.llms.llm.LLM`` without requiring
+    the llama-index dependency. It allows llama-index components like
+    SubQuestionQueryEngine, QueryFusionRetriever, and RouterQueryEngine
+    to work with SDK1's LLM.
 
-    This bridge follows the same pattern as :class:`EmbeddingCompat` in
-    ``unstract.sdk1.embedding``: it inherits from the llama-index base
-    and delegates to litellm using the kwargs already validated by SDK1.
+    Follows the same initialization pattern as :class:`EmbeddingCompat` in
+    ``unstract.sdk1.embedding``.
     """
 
-    def __init__(self, llm: "LLM", **kwargs: Any) -> None:  # noqa: ANN401
-        """Initialize with an SDK1 LLM instance."""
-        super().__init__(**kwargs)
-        self._llm_instance = llm
+    def __init__(
+        self,
+        adapter_id: str = "",
+        adapter_metadata: dict[str, object] | None = None,
+        adapter_instance_id: str = "",
+        tool: BaseTool | None = None,
+        usage_kwargs: dict[str, object] | None = None,
+        system_prompt: str = "",
+        kwargs: dict[str, object] | None = None,
+        capture_metrics: bool = False,
+    ) -> None:
+        """Initialize the LLMCompat wrapper for compatibility.
+
+        Args:
+            adapter_id: Adapter identifier for LLM model
+            adapter_metadata: Configuration metadata for the adapter
+            adapter_instance_id: Instance identifier for the adapter
+            tool: BaseTool instance for tool-specific operations
+            usage_kwargs: Usage tracking parameters
+            system_prompt: System prompt for the LLM
+            kwargs: Additional keyword arguments for configuration
+            capture_metrics: Whether to capture performance metrics
+        """
+        adapter_metadata = adapter_metadata or {}
+        usage_kwargs = usage_kwargs or {}
+        kwargs = kwargs or {}
+
+        self._llm_instance = LLM(
+            adapter_id=adapter_id,
+            adapter_metadata=adapter_metadata,
+            adapter_instance_id=adapter_instance_id,
+            tool=tool,
+            usage_kwargs=usage_kwargs,
+            system_prompt=system_prompt,
+            kwargs=kwargs,
+            capture_metrics=capture_metrics,
+        )
+        self._tool = tool
+        self._adapter_instance_id = adapter_instance_id
+
+        # For compatibility with SDK Callback Manager.
+        self.model_name = self._llm_instance.get_model_name()
+        self.callback_manager = None
+
+        if not PlatformHelper.is_public_adapter(adapter_id=adapter_instance_id):
+            if self._tool:
+                platform_api_key = self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+            else:
+                platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
+
+            from unstract.sdk1.utils.callback_manager import CallbackManager
+
+            CallbackManager.set_callback(
+                platform_api_key=platform_api_key,
+                model=self,
+                kwargs={
+                    **self._llm_instance.platform_kwargs,
+                    "adapter_instance_id": adapter_instance_id,
+                },
+            )
+
+    # ── Properties (llama-index interface) ───────────────────────────────────
 
     @property
     def metadata(self) -> LLMMetadata:
+        """Return LLM metadata for llama-index compatibility."""
         return LLMMetadata(
             is_chat_model=True,
             model_name=self._llm_instance.get_model_name(),
         )
 
-    def _get_completion_kwargs(self) -> dict[str, Any]:
-        return self._llm_instance.adapter.validate({**self._llm_instance.kwargs})
+    # ── Predict methods (llama-index interface) ────────────────────────────────
 
-    @staticmethod
-    def _to_litellm_messages(
-        messages: Sequence[ChatMessage],
-    ) -> list[dict[str, str]]:
-        role_map = {
-            MessageRole.SYSTEM: "system",
-            MessageRole.USER: "user",
-            MessageRole.ASSISTANT: "assistant",
-            MessageRole.FUNCTION: "function",
-            MessageRole.TOOL: "tool",
-        }
-        return [
-            {
-                "role": role_map.get(m.role, "user"),
-                "content": m.content or "",
-            }
-            for m in messages
-        ]
+    def predict(
+        self,
+        prompt: Any,  # noqa: ANN401
+        **prompt_args: Any,  # noqa: ANN401
+    ) -> str:
+        """Predict for a given prompt template (llama-index interface).
 
-    # ── Sync ─────────────────────────────────────────────
+        Emulates ``llama_index.core.llms.llm.LLM.predict`` which formats
+        the prompt template and delegates to ``chat()`` or ``complete()``.
+        """
+        if self.metadata.is_chat_model:
+            messages = prompt.format_messages(llm=self, **prompt_args)
+            chat_response = self.chat(messages)
+            return chat_response.message.content or ""
+        else:
+            formatted_prompt = prompt.format(llm=self, **prompt_args)
+            response = self.complete(formatted_prompt, formatted=True)
+            return response.text
+
+    async def apredict(
+        self,
+        prompt: Any,  # noqa: ANN401
+        **prompt_args: Any,  # noqa: ANN401
+    ) -> str:
+        """Async predict for a given prompt template (llama-index interface).
+
+        Emulates ``llama_index.core.llms.llm.LLM.apredict``.
+        """
+        if self.metadata.is_chat_model:
+            messages = prompt.format_messages(llm=self, **prompt_args)
+            chat_response = await self.achat(messages)
+            return chat_response.message.content or ""
+        else:
+            formatted_prompt = prompt.format(llm=self, **prompt_args)
+            response = await self.acomplete(formatted_prompt, formatted=True)
+            return response.text
+
+    # ── Sync methods (llama-index interface) ─────────────────────────────────
 
     def chat(
         self,
         messages: Sequence[ChatMessage],
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
+        """Synchronous chat completion."""
         litellm.drop_params = True
         response = litellm.completion(
             messages=self._to_litellm_messages(messages),
@@ -595,6 +718,7 @@ class LLMCompat(LlamaIndexBaseLLM):
         formatted: bool = False,
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
+        """Synchronous completion."""
         litellm.drop_params = True
         response = litellm.completion(
             messages=[{"role": "user", "content": prompt}],
@@ -607,24 +731,27 @@ class LLMCompat(LlamaIndexBaseLLM):
         self,
         messages: Sequence[ChatMessage],
         **kwargs: Any,  # noqa: ANN401
-    ) -> ChatResponseGen:
-        raise NotImplementedError("Streaming chat is not supported by LLMCompat.")
+    ) -> Generator[ChatResponse, None, None]:
+        """Streaming chat - not implemented."""
+        raise NotImplementedError("stream_chat is not supported by LLMCompat.")
 
     def stream_complete(
         self,
         prompt: str,
         formatted: bool = False,
         **kwargs: Any,  # noqa: ANN401
-    ) -> CompletionResponseGen:
-        raise NotImplementedError("Streaming completion is not supported by LLMCompat.")
+    ) -> Generator[CompletionResponse, None, None]:
+        """Streaming completion - not implemented."""
+        raise NotImplementedError("stream_complete is not supported by LLMCompat.")
 
-    # ── Async ────────────────────────────────────────────
+    # ── Async methods (llama-index interface) ────────────────────────────────
 
     async def achat(
         self,
         messages: Sequence[ChatMessage],
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
+        """Asynchronous chat completion."""
         litellm.drop_params = True
         response = await litellm.acompletion(
             messages=self._to_litellm_messages(messages),
@@ -642,6 +769,7 @@ class LLMCompat(LlamaIndexBaseLLM):
         formatted: bool = False,
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
+        """Asynchronous completion."""
         litellm.drop_params = True
         response = await litellm.acompletion(
             messages=[{"role": "user", "content": prompt}],
@@ -654,15 +782,52 @@ class LLMCompat(LlamaIndexBaseLLM):
         self,
         messages: Sequence[ChatMessage],
         **kwargs: Any,  # noqa: ANN401
-    ) -> ChatResponseAsyncGen:
-        raise NotImplementedError("Async streaming chat is not supported by LLMCompat.")
+    ) -> Any:  # noqa: ANN401
+        """Async streaming chat - not implemented."""
+        raise NotImplementedError("astream_chat is not supported by LLMCompat.")
 
     async def astream_complete(
         self,
         prompt: str,
         formatted: bool = False,
         **kwargs: Any,  # noqa: ANN401
-    ) -> CompletionResponseAsyncGen:
-        raise NotImplementedError(
-            "Async streaming completion is not supported by LLMCompat."
-        )
+    ) -> Any:  # noqa: ANN401
+        """Async streaming completion - not implemented."""
+        raise NotImplementedError("astream_complete is not supported by LLMCompat.")
+
+    # ── Helper methods ───────────────────────────────────────────────────────
+
+    def _get_completion_kwargs(self) -> dict[str, Any]:
+        """Get validated completion kwargs."""
+        return self._llm_instance.adapter.validate({**self._llm_instance.kwargs})
+
+    @staticmethod
+    def _to_litellm_messages(
+        messages: Sequence[ChatMessage],
+    ) -> list[dict[str, str]]:
+        """Convert ChatMessage sequence to litellm message format."""
+        return [
+            {
+                "role": getattr(m.role, "value", str(m.role)),
+                "content": m.content or "",
+            }
+            for m in messages
+        ]
+
+    # ── SDK1 compatibility methods ───────────────────────────────────────────
+
+    def get_model_name(self) -> str:
+        """Gets the name of the LLM model."""
+        return self._llm_instance.get_model_name()
+
+    def get_metrics(self) -> dict[str, object]:
+        """Get captured metrics."""
+        return self._llm_instance.get_metrics()
+
+    def get_usage_reason(self) -> object:
+        """Get usage reason from platform kwargs."""
+        return self._llm_instance.get_usage_reason()
+
+    def test_connection(self) -> bool:
+        """Test connection to the LLM provider."""
+        return self._llm_instance.test_connection()
