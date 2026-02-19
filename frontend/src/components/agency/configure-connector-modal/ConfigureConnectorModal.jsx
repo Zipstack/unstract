@@ -312,7 +312,8 @@ function ConfigureConnectorModal({
           updatePayload.configuration = validatedFormData;
         }
         if (Object.keys(updatePayload).length > 0) {
-          await handleEndpointUpdate(updatePayload);
+          const result = await handleEndpointUpdate(updatePayload);
+          if (!result) return;
         }
         // Update initial values after successful save
         setInitialFormDataConfig(cloneDeep(validatedFormData));
