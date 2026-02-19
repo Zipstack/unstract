@@ -8,6 +8,8 @@ from app.models import be_db
 
 
 def authentication_middleware(func: Any) -> Any:
+    """Decorator to enforce bearer token authentication on flask routes."""
+
     def wrapper(*args: Any, **kwargs: Any) -> Any:
         token = AuthenticationMiddleware.get_token_from_auth_header(request)
         # Check if bearer token exists and validate it
@@ -23,32 +25,26 @@ def authentication_middleware(func: Any) -> Any:
 class AuthenticationMiddleware:
     @classmethod
     def validate_bearer_token(cls, token: str | None) -> bool:
+        """Validate the provided bearer token against the database."""
         try:
             if token is None:
                 current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
             platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
-            query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-            cursor = be_db.execute_sql(query)
+            query = f"SELECT * FROM {platform_key_table} WHERE key = %s"
+            cursor = be_db.execute_sql(query, (token,))
             result_row = cursor.fetchone()
             cursor.close()
             if not result_row or len(result_row) == 0:
-                current_app.logger.error(
-                    f"Authentication failed. bearer token not found {token}"
-                )
+                current_app.logger.error("Authentication failed. bearer token not found")
                 return False
             platform_key = str(result_row[1])
             is_active = bool(result_row[2])
             if not is_active:
-                current_app.logger.error(
-                    f"Token is not active. Activate \
-                        before using it. token {token}"
-                )
+                current_app.logger.error("Token is not active. Activate before using it.")
                 return False
             if platform_key != token:
-                current_app.logger.error(
-                    f"Authentication failed. Invalid bearer token: {token}"
-                )
+                current_app.logger.error("Authentication failed. Invalid bearer token")
                 return False
 
         except Exception as e:
@@ -62,6 +58,7 @@ class AuthenticationMiddleware:
 
     @classmethod
     def get_token_from_auth_header(cls, request: Request) -> str | None:
+        """Extract the bearer token from the Authorization header."""
         try:
             bearer_token = request.headers.get("Authorization")
             if not bearer_token:
@@ -99,6 +96,7 @@ class AuthenticationMiddleware:
 
     @classmethod
     def execute_query(cls, query: str, params: tuple = ()) -> Any:
+        """Execute a SQL query and return the first result."""
         cursor = be_db.execute_sql(query, params)
         result_row = cursor.fetchone()
         cursor.close()
