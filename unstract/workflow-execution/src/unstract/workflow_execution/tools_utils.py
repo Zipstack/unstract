@@ -179,7 +179,39 @@ class ToolsUtils:
         file_execution_id: str,
         tool_sandbox: ToolSandbox,
     ) -> RunnerContainerRunResponse | None:
-        return self.run_tool_with_retry(file_execution_id, tool_sandbox)
+        # Check if this is a structure tool and feature flag is enabled
+        is_structure_tool = (
+            ToolExecution.STRUCTURE_TOOL_IMAGE_IDENTIFIER in tool_sandbox.image_name
+        )
+        use_celery = False
+
+        if is_structure_tool:
+            # Check feature flag for structure tool execution
+            use_celery = self._should_use_celery_for_structure()
+
+        if use_celery:
+            # Celery execution path - bypass Runner entirely
+            logger.info(
+                f"Routing structure tool to Celery worker for file_execution_id={file_execution_id}"
+            )
+            return self._dispatch_celery_task(
+                task_name="structure",
+                file_execution_id=file_execution_id,
+                tool_sandbox=tool_sandbox,
+            )
+        else:
+            # Docker execution path (original)
+            return self.run_tool_with_retry(file_execution_id, tool_sandbox)
+
+    def _should_use_celery_for_structure(self) -> bool:
+        """Check feature flag to determine if structure tool should use Celery.
+
+        Returns:
+            bool: True if Celery should be used, False for Docker
+        """
+        from unstract.flags.feature_flag import check_feature_flag_status
+
+        return check_feature_flag_status("use_structure_celery_task")
 
     def run_tool_with_retry(
         self,
@@ -206,6 +238,136 @@ class ToolsUtils:
                     )
                     raise e
         return None
+
+    def _dispatch_celery_task(
+        self,
+        task_name: str,
+        file_execution_id: str,
+        tool_sandbox: ToolSandbox,
+    ) -> RunnerContainerRunResponse:
+        """Dispatch execution to Celery task instead of Docker.
+
+        Args:
+            task_name: Name of the task (e.g., "structure")
+            file_execution_id: File execution ID
+            tool_sandbox: ToolSandbox instance containing settings and context
+
+        Returns:
+            RunnerContainerRunResponse with task result
+        """
+        from celery import current_app
+
+        from unstract.tool_sandbox.dto import RunnerContainerRunStatus
+
+        # Map task_name to full Celery task path
+        task_map = {
+            "structure": "structure.execute_extraction",
+            # Future: Add other migrated tasks here
+        }
+
+        full_task_name = task_map.get(task_name)
+        if not full_task_name:
+            raise ValueError(f"Unknown Celery task: {task_name}")
+
+        # Get execution context from file handler
+        from unstract.workflow_execution.execution_file_handler import (
+            ExecutionFileHandler,
+        )
+
+        file_handler = ExecutionFileHandler(
+            workflow_id=self.workflow_id,
+            execution_id=tool_sandbox.helper.execution_id,
+            organization_id=self.organization_id,
+            file_execution_id=file_execution_id,
+        )
+
+        # Get metadata to extract execution context
+        try:
+            metadata = file_handler.get_workflow_metadata()
+        except Exception:
+            # If metadata doesn't exist yet, create minimal metadata
+            metadata = {
+                "source_name": "INFILE",
+                "source_hash": "",
+                "tags": [],
+                "llm_profile_id": None,
+                "custom_data": {},
+            }
+
+        # Get source file path and output directory
+        source_file_path = file_handler.infile
+        _, source_file_name = (
+            os.path.split(source_file_path) if source_file_path else ("", "INFILE")
+        )
+
+        # Determine output directory based on tool instance
+        tool_instance_id = tool_sandbox.get_tool_instance_id()
+        if tool_instance_id:
+            output_dir = f"{file_handler.file_execution_dir}/{tool_instance_id}"
+        else:
+            output_dir = file_handler.file_execution_dir
+
+        # Build task parameters
+        task_kwargs = {
+            "settings": tool_sandbox.get_tool_instance_settings(),
+            "file_execution_id": file_execution_id,
+            "organization_id": self.organization_id,
+            "workflow_id": self.workflow_id,
+            "tool_instance_id": tool_instance_id or "",
+            "platform_api_key": self.platform_service_api_key,
+            "execution_id": tool_sandbox.helper.execution_id,
+            "source_file_name": source_file_name,
+            "input_file_path": source_file_path or "",
+            "output_dir": output_dir or "",
+            "exec_metadata": {
+                "source_hash": metadata.get("source_hash", ""),
+                "llm_profile_id": metadata.get("llm_profile_id"),
+                "custom_data": metadata.get("custom_data", {}),
+            },
+            "tags": metadata.get("tags", []),
+        }
+
+        # Send task to Celery
+        logger.info(
+            f"Dispatching Celery task {full_task_name} for file_execution_id={file_execution_id}"
+        )
+
+        # Determine queue name based on task
+        queue_name = "structure_extraction" if task_name == "structure" else "celery"
+
+        task = current_app.send_task(
+            full_task_name,
+            kwargs=task_kwargs,
+            queue=queue_name,
+        )
+
+        # Wait for result (blocking)
+        try:
+            result = task.get(timeout=7200)  # 2 hour timeout
+
+            # Convert Celery result to RunnerContainerRunResponse format
+            logger.info(
+                f"Celery task {full_task_name} completed successfully for "
+                f"file_execution_id={file_execution_id}"
+            )
+
+            return RunnerContainerRunResponse(
+                type="RESULT",
+                status=RunnerContainerRunStatus.SUCCESS,
+                result=result,
+                error=None,
+            )
+        except Exception as e:
+            logger.error(
+                f"Celery task {full_task_name} failed for "
+                f"file_execution_id={file_execution_id}: {e}"
+            )
+            return RunnerContainerRunResponse(
+                type="RESULT",
+                status=RunnerContainerRunStatus.ERROR,
+                result=None,
+                error=str(e),
+            )
 
     def get_tool_environment_variables(self) -> dict[str, Any]:
         """Obtain a dictionary of env variables required by a tool.
