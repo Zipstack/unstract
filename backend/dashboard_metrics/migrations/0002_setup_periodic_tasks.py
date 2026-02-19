@@ -1,14 +1,42 @@
-"""Data migration to create periodic cleanup tasks for dashboard metrics."""
+"""Data migration to create periodic tasks for dashboard metrics.
+
+Creates three periodic tasks:
+- Aggregation: Every 15 minutes, queries source tables and populates
+  EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
+- Hourly cleanup: Daily at 2:00 AM UTC, removes hourly data older than 30 days
+- Daily cleanup: Weekly on Sundays at 3:00 AM UTC, removes daily data older than 365 days
+"""
 
 from django.db import migrations
 
 
-def create_cleanup_tasks(apps, schema_editor):
-    """Create periodic tasks for metrics cleanup."""
+def create_periodic_tasks(apps, schema_editor):
+    """Create all periodic tasks for metrics processing."""
     CrontabSchedule = apps.get_model("django_celery_beat", "CrontabSchedule")
+    IntervalSchedule = apps.get_model("django_celery_beat", "IntervalSchedule")
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
 
-    # Schedule for hourly cleanup: Daily at 2:00 AM UTC
+    # --- Aggregation task: every 15 minutes ---
+    schedule_15min, _ = IntervalSchedule.objects.get_or_create(
+        every=15,
+        period="minutes",
+    )
+
+    PeriodicTask.objects.update_or_create(
+        name="dashboard_metrics_aggregate_from_sources",
+        defaults={
+            "task": "dashboard_metrics.aggregate_from_sources",
+            "interval": schedule_15min,
+            "queue": "dashboard_metric_events",
+            "enabled": True,
+            "description": (
+                "Aggregate metrics from source tables (Usage, PageUsage, etc.) "
+                "into hourly, daily, and monthly metrics tables"
+            ),
+        },
+    )
+
+    # --- Hourly cleanup task: daily at 2:00 AM UTC ---
     schedule_2am, _ = CrontabSchedule.objects.get_or_create(
         minute="0",
         hour="2",
@@ -18,7 +46,6 @@ def create_cleanup_tasks(apps, schema_editor):
         defaults={"timezone": "UTC"},
     )
 
-    # Create periodic task for hourly metrics cleanup
     PeriodicTask.objects.update_or_create(
         name="dashboard_metrics_cleanup_hourly",
         defaults={
@@ -31,7 +58,7 @@ def create_cleanup_tasks(apps, schema_editor):
         },
     )
 
-    # Schedule for daily cleanup: Weekly on Sundays at 3:00 AM UTC
+    # --- Daily cleanup task: weekly on Sundays at 3:00 AM UTC ---
     schedule_3am_sun, _ = CrontabSchedule.objects.get_or_create(
         minute="0",
         hour="3",
@@ -41,7 +68,6 @@ def create_cleanup_tasks(apps, schema_editor):
         defaults={"timezone": "UTC"},
     )
 
-    # Create periodic task for daily metrics cleanup
     PeriodicTask.objects.update_or_create(
         name="dashboard_metrics_cleanup_daily",
         defaults={
@@ -55,12 +81,13 @@ def create_cleanup_tasks(apps, schema_editor):
     )
 
 
-def remove_cleanup_tasks(apps, schema_editor):
-    """Remove periodic tasks on rollback."""
+def remove_periodic_tasks(apps, schema_editor):
+    """Remove all periodic tasks on rollback."""
     PeriodicTask = apps.get_model("django_celery_beat", "PeriodicTask")
 
     PeriodicTask.objects.filter(
         name__in=[
+            "dashboard_metrics_aggregate_from_sources",
             "dashboard_metrics_cleanup_hourly",
             "dashboard_metrics_cleanup_daily",
         ]
@@ -75,7 +102,7 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.RunPython(
-            create_cleanup_tasks,
-            remove_cleanup_tasks,
+            create_periodic_tasks,
+            remove_periodic_tasks,
         ),
     ]

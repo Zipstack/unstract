@@ -67,6 +67,10 @@ function useMetricsOverview(startDate = null, endDate = null) {
   useEffect(() => {
     if (orgId) {
       fetchOverview();
+    } else {
+      setData(null);
+      setLoading(false);
+      setError(null);
     }
   }, [orgId, startDate, endDate]); // eslint-disable-line
 
@@ -114,6 +118,10 @@ function useRecentActivity(limit = 10) {
   useEffect(() => {
     if (orgId) {
       fetchActivity();
+    } else {
+      setData(null);
+      setLoading(false);
+      setError(null);
     }
   }, [orgId, limit]); // eslint-disable-line
 
@@ -182,6 +190,10 @@ function useWorkflowTokenUsage(startDate, endDate) {
   useEffect(() => {
     if (orgId && startDate && endDate) {
       fetchUsage();
+    } else {
+      setData(null);
+      setLoading(false);
+      setError(null);
     }
   }, [orgId, startDate, endDate]); // eslint-disable-line
 

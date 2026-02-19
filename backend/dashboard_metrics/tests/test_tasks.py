@@ -106,7 +106,6 @@ class TestCleanupTasks(TransactionTestCase):
             metric_type=MetricType.COUNTER,
             metric_value=10,
             metric_count=1,
-            labels={},
             project="default",
         )
 
@@ -118,7 +117,6 @@ class TestCleanupTasks(TransactionTestCase):
             metric_type=MetricType.COUNTER,
             metric_value=20,
             metric_count=1,
-            labels={},
             project="default",
         )
 
@@ -146,7 +144,6 @@ class TestCleanupTasks(TransactionTestCase):
             metric_type=MetricType.COUNTER,
             metric_value=100,
             metric_count=10,
-            labels={},
             project="default",
         )
 
@@ -158,7 +155,6 @@ class TestCleanupTasks(TransactionTestCase):
             metric_type=MetricType.COUNTER,
             metric_value=200,
             metric_count=20,
-            labels={},
             project="default",
         )
 
@@ -187,7 +183,6 @@ class TestCleanupTasks(TransactionTestCase):
             metric_type=MetricType.COUNTER,
             metric_value=10,
             metric_count=1,
-            labels={},
             project="default",
         )
 

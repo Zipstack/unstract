@@ -817,24 +817,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(response_data, status=status.HTTP_200_OK)
 
-    def _apply_filters(self, queryset, params):
-        """Apply common filters to queryset."""
-        queryset = queryset.filter(
-            timestamp__gte=params["start_date"],
-            timestamp__lte=params["end_date"],
-        )
-
-        if params.get("metric_name"):
-            queryset = queryset.filter(metric_name=params["metric_name"])
-
-        if params.get("project"):
-            queryset = queryset.filter(project=params["project"])
-
-        if "tag" in params and params["tag"] is not None:
-            queryset = queryset.filter(tag=params["tag"])
-
-        return queryset
-
     @action(detail=False, methods=["get"], url_path="recent-activity")
     def recent_activity(self, request: Request) -> Response:
         """Get recent processing activity differentiated by type.

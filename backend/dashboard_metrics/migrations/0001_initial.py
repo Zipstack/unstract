@@ -2,7 +2,6 @@
 
 import uuid
 
-import django.contrib.postgres.indexes
 import django.db.models.deletion
 from django.db import migrations, models
 
@@ -11,7 +10,7 @@ class Migration(migrations.Migration):
     initial = True
 
     dependencies = [
-        ("account_v2", "0004_alter_platformkey_key_name"),
+        ("account_v2", "0002_user_auth_provider"),
     ]
 
     operations = [
@@ -70,13 +69,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "labels",
-                    models.JSONField(
-                        db_comment="Dimensional labels as JSONB for flexible querying",
-                        default=dict,
-                    ),
-                ),
-                (
                     "project",
                     models.CharField(
                         db_comment="Project identifier for filtering",
@@ -120,9 +112,6 @@ class Migration(migrations.Migration):
                     ),
                     models.Index(
                         fields=["project", "timestamp"], name="idx_metrics_project_ts"
-                    ),
-                    django.contrib.postgres.indexes.GinIndex(
-                        fields=["labels"], name="idx_metrics_labels_gin"
                     ),
                 ],
             },
@@ -189,13 +178,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "labels",
-                    models.JSONField(
-                        db_comment="Dimensional labels as JSONB for flexible querying",
-                        default=dict,
-                    ),
-                ),
-                (
                     "project",
                     models.CharField(
                         db_comment="Project identifier for filtering",
@@ -241,10 +223,6 @@ class Migration(migrations.Migration):
                     models.Index(
                         fields=["project", "date"],
                         name="idx_daily_project_date",
-                    ),
-                    django.contrib.postgres.indexes.GinIndex(
-                        fields=["labels"],
-                        name="idx_daily_labels_gin",
                     ),
                 ],
             },
@@ -311,13 +289,6 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 (
-                    "labels",
-                    models.JSONField(
-                        db_comment="Dimensional labels as JSONB for flexible querying",
-                        default=dict,
-                    ),
-                ),
-                (
                     "project",
                     models.CharField(
                         db_comment="Project identifier for filtering",
@@ -363,10 +334,6 @@ class Migration(migrations.Migration):
                     models.Index(
                         fields=["project", "month"],
                         name="idx_monthly_project_month",
-                    ),
-                    django.contrib.postgres.indexes.GinIndex(
-                        fields=["labels"],
-                        name="idx_monthly_labels_gin",
                     ),
                 ],
             },

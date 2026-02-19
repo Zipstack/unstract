@@ -72,47 +72,6 @@ class MetricsQuerySerializer(serializers.Serializer):
         return attrs
 
 
-class MetricDataPointSerializer(serializers.Serializer):
-    """Serializer for a single metric data point."""
-
-    timestamp = serializers.DateTimeField()
-    value = serializers.FloatField()
-    count = serializers.IntegerField()
-
-
-class MetricSeriesSerializer(serializers.Serializer):
-    """Serializer for a metric time series."""
-
-    metric_name = serializers.CharField()
-    metric_type = serializers.CharField()
-    project = serializers.CharField()
-    tag = serializers.CharField(allow_null=True)
-    data = MetricDataPointSerializer(many=True)
-    total_value = serializers.FloatField()
-    total_count = serializers.IntegerField()
-
-
-class MetricsSummarySerializer(serializers.Serializer):
-    """Serializer for metrics summary response."""
-
-    metric_name = serializers.CharField()
-    total_value = serializers.FloatField()
-    total_count = serializers.IntegerField()
-    average_value = serializers.FloatField()
-    min_value = serializers.FloatField()
-    max_value = serializers.FloatField()
-
-
-class MetricsResponseSerializer(serializers.Serializer):
-    """Serializer for the complete metrics API response."""
-
-    start_date = serializers.DateTimeField()
-    end_date = serializers.DateTimeField()
-    granularity = serializers.CharField()
-    series = MetricSeriesSerializer(many=True)
-    summary = MetricsSummarySerializer(many=True)
-
-
 class EventMetricsHourlySerializer(serializers.ModelSerializer):
     """Model serializer for EventMetricsHourly records."""
 
@@ -125,7 +84,6 @@ class EventMetricsHourlySerializer(serializers.ModelSerializer):
             "metric_type",
             "metric_value",
             "metric_count",
-            "labels",
             "project",
             "tag",
             "created_at",

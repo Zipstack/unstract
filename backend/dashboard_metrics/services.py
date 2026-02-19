@@ -2,10 +2,7 @@
 
 This module provides the MetricsQueryService class which queries metrics
 directly from source tables (usage, page_usage, workflow_execution, etc.)
-instead of relying on the event_metrics_hourly aggregation table.
-
-This enables immediate metrics availability without waiting for real-time
-capture integration to be completed.
+and aggregates them into event_metrics_hourly/daily/monthly tables.
 
 Note: Uses _base_manager for models with DefaultOrganizationManagerMixin
 to bypass the UserContext filter when running from Celery tasks.

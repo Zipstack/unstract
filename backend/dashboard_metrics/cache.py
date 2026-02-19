@@ -24,13 +24,9 @@ from typing import Any
 
 from django.conf import settings
 from django.core.cache import cache
-from django.db.models import Sum
 from django.utils import timezone
 from rest_framework.response import Response
-from utils.cache_service import CacheService
 from utils.user_context import UserContext
-
-from dashboard_metrics.models import EventMetricsHourly
 
 logger = logging.getLogger(__name__)
 
@@ -53,39 +49,6 @@ CACHE_TTL_WORKFLOW_USAGE = getattr(settings, "DASHBOARD_CACHE_TTL_WORKFLOW_USAGE
 
 # Cache key prefix
 CACHE_PREFIX = "dashboard_metrics"
-
-
-def get_time_aware_cache_ttl(query_end_date: datetime | None = None) -> int:
-    """Get appropriate cache TTL based on whether query includes current hour.
-
-    The cache TTL is determined by whether the query timeframe includes
-    the current hour (which is still being updated) or only historical
-    data (which is stable).
-
-    Args:
-        query_end_date: End date of the query timeframe. If None or includes
-            the current hour, uses short TTL.
-
-    Returns:
-        Cache TTL in seconds
-    """
-    now = timezone.now()
-    current_hour_start = now.replace(minute=0, second=0, microsecond=0)
-
-    # If no end date provided or end date includes current hour, use short TTL
-    if query_end_date is None:
-        return CACHE_TTL_CURRENT_HOUR
-
-    # Make query_end_date timezone aware if it isn't
-    if query_end_date.tzinfo is None:
-        query_end_date = timezone.make_aware(query_end_date, timezone.utc)
-
-    # If query includes current hour, use short TTL
-    if query_end_date >= current_hour_start:
-        return CACHE_TTL_CURRENT_HOUR
-
-    # Historical data only - use long TTL
-    return CACHE_TTL_HISTORICAL
 
 
 def _build_cache_key(org_id: str, endpoint: str, params: dict[str, Any]) -> str:
@@ -164,105 +127,6 @@ def cache_metrics_response(
         return wrapper
 
     return decorator
-
-
-def invalidate_metrics_cache(org_id: str) -> int:
-    """Invalidate all cached metrics for an organization.
-
-    Args:
-        org_id: Organization identifier
-
-    Returns:
-        Number of keys invalidated
-    """
-    pattern = f"{CACHE_PREFIX}:{org_id}:*"
-    try:
-        CacheService.clear_cache(pattern)
-        logger.info(f"Invalidated metrics cache for org {org_id}")
-        return 1  # Pattern-based delete doesn't return count
-    except Exception:
-        logger.exception("Failed to invalidate cache for org %s", org_id)
-        return 0
-
-
-class MetricsCacheService:
-    """Service class for metrics-specific caching operations."""
-
-    @staticmethod
-    def get_cached_overview(org_id: str) -> dict[str, Any] | None:
-        """Get cached overview data for an organization."""
-        cache_key = _build_cache_key(org_id, "overview", {})
-        return cache.get(cache_key)
-
-    @staticmethod
-    def set_cached_overview(org_id: str, data: dict[str, Any]) -> None:
-        """Set cached overview data for an organization."""
-        cache_key = _build_cache_key(org_id, "overview", {})
-        cache.set(cache_key, data, CACHE_TTL_OVERVIEW)
-
-    @staticmethod
-    def get_cached_summary(
-        org_id: str,
-        start_date: str,
-        end_date: str,
-        metric_name: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Get cached summary data."""
-        params = {
-            "start_date": start_date,
-            "end_date": end_date,
-            "metric_name": metric_name,
-        }
-        cache_key = _build_cache_key(org_id, "summary", params)
-        return cache.get(cache_key)
-
-    @staticmethod
-    def set_cached_summary(
-        org_id: str,
-        start_date: str,
-        end_date: str,
-        data: dict[str, Any],
-        metric_name: str | None = None,
-    ) -> None:
-        """Set cached summary data."""
-        params = {
-            "start_date": start_date,
-            "end_date": end_date,
-            "metric_name": metric_name,
-        }
-        cache_key = _build_cache_key(org_id, "summary", params)
-        cache.set(cache_key, data, CACHE_TTL_SUMMARY)
-
-    @staticmethod
-    def warm_cache(org_id: str) -> None:
-        """Pre-warm cache with commonly accessed data.
-
-        Useful for background tasks to prepare cache after
-        new metric data is processed.
-        """
-        try:
-            # Warm overview cache
-            end_date = timezone.now()
-            start_date = end_date - timedelta(days=7)
-
-            overview = (
-                EventMetricsHourly.objects.filter(
-                    organization_id=org_id,
-                    timestamp__gte=start_date,
-                    timestamp__lte=end_date,
-                )
-                .values("metric_name")
-                .annotate(
-                    total_value=Sum("metric_value"),
-                    total_count=Sum("metric_count"),
-                )
-            )
-
-            MetricsCacheService.set_cached_overview(org_id, list(overview))
-            logger.debug(f"Warmed overview cache for org {org_id}")
-
-        except Exception:
-            logger.exception("Failed to warm cache for org %s", org_id)
 
 
 # =============================================================================
@@ -540,32 +404,3 @@ def mset_metrics_buckets(
         return 0
 
 
-def get_bucket_cache_stats(
-    org_id: str,
-    start_date: datetime,
-    end_date: datetime,
-    granularity: str = "hourly",
-) -> dict[str, Any]:
-    """Get cache statistics for a time range (for debugging/monitoring).
-
-    Args:
-        org_id: Organization identifier
-        start_date: Start of date range
-        end_date: End of date range
-        granularity: 'hourly', 'daily', or 'monthly'
-
-    Returns:
-        Dict with cache statistics
-    """
-    buckets = generate_time_buckets(start_date, end_date, granularity)
-    cached_data, missing_buckets = mget_metrics_buckets(
-        org_id, start_date, end_date, granularity
-    )
-
-    return {
-        "total_buckets": len(buckets),
-        "cached_buckets": len(cached_data),
-        "missing_buckets": len(missing_buckets),
-        "hit_rate": len(cached_data) / len(buckets) if buckets else 0,
-        "granularity": granularity,
-    }

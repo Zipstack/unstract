@@ -7,7 +7,7 @@ This module provides a metrics dashboard for monitoring document processing, API
 ## Quick Reference (TL;DR)
 
 ### What It Does
-- Tracks **9 metrics**: documents processed, pages processed, LLM calls, challenges, summarization calls, API requests, ETL executions, LLM costs, and prompt executions
+- Tracks **12 metrics**: documents processed, pages processed, LLM calls, challenges, summarization calls, API requests, ETL executions, LLM costs, prompt executions, failed pages, HITL reviews, and HITL completions
 - Aggregates data from 4 source tables into 3 pre-computed tables (hourly/daily/monthly)
 - Provides REST API endpoints with Redis caching for fast dashboard rendering
 
@@ -143,11 +143,34 @@ celery -A backend beat -l info
                     └───────────────────────────┘
 ```
 
+### Why Pre-Aggregated Tables Are Safe
+
+The dashboard reads from **pre-aggregated tables** (`event_metrics_hourly`, `event_metrics_daily`, `event_metrics_monthly`) rather than querying source tables directly. This design is intentionally safe for both reads and writes:
+
+**Write Safety:**
+- Aggregation tables are **write-isolated** — only the Celery aggregation task (`aggregate_from_sources`) and the `backfill_metrics` management command write to them. No user-facing request path writes to these tables.
+- Writes use `update_or_create` with a unique constraint on `(organization, timestamp, metric_name, project, tag)`, making upserts idempotent. Running the aggregation task twice for the same period simply overwrites with the same values.
+- Aggregation tasks use `_base_manager` to bypass Django's `DefaultOrganizationManagerMixin`, which relies on `UserContext` (unavailable in Celery). This is safe because the task already scopes all queries by `organization_id`.
+
+**Read Safety:**
+- Dashboard API endpoints read **only** from pre-aggregated tables, never from source tables (except `/live-summary/` and `/live-series/` which are for real-time fallback).
+- B-tree indexes on `(organization, metric_name, timestamp/date/month)` ensure efficient lookups. Even with millions of rows, queries are index-only scans.
+- No expensive joins — each aggregated row is self-contained with `metric_name`, `metric_value`, and `metric_count`.
+
+**No Impact on Source Tables:**
+- The aggregation task only runs `SELECT` queries against source tables (`usage_v2`, `page_usage`, `workflow_execution`, `workflow_file_execution`). It never modifies them.
+- Source table performance is unaffected by the dashboard feature. If the aggregation task is slow or fails, source tables continue working normally.
+
+**Failure Resilience:**
+- If the aggregation task fails, the dashboard shows stale data (up to 15 minutes old) rather than crashing.
+- Celery tasks have `max_retries=3` with exponential backoff.
+- Cleanup tasks (hourly: 30-day retention, daily: 365-day retention) prevent unbounded table growth.
+
 ---
 
 ## Metrics Definitions
 
-### All 9 Metrics
+### All 12 Metrics
 
 | Metric Name | Type | Description | Unit |
 |-------------|------|-------------|------|
@@ -160,6 +183,9 @@ celery -A backend beat -l info
 | `etl_pipeline_executions` | Counter | ETL pipeline workflow executions | count |
 | `llm_usage` | Histogram | LLM usage cost | USD ($) |
 | `prompt_executions` | Counter | Total workflow/prompt executions | count |
+| `failed_pages` | Histogram | Pages that failed during processing | count |
+| `hitl_reviews` | Counter | HITL (Human-in-the-Loop) reviews initiated | count |
+| `hitl_completions` | Counter | HITL reviews completed | count |
 
 ### Metric Types: Counter vs Histogram
 
@@ -170,13 +196,15 @@ The `metric_type` field distinguishes how metrics are aggregated:
 | **Counter** | `COUNT(id)` | Counting discrete events | "How many LLM calls happened?" |
 | **Histogram** | `SUM(value)` | Summing continuous values | "How many pages were processed?" |
 
-**Counter Metrics** (7 metrics):
+**Counter Metrics** (9 metrics):
 - `documents_processed`, `llm_calls`, `challenges`, `summarization_calls`
 - `deployed_api_requests`, `etl_pipeline_executions`, `prompt_executions`
+- `hitl_reviews`, `hitl_completions`
 
-**Histogram Metrics** (2 metrics):
+**Histogram Metrics** (3 metrics):
 - `pages_processed` - Sums `pages_processed` field from PageUsage
 - `llm_usage` - Sums `cost_in_dollars` field from Usage
+- `failed_pages` - Sums failed pages from PageUsage
 
 The `metric_count` field tracks how many source records were aggregated, useful for calculating averages (`total_value / metric_count`).
 
@@ -286,7 +314,6 @@ class EventMetricsHourly(Model):
     metric_type = CharField(choices=["counter", "histogram"])
     metric_value = FloatField()           # Aggregated value
     metric_count = IntegerField()         # Number of events aggregated
-    labels = JSONField()                  # Additional dimensions
     project = CharField(default="default")
     tag = CharField(blank=True)
     created_at = DateTimeField(auto_now_add=True)
@@ -685,20 +712,6 @@ Options:
   --skip-monthly    Skip monthly aggregation
 ```
 
-### `generate_metrics_test_data`
-
-Creates test data in source tables for development.
-
-```bash
-python manage.py generate_metrics_test_data [options]
-
-Options:
-  --org-id=UUID         Organization ID
-  --days=N              Days of data to generate (default: 7)
-  --records-per-day=N   Records per day per table (default: 20)
-  --clean               Remove existing test data first
-```
-
 ---
 
 ## Troubleshooting
@@ -751,16 +764,11 @@ result = aggregate_metrics_from_sources()
 print(result)
 "
 
-# Check cache stats
+# Check Redis cache keys
 python manage.py shell -c "
-from dashboard_metrics.cache import get_bucket_cache_stats
-from django.utils import timezone
-from datetime import timedelta
-
-end = timezone.now()
-start = end - timedelta(days=7)
-stats = get_bucket_cache_stats('your-org-id', start, end, 'hourly')
-print(stats)
+from django.core.cache import cache
+keys = cache.keys('metrics:*')
+print(f'Cached metric keys: {len(keys)}')
 "
 ```
 
@@ -783,12 +791,10 @@ backend/dashboard_metrics/
 ├── README.md                   # This file
 ├── management/
 │   └── commands/
-│       ├── backfill_metrics.py
-│       └── generate_metrics_test_data.py
+│       └── backfill_metrics.py # Backfill historical data
 ├── migrations/
-│   ├── 0001_initial.py                    # Create tables
-│   ├── 0002_setup_cleanup_tasks.py        # Cleanup periodic tasks
-│   └── 0003_setup_aggregation_task.py     # Aggregation periodic task
+│   ├── 0001_initial.py                    # Create 3 aggregation tables
+│   └── 0002_setup_periodic_tasks.py       # Register Celery Beat schedules
 └── tests/
     └── test_tasks.py
 ```

@@ -2,7 +2,6 @@
 
 import uuid
 
-from django.contrib.postgres.indexes import GinIndex
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -40,7 +39,7 @@ class EventMetricsHourly(DefaultOrganizationMixin, BaseModel):
     """Hourly aggregated metrics for dashboard display.
 
     Stores metric events aggregated by hour for efficient querying.
-    Uses JSONB for flexible label storage with GIN index for fast lookups.
+    Pre-computed by the scheduled aggregation task every 15 minutes.
 
     Attributes:
         id: UUID primary key
@@ -49,7 +48,6 @@ class EventMetricsHourly(DefaultOrganizationMixin, BaseModel):
         metric_type: Type of metric (counter or histogram)
         metric_value: Aggregated value (sum for counters, sum for histograms)
         metric_count: Number of events aggregated into this record
-        labels: Dimensional labels as JSONB for flexible querying
         project: Project identifier for filtering
         tag: Optional tag for categorization
     """
@@ -82,10 +80,6 @@ class EventMetricsHourly(DefaultOrganizationMixin, BaseModel):
     metric_count = models.IntegerField(
         default=1,
         db_comment="Number of events aggregated into this record",
-    )
-    labels = models.JSONField(
-        default=dict,
-        db_comment="Dimensional labels as JSONB for flexible querying",
     )
     project = models.CharField(
         max_length=64,
@@ -123,10 +117,6 @@ class EventMetricsHourly(DefaultOrganizationMixin, BaseModel):
                 fields=["project", "timestamp"],
                 name="idx_metrics_project_ts",
             ),
-            GinIndex(
-                fields=["labels"],
-                name="idx_metrics_labels_gin",
-            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -146,7 +136,7 @@ class EventMetricsDaily(DefaultOrganizationMixin, BaseModel):
     """Daily aggregated metrics for dashboard display.
 
     Stores metric events aggregated by day for efficient querying.
-    Uses JSONB for flexible label storage with GIN index for fast lookups.
+    Pre-computed by the scheduled aggregation task every 15 minutes.
 
     Attributes:
         id: UUID primary key
@@ -155,7 +145,6 @@ class EventMetricsDaily(DefaultOrganizationMixin, BaseModel):
         metric_type: Type of metric (counter or histogram)
         metric_value: Aggregated value (sum for counters)
         metric_count: Number of events aggregated into this record
-        labels: Dimensional labels as JSONB for flexible querying
         project: Project identifier for filtering
         tag: Optional tag for categorization
     """
@@ -188,10 +177,6 @@ class EventMetricsDaily(DefaultOrganizationMixin, BaseModel):
     metric_count = models.IntegerField(
         default=1,
         db_comment="Number of events aggregated into this record",
-    )
-    labels = models.JSONField(
-        default=dict,
-        db_comment="Dimensional labels as JSONB for flexible querying",
     )
     project = models.CharField(
         max_length=64,
@@ -229,10 +214,6 @@ class EventMetricsDaily(DefaultOrganizationMixin, BaseModel):
                 fields=["project", "date"],
                 name="idx_daily_project_date",
             ),
-            GinIndex(
-                fields=["labels"],
-                name="idx_daily_labels_gin",
-            ),
         ]
         constraints = [
             models.UniqueConstraint(
@@ -252,7 +233,7 @@ class EventMetricsMonthly(DefaultOrganizationMixin, BaseModel):
     """Monthly aggregated metrics for dashboard display.
 
     Stores metric events aggregated by month for efficient querying.
-    Uses JSONB for flexible label storage with GIN index for fast lookups.
+    Pre-computed by the scheduled aggregation task every 15 minutes.
 
     Attributes:
         id: UUID primary key
@@ -261,7 +242,6 @@ class EventMetricsMonthly(DefaultOrganizationMixin, BaseModel):
         metric_type: Type of metric (counter or histogram)
         metric_value: Aggregated value (sum for counters)
         metric_count: Number of events aggregated into this record
-        labels: Dimensional labels as JSONB for flexible querying
         project: Project identifier for filtering
         tag: Optional tag for categorization
     """
@@ -294,10 +274,6 @@ class EventMetricsMonthly(DefaultOrganizationMixin, BaseModel):
     metric_count = models.IntegerField(
         default=1,
         db_comment="Number of events aggregated into this record",
-    )
-    labels = models.JSONField(
-        default=dict,
-        db_comment="Dimensional labels as JSONB for flexible querying",
     )
     project = models.CharField(
         max_length=64,
@@ -334,10 +310,6 @@ class EventMetricsMonthly(DefaultOrganizationMixin, BaseModel):
             models.Index(
                 fields=["project", "month"],
                 name="idx_monthly_project_month",
-            ),
-            GinIndex(
-                fields=["labels"],
-                name="idx_monthly_labels_gin",
             ),
         ]
         constraints = [

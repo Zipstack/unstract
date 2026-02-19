@@ -212,7 +212,6 @@ class Command(BaseCommand):
                             "metric_type": metric_type,
                             "value": 0,
                             "count": 0,
-                            "labels": {},
                         }
                     hourly_agg[key]["value"] += value
                     hourly_agg[key]["count"] += 1
@@ -232,7 +231,6 @@ class Command(BaseCommand):
                             "metric_type": metric_type,
                             "value": 0,
                             "count": 0,
-                            "labels": {},
                         }
                     daily_agg[key]["value"] += value
                     daily_agg[key]["count"] += 1
@@ -252,7 +250,6 @@ class Command(BaseCommand):
                             "metric_type": metric_type,
                             "value": 0,
                             "count": 0,
-                            "labels": {},
                         }
                     monthly_agg[key]["value"] += value
                     monthly_agg[key]["count"] += 1
@@ -286,7 +283,6 @@ class Command(BaseCommand):
                         "metric_type": agg["metric_type"],
                         "metric_value": agg["value"],
                         "metric_count": agg["count"],
-                        "labels": agg["labels"],
                     },
                 )
                 if was_created:
@@ -316,7 +312,6 @@ class Command(BaseCommand):
                         "metric_type": agg["metric_type"],
                         "metric_value": agg["value"],
                         "metric_count": agg["count"],
-                        "labels": agg["labels"],
                     },
                 )
                 if was_created:
@@ -346,7 +341,6 @@ class Command(BaseCommand):
                         "metric_type": agg["metric_type"],
                         "metric_value": agg["value"],
                         "metric_count": agg["count"],
-                        "labels": agg["labels"],
                     },
                 )
                 if was_created:

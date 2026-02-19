@@ -72,9 +72,6 @@ def _truncate_to_month(ts: datetime) -> datetime:
 def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
     """Upsert hourly aggregations, replacing existing values.
 
-    Used for scheduled aggregation where we query the complete data for each
-    time period.
-
     Uses _base_manager to bypass DefaultOrganizationManagerMixin which
     filters by UserContext.get_organization() - returns None in Celery context.
 
@@ -91,7 +88,6 @@ def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
         hour_ts = datetime.fromisoformat(hour_ts_str)
 
         try:
-            # Use _base_manager to bypass DefaultOrganizationManagerMixin filter
             obj, was_created = EventMetricsHourly._base_manager.update_or_create(
                 organization_id=org_id,
                 timestamp=hour_ts,
@@ -102,7 +98,6 @@ def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
                     "metric_type": agg["metric_type"],
                     "metric_value": agg["value"],
                     "metric_count": agg["count"],
-                    "labels": agg["labels"],
                 },
             )
             if was_created:
@@ -142,7 +137,6 @@ def _upsert_daily_replace(aggregations: dict) -> tuple[int, int]:
                     "metric_type": agg["metric_type"],
                     "metric_value": agg["value"],
                     "metric_count": agg["count"],
-                    "labels": agg["labels"],
                 },
             )
             if was_created:
@@ -182,7 +176,6 @@ def _upsert_monthly_replace(aggregations: dict) -> tuple[int, int]:
                     "metric_type": agg["metric_type"],
                     "metric_value": agg["value"],
                     "metric_count": agg["count"],
-                    "labels": agg["labels"],
                 },
             )
             if was_created:
@@ -300,7 +293,6 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                                 "metric_type": metric_type,
                                 "value": 0,
                                 "count": 0,
-                                "labels": {},
                             }
                         hourly_agg[key]["value"] += value
                         hourly_agg[key]["count"] += 1
@@ -326,7 +318,6 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                                 "metric_type": metric_type,
                                 "value": 0,
                                 "count": 0,
-                                "labels": {},
                             }
                         daily_agg[key]["value"] += value
                         daily_agg[key]["count"] += 1
@@ -361,7 +352,6 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                             "metric_type": metric_type,
                             "value": bucket["value"],
                             "count": bucket["count"] or 1,
-                            "labels": {},
                         }
 
                 except Exception as e:
