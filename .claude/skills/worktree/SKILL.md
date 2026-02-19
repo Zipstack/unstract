@@ -37,20 +37,20 @@ Create isolated worktrees for parallel development. Ends by providing commands t
 
    Match keywords in user's request to services:
 
-   | Keywords | Services |
-   |----------|----------|
-   | frontend, UI, react, component | frontend |
-   | backend, API, django | backend |
-   | platform, adapter, LLM | platform-service |
-   | prompt, studio | prompt-service |
-   | worker, celery, task | backend (includes workers) |
-   | x2text, extraction | x2text-service |
+   | Keywords                       | Services                   |
+   | ------------------------------ | -------------------------- |
+   | frontend, UI, react, component | frontend                   |
+   | backend, API, django           | backend                    |
+   | platform, adapter, LLM         | platform-service           |
+   | prompt, studio                 | prompt-service             |
+   | worker, celery, task           | backend (includes workers) |
+   | x2text, extraction             | x2text-service             |
 
    Default if unclear: `backend frontend`
 
 6. **Print summary with commands**
 
-   ```
+   ```text
    Worktree created!
 
    Branch: {branch}

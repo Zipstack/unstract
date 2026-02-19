@@ -6,7 +6,7 @@
 # Usage: ./worktree-setup.sh <target_worktree_path> [source_repo_path]
 #
 
-set -e
+set -euo pipefail
 
 show_usage() {
     echo "Usage: $0 <target_worktree_path> [source_repo_path]"
@@ -33,8 +33,13 @@ fi
 if [ -d "$TARGET_PATH" ]; then
     TARGET_PATH=$(cd "$TARGET_PATH" && pwd)
 else
-    # For new paths, resolve relative to current dir
-    TARGET_PATH=$(realpath -m "$TARGET_PATH" 2>/dev/null || echo "$TARGET_PATH")
+    # Portable: construct absolute path relative to CWD without requiring realpath
+    TARGET_PATH="$(cd "$(dirname "$TARGET_PATH")" 2>/dev/null && pwd)/$(basename "$TARGET_PATH")" \
+      || TARGET_PATH="$(pwd)/$TARGET_PATH"
+fi
+if [ ! -d "$SOURCE_PATH" ]; then
+    echo "Error: source repo path does not exist: $SOURCE_PATH"
+    show_usage 1
 fi
 SOURCE_PATH=$(cd "$SOURCE_PATH" && pwd)
 
@@ -173,13 +178,10 @@ if [ -d "$SOURCE_PATH/$SKILLS_DIR" ]; then
         fi
 
         mkdir -p "$dest_dir"
-        cp -r "$skill_dir"* "$dest_dir/" 2>/dev/null || true
-        # Copy hidden files/dirs too (e.g. .playwright-cli)
-        cp -r "$skill_dir".* "$dest_dir/" 2>/dev/null || true
-        if [ -d "$dest_dir" ]; then
-            echo "  [copied]  $skill_name/"
-            skills_copied=$((skills_copied + 1))
-        fi
+        # Trailing-dot trick: copies all contents including hidden files, but not . or ..
+        cp -r "$skill_dir." "$dest_dir/" 2>/dev/null || true
+        echo "  [copied]  $skill_name/"
+        skills_copied=$((skills_copied + 1))
     done
 
     echo ""
