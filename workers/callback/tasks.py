@@ -1025,8 +1025,9 @@ def _get_execution_directories(context: CallbackContext) -> list[tuple[str, any,
     Raises:
         ValueError: If execution type cannot be determined
     """
-    from unstract.filesystem import FileStorageType
     from unstract.workflow_execution.execution_file_handler import ExecutionFileHandler
+
+    from unstract.filesystem import FileStorageType
 
     # Determine if this is an API or workflow execution
     is_api_execution = context.pipeline_data and context.pipeline_data.get(
