@@ -130,6 +130,7 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
 
+
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
@@ -342,6 +343,7 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
     "configuration",
+    "dashboard_metrics",
 )
 TENANT_APPS = []
 

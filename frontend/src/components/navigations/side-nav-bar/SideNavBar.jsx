@@ -25,6 +25,7 @@ import VectorDbIcon from "../../../assets/vector-db.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import TerminalIcon from "../../../assets/terminal.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
+import DashboardIcon from "../../../assets/dashboard.svg";
 
 import "./SideNavBar.css";
 import "../../settings/settings/Settings.css";
@@ -313,9 +314,19 @@ const SideNavBar = ({ collapsed }) => {
     },
   ];
 
+  // Add dashboard/metrics menu items
   if (dashboardSideMenuItem) {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
+  // Add metrics menu item (available for both OSS and cloud)
+  unstractMenuItems[1].subMenu.unshift({
+    id: 2.0,
+    title: "Metrics",
+    description: "View platform usage metrics and analytics",
+    image: DashboardIcon,
+    path: `/${orgName}/metrics`,
+    active: window.location.pathname.startsWith(`/${orgName}/metrics`),
+  });
 
   // If selectedProduct is verticals and menu is null, don't show any sidebar items
   const data =

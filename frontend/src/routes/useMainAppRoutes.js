@@ -20,6 +20,7 @@ import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomTool
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
+import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
 import { UnstractAdministrationPage } from "../pages/UnstractAdministrationPage.jsx";
@@ -166,6 +167,7 @@ function useMainAppRoutes() {
         )}
         <Route path="logs" element={<LogsPage />} />
         <Route path="logs/:type/:id/" element={<LogsPage />} />
+        <Route path="metrics" element={<MetricsDashboardPage />} />
         <Route
           path="settings/llms"
           element={<ToolsSettingsPage type="llm" />}
