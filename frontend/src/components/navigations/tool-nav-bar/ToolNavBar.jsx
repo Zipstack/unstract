@@ -12,6 +12,7 @@ function ToolNavBar({
   CustomButtons,
   setSearchList,
   previousRoute,
+  previousRouteState,
   segmentFilter,
   segmentOptions,
   onSearch,
@@ -30,7 +31,9 @@ function ToolNavBar({
             type="text"
             shape="circle"
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(previousRoute)}
+            onClick={() =>
+              navigate(previousRoute, { state: previousRouteState })
+            }
           />
         )}
         {title && (
@@ -75,6 +78,7 @@ ToolNavBar.propTypes = {
   CustomButtons: PropTypes.func,
   setSearchList: PropTypes.func,
   previousRoute: PropTypes.string,
+  previousRouteState: PropTypes.object,
   segmentOptions: PropTypes.array,
   segmentFilter: PropTypes.func,
   onSearch: PropTypes.func,

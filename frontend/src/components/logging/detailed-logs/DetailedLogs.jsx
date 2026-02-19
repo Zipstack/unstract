@@ -1,8 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import PropTypes from "prop-types";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import {
-  ArrowLeftOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
   CloseCircleFilled,
@@ -27,7 +26,6 @@ import {
 } from "antd";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
 import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DetailedLogs.css";
@@ -91,10 +89,8 @@ ActionColumnHeader.propTypes = {
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
   const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-  const navigate = useNavigate();
   const { getUrl } = useRequestUrl();
   const copyToClipboard = useCopyToClipboard();
 
@@ -458,13 +454,7 @@ const DetailedLogs = () => {
     <div className="detailed-logs-container">
       <div className="detailed-logs-header">
         <Typography.Title className="logs-title" level={4}>
-          <Button
-            type="text"
-            shape="circle"
-            icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
-          />
-          {type} Execution ID {id}
+          {type} Execution {id}
           <Button
             className="copy-btn-outlined"
             icon={<CopyOutlined />}
