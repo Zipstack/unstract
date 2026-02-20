@@ -686,7 +686,6 @@ prompting/
 .prompting/
 
 # Claude
-CLAUDE.md
 .claude/*
 CONTRIBUTION_GUIDE.md
 .mcp.json
