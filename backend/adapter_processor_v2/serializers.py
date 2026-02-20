@@ -178,7 +178,18 @@ class AdapterListSerializer(BaseAdapterSerializer):
         if instance.is_friction_less:
             rep["created_by_email"] = "Unstract"
         else:
-            rep["created_by_email"] = instance.created_by.email
+            first_co_owner = instance.co_owners.first()
+            rep["created_by_email"] = (
+                first_co_owner.email if first_co_owner else instance.created_by.email
+            )
+
+        rep["co_owners_count"] = instance.co_owners.count()
+        request = self.context.get("request")
+        rep["is_owner"] = (
+            instance.co_owners.filter(pk=request.user.pk).exists()
+            if request and hasattr(request, "user")
+            else False
+        )
 
         return rep
 

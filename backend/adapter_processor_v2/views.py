@@ -202,6 +202,8 @@ class AdapterInstanceViewSet(CoOwnerManagementMixin, ModelViewSet):
                 )
 
             instance = serializer.save()
+            if instance.created_by:
+                instance.co_owners.add(instance.created_by)
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )

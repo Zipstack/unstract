@@ -219,8 +219,7 @@ class TestAddCoOwnerSerializer(TestCase):
     ) -> None:
         creator = Mock()
         new_co_owner = Mock()
-        new_co_owner_id = uuid4()
-        new_co_owner.id = new_co_owner_id
+        new_co_owner.id = 42
 
         mock_get_org.return_value = Mock()
         mock_org_member.filter.return_value.exists.return_value = True
@@ -229,7 +228,7 @@ class TestAddCoOwnerSerializer(TestCase):
         resource = self._make_resource(creator)
 
         serializer = AddCoOwnerSerializer(
-            data={"user_id": str(new_co_owner_id)},
+            data={"user_id": 42},
             context={"resource": resource},
         )
         self.assertTrue(serializer.is_valid())
@@ -246,7 +245,7 @@ class TestAddCoOwnerSerializer(TestCase):
         resource = self._make_resource(creator)
 
         serializer = AddCoOwnerSerializer(
-            data={"user_id": str(uuid4())},
+            data={"user_id": 999},
             context={"resource": resource},
         )
         self.assertFalse(serializer.is_valid())
@@ -259,17 +258,18 @@ class TestAddCoOwnerSerializer(TestCase):
         self, mock_get_org: Mock, mock_org_member: Mock, mock_user_objects: Mock
     ) -> None:
         creator = Mock()
-        creator_id = uuid4()
-        creator.id = creator_id
+        creator.id = 1
 
         mock_get_org.return_value = Mock()
         mock_org_member.filter.return_value.exists.return_value = True
         mock_user_objects.get.return_value = creator
 
         resource = self._make_resource(creator)
+        # Creator is already in co_owners
+        resource.co_owners.filter.return_value.exists.return_value = True
 
         serializer = AddCoOwnerSerializer(
-            data={"user_id": str(creator_id)},
+            data={"user_id": 1},
             context={"resource": resource},
         )
         self.assertFalse(serializer.is_valid())
@@ -283,8 +283,7 @@ class TestAddCoOwnerSerializer(TestCase):
     ) -> None:
         creator = Mock()
         existing_co_owner = Mock()
-        existing_co_owner_id = uuid4()
-        existing_co_owner.id = existing_co_owner_id
+        existing_co_owner.id = 99
 
         mock_get_org.return_value = Mock()
         mock_org_member.filter.return_value.exists.return_value = True
@@ -295,7 +294,7 @@ class TestAddCoOwnerSerializer(TestCase):
         resource.co_owners.filter.return_value.exists.return_value = True
 
         serializer = AddCoOwnerSerializer(
-            data={"user_id": str(existing_co_owner_id)},
+            data={"user_id": 99},
             context={"resource": resource},
         )
         self.assertFalse(serializer.is_valid())
@@ -309,8 +308,7 @@ class TestAddCoOwnerSerializer(TestCase):
     ) -> None:
         creator = Mock()
         new_user = Mock()
-        new_user_id = uuid4()
-        new_user.id = new_user_id
+        new_user.id = 77
 
         mock_get_org.return_value = Mock()
         mock_org_member.filter.return_value.exists.return_value = True
@@ -319,7 +317,7 @@ class TestAddCoOwnerSerializer(TestCase):
         resource = self._make_resource(creator)
 
         serializer = AddCoOwnerSerializer(
-            data={"user_id": str(new_user_id)},
+            data={"user_id": 77},
             context={"resource": resource},
         )
         serializer.is_valid(raise_exception=True)
@@ -344,32 +342,29 @@ class TestRemoveCoOwnerSerializer(TestCase):
 
     def test_cannot_remove_last_owner(self) -> None:
         creator = Mock()
-        resource = self._make_resource(creator, co_owner_count=0)
+        # Creator is the only co-owner (count=1)
+        resource = self._make_resource(creator, co_owner_count=1)
+        resource.co_owners.filter.return_value.exists.return_value = True
 
         serializer = RemoveCoOwnerSerializer(
             data={},
             context={"resource": resource, "user_to_remove": creator},
         )
-        # Creator is the only owner (total_owners = 1 + 0 = 1)
-        # But first it checks if user is_creator or is_co_owner
-        # is_creator = True, so it passes that check, then fails on total_owners <= 1
-
         self.assertFalse(serializer.is_valid())
 
-    def test_can_remove_co_owner_when_creator_exists(self) -> None:
+    def test_can_remove_co_owner_when_multiple_owners(self) -> None:
         creator = Mock()
         co_owner = Mock()
         co_owner.id = uuid4()
 
-        resource = self._make_resource(creator, co_owner_count=1)
-        # co_owner IS in the co_owners queryset
+        # Both creator and co_owner are in co_owners (count=2)
+        resource = self._make_resource(creator, co_owner_count=2)
         resource.co_owners.filter.return_value.exists.return_value = True
 
         serializer = RemoveCoOwnerSerializer(
             data={},
             context={"resource": resource, "user_to_remove": co_owner},
         )
-        # total_owners = 1 (creator) + 1 (co_owner) = 2, ok to remove
         self.assertTrue(serializer.is_valid())
 
     def test_user_not_an_owner(self) -> None:
@@ -378,7 +373,7 @@ class TestRemoveCoOwnerSerializer(TestCase):
         random_user.id = uuid4()
 
         resource = self._make_resource(creator, co_owner_count=1)
-        # random_user is neither creator nor co_owner
+        # random_user is not in co_owners
 
         serializer = RemoveCoOwnerSerializer(
             data={},
@@ -391,7 +386,8 @@ class TestRemoveCoOwnerSerializer(TestCase):
         co_owner = Mock()
         co_owner.id = uuid4()
 
-        resource = self._make_resource(creator, co_owner_count=1)
+        # Both creator and co_owner in co_owners (count=2)
+        resource = self._make_resource(creator, co_owner_count=2)
         resource.co_owners.filter.return_value.exists.return_value = True
 
         serializer = RemoveCoOwnerSerializer(
@@ -403,17 +399,15 @@ class TestRemoveCoOwnerSerializer(TestCase):
 
         resource.co_owners.remove.assert_called_once_with(co_owner)
 
-    def test_save_promotes_co_owner_when_removing_creator(self) -> None:
+    def test_save_removes_creator_without_promotion(self) -> None:
+        """Removing creator just removes from co_owners, created_by is audit-only."""
         creator = Mock()
         co_owner = Mock()
         co_owner.id = uuid4()
 
-        resource = self._make_resource(creator, co_owner_count=1)
-        resource.co_owners.first.return_value = co_owner
-
-        # Make the creator recognized as the creator
-        # is_creator check: resource.created_by == user_to_remove -> True
-        # total_owners = 1 (creator) + 1 (co_owner) = 2
+        # Both creator and co_owner in co_owners (count=2)
+        resource = self._make_resource(creator, co_owner_count=2)
+        resource.co_owners.filter.return_value.exists.return_value = True
 
         serializer = RemoveCoOwnerSerializer(
             data={},
@@ -422,7 +416,6 @@ class TestRemoveCoOwnerSerializer(TestCase):
         serializer.is_valid(raise_exception=True)
         serializer.save()
 
-        # Should promote co_owner to creator
-        self.assertEqual(resource.created_by, co_owner)
-        resource.co_owners.remove.assert_called_once_with(co_owner)
-        resource.save.assert_called_once_with(update_fields=["created_by"])
+        # Should just remove from co_owners, no creator promotion
+        resource.co_owners.remove.assert_called_once_with(creator)
+        resource.save.assert_not_called()

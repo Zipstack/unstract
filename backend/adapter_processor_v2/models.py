@@ -37,8 +37,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, models.Manage
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
-                | models.Q(co_owners=user)
+                models.Q(co_owners=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)

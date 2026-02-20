@@ -18,15 +18,14 @@ WORKFLOW_NAME_SIZE = 128
 class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
     def for_user(self, user):
         """Filter workflows that the user can access:
-        - Workflows created by the user
+        - Workflows co-owned by the user
         - Workflows shared with the user
         - Workflows shared with the entire organization
         """
         from django.db.models import Q
 
         return self.filter(
-            Q(created_by=user)  # Owned by user
-            | Q(co_owners=user)  # Co-owned by user
+            Q(co_owners=user)  # Co-owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()

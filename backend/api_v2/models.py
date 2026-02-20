@@ -27,15 +27,14 @@ API_ENDPOINT_MAX_LENGTH = 255
 class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager):
     def for_user(self, user):
         """Filter API deployments that the user can access:
-        - API deployments created by the user
+        - API deployments co-owned by the user
         - API deployments shared with the user
         - API deployments shared with the entire organization
         """
         from django.db.models import Q
 
         return self.filter(
-            Q(created_by=user)  # Owned by user
-            | Q(co_owners=user)  # Co-owned by user
+            Q(co_owners=user)  # Co-owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
         ).distinct()

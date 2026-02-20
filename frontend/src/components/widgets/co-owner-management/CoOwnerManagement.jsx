@@ -1,4 +1,4 @@
-import { Avatar, List, Modal, Popconfirm, Select, Tag, Typography } from "antd";
+import { Avatar, List, Modal, Popconfirm, Select, Typography } from "antd";
 import PropTypes from "prop-types";
 import {
   DeleteOutlined,
@@ -17,7 +17,6 @@ function CoOwnerManagement({
   resourceType,
   allUsers,
   coOwners,
-  createdBy,
   loading,
   onAddCoOwner,
   onRemoveCoOwner,
@@ -25,15 +24,17 @@ function CoOwnerManagement({
   const [adding, setAdding] = useState(false);
   const [removingUserId, setRemovingUserId] = useState(null);
 
-  // Users available for adding (exclude creator and existing co-owners)
+  // co_owners is the single source of truth (creator is always in it)
+  const ownersList = coOwners || [];
+  const totalOwners = ownersList.length;
+
+  // Users available for adding (exclude existing co-owners)
   const availableUsers = useMemo(() => {
     const coOwnerIds = (coOwners || []).map((u) => u?.id?.toString());
     return (allUsers || []).filter(
-      (user) =>
-        user?.id?.toString() !== createdBy?.toString() &&
-        !coOwnerIds.includes(user?.id?.toString())
+      (user) => !coOwnerIds.includes(user?.id?.toString())
     );
-  }, [allUsers, coOwners, createdBy]);
+  }, [allUsers, coOwners]);
 
   const handleAdd = async (userId) => {
     setAdding(true);
@@ -55,8 +56,6 @@ function CoOwnerManagement({
 
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
-
-  const coOwnerList = coOwners || [];
 
   return (
     <Modal
@@ -89,16 +88,14 @@ function CoOwnerManagement({
             }))}
           />
           <Typography.Title level={5}>Co-Owners</Typography.Title>
-          {coOwnerList.length > 0 ? (
+          {ownersList.length > 0 ? (
             <List
-              dataSource={coOwnerList}
+              dataSource={ownersList}
               renderItem={(item) => {
-                const isCreator =
-                  item?.id?.toString() === createdBy?.toString();
                 return (
                   <List.Item
                     extra={
-                      !isCreator && (
+                      totalOwners > 1 && (
                         <div
                           onClick={(event) => event.stopPropagation()}
                           role="none"
@@ -138,9 +135,6 @@ function CoOwnerManagement({
                           <Typography.Text className="shared-username">
                             {item.username || item.email}
                           </Typography.Text>
-                          {isCreator && (
-                            <Tag className="co-owner-creator-tag">Creator</Tag>
-                          )}
                         </>
                       }
                     />
@@ -164,7 +158,6 @@ CoOwnerManagement.propTypes = {
   resourceType: PropTypes.string.isRequired,
   allUsers: PropTypes.array,
   coOwners: PropTypes.array,
-  createdBy: PropTypes.string,
   loading: PropTypes.bool,
   onAddCoOwner: PropTypes.func.isRequired,
   onRemoveCoOwner: PropTypes.func.isRequired,

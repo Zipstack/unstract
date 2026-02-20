@@ -27,13 +27,9 @@ class AddCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
 
         user = User.objects.get(id=value)
 
-        # Check user is not already the creator
-        if resource.created_by == user:
-            raise serializers.ValidationError("User is already an owner.")
-
-        # Check user is not already a co-owner
+        # Check user is not already a co-owner (creator is always in co_owners)
         if resource.co_owners.filter(id=user.id).exists():
-            raise serializers.ValidationError("User is already a co-owner.")
+            raise serializers.ValidationError("User is already an owner.")
 
         return value
 
@@ -54,19 +50,11 @@ class RemoveCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
         resource: models.Model = self.context["resource"]
         user_to_remove: User = self.context["user_to_remove"]
 
-        # Count total owners (created_by + co_owners)
-        total_owners = 1 if resource.created_by else 0
-        total_owners += resource.co_owners.count()
-
-        # Check user is actually a co-owner or the creator
-        is_creator = resource.created_by == user_to_remove
-        is_co_owner = resource.co_owners.filter(id=user_to_remove.id).exists()
-
-        if not is_creator and not is_co_owner:
+        # co_owners is the single source of truth (creator is always in it)
+        if not resource.co_owners.filter(id=user_to_remove.id).exists():
             raise serializers.ValidationError("User is not an owner of this resource.")
 
-        # Prevent removal of last owner
-        if total_owners <= 1:
+        if resource.co_owners.count() <= 1:
             raise serializers.ValidationError(
                 "Cannot remove the last owner. "
                 "Add another owner before removing this one."
@@ -75,17 +63,8 @@ class RemoveCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
         return attrs
 
     def save(self, **kwargs: Any) -> models.Model:
-        """Remove user as owner."""
+        """Remove user as owner. created_by is audit-only and never changes."""
         resource: models.Model = self.context["resource"]
         user_to_remove: User = self.context["user_to_remove"]
-
-        if resource.created_by == user_to_remove:
-            # If removing the creator, promote a co-owner to creator
-            new_creator = resource.co_owners.first()
-            resource.co_owners.remove(new_creator)
-            resource.created_by = new_creator
-            resource.save(update_fields=["created_by"])
-        else:
-            resource.co_owners.remove(user_to_remove)
-
+        resource.co_owners.remove(user_to_remove)
         return resource

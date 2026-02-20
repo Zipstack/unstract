@@ -158,8 +158,7 @@ function ApiDeployment() {
       title: "Owner",
       key: "created_by",
       render: (_, record) => {
-        const currentUser = sessionDetails?.userId;
-        const isOwner = record?.created_by === currentUser;
+        const isOwner = record?.is_owner;
         return (
           <Tooltip title="Manage Co-Owners">
             <span
@@ -175,6 +174,7 @@ function ApiDeployment() {
               }}
             >
               {isOwner ? "You" : record?.created_by_email || "Unknown"}
+              {record?.co_owners_count > 1 && ` +${record.co_owners_count - 1}`}
             </span>
           </Tooltip>
         );
@@ -357,7 +357,7 @@ function ApiDeployment() {
       setCoOwnerAllUsers(userList);
       setCoOwnerData({
         coOwners: sharedUsersResponse.data?.co_owners || [],
-        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+        createdBy: sharedUsersResponse.data?.created_by || null,
       });
     } catch (err) {
       setAlertDetails(
@@ -374,7 +374,7 @@ function ApiDeployment() {
       const res = await apiDeploymentsApiService.getSharedUsers(resourceId);
       setCoOwnerData({
         coOwners: res.data?.co_owners || [],
-        createdBy: res.data?.created_by?.id || null,
+        createdBy: res.data?.created_by || null,
       });
     } catch (err) {
       if (err?.response?.status === 404) {

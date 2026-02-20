@@ -267,7 +267,9 @@ class APIDeploymentViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
                 workflow_id__in=workflow_ids, created_by=request.user
             )
 
-            serializer = APIDeploymentListSerializer(deployments, many=True)
+            serializer = APIDeploymentListSerializer(
+                deployments, many=True, context={"request": request}
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except PromptStudioRegistry.DoesNotExist:

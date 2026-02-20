@@ -18,8 +18,6 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
-import { useSessionStore } from "../../../store/session-store";
-
 function ListView({
   listOfTools,
   handleEdit,
@@ -36,7 +34,6 @@ function ListView({
   type,
 }) {
   const navigate = useNavigate();
-  const { sessionDetails } = useSessionStore();
   const handleDeleteClick = (event, tool) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleDelete(event, tool);
@@ -110,11 +107,16 @@ function ListView({
                   Owned By:
                 </Typography.Text>
                 <Typography.Text className="shared-username">
-                  {item?.created_by_email
-                    ? item?.created_by_email === sessionDetails.email
+                  {(() => {
+                    const name = item?.is_owner
                       ? "Me"
-                      : item?.created_by_email
-                    : "-"}
+                      : item?.created_by_email || "-";
+                    const extra =
+                      item?.co_owners_count > 1
+                        ? ` +${item.co_owners_count - 1}`
+                        : "";
+                    return `${name}${extra}`;
+                  })()}
                 </Typography.Text>
               </div>
             </Tooltip>

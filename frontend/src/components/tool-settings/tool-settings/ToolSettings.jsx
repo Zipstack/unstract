@@ -247,7 +247,7 @@ function ToolSettings({ type }) {
       setCoOwnerAllUsers(users);
       setCoOwnerData({
         coOwners: sharedUsersResponse.data?.co_owners || [],
-        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+        createdBy: sharedUsersResponse.data?.created_by || null,
       });
     } catch (err) {
       setAlertDetails(
@@ -268,7 +268,7 @@ function ToolSettings({ type }) {
       });
       setCoOwnerData({
         coOwners: res.data?.co_owners || [],
-        createdBy: res.data?.created_by?.id || null,
+        createdBy: res.data?.created_by || null,
       });
     } catch (err) {
       setAlertDetails(handleException(err, "Unable to refresh co-owner data"));

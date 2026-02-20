@@ -371,7 +371,7 @@ function Pipelines({ type }) {
       setCoOwnerAllUsers(userList);
       setCoOwnerData({
         coOwners: sharedUsersResponse.data?.co_owners || [],
-        createdBy: sharedUsersResponse.data?.created_by?.id || null,
+        createdBy: sharedUsersResponse.data?.created_by || null,
       });
     } catch (err) {
       setAlertDetails(
@@ -388,7 +388,7 @@ function Pipelines({ type }) {
       const res = await pipelineApiService.getSharedUsers(resourceId);
       setCoOwnerData({
         coOwners: res.data?.co_owners || [],
-        createdBy: res.data?.created_by?.id || null,
+        createdBy: res.data?.created_by || null,
       });
     } catch (err) {
       setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
@@ -745,7 +745,7 @@ function Pipelines({ type }) {
       key: "created_by_email",
       align: "center",
       render: (email, record) => {
-        const isOwner = record.created_by === sessionDetails?.userId;
+        const isOwner = record?.is_owner;
         return (
           <Tooltip title="Manage Co-Owners">
             <span
@@ -761,6 +761,7 @@ function Pipelines({ type }) {
               }}
             >
               {isOwner ? "You" : email?.split("@")[0] || "Unknown"}
+              {record?.co_owners_count > 1 && ` +${record.co_owners_count - 1}`}
             </span>
           </Tooltip>
         );

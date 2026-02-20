@@ -56,8 +56,18 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             many=True,
             context=self.context,
         ).data
+        first_co_owner = instance.co_owners.first()
         representation["created_by_email"] = (
-            instance.created_by.email if instance.created_by else None
+            first_co_owner.email
+            if first_co_owner
+            else (instance.created_by.email if instance.created_by else None)
+        )
+        representation["co_owners_count"] = instance.co_owners.count()
+        request = self.context.get("request")
+        representation["is_owner"] = (
+            instance.co_owners.filter(pk=request.user.pk).exists()
+            if request and hasattr(request, "user")
+            else False
         )
         return representation
 
