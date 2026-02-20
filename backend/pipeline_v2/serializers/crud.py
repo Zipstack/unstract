@@ -288,4 +288,12 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
                 connectors=connectors,
             )
 
+        repr["co_owners_count"] = instance.co_owners.count()
+        request = self.context.get("request")
+        repr["is_owner"] = (
+            instance.co_owners.filter(pk=request.user.pk).exists()
+            if request and hasattr(request, "user")
+            else False
+        )
+
         return repr

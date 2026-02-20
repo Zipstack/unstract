@@ -122,6 +122,23 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
+    addCoOwner: (id, userId) => {
+      options = {
+        method: "POST",
+        url: `${path}/api/deployment/${id}/owners/`,
+        headers: requestHeaders,
+        data: { user_id: userId },
+      };
+      return axiosPrivate(options);
+    },
+    removeCoOwner: (id, userId) => {
+      options = {
+        method: "DELETE",
+        url: `${path}/api/deployment/${id}/owners/${userId}/`,
+        headers: requestHeaders,
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 

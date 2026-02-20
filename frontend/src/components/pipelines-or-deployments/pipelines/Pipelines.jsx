@@ -56,6 +56,7 @@ import {
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -87,6 +88,14 @@ function Pipelines({ type }) {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [isLoadingShare, setIsLoadingShare] = useState(false);
+  // Co-owner state
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
+  const [coOwnerData, setCoOwnerData] = useState({
+    coOwners: [],
+    createdBy: null,
+  });
+  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
+  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
@@ -340,6 +349,78 @@ function Pipelines({ type }) {
       .finally(() => {
         setIsLoadingShare(false);
       });
+  };
+
+  const handleCoOwner = async (record) => {
+    const row = record || selectedPorD;
+    setCoOwnerLoading(true);
+    setCoOwnerOpen(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        pipelineApiService.getAllUsers(),
+        pipelineApiService.getSharedUsers(row.id),
+      ]);
+
+      const userList =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setCoOwnerAllUsers(userList);
+      setCoOwnerData({
+        coOwners: sharedUsersResponse.data?.co_owners || [],
+        createdBy: sharedUsersResponse.data?.created_by || null,
+      });
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, "Unable to fetch co-owner information")
+      );
+      setCoOwnerOpen(false);
+    } finally {
+      setCoOwnerLoading(false);
+    }
+  };
+
+  const refreshCoOwnerData = async (resourceId) => {
+    try {
+      const res = await pipelineApiService.getSharedUsers(resourceId);
+      setCoOwnerData({
+        coOwners: res.data?.co_owners || [],
+        createdBy: res.data?.created_by || null,
+      });
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
+    }
+  };
+
+  const onAddCoOwner = async (resourceId, userId) => {
+    try {
+      await pipelineApiService.addCoOwner(resourceId, userId);
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner added successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getPipelineList();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to add co-owner"));
+    }
+  };
+
+  const onRemoveCoOwner = async (resourceId, userId) => {
+    try {
+      await pipelineApiService.removeCoOwner(resourceId, userId);
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner removed successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      getPipelineList();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to remove co-owner"));
+    }
   };
 
   const actionItems = [
@@ -664,12 +745,24 @@ function Pipelines({ type }) {
       key: "created_by_email",
       align: "center",
       render: (email, record) => {
-        const isOwner = record.created_by === sessionDetails?.userId;
+        const isOwner = record?.is_owner;
         return (
-          <Tooltip title={email}>
-            <Typography.Text className="p-or-d-typography">
+          <Tooltip title="Manage Co-Owners">
+            <span
+              style={{
+                cursor: "pointer",
+                color: "#1890ff",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+              }}
+              onClick={() => {
+                setSelectedPorD(record);
+                handleCoOwner(record);
+              }}
+            >
               {isOwner ? "You" : email?.split("@")[0] || "Unknown"}
-            </Typography.Text>
+              {record?.co_owners_count > 1 && ` +${record.co_owners_count - 1}`}
+            </span>
           </Tooltip>
         );
       },
@@ -779,6 +872,20 @@ function Pipelines({ type }) {
           allUsers={Array.isArray(allUsers) ? allUsers : []}
           onApply={onShare}
           isSharableToOrg={true}
+        />
+      )}
+      {coOwnerOpen && (
+        <CoOwnerManagement
+          open={coOwnerOpen}
+          setOpen={setCoOwnerOpen}
+          resourceId={selectedPorD?.id}
+          resourceType="Pipeline"
+          allUsers={coOwnerAllUsers}
+          coOwners={coOwnerData.coOwners}
+          createdBy={coOwnerData.createdBy}
+          loading={coOwnerLoading}
+          onAddCoOwner={onAddCoOwner}
+          onRemoveCoOwner={onRemoveCoOwner}
         />
       )}
     </div>

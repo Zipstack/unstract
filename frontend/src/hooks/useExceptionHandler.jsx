@@ -34,6 +34,16 @@ const useExceptionHandler = () => {
       };
     }
 
+    if (err?.response?.status === 404) {
+      return {
+        type: "error",
+        content:
+          "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+        title: title,
+        duration: duration,
+      };
+    }
+
     if (err?.response?.data) {
       const responseData = err.response.data;
       const { type, errors } = responseData;

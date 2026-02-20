@@ -111,3 +111,15 @@
 .share-icon:hover {
   color: #1890ff;
 }
+
+.owner-clickable {
+  cursor: pointer;
+}
+
+.owner-clickable:hover .adapters-list-user-avatar {
+  background-color: #1890ff;
+}
+
+.owner-clickable:hover .shared-username {
+  color: #1890ff;
+}
