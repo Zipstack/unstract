@@ -6,7 +6,6 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.views import APIView
-
 from unstract.core.data_models import UsageResponseData
 
 from .helper import UsageHelper

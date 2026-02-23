@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any
 from urllib.parse import urlparse
 
+from backend.serializers import AuditSerializer
 from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
@@ -29,7 +30,6 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey
-from backend.serializers import AuditSerializer
 
 
 class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):

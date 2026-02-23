@@ -2,7 +2,6 @@ import logging
 from typing import Any
 
 from flask import Blueprint, request
-
 from unstract.prompt_service.constants import IndexingConstants as IKeys
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.dto import (

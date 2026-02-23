@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from backend.constants import RequestKey
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.exceptions import CacheMissException, MissingParamException
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
@@ -14,12 +15,11 @@ from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from utils.filtering import FilterHelper
-
-from backend.constants import RequestKey
-from connector_v2.constants import ConnectorInstanceKey as CIKey
 from unstract.connectors.connectorkit import Connectorkit
 from unstract.connectors.enums import ConnectorMode
+from utils.filtering import FilterHelper
+
+from connector_v2.constants import ConnectorInstanceKey as CIKey
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance

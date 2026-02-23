@@ -4,7 +4,6 @@ from functools import lru_cache
 from typing import Any
 
 from flask import current_app as app
-
 from unstract.prompt_service.constants import VariableConstants, VariableType
 from unstract.prompt_service.exceptions import CustomDataError
 from unstract.prompt_service.utils.request import HTTPMethod, make_http_request

@@ -6,6 +6,7 @@ from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
 from django.db import IntegrityError
 from plugins import get_plugin
+from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -14,7 +15,6 @@ from prompt_studio.prompt_studio_output_manager_v2.models import (
     PromptStudioOutputManager,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
-from unstract.tool_registry.dto import Properties, Spec, Tool
 
 from .constants import JsonSchemaKey, PromptStudioRegistryKeys
 from .exceptions import (

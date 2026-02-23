@@ -2,17 +2,17 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from backend.serializers import AuditSerializer
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField
+from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 from utils.fields import EncryptedBinaryFieldSerializer
 
-from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
-from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
 from .models import ConnectorInstance
 

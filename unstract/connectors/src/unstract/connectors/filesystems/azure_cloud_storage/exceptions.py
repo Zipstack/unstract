@@ -32,7 +32,7 @@ def parse_azure_error(e: Exception) -> ConnectorError:
     elif isinstance(e, AzureException.ServiceRequestError):
         client_error = e.message if hasattr(e, "message") else str(e)
         error_message += (
-            f"Failed to connect to Azure service. \n" f"Error: \n```\n{client_error}\n```"
+            f"Failed to connect to Azure service. \nError: \n```\n{client_error}\n```"
         )
         return ConnectorError(error_message)
     elif isinstance(e, AzureException.HttpResponseError):
@@ -45,7 +45,5 @@ def parse_azure_error(e: Exception) -> ConnectorError:
         status_code = getattr(e, "status_code", None)
         return AzureHttpError(error_message, status_code=status_code)
     else:
-        error_message += (
-            f"Error from Azure Cloud Storage. \n" f"Error: \n```\n{str(e)}\n```"
-        )
+        error_message += f"Error from Azure Cloud Storage. \nError: \n```\n{str(e)}\n```"
         return ConnectorError(error_message)
