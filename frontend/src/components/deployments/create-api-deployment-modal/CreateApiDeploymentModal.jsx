@@ -175,6 +175,17 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
+        if (err?.response?.status === 404) {
+          setOpen(false);
+          clearFormDetails();
+          updateTableData();
+          setAlertDetails({
+            type: "error",
+            content:
+              "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+          });
+          return;
+        }
         if (err.response?.data) {
           setBackendErrors(err.response.data);
         } else {
