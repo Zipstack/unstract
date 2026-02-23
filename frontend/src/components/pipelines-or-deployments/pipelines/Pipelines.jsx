@@ -876,7 +876,7 @@ function Pipelines({ type }) {
         <SharePermission
           open={openShareModal}
           setOpen={setOpenShareModal}
-          adapter={selectedPorD}
+          sharedItem={selectedPorD}
           permissionEdit={true}
           loading={isLoadingShare}
           allUsers={Array.isArray(allUsers) ? allUsers : []}

@@ -660,7 +660,7 @@ function ApiDeployment() {
       <SharePermission
         open={openShareModal}
         setOpen={setOpenShareModal}
-        adapter={selectedRow}
+        sharedItem={selectedRow}
         permissionEdit={true}
         loading={isLoadingShare}
         allUsers={allUsers}

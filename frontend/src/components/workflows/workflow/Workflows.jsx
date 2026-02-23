@@ -434,7 +434,7 @@ function Workflows() {
               componentName={"SharePermission"}
               open={shareOpen}
               setOpen={setShareOpen}
-              adapter={selectedWorkflow}
+              sharedItem={selectedWorkflow}
               permissionEdit={sharePermissionEdit}
               loading={shareLoading}
               allUsers={allUsers}

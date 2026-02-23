@@ -393,7 +393,7 @@ function ToolSettings({ type }) {
       <SharePermission
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
-        adapter={adapterDetails}
+        sharedItem={adapterDetails}
         permissionEdit={isPermissonEdit}
         loading={isShareLoading}
         allUsers={userList}

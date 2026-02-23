@@ -318,7 +318,7 @@ function ConnectorsPage() {
       <SharePermission
         open={shareModalVisible}
         setOpen={setShareModalVisible}
-        adapter={sharingConnector}
+        sharedItem={sharingConnector}
         allUsers={userList}
         onApply={handleShareSave}
         permissionEdit={isPermissionEdit}

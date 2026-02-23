@@ -506,7 +506,7 @@ function ListOfTools() {
       <SharePermission
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
-        adapter={promptDetails}
+        sharedItem={promptDetails}
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         allUsers={allUserList}
