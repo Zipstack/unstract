@@ -15,16 +15,22 @@ try {
 
 function Login() {
   const baseUrl = getBaseUrl();
-  const newURL = baseUrl + "/api/v1/login";
+  const loginURL = baseUrl + "/api/v1/login";
+  const signupURL = baseUrl + "/api/v1/signup";
+
   const handleLogin = () => {
-    window.location.href = newURL;
+    window.location.href = loginURL;
+  };
+
+  const handleSignup = () => {
+    window.location.href = signupURL;
   };
 
   return (
     <div className="login-main">
       <Row>
         {LoginForm ? (
-          <LoginForm handleLogin={handleLogin} />
+          <LoginForm handleLogin={handleLogin} handleSignup={handleSignup} />
         ) : (
           <>
             <Col xs={24} md={12} className="login-left-section">

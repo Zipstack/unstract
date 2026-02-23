@@ -43,6 +43,10 @@ function GenericError() {
         title: `Invalid Email format`,
         subtitle: "Please give a valid email address",
       },
+      INE003: {
+        title: `Email not allowed`,
+        subtitle: "This email is forbidden.",
+      },
       INS: {
         title: `Access Denied`,
         subtitle: "Please contact your administrator to request access.",
