@@ -2,11 +2,13 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from account_v2.serializer import UserSerializer
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
+from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
 
@@ -80,4 +82,36 @@ class ConnectorInstanceSerializer(AuditSerializer):
         # Remove sensitive connector auth from the response
         rep.pop(CIKey.CONNECTOR_AUTH)
 
+        # Co-owner information
+        first_co_owner = instance.co_owners.first()
+        rep["created_by_email"] = (
+            first_co_owner.email if first_co_owner else instance.created_by.email
+        )
+        rep["co_owners_count"] = instance.co_owners.count()
+        request = self.context.get("request")
+        rep["is_owner"] = (
+            instance.co_owners.filter(pk=request.user.pk).exists()
+            if request and hasattr(request, "user")
+            else False
+        )
+
         return rep
+
+
+class SharedUserListSerializer(serializers.ModelSerializer):
+    """Used for listing connector users."""
+
+    shared_users = UserSerializer(many=True)
+    co_owners = UserSerializer(many=True, read_only=True)
+    created_by = UserSerializer()
+
+    class Meta:
+        model = ConnectorInstance
+        fields = (
+            "id",
+            "connector_name",
+            "created_by",
+            "co_owners",
+            "shared_users",
+            "shared_to_org",
+        )

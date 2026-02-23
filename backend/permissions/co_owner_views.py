@@ -40,13 +40,13 @@ class CoOwnerManagementMixin:
             "Co-owner %s added to %s %s by %s",
             user.email,
             resource.__class__.__name__,
-            resource.id,
+            resource.pk,
             request.user.email,
         )
 
         co_owners = [{"id": u.id, "email": u.email} for u in resource.co_owners.all()]
         return Response(
-            {"id": str(resource.id), "co_owners": co_owners},
+            {"id": str(resource.pk), "co_owners": co_owners},
             status=status.HTTP_200_OK,
         )
 
@@ -77,7 +77,7 @@ class CoOwnerManagementMixin:
             "Owner %s removed from %s %s by %s",
             user_to_remove.email,
             resource.__class__.__name__,
-            resource.id,
+            resource.pk,
             request.user.email,
         )
 

@@ -12,6 +12,7 @@ import "./ConnectorsPage.css";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
 import { SharePermission } from "../components/widgets/share-permission/SharePermission";
+import { CoOwnerManagement } from "../components/widgets/co-owner-management/CoOwnerManagement";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 
 function ConnectorsPage() {
@@ -23,6 +24,14 @@ function ConnectorsPage() {
   const [userList, setUserList] = useState([]);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
+  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
+  const [coOwnerData, setCoOwnerData] = useState({
+    coOwners: [],
+    createdBy: null,
+  });
+  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
+  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
+  const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
 
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -93,10 +102,31 @@ function ConnectorsPage() {
     }
   };
 
-  const handleShareConnector = (_event, connector, isEdit) => {
-    setSharingConnector(connector);
-    setIsPermissionEdit(isEdit);
-    setShareModalVisible(true);
+  const handleShareConnector = async (_event, connector, isEdit) => {
+    setIsShareLoading(true);
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        axiosPrivate.get(getUrl("users/")),
+        axiosPrivate.get(getUrl(`connector/users/${connector.id}/`), {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      ]);
+
+      const users =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setUserList(users);
+      setSharingConnector(sharedUsersResponse?.data);
+      setIsPermissionEdit(isEdit);
+      setShareModalVisible(true);
+    } catch (error) {
+      setAlertDetails(handleException(error, "Failed to load sharing data"));
+    } finally {
+      setIsShareLoading(false);
+    }
   };
 
   const handleShareSave = async (userIds, connector, shareWithEveryone) => {
@@ -125,6 +155,99 @@ function ConnectorsPage() {
       setAlertDetails(handleException(error, "Failed to update sharing"));
     } finally {
       setIsShareLoading(false);
+    }
+  };
+
+  const handleCoOwner = async (_event, connector) => {
+    setCoOwnerResourceId(connector.id);
+    setCoOwnerLoading(true);
+    setCoOwnerOpen(true);
+
+    try {
+      const [usersResponse, sharedUsersResponse] = await Promise.all([
+        axiosPrivate.get(getUrl("users/")),
+        axiosPrivate.get(getUrl(`connector/users/${connector.id}/`), {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      ]);
+
+      const users =
+        usersResponse?.data?.members?.map((member) => ({
+          id: member.id,
+          email: member.email,
+        })) || [];
+
+      setCoOwnerAllUsers(users);
+      setCoOwnerData({
+        coOwners: sharedUsersResponse.data?.co_owners || [],
+        createdBy: sharedUsersResponse.data?.created_by || null,
+      });
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, "Unable to fetch co-owner information")
+      );
+      setCoOwnerOpen(false);
+    } finally {
+      setCoOwnerLoading(false);
+    }
+  };
+
+  const refreshCoOwnerData = async (resourceId) => {
+    try {
+      const res = await axiosPrivate.get(
+        getUrl(`connector/users/${resourceId}/`),
+        {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }
+      );
+      setCoOwnerData({
+        coOwners: res.data?.co_owners || [],
+        createdBy: res.data?.created_by || null,
+      });
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
+    }
+  };
+
+  const onAddCoOwner = async (resourceId, userId) => {
+    try {
+      await axiosPrivate.post(
+        getUrl(`connector/${resourceId}/owners/`),
+        { user_id: userId },
+        {
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner added successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      fetchConnectors();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to add co-owner"));
+    }
+  };
+
+  const onRemoveCoOwner = async (resourceId, userId) => {
+    try {
+      await axiosPrivate.delete(
+        getUrl(`connector/${resourceId}/owners/${userId}/`),
+        {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }
+      );
+      setAlertDetails({
+        type: "success",
+        content: "Co-owner removed successfully",
+      });
+      await refreshCoOwnerData(resourceId);
+      fetchConnectors();
+    } catch (err) {
+      setAlertDetails(handleException(err, "Unable to remove co-owner"));
     }
   };
 
@@ -170,6 +293,7 @@ function ConnectorsPage() {
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
             handleShare={handleShareConnector}
+            handleCoOwner={handleCoOwner}
             setOpenAddTool={setModalVisible}
             idProp="id"
             titleProp="connector_name"
@@ -200,6 +324,18 @@ function ConnectorsPage() {
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Connector"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </div>
   );

@@ -69,9 +69,11 @@ function SharePermission({
   }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
-    setSelectedUsers((prevSelectedUsers) =>
-      prevSelectedUsers.filter((user) => user !== userId)
+    const updatedUsers = selectedUsers.filter(
+      (user) => user.toString() !== userId.toString()
     );
+    setSelectedUsers(updatedUsers);
+    onApply(updatedUsers, adapter, shareWithEveryone);
   };
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());

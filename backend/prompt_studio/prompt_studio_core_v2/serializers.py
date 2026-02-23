@@ -152,7 +152,19 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output
-        data["created_by_email"] = instance.created_by.email
+
+        # Co-owner information
+        first_co_owner = instance.co_owners.first()
+        data["created_by_email"] = (
+            first_co_owner.email if first_co_owner else instance.created_by.email
+        )
+        data["co_owners_count"] = instance.co_owners.count()
+        request = self.context.get("request")
+        data["is_owner"] = (
+            instance.co_owners.filter(pk=request.user.pk).exists()
+            if request and hasattr(request, "user")
+            else False
+        )
 
         return data
 
@@ -171,6 +183,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     """Used for listing users of Custom tool."""
 
     created_by = UserSerializer()
+    co_owners = UserSerializer(many=True, read_only=True)
     shared_users = UserSerializer(many=True)
 
     class Meta:
@@ -179,6 +192,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "tool_id",
             "tool_name",
             "created_by",
+            "co_owners",
             "shared_users",
             "shared_to_org",
         )
