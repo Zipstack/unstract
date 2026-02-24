@@ -1,7 +1,4 @@
 import {
-  DownloadOutlined,
-  FileProtectOutlined,
-  LikeOutlined,
   LoginOutlined,
   LogoutOutlined,
   SettingOutlined,
@@ -142,8 +139,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
-  const [approverStatus, setApproverStatus] = useState(false);
-  const [reviewerStatus, setReviewerStatus] = useState(false);
   const [reviewPageHeader, setReviewPageHeader] = useState("");
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -196,8 +191,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
         !isReviewer &&
         !isSupervisor,
     );
-    setApproverStatus(isAdmin || isSupervisor);
-    setReviewerStatus(isReviewer);
   }, [sessionDetails]);
 
   // Determine review page header
@@ -310,54 +303,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    // Review
-    if (isUnstract && !isSimpleLayout && (reviewerStatus || approverStatus)) {
-      menuItems.push({
-        key: "4",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <FileProtectOutlined /> Review
-          </Button>
-        ),
-      });
-    }
-
-    // Approve
-    if (isUnstract && !isSimpleLayout && approverStatus) {
-      menuItems.push({
-        key: "5",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review/approve`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <LikeOutlined /> Approve
-          </Button>
-        ),
-      });
-
-      menuItems.push({
-        key: "6",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <DownloadOutlined /> Download and Sync Manager
-          </Button>
-        ),
-      });
-    }
-
     if (
       isUnstract &&
       UnstractPricingMenuLink &&
@@ -416,8 +361,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [
     isUnstract,
     isSimpleLayout,
-    reviewerStatus,
-    approverStatus,
     allOrganization,
     cascadeOptions,
     orgName,
