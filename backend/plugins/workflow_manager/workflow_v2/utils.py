@@ -14,6 +14,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
+SECS_IN_DAY = 24 * 3600
+DEFAULT_HITL_TTL_SECONDS = 90 * SECS_IN_DAY  # 90 days
+
 
 class WorkflowUtil:
     """Utility class for workflow operations.
@@ -168,6 +171,7 @@ class WorkflowUtil:
                 get_hitl_ttl_seconds_by_workflow,
             )
 
-            return get_hitl_ttl_seconds_by_workflow(workflow)
+            ttl = get_hitl_ttl_seconds_by_workflow(workflow)
+            return ttl if ttl is not None else DEFAULT_HITL_TTL_SECONDS
         except ImportError:
-            return 2160 * 3600
+            return DEFAULT_HITL_TTL_SECONDS
