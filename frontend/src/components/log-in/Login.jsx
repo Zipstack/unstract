@@ -15,15 +15,22 @@ try {
 
 function Login() {
   const baseUrl = getBaseUrl();
-  const loginURL = baseUrl + "/api/v1/login";
-  const signupURL = baseUrl + "/api/v1/signup";
+  const selectedProduct = localStorage.getItem("selectedProduct");
+  const isValidProduct =
+    selectedProduct && ["unstract", "llm-whisperer"].includes(selectedProduct);
 
   const handleLogin = () => {
-    window.location.href = loginURL;
+    const loginUrl = isValidProduct
+      ? `${baseUrl}/api/v1/login?selectedProduct=${selectedProduct}`
+      : `${baseUrl}/api/v1/login`;
+    window.location.href = loginUrl;
   };
 
   const handleSignup = () => {
-    window.location.href = signupURL;
+    const signupUrl = isValidProduct
+      ? `${baseUrl}/api/v1/signup?selectedProduct=${selectedProduct}`
+      : `${baseUrl}/api/v1/signup`;
+    window.location.href = signupUrl;
   };
 
   return (
