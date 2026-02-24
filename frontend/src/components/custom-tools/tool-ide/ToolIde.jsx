@@ -1,5 +1,6 @@
 import { Col, Row } from "antd";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -59,6 +60,7 @@ function ToolIde() {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+  const navigate = useNavigate();
   const [openShareLink, setOpenShareLink] = useState(false);
   const [openShareConfirmation, setOpenShareConfirmation] = useState(false);
   const [openShareModal, setOpenShareModal] = useState(false);
@@ -298,6 +300,15 @@ function ToolIde() {
         return res;
       })
       .catch((err) => {
+        if (err?.response?.status === 404) {
+          setAlertDetails({
+            type: "error",
+            content:
+              "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+          });
+          navigate(`/${sessionDetails?.orgName}/tools`);
+          return;
+        }
         throw err;
       });
   };
