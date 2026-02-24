@@ -14,6 +14,8 @@ import {
   BarChartOutlined,
   DashboardOutlined,
   ThunderboltOutlined,
+  FileSearchOutlined,
+  SlackOutlined,
 } from "@ant-design/icons";
 import dayjs from "dayjs";
 
@@ -158,28 +160,29 @@ function MetricsDashboard() {
         </div>
 
         <Space className="metrics-topbar-right">
-          <RangePicker
-            value={dateRange}
-            onChange={handleDateChange}
-            disabledDate={(current) => current && current > dayjs()}
-            allowClear={false}
-            size="middle"
-            presets={[
-              {
-                label: "Last 7 Days",
-                value: [dayjs().subtract(7, "day"), dayjs()],
-              },
-              {
-                label: "Last 30 Days",
-                value: [dayjs().subtract(30, "day"), dayjs()],
-              },
-              {
-                label: "Last 90 Days",
-                value: [dayjs().subtract(90, "day"), dayjs()],
-              },
-            ]}
-          />
-          <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+          <Button
+            icon={<FileSearchOutlined />}
+            type="link"
+            onClick={() =>
+              window.open(
+                "https://docs.unstract.com/unstract/index.html",
+                "_blank"
+              )
+            }
+            className="metrics-header-button"
+          >
+            Documentation
+          </Button>
+          <Button
+            icon={<SlackOutlined />}
+            type="link"
+            onClick={() =>
+              window.open("https://join-slack.unstract.com/", "_blank")
+            }
+            className="metrics-header-button"
+          >
+            Slack Community
+          </Button>
         </Space>
       </div>
 
@@ -194,7 +197,36 @@ function MetricsDashboard() {
         />
       )}
 
-      <Tabs items={tabItems} defaultActiveKey="overview" />
+      <Tabs
+        items={tabItems}
+        defaultActiveKey="overview"
+        tabBarExtraContent={
+          <Space>
+            <RangePicker
+              value={dateRange}
+              onChange={handleDateChange}
+              disabledDate={(current) => current && current > dayjs()}
+              allowClear={false}
+              size="middle"
+              presets={[
+                {
+                  label: "Last 7 Days",
+                  value: [dayjs().subtract(7, "day"), dayjs()],
+                },
+                {
+                  label: "Last 30 Days",
+                  value: [dayjs().subtract(30, "day"), dayjs()],
+                },
+                {
+                  label: "Last 90 Days",
+                  value: [dayjs().subtract(90, "day"), dayjs()],
+                },
+              ]}
+            />
+            <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+          </Space>
+        }
+      />
     </div>
   );
 }

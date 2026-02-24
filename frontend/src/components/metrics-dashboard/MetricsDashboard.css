@@ -40,6 +40,10 @@
   gap: 8px;
 }
 
+.metrics-header-button {
+  padding: 0px 4px;
+}
+
 .metrics-error {
   margin-bottom: 16px;
 }
@@ -198,12 +202,8 @@
   }
 
   .metrics-topbar-right {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .metrics-topbar-right .ant-picker {
-    width: 100%;
+    flex-direction: row;
+    justify-content: center;
   }
 
   .metrics-dashboard {

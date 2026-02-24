@@ -218,7 +218,6 @@ function TrendAnalysisChart({ data, loading }) {
   // State for selected metrics
   const [selectedMetrics, setSelectedMetrics] = useState([
     "documents_processed",
-    "llm_calls",
   ]);
 
   // Process data and extract available metrics (excluding pages metrics)
