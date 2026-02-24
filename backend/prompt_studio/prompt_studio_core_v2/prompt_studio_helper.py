@@ -267,8 +267,8 @@ class PromptStudioHelper:
         component: dict[str, str], level: str, state: str, message: str
     ) -> None:
         LogPublisher.publish(
-            StateStore.get(Common.LOG_EVENTS_ID),
-            LogPublisher.log_prompt(component, level, state, message),
+            channel_id=StateStore.get(Common.LOG_EVENTS_ID),
+            payload=LogPublisher.log_progress(component, level, state, message),
         )
 
     @staticmethod
@@ -1034,6 +1034,7 @@ class PromptStudioHelper:
             organization_id=org_id,
             executor_params=payload,
             request_id=StateStore.get(Common.REQUEST_ID),
+            log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
         )
         result = dispatcher.dispatch(context)
         if not result.success:
@@ -1183,6 +1184,7 @@ class PromptStudioHelper:
                 organization_id=org_id,
                 executor_params=payload,
                 request_id=StateStore.get(Common.REQUEST_ID),
+                log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
             )
             result = dispatcher.dispatch(index_context)
             if not result.success:
@@ -1333,6 +1335,7 @@ class PromptStudioHelper:
             organization_id=org_id,
             executor_params=payload,
             request_id=StateStore.get(Common.REQUEST_ID),
+            log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
         )
         result = dispatcher.dispatch(context)
         if not result.success:
@@ -1418,6 +1421,7 @@ class PromptStudioHelper:
             organization_id=org_id,
             executor_params=payload,
             request_id=StateStore.get(Common.REQUEST_ID),
+            log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
         )
         result = dispatcher.dispatch(extract_context)
         if not result.success:

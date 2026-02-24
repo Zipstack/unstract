@@ -74,7 +74,8 @@ const PromptCard = memo(
         .find(
           (item) =>
             (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
-              item?.component?.prompt_key === promptKey) &&
+              item?.component?.prompt_key === promptKey ||
+              item?.component?.tool_id === details?.tool_id) &&
             (item?.level === "INFO" || item?.level === "ERROR")
         );
 

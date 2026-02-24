@@ -25,6 +25,7 @@ function DisplayPromptResult({
   wordConfidenceData,
   isTable = false,
   setOpenExpandModal = () => {},
+  progressMsg,
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
@@ -66,7 +67,19 @@ function DisplayPromptResult({
   ]);
 
   if (isLoading) {
-    return <Spin indicator={<SpinnerLoader size="small" />} />;
+    return (
+      <div className="prompt-loading-container">
+        <Spin indicator={<SpinnerLoader size="small" />} />
+        {progressMsg?.message && (
+          <Typography.Text
+            className="prompt-progress-msg"
+            type={progressMsg?.level === "ERROR" ? "danger" : "secondary"}
+          >
+            {progressMsg.message}
+          </Typography.Text>
+        )}
+      </div>
+    );
   }
 
   if (output === undefined) {
@@ -427,6 +440,7 @@ DisplayPromptResult.propTypes = {
   wordConfidenceData: PropTypes.object,
   isTable: PropTypes.bool,
   setOpenExpandModal: PropTypes.func,
+  progressMsg: PropTypes.object,
 };
 
 export { DisplayPromptResult };

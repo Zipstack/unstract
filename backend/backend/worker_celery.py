@@ -2,9 +2,10 @@
 
 The Django backend uses Redis as its Celery broker for internal tasks
 (beat, periodic tasks, etc.). The worker-v2 workers (executor,
-file_processing, etc.) use RabbitMQ as their broker.
+file_processing, etc.) use a separate broker configured via
+``WORKER_CELERY_BROKER_URL``.
 
-This module provides a Celery app connected to RabbitMQ specifically
+This module provides a Celery app connected to that worker-v2 broker
 for dispatching tasks (via ExecutionDispatcher) to worker-v2 workers.
 
 Problem: Celery reads the ``CELERY_BROKER_URL`` environment variable
@@ -13,7 +14,7 @@ and ``config_from_object()``.  Since Django sets that env var to Redis,
 every Celery app created in this process inherits Redis as broker.
 
 Solution: Subclass Celery and override ``connection_for_write`` /
-``connection_for_read`` so they always use our explicit RabbitMQ URL,
+``connection_for_read`` so they always use our explicit broker URL,
 bypassing the config resolution chain entirely.
 """
 
@@ -57,7 +58,7 @@ def get_worker_celery_app() -> Celery:
     """Get or create a Celery app for dispatching to worker-v2 workers.
 
     The app uses:
-    - RabbitMQ as broker (WORKER_CELERY_BROKER_URL env var)
+    - Worker-v2 broker (WORKER_CELERY_BROKER_URL env var)
     - Same PostgreSQL result backend as the Django Celery app
 
     Returns:
@@ -74,8 +75,8 @@ def get_worker_celery_app() -> Celery:
     if not broker_url:
         raise ValueError(
             "WORKER_CELERY_BROKER_URL is not set. "
-            "This should point to the RabbitMQ broker used by worker-v2 "
-            "workers (e.g., amqp://admin:password@rabbitmq:5672//)."
+            "This should point to the broker used by worker-v2 "
+            "workers (e.g., redis://unstract-redis:6379)."
         )
 
     # Reuse the same PostgreSQL result backend as Django's Celery app
@@ -106,7 +107,10 @@ def get_worker_celery_app() -> Celery:
     _worker_app = app
     # Log broker host only (mask credentials)
     safe_broker = broker_url.split("@")[-1] if "@" in broker_url else broker_url
+    safe_backend = result_backend.split("@")[-1] if "@" in result_backend else result_backend
     logger.info(
-        "Created worker dispatch Celery app (broker=%s)", safe_broker
+        "Created worker dispatch Celery app (broker=%s, result_backend=%s)",
+        safe_broker,
+        safe_backend,
     )
     return _worker_app

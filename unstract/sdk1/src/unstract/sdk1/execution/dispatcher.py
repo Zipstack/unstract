@@ -109,12 +109,16 @@ class ExecutionDispatcher:
             args=[context.to_dict()],
             queue=_QUEUE_NAME,
         )
+        logger.info(
+            "Task sent: celery_task_id=%s, waiting for result...",
+            async_result.id,
+        )
 
         try:
             # disable_sync_subtasks=False: safe because the executor task
-            # runs on a *different* broker (RabbitMQ) and worker pool
-            # (worker-v2) — no deadlock risk even when dispatch() is
-            # called from inside a Django Celery task (Redis broker).
+            # runs on a separate worker pool (worker-v2) — no deadlock
+            # risk even when dispatch() is called from inside a Django
+            # Celery task.
             result_dict = async_result.get(
                 timeout=timeout,
                 disable_sync_subtasks=False,

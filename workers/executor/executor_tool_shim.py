@@ -13,11 +13,21 @@ import logging
 import os
 from typing import Any
 
+from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.constants import LogLevel, ToolEnv
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.stream import StreamMixin
 
 logger = logging.getLogger(__name__)
+
+# Map SDK log levels to the string levels used by LogPublisher.
+_SDK_TO_WF_LEVEL: dict[LogLevel, str] = {
+    LogLevel.DEBUG: "INFO",  # DEBUG not surfaced to frontend
+    LogLevel.INFO: "INFO",
+    LogLevel.WARN: "WARN",
+    LogLevel.ERROR: "ERROR",
+    LogLevel.FATAL: "ERROR",
+}
 
 # Mapping from SDK LogLevel enum to Python logging levels.
 _LEVEL_MAP = {
@@ -45,15 +55,27 @@ class ExecutorToolShim(StreamMixin):
         adapter = SomeAdapter(tool=shim)  # adapter calls shim.get_env_or_die()
     """
 
-    def __init__(self, platform_api_key: str = "") -> None:
+    def __init__(
+        self,
+        platform_api_key: str = "",
+        log_events_id: str = "",
+        component: dict[str, str] | None = None,
+    ) -> None:
         """Initialize the shim.
 
         Args:
             platform_api_key: The platform service API key for this
                 execution.  Returned by ``get_env_or_die()`` when the
                 caller asks for ``PLATFORM_SERVICE_API_KEY``.
+            log_events_id: Socket.IO channel ID for streaming progress
+                logs.  Empty string disables publishing.
+            component: Structured identifier dict for log correlation
+                (``tool_id``, ``run_id``, ``doc_name``, optionally
+                ``prompt_key``).
         """
         self.platform_api_key = platform_api_key
+        self.log_events_id = log_events_id
+        self.component = component or {}
         # Initialize StreamMixin.  EXECUTION_BY_TOOL is not set in
         # the worker environment, so _exec_by_tool will be False.
         super().__init__(log_level=LogLevel.INFO)
@@ -95,11 +117,14 @@ class ExecutorToolShim(StreamMixin):
         stage: str = "TOOL_RUN",
         **kwargs: dict[str, Any],
     ) -> None:
-        """Route log messages to Python logging.
+        """Route log messages to Python logging and publish progress.
 
         In the executor worker context, logs go through the standard
         Python logging framework (captured by Celery) rather than the
         Unstract stdout JSON protocol used by tools.
+
+        Progress messages are published via ``LogPublisher.publish()``
+        to the Redis broker (shared with worker-logging).
 
         Args:
             log: The log message.
@@ -109,6 +134,26 @@ class ExecutorToolShim(StreamMixin):
         """
         py_level = _LEVEL_MAP.get(level, logging.INFO)
         logger.log(py_level, log)
+
+        # Publish progress to frontend via the log consumer queue.
+        if self.log_events_id:
+            try:
+                wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
+                payload = LogPublisher.log_progress(
+                    component=self.component,
+                    level=wf_level,
+                    state=stage,
+                    message=log,
+                )
+                LogPublisher.publish(
+                    channel_id=self.log_events_id,
+                    payload=payload,
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to publish progress log (non-fatal)",
+                    exc_info=True,
+                )
 
     def stream_error_and_exit(
         self, message: str, err: Exception | None = None

@@ -52,6 +52,9 @@ class ExecutionContext:
         executor_params: Opaque, operation-specific payload passed
             through to the executor. Must be JSON-serializable.
         request_id: Correlation ID for tracing across services.
+        log_events_id: Socket.IO channel ID for streaming progress
+            logs to the frontend.  ``None`` when not in an IDE
+            session (no logs published).
     """
 
     executor_name: str
@@ -61,6 +64,7 @@ class ExecutionContext:
     organization_id: str | None = None
     executor_params: dict[str, Any] = field(default_factory=dict)
     request_id: str | None = None
+    log_events_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate required fields after initialization."""
@@ -93,6 +97,7 @@ class ExecutionContext:
             "organization_id": self.organization_id,
             "executor_params": self.executor_params,
             "request_id": self.request_id,
+            "log_events_id": self.log_events_id,
         }
 
     @classmethod
@@ -106,4 +111,5 @@ class ExecutionContext:
             organization_id=data.get("organization_id"),
             executor_params=data.get("executor_params", {}),
             request_id=data.get("request_id"),
+            log_events_id=data.get("log_events_id"),
         )

@@ -216,11 +216,15 @@ class TestAdapterUsageTracking:
 
 class TestMetricsInResult:
     @patch(
+        "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+        return_value="doc-id-test",
+    )
+    @patch(
         "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
     )
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     def test_answer_prompt_returns_metrics(
-        self, mock_shim_cls, mock_get_deps
+        self, mock_shim_cls, mock_get_deps, _mock_idx
     ):
         """answer_prompt result includes metrics dict."""
         from unstract.sdk1.execution.context import ExecutionContext

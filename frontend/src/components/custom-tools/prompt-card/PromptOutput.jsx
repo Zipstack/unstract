@@ -65,6 +65,7 @@ function PromptOutput({
   promptRunStatus,
   isChallenge,
   handleSelectHighlight,
+  progressMsg,
 }) {
   const [openExpandModal, setOpenExpandModal] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
@@ -110,6 +111,7 @@ function PromptOutput({
             promptDetails={promptDetails}
             isTable={true}
             setOpenExpandModal={setOpenExpandModal}
+            progressMsg={progressMsg}
           />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
@@ -202,6 +204,7 @@ function PromptOutput({
             wordConfidenceData={
               promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
             }
+            progressMsg={progressMsg}
           />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
@@ -437,6 +440,7 @@ function PromptOutput({
                             promptOutputData?.wordConfidenceData
                           }
                           promptDetails={promptDetails}
+                          progressMsg={progressMsg}
                         />
                         <div className="prompt-profile-run">
                           <CopyPromptOutputBtn
@@ -478,6 +482,7 @@ PromptOutput.propTypes = {
   promptRunStatus: PropTypes.object.isRequired,
   isChallenge: PropTypes.bool,
   handleSelectHighlight: PropTypes.func.isRequired,
+  progressMsg: PropTypes.object,
 };
 
 export { PromptOutput };

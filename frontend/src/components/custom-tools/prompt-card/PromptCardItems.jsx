@@ -316,6 +316,7 @@ function PromptCardItems({
               promptRunStatus={promptRunStatus}
               isChallenge={isChallenge}
               handleSelectHighlight={handleSelectHighlight}
+              progressMsg={progressMsg}
             />
           </Row>
         </Collapse.Panel>

@@ -11,6 +11,7 @@ import throttle from "lodash/throttle";
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -28,6 +29,7 @@ function SocketMessages() {
     setPointer,
   } = useSocketMessagesStore();
   const { pushLogMessages } = useSocketLogsStore();
+  const { updateCusToolMessages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
@@ -89,6 +91,8 @@ function SocketMessages() {
           pushStagedMessage(msg);
         } else if (msg?.type === "LOG" && msg?.service === "prompt") {
           handleLogMessages(msg);
+        } else if (msg?.type === "PROGRESS") {
+          updateCusToolMessages([msg]);
         }
 
         if (msg?.type === "LOG" && msg?.service === "usage") {
@@ -102,7 +106,7 @@ function SocketMessages() {
         );
       }
     },
-    [handleLogMessages, pushStagedMessage]
+    [handleLogMessages, pushStagedMessage, updateCusToolMessages]
   );
 
   // Subscribe/unsubscribe to the socket channel

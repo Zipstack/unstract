@@ -46,11 +46,14 @@ def execute_extraction(
     request_id = execution_context_dict.get("request_id", "")
     logger.info(
         "Received execute_extraction task: "
-        "celery_task_id=%s request_id=%s executor=%s operation=%s",
+        "celery_task_id=%s request_id=%s executor=%s "
+        "operation=%s execution_source=%s run_id=%s",
         self.request.id,
         request_id,
         execution_context_dict.get("executor_name"),
         execution_context_dict.get("operation"),
+        execution_context_dict.get("execution_source"),
+        execution_context_dict.get("run_id"),
     )
 
     try:
@@ -62,6 +65,19 @@ def execute_extraction(
         return ExecutionResult.failure(
             error=f"Invalid execution context: {exc}"
         ).to_dict()
+
+    # Build component dict for log correlation when streaming to
+    # the frontend.  Attached as a transient attribute (not serialized).
+    if context.log_events_id:
+        params = context.executor_params
+        context._log_component = {
+            "tool_id": params.get("tool_id", ""),
+            "run_id": context.run_id,
+            "doc_name": str(params.get("file_name", "")),
+            "operation": context.operation,
+        }
+    else:
+        context._log_component = {}
 
     orchestrator = ExecutionOrchestrator()
     result = orchestrator.execute(context)

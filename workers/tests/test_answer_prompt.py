@@ -145,6 +145,27 @@ def _mock_deps(llm=None):
 
 
 # ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+_PATCH_INDEX_UTILS = (
+    "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
+)
+
+
+@pytest.fixture(autouse=True)
+def _mock_indexing_utils():
+    """Mock IndexingUtils.generate_index_key for all answer_prompt tests.
+
+    _handle_answer_prompt calls IndexingUtils.generate_index_key(tool=shim)
+    which delegates to PlatformHelper.get_adapter_config() — a real HTTP
+    call.  Since tests use a mock shim, the platform URL is invalid.
+    """
+    with patch(_PATCH_INDEX_UTILS, return_value="doc-id-test"):
+        yield
+
+
+# ---------------------------------------------------------------------------
 # Tests — _handle_answer_prompt
 # ---------------------------------------------------------------------------
 

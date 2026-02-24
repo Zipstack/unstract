@@ -257,29 +257,14 @@ function ToolIde() {
     };
 
     pushIndexDoc(docId);
-    return axiosPrivate(requestOptions)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: `${doc?.document_name} - Indexed successfully`,
-        });
-
-        try {
-          setPostHogCustomEvent("intent_success_ps_indexed_file", {
-            info: "Indexing completed",
-          });
-        } catch (err) {
-          // If an error occurs while setting custom posthog event, ignore it and continue
-        }
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, `${doc?.document_name} - Failed to index`)
-        );
-      })
-      .finally(() => {
-        deleteIndexDoc(docId);
-      });
+    return axiosPrivate(requestOptions).catch((err) => {
+      // Only clear spinner on POST network failure (not 2xx).
+      // On success the spinner stays until a socket event arrives.
+      deleteIndexDoc(docId);
+      setAlertDetails(
+        handleException(err, `${doc?.document_name} - Failed to index`)
+      );
+    });
   };
 
   const handleUpdateTool = async (body) => {

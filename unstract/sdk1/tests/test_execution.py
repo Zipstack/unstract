@@ -665,7 +665,7 @@ class TestExecutionDispatcher:
             queue="executor",
         )
         mock_app.send_task.return_value.get.assert_called_once_with(
-            timeout=60
+            timeout=60, disable_sync_subtasks=False
         )
 
     def test_dispatch_uses_default_timeout(self: Self) -> None:
@@ -677,7 +677,7 @@ class TestExecutionDispatcher:
         dispatcher.dispatch(ctx)
 
         mock_app.send_task.return_value.get.assert_called_once_with(
-            timeout=3600
+            timeout=3600, disable_sync_subtasks=False
         )
 
     def test_dispatch_timeout_from_env(
@@ -692,7 +692,7 @@ class TestExecutionDispatcher:
         dispatcher.dispatch(ctx)
 
         mock_app.send_task.return_value.get.assert_called_once_with(
-            timeout=120
+            timeout=120, disable_sync_subtasks=False
         )
 
     def test_dispatch_explicit_timeout_overrides_env(
@@ -707,7 +707,7 @@ class TestExecutionDispatcher:
         dispatcher.dispatch(ctx, timeout=30)
 
         mock_app.send_task.return_value.get.assert_called_once_with(
-            timeout=30
+            timeout=30, disable_sync_subtasks=False
         )
 
     def test_dispatch_timeout_returns_failure(

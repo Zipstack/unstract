@@ -325,3 +325,17 @@
 .prompt-output-result{
   font-size: 12px;
 }
+
+.prompt-loading-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.prompt-progress-msg {
+  font-size: 12px;
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

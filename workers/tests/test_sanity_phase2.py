@@ -423,10 +423,11 @@ class TestSanityIndex:
 class TestSanityAnswerPrompt:
     """Full-chain answer_prompt tests through Celery eager mode."""
 
+    @patch(_PATCH_INDEX_UTILS, return_value="doc-id-sanity")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_answer_prompt_text_full_chain(
-        self, mock_shim_cls, mock_deps, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
     ):
         """TEXT prompt → result.data has output, metadata, metrics."""
         llm = _mock_llm("sanity answer")
@@ -443,10 +444,11 @@ class TestSanityAnswerPrompt:
         assert PSKeys.METRICS in result.data
         assert result.data[PSKeys.OUTPUT]["field_a"] == "sanity answer"
 
+    @patch(_PATCH_INDEX_UTILS, return_value="doc-id-sanity")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_answer_prompt_multi_prompt_full_chain(
-        self, mock_shim_cls, mock_deps, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
     ):
         """Two prompts → both field names in output and metrics."""
         llm = _mock_llm("multi answer")
@@ -467,10 +469,11 @@ class TestSanityAnswerPrompt:
         assert "revenue" in result.data[PSKeys.METRICS]
         assert "date_signed" in result.data[PSKeys.METRICS]
 
+    @patch(_PATCH_INDEX_UTILS, return_value="doc-id-sanity")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_answer_prompt_table_fails_full_chain(
-        self, mock_shim_cls, mock_deps, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
     ):
         """TABLE type → failure mentioning TABLE."""
         llm = _mock_llm()
@@ -490,10 +493,11 @@ class TestSanityAnswerPrompt:
 class TestSanitySinglePass:
     """Full-chain single_pass_extraction test."""
 
+    @patch(_PATCH_INDEX_UTILS, return_value="doc-id-sanity")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_single_pass_delegates_full_chain(
-        self, mock_shim_cls, mock_deps, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
     ):
         """Same mocks as answer_prompt → same response shape."""
         llm = _mock_llm("single pass answer")
@@ -643,10 +647,11 @@ class TestSanityResponseContracts:
         assert result.success is True
         assert isinstance(result.data[IKeys.DOC_ID], str)
 
+    @patch(_PATCH_INDEX_UTILS, return_value="doc-id-sanity")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_answer_prompt_contract(
-        self, mock_shim_cls, mock_deps, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
     ):
         llm = _mock_llm("contract answer")
         mock_deps.return_value = _mock_prompt_deps(llm)
