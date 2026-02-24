@@ -153,9 +153,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except Exception as e:
             # Log but don't fail the request
-            logger.warning(
-                f"Failed to notify HubSpot for project creation: {e}"
-            )
+            logger.warning(f"Failed to notify HubSpot for project creation: {e}")
 
     def perform_destroy(self, instance: CustomTool) -> None:
         organization_id = UserSessionUtils.get_organization_id(self.request)
@@ -489,9 +487,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except Exception as e:
             # Log but don't fail the request
-            logger.warning(
-                f"Failed to notify HubSpot for prompt run: {e}"
-            )
+            logger.warning(f"Failed to notify HubSpot for prompt run: {e}")
 
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
@@ -693,9 +689,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except Exception as e:
             # Log but don't fail the request
-            logger.warning(
-                f"Failed to notify HubSpot for document upload: {e}"
-            )
+            logger.warning(f"Failed to notify HubSpot for document upload: {e}")
 
     @action(detail=True, methods=["delete"])
     def delete_for_ide(self, request: HttpRequest, pk: uuid) -> Response:
@@ -789,9 +783,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except Exception as e:
             # Log but don't fail the request
-            logger.warning(
-                f"Failed to notify HubSpot for tool export: {e}"
-            )
+            logger.warning(f"Failed to notify HubSpot for tool export: {e}")
 
     @action(detail=True, methods=["get"])
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:

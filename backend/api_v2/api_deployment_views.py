@@ -241,7 +241,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             headers=headers,
         )
 
-    def _notify_hubspot_first_api_deploy(self, user, deployment_count_before: int) -> None:
+    def _notify_hubspot_first_api_deploy(
+        self, user, deployment_count_before: int
+    ) -> None:
         """Notify HubSpot when an API is deployed.
 
         Checks if HubSpot plugin is available and notifies it about
@@ -266,9 +268,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             )
         except Exception as e:
             # Log but don't fail the request
-            logger.warning(
-                f"Failed to notify HubSpot for API deployment: {e}"
-            )
+            logger.warning(f"Failed to notify HubSpot for API deployment: {e}")
 
     @action(detail=False, methods=["get"])
     def by_prompt_studio_tool(self, request: Request) -> Response:
