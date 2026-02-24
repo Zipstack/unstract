@@ -192,7 +192,12 @@ class EmbeddingCompat(BaseEmbedding):
         self._tool = tool
 
         # For compatibility with SDK Callback Manager.
-        self.model_name = self._embedding_instance.kwargs.get("model", "")
+        # Prefer cost_model (actual model name) for pricing lookup accuracy,
+        # falling back to the model/deployment name used for routing.
+        self.model_name = (
+            self._embedding_instance.kwargs.pop("cost_model", None)
+            or self._embedding_instance.kwargs.get("model", "")
+        )
         self.callback_manager = None
 
         if not PlatformHelper.is_public_adapter(
