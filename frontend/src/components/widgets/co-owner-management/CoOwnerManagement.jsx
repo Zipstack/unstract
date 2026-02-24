@@ -21,31 +21,40 @@ function CoOwnerManagement({
   onAddCoOwner,
   onRemoveCoOwner,
 }) {
-  const [adding, setAdding] = useState(false);
+  const [pendingAdds, setPendingAdds] = useState([]);
   const [removingUserId, setRemovingUserId] = useState(null);
+  const [applying, setApplying] = useState(false);
 
-  // co_owners is the single source of truth (creator is always in it)
   const ownersList = coOwners || [];
   const totalOwners = ownersList.length;
 
-  // Users available for adding (exclude existing co-owners)
+  // Exclude both existing co-owners and pending adds from dropdown
   const availableUsers = useMemo(() => {
     const coOwnerIds = (coOwners || []).map((u) => u?.id?.toString());
+    const pendingIds = pendingAdds.map((u) => u?.id?.toString());
     return (allUsers || []).filter(
-      (user) => !coOwnerIds.includes(user?.id?.toString())
+      (user) =>
+        !coOwnerIds.includes(user?.id?.toString()) &&
+        !pendingIds.includes(user?.id?.toString())
     );
-  }, [allUsers, coOwners]);
+  }, [allUsers, coOwners, pendingAdds]);
 
-  const handleAdd = async (userId) => {
-    setAdding(true);
-    try {
-      await onAddCoOwner(resourceId, userId);
-    } finally {
-      setAdding(false);
+  const handleSelect = (userId) => {
+    const user = (allUsers || []).find(
+      (u) => u?.id?.toString() === userId?.toString()
+    );
+    if (user) {
+      setPendingAdds((prev) => [...prev, user]);
     }
   };
 
-  const handleRemove = async (userId) => {
+  const handleRemovePending = (userId) => {
+    setPendingAdds((prev) =>
+      prev.filter((u) => u?.id?.toString() !== userId?.toString())
+    );
+  };
+
+  const handleRemoveExisting = async (userId) => {
     setRemovingUserId(userId);
     try {
       await onRemoveCoOwner(resourceId, userId);
@@ -54,21 +63,51 @@ function CoOwnerManagement({
     }
   };
 
+  const handleApply = async () => {
+    const usersToAdd = [...pendingAdds];
+    setApplying(true);
+    try {
+      for (const user of usersToAdd) {
+        await onAddCoOwner(resourceId, user.id);
+      }
+    } finally {
+      setPendingAdds([]);
+      setApplying(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setPendingAdds([]);
+    setOpen(false);
+  };
+
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
+
+  const combinedList = [
+    ...ownersList,
+    ...pendingAdds.filter(
+      (pending) =>
+        !ownersList.some(
+          (owner) => owner?.id?.toString() === pending?.id?.toString()
+        )
+    ),
+  ];
 
   return (
     <Modal
       title={`Manage Co-Owners - ${resourceType}`}
       open={open}
-      onCancel={() => setOpen(false)}
+      onCancel={handleCancel}
+      onOk={handleApply}
+      okText={"Apply"}
+      confirmLoading={applying}
       maskClosable={false}
       centered
       closable={true}
-      footer={null}
       className="co-owner-modal"
     >
-      {loading ? (
+      {loading || applying ? (
         <SpinnerLoader />
       ) : (
         <>
@@ -79,49 +118,59 @@ function CoOwnerManagement({
             placeholder="Add a co-owner..."
             value={null}
             className="co-owner-search"
-            loading={adding}
-            disabled={adding}
-            onChange={(selectedValue) => handleAdd(selectedValue)}
+            onChange={(selectedValue) => handleSelect(selectedValue)}
             options={availableUsers.map((user) => ({
               label: user.email,
               value: user.id,
             }))}
           />
           <Typography.Title level={5}>Co-Owners</Typography.Title>
-          {ownersList.length > 0 ? (
+          {combinedList.length > 0 ? (
             <List
-              dataSource={ownersList}
+              dataSource={combinedList}
               renderItem={(item) => {
+                const isPending = pendingAdds.some(
+                  (u) => u?.id?.toString() === item?.id?.toString()
+                );
                 return (
                   <List.Item
                     extra={
-                      totalOwners > 1 && (
-                        <div
-                          onClick={(event) => event.stopPropagation()}
-                          role="none"
-                        >
-                          <Popconfirm
-                            key={`${item.id}-remove`}
-                            title="Remove Co-Owner"
-                            description={`Are you sure you want to remove '${
-                              item?.username || item?.email
-                            }' as co-owner?`}
-                            okText="Yes"
-                            cancelText="No"
-                            icon={<QuestionCircleOutlined />}
-                            onConfirm={() => handleRemove(item?.id)}
+                      isPending ? (
+                        <Typography.Text>
+                          <DeleteOutlined
+                            className="action-icon-buttons"
+                            onClick={() => handleRemovePending(item?.id)}
+                          />
+                        </Typography.Text>
+                      ) : (
+                        totalOwners > 1 && (
+                          <div
+                            onClick={(event) => event.stopPropagation()}
+                            role="none"
                           >
-                            <Typography.Text>
-                              <DeleteOutlined
-                                className="action-icon-buttons"
-                                style={{
-                                  opacity:
-                                    removingUserId === item?.id ? 0.4 : 1,
-                                }}
-                              />
-                            </Typography.Text>
-                          </Popconfirm>
-                        </div>
+                            <Popconfirm
+                              key={`${item.id}-remove`}
+                              title="Remove Co-Owner"
+                              description={`Are you sure you want to remove '${
+                                item?.username || item?.email
+                              }' as co-owner?`}
+                              okText="Yes"
+                              cancelText="No"
+                              icon={<QuestionCircleOutlined />}
+                              onConfirm={() => handleRemoveExisting(item?.id)}
+                            >
+                              <Typography.Text>
+                                <DeleteOutlined
+                                  className="action-icon-buttons"
+                                  style={{
+                                    opacity:
+                                      removingUserId === item?.id ? 0.4 : 1,
+                                  }}
+                                />
+                              </Typography.Text>
+                            </Popconfirm>
+                          </div>
+                        )
                       )
                     }
                   >
