@@ -400,6 +400,16 @@ function ListOfTools() {
         createdBy: res.data?.created_by || null,
       });
     } catch (err) {
+      if (err?.response?.status === 404) {
+        setCoOwnerOpen(false);
+        getListOfTools();
+        setAlertDetails({
+          type: "error",
+          content:
+            "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+        });
+        return;
+      }
       setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
     }
   };
