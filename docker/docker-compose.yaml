@@ -33,6 +33,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`))
+      - traefik.http.services.backend.loadbalancer.server.port=8000
     extra_hosts:
       # "host-gateway" is a special string that translates to host docker0 i/f IP.
       - "host.docker.internal:host-gateway"
@@ -193,6 +194,7 @@ services:
     labels:
       - traefik.enable=true
       - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`)
+      - traefik.http.services.frontend.loadbalancer.server.port=80
 
   platform-service:
     image: unstract/platform-service:${VERSION}
