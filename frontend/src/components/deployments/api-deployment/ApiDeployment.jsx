@@ -29,6 +29,7 @@ import { SharePermission } from "../../widgets/share-permission/SharePermission"
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { apiDeploymentsService } from "./api-deployments-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
@@ -67,13 +68,20 @@ function ApiDeployment() {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [isLoadingShare, setIsLoadingShare] = useState(false);
-  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
-  const [coOwnerData, setCoOwnerData] = useState({
-    coOwners: [],
-    createdBy: null,
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: apiDeploymentsApiService,
+    setAlertDetails,
+    onListRefresh: () => getApiDeploymentList(),
   });
-  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
-  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
@@ -268,7 +276,6 @@ function ApiDeployment() {
     record.is_active = !record?.is_active;
     apiDeploymentsApiService
       .updateApiDeployment(record)
-      .then(() => {})
       .catch((err) => {
         setAlertDetails(handleException(err));
       })
@@ -337,86 +344,9 @@ function ApiDeployment() {
       });
   };
 
-  const handleCoOwner = async (record) => {
+  const handleCoOwner = (record) => {
     const row = record || selectedRow;
-    setCoOwnerLoading(true);
-    setCoOwnerOpen(true);
-
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        apiDeploymentsApiService.getAllUsers(),
-        apiDeploymentsApiService.getSharedUsers(row.id),
-      ]);
-
-      const userList =
-        usersResponse?.data?.members?.map((member) => ({
-          id: member.id,
-          email: member.email,
-        })) || [];
-
-      setCoOwnerAllUsers(userList);
-      setCoOwnerData({
-        coOwners: sharedUsersResponse.data?.co_owners || [],
-        createdBy: sharedUsersResponse.data?.created_by || null,
-      });
-    } catch (err) {
-      setAlertDetails(
-        handleException(err, "Unable to fetch co-owner information")
-      );
-      setCoOwnerOpen(false);
-    } finally {
-      setCoOwnerLoading(false);
-    }
-  };
-
-  const refreshCoOwnerData = async (resourceId) => {
-    try {
-      const res = await apiDeploymentsApiService.getSharedUsers(resourceId);
-      setCoOwnerData({
-        coOwners: res.data?.co_owners || [],
-        createdBy: res.data?.created_by || null,
-      });
-    } catch (err) {
-      if (err?.response?.status === 404) {
-        setCoOwnerOpen(false);
-        getApiDeploymentList();
-        setAlertDetails({
-          type: "error",
-          content:
-            "This resource is no longer accessible. It may have been removed or your access has been revoked.",
-        });
-        return;
-      }
-      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
-    }
-  };
-
-  const onAddCoOwner = async (resourceId, userId) => {
-    try {
-      await apiDeploymentsApiService.addCoOwner(resourceId, userId);
-      setAlertDetails({
-        type: "success",
-        content: "Co-owner added successfully",
-      });
-      await refreshCoOwnerData(resourceId);
-      getApiDeploymentList();
-    } catch (err) {
-      setAlertDetails(handleException(err, "Unable to add co-owner"));
-    }
-  };
-
-  const onRemoveCoOwner = async (resourceId, userId) => {
-    try {
-      await apiDeploymentsApiService.removeCoOwner(resourceId, userId);
-      setAlertDetails({
-        type: "success",
-        content: "Co-owner removed successfully",
-      });
-      await refreshCoOwnerData(resourceId);
-      getApiDeploymentList();
-    } catch (err) {
-      setAlertDetails(handleException(err, "Unable to remove co-owner"));
-    }
+    handleCoOwnerAction(row.id);
   };
 
   const actionItems = [

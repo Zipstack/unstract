@@ -5,6 +5,7 @@ from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
@@ -33,7 +34,9 @@ except ImportError:
     from file_management.constants import FileInformationKey as FileKey
 
 
-class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
+class CustomToolSerializer(
+    CoOwnerRepresentationMixin, IntegrityErrorMixin, AuditSerializer
+):
     shared_users = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True, many=True
     )
@@ -154,17 +157,8 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         data[TSKeys.PROMPTS] = output
 
         # Co-owner information
-        first_co_owner = instance.co_owners.first()
-        data["created_by_email"] = (
-            first_co_owner.email if first_co_owner else instance.created_by.email
-        )
-        data["co_owners_count"] = instance.co_owners.count()
         request = self.context.get("request")
-        data["is_owner"] = (
-            instance.co_owners.filter(pk=request.user.pk).exists()
-            if request and hasattr(request, "user")
-            else False
-        )
+        self.add_co_owner_fields(instance, data, request)
 
         return data
 

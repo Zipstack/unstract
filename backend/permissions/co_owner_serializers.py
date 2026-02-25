@@ -9,6 +9,30 @@ from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 
 
+class CoOwnerRepresentationMixin:
+    """Mixin to add co_owners_count, is_owner, created_by_email fields."""
+
+    def add_co_owner_fields(
+        self,
+        instance: models.Model,
+        representation: dict[str, Any],
+        request: Any = None,
+    ) -> dict[str, Any]:
+        first_co_owner = instance.co_owners.first()
+        representation["created_by_email"] = (
+            first_co_owner.email
+            if first_co_owner
+            else (instance.created_by.email if instance.created_by else None)
+        )
+        representation["co_owners_count"] = instance.co_owners.count()
+        representation["is_owner"] = (
+            instance.co_owners.filter(pk=request.user.pk).exists()
+            if request and hasattr(request, "user")
+            else False
+        )
+        return representation
+
+
 class AddCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
     """Serializer for adding a co-owner to a resource."""
 

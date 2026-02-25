@@ -67,9 +67,8 @@ function CoOwnerManagement({
     const usersToAdd = [...pendingAdds];
     setApplying(true);
     try {
-      for (const user of usersToAdd) {
-        await onAddCoOwner(resourceId, user.id);
-      }
+      const userIds = usersToAdd.map((user) => user.id);
+      await onAddCoOwner(resourceId, userIds);
     } finally {
       setPendingAdds([]);
       setApplying(false);

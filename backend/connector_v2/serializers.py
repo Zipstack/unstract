@@ -8,6 +8,7 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
@@ -21,7 +22,7 @@ from .models import ConnectorInstance
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceSerializer(AuditSerializer):
+class ConnectorInstanceSerializer(CoOwnerRepresentationMixin, AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
@@ -83,17 +84,8 @@ class ConnectorInstanceSerializer(AuditSerializer):
         rep.pop(CIKey.CONNECTOR_AUTH)
 
         # Co-owner information
-        first_co_owner = instance.co_owners.first()
-        rep["created_by_email"] = (
-            first_co_owner.email if first_co_owner else instance.created_by.email
-        )
-        rep["co_owners_count"] = instance.co_owners.count()
         request = self.context.get("request")
-        rep["is_owner"] = (
-            instance.co_owners.filter(pk=request.user.pk).exists()
-            if request and hasattr(request, "user")
-            else False
-        )
+        self.add_co_owner_fields(instance, rep, request)
 
         return rep
 

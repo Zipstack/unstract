@@ -4,6 +4,7 @@ from typing import Any
 
 from croniter import croniter
 from django.conf import settings
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from pipeline_v2.constants import PipelineConstants as PC
 from pipeline_v2.constants import PipelineKey as PK
 from pipeline_v2.constants import PipelineScheduling
@@ -22,7 +23,9 @@ logger = logging.getLogger(__name__)
 DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 
-class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
+class PipelineSerializer(
+    CoOwnerRepresentationMixin, IntegrityErrorMixin, AuditSerializer
+):
     api_endpoint = SerializerMethodField()
     created_by_email = SerializerMethodField()
 
@@ -291,12 +294,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
                 connectors=connectors,
             )
 
-        repr["co_owners_count"] = instance.co_owners.count()
         request = self.context.get("request")
-        repr["is_owner"] = (
-            instance.co_owners.filter(pk=request.user.pk).exists()
-            if request and hasattr(request, "user")
-            else False
-        )
+        self.add_co_owner_fields(instance, repr, request)
 
         return repr

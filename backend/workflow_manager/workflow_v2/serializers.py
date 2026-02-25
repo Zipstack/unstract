@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -27,7 +28,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 logger = logging.getLogger(__name__)
 
 
-class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
+class WorkflowSerializer(
+    CoOwnerRepresentationMixin, IntegrityErrorMixin, AuditSerializer
+):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
 
     class Meta:
@@ -56,19 +59,8 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             many=True,
             context=self.context,
         ).data
-        first_co_owner = instance.co_owners.first()
-        representation["created_by_email"] = (
-            first_co_owner.email
-            if first_co_owner
-            else (instance.created_by.email if instance.created_by else None)
-        )
-        representation["co_owners_count"] = instance.co_owners.count()
         request = self.context.get("request")
-        representation["is_owner"] = (
-            instance.co_owners.filter(pk=request.user.pk).exists()
-            if request and hasattr(request, "user")
-            else False
-        )
+        self.add_co_owner_fields(instance, representation, request)
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:

@@ -6,6 +6,7 @@ import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
 import { useSessionStore } from "../store/session-store";
 import { useAlertStore } from "../store/alert-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
+import { useCoOwnerManagement } from "../hooks/useCoOwnerManagement";
 import useRequestUrl from "../hooks/useRequestUrl";
 import { useListSearch } from "../hooks/useListSearch";
 import "./ConnectorsPage.css";
@@ -24,20 +25,50 @@ function ConnectorsPage() {
   const [userList, setUserList] = useState([]);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
-  const [coOwnerOpen, setCoOwnerOpen] = useState(false);
-  const [coOwnerData, setCoOwnerData] = useState({
-    coOwners: [],
-    createdBy: null,
-  });
-  const [coOwnerLoading, setCoOwnerLoading] = useState(false);
-  const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
-  const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
-
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+
+  const connectorCoOwnerService = {
+    getAllUsers: () => axiosPrivate.get(getUrl("users/")),
+    getSharedUsers: (id) =>
+      axiosPrivate.get(getUrl(`connector/users/${id}/`), {
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+      }),
+    addCoOwner: (id, userId) =>
+      axiosPrivate.post(
+        getUrl(`connector/${id}/owners/`),
+        { user_id: userId },
+        {
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+        }
+      ),
+    removeCoOwner: (id, userId) =>
+      axiosPrivate.delete(getUrl(`connector/${id}/owners/${userId}/`), {
+        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+      }),
+  };
+
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: connectorCoOwnerService,
+    setAlertDetails,
+    onListRefresh: () => fetchConnectors(),
+  });
   const { displayList, setDisplayList, setMasterList, onSearch } =
     useListSearch("connector_name");
 
@@ -158,97 +189,8 @@ function ConnectorsPage() {
     }
   };
 
-  const handleCoOwner = async (_event, connector) => {
-    setCoOwnerResourceId(connector.id);
-    setCoOwnerLoading(true);
-    setCoOwnerOpen(true);
-
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        axiosPrivate.get(getUrl("users/")),
-        axiosPrivate.get(getUrl(`connector/users/${connector.id}/`), {
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-        }),
-      ]);
-
-      const users =
-        usersResponse?.data?.members?.map((member) => ({
-          id: member.id,
-          email: member.email,
-        })) || [];
-
-      setCoOwnerAllUsers(users);
-      setCoOwnerData({
-        coOwners: sharedUsersResponse.data?.co_owners || [],
-        createdBy: sharedUsersResponse.data?.created_by || null,
-      });
-    } catch (err) {
-      setAlertDetails(
-        handleException(err, "Unable to fetch co-owner information")
-      );
-      setCoOwnerOpen(false);
-    } finally {
-      setCoOwnerLoading(false);
-    }
-  };
-
-  const refreshCoOwnerData = async (resourceId) => {
-    try {
-      const res = await axiosPrivate.get(
-        getUrl(`connector/users/${resourceId}/`),
-        {
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-        }
-      );
-      setCoOwnerData({
-        coOwners: res.data?.co_owners || [],
-        createdBy: res.data?.created_by || null,
-      });
-    } catch (err) {
-      setAlertDetails(handleException(err, "Unable to refresh co-owner data"));
-    }
-  };
-
-  const onAddCoOwner = async (resourceId, userId) => {
-    try {
-      await axiosPrivate.post(
-        getUrl(`connector/${resourceId}/owners/`),
-        { user_id: userId },
-        {
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-      setAlertDetails({
-        type: "success",
-        content: "Co-owner added successfully",
-      });
-      await refreshCoOwnerData(resourceId);
-      fetchConnectors();
-    } catch (err) {
-      setAlertDetails(handleException(err, "Unable to add co-owner"));
-    }
-  };
-
-  const onRemoveCoOwner = async (resourceId, userId) => {
-    try {
-      await axiosPrivate.delete(
-        getUrl(`connector/${resourceId}/owners/${userId}/`),
-        {
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-        }
-      );
-      setAlertDetails({
-        type: "success",
-        content: "Co-owner removed successfully",
-      });
-      await refreshCoOwnerData(resourceId);
-      fetchConnectors();
-    } catch (err) {
-      setAlertDetails(handleException(err, "Unable to remove co-owner"));
-    }
+  const handleCoOwner = (_event, connector) => {
+    handleCoOwnerAction(connector.id);
   };
 
   const handleConnectorSaved = () => {

@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 from django.apps import apps
 from django.core.validators import RegexValidator
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
@@ -422,7 +423,7 @@ class ExecutionQuerySerializer(Serializer):
         return str(uuid_obj)
 
 
-class APIDeploymentListSerializer(ModelSerializer):
+class APIDeploymentListSerializer(CoOwnerRepresentationMixin, ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
     created_by_email = SerializerMethodField()
     co_owners_count = SerializerMethodField()
