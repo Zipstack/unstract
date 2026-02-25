@@ -11,6 +11,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./Workflows.css";
@@ -443,20 +444,13 @@ function Workflows() {
             />
           )}
           {coOwnerOpen && (
-            <LazyLoader
-              component={() =>
-                import(
-                  "../../widgets/co-owner-management/CoOwnerManagement.jsx"
-                )
-              }
-              componentName={"CoOwnerManagement"}
+            <CoOwnerManagement
               open={coOwnerOpen}
               setOpen={setCoOwnerOpen}
               resourceId={coOwnerResourceId}
               resourceType="Workflow"
               allUsers={coOwnerAllUsers}
               coOwners={coOwnerData.coOwners}
-              createdBy={coOwnerData.createdBy}
               loading={coOwnerLoading}
               onAddCoOwner={onAddCoOwner}
               onRemoveCoOwner={onRemoveCoOwner}
