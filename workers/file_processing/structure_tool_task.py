@@ -184,25 +184,6 @@ def _should_skip_extraction_for_smart_table(
     return False
 
 
-def _merge_metrics(metrics1: dict, metrics2: dict) -> dict:
-    """Merge two metrics dicts, combining sub-dicts for shared keys."""
-    merged: dict = {}
-    all_keys = set(metrics1) | set(metrics2)
-    for key in all_keys:
-        if (
-            key in metrics1
-            and key in metrics2
-            and isinstance(metrics1[key], dict)
-            and isinstance(metrics2[key], dict)
-        ):
-            merged[key] = {**metrics1[key], **metrics2[key]}
-        elif key in metrics1:
-            merged[key] = metrics1[key]
-        else:
-            merged[key] = metrics2[key]
-    return merged
-
-
 # -----------------------------------------------------------------------
 # Main Celery task
 # -----------------------------------------------------------------------
@@ -234,6 +215,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     """Implementation of the structure tool pipeline.
 
     Separated from the task function for testability.
+
+    Phase 5E: Uses a single ``structure_pipeline`` dispatch instead of
+    3 sequential ``dispatcher.dispatch()`` calls.  The executor worker
+    handles the full extract → summarize → index → answer_prompt
+    pipeline internally, freeing the file_processing worker slot.
     """
     # ---- Unpack params ----
     organization_id = params["organization_id"]
@@ -319,9 +305,25 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     execution_run_data_folder = Path(execution_data_dir)
     extracted_input_file = str(execution_run_data_folder / _SK.EXTRACT)
 
-    # ---- Step 4: Build payload ----
+    # ---- Step 4: Smart table detection ----
+    skip_extraction_and_indexing = _should_skip_extraction_for_smart_table(
+        input_file_path, outputs
+    )
+    if skip_extraction_and_indexing:
+        logger.info(
+            "Skipping extraction and indexing for Excel table "
+            "with valid JSON schema"
+        )
+
+    # ---- Step 5: Build pipeline params ----
+    usage_kwargs: dict[Any, Any] = {}
+    if not skip_extraction_and_indexing:
+        usage_kwargs[UsageKwargs.RUN_ID] = file_execution_id
+        usage_kwargs[UsageKwargs.FILE_NAME] = source_file_name
+        usage_kwargs[UsageKwargs.EXECUTION_ID] = execution_id
+
     custom_data = exec_metadata.get(_SK.CUSTOM_DATA, {})
-    payload = {
+    answer_params = {
         _SK.RUN_ID: file_execution_id,
         _SK.EXECUTION_ID: execution_id,
         _SK.TOOL_SETTINGS: tool_settings,
@@ -335,152 +337,88 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
     }
 
-    # ---- Step 5: Extract ----
-    skip_extraction_and_indexing = _should_skip_extraction_for_smart_table(
-        input_file_path, outputs
+    extract_params = {
+        "x2text_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
+        "file_path": input_file_path,
+        "enable_highlight": is_highlight_enabled,
+        "output_file_path": str(execution_run_data_folder / _SK.EXTRACT),
+        "platform_api_key": platform_service_api_key,
+        "usage_kwargs": usage_kwargs,
+        "tags": exec_metadata.get("tags"),
+        "tool_execution_metadata": exec_metadata,
+        "execution_data_dir": str(execution_run_data_folder),
+    }
+
+    index_template = {
+        "tool_id": tool_id,
+        "file_hash": file_hash,
+        "is_highlight_enabled": is_highlight_enabled,
+        "platform_api_key": platform_service_api_key,
+        "extracted_file_path": extracted_input_file,
+    }
+
+    pipeline_options = {
+        "skip_extraction_and_indexing": skip_extraction_and_indexing,
+        "is_summarization_enabled": is_summarization_enabled,
+        "is_single_pass_enabled": is_single_pass_enabled,
+        "input_file_path": input_file_path,
+        "source_file_name": source_file_name,
+    }
+
+    # Build summarize params if enabled
+    summarize_params = None
+    if is_summarization_enabled:
+        prompt_keys = [o[_SK.NAME] for o in outputs]
+        summarize_params = {
+            "llm_adapter_instance_id": tool_settings[_SK.LLM],
+            "summarize_prompt": tool_settings.get(
+                _SK.SUMMARIZE_PROMPT, ""
+            ),
+            "extract_file_path": str(
+                execution_run_data_folder / _SK.EXTRACT
+            ),
+            "summarize_file_path": str(
+                execution_run_data_folder / _SK.SUMMARIZE
+            ),
+            "platform_api_key": platform_service_api_key,
+            "prompt_keys": prompt_keys,
+        }
+
+    # ---- Step 6: Single dispatch to executor ----
+    logger.info(
+        "Dispatching structure_pipeline: tool_id=%s "
+        "skip_extract=%s summarize=%s single_pass=%s",
+        tool_id,
+        skip_extraction_and_indexing,
+        is_summarization_enabled,
+        is_single_pass_enabled,
     )
 
-    extracted_text = ""
-    usage_kwargs: dict[Any, Any] = {}
-    if skip_extraction_and_indexing:
-        logger.info(
-            "Skipping extraction and indexing for Excel table "
-            "with valid JSON schema"
-        )
-    else:
-        logger.info("Extracting document '%s'", source_file_name)
-        usage_kwargs[UsageKwargs.RUN_ID] = file_execution_id
-        usage_kwargs[UsageKwargs.FILE_NAME] = source_file_name
-        usage_kwargs[UsageKwargs.EXECUTION_ID] = execution_id
-
-        extract_ctx = ExecutionContext(
-            executor_name="legacy",
-            operation="extract",
-            run_id=file_execution_id,
-            execution_source="tool",
-            organization_id=organization_id,
-            request_id=file_execution_id,
-            executor_params={
-                "x2text_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
-                "file_path": input_file_path,
-                "enable_highlight": is_highlight_enabled,
-                "output_file_path": str(
-                    execution_run_data_folder / _SK.EXTRACT
-                ),
-                "platform_api_key": platform_service_api_key,
-                "usage_kwargs": usage_kwargs,
-                "tags": exec_metadata.get("tags"),
-                "tool_execution_metadata": exec_metadata,
-                "execution_data_dir": str(execution_run_data_folder),
-            },
-        )
-        extract_result = dispatcher.dispatch(
-            extract_ctx, timeout=EXECUTOR_TIMEOUT
-        )
-        if not extract_result.success:
-            return extract_result.to_dict()
-        extracted_text = extract_result.data.get("extracted_text", "")
-
-    # ---- Step 6: Summarize (if enabled) ----
-    index_metrics: dict = {}
-    if is_summarization_enabled:
-        summarize_file_path, summarize_file_hash = _summarize(
-            tool_settings=tool_settings,
-            tool_data_dir=execution_run_data_folder,
-            dispatcher=dispatcher,
-            outputs=outputs,
-            usage_kwargs=usage_kwargs,
-            file_execution_id=file_execution_id,
-            organization_id=organization_id,
-            platform_service_api_key=platform_service_api_key,
-            fs=fs,
-        )
-        payload[_SK.FILE_HASH] = summarize_file_hash
-        payload[_SK.FILE_PATH] = summarize_file_path
-    elif skip_extraction_and_indexing:
-        # Use source file directly for Excel with valid JSON
-        payload[_SK.FILE_PATH] = input_file_path
-    elif not is_single_pass_enabled:
-        # ---- Step 7: Index ----
-        index_metrics = _index_documents(
-            outputs=outputs,
-            tool_settings=tool_settings,
-            tool_id=tool_id,
-            file_hash=file_hash,
-            extracted_text=extracted_text,
-            execution_run_data_folder=execution_run_data_folder,
-            is_highlight_enabled=is_highlight_enabled,
-            dispatcher=dispatcher,
-            file_execution_id=file_execution_id,
-            organization_id=organization_id,
-            platform_service_api_key=platform_service_api_key,
-        )
-
-    # ---- Step 8: Answer prompt (or single pass) ----
-    if is_single_pass_enabled:
-        logger.info("Fetching response for single pass extraction...")
-        operation = "single_pass_extraction"
-    else:
-        # Handle table_settings injection
-        for output in outputs:
-            if _SK.TABLE_SETTINGS in output:
-                table_settings = output[_SK.TABLE_SETTINGS]
-                is_directory_mode = table_settings.get(
-                    _SK.IS_DIRECTORY_MODE, False
-                )
-                if skip_extraction_and_indexing:
-                    table_settings[_SK.INPUT_FILE] = input_file_path
-                    payload[_SK.FILE_PATH] = input_file_path
-                else:
-                    table_settings[_SK.INPUT_FILE] = extracted_input_file
-                table_settings[_SK.IS_DIRECTORY_MODE] = is_directory_mode
-                logger.info(
-                    "Performing table extraction with: %s", table_settings
-                )
-                output[_SK.TABLE_SETTINGS] = table_settings
-
-        logger.info(
-            "Fetching responses for '%d' prompt(s)...", len(outputs)
-        )
-        operation = "answer_prompt"
-
-    answer_ctx = ExecutionContext(
+    pipeline_ctx = ExecutionContext(
         executor_name="legacy",
-        operation=operation,
+        operation="structure_pipeline",
         run_id=file_execution_id,
         execution_source="tool",
         organization_id=organization_id,
         request_id=file_execution_id,
-        executor_params=payload,
+        executor_params={
+            "extract_params": extract_params,
+            "index_template": index_template,
+            "answer_params": answer_params,
+            "pipeline_options": pipeline_options,
+            "summarize_params": summarize_params,
+        },
     )
-    answer_result = dispatcher.dispatch(answer_ctx, timeout=EXECUTOR_TIMEOUT)
-    if not answer_result.success:
-        return answer_result.to_dict()
+    pipeline_result = dispatcher.dispatch(
+        pipeline_ctx, timeout=EXECUTOR_TIMEOUT
+    )
+    if not pipeline_result.success:
+        return pipeline_result.to_dict()
 
-    structured_output = answer_result.data
+    structured_output = pipeline_result.data
 
-    # ---- Step 9: Post-process and write output ----
-    # Ensure metadata section exists
-    if _SK.METADATA not in structured_output:
-        structured_output[_SK.METADATA] = {}
-
-    structured_output[_SK.METADATA][_SK.FILE_NAME] = source_file_name
-
-    # Add extracted text for HITL raw view
-    if extracted_text:
-        structured_output[_SK.METADATA]["extracted_text"] = extracted_text
-        logger.info(
-            "Added extracted text to metadata (length: %d characters)",
-            len(extracted_text),
-        )
-
-    # Merge index metrics
-    if merged_metrics := _merge_metrics(
-        structured_output.get(_SK.METRICS, {}), index_metrics
-    ):
-        structured_output[_SK.METRICS] = merged_metrics
-
-    # Write output JSON
+    # ---- Step 7: Write output files ----
+    # (metadata/metrics merging already done by executor pipeline)
     try:
         output_path = (
             Path(output_dir_path)
@@ -607,183 +545,6 @@ def _handle_profile_overrides(
         raise RuntimeError(
             f"Error applying profile overrides: {e}"
         ) from e
-
-
-def _summarize(
-    tool_settings: dict,
-    tool_data_dir: Path,
-    dispatcher: ExecutionDispatcher,
-    outputs: list[dict],
-    usage_kwargs: dict,
-    file_execution_id: str,
-    organization_id: str,
-    platform_service_api_key: str,
-    fs: Any,
-) -> tuple[str, str]:
-    """Summarize the document, with filesystem caching.
-
-    Returns:
-        Tuple of (summarize_file_path, summarize_file_hash).
-    """
-    llm_adapter_instance_id = tool_settings[_SK.LLM]
-    embedding_instance_id = tool_settings[_SK.EMBEDDING]
-    vector_db_instance_id = tool_settings[_SK.VECTOR_DB]
-    x2text_instance_id = tool_settings[_SK.X2TEXT_ADAPTER]
-    summarize_prompt = tool_settings[_SK.SUMMARIZE_PROMPT]
-    run_id = usage_kwargs.get(UsageKwargs.RUN_ID, file_execution_id)
-    extract_file_path = tool_data_dir / _SK.EXTRACT
-    summarize_file_path = tool_data_dir / _SK.SUMMARIZE
-
-    # Check cache
-    summarized_context = ""
-    logger.info(
-        "Checking if summarized context exists at '%s'...",
-        summarize_file_path,
-    )
-    if fs.exists(summarize_file_path):
-        summarized_context = fs.read(path=summarize_file_path, mode="r")
-
-    if not summarized_context:
-        context = fs.read(path=extract_file_path, mode="r")
-        prompt_keys = []
-        for output in outputs:
-            prompt_keys.append(output[_SK.NAME])
-            output[_SK.EMBEDDING] = embedding_instance_id
-            output[_SK.VECTOR_DB] = vector_db_instance_id
-            output[_SK.X2TEXT_ADAPTER] = x2text_instance_id
-            output[_SK.CHUNK_SIZE] = 0
-            output[_SK.CHUNK_OVERLAP] = 0
-
-        logger.info("Summarized context not found, summarizing...")
-        summarize_ctx = ExecutionContext(
-            executor_name="legacy",
-            operation="summarize",
-            run_id=run_id,
-            execution_source="tool",
-            organization_id=organization_id,
-            request_id=file_execution_id,
-            executor_params={
-                _SK.LLM_ADAPTER_INSTANCE_ID: llm_adapter_instance_id,
-                _SK.SUMMARIZE_PROMPT: summarize_prompt,
-                _SK.CONTEXT: context,
-                _SK.PROMPT_KEYS: prompt_keys,
-                "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
-            },
-        )
-        summarize_result = dispatcher.dispatch(
-            summarize_ctx, timeout=EXECUTOR_TIMEOUT
-        )
-        if not summarize_result.success:
-            raise RuntimeError(
-                f"Summarization failed: {summarize_result.error}"
-            )
-        summarized_context = summarize_result.data.get(_SK.DATA, "")
-        logger.info(
-            "Writing summarized context to '%s'", summarize_file_path
-        )
-        fs.write(
-            path=summarize_file_path, mode="w", data=summarized_context
-        )
-
-    summarize_file_hash = fs.get_hash_from_file(path=summarize_file_path)
-    return str(summarize_file_path), summarize_file_hash
-
-
-def _index_documents(
-    outputs: list[dict],
-    tool_settings: dict,
-    tool_id: str,
-    file_hash: str,
-    extracted_text: str,
-    execution_run_data_folder: Path,
-    is_highlight_enabled: bool,
-    dispatcher: ExecutionDispatcher,
-    file_execution_id: str,
-    organization_id: str,
-    platform_service_api_key: str,
-) -> dict:
-    """Index documents with dedup on parameter combinations.
-
-    Returns:
-        Dict of index metrics per output name.
-    """
-    import datetime
-
-    index_metrics: dict = {}
-    seen_params: set = set()
-
-    for output in outputs:
-        chunk_size = output[_SK.CHUNK_SIZE]
-        chunk_overlap = output[_SK.CHUNK_OVERLAP]
-        vector_db = tool_settings[_SK.VECTOR_DB]
-        embedding = tool_settings[_SK.EMBEDDING]
-        x2text = tool_settings[_SK.X2TEXT_ADAPTER]
-
-        param_key = (
-            f"chunk_size={chunk_size}_"
-            f"chunk_overlap={chunk_overlap}_"
-            f"vector_db={vector_db}_"
-            f"embedding={embedding}_"
-            f"x2text={x2text}"
-        )
-
-        if chunk_size != 0 and param_key not in seen_params:
-            seen_params.add(param_key)
-
-            indexing_start_time = datetime.datetime.now()
-            logger.info(
-                "Indexing document with: chunk_size=%s, "
-                "chunk_overlap=%s, vector_db=%s, embedding=%s, "
-                "x2text=%s",
-                chunk_size,
-                chunk_overlap,
-                vector_db,
-                embedding,
-                x2text,
-            )
-
-            index_ctx = ExecutionContext(
-                executor_name="legacy",
-                operation="index",
-                run_id=file_execution_id,
-                execution_source="tool",
-                organization_id=organization_id,
-                request_id=file_execution_id,
-                executor_params={
-                    "embedding_instance_id": embedding,
-                    "vector_db_instance_id": vector_db,
-                    "x2text_instance_id": x2text,
-                    "chunk_size": chunk_size,
-                    "chunk_overlap": chunk_overlap,
-                    "file_path": str(
-                        execution_run_data_folder / _SK.EXTRACT
-                    ),
-                    "reindex": True,
-                    "tool_id": tool_id,
-                    "file_hash": file_hash,
-                    "enable_highlight": is_highlight_enabled,
-                    "extracted_text": extracted_text,
-                    "platform_api_key": platform_service_api_key,
-                },
-            )
-            index_result = dispatcher.dispatch(
-                index_ctx, timeout=EXECUTOR_TIMEOUT
-            )
-            if not index_result.success:
-                logger.warning(
-                    "Indexing failed for param combo %s: %s",
-                    param_key,
-                    index_result.error,
-                )
-
-            elapsed = (
-                datetime.datetime.now() - indexing_start_time
-            ).total_seconds()
-            index_metrics[output[_SK.NAME]] = {
-                _SK.INDEXING: {"time_taken(s)": elapsed}
-            }
-
-    return index_metrics
 
 
 def _run_agentic_extraction(

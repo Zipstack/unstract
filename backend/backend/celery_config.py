@@ -38,4 +38,10 @@ class CeleryConfig:
         "prompt_studio_index_document": {"queue": "celery_prompt_studio"},
         "prompt_studio_fetch_response": {"queue": "celery_prompt_studio"},
         "prompt_studio_single_pass": {"queue": "celery_prompt_studio"},
+        # Phase 5B: Fire-and-forget callback tasks (sub-second, run on
+        # same queue as the old blocking tasks they replace).
+        "ide_index_complete": {"queue": "celery_prompt_studio"},
+        "ide_index_error": {"queue": "celery_prompt_studio"},
+        "ide_prompt_complete": {"queue": "celery_prompt_studio"},
+        "ide_prompt_error": {"queue": "celery_prompt_studio"},
     }

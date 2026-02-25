@@ -30,6 +30,8 @@ class Operation(str, Enum):
     SINGLE_PASS_EXTRACTION = "single_pass_extraction"
     SUMMARIZE = "summarize"
     AGENTIC_EXTRACTION = "agentic_extraction"
+    IDE_INDEX = "ide_index"
+    STRUCTURE_PIPELINE = "structure_pipeline"
 
 
 @dataclass

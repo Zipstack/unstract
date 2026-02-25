@@ -53,6 +53,8 @@ class LegacyExecutor(BaseExecutor):
         Operation.SINGLE_PASS_EXTRACTION.value: "_handle_single_pass_extraction",
         Operation.SUMMARIZE.value: "_handle_summarize",
         Operation.AGENTIC_EXTRACTION.value: "_handle_agentic_extraction",
+        Operation.IDE_INDEX.value: "_handle_ide_index",
+        Operation.STRUCTURE_PIPELINE.value: "_handle_structure_pipeline",
     }
 
     # Defaults for log streaming (overridden by execute()).
@@ -270,6 +272,460 @@ class LegacyExecutor(BaseExecutor):
         from unstract.sdk1.vector_db import VectorDB
 
         return Index, EmbeddingCompat, VectorDB
+
+    # ------------------------------------------------------------------
+    # Phase 5C — Compound IDE index handler (extract + index)
+    # ------------------------------------------------------------------
+
+    def _handle_ide_index(
+        self, context: ExecutionContext
+    ) -> ExecutionResult:
+        """Handle ``Operation.IDE_INDEX`` — compound extract then index.
+
+        This compound operation combines ``_handle_extract`` and
+        ``_handle_index`` in a single executor invocation, eliminating
+        the need for the backend Celery worker to block between steps.
+
+        The ``executor_params`` must contain:
+          - ``extract_params``: Parameters for ``_handle_extract``.
+          - ``index_params``: Parameters for ``_handle_index``.  The
+            executor injects ``extracted_text`` from the extract step
+            before calling index.
+
+        Returns:
+            ExecutionResult with ``data`` containing ``doc_id`` from
+            the index step.
+        """
+        params = context.executor_params
+        extract_params = params.get("extract_params")
+        index_params = params.get("index_params")
+
+        if not extract_params or not index_params:
+            missing = []
+            if not extract_params:
+                missing.append("extract_params")
+            if not index_params:
+                missing.append("index_params")
+            return ExecutionResult.failure(
+                error=f"ide_index missing required params: "
+                f"{', '.join(missing)}"
+            )
+
+        # Step 1: Extract
+        extract_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.EXTRACT.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=extract_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        extract_result = self._handle_extract(extract_ctx)
+        if not extract_result.success:
+            return extract_result
+
+        # Step 2: Index — inject extracted text
+        extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+        index_params[IKeys.EXTRACTED_TEXT] = extracted_text
+
+        index_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.INDEX.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=index_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        index_result = self._handle_index(index_ctx)
+        if not index_result.success:
+            return index_result
+
+        return ExecutionResult(
+            success=True,
+            data={
+                IKeys.DOC_ID: index_result.data.get(IKeys.DOC_ID, ""),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 5D — Compound structure pipeline handler
+    # ------------------------------------------------------------------
+
+    def _handle_structure_pipeline(
+        self, context: ExecutionContext
+    ) -> ExecutionResult:
+        """Handle ``Operation.STRUCTURE_PIPELINE``.
+
+        Runs the full structure-tool pipeline in a single executor
+        invocation: extract → summarize → index → answer_prompt.
+
+        This eliminates three sequential ``dispatcher.dispatch()`` calls
+        that would otherwise block a file_processing worker slot.
+
+        Expected ``executor_params`` keys:
+
+            ``extract_params``
+                Parameters for ``_handle_extract``.
+            ``index_template``
+                Common indexing params (``tool_id``, ``file_hash``,
+                ``is_highlight_enabled``, ``platform_api_key``,
+                ``extracted_file_path``).
+            ``answer_params``
+                Full payload for ``_handle_answer_prompt`` /
+                ``_handle_single_pass_extraction``.
+            ``pipeline_options``
+                Control flags: ``skip_extraction_and_indexing``,
+                ``is_summarization_enabled``, ``is_single_pass_enabled``,
+                ``input_file_path``, ``source_file_name``.
+            ``summarize_params``
+                (Optional) Parameters for ``_handle_summarize`` plus
+                filesystem paths for caching.
+
+        Returns:
+            ExecutionResult with ``data`` containing the structured
+            output dict (``output``, ``metadata``, ``metrics``).
+        """
+        params = context.executor_params
+        extract_params = params.get("extract_params", {})
+        index_template = params.get("index_template", {})
+        answer_params = params.get("answer_params", {})
+        pipeline_options = params.get("pipeline_options", {})
+        summarize_params = params.get("summarize_params")
+
+        skip_extraction = pipeline_options.get(
+            "skip_extraction_and_indexing", False
+        )
+        is_summarization = pipeline_options.get(
+            "is_summarization_enabled", False
+        )
+        is_single_pass = pipeline_options.get(
+            "is_single_pass_enabled", False
+        )
+        input_file_path = pipeline_options.get("input_file_path", "")
+        source_file_name = pipeline_options.get("source_file_name", "")
+
+        extracted_text = ""
+        index_metrics: dict = {}
+
+        # ---- Step 1: Extract ----
+        if not skip_extraction:
+            extract_ctx = ExecutionContext(
+                executor_name=context.executor_name,
+                operation=Operation.EXTRACT.value,
+                run_id=context.run_id,
+                execution_source=context.execution_source,
+                organization_id=context.organization_id,
+                executor_params=extract_params,
+                request_id=context.request_id,
+                log_events_id=context.log_events_id,
+            )
+            extract_result = self._handle_extract(extract_ctx)
+            if not extract_result.success:
+                return extract_result
+            extracted_text = extract_result.data.get(
+                IKeys.EXTRACTED_TEXT, ""
+            )
+
+        # ---- Step 2: Summarize (if enabled) ----
+        if is_summarization:
+            summarize_result = self._run_pipeline_summarize(
+                context=context,
+                summarize_params=summarize_params or {},
+                answer_params=answer_params,
+            )
+            if not summarize_result.success:
+                return summarize_result
+            # answer_params file_path/hash updated in-place by helper
+        elif skip_extraction:
+            # Smart table: use original source file
+            answer_params["file_path"] = input_file_path
+        elif not is_single_pass:
+            # ---- Step 3: Index per output with dedup ----
+            index_metrics = self._run_pipeline_index(
+                context=context,
+                index_template=index_template,
+                answer_params=answer_params,
+                extracted_text=extracted_text,
+            )
+
+        # ---- Step 4: Table settings injection ----
+        if not is_single_pass:
+            outputs = answer_params.get("outputs", [])
+            extracted_file_path = index_template.get(
+                "extracted_file_path", ""
+            )
+            for output in outputs:
+                if "table_settings" in output:
+                    table_settings = output["table_settings"]
+                    is_dir = table_settings.get("is_directory_mode", False)
+                    if skip_extraction:
+                        table_settings["input_file"] = input_file_path
+                        answer_params["file_path"] = input_file_path
+                    else:
+                        table_settings["input_file"] = extracted_file_path
+                    table_settings["is_directory_mode"] = is_dir
+                    output["table_settings"] = table_settings
+
+        # ---- Step 5: Answer prompt / Single pass ----
+        operation = (
+            Operation.SINGLE_PASS_EXTRACTION.value
+            if is_single_pass
+            else Operation.ANSWER_PROMPT.value
+        )
+        answer_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=operation,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=answer_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        answer_result = self._handle_answer_prompt(answer_ctx)
+        if not answer_result.success:
+            return answer_result
+
+        # ---- Step 6: Merge results ----
+        structured_output = answer_result.data
+
+        # Ensure metadata section
+        if "metadata" not in structured_output:
+            structured_output["metadata"] = {}
+        structured_output["metadata"]["file_name"] = source_file_name
+
+        # Add extracted text for HITL raw view
+        if extracted_text:
+            structured_output["metadata"]["extracted_text"] = (
+                extracted_text
+            )
+
+        # Merge index metrics
+        if index_metrics:
+            existing_metrics = structured_output.get("metrics", {})
+            merged = self._merge_pipeline_metrics(
+                existing_metrics, index_metrics
+            )
+            structured_output["metrics"] = merged
+
+        return ExecutionResult(success=True, data=structured_output)
+
+    def _run_pipeline_summarize(
+        self,
+        context: ExecutionContext,
+        summarize_params: dict,
+        answer_params: dict,
+    ) -> ExecutionResult:
+        """Run the summarize step of the structure pipeline.
+
+        Handles filesystem caching: if a cached summary exists, uses it.
+        Otherwise calls ``_handle_summarize`` and writes the result.
+        Updates ``answer_params`` in-place with new file_path and
+        file_hash.
+        """
+        extract_file_path = summarize_params.get("extract_file_path", "")
+        summarize_file_path = summarize_params.get(
+            "summarize_file_path", ""
+        )
+        platform_api_key = summarize_params.get("platform_api_key", "")
+        llm_adapter_id = summarize_params.get(
+            "llm_adapter_instance_id", ""
+        )
+        summarize_prompt = summarize_params.get("summarize_prompt", "")
+        prompt_keys = summarize_params.get("prompt_keys", [])
+        outputs = answer_params.get("outputs", [])
+
+        fs = FileUtils.get_fs_instance(
+            execution_source=context.execution_source
+        )
+
+        # Set chunk_size=0 for all outputs when summarizing
+        embedding = answer_params.get("tool_settings", {}).get(
+            "embedding", ""
+        )
+        vector_db = answer_params.get("tool_settings", {}).get(
+            "vector-db", ""
+        )
+        x2text = answer_params.get("tool_settings", {}).get(
+            "x2text_adapter", ""
+        )
+        for output in outputs:
+            output["embedding"] = embedding
+            output["vector-db"] = vector_db
+            output["x2text_adapter"] = x2text
+            output["chunk-size"] = 0
+            output["chunk-overlap"] = 0
+
+        # Check cache
+        summarized_context = ""
+        if fs.exists(summarize_file_path):
+            summarized_context = fs.read(
+                path=summarize_file_path, mode="r"
+            )
+
+        if not summarized_context:
+            # Read extracted text
+            doc_context = fs.read(path=extract_file_path, mode="r")
+            if not doc_context:
+                return ExecutionResult.failure(
+                    error="No extracted text found for summarization"
+                )
+
+            summarize_ctx = ExecutionContext(
+                executor_name=context.executor_name,
+                operation=Operation.SUMMARIZE.value,
+                run_id=context.run_id,
+                execution_source=context.execution_source,
+                organization_id=context.organization_id,
+                request_id=context.request_id,
+                log_events_id=context.log_events_id,
+                executor_params={
+                    "llm_adapter_instance_id": llm_adapter_id,
+                    "summarize_prompt": summarize_prompt,
+                    "context": doc_context,
+                    "prompt_keys": prompt_keys,
+                    "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                },
+            )
+            summarize_result = self._handle_summarize(summarize_ctx)
+            if not summarize_result.success:
+                return summarize_result
+
+            summarized_context = summarize_result.data.get("data", "")
+            fs.write(
+                path=summarize_file_path,
+                mode="w",
+                data=summarized_context,
+            )
+
+        # Update answer_params
+        summarize_file_hash = fs.get_hash_from_file(
+            path=summarize_file_path
+        )
+        answer_params["file_hash"] = summarize_file_hash
+        answer_params["file_path"] = str(summarize_file_path)
+
+        return ExecutionResult(success=True, data={})
+
+    def _run_pipeline_index(
+        self,
+        context: ExecutionContext,
+        index_template: dict,
+        answer_params: dict,
+        extracted_text: str,
+    ) -> dict:
+        """Run per-output indexing with dedup for the structure pipeline.
+
+        Returns:
+            Dict of index metrics keyed by output name.
+        """
+        import datetime
+
+        tool_settings = answer_params.get("tool_settings", {})
+        outputs = answer_params.get("outputs", [])
+        tool_id = index_template.get("tool_id", "")
+        file_hash = index_template.get("file_hash", "")
+        is_highlight = index_template.get("is_highlight_enabled", False)
+        platform_api_key = index_template.get("platform_api_key", "")
+        extracted_file_path = index_template.get(
+            "extracted_file_path", ""
+        )
+
+        index_metrics: dict = {}
+        seen_params: set = set()
+
+        for output in outputs:
+            chunk_size = output.get("chunk-size", 0)
+            chunk_overlap = output.get("chunk-overlap", 0)
+            vector_db = tool_settings.get("vector-db", "")
+            embedding = tool_settings.get("embedding", "")
+            x2text = tool_settings.get("x2text_adapter", "")
+
+            param_key = (
+                f"chunk_size={chunk_size}_"
+                f"chunk_overlap={chunk_overlap}_"
+                f"vector_db={vector_db}_"
+                f"embedding={embedding}_"
+                f"x2text={x2text}"
+            )
+
+            if chunk_size != 0 and param_key not in seen_params:
+                seen_params.add(param_key)
+
+                indexing_start = datetime.datetime.now()
+                logger.info(
+                    "Pipeline indexing: chunk_size=%s "
+                    "chunk_overlap=%s vector_db=%s",
+                    chunk_size,
+                    chunk_overlap,
+                    vector_db,
+                )
+
+                index_ctx = ExecutionContext(
+                    executor_name=context.executor_name,
+                    operation=Operation.INDEX.value,
+                    run_id=context.run_id,
+                    execution_source=context.execution_source,
+                    organization_id=context.organization_id,
+                    request_id=context.request_id,
+                    log_events_id=context.log_events_id,
+                    executor_params={
+                        "embedding_instance_id": embedding,
+                        "vector_db_instance_id": vector_db,
+                        "x2text_instance_id": x2text,
+                        "chunk_size": chunk_size,
+                        "chunk_overlap": chunk_overlap,
+                        "file_path": extracted_file_path,
+                        "reindex": True,
+                        "tool_id": tool_id,
+                        "file_hash": file_hash,
+                        "enable_highlight": is_highlight,
+                        "extracted_text": extracted_text,
+                        "platform_api_key": platform_api_key,
+                    },
+                )
+                index_result = self._handle_index(index_ctx)
+                if not index_result.success:
+                    logger.warning(
+                        "Pipeline indexing failed for %s: %s",
+                        param_key,
+                        index_result.error,
+                    )
+
+                elapsed = (
+                    datetime.datetime.now() - indexing_start
+                ).total_seconds()
+                output_name = output.get("name", "")
+                index_metrics[output_name] = {
+                    "indexing": {"time_taken(s)": elapsed}
+                }
+
+        return index_metrics
+
+    @staticmethod
+    def _merge_pipeline_metrics(
+        metrics1: dict, metrics2: dict
+    ) -> dict:
+        """Merge two metrics dicts, combining sub-dicts for shared keys."""
+        merged: dict = {}
+        all_keys = set(metrics1) | set(metrics2)
+        for key in all_keys:
+            if (
+                key in metrics1
+                and key in metrics2
+                and isinstance(metrics1[key], dict)
+                and isinstance(metrics2[key], dict)
+            ):
+                merged[key] = {**metrics1[key], **metrics2[key]}
+            elif key in metrics1:
+                merged[key] = metrics1[key]
+            else:
+                merged[key] = metrics2[key]
+        return merged
 
     # ------------------------------------------------------------------
     # Phase 2C — Index handler

@@ -4,8 +4,13 @@ The dispatcher is the caller-side component used by both:
 - Structure tool Celery task (workflow path)
 - PromptStudioHelper (IDE path)
 
-It sends ``execute_extraction`` tasks to the ``executor`` queue
-and waits for results via ``AsyncResult.get()``.
+It sends ``execute_extraction`` tasks to the ``executor`` queue.
+Three dispatch modes are available:
+
+- ``dispatch()``: Send and block until result (synchronous).
+- ``dispatch_async()``: Fire-and-forget, returns task_id for polling.
+- ``dispatch_with_callback()``: Fire-and-forget with Celery ``link``
+  / ``link_error`` callbacks for post-processing.
 """
 
 import logging
@@ -48,9 +53,18 @@ class ExecutionDispatcher:
         dispatcher = ExecutionDispatcher(celery_app=app)
         result = dispatcher.dispatch(context, timeout=120)
 
-    Or fire-and-forget::
+    Fire-and-forget::
 
         task_id = dispatcher.dispatch_async(context)
+
+    Fire-and-forget with callbacks::
+
+        from celery import signature
+        task = dispatcher.dispatch_with_callback(
+            context,
+            on_success=signature("my_success_task", args=[...], queue="q"),
+            on_error=signature("my_error_task", args=[...], queue="q"),
+        )
     """
 
     def __init__(self, celery_app: Any = None) -> None:
@@ -173,3 +187,76 @@ class ExecutionDispatcher:
             queue=_QUEUE_NAME,
         )
         return async_result.id
+
+    def dispatch_with_callback(
+        self,
+        context: ExecutionContext,
+        on_success: Any = None,
+        on_error: Any = None,
+        task_id: str | None = None,
+    ) -> Any:
+        """Fire-and-forget dispatch with Celery link callbacks.
+
+        Sends the task to the executor queue and returns immediately.
+        When the executor task completes, Celery invokes the
+        ``on_success`` callback (via ``link``).  If the executor task
+        raises an exception, Celery invokes ``on_error`` (via
+        ``link_error``).
+
+        Args:
+            context: ExecutionContext to dispatch.
+            on_success: A Celery ``Signature`` invoked on success.
+                Receives ``(result_dict,)`` as first positional arg
+                followed by the signature's own args.
+            on_error: A Celery ``Signature`` invoked on failure.
+                Receives ``(failed_task_uuid,)`` as first positional
+                arg followed by the signature's own args.
+            task_id: Optional pre-generated Celery task ID. Useful
+                when the caller needs to know the task ID before
+                dispatch (e.g. to include it in callback kwargs).
+
+        Returns:
+            The ``AsyncResult`` from ``send_task``.  Callers can
+            use ``.id`` for task tracking but should NOT call
+            ``.get()`` (that would block, defeating the purpose).
+
+        Raises:
+            ValueError: If no Celery app is configured.
+        """
+        if self._app is None:
+            raise ValueError(
+                "No Celery app configured on ExecutionDispatcher"
+            )
+
+        logger.info(
+            "Dispatching with callback: executor=%s "
+            "operation=%s run_id=%s request_id=%s "
+            "on_success=%s on_error=%s",
+            context.executor_name,
+            context.operation,
+            context.run_id,
+            context.request_id,
+            on_success,
+            on_error,
+        )
+
+        send_kwargs: dict[str, Any] = {
+            "args": [context.to_dict()],
+            "queue": _QUEUE_NAME,
+        }
+        if on_success is not None:
+            send_kwargs["link"] = on_success
+        if on_error is not None:
+            send_kwargs["link_error"] = on_error
+        if task_id is not None:
+            send_kwargs["task_id"] = task_id
+
+        async_result = self._app.send_task(
+            _TASK_NAME,
+            **send_kwargs,
+        )
+        logger.info(
+            "Task sent with callbacks: celery_task_id=%s",
+            async_result.id,
+        )
+        return async_result

@@ -70,12 +70,34 @@ def execute_extraction(
     # the frontend.  Attached as a transient attribute (not serialized).
     if context.log_events_id:
         params = context.executor_params
-        context._log_component = {
-            "tool_id": params.get("tool_id", ""),
-            "run_id": context.run_id,
-            "doc_name": str(params.get("file_name", "")),
-            "operation": context.operation,
-        }
+        # For compound operations, extract nested params for log
+        # correlation.
+        if context.operation == "ide_index":
+            extract_params = params.get("extract_params", {})
+            context._log_component = {
+                "tool_id": extract_params.get("tool_id", ""),
+                "run_id": context.run_id,
+                "doc_name": str(extract_params.get("file_name", "")),
+                "operation": context.operation,
+            }
+        elif context.operation == "structure_pipeline":
+            answer_params = params.get("answer_params", {})
+            pipeline_opts = params.get("pipeline_options", {})
+            context._log_component = {
+                "tool_id": answer_params.get("tool_id", ""),
+                "run_id": context.run_id,
+                "doc_name": str(
+                    pipeline_opts.get("source_file_name", "")
+                ),
+                "operation": context.operation,
+            }
+        else:
+            context._log_component = {
+                "tool_id": params.get("tool_id", ""),
+                "run_id": context.run_id,
+                "doc_name": str(params.get("file_name", "")),
+                "operation": context.operation,
+            }
     else:
         context._log_component = {}
 

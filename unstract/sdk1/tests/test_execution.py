@@ -820,6 +820,153 @@ class TestExecutionDispatcher:
             "schema": {"name": "str"}
         }
 
+    # ---- Phase 5A: dispatch_with_callback ----
+
+    def test_dispatch_with_callback_sends_link_and_link_error(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() passes on_success as link, on_error as link_error."""
+        mock_app = self._make_mock_app(task_id="cb-task-001")
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        on_success = MagicMock(name="on_success_sig")
+        on_error = MagicMock(name="on_error_sig")
+
+        result = dispatcher.dispatch_with_callback(
+            ctx, on_success=on_success, on_error=on_error
+        )
+
+        assert result.id == "cb-task-001"
+        mock_app.send_task.assert_called_once_with(
+            "execute_extraction",
+            args=[ctx.to_dict()],
+            queue="executor",
+            link=on_success,
+            link_error=on_error,
+        )
+
+    def test_dispatch_with_callback_success_only(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() with only on_success omits link_error."""
+        mock_app = self._make_mock_app(task_id="cb-task-002")
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        on_success = MagicMock(name="on_success_sig")
+
+        dispatcher.dispatch_with_callback(ctx, on_success=on_success)
+
+        call_kwargs = mock_app.send_task.call_args
+        assert call_kwargs[1]["link"] is on_success
+        assert "link_error" not in call_kwargs[1]
+
+    def test_dispatch_with_callback_error_only(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() with only on_error omits link."""
+        mock_app = self._make_mock_app(task_id="cb-task-003")
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        on_error = MagicMock(name="on_error_sig")
+
+        dispatcher.dispatch_with_callback(ctx, on_error=on_error)
+
+        call_kwargs = mock_app.send_task.call_args
+        assert "link" not in call_kwargs[1]
+        assert call_kwargs[1]["link_error"] is on_error
+
+    def test_dispatch_with_callback_no_callbacks(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() with no callbacks sends plain task."""
+        mock_app = self._make_mock_app(task_id="cb-task-004")
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        result = dispatcher.dispatch_with_callback(ctx)
+
+        assert result.id == "cb-task-004"
+        call_kwargs = mock_app.send_task.call_args
+        assert "link" not in call_kwargs[1]
+        assert "link_error" not in call_kwargs[1]
+
+    def test_dispatch_with_callback_returns_async_result(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() returns the AsyncResult object (not just task_id)."""
+        mock_app = self._make_mock_app(task_id="cb-task-005")
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        result = dispatcher.dispatch_with_callback(ctx)
+
+        # Returns the full AsyncResult, not just the id string
+        assert result is mock_app.send_task.return_value
+        assert result.id == "cb-task-005"
+
+    def test_dispatch_with_callback_no_app_raises_value_error(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() without celery_app raises ValueError."""
+        dispatcher = ExecutionDispatcher(celery_app=None)
+        ctx = self._make_context()
+
+        with pytest.raises(ValueError, match="No Celery app"):
+            dispatcher.dispatch_with_callback(ctx)
+
+    def test_dispatch_with_callback_context_serialized(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() serializes context correctly."""
+        mock_app = self._make_mock_app()
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context(
+            operation="answer_prompt",
+            executor_params={"prompt_key": "p1"},
+        )
+
+        dispatcher.dispatch_with_callback(
+            ctx, on_success=MagicMock()
+        )
+
+        sent_args = mock_app.send_task.call_args
+        context_dict = sent_args[1]["args"][0]
+        assert context_dict["operation"] == "answer_prompt"
+        assert context_dict["executor_params"] == {
+            "prompt_key": "p1"
+        }
+
+    def test_dispatch_with_callback_custom_task_id(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() passes custom task_id to send_task."""
+        mock_app = self._make_mock_app(task_id="pre-gen-id-123")
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        result = dispatcher.dispatch_with_callback(
+            ctx, task_id="pre-gen-id-123"
+        )
+
+        call_kwargs = mock_app.send_task.call_args
+        assert call_kwargs[1]["task_id"] == "pre-gen-id-123"
+
+    def test_dispatch_with_callback_no_task_id_omits_kwarg(
+        self: Self,
+    ) -> None:
+        """dispatch_with_callback() without task_id doesn't pass task_id."""
+        mock_app = self._make_mock_app()
+        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        ctx = self._make_context()
+
+        dispatcher.dispatch_with_callback(ctx)
+
+        call_kwargs = mock_app.send_task.call_args
+        assert "task_id" not in call_kwargs[1]
+
 
 # ---- Phase 1G: ExecutorToolShim ----
 # Note: ExecutorToolShim lives in workers/executor/ but the tests
