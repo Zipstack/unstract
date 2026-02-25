@@ -23,7 +23,7 @@ const CACHE_TTL = {
  * @return {string} Unique cache key
  */
 function buildCacheKey(endpoint, params) {
-  const sortedKeys = Object.keys(params).sort();
+  const sortedKeys = Object.keys(params).sort((a, b) => a.localeCompare(b));
   const paramStr = sortedKeys.map((k) => `${k}=${params[k]}`).join("&");
   // Use simple encoding to avoid btoa issues with unicode
   const hash = paramStr ? `_${encodeURIComponent(paramStr)}` : "";
