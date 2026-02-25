@@ -599,7 +599,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         days = (end_date - start_date).days
 
         # Auto-select source based on date range
-        organization = self._get_organization()
         source = self._select_source({"start_date": start_date, "end_date": end_date})
         ts_field = self._get_timestamp_field(source)
         queryset = self._get_source_queryset(source).filter(
