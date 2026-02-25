@@ -9,6 +9,24 @@ from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 
 
+class SharedUserListMixin:
+    """Mixin providing shared_users, co_owners, and created_by serializer methods."""
+
+    def get_shared_users(self, obj: models.Model) -> list[dict[str, Any]]:
+        """Return list of shared users with id and email."""
+        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
+
+    def get_co_owners(self, obj: models.Model) -> list[dict[str, Any]]:
+        """Return list of co-owners with id and email."""
+        return [{"id": user.id, "email": user.email} for user in obj.co_owners.all()]
+
+    def get_created_by(self, obj: models.Model) -> dict[str, Any] | None:
+        """Return creator details."""
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None
+
+
 class CoOwnerRepresentationMixin:
     """Mixin to add co_owners_count, is_owner, created_by_email fields."""
 

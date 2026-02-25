@@ -6,7 +6,10 @@ from urllib.parse import urlparse
 
 from django.apps import apps
 from django.core.validators import RegexValidator
-from permissions.co_owner_serializers import CoOwnerRepresentationMixin
+from permissions.co_owner_serializers import (
+    CoOwnerRepresentationMixin,
+    SharedUserListMixin,
+)
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework.serializers import (
@@ -497,7 +500,7 @@ class APIExecutionResponseSerializer(Serializer):
     result = JSONField()
 
 
-class SharedUserListSerializer(ModelSerializer):
+class SharedUserListSerializer(SharedUserListMixin, ModelSerializer):
     """Serializer for returning API deployment with shared user details."""
 
     shared_users = SerializerMethodField()
@@ -514,17 +517,3 @@ class SharedUserListSerializer(ModelSerializer):
             "shared_to_org",
             "created_by",
         ]
-
-    def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
-
-    def get_co_owners(self, obj):
-        """Return list of co-owners with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.co_owners.all()]
-
-    def get_created_by(self, obj):
-        """Return creator details."""
-        if obj.created_by:
-            return {"id": obj.created_by.id, "email": obj.created_by.email}
-        return None

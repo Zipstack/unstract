@@ -2,7 +2,10 @@ import logging
 from typing import Any
 
 from django.conf import settings
-from permissions.co_owner_serializers import CoOwnerRepresentationMixin
+from permissions.co_owner_serializers import (
+    CoOwnerRepresentationMixin,
+    SharedUserListMixin,
+)
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -163,7 +166,7 @@ class FileHistorySerializer(ModelSerializer):
         return obj.has_exceeded_limit(obj.workflow)
 
 
-class SharedUserListSerializer(ModelSerializer):
+class SharedUserListSerializer(SharedUserListMixin, ModelSerializer):
     """Serializer for returning workflow with shared user details."""
 
     shared_users = SerializerMethodField()
@@ -180,17 +183,3 @@ class SharedUserListSerializer(ModelSerializer):
             "shared_to_org",
             "created_by",
         ]
-
-    def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
-
-    def get_co_owners(self, obj):
-        """Return list of co-owners with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.co_owners.all()]
-
-    def get_created_by(self, obj):
-        """Return creator details."""
-        if obj.created_by:
-            return {"id": obj.created_by.id, "email": obj.created_by.email}
-        return None
