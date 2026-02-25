@@ -87,6 +87,7 @@ class Embedding:
         try:
             self.platform_kwargs: dict[str, object] = kwargs
             self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
+            self._cost_model: str | None = self.kwargs.pop("cost_model", None)
         except ValidationError as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
@@ -194,9 +195,10 @@ class EmbeddingCompat(BaseEmbedding):
         # For compatibility with SDK Callback Manager.
         # Prefer cost_model (actual model name) for pricing lookup accuracy,
         # falling back to the model/deployment name used for routing.
-        self.model_name = self._embedding_instance.kwargs.pop(
-            "cost_model", None
-        ) or self._embedding_instance.kwargs.get("model", "")
+        self.model_name = (
+            self._embedding_instance._cost_model
+            or self._embedding_instance.kwargs.get("model", "")
+        )
         self.callback_manager = None
 
         if not PlatformHelper.is_public_adapter(
