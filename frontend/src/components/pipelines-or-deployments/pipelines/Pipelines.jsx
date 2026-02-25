@@ -696,9 +696,18 @@ function Pipelines({ type }) {
                 textDecoration: "underline",
                 textDecorationStyle: "dotted",
               }}
+              role="button"
+              tabIndex={0}
               onClick={() => {
                 setSelectedPorD(record);
                 handleCoOwner(record);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedPorD(record);
+                  handleCoOwner(record);
+                }
               }}
             >
               {isOwner ? "You" : email?.split("@")[0] || "Unknown"}

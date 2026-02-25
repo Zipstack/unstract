@@ -2,8 +2,8 @@ from django.db import migrations
 
 
 def backfill_creator_to_co_owners(apps, schema_editor):
-    Workflow = apps.get_model("workflow_v2", "Workflow")
-    for workflow in Workflow.objects.filter(created_by__isnull=False):
+    workflow_model = apps.get_model("workflow_v2", "Workflow")
+    for workflow in workflow_model.objects.filter(created_by__isnull=False):
         if not workflow.co_owners.filter(id=workflow.created_by_id).exists():
             workflow.co_owners.add(workflow.created_by)
 

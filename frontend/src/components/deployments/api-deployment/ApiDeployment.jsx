@@ -176,9 +176,18 @@ function ApiDeployment() {
                 textDecoration: "underline",
                 textDecorationStyle: "dotted",
               }}
+              role="button"
+              tabIndex={0}
               onClick={() => {
                 setSelectedRow(record);
                 handleCoOwner(record);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedRow(record);
+                  handleCoOwner(record);
+                }
               }}
             >
               {isOwner ? "You" : record?.created_by_email || "Unknown"}

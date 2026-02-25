@@ -37,11 +37,13 @@ class CoOwnerRepresentationMixin:
         request: Any = None,
     ) -> dict[str, Any]:
         first_co_owner = instance.co_owners.first()
-        representation["created_by_email"] = (
-            first_co_owner.email
-            if first_co_owner
-            else (instance.created_by.email if instance.created_by else None)
-        )
+        if first_co_owner:
+            created_by_email = first_co_owner.email
+        elif instance.created_by:
+            created_by_email = instance.created_by.email
+        else:
+            created_by_email = None
+        representation["created_by_email"] = created_by_email
         representation["co_owners_count"] = instance.co_owners.count()
         representation["is_owner"] = (
             instance.co_owners.filter(pk=request.user.pk).exists()

@@ -2,8 +2,8 @@ from django.db import migrations
 
 
 def backfill_creator_to_co_owners(apps, schema_editor):
-    ConnectorInstance = apps.get_model("connector_v2", "ConnectorInstance")
-    for connector in ConnectorInstance.objects.filter(created_by__isnull=False):
+    connector_instance_model = apps.get_model("connector_v2", "ConnectorInstance")
+    for connector in connector_instance_model.objects.filter(created_by__isnull=False):
         if not connector.co_owners.filter(id=connector.created_by_id).exists():
             connector.co_owners.add(connector.created_by)
 

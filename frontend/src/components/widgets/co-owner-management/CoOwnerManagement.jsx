@@ -30,12 +30,12 @@ function CoOwnerManagement({
 
   // Exclude both existing co-owners and pending adds from dropdown
   const availableUsers = useMemo(() => {
-    const coOwnerIds = (coOwners || []).map((u) => u?.id?.toString());
-    const pendingIds = pendingAdds.map((u) => u?.id?.toString());
+    const coOwnerIds = new Set((coOwners || []).map((u) => u?.id?.toString()));
+    const pendingIds = new Set(pendingAdds.map((u) => u?.id?.toString()));
     return (allUsers || []).filter(
       (user) =>
-        !coOwnerIds.includes(user?.id?.toString()) &&
-        !pendingIds.includes(user?.id?.toString())
+        !coOwnerIds.has(user?.id?.toString()) &&
+        !pendingIds.has(user?.id?.toString())
     );
   }, [allUsers, coOwners, pendingAdds]);
 

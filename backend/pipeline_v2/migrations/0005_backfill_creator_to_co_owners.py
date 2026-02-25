@@ -2,8 +2,8 @@ from django.db import migrations
 
 
 def backfill_creator_to_co_owners(apps, schema_editor):
-    Pipeline = apps.get_model("pipeline_v2", "Pipeline")
-    for pipeline in Pipeline.objects.filter(created_by__isnull=False):
+    pipeline_model = apps.get_model("pipeline_v2", "Pipeline")
+    for pipeline in pipeline_model.objects.filter(created_by__isnull=False):
         if not pipeline.co_owners.filter(id=pipeline.created_by_id).exists():
             pipeline.co_owners.add(pipeline.created_by)
 

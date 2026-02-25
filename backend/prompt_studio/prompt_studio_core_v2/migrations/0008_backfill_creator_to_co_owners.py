@@ -2,8 +2,8 @@ from django.db import migrations
 
 
 def backfill_creator_to_co_owners(apps, schema_editor):
-    CustomTool = apps.get_model("prompt_studio_core_v2", "CustomTool")
-    for tool in CustomTool.objects.filter(created_by__isnull=False):
+    custom_tool_model = apps.get_model("prompt_studio_core_v2", "CustomTool")
+    for tool in custom_tool_model.objects.filter(created_by__isnull=False):
         if not tool.co_owners.filter(id=tool.created_by_id).exists():
             tool.co_owners.add(tool.created_by)
 

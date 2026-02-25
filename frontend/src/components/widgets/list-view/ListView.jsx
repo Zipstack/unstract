@@ -49,6 +49,53 @@ function ListView({
     handleCoOwner(event, tool);
   };
 
+  const renderOwnerBadge = (item) => {
+    const name = item?.is_owner ? "Me" : item?.created_by_email || "-";
+    const extra =
+      item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+    const ownerLabel = `${name}${extra}`;
+
+    const badgeContent = (
+      <>
+        <Avatar
+          size={20}
+          className="adapters-list-user-avatar"
+          icon={<UserOutlined />}
+        />
+        <Typography.Text disabled className="adapters-list-user-prefix">
+          Owned By:
+        </Typography.Text>
+        <Typography.Text className="shared-username">
+          {ownerLabel}
+        </Typography.Text>
+      </>
+    );
+
+    if (handleCoOwner) {
+      return (
+        <Tooltip title="Manage Co-Owners">
+          <button
+            type="button"
+            className="adapters-list-profile-container owner-clickable owner-badge-btn"
+            onClick={(event) => handleCoOwnerClick(event, item)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleCoOwnerClick(event, item);
+              }
+            }}
+          >
+            {badgeContent}
+          </button>
+        </Tooltip>
+      );
+    }
+
+    return (
+      <div className="adapters-list-profile-container">{badgeContent}</div>
+    );
+  };
+
   const renderTitle = (item) => {
     let title = null;
     if (iconProp && item[iconProp].length > 4) {
@@ -85,42 +132,7 @@ function ListView({
           <div className="adapters-list-title-container display-flex-left">
             {title}
           </div>
-          {showOwner && (
-            <Tooltip title={handleCoOwner ? "Manage Co-Owners" : ""}>
-              <div
-                className={`adapters-list-profile-container${
-                  handleCoOwner ? " owner-clickable" : ""
-                }`}
-                onClick={
-                  handleCoOwner
-                    ? (event) => handleCoOwnerClick(event, item)
-                    : undefined
-                }
-                role={handleCoOwner ? "button" : undefined}
-              >
-                <Avatar
-                  size={20}
-                  className="adapters-list-user-avatar"
-                  icon={<UserOutlined />}
-                />
-                <Typography.Text disabled className="adapters-list-user-prefix">
-                  Owned By:
-                </Typography.Text>
-                <Typography.Text className="shared-username">
-                  {(() => {
-                    const name = item?.is_owner
-                      ? "Me"
-                      : item?.created_by_email || "-";
-                    const extra =
-                      item?.co_owners_count > 1
-                        ? ` +${item.co_owners_count - 1}`
-                        : "";
-                    return `${name}${extra}`;
-                  })()}
-                </Typography.Text>
-              </div>
-            </Tooltip>
-          )}
+          {showOwner && renderOwnerBadge(item)}
         </div>
         <div
           className="action-button-container"
