@@ -64,7 +64,7 @@ def _build_cache_key(org_id: str, endpoint: str, params: dict[str, Any]) -> str:
     """
     # Sort params for consistent hashing
     sorted_params = json.dumps(params, sort_keys=True, default=str)
-    params_hash = hashlib.md5(sorted_params.encode()).hexdigest()[:12]
+    params_hash = hashlib.sha256(sorted_params.encode()).hexdigest()[:12]
     return f"{CACHE_PREFIX}:{org_id}:{endpoint}:{params_hash}"
 
 

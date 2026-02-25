@@ -132,7 +132,7 @@ services:
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-metrics
-      - DASHBOARD_METRICS_ENABLED=true
+
     labels:
       - traefik.enable=false
 

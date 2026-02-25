@@ -175,7 +175,8 @@ function MetricsDashboard() {
             onClick={() =>
               window.open(
                 "https://docs.unstract.com/unstract/index.html",
-                "_blank"
+                "_blank",
+                "noopener,noreferrer"
               )
             }
             className="metrics-header-button"
@@ -186,7 +187,11 @@ function MetricsDashboard() {
             icon={<SlackOutlined />}
             type="link"
             onClick={() =>
-              window.open("https://join-slack.unstract.com/", "_blank")
+              window.open(
+                "https://join-slack.unstract.com/",
+                "_blank",
+                "noopener,noreferrer"
+              )
             }
             className="metrics-header-button"
           >
