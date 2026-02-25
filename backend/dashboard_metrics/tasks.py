@@ -355,9 +355,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                         }
 
                 except Exception:
-                    logger.exception(
-                        "Error querying %s for org %s", metric_name, org_id
-                    )
+                    logger.exception("Error querying %s for org %s", metric_name, org_id)
                     stats["errors"] += 1
 
             # Upsert all three tiers
