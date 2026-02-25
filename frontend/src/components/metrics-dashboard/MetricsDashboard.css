@@ -275,3 +275,42 @@
 .recent-activity-time {
   font-size: 12px;
 }
+
+/* LLM Usage Table */
+.llm-usage-card .ant-card-body {
+  padding: 0;
+}
+
+.llm-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.llm-usage-title {
+  font-size: 16px;
+  color: #262626;
+}
+
+.llm-usage-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  color: #595959;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.llm-usage-table .ant-table-tbody > tr > td {
+  color: #434343;
+  font-size: 14px;
+}
+
+.llm-usage-table .ant-table-tbody > tr:hover > td {
+  background: #f5f7fa;
+}
+
+.llm-usage-table .ant-table-tbody > tr > td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}

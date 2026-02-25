@@ -264,8 +264,9 @@ class MetricsQueryService:
         """
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
-        # Use subquery to avoid materializing ID list (N+1 optimization)
-        api_subquery = APIDeployment.objects.filter(
+        # Use _base_manager to bypass DefaultOrganizationManagerMixin
+        # (UserContext is None in Celery tasks)
+        api_subquery = APIDeployment._base_manager.filter(
             organization_id=organization_id
         ).values("id")
 
@@ -306,8 +307,9 @@ class MetricsQueryService:
         """
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
-        # Use subquery to avoid materializing ID list (N+1 optimization)
-        pipeline_subquery = Pipeline.objects.filter(
+        # Use _base_manager to bypass DefaultOrganizationManagerMixin
+        # (UserContext is None in Celery tasks)
+        pipeline_subquery = Pipeline._base_manager.filter(
             organization_id=organization_id,
             pipeline_type="ETL",
         ).values("id")
@@ -611,16 +613,17 @@ class MetricsQueryService:
         Returns:
             List of dicts with execution details including type
         """
-        # Get ETL and API pipeline IDs for this org
+        # Use _base_manager to bypass DefaultOrganizationManagerMixin
+        # (UserContext is None in Celery tasks)
         etl_pipeline_ids = set(
-            Pipeline.objects.filter(
+            Pipeline._base_manager.filter(
                 organization_id=organization_id,
                 pipeline_type="ETL",
             ).values_list("id", flat=True)
         )
 
         api_deployment_ids = set(
-            APIDeployment.objects.filter(
+            APIDeployment._base_manager.filter(
                 organization_id=organization_id,
             ).values_list("id", flat=True)
         )
@@ -734,11 +737,12 @@ class MetricsQueryService:
         # Evaluate queryset once to avoid double DB hit
         usage_rows = list(usage_qs)
 
-        # Resolve workflow names
+        # Resolve workflow names using _base_manager to bypass
+        # DefaultOrganizationManagerMixin (UserContext is None in Celery tasks)
         workflow_ids = [row["workflow_id"] for row in usage_rows]
         workflow_names = {}
         if workflow_ids:
-            workflows = Workflow.objects.filter(id__in=workflow_ids).values(
+            workflows = Workflow._base_manager.filter(id__in=workflow_ids).values(
                 "id", "workflow_name"
             )
             workflow_names = {str(w["id"]): w["workflow_name"] for w in workflows}

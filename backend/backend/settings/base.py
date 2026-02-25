@@ -593,6 +593,26 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
+# Dashboard Metrics Cache TTLs (in seconds)
+DASHBOARD_CACHE_TTL_CURRENT_BUCKET = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_CURRENT_BUCKET", 60)
+)
+DASHBOARD_CACHE_TTL_HISTORICAL = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_HISTORICAL", 28800)
+)
+DASHBOARD_CACHE_TTL_OVERVIEW = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_OVERVIEW", 300)
+)
+DASHBOARD_CACHE_TTL_SUMMARY = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_SUMMARY", 900)
+)
+DASHBOARD_CACHE_TTL_SERIES = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_SERIES", 1800)
+)
+DASHBOARD_CACHE_TTL_WORKFLOW_USAGE = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600)
+)
+
 # Always keep this line at the bottom of the file.
 if missing_settings:
     ERROR_MESSAGE = "Below required settings are missing.\n" + ",\n".join(

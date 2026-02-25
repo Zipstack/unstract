@@ -31,6 +31,15 @@ import { LLMUsageTable } from "./LLMUsageTable";
 
 import "./MetricsDashboard.css";
 
+// Cloud-only: Plan banner with subscription details
+let PlanBanner;
+try {
+  PlanBanner =
+    require("../../plugins/unstract-subscription/components/PlanBanner.jsx").PlanBanner;
+} catch {
+  // Plugin unavailable - no banner on OSS
+}
+
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
@@ -118,10 +127,10 @@ function MetricsDashboard() {
             <Col xs={24} lg={8}>
               <RecentActivity data={activityData} loading={activityLoading} />
             </Col>
-            <Col xs={24}>
+            <Col xs={24} lg={12}>
               <HITLChart data={chartData} loading={chartLoading} />
             </Col>
-            <Col xs={24}>
+            <Col xs={24} lg={12}>
               <TrendAnalysisChart data={chartData} loading={chartLoading} />
             </Col>
           </Row>
@@ -155,7 +164,7 @@ function MetricsDashboard() {
         <div className="metrics-topbar-left">
           <BarChartOutlined className="metrics-topbar-icon" />
           <Title level={4} style={{ margin: 0 }}>
-            Metrics Dashboard
+            Dashboard
           </Title>
         </div>
 
@@ -185,6 +194,8 @@ function MetricsDashboard() {
           </Button>
         </Space>
       </div>
+
+      {PlanBanner && <PlanBanner />}
 
       {overviewError && (
         <Alert

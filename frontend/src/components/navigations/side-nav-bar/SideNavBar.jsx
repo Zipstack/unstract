@@ -6,6 +6,7 @@ import {
   Layout,
   Popover,
   Space,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -318,10 +319,11 @@ const SideNavBar = ({ collapsed }) => {
   if (dashboardSideMenuItem) {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
-  // Add metrics menu item (available for both OSS and cloud)
+  // Add metrics dashboard menu item (available for both OSS and cloud)
   unstractMenuItems[1].subMenu.unshift({
     id: 2.0,
-    title: "Metrics",
+    title: "Dashboard",
+    tag: "New",
     description: "View platform usage metrics and analytics",
     image: DashboardIcon,
     path: `/${orgName}/metrics`,
@@ -478,6 +480,11 @@ const SideNavBar = ({ collapsed }) => {
                           <div>
                             <Typography className="sidebar-item-text fs-14">
                               {el.title}
+                              {el.tag && (
+                                <Tag color="blue" className="sidebar-item-tag">
+                                  {el.tag}
+                                </Tag>
+                              )}
                             </Typography>
                             <Typography className="sidebar-item-text fs-11">
                               {el.description}

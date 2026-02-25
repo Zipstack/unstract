@@ -4,7 +4,7 @@ Provides caching for computed metric aggregations to reduce database load.
 Uses Redis through Django's cache framework.
 
 Cache TTL Strategy:
-- Current hour/day/month data: Configurable via DASHBOARD_CACHE_TTL_CURRENT_HOUR (default 30s)
+- Current hour/day/month data: Configurable via DASHBOARD_CACHE_TTL_CURRENT_BUCKET (default 60s)
 - Historical data: Configurable via DASHBOARD_CACHE_TTL_HISTORICAL (default 8 hours)
 
 Bucket-based Caching:
@@ -39,13 +39,13 @@ except ImportError:
     REDIS_AVAILABLE = False
     logger.warning("django_redis not available, bucket caching will use fallback")
 
-# Cache TTL values from settings (with fallback defaults)
-CACHE_TTL_CURRENT_HOUR = getattr(settings, "DASHBOARD_CACHE_TTL_CURRENT_HOUR", 30)
-CACHE_TTL_HISTORICAL = getattr(settings, "DASHBOARD_CACHE_TTL_HISTORICAL", 28800)
-CACHE_TTL_OVERVIEW = getattr(settings, "DASHBOARD_CACHE_TTL_OVERVIEW", 300)
-CACHE_TTL_SUMMARY = getattr(settings, "DASHBOARD_CACHE_TTL_SUMMARY", 900)
-CACHE_TTL_SERIES = getattr(settings, "DASHBOARD_CACHE_TTL_SERIES", 1800)
-CACHE_TTL_WORKFLOW_USAGE = getattr(settings, "DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600)
+# Cache TTL values from Django settings (configured in settings/base.py)
+CACHE_TTL_CURRENT_BUCKET = settings.DASHBOARD_CACHE_TTL_CURRENT_BUCKET
+CACHE_TTL_HISTORICAL = settings.DASHBOARD_CACHE_TTL_HISTORICAL
+CACHE_TTL_OVERVIEW = settings.DASHBOARD_CACHE_TTL_OVERVIEW
+CACHE_TTL_SUMMARY = settings.DASHBOARD_CACHE_TTL_SUMMARY
+CACHE_TTL_SERIES = settings.DASHBOARD_CACHE_TTL_SERIES
+CACHE_TTL_WORKFLOW_USAGE = settings.DASHBOARD_CACHE_TTL_WORKFLOW_USAGE
 
 # Cache key prefix
 CACHE_PREFIX = "dashboard_metrics"
@@ -87,6 +87,7 @@ def cache_metrics_response(
         "summary": CACHE_TTL_SUMMARY,
         "series": CACHE_TTL_SERIES,
         "workflow_token_usage": CACHE_TTL_WORKFLOW_USAGE,
+        "recent_activity": CACHE_TTL_OVERVIEW,
     }
 
     def decorator(func: Callable) -> Callable:
@@ -260,7 +261,7 @@ def _get_ttl_for_bucket(bucket_ts: datetime, granularity: str = "hourly") -> int
 
     # Current bucket gets short TTL, historical gets long TTL
     if bucket_ts >= current_bucket:
-        return CACHE_TTL_CURRENT_HOUR
+        return CACHE_TTL_CURRENT_BUCKET
     return CACHE_TTL_HISTORICAL
 
 

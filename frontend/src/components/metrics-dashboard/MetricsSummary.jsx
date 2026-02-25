@@ -16,12 +16,12 @@ import "./MetricsDashboard.css";
 // Mapping metric names to display config with colors matching reference design
 const METRIC_CONFIG = {
   pages_processed: {
-    label: "Total Pages Processed",
+    label: "Pages Processed",
     icon: <FileTextOutlined />,
     bgColor: "#e8f5e9",
     iconBg: "#c8e6c9",
     iconColor: "#2e7d32",
-    suffix: "pages",
+    suffix: "",
   },
   documents_processed: {
     label: "Documents Processed",
@@ -29,7 +29,7 @@ const METRIC_CONFIG = {
     bgColor: "#fff3e0",
     iconBg: "#ffe0b2",
     iconColor: "#e65100",
-    suffix: "docs",
+    suffix: "",
   },
   llm_calls: {
     label: "LLM Calls",
@@ -95,7 +95,7 @@ const METRIC_CONFIG = {
     bgColor: "#fff1f0",
     iconBg: "#ffccc7",
     iconColor: "#cf1322",
-    suffix: "pages",
+    suffix: "",
   },
   hitl_reviews: {
     label: "HITL Reviews",
@@ -143,7 +143,7 @@ function formatValue(value, precision = 0) {
       maximumFractionDigits: precision,
     });
   }
-  return value.toLocaleString();
+  return Math.round(value).toLocaleString();
 }
 
 function MetricsSummary({ data, loading }) {
@@ -165,14 +165,16 @@ function MetricsSummary({ data, loading }) {
   }
 
   // Sort metrics by priority, skip zero-value metrics
-  const sortedMetrics = [...data.totals].filter((m) => m.total_value > 0).sort((a, b) => {
-    const aIndex = METRIC_PRIORITY.indexOf(a.metric_name);
-    const bIndex = METRIC_PRIORITY.indexOf(b.metric_name);
-    if (aIndex === -1 && bIndex === -1) return 0;
-    if (aIndex === -1) return 1;
-    if (bIndex === -1) return -1;
-    return aIndex - bIndex;
-  });
+  const sortedMetrics = [...data.totals]
+    .filter((m) => m.total_value > 0)
+    .sort((a, b) => {
+      const aIndex = METRIC_PRIORITY.indexOf(a.metric_name);
+      const bIndex = METRIC_PRIORITY.indexOf(b.metric_name);
+      if (aIndex === -1 && bIndex === -1) return 0;
+      if (aIndex === -1) return 1;
+      if (bIndex === -1) return -1;
+      return aIndex - bIndex;
+    });
 
   return (
     <Row gutter={[16, 16]} className="metrics-summary">

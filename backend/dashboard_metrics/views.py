@@ -64,18 +64,15 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ["-timestamp"]
 
     def get_queryset(self):
-        """Return queryset filtered by user's organization."""
-        try:
-            organization = UserContext.get_organization()
-            if not organization:
-                logger.warning("No organization context for metrics request")
-                raise PermissionDenied("No organization context")
-            return EventMetricsHourly.objects.filter(organization=organization)
-        except Exception as e:
-            if isinstance(e, PermissionDenied):
-                raise
-            logger.exception("Error getting metrics queryset")
-            raise PermissionDenied("Unable to access metrics") from e
+        """Return queryset filtered by user's organization.
+
+        The model manager (DefaultOrganizationManagerMixin) automatically
+        filters by UserContext.get_organization(). We call _get_organization()
+        here only as a guard to return 403 instead of empty results when
+        there's no org context.
+        """
+        self._get_organization()
+        return EventMetricsHourly.objects.all()
 
     def _get_organization(self):
         """Get the current organization or raise PermissionDenied."""
@@ -107,24 +104,23 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         else:
             return "monthly"
 
-    def _get_source_queryset(self, source: str, organization):
+    def _get_source_queryset(self, source: str):
         """Get the queryset for the specified source table.
+
+        Organization filtering is handled automatically by the model manager
+        (DefaultOrganizationManagerMixin).
 
         Args:
             source: One of 'hourly', 'daily', 'monthly'
-            organization: Organization instance
 
         Returns:
             QuerySet for the appropriate table
         """
-        if source == "hourly":
-            return EventMetricsHourly.objects.filter(organization=organization)
-        elif source == "daily":
-            return EventMetricsDaily.objects.filter(organization=organization)
+        if source == "daily":
+            return EventMetricsDaily.objects.all()
         elif source == "monthly":
-            return EventMetricsMonthly.objects.filter(organization=organization)
-        else:
-            return EventMetricsHourly.objects.filter(organization=organization)
+            return EventMetricsMonthly.objects.all()
+        return EventMetricsHourly.objects.all()
 
     def _get_timestamp_field(self, source: str) -> str:
         """Get the timestamp field name for the source table."""
@@ -165,7 +161,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     def _fetch_hourly_with_bucket_cache(
         self,
         org_id: str,
-        organization,
         params: dict,
         metric_name: str | None = None,
     ) -> list[dict]:
@@ -174,9 +169,10 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         Splits the time range into hourly buckets, fetches from cache,
         queries DB for missing buckets, and saves to cache.
 
+        Organization filtering is handled automatically by the model manager.
+
         Args:
             org_id: Organization ID string
-            organization: Organization model instance
             params: Query parameters with start_date, end_date
             metric_name: Optional metric name filter
 
@@ -198,7 +194,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 # Query this specific hour
                 bucket_end = bucket_ts + timedelta(hours=1)
                 bucket_qs = EventMetricsHourly.objects.filter(
-                    organization=organization,
                     timestamp__gte=bucket_ts,
                     timestamp__lt=bucket_end,
                 )
@@ -271,7 +266,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         # Use bucket caching for hourly source (best cache reuse)
         if source == "hourly" and BUCKET_CACHE_ENABLED:
             records = self._fetch_hourly_with_bucket_cache(
-                org_id, organization, params, params.get("metric_name")
+                org_id, params, params.get("metric_name")
             )
 
             # Aggregate the records manually
@@ -312,7 +307,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         else:
             # Use standard queryset for daily/monthly (existing behavior)
-            queryset = self._get_source_queryset(source, organization)
+            queryset = self._get_source_queryset(source)
             queryset = self._apply_source_filters(queryset, params, source)
 
             # Aggregate by metric name
@@ -384,7 +379,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         # Use bucket caching for hourly source (best cache reuse)
         if source == "hourly" and BUCKET_CACHE_ENABLED:
             records = self._fetch_hourly_with_bucket_cache(
-                org_id, organization, params, params.get("metric_name")
+                org_id, params, params.get("metric_name")
             )
 
             # Apply granularity-based grouping to cached records
@@ -435,7 +430,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         else:
             # Use standard queryset for daily/monthly (existing behavior)
-            queryset = self._get_source_queryset(source, organization)
+            queryset = self._get_source_queryset(source)
             queryset = self._apply_source_filters(queryset, params, source)
             ts_field = self._get_timestamp_field(source)
 
@@ -607,7 +602,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         organization = self._get_organization()
         source = self._select_source({"start_date": start_date, "end_date": end_date})
         ts_field = self._get_timestamp_field(source)
-        queryset = self._get_source_queryset(source, organization).filter(
+        queryset = self._get_source_queryset(source).filter(
             **{
                 f"{ts_field}__gte": start_date
                 if source == "hourly"
@@ -682,10 +677,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         query_serializer.is_valid(raise_exception=True)
         params = query_serializer.validated_data
 
-        organization = UserContext.get_organization()
-        if not organization:
-            logger.warning("No organization context for live_summary request")
-            raise PermissionDenied("No organization context")
+        organization = self._get_organization()
         org_id = str(organization.id)
 
         summary = MetricsQueryService.get_all_metrics_summary(
@@ -740,10 +732,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         query_serializer.is_valid(raise_exception=True)
         params = query_serializer.validated_data
 
-        organization = UserContext.get_organization()
-        if not organization:
-            logger.warning("No organization context for live_series request")
-            raise PermissionDenied("No organization context")
+        organization = self._get_organization()
         org_id = str(organization.id)
         granularity = params.get("granularity", "day")
 
@@ -818,6 +807,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=["get"], url_path="recent-activity")
+    @cache_metrics_response(endpoint="recent_activity")
     def recent_activity(self, request: Request) -> Response:
         """Get recent processing activity differentiated by type.
 
@@ -835,7 +825,10 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         """
         organization = self._get_organization()
         org_id = str(organization.id)
-        limit = min(int(request.query_params.get("limit", 10)), 50)
+        try:
+            limit = min(int(request.query_params.get("limit", 10)), 50)
+        except (ValueError, TypeError):
+            limit = 10
 
         try:
             data = MetricsQueryService.get_recent_activity(org_id, limit)

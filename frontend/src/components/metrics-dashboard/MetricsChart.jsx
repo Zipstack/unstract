@@ -401,10 +401,10 @@ TrendAnalysisChart.propTypes = {
   loading: PropTypes.bool,
 };
 
-// HITL bar colors
+// HITL bar colors (blue + yellow/gold)
 const HITL_COLORS = {
-  hitl_reviews: "#6d28d9",
-  hitl_completions: "#059669",
+  hitl_reviews: "#69b1ff",
+  hitl_completions: "#faad14",
 };
 
 /**

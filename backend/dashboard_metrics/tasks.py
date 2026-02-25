@@ -354,8 +354,10 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                             "count": bucket["count"] or 1,
                         }
 
-                except Exception as e:
-                    logger.warning(f"Error querying {metric_name} for org {org_id}: {e}")
+                except Exception:
+                    logger.exception(
+                        "Error querying %s for org %s", metric_name, org_id
+                    )
                     stats["errors"] += 1
 
             # Upsert all three tiers
@@ -424,7 +426,9 @@ def cleanup_hourly_metrics(
     cutoff = timezone.now() - timedelta(days=retention_days)
 
     try:
-        deleted_count, _ = EventMetricsHourly.objects.filter(
+        # Use _base_manager to bypass DefaultOrganizationManagerMixin
+        # (UserContext is None in Celery tasks)
+        deleted_count, _ = EventMetricsHourly._base_manager.filter(
             timestamp__lt=cutoff
         ).delete()
 
@@ -470,7 +474,11 @@ def cleanup_daily_metrics(
     cutoff = (timezone.now() - timedelta(days=retention_days)).date()
 
     try:
-        deleted_count, _ = EventMetricsDaily.objects.filter(date__lt=cutoff).delete()
+        # Use _base_manager to bypass DefaultOrganizationManagerMixin
+        # (UserContext is None in Celery tasks)
+        deleted_count, _ = EventMetricsDaily._base_manager.filter(
+            date__lt=cutoff
+        ).delete()
 
         logger.info(
             f"Cleanup completed: deleted {deleted_count} daily records "

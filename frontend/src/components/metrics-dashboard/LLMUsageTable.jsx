@@ -62,11 +62,13 @@ function LLMUsageTable({ data, loading, onRefresh }) {
 
   if (loading) {
     return (
-      <Card
-        title="LLM Usage by Workflow"
-        extra={refreshButton}
-        className="metrics-chart-card"
-      >
+      <Card className="metrics-chart-card llm-usage-card">
+        <div className="llm-usage-header">
+          <Text strong className="llm-usage-title">
+            LLM Usage by Workflow
+          </Text>
+          {refreshButton}
+        </div>
         <div className="metrics-loading">
           <Spin />
         </div>
@@ -76,29 +78,34 @@ function LLMUsageTable({ data, loading, onRefresh }) {
 
   if (!data?.workflows?.length) {
     return (
-      <Card
-        title="LLM Usage by Workflow"
-        extra={refreshButton}
-        className="metrics-chart-card"
-      >
+      <Card className="metrics-chart-card llm-usage-card">
+        <div className="llm-usage-header">
+          <Text strong className="llm-usage-title">
+            LLM Usage by Workflow
+          </Text>
+          {refreshButton}
+        </div>
         <Empty description="No LLM usage data for this period" />
       </Card>
     );
   }
 
   return (
-    <Card
-      title="LLM Usage by Workflow"
-      extra={refreshButton}
-      className="metrics-chart-card"
-    >
+    <Card className="metrics-chart-card llm-usage-card">
+      <div className="llm-usage-header">
+        <Text strong className="llm-usage-title">
+          LLM Usage by Workflow
+        </Text>
+        {refreshButton}
+      </div>
       <Table
         dataSource={data.workflows}
         columns={columns}
         rowKey="workflow_id"
-        size="small"
+        size="middle"
         pagination={false}
         scroll={{ y: 400 }}
+        className="llm-usage-table"
       />
     </Card>
   );
