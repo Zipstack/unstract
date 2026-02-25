@@ -17,7 +17,6 @@ import { apiDeploymentsService } from "./api-deployments-service";
 import { createApiDeploymentCardConfig } from "./ApiDeploymentCardConfig.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
-import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
@@ -26,6 +25,10 @@ import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
+import { useShareModal } from "../../../hooks/useShareModal";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -45,50 +48,69 @@ function ApiDeployment() {
   const [isEdit, setIsEdit] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
-  const [openLogsModal, setOpenLogsModal] = useState(false);
-  const [executionLogs, setExecutionLogs] = useState([]);
-  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
-  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const axiosPrivate = useAxiosPrivate();
   const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
-  const [openShareModal, setOpenShareModal] = useState(false);
-  const [allUsers, setAllUsers] = useState([]);
-  const [isLoadingShare, setIsLoadingShare] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
-  // Scroll restoration state
-  const [scrollRestoreId, setScrollRestoreId] = useState(null);
-  const [searchTerm, setSearchTerm] = useState("");
-  const pendingScrollIdRef = useRef(null);
+  // Ref to forward the fetch function to hooks (avoids declaration ordering)
+  const fetchListRef = useRef(null);
 
-  // Pagination state
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0,
+  const {
+    pagination,
+    setPagination,
+    searchTerm,
+    setSearchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+  });
+
+  const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
+    useScrollRestoration({
+      location,
+      setSearchTerm,
+      setPagination,
+      fetchData: (...args) => fetchListRef.current?.(...args),
+    });
+
+  const {
+    openLogsModal,
+    setOpenLogsModal,
+    executionLogs,
+    executionLogsTotalCount,
+    isFetchingLogs,
+    handleFetchLogs,
+    handleViewLogs,
+  } = useExecutionLogs({
+    axiosPrivate,
+    handleException,
+    sessionDetails,
+    setAlertDetails,
+  });
+
+  const {
+    openShareModal,
+    setOpenShareModal,
+    allUsers,
+    isLoadingShare,
+    handleShare,
+    onShare,
+  } = useShareModal({
+    apiService: apiDeploymentsApiService,
+    setSelectedItem: setSelectedRow,
+    setAlertDetails,
+    handleException,
+    refreshList: () =>
+      getApiDeploymentList(pagination.current, pagination.pageSize, searchTerm),
   });
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
     getPromptStudioCount
   );
-
-  const handleFetchLogs = (page, pageSize) => {
-    fetchExecutionLogs(
-      axiosPrivate,
-      handleException,
-      sessionDetails,
-      selectedRow,
-      setExecutionLogs,
-      setExecutionLogsTotalCount,
-      setAlertDetails,
-      page,
-      pageSize,
-      setIsFetchingLogs
-    );
-  };
 
   useEffect(() => {
     getApiDeploymentList();
@@ -98,35 +120,6 @@ function ApiDeployment() {
   useEffect(() => {
     setFilteredData(tableData);
   }, [tableData]);
-
-  // Handle scroll restoration and list context from navigation
-  // Use location.key to trigger on each navigation (even back to same card)
-  useEffect(() => {
-    if (location.state?.scrollToCardId) {
-      // Store pending scroll ID - will be activated after data loads
-      pendingScrollIdRef.current = location.state.scrollToCardId;
-
-      // Restore pagination and search state if available
-      const { page, pageSize, searchTerm: savedSearch } = location.state;
-      const restoredPage = page || 1;
-      const restoredPageSize = pageSize || 10;
-      const restoredSearch = savedSearch || "";
-      setSearchTerm(restoredSearch);
-      setPagination((prev) => ({
-        ...prev,
-        current: restoredPage,
-        pageSize: restoredPageSize,
-      }));
-      // Fetch with restored context - scroll will be set after data loads
-      getApiDeploymentList(restoredPage, restoredPageSize, restoredSearch);
-    }
-  }, [location.key]);
-
-  const handleSearch = (searchText) => {
-    const term = searchText?.trim() || "";
-    setSearchTerm(term);
-    getApiDeploymentList(1, pagination.pageSize, term);
-  };
 
   const getWorkflows = () => {
     workflowApiService
@@ -163,37 +156,29 @@ function ApiDeployment() {
               : data.length,
         }));
 
-        // Activate scroll restoration after data is loaded
-        if (pendingScrollIdRef.current) {
-          setScrollRestoreId(pendingScrollIdRef.current);
-          pendingScrollIdRef.current = null;
-          // Clear after scroll has time to complete
-          setTimeout(() => setScrollRestoreId(null), 500);
-        }
+        activateScrollRestore();
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
-        pendingScrollIdRef.current = null;
+        clearPendingScroll();
       })
       .finally(() => {
         setIsTableLoading(false);
       });
   };
 
-  // Pagination change handler
-  const handlePaginationChange = (page, pageSize) => {
-    // Reset to page 1 if pageSize changed
-    const newPage = pageSize === pagination.pageSize ? page : 1;
-    getApiDeploymentList(newPage, pageSize);
-  };
+  fetchListRef.current = getApiDeploymentList;
 
   const deleteApiDeployment = () => {
     apiDeploymentsApiService
       .deleteApiDeployment(selectedRow.id)
       .then((res) => {
         setOpenDeleteModal(false);
-        // Refresh with current pagination
-        getApiDeploymentList(pagination.current, pagination.pageSize);
+        getApiDeploymentList(
+          pagination.current,
+          pagination.pageSize,
+          searchTerm
+        );
         setAlertDetails({
           type: "success",
           content: "API Deployment Deleted Successfully",
@@ -231,82 +216,9 @@ function ApiDeployment() {
     setOpenAddApiModal(true);
   };
 
-  const handleShare = async (deployment) => {
-    // Use passed deployment directly to avoid stale state issues
-    const deploymentToShare = deployment || selectedRow;
-    setIsLoadingShare(true);
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        apiDeploymentsApiService.getAllUsers(),
-        apiDeploymentsApiService.getSharedUsers(deploymentToShare.id),
-      ]);
-
-      // Robust response handling - check multiple possible structures
-      let userList = [];
-      const responseData = usersResponse?.data;
-      if (Array.isArray(responseData)) {
-        userList = responseData.map((user) => ({
-          id: user.id,
-          email: user.email,
-        }));
-      } else if (responseData?.members && Array.isArray(responseData.members)) {
-        userList = responseData.members.map((member) => ({
-          id: member.id,
-          email: member.email,
-        }));
-      } else if (responseData?.users && Array.isArray(responseData.users)) {
-        userList = responseData.users.map((user) => ({
-          id: user.id,
-          email: user.email,
-        }));
-      }
-
-      const sharedUsersList = sharedUsersResponse.data?.shared_users || [];
-
-      setSelectedRow({
-        ...deploymentToShare,
-        shared_users: Array.isArray(sharedUsersList) ? sharedUsersList : [],
-      });
-      setAllUsers(userList);
-      setOpenShareModal(true);
-    } catch (err) {
-      setAlertDetails(
-        handleException(err, `Unable to fetch sharing information`)
-      );
-      setAllUsers([]);
-    } finally {
-      setIsLoadingShare(false);
-    }
-  };
-
-  const onShare = (sharedUsers, api, shareWithEveryone) => {
-    setIsLoadingShare(true);
-    apiDeploymentsApiService
-      .updateSharing(selectedRow.id, sharedUsers, shareWithEveryone)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Sharing permissions updated successfully",
-        });
-        setOpenShareModal(false);
-        // Refresh with current pagination
-        getApiDeploymentList(pagination.current, pagination.pageSize);
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoadingShare(false);
-      });
-  };
-
   // Handlers for card view actions
   const handleEditDeployment = () => {
     openAddModal(true);
-  };
-
-  const handleShareDeployment = (deployment) => {
-    handleShare(deployment);
   };
 
   const handleDeleteDeployment = () => {
@@ -314,20 +226,7 @@ function ApiDeployment() {
   };
 
   const handleViewLogsDeployment = (deployment) => {
-    setSelectedRow(deployment);
-    setOpenLogsModal(true);
-    fetchExecutionLogs(
-      axiosPrivate,
-      handleException,
-      sessionDetails,
-      deployment,
-      setExecutionLogs,
-      setExecutionLogsTotalCount,
-      setAlertDetails,
-      1,
-      10,
-      setIsFetchingLogs
-    );
+    handleViewLogs(deployment, setSelectedRow);
   };
 
   const handleManageKeysDeployment = (deployment) => {
@@ -363,7 +262,7 @@ function ApiDeployment() {
         sessionDetails,
         location,
         onEdit: handleEditDeployment,
-        onShare: handleShareDeployment,
+        onShare: handleShare,
         onDelete: handleDeleteDeployment,
         onViewLogs: handleViewLogsDeployment,
         onManageKeys: handleManageKeysDeployment,

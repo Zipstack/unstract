@@ -12,7 +12,6 @@ import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { LogsModal } from "../log-modal/LogsModal.jsx";
-import { fetchExecutionLogs } from "../log-modal/fetchExecutionLogs.js";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
 import "./Pipelines.css";
@@ -31,6 +30,10 @@ import {
 } from "../../../hooks/usePromptStudioFetchCount";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
+import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
+import { useShareModal } from "../../../hooks/useShareModal";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -38,7 +41,6 @@ function Pipelines({ type }) {
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState("");
   const { sessionDetails } = useSessionStore();
   const location = useLocation();
   const { setAlertDetails } = useAlertStore();
@@ -47,10 +49,6 @@ function Pipelines({ type }) {
   const { clearFileHistory, isClearing: isClearingFileHistory } =
     useClearFileHistory();
   const [isEdit, setIsEdit] = useState(false);
-  const [openLogsModal, setOpenLogsModal] = useState(false);
-  const [executionLogs, setExecutionLogs] = useState([]);
-  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
-  const [isFetchingLogs, setIsFetchingLogs] = useState(false);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
@@ -59,20 +57,58 @@ function Pipelines({ type }) {
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
-  // Sharing state
-  const [openShareModal, setOpenShareModal] = useState(false);
-  const [allUsers, setAllUsers] = useState([]);
-  const [isLoadingShare, setIsLoadingShare] = useState(false);
 
-  // Scroll restoration state
-  const [scrollRestoreId, setScrollRestoreId] = useState(null);
-  const pendingScrollIdRef = useRef(null);
+  // Ref to forward the fetch function to hooks (avoids declaration ordering)
+  const fetchListRef = useRef(null);
 
-  // Pagination state
-  const [pagination, setPagination] = useState({
-    current: 1,
-    pageSize: 10,
-    total: 0,
+  const {
+    pagination,
+    setPagination,
+    searchTerm,
+    setSearchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+  });
+
+  const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
+    useScrollRestoration({
+      location,
+      setSearchTerm,
+      setPagination,
+      fetchData: (...args) => fetchListRef.current?.(...args),
+    });
+
+  const {
+    openLogsModal,
+    setOpenLogsModal,
+    executionLogs,
+    executionLogsTotalCount,
+    isFetchingLogs,
+    handleFetchLogs,
+    handleViewLogs,
+  } = useExecutionLogs({
+    axiosPrivate,
+    handleException,
+    sessionDetails,
+    setAlertDetails,
+  });
+
+  const {
+    openShareModal,
+    setOpenShareModal,
+    allUsers,
+    isLoadingShare,
+    handleShare,
+    onShare,
+  } = useShareModal({
+    apiService: pipelineApiService,
+    setSelectedItem: setSelectedPorD,
+    setAlertDetails,
+    handleException,
+    refreshList: () =>
+      getPipelineList(pagination.current, pagination.pageSize, searchTerm),
   });
 
   const initialFetchComplete = useInitialFetchCount(
@@ -80,53 +116,9 @@ function Pipelines({ type }) {
     getPromptStudioCount
   );
 
-  const handleFetchLogs = (page, pageSize) => {
-    fetchExecutionLogs(
-      axiosPrivate,
-      handleException,
-      sessionDetails,
-      selectedPorD,
-      setExecutionLogs,
-      setExecutionLogsTotalCount,
-      setAlertDetails,
-      page,
-      pageSize,
-      setIsFetchingLogs
-    );
-  };
-
   useEffect(() => {
     getPipelineList();
   }, [type]);
-
-  // Handle scroll restoration and list context from navigation
-  // Use location.key to trigger on each navigation (even back to same card)
-  useEffect(() => {
-    if (location.state?.scrollToCardId) {
-      // Store pending scroll ID - will be activated after data loads
-      pendingScrollIdRef.current = location.state.scrollToCardId;
-
-      // Restore pagination and search state if available
-      const { page, pageSize, searchTerm: savedSearch } = location.state;
-      const restoredPage = page || 1;
-      const restoredPageSize = pageSize || 10;
-      const restoredSearch = savedSearch || "";
-      setSearchTerm(restoredSearch);
-      setPagination((prev) => ({
-        ...prev,
-        current: restoredPage,
-        pageSize: restoredPageSize,
-      }));
-      // Fetch with restored context - scroll will be set after data loads
-      getPipelineList(restoredPage, restoredPageSize, restoredSearch);
-    }
-  }, [location.key]);
-
-  const handleSearch = (searchText, _setSearchList) => {
-    const term = searchText?.trim() || "";
-    setSearchTerm(term);
-    getPipelineList(1, pagination.pageSize, term);
-  };
 
   const openAddModal = (edit) => {
     setIsEdit(edit);
@@ -161,29 +153,18 @@ function Pipelines({ type }) {
           total: data.count ?? data.results?.length ?? data.length ?? 0,
         }));
 
-        // Activate scroll restoration after data is loaded
-        if (pendingScrollIdRef.current) {
-          setScrollRestoreId(pendingScrollIdRef.current);
-          pendingScrollIdRef.current = null;
-          // Clear after scroll has time to complete
-          setTimeout(() => setScrollRestoreId(null), 500);
-        }
+        activateScrollRestore();
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
-        pendingScrollIdRef.current = null;
+        clearPendingScroll();
       })
       .finally(() => {
         setTableLoading(false);
       });
   };
 
-  // Pagination change handler
-  const handlePaginationChange = (page, pageSize) => {
-    // Reset to page 1 if pageSize changed
-    const newPage = pageSize === pagination.pageSize ? page : 1;
-    getPipelineList(newPage, pageSize, searchTerm);
-  };
+  fetchListRef.current = getPipelineList;
 
   const handleSync = (params) => {
     const body = { ...params, pipeline_type: type.toUpperCase() };
@@ -290,90 +271,9 @@ function Pipelines({ type }) {
     }
   };
 
-  const handleShare = async (pipeline) => {
-    // Use passed pipeline directly to avoid stale state issues
-    const pipelineToShare = pipeline || selectedPorD;
-    setIsLoadingShare(true);
-    // Fetch all users and shared users first, then open modal
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        pipelineApiService.getAllUsers(),
-        pipelineApiService.getSharedUsers(pipelineToShare.id),
-      ]);
-
-      // Robust response handling - check multiple possible structures
-      let userList = [];
-      const responseData = usersResponse?.data;
-      if (Array.isArray(responseData)) {
-        userList = responseData.map((user) => ({
-          id: user.id,
-          email: user.email,
-        }));
-      } else if (responseData?.members && Array.isArray(responseData.members)) {
-        userList = responseData.members.map((member) => ({
-          id: member.id,
-          email: member.email,
-        }));
-      } else if (responseData?.users && Array.isArray(responseData.users)) {
-        userList = responseData.users.map((user) => ({
-          id: user.id,
-          email: user.email,
-        }));
-      }
-
-      const sharedUsersList = sharedUsersResponse.data?.shared_users || [];
-
-      // Set shared_users property on selectedPorD for SharePermission component
-      setSelectedPorD({
-        ...pipelineToShare,
-        shared_users: Array.isArray(sharedUsersList) ? sharedUsersList : [],
-      });
-
-      setAllUsers(userList);
-
-      // Only open modal after data is loaded
-      setOpenShareModal(true);
-    } catch (error) {
-      setAlertDetails(handleException(error, "Failed to load sharing data"));
-      // Ensure allUsers is always an array even on error
-      setAllUsers([]);
-    } finally {
-      setIsLoadingShare(false);
-    }
-  };
-
-  const onShare = (sharedUsers, _, shareWithEveryone) => {
-    setIsLoadingShare(true);
-    // sharedUsers is already an array of user IDs from SharePermission component
-
-    pipelineApiService
-      .updateSharing(selectedPorD.id, sharedUsers, shareWithEveryone)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Sharing permissions updated successfully",
-        });
-        setOpenShareModal(false);
-        // Refresh with current pagination
-        getPipelineList(pagination.current, pagination.pageSize, searchTerm);
-      })
-      .catch((error) => {
-        setAlertDetails(
-          handleException(error, "Failed to update sharing settings")
-        );
-      })
-      .finally(() => {
-        setIsLoadingShare(false);
-      });
-  };
-
   // Handlers for icon actions (top-right)
   const handleEditPipeline = () => {
     openAddModal(true);
-  };
-
-  const handleSharePipeline = (pipeline) => {
-    handleShare(pipeline);
   };
 
   const handleDeletePipeline = () => {
@@ -382,20 +282,7 @@ function Pipelines({ type }) {
 
   // Handlers for expanded view actions
   const handleViewLogsPipeline = (pipeline) => {
-    setSelectedPorD(pipeline);
-    setOpenLogsModal(true);
-    fetchExecutionLogs(
-      axiosPrivate,
-      handleException,
-      sessionDetails,
-      pipeline,
-      setExecutionLogs,
-      setExecutionLogsTotalCount,
-      setAlertDetails,
-      1,
-      10,
-      setIsFetchingLogs
-    );
+    handleViewLogs(pipeline, setSelectedPorD);
   };
 
   const handleViewFileHistoryPipeline = (pipeline) => {
@@ -448,7 +335,7 @@ function Pipelines({ type }) {
         location,
         // Icon actions
         onEdit: handleEditPipeline,
-        onShare: handleSharePipeline,
+        onShare: handleShare,
         onDelete: handleDeletePipeline,
         // Expanded view actions
         onViewLogs: handleViewLogsPipeline,
