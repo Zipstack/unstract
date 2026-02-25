@@ -237,7 +237,9 @@ function TrendAnalysisChart({ data, loading }) {
         });
       }
     });
-    const metricNames = Array.from(metricNamesSet).sort();
+    const metricNames = Array.from(metricNamesSet).sort((a, b) =>
+      a.localeCompare(b)
+    );
 
     const transformed = data.daily_trend.map((item) => ({
       date: item.date,
