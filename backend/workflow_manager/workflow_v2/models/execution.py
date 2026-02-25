@@ -2,7 +2,6 @@ import logging
 import uuid
 from datetime import timedelta
 
-from account_usage.models import PageUsage
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import models
@@ -267,17 +266,15 @@ class WorkflowExecution(BaseModel):
             int | None: Total pages processed across all file executions,
             or None if no page usage data exists.
         """
+        from usage_v2.helper import UsageHelper
+
         file_execution_ids = list(self.file_executions.values_list("id", flat=True))
         if not file_execution_ids:
             return None
 
-        str_ids = [str(fid) for fid in file_execution_ids]
-        queryset = PageUsage.objects.filter(run_id__in=str_ids)
-        if not queryset.exists():
-            return None
-
-        result = queryset.aggregate(total_pages=Sum("pages_processed"))
-        return result.get("total_pages")
+        return UsageHelper.get_aggregated_pages_processed(
+            run_ids=[str(fid) for fid in file_execution_ids]
+        )
 
     @property
     def is_completed(self) -> bool:

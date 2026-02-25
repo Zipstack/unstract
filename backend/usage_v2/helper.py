@@ -25,24 +25,31 @@ logger = logging.getLogger(__name__)
 
 class UsageHelper:
     @staticmethod
-    def get_aggregated_pages_processed(run_id: str) -> int | None:
-        """Retrieve aggregated pages processed for the given run_id.
+    def get_aggregated_pages_processed(
+        run_id: str | None = None,
+        run_ids: list[str] | None = None,
+    ) -> int | None:
+        """Retrieve aggregated pages processed for given run_id(s).
+
+        Provide either a single run_id or a list of run_ids.
 
         Args:
-            run_id (str): The identifier for the page usage (file execution ID).
+            run_id: Single file execution ID.
+            run_ids: List of file execution IDs.
 
         Returns:
             int | None: Total pages processed, or None if no records found.
         """
-        try:
+        if run_id:
             queryset = PageUsage.objects.filter(run_id=run_id)
-            if not queryset.exists():
-                return None
-            result = queryset.aggregate(total_pages=Sum("pages_processed"))
-            return result.get("total_pages")
-        except Exception as e:
-            logger.error(f"Error aggregating pages processed for run_id {run_id}: {e}")
+        elif run_ids:
+            queryset = PageUsage.objects.filter(run_id__in=run_ids)
+        else:
             return None
+        if not queryset.exists():
+            return None
+        result = queryset.aggregate(total_pages=Sum("pages_processed"))
+        return result.get("total_pages")
 
     @staticmethod
     def get_aggregated_token_count(run_id: str) -> dict:
