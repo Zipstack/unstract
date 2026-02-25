@@ -18,11 +18,127 @@
 .login-right-section {
   width: 50%;
   height: 100vh;
-  overflow-y: auto;
+  overflow: hidden;
   background-color: #eceff3;
   display: flex;
   justify-content: center;
   align-items: center;
+  position: relative;
+}
+
+.login-right-section.llm-whisperer-light {
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.login-right-section.llm-whisperer-light::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    262deg,
+    rgba(200, 234, 126, 0.02) 1%,
+    rgba(200, 234, 126, 0.14) 49%,
+    rgba(50, 230, 255, 0.2) 99%
+  );
+  pointer-events: none;
+}
+
+.login-right-section.llm-whisperer-dark {
+  background: linear-gradient(160deg, #0a1628 0%, #132040 50%, #0d1a30 100%);
+}
+
+.login-right-section.llm-whisperer-dark::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: radial-gradient(
+      ellipse at 20% 50%,
+      rgba(56, 112, 180, 0.12) 0%,
+      transparent 60%
+    ),
+    radial-gradient(
+      ellipse at 80% 20%,
+      rgba(56, 112, 180, 0.08) 0%,
+      transparent 50%
+    );
+  pointer-events: none;
+}
+
+.login-right-section.llm-whisperer-dark::after {
+  content: "";
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 80%;
+  height: 55%;
+  background-image: radial-gradient(
+    circle,
+    rgba(56, 140, 220, 0.3) 2.5px,
+    transparent 2.5px
+  );
+  background-size: 20px 20px;
+  mask-image: radial-gradient(
+    ellipse at 85% 85%,
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0.4) 25%,
+    transparent 60%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse at 85% 85%,
+    rgba(0, 0, 0, 0.7) 0%,
+    rgba(0, 0, 0, 0.4) 25%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
+
+.login-right-section.unstract-light {
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.login-right-section.unstract-light::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    262deg,
+    rgba(200, 234, 126, 0.02) 1%,
+    rgba(200, 234, 126, 0.14) 49%,
+    rgba(50, 230, 255, 0.2) 99%
+  );
+  pointer-events: none;
+}
+
+.login-right-section.default-light {
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.login-right-section.default-light::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    262deg,
+    rgba(200, 234, 126, 0.02) 1%,
+    rgba(200, 234, 126, 0.14) 49%,
+    rgba(50, 230, 255, 0.2) 99%
+  );
+  pointer-events: none;
 }
 
 .right-section-text-wrapper {
@@ -65,8 +181,6 @@
 
 .button-wraper {
   width: 450px;
-  height: 550px;
-  position: fixed;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -74,8 +188,10 @@
 }
 
 .logo {
-  height: 50px;
-  width: 100%;
+  height: 40px;
+  width: auto;
+  display: block;
+  margin: 0 auto 18px;
 }
 
 .text-wrapper {
@@ -84,6 +200,8 @@
   flex-direction: column;
   justify-content: center;
   align-items: center;
+  margin-top: 18px;
+  margin-bottom: 10px;
 }
 
 .login-button {
@@ -109,8 +227,30 @@
   font-size: 14px;
   font-weight: 400;
   line-height: 22px;
-  text-align: left;
-  color: #949ca9;
+  text-align: center;
+  color: #282828;
+}
+
+.login-trust-indicators {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  margin-top: 12px;
+}
+
+.login-trust-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.login-trust-check {
+  flex-shrink: 0;
+}
+
+.login-trust-text {
+  font-size: 14px;
+  color: #282828;
 }
 
 .signin-button {
@@ -122,4 +262,1127 @@
   font-size: 16px;
   font-weight: 600;
   line-height: 24px;
+}
+
+/* LLM Whisperer Right Panel */
+.llm-whisperer-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 32px;
+  width: 100%;
+  max-width: 600px;
+  height: 100vh;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.llm-headline {
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  line-height: 34px !important;
+  text-align: center;
+  color: #fff !important;
+  margin-bottom: 0 !important;
+}
+
+.llm-hero-visual {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.llm-hero-image {
+  width: 80%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+}
+
+.llm-works-with-section,
+.llm-providers-section,
+.llm-compliance-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.llm-section-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #8fa8c8;
+}
+
+.llm-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+}
+
+.llm-format-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background-color: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: #c8d8e8;
+}
+
+.llm-provider-badge,
+.llm-compliance-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  border-radius: 8px;
+  background-color: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: #c8d8e8;
+  backdrop-filter: blur(4px);
+}
+
+.llm-format-badge-more {
+  background-color: rgba(77, 208, 120, 0.15);
+  border-color: rgba(77, 208, 120, 0.3);
+  color: #4dd078;
+  font-weight: 600;
+}
+
+.llm-badge-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.llm-provider-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.llm-compliance-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.llm-stats-bar {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 0;
+}
+
+.llm-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+}
+
+.llm-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.llm-stat-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #d1d5dc;
+  text-align: center;
+}
+
+.llm-testimonial-section {
+  background-color: rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 16px 20px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(4px);
+}
+
+.llm-testimonial-quote {
+  font-size: 13px !important;
+  font-style: italic;
+  line-height: 20px !important;
+  color: #fff !important;
+  margin-bottom: 10px !important;
+}
+
+.llm-testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.llm-testimonial-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.llm-testimonial-author-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.llm-testimonial-author .ant-typography-strong,
+.llm-testimonial-author .ant-typography {
+  color: #fff !important;
+}
+
+.llm-testimonial-role {
+  color: #8fa8c8;
+  font-size: 13px;
+}
+
+/* Unstract Right Panel */
+.unstract-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 32px 36px;
+  width: 100%;
+  max-width: 600px;
+  height: 100vh;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.unstract-headline {
+  font-size: 26px !important;
+  font-weight: 700 !important;
+  line-height: 32px !important;
+  text-align: center;
+  color: #fff !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.unstract-hero-visual {
+  width: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.unstract-hero-placeholder {
+  width: 100%;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.unstract-hero-image {
+  width: 80%;
+  height: auto;
+  display: block;
+  border-radius: 12px;
+}
+
+.unstract-trusted-section,
+.unstract-g2-section,
+.unstract-compliance-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.unstract-section-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #8fa8c8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.unstract-badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+  align-items: center;
+}
+
+.unstract-trusted-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  font-size: 12px;
+  font-weight: 500;
+  color: #c8d8e8;
+  min-height: 32px;
+}
+
+.unstract-trusted-logo {
+  height: 16px;
+  width: auto;
+  max-width: 90px;
+  object-fit: contain;
+}
+
+.unstract-logo-placeholder {
+  width: 24px;
+  height: 24px;
+  border: 2px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.unstract-stats-bar {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  width: 100%;
+  padding: 12px 0;
+}
+
+.unstract-stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+}
+
+.unstract-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.unstract-stat-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: #d1d5dc;
+  text-align: center;
+}
+
+.unstract-g2-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unstract-g2-logo {
+  height: 48px;
+  width: auto;
+  object-fit: contain;
+}
+
+.unstract-testimonial-section {
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px 20px;
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.unstract-testimonial-quote {
+  font-size: 13px !important;
+  font-style: italic;
+  line-height: 19px !important;
+  color: #fff !important;
+  margin-bottom: 10px !important;
+}
+
+.unstract-testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.unstract-testimonial-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+}
+
+.unstract-testimonial-author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.unstract-testimonial-author .ant-typography-strong,
+.unstract-testimonial-author .ant-typography {
+  color: #fff !important;
+  font-size: 13px;
+}
+
+.unstract-testimonial-role {
+  color: #8fa8c8;
+  font-size: 12px;
+}
+
+.unstract-testimonial-company {
+  color: #6b8aac;
+  font-size: 11px;
+}
+
+.unstract-compliance-section {
+  margin-top: 0;
+}
+
+.unstract-compliance-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  background-color: transparent;
+  border: none;
+}
+
+.unstract-compliance-logo {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* ========================================
+   Default Landing Page Light Right Panel
+   ======================================== */
+.default-light-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 620px;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.default-light-headline {
+  font-size: 43px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  text-align: center;
+  margin-top: 0 !important;
+  margin-bottom: 44px !important;
+}
+
+.default-light-headline-dark {
+  color: #0c355a;
+}
+
+.default-light-headline-accent {
+  color: #00a6ed;
+}
+
+/* Default Compliance Badges Row */
+.default-light-badges-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 49px;
+}
+
+.default-light-compliance-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.default-light-compliance-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+}
+
+/* Product Info Cards */
+.default-light-product-card {
+  width: 100%;
+  max-width: 570px;
+}
+
+.default-light-product-card + .default-light-product-card {
+  margin-top: 62px;
+}
+
+.default-light-card-title {
+  font-size: 24px !important;
+  font-weight: 900 !important;
+  line-height: 30px !important;
+  color: #0c355a !important;
+  letter-spacing: -0.3px;
+  display: block;
+  margin-bottom: 10px;
+}
+
+.default-light-card-body {
+  width: 100%;
+  padding: 21px 28px 25px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#f2f8e6, #f2f8e6) padding-box,
+    linear-gradient(135deg, #50e6ff, #c8ea7e) border-box;
+}
+
+.default-light-card-text {
+  font-size: 18px !important;
+  font-weight: 300 !important;
+  line-height: 21.45px !important;
+  color: #142a53 !important;
+  margin-bottom: 0 !important;
+}
+
+.default-light-card-divider {
+  width: 100%;
+  height: 1px;
+  background: #d1d5dc;
+  margin: 20px 0 10px;
+}
+
+.default-light-card-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.default-light-card-footer-label {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #004664 !important;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.default-light-card-logos {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.default-light-card-logo {
+  height: 28px;
+  max-width: 110px;
+  object-fit: contain;
+}
+
+.default-light-card-provider-logo {
+  height: 24px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* ========================================
+   Product Toggle (Unstract / LLMWhisperer)
+   ======================================== */
+.product-toggle {
+  display: flex;
+  align-items: center;
+  margin: 0 auto;
+  background: rgba(241, 245, 249, 0.8);
+  border: 1px solid rgba(226, 232, 240, 0.5);
+  border-radius: 20px;
+  padding: 4px;
+  width: 260px;
+}
+
+.product-toggle-btn {
+  flex: 1;
+  height: 39px;
+  border: none;
+  border-radius: 16px;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: #90a1b9;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+}
+
+.product-toggle-btn-active {
+  background: #fff;
+  color: #2f93f6;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* ========================================
+   Region Selector
+   ======================================== */
+.region-selector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-top: 18px;
+}
+
+.region-selector-label {
+  font-size: 18px !important;
+  font-weight: 500 !important;
+  color: #545454 !important;
+}
+
+.region-options {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+}
+
+.region-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+}
+
+.region-flag {
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.region-option-selected .region-flag {
+  box-shadow: 0 0 0 3px #2f93f6;
+  border-radius: 50%;
+}
+
+.region-label {
+  font-size: 18px;
+  font-weight: 500;
+  color: #545454;
+}
+
+.region-radio-indicator {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2f93f6;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px #2f93f6;
+}
+
+/* ========================================
+   LLM Whisperer Left Panel Headings
+   ======================================== */
+.llm-left-heading {
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  line-height: 36px !important;
+  color: #282828 !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+  text-align: center;
+}
+
+.llm-left-subheading {
+  font-size: 14px !important;
+  line-height: 22px !important;
+  color: #282828 !important;
+  text-align: center;
+  display: block;
+}
+
+.signin-inline-link {
+  color: #2f93f6 !important;
+  font-weight: 400;
+}
+
+/* ========================================
+   LLM Whisperer Light Right Panel
+   ======================================== */
+.llm-light-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 41px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 600px;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.llm-light-headline {
+  font-size: 45px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  text-align: center;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.llm-light-headline-dark {
+  color: #0c355a;
+}
+
+.llm-light-headline-accent {
+  color: #00a6ed;
+}
+
+/* Compliance Badges Row */
+.llm-light-badges-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.llm-light-compliance-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.llm-light-compliance-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+}
+
+/* Stats Cards */
+.llm-light-stats-bar {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  width: 100%;
+}
+
+.llm-light-stat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #e8edf2;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+.llm-light-stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.llm-light-stat-icon-img {
+  width: 18px;
+  height: 18px;
+}
+
+.llm-light-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #282828;
+  line-height: 36px;
+}
+
+.llm-light-stat-label {
+  font-size: 14px;
+  font-weight: 400;
+  color: #545454;
+  text-align: center;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
+/* Testimonial Card */
+.llm-light-testimonial {
+  width: 100%;
+  padding: 22px 24px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#f2f8e6, #f2f8e6) padding-box,
+    linear-gradient(135deg, #50e6ff, #c8ea7e) border-box;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.llm-light-testimonial-quote-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.llm-light-testimonial-quote-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.llm-light-testimonial-text {
+  font-size: 16px !important;
+  font-style: italic;
+  line-height: 22px !important;
+  color: #142a53 !important;
+  margin-bottom: 0 !important;
+}
+
+.llm-light-testimonial-author {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.llm-light-testimonial-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.llm-light-testimonial-author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.llm-light-testimonial-name {
+  color: #142a53 !important;
+  font-size: 16px !important;
+  font-style: italic;
+}
+
+.llm-light-testimonial-role {
+  color: #142a53 !important;
+  font-size: 16px;
+  font-style: italic;
+}
+
+/* LLM Providers Section */
+.llm-light-providers-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.llm-light-providers-label-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.llm-light-providers-line {
+  flex: 1;
+  height: 1px;
+  background: #d1d5dc;
+}
+
+.llm-light-providers-label {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #004664 !important;
+  text-transform: uppercase;
+  letter-spacing: 2.1px;
+  white-space: nowrap;
+}
+
+.llm-light-providers-logos {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  align-items: center;
+}
+
+.llm-light-provider-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.llm-light-provider-logo {
+  height: 38px;
+  width: auto;
+  object-fit: contain;
+}
+
+/* ========================================
+   Unstract Light Right Panel
+   ======================================== */
+.unstract-light-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 46px;
+  padding: 40px 36px;
+  width: 100%;
+  max-width: 600px;
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.unstract-light-headline {
+  font-size: 45px !important;
+  font-weight: 700 !important;
+  line-height: 1.15 !important;
+  text-align: center;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+.unstract-light-headline-dark {
+  color: #0c355a;
+}
+
+.unstract-light-headline-accent {
+  color: #00a6ed;
+}
+
+/* Unstract Compliance Badges Row */
+.unstract-light-badges-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.unstract-light-compliance-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unstract-light-compliance-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+}
+
+/* Unstract Stats Cards */
+.unstract-light-stats-bar {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  width: 100%;
+}
+
+.unstract-light-stat-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 20px 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #e8edf2;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  box-sizing: border-box;
+}
+
+.unstract-light-stat-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.unstract-light-stat-icon-img {
+  width: 18px;
+  height: 18px;
+}
+
+.unstract-light-stat-value {
+  font-size: 20px;
+  font-weight: 700;
+  color: #282828;
+  line-height: 36px;
+}
+
+.unstract-light-stat-label {
+  font-size: 14px;
+  font-weight: 400;
+  color: #545454;
+  text-align: center;
+  line-height: 18px;
+  white-space: pre-wrap;
+}
+
+/* Unstract Testimonial Card */
+.unstract-light-testimonial {
+  width: 100%;
+  padding: 22px 24px;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background:
+    linear-gradient(#f2f8e6, #f2f8e6) padding-box,
+    linear-gradient(135deg, #50e6ff, #c8ea7e) border-box;
+  position: relative;
+  box-sizing: border-box;
+}
+
+.unstract-light-testimonial-quote-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.unstract-light-testimonial-quote-icon {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.unstract-light-testimonial-text {
+  font-size: 16px !important;
+  font-style: italic;
+  line-height: 22px !important;
+  color: #142a53 !important;
+  margin-bottom: 0 !important;
+}
+
+.unstract-light-testimonial-author {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.unstract-light-testimonial-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.unstract-light-testimonial-author-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.unstract-light-testimonial-name {
+  color: #142a53 !important;
+  font-size: 16px !important;
+  font-style: italic;
+}
+
+.unstract-light-testimonial-role {
+  color: #142a53 !important;
+  font-size: 16px;
+  font-style: italic;
+}
+
+.unstract-light-testimonial-company {
+  color: #142a53 !important;
+  font-size: 16px;
+  font-style: italic;
+}
+
+/* Unstract Trusted By Section */
+.unstract-light-trusted-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+}
+
+.unstract-light-trusted-label-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.unstract-light-trusted-line {
+  flex: 1;
+  height: 1px;
+  background: #d1d5dc;
+}
+
+.unstract-light-trusted-label {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  color: #004664 !important;
+  text-transform: uppercase;
+  letter-spacing: 2.1px;
+  white-space: nowrap;
+}
+
+.unstract-light-trusted-logos {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  align-items: center;
+}
+
+.unstract-light-trusted-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unstract-light-trusted-logo {
+  height: 28px;
+  max-width: 110px;
+  object-fit: contain;
 }
