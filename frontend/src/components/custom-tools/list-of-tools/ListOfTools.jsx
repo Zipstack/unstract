@@ -1,7 +1,7 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
-import { useCallback, useEffect, useState } from "react";
 import { Space } from "antd";
 import PropTypes from "prop-types";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -11,9 +11,9 @@ import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomT
 import { ViewTools } from "../view-tools/ViewTools";
 import "./ListOfTools.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { ImportTool } from "../import-tool/ImportTool";
 
 const DefaultCustomButtons = ({
@@ -96,7 +96,7 @@ function ListOfTools() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to get the list of tools")
+          handleException(err, "Failed to get the list of tools"),
         );
       })
       .finally(() => {
@@ -141,7 +141,7 @@ function ListOfTools() {
 
     if (isEdit) {
       tools = tools.map((item) =>
-        item?.tool_id === data?.tool_id ? data : item
+        item?.tool_id === data?.tool_id ? data : item,
       );
       setEditItem(null);
     } else {
@@ -152,7 +152,7 @@ function ListOfTools() {
 
   const handleEdit = (_event, tool) => {
     const editToolData = [...listOfTools].find(
-      (item) => item?.tool_id === tool.tool_id
+      (item) => item?.tool_id === tool.tool_id,
     );
     if (!editToolData) {
       return;
@@ -174,13 +174,9 @@ function ListOfTools() {
     axiosPrivate(requestOptions)
       .then(() => {
         const tools = [...listOfTools].filter(
-          (filterToll) => filterToll?.tool_id !== tool.tool_id
+          (filterToll) => filterToll?.tool_id !== tool.tool_id,
         );
         setListOfTools(tools);
-        setAlertDetails({
-          type: "success",
-          content: `${tool?.tool_name} - Deleted successfully`,
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to Delete"));
@@ -312,7 +308,7 @@ function ListOfTools() {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
       })
       .catch((err) => {
@@ -338,10 +334,6 @@ function ListOfTools() {
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
-        setAlertDetails({
-          type: "success",
-          content: "Sharing settings updated successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
@@ -375,7 +367,7 @@ function ListOfTools() {
         handleNewProjectBtnClick={handleNewProjectBtnClick}
       />
     ),
-    [isImportLoading]
+    [isImportLoading],
   );
 
   return (

@@ -1,20 +1,19 @@
-import { useEffect, useState, useMemo } from "react";
-import { Typography, Space, Alert, Tag } from "antd";
 import {
   CheckCircleOutlined,
-  WarningOutlined,
   InfoCircleOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import Editor from "@monaco-editor/react";
-
+import { Alert, Space, Tag, Typography } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import { promptType } from "../../../helpers/GetStaticData";
 import "./CustomDataSettings.css";
 
 // Regex to match {{custom_data.xyz}} variables in prompts
@@ -55,13 +54,14 @@ function CustomDataSettings() {
   const [jsonError, setJsonError] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { details, isPublicSource, updateCustomTool } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
-  // Initialize editor with current custom_data
+  // Initialize editor with current custom_data (only on tab switch)
   useEffect(() => {
     const customData = details?.custom_data;
     if (customData && Object.keys(customData).length > 0) {
@@ -70,7 +70,8 @@ function CustomDataSettings() {
       setJsonValue("{\n  \n}");
     }
     setHasChanges(false);
-  }, [details?.custom_data]);
+    setIsSaved(false);
+  }, [details?.tool_id]);
 
   // Extract variables from active prompts
   const extractedVariables = useMemo(() => {
@@ -113,6 +114,9 @@ function CustomDataSettings() {
   const handleEditorChange = (value) => {
     setJsonValue(value || "");
     setHasChanges(true);
+    if (isSaved) {
+      setIsSaved(false);
+    }
 
     // Validate JSON
     try {
@@ -158,11 +162,8 @@ function CustomDataSettings() {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "Custom data saved successfully",
-        });
         setHasChanges(false);
+        setIsSaved(true);
         // Update the store with the new details
         const updatedDetails = res?.data;
         if (updatedDetails) {
@@ -292,7 +293,7 @@ function CustomDataSettings() {
               loading={isLoading}
               disabled={isPublicSource || !!jsonError || !hasChanges}
             >
-              Save
+              {isSaved ? "Saved" : "Save"}
             </CustomButton>
           </Space>
         </div>

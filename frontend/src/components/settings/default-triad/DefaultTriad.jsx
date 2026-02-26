@@ -72,7 +72,7 @@ function DefaultTriad() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to get the adapters list")
+          handleException(err, "Failed to get the adapters list"),
         );
       });
   };
@@ -144,8 +144,8 @@ function DefaultTriad() {
     // Filter out null or blank values
     body = Object.fromEntries(
       Object.entries(body).filter(
-        ([key, value]) => value !== null && value !== ""
-      )
+        ([key, value]) => value !== null && value !== "",
+      ),
     );
 
     const header = {
@@ -160,16 +160,12 @@ function DefaultTriad() {
     };
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "Default triad setting saved successfully",
-        });
         fetchData();
         setIsSubmitEnabled(false);
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to update Default Triads")
+          handleException(err, "Failed to update Default Triads"),
         );
       });
   };

@@ -1,70 +1,70 @@
 /* Styles for Settings */
 
 .settings-container {
-    position: relative;
-    height: 100%;
-    background-color: var(--page-bg-2);
+  position: relative;
+  height: 100%;
+  background-color: var(--page-bg-2);
 }
 
 .settings-sidebar {
-    position: fixed;
-    /* left is set dynamically via inline style based on sidebar collapsed state */
-    top: 620px;
-    width: 280px;
-    background-color: #fff;
-    border-radius: 8px;
-    padding: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    z-index: 1000;
+  position: fixed;
+  /* left is set dynamically via inline style based on sidebar collapsed state */
+  top: 620px;
+  width: 280px;
+  background-color: #fff;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
 }
 
 .settings-menu-item {
-    padding: 12px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    color: #000;
-    transition: all 0.2s;
-    border: none;
-    background: none;
-    width: 100%;
-    text-align: left;
-    display: block;
-    border-radius: 4px;
-    font-weight: 400;
+  padding: 12px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  color: #000;
+  transition: all 0.2s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+  display: block;
+  border-radius: 4px;
+  font-weight: 400;
 }
 
 .settings-menu-item:first-child {
-    font-weight: 600;
-    margin-bottom: 4px;
+  font-weight: 600;
+  margin-bottom: 4px;
 }
 
 .settings-menu-item:last-child {
-    margin-top: 4px;
+  margin-top: 4px;
 }
 
 .settings-menu-item:hover {
-    background-color: #f3f4f6;
+  background-color: #f3f4f6;
 }
 
 .settings-menu-item.active {
-    background-color: #dbeafe;
-    color: #2563eb;
-    font-weight: 500;
+  background-color: #dbeafe;
+  color: #2563eb;
+  font-weight: 500;
 }
 
 .settings-content {
-    height: 100%;
-    overflow: auto;
+  height: 100%;
+  overflow: auto;
 }
 
 /* Popover menu for sidebar hover */
 .settings-sidebar-popover {
-    display: flex;
-    flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .settings-popover-overlay .ant-popover-inner {
-    padding: 8px;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }

@@ -73,6 +73,11 @@ RUN uv sync --group deploy --locked && \
     uv pip install opentelemetry-instrumentation-openai && \
     chmod +x ./entrypoint.sh
 
+# Install additional requirements if present
+RUN if [ -f requirements.txt ]; then \
+    uv pip install -r requirements.txt; \
+    fi
+
 EXPOSE 8000
 
 ENTRYPOINT [ "./entrypoint.sh" ]

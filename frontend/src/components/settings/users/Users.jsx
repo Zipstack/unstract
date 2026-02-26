@@ -11,14 +11,14 @@ import { useNavigate } from "react-router-dom";
 import "./Users.css";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 
 function Users() {
   const axiosPrivate = useAxiosPrivate();
@@ -58,10 +58,6 @@ function Users() {
     setConfirmLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "User deleted successfully",
-        });
         setConfirmLoading(false);
         setOpen(false);
         removeUser(selectedUserEmail.email);
@@ -91,7 +87,7 @@ function Users() {
           key: user.id,
           email: user.email,
           role: user.role,
-        }))
+        })),
       );
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to load"));

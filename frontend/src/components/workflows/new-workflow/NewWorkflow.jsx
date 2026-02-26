@@ -2,6 +2,7 @@ import { Form, Input, Modal } from "antd";
 import PropTypes from "prop-types";
 import { useRef, useState } from "react";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
+
 const { TextArea } = Input;
 
 function NewWorkflow({
@@ -54,7 +55,7 @@ function NewWorkflow({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== changedFieldName
+          (error) => error.attr !== changedFieldName,
         );
         return { ...prevErrors, errors: updatedErrors };
       }

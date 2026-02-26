@@ -1,6 +1,3 @@
-import { useEffect, useState, useRef } from "react";
-import PropTypes from "prop-types";
-import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeftOutlined,
   CalendarOutlined,
@@ -20,25 +17,29 @@ import {
   Checkbox,
   Dropdown,
   Flex,
+  Input,
   Table,
   Tooltip,
   Typography,
-  Input,
 } from "antd";
+import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
-import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
 import "./DetailedLogs.css";
 import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
-import { LogModal } from "../log-modal/LogModal";
-import { FilterIcon } from "../filter-dropdown/FilterDropdown";
-import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { FilterIcon } from "../filter-dropdown/FilterDropdown";
+import { LogModal } from "../log-modal/LogModal";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 
 // Component for status message with conditional tooltip (only when truncated)
 const StatusMessageCell = ({ text }) => {
@@ -49,7 +50,7 @@ const StatusMessageCell = ({ text }) => {
     const checkOverflow = () => {
       if (textRef.current) {
         setIsOverflowing(
-          textRef.current.scrollWidth > textRef.current.clientWidth
+          textRef.current.scrollWidth > textRef.current.clientWidth,
         );
       }
     };
@@ -95,6 +96,7 @@ const DetailedLogs = () => {
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
   const { getUrl } = useRequestUrl();
+  const copyToClipboard = useCopyToClipboard();
 
   const [executionDetails, setExecutionDetails] = useState();
   const [executionFiles, setExecutionFiles] = useState();
@@ -121,30 +123,6 @@ const DetailedLogs = () => {
   const isTerminalState =
     executionDetails?.status &&
     TERMINAL_STATES.includes(executionDetails.status.toUpperCase());
-
-  const handleCopyToClipboard = (text, label = "Text") => {
-    if (!navigator.clipboard) {
-      setAlertDetails({
-        type: "error",
-        content: "Clipboard not available in this browser",
-      });
-      return;
-    }
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setAlertDetails({
-          type: "success",
-          content: `${label} copied to clipboard`,
-        });
-      },
-      (err) => {
-        setAlertDetails({
-          type: "error",
-          content: `Failed to copy: ${err.message || "Unknown error"}`,
-        });
-      }
-    );
-  };
 
   const fetchExecutionDetails = async (id) => {
     try {
@@ -224,7 +202,7 @@ const DetailedLogs = () => {
       }
 
       const response = await axiosPrivate.get(
-        `${url}?${searchParams.toString()}`
+        `${url}?${searchParams.toString()}`,
       );
       setPagination({
         current: page,
@@ -490,7 +468,7 @@ const DetailedLogs = () => {
           <Button
             className="copy-btn-outlined"
             icon={<CopyOutlined />}
-            onClick={() => handleCopyToClipboard(id, "Execution ID")}
+            onClick={() => copyToClipboard(id, "Execution ID")}
           />
         </Typography.Title>
         <LogsRefreshControls
