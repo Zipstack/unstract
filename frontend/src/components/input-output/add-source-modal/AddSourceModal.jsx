@@ -10,6 +10,7 @@ import { useAlertStore } from "../../../store/alert-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { AddSource } from "../add-source/AddSource";
 import { ListOfSources } from "../list-of-sources/ListOfSources";
+import "./AddSourceModal.css";
 
 function AddSourceModal({
   open,
@@ -59,6 +60,8 @@ function AddSourceModal({
         // A delay added in order to avoid glitch in the UI when the modal is closed.
         setSelectedSourceId(null);
         setEditItemId(null);
+        // Clear metadata to prevent stale data when adding a new connector
+        setMetadata({});
       }, 500);
     }
 
@@ -117,7 +120,9 @@ function AddSourceModal({
         url = getUrl(`supported_connectors/`);
       }
     } else {
-      if (!type) return;
+      if (!type) {
+        return;
+      }
       url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
     }
 
@@ -184,6 +189,7 @@ function AddSourceModal({
       centered
       footer={null}
       closable={true}
+      className="add-source-modal"
     >
       {selectedSourceId ? (
         <AddSource
