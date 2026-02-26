@@ -1,26 +1,26 @@
 /* Styles for ToolsMain */
 
 .tools-main-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
-    overflow-y: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow-y: hidden;
 }
 
 .tools-main-tabs {
-    padding: 4px 14px;
+  padding: 4px 14px;
 }
 
 .tools-main-tabs .ant-tabs-nav {
-    margin: 0px;
+  margin: 0px;
 }
 
 .tools-main-body {
-    flex: 1;
-    padding: 0px 12px;
-    overflow-y: auto;
+  flex: 1;
+  padding: 0px 12px;
+  overflow-y: auto;
 }
 
 .tools-main-footer {
-    border-top: 1px #D9D9D9 solid;
+  border-top: 1px #d9d9d9 solid;
 }

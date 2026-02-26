@@ -1,7 +1,6 @@
-import PropTypes from "prop-types";
-
-import loginRightBanner from "../../assets/login-right-panel.svg";
 import { Typography } from "antd";
+import PropTypes from "prop-types";
+import loginRightBanner from "../../assets/login-right-panel.svg";
 
 const defaultUnstractContent = {
   title: "UNLOCK VALUE FROM UNSTRUCTURED DATA.",

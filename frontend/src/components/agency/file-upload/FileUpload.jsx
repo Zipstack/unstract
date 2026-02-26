@@ -1,6 +1,6 @@
-import PropTypes from "prop-types";
-import { Modal, Upload, Button, message } from "antd";
 import { UploadOutlined } from "@ant-design/icons";
+import { Button, Modal, message, Upload } from "antd";
+import PropTypes from "prop-types";
 import {
   WORKFLOW_PAGE_MAX_FILES,
   WORKFLOW_VALIDATION_MESSAGES,
@@ -39,7 +39,7 @@ const FileUpload = ({
     continueWfExecution(
       wfExecutionParams[0],
       wfExecutionParams[1],
-      wfExecutionParams[2]
+      wfExecutionParams[2],
     );
     setOpen(false);
   };
