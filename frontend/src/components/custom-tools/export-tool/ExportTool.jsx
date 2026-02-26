@@ -45,7 +45,7 @@ function ExportTool({
     }
 
     const promptStudioUsers = toolDetails?.prompt_studio_users?.map((user) =>
-      user?.id?.toString()
+      user?.id?.toString(),
     );
 
     const filteredUsers = allUsers.filter((user) => {
@@ -66,7 +66,7 @@ function ExportTool({
     }
     const createdByUserId = toolDetails?.created_by?.toString();
     const promptStudioUsers = toolDetails?.prompt_studio_users?.map((user) =>
-      user?.id?.toString()
+      user?.id?.toString(),
     );
     setSelectedUsers(
       toolDetails.shared_users
@@ -76,13 +76,13 @@ function ExportTool({
             !promptStudioUsers.includes(userId) && createdByUserId !== userId
           );
         })
-        .map((user) => user?.id?.toString())
+        .map((user) => user?.id?.toString()),
     );
   }, [toolDetails]);
 
   const handleDeleteUser = (userId) => {
     setSelectedUsers((prevSelectedUsers) =>
-      prevSelectedUsers.filter((user) => user !== userId)
+      prevSelectedUsers.filter((user) => user !== userId),
     );
   };
   const filterOption = (input, option) =>
@@ -103,7 +103,7 @@ function ExportTool({
         <List
           dataSource={selectedUsers.map((userId) => {
             const user = allUsers.find(
-              (u) => u?.id.toString() === userId.toString()
+              (u) => u?.id.toString() === userId.toString(),
             );
             return {
               id: user?.id,
