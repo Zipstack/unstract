@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 
 function useListSearch(searchField) {
   const listRef = useRef([]);
@@ -11,10 +11,10 @@ function useListSearch(searchField) {
         return list;
       }
       return list.filter((item) =>
-        item[searchField]?.toLowerCase().includes(searchText.toLowerCase())
+        item[searchField]?.toLowerCase().includes(searchText.toLowerCase()),
       );
     },
-    [searchField]
+    [searchField],
   );
 
   const setMasterList = useCallback(
@@ -22,7 +22,7 @@ function useListSearch(searchField) {
       listRef.current = list;
       setDisplayList(filterList(list, searchTextRef.current));
     },
-    [filterList]
+    [filterList],
   );
 
   const onSearch = useCallback(
@@ -30,7 +30,7 @@ function useListSearch(searchField) {
       searchTextRef.current = searchText;
       setSearchList(filterList(listRef.current, searchText));
     },
-    [filterList]
+    [filterList],
   );
 
   const clearSearch = useCallback(() => {
@@ -44,7 +44,7 @@ function useListSearch(searchField) {
       listRef.current = updatedList;
       setDisplayList(filterList(updatedList, searchTextRef.current));
     },
-    [filterList]
+    [filterList],
   );
 
   return {
