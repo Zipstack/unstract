@@ -1,8 +1,8 @@
-import PropTypes from "prop-types";
-import Prism from "prismjs";
-import { useEffect } from "react";
-import TabPane from "antd/es/tabs/TabPane";
 import { Tabs } from "antd";
+import TabPane from "antd/es/tabs/TabPane";
+import Prism from "prismjs";
+import PropTypes from "prop-types";
+import { useEffect } from "react";
 
 import { JsonViewBody } from "./JsonViewBody";
 
