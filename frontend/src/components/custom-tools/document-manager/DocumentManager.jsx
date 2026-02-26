@@ -220,7 +220,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const handleGetDocumentsReq = (getDocsFunc, viewType) => {
     getDocsFunc(details?.tool_id, selectedDoc?.document_id, viewType)
       .then((res) => {
-        const data = res?.data?.data || "";
+        const data = res?.data || "";
         const mimeType = res?.data?.mime_type || "";
         processGetDocsResponse(data, viewType, mimeType);
       })

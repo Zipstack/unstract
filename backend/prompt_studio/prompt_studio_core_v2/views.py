@@ -533,7 +533,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
 
         # For ORIGINAL view, check if a converted PDF exists for preview
-        if view_type == FileViewTypes.ORIGINAL and file_converter_plugin:
+        if (
+            view_type != FileViewTypes.EXTRACT
+            and view_type != FileViewTypes.SUMMARIZE
+            and file_converter_plugin
+        ):
             converted_name = f"converted/{filename_without_extension}.pdf"
             try:
                 contents = PromptStudioFileHelper.fetch_file_contents(
@@ -543,9 +547,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     tool_id=str(custom_tool.tool_id),
                     allowed_content_types=allowed_content_types,
                 )
-                return Response({"data": contents}, status=status.HTTP_200_OK)
+                return Response(contents, status=status.HTTP_200_OK)
             except (FileNotFoundError, FileNotFound):
                 pass  # No converted file — fall through to return original
+            except Exception:
+                logger.exception(f"Error fetching converted file: {converted_name}")
 
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
@@ -557,7 +563,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except FileNotFoundError:
             raise FileNotFound()
-        return Response({"data": contents}, status=status.HTTP_200_OK)
+        return Response(contents, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
