@@ -67,7 +67,9 @@ class Command(BaseCommand):
         # Resolve organization
         org = self._get_org(options.get("org_id"))
         if not org:
-            self.stderr.write(self.style.ERROR("No organization found. Create one first."))
+            self.stderr.write(
+                self.style.ERROR("No organization found. Create one first.")
+            )
             return
 
         self.stdout.write(f"Organization: {org.display_name} (id={org.id})")
@@ -95,15 +97,9 @@ class Command(BaseCommand):
                 org_id=org_id_str,
                 verbosity=0,
             )
-            hourly = EventMetricsHourly._base_manager.filter(
-                organization=org
-            ).count()
-            daily = EventMetricsDaily._base_manager.filter(
-                organization=org
-            ).count()
-            monthly = EventMetricsMonthly._base_manager.filter(
-                organization=org
-            ).count()
+            hourly = EventMetricsHourly._base_manager.filter(organization=org).count()
+            daily = EventMetricsDaily._base_manager.filter(organization=org).count()
+            monthly = EventMetricsMonthly._base_manager.filter(organization=org).count()
             self.stdout.write(
                 f"  Hourly: {hourly} records, Daily: {daily} records, "
                 f"Monthly: {monthly} records"
@@ -243,13 +239,17 @@ class Command(BaseCommand):
                 file_size=random.randint(10000, 5000000),
                 execution_time=random.uniform(1, 30),
             )
-            WorkflowFileExecution._base_manager.filter(pk=fe.pk).update(
-                created_at=ts
-            )
+            WorkflowFileExecution._base_manager.filter(pk=fe.pk).update(created_at=ts)
             file_execs.append(fe)
 
-        completed_fe = [fe for fe, s in zip(file_execs, file_statuses, strict=False) if s == "COMPLETED"]
-        error_fe = [fe for fe, s in zip(file_execs, file_statuses, strict=False) if s == "ERROR"]
+        completed_fe = [
+            fe
+            for fe, s in zip(file_execs, file_statuses, strict=False)
+            if s == "COMPLETED"
+        ]
+        error_fe = [
+            fe for fe, s in zip(file_execs, file_statuses, strict=False) if s == "ERROR"
+        ]
         self.stdout.write(
             f"  File Executions: {len(file_execs)} created "
             f"({len(completed_fe)} COMPLETED, {len(error_fe)} ERROR)"
@@ -336,7 +336,9 @@ class Command(BaseCommand):
                 total = sum(r.get("value", 0) or 0 for r in results)
                 if has_data:
                     label = self.style.SUCCESS("PASS")
-                    self.stdout.write(f"  {name}: {label} ({len(results)} buckets, total={total})")
+                    self.stdout.write(
+                        f"  {name}: {label} ({len(results)} buckets, total={total})"
+                    )
                 else:
                     label = self.style.WARNING("WARN")
                     self.stdout.write(f"  {name}: {label} (no data)")
@@ -358,7 +360,9 @@ class Command(BaseCommand):
                 .values_list("metric_name", flat=True)
                 .distinct()
             )
-            self.stdout.write(f"    {label}: {count} records, {len(metrics)} metric types")
+            self.stdout.write(
+                f"    {label}: {count} records, {len(metrics)} metric types"
+            )
 
         return all_passed
 
