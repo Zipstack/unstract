@@ -6,7 +6,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from django.utils import timezone as dj_timezone
-
 from unstract.core.constants import LogFieldName
 from unstract.workflow_execution.enums import LogType
 

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, Mock
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
 from requests.exceptions import ConnectionError, HTTPError, Timeout
+
 from unstract.sdk1.utils.retry_utils import (
     calculate_delay,
     create_retry_decorator,

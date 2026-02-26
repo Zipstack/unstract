@@ -268,8 +268,7 @@ class GoogleDriveFS(UnstractFileSystem):
             ) from e
         if not is_dir:
             raise ConnectorError(
-                "Unable to connect to Google Drive, "
-                "please check the connection settings."
+                "Unable to connect to Google Drive, please check the connection settings."
             )
         return True
 

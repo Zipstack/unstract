@@ -11,7 +11,6 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
-
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,

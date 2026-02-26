@@ -2,6 +2,7 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from backend.serializers import AuditSerializer
 from croniter import croniter
 from django.conf import settings
 from pipeline_v2.constants import PipelineConstants as PC
@@ -11,12 +12,10 @@ from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
+from unstract.connectors.connectorkit import Connectorkit
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
-
-from backend.serializers import AuditSerializer
-from unstract.connectors.connectorkit import Connectorkit
 
 logger = logging.getLogger(__name__)
 DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"

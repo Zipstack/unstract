@@ -633,7 +633,7 @@ class ActiveFileManager:
                                 deleted_count = cache.redis_client.delete(*batch_keys)
                                 cleaned_count += deleted_count
                                 logger_instance.debug(
-                                    f"Cleaned up {deleted_count} cache entries for {provider_uuid} (batch {i//batch_size + 1})"
+                                    f"Cleaned up {deleted_count} cache entries for {provider_uuid} (batch {i // batch_size + 1})"
                                 )
                             except Exception as batch_error:
                                 logger_instance.warning(

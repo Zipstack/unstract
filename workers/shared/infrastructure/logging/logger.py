@@ -623,7 +623,9 @@ def ensure_dict_access(obj: Any, keys: list, default: Any = None) -> dict[str, A
         Dictionary with extracted values
 
     Example:
-        >>> ensure_dict_access(file_data, ["execution_id", "workflow_id", "organization_id"])
+        >>> ensure_dict_access(
+        ...     file_data, ["execution_id", "workflow_id", "organization_id"]
+        ... )
         {'execution_id': '123', 'workflow_id': '456', 'organization_id': 'org_789'}
     """
     return {key: safe_get_attr(obj, key, default) for key in keys}

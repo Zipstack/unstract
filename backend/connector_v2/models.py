@@ -3,6 +3,7 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
+from backend.constants import FieldLengthConstants as FLC
 from connector_auth_v2.models import ConnectorAuth
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
@@ -13,8 +14,6 @@ from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
 )
-
-from backend.constants import FieldLengthConstants as FLC
 
 CONNECTOR_NAME_SIZE = 128
 VERSION_NAME_SIZE = 64

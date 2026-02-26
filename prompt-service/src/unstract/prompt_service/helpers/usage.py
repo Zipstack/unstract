@@ -4,7 +4,6 @@ from logging import Logger
 from typing import Any
 
 from flask import current_app as app
-
 from unstract.prompt_service.constants import DBTableV2
 from unstract.prompt_service.extensions import db, db_context
 from unstract.prompt_service.utils.db_utils import DBUtils

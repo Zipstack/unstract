@@ -3,11 +3,16 @@ import json
 import logging
 from typing import Any
 
+from backend.exceptions import UnstractFSException
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_v2.constants import ConnectorInstanceKey as CIKey
+from unstract.connectors.base import UnstractConnector
+from unstract.connectors.connectorkit import Connectorkit
+from unstract.connectors.enums import ConnectorMode
+from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
+from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
-from backend.exceptions import UnstractFSException
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
     InvalidConnectorID,
@@ -15,11 +20,6 @@ from connector_processor.exceptions import (
     OAuthTimeOut,
     TestConnectorInputError,
 )
-from unstract.connectors.base import UnstractConnector
-from unstract.connectors.connectorkit import Connectorkit
-from unstract.connectors.enums import ConnectorMode
-from unstract.connectors.exceptions import ConnectorError, FSAccessDeniedError
-from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 
 logger = logging.getLogger(__name__)
 

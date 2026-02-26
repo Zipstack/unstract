@@ -6,7 +6,6 @@ from typing import Any
 
 from dotenv import load_dotenv
 from flask import Flask
-
 from unstract.core.constants import LogFieldName
 from unstract.core.file_execution_tracker import (
     FileExecutionStage,
@@ -296,8 +295,7 @@ class UnstractRunner:
         settings_json = json.dumps(settings).replace("'", "\\'")
         # Prepare the tool execution command
         tool_cmd = (
-            f"python main.py --command RUN "
-            f"--settings '{settings_json}' --log-level DEBUG"
+            f"python main.py --command RUN --settings '{settings_json}' --log-level DEBUG"
         )
 
         if not self.sidecar_enabled:

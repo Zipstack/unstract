@@ -24,7 +24,6 @@ from notification.utils import (
 )
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.core.notification_enums import NotificationType
 
 logger = WorkerLogger.get_logger(__name__)

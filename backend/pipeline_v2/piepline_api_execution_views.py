@@ -1,11 +1,11 @@
 import logging
 from typing import Any
 
+from backend.celery_service import app as celery_app
 from rest_framework import status, views
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from backend.celery_service import app as celery_app
 from pipeline_v2.deployment_helper import DeploymentHelper
 from pipeline_v2.models import Pipeline
 

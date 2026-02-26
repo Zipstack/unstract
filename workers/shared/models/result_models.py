@@ -12,9 +12,9 @@ from typing import Any
 # Import shared domain models from core
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../unstract/core/src"))
 from shared.enums import QueueResultStatus
+from unstract.core.worker_models import FileExecutionResult
 
 from unstract.core import ExecutionStatus, serialize_dataclass_to_dict
-from unstract.core.worker_models import FileExecutionResult
 
 # Import worker enums
 from ..enums import WebhookStatus

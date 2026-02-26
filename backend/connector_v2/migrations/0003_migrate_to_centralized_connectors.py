@@ -221,7 +221,7 @@ def _fix_remaining_duplicate_names(connector_instance_model: Any) -> int:
     for i in range(0, len(duplicates), batch_size):
         batch = duplicates[i : i + batch_size]
         logger.info(
-            f"Processing batch {i//batch_size + 1}/{(len(duplicates)-1)//batch_size + 1}"
+            f"Processing batch {i // batch_size + 1}/{(len(duplicates) - 1) // batch_size + 1}"
         )
 
         for dup_info in batch:

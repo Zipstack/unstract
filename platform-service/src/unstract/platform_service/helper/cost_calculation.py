@@ -4,7 +4,6 @@ from typing import Any
 
 import requests
 from flask import current_app as app
-
 from unstract.platform_service.env import Env
 from unstract.platform_service.utils import format_float_positional
 from unstract.sdk1.exceptions import FileStorageError
