@@ -15,16 +15,29 @@ try {
 
 function Login() {
   const baseUrl = getBaseUrl();
-  const newURL = baseUrl + "/api/v1/login";
+  const selectedProduct = localStorage.getItem("selectedProduct");
+  const isValidProduct =
+    selectedProduct && ["unstract", "llm-whisperer"].includes(selectedProduct);
+
   const handleLogin = () => {
-    window.location.href = newURL;
+    const loginUrl = isValidProduct
+      ? `${baseUrl}/api/v1/login?selectedProduct=${selectedProduct}`
+      : `${baseUrl}/api/v1/login`;
+    window.location.href = loginUrl;
+  };
+
+  const handleSignup = () => {
+    const signupUrl = isValidProduct
+      ? `${baseUrl}/api/v1/signup?selectedProduct=${selectedProduct}`
+      : `${baseUrl}/api/v1/signup`;
+    window.location.href = signupUrl;
   };
 
   return (
     <div className="login-main">
       <Row>
         {LoginForm ? (
-          <LoginForm handleLogin={handleLogin} />
+          <LoginForm handleLogin={handleLogin} handleSignup={handleSignup} />
         ) : (
           <>
             <Col xs={24} md={12} className="login-left-section">

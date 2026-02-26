@@ -1,196 +1,337 @@
-# Refer https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/
-# Minimize celery workers to reduce memory usage of Unstract (aids development)
+# Development override - NO debugpy (use compose.debug.yaml for debugging)
+#
+# Usage:
+#   Normal dev:  VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml watch
+#   With debug:  VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml -f compose.debug.yaml watch
+#
+# Memory-optimized settings: reduced workers/threads for local development
+#
+# Requirements:
+#   - Docker Compose 2.24.4+ (for !override directive support)
+
 services:
-  worker:
-    command: "-A backend worker --loglevel=info -Q celery,celery_api_deployments,celery_periodic_logs,celery_log_task_queue,file_processing,api_file_processing,file_processing_callback,api_file_processing_callback --autoscale=${WORKER_AUTOSCALE}"
-
-  worker-logging:
-    profiles:
-      - high_memory
-
-  worker-file-processing:
-    profiles:
-      - high_memory
-
-  worker-file-processing-callback:
-    profiles:
-      - high_memory
-
-# Watch configuration
-# Refer https://docs.docker.com/compose/how-tos/file-watch/
+  #########################################################################################################
+  # Frontend - React dev server with hot reload
   frontend:
+    image: unstract/frontend:${VERSION}
     build:
       dockerfile: docker/dockerfiles/frontend.Dockerfile
       context: ..
       target: development
+    depends_on: !override
+      - reverse-proxy
     env_file:
       - ../frontend/.env
     develop:
       watch:
-      # Sync the frontend directory with the container
-      - action: sync
-        path: ../frontend/
-        target: /app
-        ignore: node_modules/
-      # Rebuild when dependencies change
-      - action: rebuild
-        path: ../frontend/package-lock.json
-      - action: rebuild
-        path: ../frontend/package.json
+        - action: sync
+          path: ../frontend/
+          target: /app
+          ignore:
+            - node_modules/
+            - build/
+        - action: rebuild
+          path: ../frontend/package-lock.json
+        - action: rebuild
+          path: ../frontend/package.json
+    labels:
+      - traefik.http.services.frontend.loadbalancer.server.port=3000
 
+  #########################################################################################################
+  # Backend - Gunicorn with reload (memory optimized: 1 worker, 2 threads)
   backend:
+    image: unstract/backend:${VERSION}
     build:
       dockerfile: docker/dockerfiles/backend.Dockerfile
       context: ..
+    depends_on: !override
+      - db
+      - redis
+      - reverse-proxy
+      - minio
+      - platform-service
+    init: true
     entrypoint: ["bash", "-c"]
     command: [
-      "source .venv/bin/activate && \
-      uv sync --all-groups && \
-      python /tmp/debugpy --listen 0.0.0.0:5678 .venv/bin/gunicorn \
-        --bind 0.0.0.0:8000 \
-        --workers 2 \
-        --threads 4 \
-        --worker-class gthread \
-        --log-level debug \
-        --timeout 900 \
-        --access-logfile - \
-        --reload --graceful-timeout 5 backend.wsgi:application"
+      "uv run python -Xfrozen_modules=off .venv/bin/gunicorn
+        --bind 0.0.0.0:8000
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 backend.wsgi:application"
     ]
     develop:
       watch:
-      # Sync the backend directory with the container
-      - action: sync+restart
-        path: ../backend/
-        target: /app
-        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-      - action: sync+restart
-        path: ../unstract/
-        target: /unstract
-        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-      # Rebuild when dependencies change
-      - action: rebuild
-        path: ./dockerfiles/*
-      - action: rebuild
-        path: ../backend/uv.lock
-    ## Uncomment below lines to use local version of unstract-sdk
-    ## NOTE: Restart the containers on code change though
-    # environment:
-    #   - PYTHONPATH=/unstract-sdk/src
-    # volumes:
-    #   - <path_to_unstract_sdk>/unstract-sdk:/unstract-sdk
+        - action: sync+restart
+          path: ../backend/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+    labels:
+      - traefik.http.services.backend.loadbalancer.server.port=8000
 
+  #########################################################################################################
+  # Runner (memory optimized: 1 worker, 2 threads)
   runner:
+    image: unstract/runner:${VERSION}
     build:
       dockerfile: docker/dockerfiles/runner.Dockerfile
       context: ..
     entrypoint: ["bash", "-c"]
     command: [
-      "source .venv/bin/activate && \
-      uv sync --all-groups && \
-      python /tmp/debugpy --listen 0.0.0.0:5681 .venv/bin/gunicorn \
-        --bind 0.0.0.0:5002 \
-        --workers 2 \
-        --threads 2 \
-        --worker-class gthread \
-        --log-level debug \
-        --timeout 900 \
-        --access-logfile - \
-        --reload --graceful-timeout 5 unstract.runner:app"
+      "uv run python -Xfrozen_modules=off .venv/bin/gunicorn
+        --bind 0.0.0.0:5002
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 unstract.runner:app"
     ]
     develop:
       watch:
-      # Sync the runner directory with the container
-      - action: sync+restart
-        path: ../runner/
-        target: /app
-        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-      # Rebuild when dependencies change
-      - action: rebuild
-        path: ../runner/uv.lock
+        - action: sync+restart
+          path: ../runner/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../runner/uv.lock
 
+  #########################################################################################################
+  # Platform Service (memory optimized: 1 worker, 2 threads)
   platform-service:
+    image: unstract/platform-service:${VERSION}
     build:
       dockerfile: docker/dockerfiles/platform.Dockerfile
       context: ..
+    ports:
+      - "3001:3001"
     entrypoint: ["bash", "-c"]
     command: [
-      "source .venv/bin/activate && \
-      uv sync --all-groups && \
-      python /tmp/debugpy --listen 0.0.0.0:5679 .venv/bin/gunicorn \
-        --bind 0.0.0.0:3001 \
-        --workers 2 \
-        --threads 2 \
-        --worker-class gevent \
-        --log-level debug \
-        --timeout 900 \
-        --access-logfile - \
-        --reload --graceful-timeout 5 unstract.platform_service.run:app"
+      "uv run python -Xfrozen_modules=off .venv/bin/gunicorn
+        --bind 0.0.0.0:3001
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 unstract.platform_service.run:app"
     ]
     develop:
       watch:
-      # Sync the platform-service directory with the container
-      - action: sync+restart
-        path: ../platform-service/
-        target: /app
-        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-      # Rebuild when dependencies change
-      - action: rebuild
-        path: ../platform-service/uv.lock
+        - action: sync+restart
+          path: ../platform-service/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../platform-service/uv.lock
 
+  #########################################################################################################
+  # Prompt Service (memory optimized: 1 worker, 2 threads)
   prompt-service:
+    image: unstract/prompt-service:${VERSION}
     build:
       dockerfile: docker/dockerfiles/prompt.Dockerfile
       context: ..
     entrypoint: ["bash", "-c"]
     command: [
-      "source .venv/bin/activate && \
-      uv sync --all-groups && \
-      python /tmp/debugpy --listen 0.0.0.0:5680 .venv/bin/gunicorn \
-        --bind 0.0.0.0:3003 \
-        --workers 2 \
-        --threads 2 \
-        --worker-class gthread \
-        --log-level debug \
-        --timeout 900 \
-        --access-logfile - \
-        --reload --graceful-timeout 5 unstract.prompt_service.run:app"
+      "uv run python -Xfrozen_modules=off .venv/bin/gunicorn
+        --bind 0.0.0.0:3003
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 unstract.prompt_service.run:app"
     ]
     develop:
       watch:
-      # Sync the prompt-service directory with the container
-      - action: sync+restart
-        path: ../prompt-service/
-        target: /app
-        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-      # Rebuild when dependencies change
-      - action: rebuild
-        path: ../prompt-service/uv.lock
+        - action: sync+restart
+          path: ../prompt-service/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/, node_modules/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../prompt-service/uv.lock
 
+  #########################################################################################################
+  # X2Text Service
   x2text-service:
+    image: unstract/x2text-service:${VERSION}
+    profiles:
+      - optional
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
-    entrypoint: ["bash", "-c"]
-    command: [
-      "source .venv/bin/activate && \
-      uv sync --all-groups && \
-      python /tmp/debugpy --listen 0.0.0.0:5682 .venv/bin/gunicorn \
-        --bind 0.0.0.0:3004 \
-        --workers 2 \
-        --threads 2 \
-        --worker-class gthread \
-        --log-level debug \
-        --timeout 900 \
-        --access-logfile - \
-        --reload --graceful-timeout 5 unstract.x2text_service.run:app"
-    ]
+
+  #########################################################################################################
+  # Tool Sidecar
+  tool-sidecar:
+    image: unstract/tool-sidecar:${VERSION}
+    profiles:
+      - tools
+    build:
+      dockerfile: docker/dockerfiles/tool-sidecar.Dockerfile
+      context: ..
+
+  #########################################################################################################
+  # V2 Workers - Build configurations with memory-optimized settings
+  # All use --pool=threads and --concurrency=2 for lower memory footprint
+
+  worker-api-deployment-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
     develop:
       watch:
-      # Sync the x2text-service directory with the container
-      - action: sync+restart
-        path: ../x2text-service/
-        target: /app
-        ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-      # Rebuild when dependencies change
-      - action: rebuild
-        path: ../x2text-service/uv.lock
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  worker-callback-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  worker-file-processing-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  worker-general-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  worker-notification-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  worker-log-consumer-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  # No develop.watch - runs bash scheduler script, not Python code
+  worker-log-history-scheduler-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+
+  worker-scheduler-v2:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../workers/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: rebuild
+          path: ../workers/uv.lock
+
+  # V1 workers disabled by default (use workers-v2 profile instead)
+  worker:
+    profiles:
+      - workers-v1
+
+  worker-file-processing:
+    profiles:
+      - workers-v1
+
+  worker-file-processing-callback:
+    profiles:
+      - workers-v1
+
+  worker-logging:
+    profiles:
+      - workers-v1
