@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -19,7 +19,7 @@ const RequireAdmin = () => {
       try {
         const res = await axiosPrivate.get(
           `/api/v1/unstract/${orgId}/users/profile/`,
-          { headers: { "X-CSRFToken": sessionDetails?.csrfToken } }
+          { headers: { "X-CSRFToken": sessionDetails?.csrfToken } },
         );
         const currentIsAdmin = res?.data?.user?.is_admin;
         const currentRole = res?.data?.user?.role;
@@ -47,10 +47,16 @@ const RequireAdmin = () => {
     }
   }, [orgId]);
 
-  if (isVerifying) return null;
+  if (isVerifying) {
+    return null;
+  }
 
-  if (!sessionDetails?.isAdmin) return <Unauthorized />;
-  if (isOpenSource) return <NotFound />;
+  if (!sessionDetails?.isAdmin) {
+    return <Unauthorized />;
+  }
+  if (isOpenSource) {
+    return <NotFound />;
+  }
   return <Outlet />;
 };
 
