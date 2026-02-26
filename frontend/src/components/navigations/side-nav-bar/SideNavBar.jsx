@@ -1,8 +1,7 @@
-import { useMemo, useState, useEffect, useRef } from "react";
 import {
   BranchesOutlined,
-  PushpinOutlined,
   PushpinFilled,
+  PushpinOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -15,25 +14,25 @@ import {
   Typography,
 } from "antd";
 import PropTypes from "prop-types";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import { useSessionStore } from "../../../store/session-store";
-import {
-  getLocalStorageValue,
-  setLocalStorageValue,
-} from "../../../helpers/localStorage";
-import Workflows from "../../../assets/Workflows.svg";
 import apiDeploy from "../../../assets/api-deployments.svg";
+import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
 import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
-import VectorDbIcon from "../../../assets/vector-db.svg";
-import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import TerminalIcon from "../../../assets/terminal.svg";
-import ConnectorsIcon from "../../../assets/connectors.svg";
+import TextExtractorIcon from "../../../assets/text-extractor.svg";
+import VectorDbIcon from "../../../assets/vector-db.svg";
+import Workflows from "../../../assets/Workflows.svg";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "../../../helpers/localStorage";
+import { useSessionStore } from "../../../store/session-store";
 
 import "./SideNavBar.css";
 import "../../settings/settings/Settings.css";
@@ -42,15 +41,15 @@ const { Sider } = Layout;
 
 let getMenuItem;
 try {
-  getMenuItem = require("../../../plugins/app-deployment/getMenuItem");
-} catch (err) {
+  getMenuItem = await import("../../../plugins/app-deployment/getMenuItem");
+} catch {
   // Plugin unavailable.
 }
 
 let sideMenu;
 try {
-  sideMenu = require("../../../plugins/hooks/useSideMenu");
-} catch (err) {
+  sideMenu = await import("../../../plugins/hooks/useSideMenu");
+} catch {
   // Plugin unavailable.
 }
 
@@ -59,26 +58,32 @@ let unstractSubscriptionPlanStore;
 let dashboardSideMenuItem;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
-  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
-  const unstractSubscriptionConstants = require("../../../plugins/unstract-subscription/helper/constants");
+  unstractSubscriptionPlanStore = await import(
+    "../../../plugins/store/unstract-subscription-plan-store"
+  );
+  const unstractSubscriptionConstants = await import(
+    "../../../plugins/unstract-subscription/helper/constants"
+  );
   dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
   UNSTRACT_SUBSCRIPTION_PLANS =
     unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
-} catch (err) {
+} catch {
   // Plugin unavailable.
 }
 
 let selectedProductStore;
 let selectedProduct;
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import(
+    "../../../plugins/store/select-product-store.js"
+  );
 } catch {
   // Ignore if hook not available
 }
 
 let agenticPromptStudioEnabled = false;
 try {
-  require("../../../plugins/agentic-prompt-studio");
+  await import("../../../plugins/agentic-prompt-studio");
   agenticPromptStudioEnabled = true;
 } catch {
   // Plugin unavailable
@@ -86,7 +91,7 @@ try {
 
 let manualReviewSettingsEnabled = false;
 try {
-  require("../../../plugins/manual-review/settings/Settings.jsx");
+  await import("../../../plugins/manual-review/settings/Settings.jsx");
   manualReviewSettingsEnabled = true;
 } catch {
   // Plugin unavailable
@@ -121,10 +126,18 @@ const getSettingsMenuItems = (orgName) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
-  if (currentPath.includes("/settings/platform")) return "platform";
-  if (currentPath.includes("/users")) return "users";
-  if (currentPath.includes("/settings/triad")) return "triad";
-  if (currentPath.includes("/settings/review")) return "review";
+  if (currentPath.includes("/settings/platform")) {
+    return "platform";
+  }
+  if (currentPath.includes("/users")) {
+    return "users";
+  }
+  if (currentPath.includes("/settings/triad")) {
+    return "triad";
+  }
+  if (currentPath.includes("/settings/review")) {
+    return "review";
+  }
   return "platform";
 };
 
@@ -165,7 +178,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
   const { orgName, flags } = sessionDetails;
 
   const [isPinned, setIsPinned] = useState(() =>
-    getLocalStorageValue("sidebarPinned", false)
+    getLocalStorageValue("sidebarPinned", false),
   );
   const collapseTimeoutRef = useRef(null);
 
@@ -187,7 +200,9 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
 
   const handleMouseEnter = () => {
     clearCollapseTimeout();
-    if (!isPinned) setCollapsed(false);
+    if (!isPinned) {
+      setCollapsed(false);
+    }
   };
 
   const handleMouseLeave = () => {
@@ -208,16 +223,16 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
       unstractSubscriptionPlan =
         unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
-          (state) => state?.unstractSubscriptionPlan
+          (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 
   if (selectedProductStore?.useSelectedProductStore) {
     selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state?.selectedProduct
+      (state) => state?.selectedProduct,
     );
   }
 
@@ -247,7 +262,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: Workflows,
           path: `/${orgName}/workflows`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/workflows`
+            `/${orgName}/workflows`,
           ),
         },
       ],
@@ -302,7 +317,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: LlmIcon,
           path: `/${orgName}/settings/llms`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/llms`
+            `/${orgName}/settings/llms`,
           ),
         },
         {
@@ -312,7 +327,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: VectorDbIcon,
           path: `/${orgName}/settings/vectorDbs`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/vectorDbs`
+            `/${orgName}/settings/vectorDbs`,
           ),
         },
         {
@@ -322,7 +337,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: EmbeddingIcon,
           path: `/${orgName}/settings/embedding`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/embedding`
+            `/${orgName}/settings/embedding`,
           ),
         },
         {
@@ -332,7 +347,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: TextExtractorIcon,
           path: `/${orgName}/settings/textExtractor`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/textExtractor`
+            `/${orgName}/settings/textExtractor`,
           ),
         },
         {
@@ -342,7 +357,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: ConnectorsIcon,
           path: `/${orgName}/settings/connectors`,
           active: globalThis.location.pathname.startsWith(
-            `/${orgName}/settings/connectors`
+            `/${orgName}/settings/connectors`,
           ),
         },
         {
@@ -379,7 +394,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
   // Memoize isUnstract calculation to avoid redundant computation
   const isUnstract = useMemo(
     () => !(selectedProduct && selectedProduct !== "unstract"),
-    [selectedProduct]
+    [selectedProduct],
   );
 
   // Add Agentic Prompt Studio menu item if plugin is available and product is unstract
@@ -391,7 +406,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       image: CustomTools,
       path: `/${orgName}/agentic-prompt-studio`,
       active: globalThis.location.pathname.startsWith(
-        `/${orgName}/agentic-prompt-studio`
+        `/${orgName}/agentic-prompt-studio`,
       ),
     });
   }

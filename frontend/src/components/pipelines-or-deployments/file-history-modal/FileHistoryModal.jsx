@@ -1,34 +1,33 @@
 import {
-  Table,
-  Modal,
-  Button,
-  Select,
-  InputNumber,
-  Input,
-  Space,
-  Typography,
-  Popconfirm,
-  Tag,
-  Tooltip,
-  Row,
-  Col,
-  message,
-} from "antd";
-import {
-  DeleteOutlined,
-  ReloadOutlined,
-  FilterOutlined,
   ClearOutlined,
   CopyOutlined,
+  DeleteOutlined,
   ExclamationCircleFilled,
+  FilterOutlined,
+  ReloadOutlined,
 } from "@ant-design/icons";
+import {
+  Button,
+  Col,
+  Input,
+  InputNumber,
+  Modal,
+  message,
+  Popconfirm,
+  Row,
+  Select,
+  Space,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
-import { useState, useEffect } from "react";
-
-import { workflowService } from "../../workflows/workflow/workflow-service.js";
-import { useAlertStore } from "../../../store/alert-store.js";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useEffect, useState } from "react";
 import { copyToClipboard } from "../../../helpers/GetStaticData";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useAlertStore } from "../../../store/alert-store.js";
+import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./FileHistoryModal.css";
 
 const { Text } = Typography;
@@ -80,7 +79,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     appliedFilters.status?.length > 0 ||
       appliedFilters.executionCountMin !== null ||
       appliedFilters.executionCountMax !== null ||
-      appliedFilters.filePath
+      appliedFilters.filePath,
   );
 
   // Check if input values differ from applied values (for Apply button indicator)
@@ -113,7 +112,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
   const fetchFileHistoriesWithFilters = async (
     page = 1,
     pageSize = 10,
-    filters = null
+    filters = null,
   ) => {
     if (!workflowId) {
       setAlertDetails({
@@ -154,7 +153,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
 
       const response = await workflowApiService.getFileHistories(
         workflowId,
-        params
+        params,
       );
 
       const data = response?.data?.results || [];
@@ -260,7 +259,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
     try {
       await workflowApiService.bulkDeleteFileHistoriesByIds(
         workflowId,
-        selectedRowKeys
+        selectedRowKeys,
       );
 
       // Refresh data
@@ -304,7 +303,7 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
 
       const response = await workflowApiService.getFileHistories(
         workflowId,
-        params
+        params,
       );
 
       const count = response?.data?.count || 0;

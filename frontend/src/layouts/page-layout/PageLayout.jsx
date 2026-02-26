@@ -1,12 +1,12 @@
 import { Layout } from "antd";
+import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
-import PropTypes from "prop-types";
 import "./PageLayout.css";
 
+import { DisplayLogsAndNotifications } from "../../components/logs-and-notifications/DisplayLogsAndNotifications.jsx";
 import SideNavBar from "../../components/navigations/side-nav-bar/SideNavBar.jsx";
 import { TopNavBar } from "../../components/navigations/top-nav-bar/TopNavBar.jsx";
-import { DisplayLogsAndNotifications } from "../../components/logs-and-notifications/DisplayLogsAndNotifications.jsx";
 import {
   getLocalStorageValue,
   setLocalStorageValue,
@@ -19,7 +19,7 @@ function PageLayout({
   hideSidebar = false,
 }) {
   const [collapsed, setCollapsed] = useState(() =>
-    getLocalStorageValue("collapsed", false)
+    getLocalStorageValue("collapsed", false),
   );
   useEffect(() => {
     setLocalStorageValue("collapsed", collapsed);

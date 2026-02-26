@@ -1,67 +1,63 @@
 @keyframes pulse {
-    from {
-      opacity: 1;
-      transform: scale(1);
-    }
-    to {
-      opacity: .25;
-      transform: scale(.75);
-    }
+  from {
+    opacity: 1;
+    transform: scale(1);
   }
+  to {
+    opacity: 0.25;
+    transform: scale(0.75);
+  }
+}
 
-  /* PULSE BUBBLES */
-  .spinner-box {
-    text-align: center;
-  }
-  .pulse-container {
-    width: 60px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin: 0 auto;
-    margin-top: 15px;
-    margin-bottom: 15px;
-  }
+/* PULSE BUBBLES */
+.spinner-box {
+  text-align: center;
+}
+.pulse-container {
+  width: 60px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 0 auto;
+  margin-top: 15px;
+  margin-bottom: 15px;
+}
 
-  .pulse-bubble {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-  }
+.pulse-bubble {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
 
-  .pulse-bubble-1 {
-      background-color: #ff4d6d;
-      animation: pulse .5s ease 0s infinite alternate;
-  }
-  .pulse-bubble-2 {
-      background-color: #ffb400;
-      animation: pulse .5s ease .2s infinite alternate;
-  }
-  .pulse-bubble-3 {
-      background-color: #7fb800;
-      animation: pulse .5s ease .4s infinite alternate;
-  }
-  .pulse-bubble-4 {
-      background-color: #00a6ed;
-      animation: pulse .5s ease .6s infinite alternate;
-  }
+.pulse-bubble-1 {
+  background-color: #ff4d6d;
+  animation: pulse 0.5s ease 0s infinite alternate;
+}
+.pulse-bubble-2 {
+  background-color: #ffb400;
+  animation: pulse 0.5s ease 0.2s infinite alternate;
+}
+.pulse-bubble-3 {
+  background-color: #7fb800;
+  animation: pulse 0.5s ease 0.4s infinite alternate;
+}
+.pulse-bubble-4 {
+  background-color: #00a6ed;
+  animation: pulse 0.5s ease 0.6s infinite alternate;
+}
 
-  .fadeinout
-  {
-    animation: fadeinout 2s infinite;
-  }
+.fadeinout {
+  animation: fadeinout 2s infinite;
+}
 
-  @keyframes fadeinout
-  {
-    0%{
-      opacity:.5;
-    }
-    50%
-    {
-      opacity:1;
-    }
-    100%
-    {
-      opacity:.5;
-    }
+@keyframes fadeinout {
+  0% {
+    opacity: 0.5;
   }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.5;
+  }
+}
