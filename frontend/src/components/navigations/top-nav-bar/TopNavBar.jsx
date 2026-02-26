@@ -174,8 +174,13 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     return unstractSubscriptionPlan?.remainingDays <= 0;
   }, [unstractSubscriptionPlan]);
 
-  const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
-  const isAPIHub = selectedProduct && selectedProduct === "verticals";
+  // Detect product from URL path as a fallback when selectedProduct is not set
+  // (e.g., incognito/unauthenticated users visiting verticals pages)
+  const isVerticalsRoute = location.pathname.startsWith("/verticals");
+  const effectiveProduct =
+    selectedProduct || (isVerticalsRoute ? "verticals" : null);
+  const isUnstract = !(effectiveProduct && effectiveProduct !== "unstract");
+  const isAPIHub = effectiveProduct === "verticals";
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
   const isOpenSource = orgName === "mock_org";
 
