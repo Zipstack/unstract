@@ -1,6 +1,7 @@
 import ast
 import json
 import os
+import shlex
 from datetime import UTC, datetime
 from typing import Any
 
@@ -293,10 +294,11 @@ class UnstractRunner:
         self, shared_log_dir: str, shared_log_file: str, settings: dict[str, Any]
     ):
         """Returns the container command to run the tool."""
-        settings_json = json.dumps(settings).replace("'", "\\'")
+        settings_json = json.dumps(settings)
         # Prepare the tool execution command
         tool_cmd = (
-            f"python main.py --command RUN --settings '{settings_json}' --log-level DEBUG"
+            f"python main.py --command RUN "
+            f"--settings {shlex.quote(settings_json)} --log-level DEBUG"
         )
 
         if not self.sidecar_enabled:
