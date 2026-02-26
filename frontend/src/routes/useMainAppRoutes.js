@@ -4,7 +4,6 @@ import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomTool
 import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
-import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
 import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
@@ -14,6 +13,7 @@ import { CustomTools } from "../pages/CustomTools.jsx";
 import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
+import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";

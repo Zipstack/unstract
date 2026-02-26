@@ -15,13 +15,13 @@ import { useNavigate } from "react-router-dom";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
+import DashboardIcon from "../../../assets/dashboard.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
 import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
 import TerminalIcon from "../../../assets/terminal.svg";
-import DashboardIcon from "../../../assets/dashboard.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import Workflows from "../../../assets/Workflows.svg";
@@ -119,10 +119,18 @@ const getSettingsMenuItems = (orgName) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
-  if (currentPath.includes("/settings/platform")) return "platform";
-  if (currentPath.includes("/users")) return "users";
-  if (currentPath.includes("/settings/triad")) return "triad";
-  if (currentPath.includes("/settings/review")) return "review";
+  if (currentPath.includes("/settings/platform")) {
+    return "platform";
+  }
+  if (currentPath.includes("/users")) {
+    return "users";
+  }
+  if (currentPath.includes("/settings/triad")) {
+    return "triad";
+  }
+  if (currentPath.includes("/settings/review")) {
+    return "review";
+  }
   return "platform";
 };
 
@@ -169,7 +177,7 @@ const SideNavBar = ({ collapsed }) => {
           (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 

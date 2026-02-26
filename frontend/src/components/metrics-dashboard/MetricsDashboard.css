@@ -61,7 +61,9 @@
   border-radius: 12px;
   height: 100%;
   min-height: 90px;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
 .summary-card:hover {
