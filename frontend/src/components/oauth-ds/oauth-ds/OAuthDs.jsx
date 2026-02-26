@@ -7,6 +7,7 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import GoogleOAuthButton from "../google/GoogleOAuthButton.jsx";
+import MicrosoftOAuthButton from "../microsoft/MicrosoftOAuthButton.jsx";
 
 function OAuthDs({
   oAuthProvider,
@@ -14,6 +15,7 @@ function OAuthDs({
   setStatus,
   selectedSourceId,
   isExistingConnector,
+  disabled = false,
 }) {
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
@@ -23,10 +25,21 @@ function OAuthDs({
   const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
   const oauthStatusKey = `oauth-status-${selectedSourceId}`;
 
-  // Determine button text based on connector state
-  const buttonText = isExistingConnector
-    ? "Reauthenticate"
-    : "Authenticate with Google";
+  // Determine button text based on connector state and provider
+  const getButtonText = () => {
+    if (isExistingConnector) {
+      return "Reauthenticate";
+    }
+    if (oAuthProvider === O_AUTH_PROVIDERS.MICROSOFT) {
+      return "Sign in with Microsoft";
+    }
+    if (oAuthProvider === O_AUTH_PROVIDERS.GOOGLE) {
+      return "Authenticate with Google";
+    }
+    return "Authenticate";
+  };
+
+  const buttonText = getButtonText();
 
   const [oauthStatus, setOAuthStatus] = useState(() => {
     // Initialize from connector-specific status
@@ -97,13 +110,27 @@ function OAuthDs({
     }
   };
 
-  if (O_AUTH_PROVIDERS["GOOGLE"] === oAuthProvider) {
+  if (O_AUTH_PROVIDERS.GOOGLE === oAuthProvider) {
     return (
       <>
         <GoogleOAuthButton
           handleOAuth={handleOAuth}
           status={oauthStatus}
           buttonText={buttonText}
+          disabled={disabled}
+        />
+      </>
+    );
+  }
+
+  if (O_AUTH_PROVIDERS.MICROSOFT === oAuthProvider) {
+    return (
+      <>
+        <MicrosoftOAuthButton
+          handleOAuth={handleOAuth}
+          status={oauthStatus}
+          buttonText={buttonText}
+          disabled={disabled}
         />
       </>
     );
@@ -118,6 +145,7 @@ OAuthDs.propTypes = {
   setStatus: PropTypes.func,
   selectedSourceId: PropTypes.string.isRequired,
   isExistingConnector: PropTypes.bool,
+  disabled: PropTypes.bool,
 };
 
 export { OAuthDs };
