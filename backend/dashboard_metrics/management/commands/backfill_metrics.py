@@ -115,9 +115,9 @@ class Command(BaseCommand):
             self.stdout.write(f"Processing {len(orgs)} organizations")
 
         total_stats = {
-            "hourly": {"created": 0, "updated": 0},
-            "daily": {"created": 0, "updated": 0},
-            "monthly": {"created": 0, "updated": 0},
+            "hourly": {"upserted": 0},
+            "daily": {"upserted": 0},
+            "monthly": {"upserted": 0},
             "errors": 0,
         }
 
@@ -137,30 +137,21 @@ class Command(BaseCommand):
                 )
 
                 if not dry_run:
-                    # Write to tables
+                    # Write to tables (bulk INSERT...ON CONFLICT)
                     if not skip_hourly:
-                        h_created, h_updated = self._upsert_hourly(hourly_data)
-                        total_stats["hourly"]["created"] += h_created
-                        total_stats["hourly"]["updated"] += h_updated
-                        self.stdout.write(
-                            f"  Hourly: {h_created} created, {h_updated} updated"
-                        )
+                        h_count = self._bulk_upsert_hourly(hourly_data)
+                        total_stats["hourly"]["upserted"] += h_count
+                        self.stdout.write(f"  Hourly: {h_count} upserted")
 
                     if not skip_daily:
-                        d_created, d_updated = self._upsert_daily(daily_data)
-                        total_stats["daily"]["created"] += d_created
-                        total_stats["daily"]["updated"] += d_updated
-                        self.stdout.write(
-                            f"  Daily: {d_created} created, {d_updated} updated"
-                        )
+                        d_count = self._bulk_upsert_daily(daily_data)
+                        total_stats["daily"]["upserted"] += d_count
+                        self.stdout.write(f"  Daily: {d_count} upserted")
 
                     if not skip_monthly:
-                        m_created, m_updated = self._upsert_monthly(monthly_data)
-                        total_stats["monthly"]["created"] += m_created
-                        total_stats["monthly"]["updated"] += m_updated
-                        self.stdout.write(
-                            f"  Monthly: {m_created} created, {m_updated} updated"
-                        )
+                        m_count = self._bulk_upsert_monthly(monthly_data)
+                        total_stats["monthly"]["upserted"] += m_count
+                        self.stdout.write(f"  Monthly: {m_count} upserted")
 
             except Exception as e:
                 self.stderr.write(
@@ -172,18 +163,9 @@ class Command(BaseCommand):
         # Print summary
         self.stdout.write("\n" + "=" * 50)
         self.stdout.write(self.style.SUCCESS("BACKFILL COMPLETE"))
-        self.stdout.write(
-            f"Hourly: {total_stats['hourly']['created']} created, "
-            f"{total_stats['hourly']['updated']} updated"
-        )
-        self.stdout.write(
-            f"Daily: {total_stats['daily']['created']} created, "
-            f"{total_stats['daily']['updated']} updated"
-        )
-        self.stdout.write(
-            f"Monthly: {total_stats['monthly']['created']} created, "
-            f"{total_stats['monthly']['updated']} updated"
-        )
+        self.stdout.write(f"Hourly: {total_stats['hourly']['upserted']} upserted")
+        self.stdout.write(f"Daily: {total_stats['daily']['upserted']} upserted")
+        self.stdout.write(f"Monthly: {total_stats['monthly']['upserted']} upserted")
         self.stdout.write(f"Errors: {total_stats['errors']}")
 
     def _collect_metrics(
@@ -266,89 +248,89 @@ class Command(BaseCommand):
             ts = timezone.make_aware(ts, timezone.utc)
         return ts.replace(minute=0, second=0, microsecond=0)
 
-    def _upsert_hourly(self, aggregations: dict) -> tuple[int, int]:
-        """Upsert hourly aggregations."""
-        created, updated = 0, 0
+    def _bulk_upsert_hourly(self, aggregations: dict) -> int:
+        """Bulk upsert hourly aggregations using INSERT ... ON CONFLICT."""
+        objects = []
         for key, agg in aggregations.items():
             org_id, ts_str, metric_name, project, tag = key
-            timestamp = datetime.fromisoformat(ts_str)
-
-            try:
-                obj, was_created = EventMetricsHourly._base_manager.update_or_create(
+            objects.append(
+                EventMetricsHourly(
                     organization_id=org_id,
-                    timestamp=timestamp,
+                    timestamp=datetime.fromisoformat(ts_str),
                     metric_name=metric_name,
                     project=project,
                     tag=tag,
-                    defaults={
-                        "metric_type": agg["metric_type"],
-                        "metric_value": agg["value"],
-                        "metric_count": agg["count"],
-                    },
+                    metric_type=agg["metric_type"],
+                    metric_value=agg["value"],
+                    metric_count=agg["count"],
                 )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as e:
-                logger.warning(f"Error upserting hourly {key}: {e}")
+            )
+        if not objects:
+            return 0
+        EventMetricsHourly._base_manager.bulk_create(
+            objects,
+            update_conflicts=True,
+            unique_fields=[
+                "organization", "timestamp", "metric_name", "project", "tag",
+            ],
+            update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+        )
+        return len(objects)
 
-        return created, updated
-
-    def _upsert_daily(self, aggregations: dict) -> tuple[int, int]:
-        """Upsert daily aggregations."""
-        created, updated = 0, 0
+    def _bulk_upsert_daily(self, aggregations: dict) -> int:
+        """Bulk upsert daily aggregations using INSERT ... ON CONFLICT."""
+        objects = []
         for key, agg in aggregations.items():
             org_id, date_str, metric_name, project, tag = key
-            date_val = datetime.fromisoformat(date_str).date()
-
-            try:
-                obj, was_created = EventMetricsDaily._base_manager.update_or_create(
+            objects.append(
+                EventMetricsDaily(
                     organization_id=org_id,
-                    date=date_val,
+                    date=datetime.fromisoformat(date_str).date(),
                     metric_name=metric_name,
                     project=project,
                     tag=tag,
-                    defaults={
-                        "metric_type": agg["metric_type"],
-                        "metric_value": agg["value"],
-                        "metric_count": agg["count"],
-                    },
+                    metric_type=agg["metric_type"],
+                    metric_value=agg["value"],
+                    metric_count=agg["count"],
                 )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as e:
-                logger.warning(f"Error upserting daily {key}: {e}")
+            )
+        if not objects:
+            return 0
+        EventMetricsDaily._base_manager.bulk_create(
+            objects,
+            update_conflicts=True,
+            unique_fields=[
+                "organization", "date", "metric_name", "project", "tag",
+            ],
+            update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+        )
+        return len(objects)
 
-        return created, updated
-
-    def _upsert_monthly(self, aggregations: dict) -> tuple[int, int]:
-        """Upsert monthly aggregations."""
-        created, updated = 0, 0
+    def _bulk_upsert_monthly(self, aggregations: dict) -> int:
+        """Bulk upsert monthly aggregations using INSERT ... ON CONFLICT."""
+        objects = []
         for key, agg in aggregations.items():
             org_id, month_str, metric_name, project, tag = key
-            month_val = datetime.fromisoformat(month_str).date()
-
-            try:
-                obj, was_created = EventMetricsMonthly._base_manager.update_or_create(
+            objects.append(
+                EventMetricsMonthly(
                     organization_id=org_id,
-                    month=month_val,
+                    month=datetime.fromisoformat(month_str).date(),
                     metric_name=metric_name,
                     project=project,
                     tag=tag,
-                    defaults={
-                        "metric_type": agg["metric_type"],
-                        "metric_value": agg["value"],
-                        "metric_count": agg["count"],
-                    },
+                    metric_type=agg["metric_type"],
+                    metric_value=agg["value"],
+                    metric_count=agg["count"],
                 )
-                if was_created:
-                    created += 1
-                else:
-                    updated += 1
-            except Exception as e:
-                logger.warning(f"Error upserting monthly {key}: {e}")
-
-        return created, updated
+            )
+        if not objects:
+            return 0
+        EventMetricsMonthly._base_manager.bulk_create(
+            objects,
+            update_conflicts=True,
+            unique_fields=[
+                "organization", "month", "metric_name", "project", "tag",
+            ],
+            update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+        )
+        return len(objects)

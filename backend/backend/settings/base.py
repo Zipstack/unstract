@@ -622,6 +622,9 @@ DASHBOARD_CACHE_TTL_SERIES = int(os.environ.get("DASHBOARD_CACHE_TTL_SERIES", 18
 DASHBOARD_CACHE_TTL_WORKFLOW_USAGE = int(
     os.environ.get("DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600)
 )
+DASHBOARD_BUCKET_CACHE_ENABLED = (
+    os.environ.get("DASHBOARD_BUCKET_CACHE_ENABLED", "true").lower() == "true"
+)
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

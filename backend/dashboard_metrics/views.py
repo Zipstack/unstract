@@ -4,6 +4,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db.models import Avg, Max, Min, Sum
 from django.db.models.functions import TruncDay, TruncHour, TruncWeek
@@ -30,6 +31,7 @@ from .models import (
     EventMetricsHourly,
     EventMetricsMonthly,
     Granularity,
+    MetricType,
 )
 from .serializers import (
     EventMetricsHourlySerializer,
@@ -39,8 +41,8 @@ from .services import MetricsQueryService
 
 logger = logging.getLogger(__name__)
 
-# Enable bucket caching for better cache reuse across overlapping queries
-BUCKET_CACHE_ENABLED = True
+# Bucket caching for better cache reuse across overlapping queries
+BUCKET_CACHE_ENABLED = settings.DASHBOARD_BUCKET_CACHE_ENABLED
 
 # Thresholds for automatic source selection (in days)
 HOURLY_MAX_DAYS = 7  # Use hourly for ≤7 days
@@ -192,39 +194,50 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             org_id, start_date, end_date, "hourly", metric_name
         )
 
-        # If we have missing buckets, query them from DB
+        # If we have missing buckets, query them from DB in a single query
         db_data_by_bucket = {}
         if missing_buckets:
+            min_ts = min(missing_buckets)
+            max_ts = max(missing_buckets) + timedelta(hours=1)
+
+            qs = EventMetricsHourly.objects.filter(
+                timestamp__gte=min_ts,
+                timestamp__lt=max_ts,
+            )
+
+            if metric_name:
+                qs = qs.filter(metric_name=metric_name)
+
+            if params.get("project"):
+                qs = qs.filter(project=params["project"])
+
+            if "tag" in params and params["tag"] is not None:
+                qs = qs.filter(tag=params["tag"])
+
+            all_db_records = list(
+                qs.values(
+                    "metric_name",
+                    "metric_type",
+                    "metric_value",
+                    "metric_count",
+                    "project",
+                    "tag",
+                    "timestamp",
+                )
+            )
+
+            # Partition records into hourly buckets in memory
+            missing_set = set(missing_buckets)
+            for record in all_db_records:
+                bucket_ts = record["timestamp"].replace(
+                    minute=0, second=0, microsecond=0
+                )
+                if bucket_ts in missing_set:
+                    db_data_by_bucket.setdefault(bucket_ts, []).append(record)
+
+            # Ensure empty buckets are also cached (prevents re-querying)
             for bucket_ts in missing_buckets:
-                # Query this specific hour
-                bucket_end = bucket_ts + timedelta(hours=1)
-                bucket_qs = EventMetricsHourly.objects.filter(
-                    timestamp__gte=bucket_ts,
-                    timestamp__lt=bucket_end,
-                )
-
-                if metric_name:
-                    bucket_qs = bucket_qs.filter(metric_name=metric_name)
-
-                if params.get("project"):
-                    bucket_qs = bucket_qs.filter(project=params["project"])
-
-                if "tag" in params and params["tag"] is not None:
-                    bucket_qs = bucket_qs.filter(tag=params["tag"])
-
-                # Convert to list of dicts for caching
-                bucket_records = list(
-                    bucket_qs.values(
-                        "metric_name",
-                        "metric_type",
-                        "metric_value",
-                        "metric_count",
-                        "project",
-                        "tag",
-                        "timestamp",
-                    )
-                )
-                db_data_by_bucket[bucket_ts] = bucket_records
+                db_data_by_bucket.setdefault(bucket_ts, [])
 
             # Save to cache
             if db_data_by_bucket:
@@ -280,7 +293,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                     "total_value": 0,
                     "total_count": 0,
                     "values": [],
-                    "metric_type": "counter",
+                    "metric_type": MetricType.COUNTER,
                 }
             )
             for record in records:
@@ -290,7 +303,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 summary_dict[name]["total_value"] += value
                 summary_dict[name]["total_count"] += count
                 summary_dict[name]["values"].append(value)
-                summary_dict[name]["metric_type"] = record.get("metric_type", "counter")
+                summary_dict[name]["metric_type"] = record.get(
+                    "metric_type", MetricType.COUNTER
+                )
 
             summary_list = []
             for name, agg in summary_dict.items():
@@ -337,7 +352,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                     .first()
                 )
                 row["metric_type"] = (
-                    metric_type_record["metric_type"] if metric_type_record else "counter"
+                    metric_type_record["metric_type"]
+                    if metric_type_record
+                    else MetricType.COUNTER
                 )
                 summary_list.append(row)
 
@@ -401,7 +418,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
             # Group records by (period, metric_name, project, tag)
             grouped = defaultdict(
-                lambda: {"value": 0, "count": 0, "metric_type": "counter"}
+                lambda: {"value": 0, "count": 0, "metric_type": MetricType.COUNTER}
             )
             for record in records:
                 ts = record.get("timestamp")
@@ -416,7 +433,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 )
                 grouped[key]["value"] += record.get("metric_value") or 0
                 grouped[key]["count"] += record.get("metric_count") or 0
-                grouped[key]["metric_type"] = record.get("metric_type", "counter")
+                grouped[key]["metric_type"] = record.get(
+                    "metric_type", MetricType.COUNTER
+                )
 
             # Convert to series_data format
             series_data = [
@@ -695,7 +714,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         summary_list = [
             {
                 "metric_name": name,
-                "metric_type": "histogram" if name == "llm_usage" else "counter",
+                "metric_type": MetricType.HISTOGRAM
+                if name == "llm_usage"
+                else MetricType.COUNTER,
                 "total_value": value,
                 "total_count": 1,  # Not available from live queries
                 "average_value": value,  # Same as total for live data
@@ -772,9 +793,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 series.append(
                     {
                         "metric_name": metric_name,
-                        "metric_type": "histogram"
+                        "metric_type": MetricType.HISTOGRAM
                         if metric_name == "llm_usage"
-                        else "counter",
+                        else MetricType.COUNTER,
                         "data": [
                             {
                                 "timestamp": r["period"].isoformat(),
@@ -834,15 +855,8 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         except (ValueError, TypeError):
             limit = 10
 
-        try:
-            data = MetricsQueryService.get_recent_activity(org_id, limit)
-            return Response({"activity": data})
-        except Exception as e:
-            logger.exception("Error fetching recent activity")
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        data = MetricsQueryService.get_recent_activity(org_id, limit)
+        return Response({"activity": data})
 
     @action(detail=False, methods=["get"], url_path="workflow-token-usage")
     @cache_metrics_response(endpoint="workflow_token_usage")
@@ -869,25 +883,18 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         organization = self._get_organization()
         org_id = str(organization.id)
 
-        try:
-            data = MetricsQueryService.get_workflow_token_usage(
-                org_id,
-                params["start_date"],
-                params["end_date"],
-            )
-            return Response(
-                {
-                    "start_date": params["start_date"].isoformat(),
-                    "end_date": params["end_date"].isoformat(),
-                    "workflows": data,
-                }
-            )
-        except Exception as e:
-            logger.exception("Error fetching workflow token usage")
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        data = MetricsQueryService.get_workflow_token_usage(
+            org_id,
+            params["start_date"],
+            params["end_date"],
+        )
+        return Response(
+            {
+                "start_date": params["start_date"].isoformat(),
+                "end_date": params["end_date"].isoformat(),
+                "workflows": data,
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="health")
     def health(self, request: Request) -> Response:

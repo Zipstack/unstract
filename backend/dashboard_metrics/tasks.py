@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from celery import shared_task
+from django.core.cache import cache
 from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
 
@@ -70,49 +71,52 @@ def _truncate_to_month(ts: datetime) -> datetime:
     return ts.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
 
-def _upsert_hourly_replace(aggregations: dict) -> tuple[int, int]:
-    """Upsert hourly aggregations, replacing existing values.
+def _bulk_upsert_hourly(aggregations: dict) -> int:
+    """Bulk upsert hourly aggregations using INSERT ... ON CONFLICT.
+
+    Uses bulk_create with update_conflicts to perform a single SQL statement
+    instead of N×2 roundtrips (SELECT + INSERT/UPDATE per row).
 
     Uses _base_manager to bypass DefaultOrganizationManagerMixin which
-    filters by UserContext.get_organization() - returns None in Celery context.
+    filters by UserContext.get_organization() — returns None in Celery context.
 
     Args:
         aggregations: Dict of aggregated metric data keyed by
             (org_id, hour_ts_str, metric_name, project, tag)
 
     Returns:
-        Tuple of (created_count, updated_count)
+        Number of rows upserted
     """
-    created, updated = 0, 0
+    objects = []
     for key, agg in aggregations.items():
         org_id, hour_ts_str, metric_name, project, tag = key
-        hour_ts = datetime.fromisoformat(hour_ts_str)
-
-        try:
-            obj, was_created = EventMetricsHourly._base_manager.update_or_create(
+        objects.append(
+            EventMetricsHourly(
                 organization_id=org_id,
-                timestamp=hour_ts,
+                timestamp=datetime.fromisoformat(hour_ts_str),
                 metric_name=metric_name,
                 project=project,
                 tag=tag,
-                defaults={
-                    "metric_type": agg["metric_type"],
-                    "metric_value": agg["value"],
-                    "metric_count": agg["count"],
-                },
+                metric_type=agg["metric_type"],
+                metric_value=agg["value"],
+                metric_count=agg["count"],
             )
-            if was_created:
-                created += 1
-            else:
-                updated += 1
-        except Exception:
-            logger.exception("Error upserting hourly metric %s", key)
+        )
 
-    return created, updated
+    if not objects:
+        return 0
+
+    EventMetricsHourly._base_manager.bulk_create(
+        objects,
+        update_conflicts=True,
+        unique_fields=["organization", "timestamp", "metric_name", "project", "tag"],
+        update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+    )
+    return len(objects)
 
 
-def _upsert_daily_replace(aggregations: dict) -> tuple[int, int]:
-    """Upsert daily aggregations, replacing existing values.
+def _bulk_upsert_daily(aggregations: dict) -> int:
+    """Bulk upsert daily aggregations using INSERT ... ON CONFLICT.
 
     Uses _base_manager to bypass DefaultOrganizationManagerMixin.
 
@@ -120,38 +124,38 @@ def _upsert_daily_replace(aggregations: dict) -> tuple[int, int]:
         aggregations: Dict keyed by (org_id, date_str, metric_name, project, tag)
 
     Returns:
-        Tuple of (created_count, updated_count)
+        Number of rows upserted
     """
-    created, updated = 0, 0
+    objects = []
     for key, agg in aggregations.items():
         org_id, date_str, metric_name, project, tag = key
-        date_val = datetime.fromisoformat(date_str).date()
-
-        try:
-            obj, was_created = EventMetricsDaily._base_manager.update_or_create(
+        objects.append(
+            EventMetricsDaily(
                 organization_id=org_id,
-                date=date_val,
+                date=datetime.fromisoformat(date_str).date(),
                 metric_name=metric_name,
                 project=project,
                 tag=tag,
-                defaults={
-                    "metric_type": agg["metric_type"],
-                    "metric_value": agg["value"],
-                    "metric_count": agg["count"],
-                },
+                metric_type=agg["metric_type"],
+                metric_value=agg["value"],
+                metric_count=agg["count"],
             )
-            if was_created:
-                created += 1
-            else:
-                updated += 1
-        except Exception:
-            logger.exception("Error upserting daily metric %s", key)
+        )
 
-    return created, updated
+    if not objects:
+        return 0
+
+    EventMetricsDaily._base_manager.bulk_create(
+        objects,
+        update_conflicts=True,
+        unique_fields=["organization", "date", "metric_name", "project", "tag"],
+        update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+    )
+    return len(objects)
 
 
-def _upsert_monthly_replace(aggregations: dict) -> tuple[int, int]:
-    """Upsert monthly aggregations, replacing existing values.
+def _bulk_upsert_monthly(aggregations: dict) -> int:
+    """Bulk upsert monthly aggregations using INSERT ... ON CONFLICT.
 
     Uses _base_manager to bypass DefaultOrganizationManagerMixin.
 
@@ -159,38 +163,44 @@ def _upsert_monthly_replace(aggregations: dict) -> tuple[int, int]:
         aggregations: Dict keyed by (org_id, month_str, metric_name, project, tag)
 
     Returns:
-        Tuple of (created_count, updated_count)
+        Number of rows upserted
     """
-    created, updated = 0, 0
+    objects = []
     for key, agg in aggregations.items():
         org_id, month_str, metric_name, project, tag = key
-        month_val = datetime.fromisoformat(month_str).date()
-
-        try:
-            obj, was_created = EventMetricsMonthly._base_manager.update_or_create(
+        objects.append(
+            EventMetricsMonthly(
                 organization_id=org_id,
-                month=month_val,
+                month=datetime.fromisoformat(month_str).date(),
                 metric_name=metric_name,
                 project=project,
                 tag=tag,
-                defaults={
-                    "metric_type": agg["metric_type"],
-                    "metric_value": agg["value"],
-                    "metric_count": agg["count"],
-                },
+                metric_type=agg["metric_type"],
+                metric_value=agg["value"],
+                metric_count=agg["count"],
             )
-            if was_created:
-                created += 1
-            else:
-                updated += 1
-        except Exception:
-            logger.exception("Error upserting monthly metric %s", key)
+        )
 
-    return created, updated
+    if not objects:
+        return 0
+
+    EventMetricsMonthly._base_manager.bulk_create(
+        objects,
+        update_conflicts=True,
+        unique_fields=["organization", "month", "metric_name", "project", "tag"],
+        update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+    )
+    return len(objects)
+
+
+AGGREGATION_LOCK_KEY = "dashboard_metrics:aggregation_lock"
+AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches task schedule)
 
 
 @shared_task(
     name="dashboard_metrics.aggregate_from_sources",
+    soft_time_limit=600,
+    time_limit=660,
     max_retries=3,
     autoretry_for=(DatabaseError, OperationalError),
     retry_backoff=True,
@@ -204,6 +214,9 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
     them into EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
     tables for fast dashboard queries at different granularities.
 
+    Uses a Redis distributed lock to prevent overlapping runs when a task
+    takes longer than the 15-minute schedule interval.
+
     Aggregation windows:
     - Hourly: Last 24 hours (rolling window)
     - Daily: Last 2 days (to catch day boundaries)
@@ -212,7 +225,24 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
     Returns:
         Dict with aggregation summary for all three tiers
     """
+    # Acquire distributed lock to prevent overlapping runs
+    if not cache.add(AGGREGATION_LOCK_KEY, "running", AGGREGATION_LOCK_TIMEOUT):
+        logger.info("Skipping aggregation — another run is in progress")
+        return {"success": True, "skipped": True, "reason": "lock_held"}
+
+    try:
+        return _run_aggregation()
+    finally:
+        cache.delete(AGGREGATION_LOCK_KEY)
+
+
+def _run_aggregation() -> dict[str, Any]:
+    """Execute the actual aggregation logic.
+
+    Separated from the task function to keep the lock management clean.
+    """
     from account_v2.models import Organization
+    from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
     end_date = timezone.now()
 
@@ -259,14 +289,41 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
     ]
 
     stats = {
-        "hourly": {"created": 0, "updated": 0},
-        "daily": {"created": 0, "updated": 0},
-        "monthly": {"created": 0, "updated": 0},
+        "hourly": {"upserted": 0},
+        "daily": {"upserted": 0},
+        "monthly": {"upserted": 0},
         "errors": 0,
         "orgs_processed": 0,
     }
 
-    organizations = Organization.objects.all().only("id")
+    # Pre-filter to orgs with recent activity to reduce DB load.
+    # One lightweight query avoids running 36 queries per dormant org.
+    active_org_ids = set(
+        WorkflowExecution.objects.filter(
+            created_at__gte=monthly_start,
+        )
+        .values_list("workflow__organization_id", flat=True)
+        .distinct()
+    )
+    total_orgs = Organization.objects.count()
+    logger.info(
+        "Aggregation: %d active orgs out of %d total",
+        len(active_org_ids),
+        total_orgs,
+    )
+
+    if not active_org_ids:
+        return {
+            "success": True,
+            "organizations_processed": 0,
+            "hourly": stats["hourly"],
+            "daily": stats["daily"],
+            "monthly": stats["monthly"],
+            "errors": 0,
+            "skipped_reason": "no_active_orgs",
+        }
+
+    organizations = Organization.objects.filter(id__in=active_org_ids).only("id")
 
     for org in organizations:
         org_id = str(org.id)
@@ -359,21 +416,15 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                     logger.exception("Error querying %s for org %s", metric_name, org_id)
                     stats["errors"] += 1
 
-            # Upsert all three tiers
+            # Bulk upsert all three tiers (single INSERT...ON CONFLICT each)
             if hourly_agg:
-                c, u = _upsert_hourly_replace(hourly_agg)
-                stats["hourly"]["created"] += c
-                stats["hourly"]["updated"] += u
+                stats["hourly"]["upserted"] += _bulk_upsert_hourly(hourly_agg)
 
             if daily_agg:
-                c, u = _upsert_daily_replace(daily_agg)
-                stats["daily"]["created"] += c
-                stats["daily"]["updated"] += u
+                stats["daily"]["upserted"] += _bulk_upsert_daily(daily_agg)
 
             if monthly_agg:
-                c, u = _upsert_monthly_replace(monthly_agg)
-                stats["monthly"]["created"] += c
-                stats["monthly"]["updated"] += u
+                stats["monthly"]["upserted"] += _bulk_upsert_monthly(monthly_agg)
 
             stats["orgs_processed"] += 1
 
@@ -383,9 +434,9 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
 
     logger.info(
         f"Aggregation completed: {stats['orgs_processed']} orgs, "
-        f"hourly({stats['hourly']['created']}+{stats['hourly']['updated']}), "
-        f"daily({stats['daily']['created']}+{stats['daily']['updated']}), "
-        f"monthly({stats['monthly']['created']}+{stats['monthly']['updated']}), "
+        f"hourly={stats['hourly']['upserted']}, "
+        f"daily={stats['daily']['upserted']}, "
+        f"monthly={stats['monthly']['upserted']}, "
         f"errors={stats['errors']}"
     )
 
