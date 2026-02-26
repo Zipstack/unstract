@@ -529,18 +529,6 @@ class UnstractRunner:
                     f"container: {container_name} ran successfully"
                 )
                 result = {"type": "RESULT", "result": None, "status": "SUCCESS"}
-        except ToolRunException as te:
-            self.logger.error(
-                f"Error while running docker container {container_name}: {te}",
-                stack_info=True,
-                exc_info=True,
-            )
-            result = {
-                "type": "RESULT",
-                "result": None,
-                "error": str(te.message),
-                "status": "ERROR",
-            }
         except ToolImageNotFoundError as e:
             self.logger.error(
                 f"Tool image not found in container registry: {e.image_name}:{e.image_tag}",
@@ -552,6 +540,18 @@ class UnstractRunner:
                 "result": None,
                 "error": str(e.message),
                 "error_code": ToolImageNotFoundError.ERROR_CODE,
+                "status": "ERROR",
+            }
+        except ToolRunException as te:
+            self.logger.error(
+                f"Error while running docker container {container_name}: {te}",
+                stack_info=True,
+                exc_info=True,
+            )
+            result = {
+                "type": "RESULT",
+                "result": None,
+                "error": str(te.message),
                 "status": "ERROR",
             }
         except Exception as e:
