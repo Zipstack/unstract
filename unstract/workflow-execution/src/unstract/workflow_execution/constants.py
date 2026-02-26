@@ -8,6 +8,7 @@ class ToolExecution:
     # Offset for step adjustment: Converts zero-based indexing to one-based
     # for readability
     STEP_ADJUSTMENT_OFFSET: int = 1
+    STRUCTURE_TOOL_IMAGE_IDENTIFIER = "tool-structure"
 
 
 class ToolRuntimeVariable:
