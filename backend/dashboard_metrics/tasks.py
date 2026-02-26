@@ -18,6 +18,7 @@ from .models import (
     EventMetricsDaily,
     EventMetricsHourly,
     EventMetricsMonthly,
+    Granularity,
     MetricType,
 )
 from .services import MetricsQueryService
@@ -280,7 +281,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
                 try:
                     # === HOURLY AGGREGATION (last 24 hours) ===
                     hourly_results = query_method(
-                        org_id, hourly_start, end_date, granularity="hour"
+                        org_id, hourly_start, end_date, granularity=Granularity.HOUR
                     )
                     for row in hourly_results:
                         period = row["period"]
@@ -299,7 +300,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
 
                     # === DAILY AGGREGATION (last 7 days) ===
                     daily_results = query_method(
-                        org_id, daily_start, end_date, granularity="day"
+                        org_id, daily_start, end_date, granularity=Granularity.DAY
                     )
                     for row in daily_results:
                         period = row["period"]
@@ -324,7 +325,7 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
 
                     # === MONTHLY AGGREGATION (last 2 months) ===
                     monthly_results = query_method(
-                        org_id, monthly_start, end_date, granularity="day"
+                        org_id, monthly_start, end_date, granularity=Granularity.DAY
                     )
                     # Group results by month and create separate records
                     monthly_buckets: dict[str, dict] = {}

@@ -20,6 +20,7 @@ from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
     EventMetricsMonthly,
+    Granularity,
     MetricType,
 )
 from dashboard_metrics.services import MetricsQueryService
@@ -199,7 +200,7 @@ class Command(BaseCommand):
             try:
                 # Query hourly data
                 hourly_results = query_method(
-                    org_id, start_date, end_date, granularity="hour"
+                    org_id, start_date, end_date, granularity=Granularity.HOUR
                 )
                 for row in hourly_results:
                     period = row["period"]
@@ -218,7 +219,7 @@ class Command(BaseCommand):
 
                 # Query daily data
                 daily_results = query_method(
-                    org_id, start_date, end_date, granularity="day"
+                    org_id, start_date, end_date, granularity=Granularity.DAY
                 )
                 for row in daily_results:
                     period = row["period"]

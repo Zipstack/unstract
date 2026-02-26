@@ -20,6 +20,8 @@ from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
+from dashboard_metrics.models import Granularity
+
 
 def _get_usage_queryset():
     """Get Usage queryset bypassing the organization context filter.
@@ -54,9 +56,9 @@ class MetricsQueryService:
     def _get_trunc_func(granularity: str):
         """Get the appropriate truncation function for the granularity."""
         trunc_map = {
-            "hour": TruncHour,
-            "day": TruncDay,
-            "week": TruncWeek,
+            Granularity.HOUR: TruncHour,
+            Granularity.DAY: TruncDay,
+            Granularity.WEEK: TruncWeek,
         }
         return trunc_map.get(granularity, TruncDay)
 
@@ -65,7 +67,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query documents processed from workflow_file_execution.
 
@@ -100,7 +102,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query pages processed from page_usage.
 
@@ -134,7 +136,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query LLM calls from usage table.
 
@@ -170,7 +172,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query challenge calls from usage table.
 
@@ -207,7 +209,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query summarization calls from usage table.
 
@@ -244,7 +246,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query API deployment requests from workflow_execution.
 
@@ -287,7 +289,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query ETL pipeline executions from workflow_execution.
 
@@ -331,7 +333,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query LLM usage cost from usage table.
 
@@ -367,7 +369,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query prompt executions from workflow_execution.
 
@@ -401,7 +403,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query failed pages from workflow_file_execution + page_usage.
 
@@ -450,7 +452,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query HITL review counts from manual_review_v2.
 
@@ -489,7 +491,7 @@ class MetricsQueryService:
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
-        granularity: str = "day",
+        granularity: str = Granularity.DAY,
     ) -> list[dict[str, Any]]:
         """Query completed HITL reviews from manual_review_v2.
 

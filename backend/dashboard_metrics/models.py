@@ -10,6 +10,14 @@ from utils.models.organization_mixin import (
 )
 
 
+class Granularity(models.TextChoices):
+    """Time granularity for metric aggregation."""
+
+    HOUR = "hour", "Hour"
+    DAY = "day", "Day"
+    WEEK = "week", "Week"
+
+
 class MetricType(models.TextChoices):
     """Type of metric - determines aggregation behavior."""
 

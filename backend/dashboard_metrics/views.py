@@ -25,7 +25,12 @@ from .cache import (
     mget_metrics_buckets,
     mset_metrics_buckets,
 )
-from .models import EventMetricsDaily, EventMetricsHourly, EventMetricsMonthly
+from .models import (
+    EventMetricsDaily,
+    EventMetricsHourly,
+    EventMetricsMonthly,
+    Granularity,
+)
 from .serializers import (
     EventMetricsHourlySerializer,
     MetricsQuerySerializer,
@@ -374,7 +379,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         organization = self._get_organization()
         org_id = str(organization.id)
         source = self._select_source(params)
-        granularity = params.get("granularity", "day")
+        granularity = params.get("granularity", Granularity.DAY)
 
         # Use bucket caching for hourly source (best cache reuse)
         if source == "hourly" and BUCKET_CACHE_ENABLED:
@@ -386,13 +391,13 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             from datetime import datetime
 
             trunc_funcs = {
-                "hour": lambda ts: ts.replace(minute=0, second=0, microsecond=0),
-                "day": lambda ts: ts.replace(hour=0, minute=0, second=0, microsecond=0),
-                "week": lambda ts: (ts - timedelta(days=ts.weekday())).replace(
+                Granularity.HOUR: lambda ts: ts.replace(minute=0, second=0, microsecond=0),
+                Granularity.DAY: lambda ts: ts.replace(hour=0, minute=0, second=0, microsecond=0),
+                Granularity.WEEK: lambda ts: (ts - timedelta(days=ts.weekday())).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 ),
             }
-            trunc_fn = trunc_funcs.get(granularity, trunc_funcs["day"])
+            trunc_fn = trunc_funcs.get(granularity, trunc_funcs[Granularity.DAY])
 
             # Group records by (period, metric_name, project, tag)
             grouped = defaultdict(
@@ -453,7 +458,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 )
             elif source == "daily":
                 # Daily data - use date directly or truncate to week
-                if granularity == "week":
+                if granularity == Granularity.WEEK:
                     series_data = (
                         queryset.annotate(period=TruncWeek(ts_field))
                         .values("period", "metric_name", "metric_type", "project", "tag")
@@ -733,7 +738,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         organization = self._get_organization()
         org_id = str(organization.id)
-        granularity = params.get("granularity", "day")
+        granularity = params.get("granularity", Granularity.DAY)
 
         # Define metric query mapping
         metric_queries = {

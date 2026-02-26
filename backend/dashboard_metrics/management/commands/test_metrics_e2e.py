@@ -23,6 +23,7 @@ from dashboard_metrics.models import (
     EventMetricsDaily,
     EventMetricsHourly,
     EventMetricsMonthly,
+    Granularity,
 )
 
 # Tag for identifying test data for cleanup
@@ -331,7 +332,7 @@ class Command(BaseCommand):
         all_passed = True
         for name, query_fn in tests.items():
             try:
-                results = query_fn(org_id_str, start, now, granularity="day")
+                results = query_fn(org_id_str, start, now, granularity=Granularity.DAY)
                 has_data = len(results) > 0
                 total = sum(r.get("value", 0) or 0 for r in results)
                 if has_data:
