@@ -2,12 +2,13 @@ import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { O_AUTH_PROVIDERS, getBaseUrl } from "../../../helpers/GetStaticData";
+import { getBaseUrl, O_AUTH_PROVIDERS } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import GoogleOAuthButton from "../google/GoogleOAuthButton.jsx";
 import MicrosoftOAuthButton from "../microsoft/MicrosoftOAuthButton.jsx";
+
 function OAuthDs({
   oAuthProvider,
   setCacheKey,
@@ -102,7 +103,7 @@ function OAuthDs({
       window.open(
         url,
         "_blank",
-        "toolbar=yes,scrollbars=yes,resizable=yes,top=200,left=500,width=500,height=600"
+        "toolbar=yes,scrollbars=yes,resizable=yes,top=200,left=500,width=500,height=600",
       );
     } catch (err) {
       setAlertDetails(handleException(err));

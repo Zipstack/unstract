@@ -4,12 +4,12 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { AddSource } from "../add-source/AddSource";
 import { ListOfSources } from "../list-of-sources/ListOfSources";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 import "./AddSourceModal.css";
 
 function AddSourceModal({
@@ -70,7 +70,7 @@ function AddSourceModal({
 
   useEffect(() => {
     const selectedSource = sourcesList.find(
-      (item) => item?.id === selectedSourceId
+      (item) => item?.id === selectedSourceId,
     );
     setSelectedSourceName(selectedSource?.name);
   }, [selectedSourceId]);
@@ -120,7 +120,9 @@ function AddSourceModal({
         url = getUrl(`supported_connectors/`);
       }
     } else {
-      if (!type) return;
+      if (!type) {
+        return;
+      }
       url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
     }
 
@@ -137,7 +139,7 @@ function AddSourceModal({
         const updatedSources = sources?.map((source) => ({
           ...source,
           isDisabled: disabledIdsByType[source?.adapter_type]?.includes(
-            source?.id
+            source?.id,
           ),
         }));
         setSourcesList(updatedSources || []);

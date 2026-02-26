@@ -1,13 +1,13 @@
+import { format, parseISO } from "date-fns";
 import moment from "moment";
 import momentTz from "moment-timezone";
-import { format, parseISO } from "date-fns";
 import { v4 as uuidv4 } from "uuid";
 
 let cloudHomePagePath;
 try {
-  cloudHomePagePath =
-    require("../plugins/unstract-subscription/helper/constants").cloudHomePagePath;
-} catch (err) {
+  const mod = await import("../plugins/unstract-subscription/helper/constants");
+  cloudHomePagePath = mod.cloudHomePagePath;
+} catch {
   // Ignore if plugin not available
 }
 
@@ -67,7 +67,9 @@ const replaceFirstRoute = (url, newRoute) => {
 };
 
 const formatBytes = (bytes, decimals = 1) => {
-  if (!+bytes) return "0 B";
+  if (!+bytes) {
+    return "0 B";
+  }
 
   const k = 1000;
   const dm = decimals < 0 ? 0 : decimals;
@@ -335,7 +337,7 @@ const isJson = (text) => {
       return typeof json === "object";
     }
     return false;
-  } catch (err) {
+  } catch (_err) {
     return false;
   }
 };
@@ -343,7 +345,7 @@ const isJson = (text) => {
 const displayPromptResult = (
   output,
   isFormat = false,
-  isHighlightEnabled = false
+  isHighlightEnabled = false,
 ) => {
   /*
     output: The data to be displayed or parsed
@@ -500,14 +502,14 @@ const pollForCompletion = (
   requestOptions,
   maxWaitTime,
   pollingInterval,
-  makeApiRequest
+  makeApiRequest,
 ) => {
   const elapsedTime = Date.now() - startTime;
   if (elapsedTime >= maxWaitTime) {
     return Promise.reject(
       new Error(
-        "Unable to fetch results since there's an ongoing extraction, please try again later"
-      )
+        "Unable to fetch results since there's an ongoing extraction, please try again later",
+      ),
     );
   }
 
@@ -516,7 +518,7 @@ const pollForCompletion = (
       .then((response) => {
         if (response?.data?.status === "pending") {
           return new Promise((resolve) =>
-            setTimeout(resolve, pollingInterval)
+            setTimeout(resolve, pollingInterval),
           ).then(recursivePoll);
         } else {
           return response;
@@ -547,7 +549,9 @@ const displayURL = (text) => {
 };
 
 const formatNumberWithCommas = (number) => {
-  if (!number && number !== 0) return null;
+  if (!number && number !== 0) {
+    return null;
+  }
 
   // Convert the number to a string and split into integer and decimal parts.
   const [integerPart, decimalPart] = number.toString().split(".");
@@ -609,7 +613,9 @@ const generateCoverageKey = (promptId, profileId) => {
 };
 
 function formatSecondsToHMS(seconds) {
-  if (isNaN(seconds) || seconds < 0) return "00:00:00";
+  if (isNaN(seconds) || seconds < 0) {
+    return "00:00:00";
+  }
 
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -651,16 +657,24 @@ const convertTimestampToHHMMSS = (timestamp) => {
 
 const formatTimeDisplay = (seconds) => {
   // Format time display for TTL or duration display
-  if (seconds <= 0) return "Expired";
+  if (seconds <= 0) {
+    return "Expired";
+  }
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
 
   const parts = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+  if (secs > 0 || parts.length === 0) {
+    parts.push(`${secs}s`);
+  }
 
   return parts.join(" ");
 };

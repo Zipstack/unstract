@@ -8,6 +8,7 @@
 !workers/run-worker.sh
 !workers/run-worker-docker.sh
 !workers/log_consumer/scheduler.sh
+!.claude/skills/worktree/worktree-setup.sh
 
 ### Django ###
 *.log
@@ -686,6 +687,12 @@ prompting/
 .prompting/
 
 # Claude
+CLAUDE.md
+.claude/*
+# Must un-ignore each parent dir level before negating nested paths (gitignore won't descend into ignored dirs)
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/worktree/
 CONTRIBUTION_GUIDE.md
 .mcp.json
 
@@ -693,3 +700,6 @@ CONTRIBUTION_GUIDE.md
 .qodo
 .windsurfrules
 .windsurf/rules
+
+# MCP servers
+.serena

@@ -1,5 +1,5 @@
-import { memo, useRef } from "react";
 import PropTypes from "prop-types";
+import { memo, useRef } from "react";
 import { useDrag, useDrop } from "react-dnd";
 import "./PromptsReorder.css";
 import { Card, Typography } from "antd";

@@ -90,7 +90,7 @@ const useCustomToolStore = create((setState, getState) => ({
     const newState = { ...getState() };
     const promptsAndNotes = newState?.details?.prompts;
     const filteredData = promptsAndNotes.filter(
-      (item) => item?.prompt_id !== promptId
+      (item) => item?.prompt_id !== promptId,
     );
     newState["details"]["prompts"] = filteredData;
     // Mark as having unsaved changes when a prompt/note is deleted
@@ -113,7 +113,7 @@ const useCustomToolStore = create((setState, getState) => ({
   deleteIndexDoc: (docId) => {
     const existingState = { ...getState() };
     const docs = [...(existingState?.indexDocs || [])].filter(
-      (item) => item !== docId
+      (item) => item !== docId,
     );
     existingState.indexDocs = docs;
     setState(existingState);
