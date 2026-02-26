@@ -36,24 +36,30 @@ import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let SummarizeStatusTitle = null;
 try {
-  SummarizeStatusTitle =
-    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
+  const mod = await import(
+    "../../../plugins/summarize-status-title/SummarizeStatusTitle"
+  );
+  SummarizeStatusTitle = mod.SummarizeStatusTitle;
 } catch {
   // The component will remain null if it is not available
 }
 
 let publicIndexApi = null;
 try {
-  publicIndexApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicIndexApi;
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
+  publicIndexApi = mod.publicIndexApi;
 } catch {
   // The component will remain null if it is not available
 }
 
 let ConfirmMultiDoc = null;
 try {
-  ConfirmMultiDoc =
-    require("../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc").ConfirmMultiDoc;
+  const mod = await import(
+    "../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc"
+  );
+  ConfirmMultiDoc = mod.ConfirmMultiDoc;
 } catch {
   // The component will remain null if it is not available
 }
@@ -164,7 +170,7 @@ function ManageDocsModal({
       details?.summarize_llm_adapter?.adapter_id ??
         details?.summarize_llm_adapter?.id ??
         details?.summarize_llm_adapter ??
-        null
+        null,
     );
   }, [defaultLlmProfile, details]);
 
@@ -205,7 +211,7 @@ function ManageDocsModal({
 
     // Get the index of the last message received before the last update
     const lastIndex = [...newMessages].findIndex(
-      (item) => item?.timestamp === lastMessagesUpdate
+      (item) => item?.timestamp === lastMessagesUpdate,
     );
 
     // If the last update's message is found, keep only the new messages
@@ -215,7 +221,7 @@ function ManageDocsModal({
 
     // Filter only INFO and ERROR logs
     newMessages = newMessages.filter(
-      (item) => item?.level === "INFO" || item?.level === "ERROR"
+      (item) => item?.level === "INFO" || item?.level === "ERROR",
     );
 
     // If there are no new INFO or ERROR messages, return early
@@ -317,7 +323,7 @@ function ManageDocsModal({
 
   const getLlmProfileName = (llmProfile) => {
     const llmProfileName = llmProfiles.find(
-      (item) => item?.profile_id === llmProfile
+      (item) => item?.profile_id === llmProfile,
     );
 
     return llmProfileName?.profile_name || "No LLM Profile Selected";
@@ -334,12 +340,12 @@ function ManageDocsModal({
     if (summarizeLlmAdapter) {
       const selectedAdapterId =
         typeof summarizeLlmAdapter === "object"
-          ? summarizeLlmAdapter?.adapter_id ?? summarizeLlmAdapter?.id
+          ? (summarizeLlmAdapter?.adapter_id ?? summarizeLlmAdapter?.id)
           : summarizeLlmAdapter;
       const adapter = adapters?.find(
         (item) =>
           item?.adapter_id === selectedAdapterId ||
-          item?.id === selectedAdapterId
+          item?.id === selectedAdapterId,
       );
       return adapter?.adapter_name || adapter?.name || "No adapter selected";
     }
@@ -453,7 +459,7 @@ function ManageDocsModal({
         info: "Clicked on index button",
         document_name: item?.document_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -553,7 +559,7 @@ function ManageDocsModal({
       setPostHogCustomEvent("ps_uploaded_file", {
         info: "Clicked on '+ Upload New File' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -563,7 +569,7 @@ function ManageDocsModal({
       return [...listOfDocs]?.find(
         (item) =>
           item?.document_name?.replace(/\.[^/.]+$/, "") ===
-          fileNameWithoutExtension
+          fileNameWithoutExtension,
       );
     };
 
@@ -687,7 +693,7 @@ function ManageDocsModal({
     axiosPrivate(requestOptions)
       .then(() => {
         const newListOfDocs = [...listOfDocs].filter(
-          (item) => item?.document_id !== docId
+          (item) => item?.document_id !== docId,
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
@@ -698,7 +704,7 @@ function ManageDocsModal({
         const updatedPromptDetails = removeIdFromCoverage(details, docId);
         const updatedPromptOutput = removeIdFromCoverageOfPromptOutput(
           promptOutputs,
-          docId
+          docId,
         );
         updateCustomTool({ details: updatedPromptDetails });
         updatePromptOutput(updatedPromptOutput);

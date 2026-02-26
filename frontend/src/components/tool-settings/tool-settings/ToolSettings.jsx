@@ -7,15 +7,15 @@ import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceMod
 import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ToolSettings.css";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useListSearch } from "../../../hooks/useListSearch";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { useListSearch } from "../../../hooks/useListSearch";
 
 const titles = {
   llm: "LLMs",
@@ -94,7 +94,7 @@ function ToolSettings({ type }) {
             return tableRow;
           }
           return { ...tableRow, adapter_name: row?.adapter_name };
-        })
+        }),
       );
     } else {
       updateMasterList((currentList) => [...currentList, row]);
@@ -103,7 +103,7 @@ function ToolSettings({ type }) {
 
   const handleDeleteSuccess = (adapterId) => {
     updateMasterList((currentList) =>
-      currentList.filter((row) => row?.id !== adapterId)
+      currentList.filter((row) => row?.id !== adapterId),
     );
   };
 
@@ -171,7 +171,7 @@ function ToolSettings({ type }) {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
       })
       .catch((err) => {

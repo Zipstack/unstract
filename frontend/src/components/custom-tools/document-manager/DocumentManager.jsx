@@ -18,13 +18,14 @@ import {
   docIndexStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
+import { TextViewer } from "../text-viewer/TextViewer";
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 let items = [
   {
@@ -45,10 +46,10 @@ const viewTypes = {
 // Import components for the summarize feature
 let SummarizeView = null;
 try {
-  SummarizeView =
-    require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
-  const tabLabel =
-    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+  const svMod = await import("../../../plugins/summarize-view/SummarizeView");
+  SummarizeView = svMod.SummarizeView;
+  const stMod = await import("../../../plugins/summarize-tab/SummarizeTab");
+  const tabLabel = stMod.tabLabel;
   if (tabLabel) {
     items.push({
       key: "3",
@@ -62,15 +63,19 @@ try {
 // Import component for the simple prompt studio feature
 let getDocumentsSps;
 try {
-  getDocumentsSps =
-    require("../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service").getDocumentsSps;
+  const mod = await import(
+    "../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service"
+  );
+  getDocumentsSps = mod.getDocumentsSps;
 } catch {
   // The component will remain null of it is not available
 }
 let publicDocumentApi;
 try {
-  publicDocumentApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
+  publicDocumentApi = mod.publicDocumentApi;
 } catch {
   // The component will remain null of it is not available
 }
@@ -85,7 +90,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
-    docIndexStatus.yet_to_start
+    docIndexStatus.yet_to_start,
   );
   const [hasMounted, setHasMounted] = useState(false);
   const {
@@ -170,7 +175,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   useEffect(() => {
     if (docIndexStatus.yet_to_start === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (isIndexing) {
@@ -181,7 +186,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (docIndexStatus.indexing === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (!isIndexing) {
@@ -303,7 +308,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           info: "Clicked on the 'Summary View' tab",
         });
       }
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -315,14 +320,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (viewType === viewTypes.extract) {
       setExtractErrMsg(
-        "Raw content is not available. Please index or re-index to generate it."
+        "Raw content is not available. Please index or re-index to generate it.",
       );
     }
   };
 
   useEffect(() => {
     const index = [...listOfDocs].findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
@@ -385,8 +390,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
             {details?.enable_highlight && (
               <div>
                 <Tag color="rgb(45, 183, 245)">
-                  Confidence Score:{" "}
-                  {(() => {
+                  Confidence Score: {(() => {
                     const { confidence } = selectedHighlight || {};
                     // Handle new format: confidence is a number (average)
                     if (typeof confidence === "number") {

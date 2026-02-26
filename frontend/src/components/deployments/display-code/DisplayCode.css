@@ -1,15 +1,15 @@
 .codeActions .copyCodeBtn {
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    font-size: 1.3em;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: 1.3em;
 }
 
 .codeActions .copyCodeBtn:hover {
-    background: fixed;
+  background: fixed;
 }
 
 .codeActions .codeLanguage {
-    width: 150px;
-    margin-right: 10px;
+  width: 150px;
+  margin-right: 10px;
 }
