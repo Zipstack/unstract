@@ -332,7 +332,7 @@ const SideNavBar = ({ collapsed }) => {
     description: "View platform usage metrics and analytics",
     image: DashboardIcon,
     path: `/${orgName}/metrics`,
-    active: window.location.pathname.startsWith(`/${orgName}/metrics`),
+    active: globalThis.location.pathname.startsWith(`/${orgName}/metrics`),
   });
 
   // If selectedProduct is verticals and menu is null, don't show any sidebar items
