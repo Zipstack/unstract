@@ -43,6 +43,7 @@ function AddSource({
   addNewItem,
   editItemId,
   metadata,
+  selectedDocUrl,
 }) {
   const [spec, setSpec] = useState({});
   const [formData, setFormData] = useState({});
@@ -174,6 +175,7 @@ function AddSource({
       isConnector={isConnector}
       metadata={metadata}
       selectedSourceName={selectedSourceName}
+      selectedDocUrl={selectedDocUrl}
     />
   );
 }
@@ -187,6 +189,7 @@ AddSource.propTypes = {
   addNewItem: PropTypes.func,
   editItemId: PropTypes.string,
   metadata: PropTypes.object,
+  selectedDocUrl: PropTypes.string,
 };
 
 export { AddSource };
