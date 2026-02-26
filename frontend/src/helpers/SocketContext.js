@@ -15,8 +15,8 @@ const SocketProvider = ({ children }) => {
       transports: ["websocket"],
       path: "/api/v1/socket",
     };
-    if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
-      baseUrl = process.env.REACT_APP_BACKEND_URL;
+    if (!import.meta.env.MODE || import.meta.env.MODE === "development") {
+      baseUrl = import.meta.env.VITE_BACKEND_URL;
     } else {
       baseUrl = getBaseUrl();
     }
