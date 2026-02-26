@@ -1,10 +1,10 @@
+import { Button, Input, Modal, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState, useEffect, useRef, useCallback } from "react";
-import { Modal, Input, Button, Typography } from "antd";
+import { useCallback, useEffect, useRef, useState } from "react";
 import "./PromptCard.css";
+import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { uniqueId } from "lodash";
 import debounce from "lodash/debounce";
-import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 
 import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
@@ -45,7 +45,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
       setHighlightedChunks(allResults);
       setCurrentIndex(0);
     }, 300), // Debounce delay in milliseconds
-    [chunks]
+    [chunks],
   );
 
   useEffect(() => {
@@ -78,7 +78,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
 
   const handlePrev = () => {
     setCurrentIndex((prev) =>
-      prev === 0 ? highlightedChunks?.length - 1 : prev - 1
+      prev === 0 ? highlightedChunks?.length - 1 : prev - 1,
     );
   };
 
@@ -87,7 +87,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
 
     const matchesInLine = highlightedChunks.filter(
       (chunk) =>
-        chunk.lineIndex === lineIndex && chunk.chunkIndex === chunkIndex
+        chunk.lineIndex === lineIndex && chunk.chunkIndex === chunkIndex,
     );
 
     if (!matchesInLine?.length) return line;
@@ -106,7 +106,7 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
           (h) =>
             h.chunkIndex === chunkIndex &&
             h.lineIndex === lineIndex &&
-            h.startIndex === match.startIndex
+            h.startIndex === match.startIndex,
         );
 
       parts.push(
@@ -119,9 +119,9 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
         >
           {line.substring(
             match.startIndex,
-            match.startIndex + match.matchLength
+            match.startIndex + match.matchLength,
           )}
-        </span>
+        </span>,
       );
 
       lastIndex = match.startIndex + match.matchLength;

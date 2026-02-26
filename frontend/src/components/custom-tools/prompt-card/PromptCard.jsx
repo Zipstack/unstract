@@ -5,11 +5,11 @@ import {
   PROMPT_RUN_API_STATUSES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
@@ -75,7 +75,7 @@ const PromptCard = memo(
           (item) =>
             (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
               item?.component?.prompt_key === promptKey) &&
-            (item?.level === "INFO" || item?.level === "ERROR")
+            (item?.level === "INFO" || item?.level === "ERROR"),
         );
 
       // If no matching message is found, return early
@@ -92,7 +92,7 @@ const PromptCard = memo(
 
     useEffect(() => {
       setSelectedLlmProfileId(
-        promptDetailsState?.profile_manager || llmProfiles[0]?.profile_id
+        promptDetailsState?.profile_manager || llmProfiles[0]?.profile_id,
       );
     }, [promptDetailsState]);
 
@@ -100,7 +100,7 @@ const PromptCard = memo(
       const promptRunStatusKeys = Object.keys(promptRunStatus);
 
       const coverageLoading = promptRunStatusKeys.some(
-        (key) => promptRunStatus[key] === PROMPT_RUN_API_STATUSES.RUNNING
+        (key) => promptRunStatus[key] === PROMPT_RUN_API_STATUSES.RUNNING,
       );
       setIsCoverageLoading(coverageLoading);
     }, [promptRunStatus]);
@@ -109,7 +109,7 @@ const PromptCard = memo(
       event,
       promptId,
       dropdownItem,
-      isUpdateStatus = false
+      isUpdateStatus = false,
     ) => {
       let name = "";
       let value = "";
@@ -130,7 +130,7 @@ const PromptCard = memo(
         isUpdateStatus,
         promptId,
         promptStudioUpdateStatus.isUpdating,
-        setUpdateStatus
+        setUpdateStatus,
       );
       setPromptDetailsState(updatedPromptDetailsState);
       return handleChangePromptCard(name, value, promptId)
@@ -144,7 +144,7 @@ const PromptCard = memo(
             isUpdateStatus,
             promptId,
             promptStudioUpdateStatus.done,
-            setUpdateStatus
+            setUpdateStatus,
           );
         })
         .catch(() => {
@@ -165,7 +165,7 @@ const PromptCard = memo(
       handleChange(
         llmProfileId,
         promptDetailsState?.prompt_id,
-        "profile_manager"
+        "profile_manager",
       );
     };
 
@@ -180,7 +180,7 @@ const PromptCard = memo(
     const processNestedArray = (nestedValue, flattened) => {
       if (Array.isArray(nestedValue)) {
         nestedValue.forEach((coords) =>
-          addCoordsToFlattened(coords, flattened)
+          addCoordsToFlattened(coords, flattened),
         );
       }
     };
@@ -188,7 +188,7 @@ const PromptCard = memo(
     const processObjectValues = (item, flattened) => {
       if (typeof item === "object" && !Array.isArray(item)) {
         Object.values(item).forEach((value) =>
-          processNestedArray(value, flattened)
+          processNestedArray(value, flattened),
         );
       }
     };
@@ -217,7 +217,7 @@ const PromptCard = memo(
       highlightData,
       highlightedPrompt,
       highlightedProfile,
-      confidenceData
+      confidenceData,
     ) => {
       if (details?.enable_highlight) {
         const processedHighlight =
@@ -293,7 +293,7 @@ const PromptCard = memo(
 
       const docId = selectedDoc?.document_id;
       const isSummaryIndexed = [...summarizeIndexStatus].find(
-        (item) => item?.docId === docId && item?.isIndexed === true
+        (item) => item?.docId === docId && item?.isIndexed === true,
       );
 
       if (
@@ -351,7 +351,7 @@ const PromptCard = memo(
         />
       </>
     );
-  }
+  },
 );
 
 PromptCard.displayName = "PromptCard";
@@ -368,7 +368,7 @@ PromptCard.propTypes = {
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
-  coverageCountData: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.array,
   isChallenge: PropTypes.bool.isRequired,
 };
 

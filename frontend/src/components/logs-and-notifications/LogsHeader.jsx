@@ -1,7 +1,7 @@
-import { memo } from "react";
-import PropTypes from "prop-types";
 import { CloseOutlined, DownOutlined, UpOutlined } from "@ant-design/icons";
 import { Button, Space, Tag, Typography } from "antd";
+import PropTypes from "prop-types";
+import { memo } from "react";
 
 export const LogsHeader = memo(function LogsHeader({
   isMinimized,
