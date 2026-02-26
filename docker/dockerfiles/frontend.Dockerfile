@@ -28,7 +28,10 @@ RUN chmod +x /app/generate-runtime-config.sh
 ENV PORT=80
 EXPOSE 80
 
-CMD ["bun", "run", "start"]
+# Run the environment config script before starting the
+# dev server, as the node alpine base image does not
+# auto-run /docker-entrypoint.d/*.
+CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && bun run start"]
 
 ### FOR PRODUCTION ###
 # Builder stage for production build
