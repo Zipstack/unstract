@@ -951,18 +951,48 @@ class WorkflowHelper:
             "info": obj.info,
         }
 
+    USAGE_DISPLAY_LIMIT = 5
+
     @staticmethod
     def can_update_workflow(workflow_id: str) -> dict[str, Any]:
         try:
             workflow: Workflow = Workflow.objects.get(pk=workflow_id)
             if not workflow or workflow is None:
                 raise WorkflowDoesNotExistError()
-            used_count = Pipeline.objects.filter(workflow=workflow).count()
-            if used_count == 0:
-                used_count = APIDeployment.objects.filter(workflow=workflow).count()
-            return {"can_update": used_count == 0}
+
+            pipeline_count = Pipeline.objects.filter(workflow=workflow).count()
+            api_count = APIDeployment.objects.filter(workflow=workflow).count()
+
+            if (pipeline_count + api_count) == 0:
+                return {
+                    "can_update": True,
+                    "pipelines": [],
+                    "api_names": [],
+                    "pipeline_count": 0,
+                    "api_count": 0,
+                }
+
+            limit = WorkflowHelper.USAGE_DISPLAY_LIMIT
+            pipelines = list(
+                Pipeline.objects.filter(workflow=workflow).values(
+                    "pipeline_name", "pipeline_type"
+                )[:limit]
+            )
+            api_names = list(
+                APIDeployment.objects.filter(workflow=workflow).values_list(
+                    "display_name", flat=True
+                )[:limit]
+            )
+
+            return {
+                "can_update": False,
+                "pipelines": pipelines,
+                "api_names": api_names,
+                "pipeline_count": pipeline_count,
+                "api_count": api_count,
+            }
         except Workflow.DoesNotExist:
-            logger.error(f"Error getting workflow: {id}")
+            logger.error(f"Error getting workflow: {workflow_id}")
             raise WorkflowDoesNotExistError()
 
 
