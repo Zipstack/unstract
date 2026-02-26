@@ -271,7 +271,11 @@ class Command(BaseCommand):
             objects,
             update_conflicts=True,
             unique_fields=[
-                "organization", "timestamp", "metric_name", "project", "tag",
+                "organization",
+                "timestamp",
+                "metric_name",
+                "project",
+                "tag",
             ],
             update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
         )
@@ -300,7 +304,11 @@ class Command(BaseCommand):
             objects,
             update_conflicts=True,
             unique_fields=[
-                "organization", "date", "metric_name", "project", "tag",
+                "organization",
+                "date",
+                "metric_name",
+                "project",
+                "tag",
             ],
             update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
         )
@@ -329,7 +337,11 @@ class Command(BaseCommand):
             objects,
             update_conflicts=True,
             unique_fields=[
-                "organization", "month", "metric_name", "project", "tag",
+                "organization",
+                "month",
+                "metric_name",
+                "project",
+                "tag",
             ],
             update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
         )

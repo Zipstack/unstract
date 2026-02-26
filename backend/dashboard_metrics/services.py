@@ -16,12 +16,12 @@ from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
-from unstract.core.data_models import ExecutionStatus
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from dashboard_metrics.models import Granularity
+from unstract.core.data_models import ExecutionStatus
 
 
 def _get_usage_queryset():

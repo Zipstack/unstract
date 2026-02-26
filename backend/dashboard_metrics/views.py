@@ -229,9 +229,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             # Partition records into hourly buckets in memory
             missing_set = set(missing_buckets)
             for record in all_db_records:
-                bucket_ts = record["timestamp"].replace(
-                    minute=0, second=0, microsecond=0
-                )
+                bucket_ts = record["timestamp"].replace(minute=0, second=0, microsecond=0)
                 if bucket_ts in missing_set:
                     db_data_by_bucket.setdefault(bucket_ts, []).append(record)
 
@@ -408,8 +406,12 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             from datetime import datetime
 
             trunc_funcs = {
-                Granularity.HOUR: lambda ts: ts.replace(minute=0, second=0, microsecond=0),
-                Granularity.DAY: lambda ts: ts.replace(hour=0, minute=0, second=0, microsecond=0),
+                Granularity.HOUR: lambda ts: ts.replace(
+                    minute=0, second=0, microsecond=0
+                ),
+                Granularity.DAY: lambda ts: ts.replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                ),
                 Granularity.WEEK: lambda ts: (ts - timedelta(days=ts.weekday())).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 ),
