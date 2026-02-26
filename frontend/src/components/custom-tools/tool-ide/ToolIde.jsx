@@ -1,20 +1,20 @@
 import { Col, Row } from "antd";
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 import { DocumentManager } from "../document-manager/DocumentManager";
+import { ExportReminderBar } from "../export-reminder-bar/ExportReminderBar";
 import { Header } from "../header/Header";
 import { SettingsModal } from "../settings-modal/SettingsModal";
 import { ToolsMain } from "../tools-main/ToolsMain";
-import { ExportReminderBar } from "../export-reminder-bar/ExportReminderBar";
 import "./ToolIde.css";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 
 let PromptShareModal;
 let PromptShareLink;
@@ -22,19 +22,27 @@ let CloneTitle;
 let HeaderPublic;
 
 try {
-  PromptShareModal =
-    require("../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx").PromptShareModal;
-  PromptShareLink =
-    require("../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx").PromptShareLink;
-  HeaderPublic =
-    require("../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx").HeaderPublic;
-} catch (err) {
+  const shareMod = await import(
+    "../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx"
+  );
+  PromptShareModal = shareMod.PromptShareModal;
+  const linkMod = await import(
+    "../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx"
+  );
+  PromptShareLink = linkMod.PromptShareLink;
+  const headerMod = await import(
+    "../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx"
+  );
+  HeaderPublic = headerMod.HeaderPublic;
+} catch {
   // Do nothing if plugins are not loaded.
 }
 try {
-  CloneTitle =
-    require("../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx").CloneTitle;
-} catch (err) {
+  const mod = await import(
+    "../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx"
+  );
+  CloneTitle = mod.CloneTitle;
+} catch {
   // Do nothing if plugins are not loaded.
 }
 function ToolIde() {
@@ -117,7 +125,7 @@ function ToolIde() {
     try {
       const response = await axiosPrivate.get(
         `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/check_deployment_usage/`,
-        { signal: abortControllerRef.current.signal }
+        { signal: abortControllerRef.current.signal },
       );
 
       const usageInfo = response.data;
@@ -215,7 +223,7 @@ function ToolIde() {
           info: "Exported from reminder bar",
           tool_name: details?.tool_name,
         });
-      } catch (err) {
+      } catch (_err) {
         // Ignore posthog errors
       }
     } catch (err) {
@@ -270,13 +278,13 @@ function ToolIde() {
           setPostHogCustomEvent("intent_success_ps_indexed_file", {
             info: "Indexing completed",
           });
-        } catch (err) {
+        } catch (_err) {
           // If an error occurs while setting custom posthog event, ignore it and continue
         }
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `${doc?.document_name} - Failed to index`)
+          handleException(err, `${doc?.document_name} - Failed to index`),
         );
       })
       .finally(() => {

@@ -1,19 +1,19 @@
-import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { Button, Card, Col, Row, Space, Spin, Tooltip, Typography } from "antd";
 import {
   ArrowLeftOutlined,
-  CopyOutlined,
-  UserOutlined,
-  MailOutlined,
   CheckCircleOutlined,
+  CopyOutlined,
+  MailOutlined,
+  UserOutlined,
 } from "@ant-design/icons";
+import { Button, Card, Col, Row, Space, Spin, Tooltip, Typography } from "antd";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./Profile.css";
 
-import { useSessionStore } from "../../store/session-store.js";
-import { useAlertStore } from "../../store/alert-store.js";
 import { OrganizationIcon } from "../../assets";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
+import { useAlertStore } from "../../store/alert-store.js";
+import { useSessionStore } from "../../store/session-store.js";
 
 function Profile() {
   const navigate = useNavigate();

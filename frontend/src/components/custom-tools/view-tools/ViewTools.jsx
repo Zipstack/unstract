@@ -1,5 +1,5 @@
-import PropTypes from "prop-types";
 import { Typography } from "antd";
+import PropTypes from "prop-types";
 
 import { ListView } from "../../widgets/list-view/ListView";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";

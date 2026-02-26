@@ -5,28 +5,28 @@ import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
-import { useWorkflowStore } from "../../../store/workflow-store";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
-import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
-import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
-import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import "./Workflows.css";
-import { workflowService } from "./workflow-service";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
-import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { useAlertStore } from "../../../store/alert-store";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store";
+import { useWorkflowStore } from "../../../store/workflow-store";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
+import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
+import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
+import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import { workflowService } from "./workflow-service";
+import "./Workflows.css";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -46,7 +46,7 @@ function Workflows() {
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   const [projectList, setProjectList] = useState();
@@ -105,7 +105,7 @@ function Workflows() {
       return;
     }
     const filteredList = projectListRef.current.filter((item) =>
-      item.workflow_name.toLowerCase().includes(searchText.toLowerCase())
+      item.workflow_name.toLowerCase().includes(searchText.toLowerCase()),
     );
     setSearchList(filteredList);
   }
@@ -136,7 +136,10 @@ function Workflows() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `Unable to update workflow ${editingProject.id}`)
+          handleException(
+            err,
+            `Unable to update workflow ${editingProject.id}`,
+          ),
         );
       })
       .finally(() => {
@@ -184,7 +187,7 @@ function Workflows() {
         })
         .catch((err) => {
           setAlertDetails(
-            handleException(err, `Unable to delete workflow ${project.id}`)
+            handleException(err, `Unable to delete workflow ${project.id}`),
           );
         });
     } else {
@@ -224,7 +227,7 @@ function Workflows() {
       setShareOpen(true);
     } catch (err) {
       setAlertDetails(
-        handleException(err, `Unable to fetch sharing information`)
+        handleException(err, `Unable to fetch sharing information`),
       );
     } finally {
       setShareLoading(false);
@@ -237,7 +240,7 @@ function Workflows() {
       await projectApiService.updateSharing(
         workflow.id,
         selectedUsers,
-        shareWithEveryone
+        shareWithEveryone,
       );
       setShareOpen(false);
       setAlertDetails({
@@ -247,7 +250,7 @@ function Workflows() {
       getProjectList(); // Refresh the list
     } catch (error) {
       setAlertDetails(
-        handleException(error, "Unable to update workflow sharing")
+        handleException(error, "Unable to update workflow sharing"),
       );
     } finally {
       setShareLoading(false);
@@ -267,7 +270,7 @@ function Workflows() {
       setPostHogCustomEvent("intent_new_wf_project", {
         info: "Clicked on '+ New Workflow' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -288,7 +291,7 @@ function Workflows() {
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (

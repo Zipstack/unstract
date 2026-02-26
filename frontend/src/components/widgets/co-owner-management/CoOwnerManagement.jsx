@@ -1,10 +1,10 @@
-import { Avatar, List, Modal, Popconfirm, Select, Typography } from "antd";
-import PropTypes from "prop-types";
 import {
   DeleteOutlined,
   QuestionCircleOutlined,
   UserOutlined,
 } from "@ant-design/icons";
+import { Avatar, List, Modal, Popconfirm, Select, Typography } from "antd";
+import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
@@ -35,13 +35,13 @@ function CoOwnerManagement({
     return (allUsers || []).filter(
       (user) =>
         !coOwnerIds.has(user?.id?.toString()) &&
-        !pendingIds.has(user?.id?.toString())
+        !pendingIds.has(user?.id?.toString()),
     );
   }, [allUsers, coOwners, pendingAdds]);
 
   const handleSelect = (userId) => {
     const user = (allUsers || []).find(
-      (u) => u?.id?.toString() === userId?.toString()
+      (u) => u?.id?.toString() === userId?.toString(),
     );
     if (user) {
       setPendingAdds((prev) => [...prev, user]);
@@ -50,7 +50,7 @@ function CoOwnerManagement({
 
   const handleRemovePending = (userId) => {
     setPendingAdds((prev) =>
-      prev.filter((u) => u?.id?.toString() !== userId?.toString())
+      prev.filter((u) => u?.id?.toString() !== userId?.toString()),
     );
   };
 
@@ -88,8 +88,8 @@ function CoOwnerManagement({
     ...pendingAdds.filter(
       (pending) =>
         !ownersList.some(
-          (owner) => owner?.id?.toString() === pending?.id?.toString()
-        )
+          (owner) => owner?.id?.toString() === pending?.id?.toString(),
+        ),
     ),
   ];
 
@@ -129,7 +129,7 @@ function CoOwnerManagement({
               dataSource={combinedList}
               renderItem={(item) => {
                 const isPending = pendingAdds.some(
-                  (u) => u?.id?.toString() === item?.id?.toString()
+                  (u) => u?.id?.toString() === item?.id?.toString(),
                 );
                 return (
                   <List.Item

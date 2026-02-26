@@ -29,7 +29,9 @@ let RuleEngine;
 let ruleEngineTabs;
 
 try {
-  const ruleEnginePlugin = require("../../../plugins/manual-review/rule-engine");
+  const ruleEnginePlugin = await import(
+    "../../../plugins/manual-review/rule-engine"
+  );
   RuleEngine = ruleEnginePlugin.RuleEngine;
   ruleEngineTabs = ruleEnginePlugin.ruleEngineTabs;
 } catch {
@@ -87,7 +89,7 @@ function ConfigureConnectorModal({
   const setUpdatedTabOptions = (tabOption) => {
     setTabItems((prevTabOptions) => {
       const existingIndex = prevTabOptions.findIndex(
-        (opt) => opt?.key === tabOption?.key
+        (opt) => opt?.key === tabOption?.key,
       );
       if (existingIndex === -1) {
         // Add new tab option
@@ -183,7 +185,7 @@ function ConfigureConnectorModal({
       setShowAddSourceModal(true);
     } else {
       const selectedConnector = availableConnectors.find(
-        (conn) => conn.value === value
+        (conn) => conn.value === value,
       );
       if (selectedConnector?.connector) {
         setConnDetails(selectedConnector.connector);
@@ -195,9 +197,9 @@ function ConfigureConnectorModal({
             {
               info: `Selected a connector`,
               connector_name: selectedConnector.connector.connector_name,
-            }
+            },
           );
-        } catch (err) {
+        } catch (_err) {
           // If an error occurs while setting custom posthog event, ignore it and continue
         }
       }
@@ -230,7 +232,9 @@ function ConfigureConnectorModal({
   };
 
   const handleAddFolder = () => {
-    if (!selectedFolderPath) return;
+    if (!selectedFolderPath) {
+      return;
+    }
 
     // HACK: For GDrive connectors, strip the "root/" prefix to avoid duplication
     // since backend will add it back during execution. This helps avoid a migration
@@ -313,7 +317,9 @@ function ConfigureConnectorModal({
         }
         if (Object.keys(updatePayload).length > 0) {
           const result = await handleEndpointUpdate(updatePayload);
-          if (!result) return;
+          if (!result) {
+            return;
+          }
         }
         // Update initial values after successful save
         setInitialFormDataConfig(cloneDeep(validatedFormData));
@@ -373,7 +379,7 @@ function ConfigureConnectorModal({
     if (hasConnectorChanged) {
       if (initialConnectorId && availableConnectors.length > 0) {
         const originalConnector = availableConnectors.find(
-          (conn) => conn.value === initialConnectorId
+          (conn) => conn.value === initialConnectorId,
         );
         if (originalConnector?.connector) {
           setConnDetails(originalConnector.connector);
@@ -481,10 +487,12 @@ function ConfigureConnectorModal({
 
   // Helper function to render connector label
   const renderConnectorLabel = (connDetails, availableConnectors) => {
-    if (!connDetails?.id) return undefined;
+    if (!connDetails?.id) {
+      return undefined;
+    }
 
     const selectedConnector = availableConnectors.find(
-      (conn) => conn.value === connDetails.id
+      (conn) => conn.value === connDetails.id,
     );
 
     return (
@@ -521,7 +529,7 @@ function ConfigureConnectorModal({
         )}
       </>
     ),
-    [addNewOption, handleConnectorSelect]
+    [addNewOption, handleConnectorSelect],
   );
 
   return (
@@ -577,7 +585,7 @@ function ConfigureConnectorModal({
                       value: connDetails.id,
                       label: renderConnectorLabel(
                         connDetails,
-                        availableConnectors
+                        availableConnectors,
                       ),
                     }
                   : undefined
@@ -735,7 +743,9 @@ function ConfigureConnectorModal({
           connectorMode={connMode}
           addNewItem={handleConnectorCreated}
           editItemId={null}
-          setEditItemId={() => {}}
+          setEditItemId={() => {
+            // No-op: edit not supported in this context
+          }}
         />
       )}
 
@@ -775,7 +785,7 @@ ConfigureConnectorModal.propTypes = {
   connDetails: PropTypes.object,
   setConnDetails: PropTypes.func.isRequired,
   connType: PropTypes.string.isRequired,
-  connMode: PropTypes.string.isRequired,
+  connMode: PropTypes.string,
   workflowDetails: PropTypes.object.isRequired,
   handleEndpointUpdate: PropTypes.func.isRequired,
   endpointDetails: PropTypes.object,

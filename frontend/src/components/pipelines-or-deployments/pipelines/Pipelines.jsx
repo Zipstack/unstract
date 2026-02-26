@@ -1,18 +1,18 @@
 import {
-  DeleteOutlined,
-  EllipsisOutlined,
-  SyncOutlined,
-  HighlightOutlined,
-  FileSearchOutlined,
-  ReloadOutlined,
-  NotificationOutlined,
-  EditOutlined,
-  KeyOutlined,
   CloudDownloadOutlined,
   CopyOutlined,
-  LoadingOutlined,
-  ShareAltOutlined,
+  DeleteOutlined,
+  EditOutlined,
+  EllipsisOutlined,
+  FileSearchOutlined,
+  HighlightOutlined,
   HistoryOutlined,
+  KeyOutlined,
+  LoadingOutlined,
+  NotificationOutlined,
+  ReloadOutlined,
+  ShareAltOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -23,9 +23,9 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import cronstrue from "cronstrue";
 
 import {
   deploymentApiTypes,
@@ -33,31 +33,32 @@ import {
   displayURL,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
-import { useAlertStore } from "../../../store/alert-store.js";
-import { useSessionStore } from "../../../store/session-store.js";
-import { Layout } from "../../deployments/layout/Layout.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
-import { LogsModal } from "../log-modal/LogsModal.jsx";
-import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
-import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
-import "./Pipelines.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { pipelineService } from "../pipeline-service.js";
-import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
-import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import useClearFileHistory from "../../../hooks/useClearFileHistory";
-import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { useAlertStore } from "../../../store/alert-store.js";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store.js";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { Layout } from "../../deployments/layout/Layout.jsx";
+import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
-import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
+import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
+import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
+import * as fetchExecutionLogsModule from "../log-modal/fetchExecutionLogs.js";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
+import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
+import { pipelineService } from "../pipeline-service.js";
+import "./Pipelines.css";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -76,7 +77,7 @@ function Pipelines({ type }) {
   const [executionLogs, setExecutionLogs] = useState([]);
   const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
-  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
+  const { fetchExecutionLogs } = fetchExecutionLogsModule;
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
   const pipelineApiService = pipelineService();
@@ -107,7 +108,7 @@ function Pipelines({ type }) {
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   const handleFetchLogs = (page, pageSize) => {
@@ -120,7 +121,7 @@ function Pipelines({ type }) {
       setExecutionLogsTotalCount,
       setAlertDetails,
       page,
-      pageSize
+      pageSize,
     );
   };
 
@@ -192,7 +193,7 @@ function Pipelines({ type }) {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `Failed to update pipeline status.`)
+          handleException(err, `Failed to update pipeline status.`),
         );
         const date = new Date();
         fieldsToUpdate["last_run_status"] = "FAILURE";
@@ -249,7 +250,9 @@ function Pipelines({ type }) {
       .catch((err) => {
         setAlertDetails(handleException(err));
       })
-      .finally(() => {});
+      .finally(() => {
+        // No-op: cleanup not needed
+      });
   };
 
   const deletePipeline = () => {
@@ -351,7 +354,7 @@ function Pipelines({ type }) {
       })
       .catch((error) => {
         setAlertDetails(
-          handleException(error, "Failed to update sharing settings")
+          handleException(error, "Failed to update sharing settings"),
         );
       })
       .finally(() => {
@@ -394,7 +397,7 @@ function Pipelines({ type }) {
               pipelineApiService,
               selectedPorD?.id,
               setApiKeys,
-              setOpenManageKeysModal
+              setOpenManageKeysModal,
             )
           }
         >
@@ -471,7 +474,7 @@ function Pipelines({ type }) {
               selectedPorD,
               setExecutionLogs,
               setExecutionLogsTotalCount,
-              setAlertDetails
+              setAlertDetails,
             );
           }}
         >
@@ -752,7 +755,7 @@ function Pipelines({ type }) {
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (

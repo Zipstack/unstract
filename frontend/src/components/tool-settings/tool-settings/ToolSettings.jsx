@@ -2,22 +2,22 @@ import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
-import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
-import "../../input-output/data-source-card/DataSourceCard.css";
-import "./ToolSettings.css";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useListSearch } from "../../../hooks/useListSearch";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
+import "../../input-output/data-source-card/DataSourceCard.css";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { useListSearch } from "../../../hooks/useListSearch";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import "./ToolSettings.css";
 
 const titles = {
   llm: "LLMs",
@@ -142,7 +142,7 @@ function ToolSettings({ type }) {
             return tableRow;
           }
           return { ...tableRow, adapter_name: row?.adapter_name };
-        })
+        }),
       );
     } else {
       updateMasterList((currentList) => [...currentList, row]);
@@ -151,7 +151,7 @@ function ToolSettings({ type }) {
 
   const handleDeleteSuccess = (adapterId) => {
     updateMasterList((currentList) =>
-      currentList.filter((row) => row?.id !== adapterId)
+      currentList.filter((row) => row?.id !== adapterId),
     );
   };
 
@@ -219,7 +219,7 @@ function ToolSettings({ type }) {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
       })
       .catch((err) => {
@@ -269,7 +269,7 @@ function ToolSettings({ type }) {
       setPostHogCustomEvent(posthogEventText[type], {
         info: `Clicked on '+ ${btnText[type]}' button`,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };

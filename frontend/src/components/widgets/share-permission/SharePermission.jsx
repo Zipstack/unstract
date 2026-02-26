@@ -1,4 +1,9 @@
 import {
+  DeleteOutlined,
+  QuestionCircleOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import {
   Avatar,
   Checkbox,
   List,
@@ -7,14 +12,9 @@ import {
   Select,
   Typography,
 } from "antd";
-import "./SharePermission.css";
 import PropTypes from "prop-types";
-import {
-  DeleteOutlined,
-  QuestionCircleOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import { useEffect, useState } from "react";
+import "./SharePermission.css";
 
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
@@ -63,14 +63,14 @@ function SharePermission({
           } else {
             return user?.toString();
           }
-        })
+        }),
       );
     }
   }, [sharedItem, allUsers]);
 
   const handleDeleteUser = (userId) => {
     const updatedUsers = selectedUsers.filter(
-      (user) => user.toString() !== userId.toString()
+      (user) => user.toString() !== userId.toString(),
     );
     setSelectedUsers(updatedUsers);
     onApply(updatedUsers, sharedItem, shareWithEveryone);

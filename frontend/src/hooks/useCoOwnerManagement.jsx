@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useCallback, useState } from "react";
 
 import { useExceptionHandler } from "./useExceptionHandler";
 
@@ -34,11 +34,11 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
           return;
         }
         setAlertDetails(
-          handleException(err, "Unable to refresh co-owner data")
+          handleException(err, "Unable to refresh co-owner data"),
         );
       }
     },
-    [service, onListRefresh, setAlertDetails, handleException]
+    [service, onListRefresh, setAlertDetails, handleException],
   );
 
   const handleCoOwner = useCallback(
@@ -66,14 +66,14 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         });
       } catch (err) {
         setAlertDetails(
-          handleException(err, "Unable to fetch co-owner information")
+          handleException(err, "Unable to fetch co-owner information"),
         );
         setCoOwnerOpen(false);
       } finally {
         setCoOwnerLoading(false);
       }
     },
-    [service, setAlertDetails, handleException]
+    [service, setAlertDetails, handleException],
   );
 
   const onAddCoOwner = useCallback(
@@ -106,7 +106,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       onListRefresh,
       setAlertDetails,
       handleException,
-    ]
+    ],
   );
 
   const onRemoveCoOwner = useCallback(
@@ -129,7 +129,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       onListRefresh,
       setAlertDetails,
       handleException,
-    ]
+    ],
   );
 
   return {
