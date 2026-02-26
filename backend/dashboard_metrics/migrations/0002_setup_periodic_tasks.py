@@ -3,8 +3,8 @@
 Creates three periodic tasks:
 - Aggregation: Every 15 minutes, queries source tables and populates
   EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
-- Hourly cleanup: Daily at 2:00 AM UTC, removes hourly data older than 30 days
-- Daily cleanup: Weekly on Sundays at 3:00 AM UTC, removes daily data older than 365 days
+- Hourly data cleanup: Daily at 2:00 AM UTC, removes hourly data older than 30 days
+- Daily data cleanup: Weekly on Sundays at 3:00 AM UTC, removes daily data older than 365 days
 """
 
 from django.db import migrations
