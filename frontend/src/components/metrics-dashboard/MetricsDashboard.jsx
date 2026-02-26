@@ -1,33 +1,33 @@
-import { useState, useCallback, useMemo } from "react";
 import {
-  Typography,
-  DatePicker,
-  Row,
-  Col,
-  Button,
-  Space,
-  Alert,
-  Tabs,
-} from "antd";
-import {
-  ReloadOutlined,
   BarChartOutlined,
   DashboardOutlined,
-  ThunderboltOutlined,
   FileSearchOutlined,
+  ReloadOutlined,
   SlackOutlined,
+  ThunderboltOutlined,
 } from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Col,
+  DatePicker,
+  Row,
+  Space,
+  Tabs,
+  Typography,
+} from "antd";
 import dayjs from "dayjs";
+import { useCallback, useMemo, useState } from "react";
 
 import {
   useMetricsOverview,
   useRecentActivity,
   useWorkflowTokenUsage,
 } from "../../hooks/useMetricsData";
-import { MetricsSummary } from "./MetricsSummary";
-import { PagesChart, TrendAnalysisChart, HITLChart } from "./MetricsChart";
-import { RecentActivity } from "./RecentActivity";
 import { LLMUsageTable } from "./LLMUsageTable";
+import { HITLChart, PagesChart, TrendAnalysisChart } from "./MetricsChart";
+import { MetricsSummary } from "./MetricsSummary";
+import { RecentActivity } from "./RecentActivity";
 
 import "./MetricsDashboard.css";
 
@@ -53,7 +53,7 @@ function MetricsDashboard() {
   // Fixed 30-day range for activity charts (independent of date picker)
   const chartStart = useMemo(
     () => dayjs().subtract(30, "day").toISOString(),
-    []
+    [],
   );
   const chartEnd = useMemo(() => dayjs().toISOString(), []);
 
@@ -65,7 +65,7 @@ function MetricsDashboard() {
     refetch: refetchOverview,
   } = useMetricsOverview(
     dateRange[0]?.toISOString(),
-    dateRange[1]?.toISOString()
+    dateRange[1]?.toISOString(),
   );
 
   // Fixed 30-day data for charts
@@ -89,7 +89,7 @@ function MetricsDashboard() {
     refetch: refetchTokenUsage,
   } = useWorkflowTokenUsage(
     dateRange[0]?.toISOString(),
-    dateRange[1]?.toISOString()
+    dateRange[1]?.toISOString(),
   );
 
   // Handle date range change
@@ -176,7 +176,7 @@ function MetricsDashboard() {
               window.open(
                 "https://docs.unstract.com/unstract/index.html",
                 "_blank",
-                "noopener,noreferrer"
+                "noopener,noreferrer",
               )
             }
             className="metrics-header-button"
@@ -190,7 +190,7 @@ function MetricsDashboard() {
               window.open(
                 "https://join-slack.unstract.com/",
                 "_blank",
-                "noopener,noreferrer"
+                "noopener,noreferrer",
               )
             }
             className="metrics-header-button"

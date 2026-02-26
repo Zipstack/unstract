@@ -1,15 +1,15 @@
-import { Row, Col, Spin, Empty } from "antd";
-import PropTypes from "prop-types";
 import {
-  FileTextOutlined,
   ApiOutlined,
-  ThunderboltOutlined,
-  RocketOutlined,
-  DollarOutlined,
-  WarningOutlined,
-  EyeOutlined,
   CheckCircleOutlined,
+  DollarOutlined,
+  EyeOutlined,
+  FileTextOutlined,
+  RocketOutlined,
+  ThunderboltOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
+import { Col, Empty, Row, Spin } from "antd";
+import PropTypes from "prop-types";
 
 import "./MetricsDashboard.css";
 
@@ -136,7 +136,9 @@ const METRIC_PRIORITY = [
  * @return {string} Formatted number string
  */
 function formatValue(value, precision = 0) {
-  if (value === null || value === undefined) return "0";
+  if (value === null || value === undefined) {
+    return "0";
+  }
   if (precision > 0) {
     return value.toLocaleString(undefined, {
       minimumFractionDigits: precision,
@@ -170,9 +172,15 @@ function MetricsSummary({ data, loading }) {
     .sort((a, b) => {
       const aIndex = METRIC_PRIORITY.indexOf(a.metric_name);
       const bIndex = METRIC_PRIORITY.indexOf(b.metric_name);
-      if (aIndex === -1 && bIndex === -1) return 0;
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
+      if (aIndex === -1 && bIndex === -1) {
+        return 0;
+      }
+      if (aIndex === -1) {
+        return 1;
+      }
+      if (bIndex === -1) {
+        return -1;
+      }
       return aIndex - bIndex;
     });
 
@@ -190,7 +198,7 @@ function MetricsSummary({ data, loading }) {
 
         const displayValue = formatValue(
           metric.total_value || 0,
-          config.precision || 0
+          config.precision || 0,
         );
 
         return (
@@ -233,7 +241,7 @@ MetricsSummary.propTypes = {
         metric_name: PropTypes.string.isRequired,
         total_value: PropTypes.number,
         total_count: PropTypes.number,
-      })
+      }),
     ),
   }),
   loading: PropTypes.bool,

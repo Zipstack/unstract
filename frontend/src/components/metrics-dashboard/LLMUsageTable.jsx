@@ -1,5 +1,5 @@
-import { Table, Card, Empty, Spin, Typography, Tooltip, Button } from "antd";
 import { InfoCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Button, Card, Empty, Spin, Table, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 
 import "./MetricsDashboard.css";
@@ -120,7 +120,7 @@ LLMUsageTable.propTypes = {
         total_tokens: PropTypes.number,
         total_cost: PropTypes.number,
         call_count: PropTypes.number,
-      })
+      }),
     ),
   }),
   loading: PropTypes.bool,

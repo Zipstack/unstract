@@ -1,18 +1,18 @@
-import { Card, Empty, Spin, Button, Dropdown } from "antd";
 import { FilterOutlined } from "@ant-design/icons";
+import { Button, Card, Dropdown, Empty, Spin } from "antd";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 import {
-  LineChart,
-  Line,
-  BarChart,
   Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
   XAxis,
   YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
 } from "recharts";
 
 import "./MetricsDashboard.css";
@@ -53,9 +53,15 @@ function formatDate(dateStr) {
  * @return {string} Formatted number
  */
 function formatValue(value) {
-  if (value === null || value === undefined) return "0";
-  if (value >= 1000000) return `${(value / 1000000).toFixed(1)}M`;
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}K`;
+  if (value === null || value === undefined) {
+    return "0";
+  }
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M`;
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`;
+  }
   return value.toLocaleString();
 }
 
@@ -75,7 +81,9 @@ function formatMetricName(metric) {
  * @return {JSX.Element|null} The rendered tooltip or null.
  */
 function CustomTooltip({ active, payload, label }) {
-  if (!active || !payload?.length) return null;
+  if (!active || !payload?.length) {
+    return null;
+  }
 
   return (
     <div className="metrics-chart-tooltip">
@@ -203,7 +211,7 @@ PagesChart.propTypes = {
       PropTypes.shape({
         date: PropTypes.string,
         metrics: PropTypes.object,
-      })
+      }),
     ),
   }),
   loading: PropTypes.bool,
@@ -238,7 +246,7 @@ function TrendAnalysisChart({ data, loading }) {
       }
     });
     const metricNames = Array.from(metricNamesSet).sort((a, b) =>
-      a.localeCompare(b)
+      a.localeCompare(b),
     );
 
     const transformed = data.daily_trend.map((item) => ({
@@ -397,7 +405,7 @@ TrendAnalysisChart.propTypes = {
       PropTypes.shape({
         date: PropTypes.string,
         metrics: PropTypes.object,
-      })
+      }),
     ),
   }),
   loading: PropTypes.bool,
@@ -424,7 +432,7 @@ function HITLChart({ data, loading }) {
     return data.daily_trend
       .filter(
         (item) =>
-          item.metrics?.hitl_reviews > 0 || item.metrics?.hitl_completions > 0
+          item.metrics?.hitl_reviews > 0 || item.metrics?.hitl_completions > 0,
       )
       .map((item) => ({
         date: item.date,
@@ -512,7 +520,7 @@ HITLChart.propTypes = {
       PropTypes.shape({
         date: PropTypes.string,
         metrics: PropTypes.object,
-      })
+      }),
     ),
   }),
   loading: PropTypes.bool,

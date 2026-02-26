@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getCached, setCache } from "../helpers/metricsCache";
-import { useAxiosPrivate } from "./useAxiosPrivate";
 import { useSessionStore } from "../store/session-store";
+import { useAxiosPrivate } from "./useAxiosPrivate";
 
 /**
  * Hook for fetching metrics overview (quick stats for a date range).
@@ -45,8 +45,12 @@ function useMetricsOverview(startDate = null, endDate = null) {
 
       try {
         const params = new URLSearchParams();
-        if (startDate) params.append("start_date", startDate);
-        if (endDate) params.append("end_date", endDate);
+        if (startDate) {
+          params.append("start_date", startDate);
+        }
+        if (endDate) {
+          params.append("end_date", endDate);
+        }
 
         const url = `/api/v1/unstract/${orgId}/metrics/overview/${
           params.toString() ? `?${params}` : ""
@@ -61,7 +65,7 @@ function useMetricsOverview(startDate = null, endDate = null) {
         setLoading(false);
       }
     },
-    [axiosPrivate, orgId, startDate, endDate]
+    [axiosPrivate, orgId, startDate, endDate],
   );
 
   useEffect(() => {
@@ -171,20 +175,22 @@ function useWorkflowTokenUsage(startDate, endDate) {
         const params = new URLSearchParams();
         params.append("start_date", startDate);
         params.append("end_date", endDate);
-        if (skipCache) params.append("refresh", "true");
+        if (skipCache) {
+          params.append("refresh", "true");
+        }
         const url = `/api/v1/unstract/${orgId}/metrics/workflow-token-usage/?${params}`;
         const response = await axiosPrivate.get(url);
         setData(response.data);
         setCache("workflow_token_usage", cacheParams, response.data);
       } catch (err) {
         setError(
-          err.response?.data?.message || "Failed to fetch workflow token usage"
+          err.response?.data?.message || "Failed to fetch workflow token usage",
         );
       } finally {
         setLoading(false);
       }
     },
-    [axiosPrivate, orgId, startDate, endDate]
+    [axiosPrivate, orgId, startDate, endDate],
   );
 
   useEffect(() => {

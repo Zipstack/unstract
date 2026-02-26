@@ -41,7 +41,9 @@ function getCached(endpoint, params = {}) {
   try {
     const key = buildCacheKey(endpoint, params);
     const cached = localStorage.getItem(key);
-    if (!cached) return null;
+    if (!cached) {
+      return null;
+    }
 
     const { data, expiry } = JSON.parse(cached);
     if (Date.now() > expiry) {
@@ -90,9 +92,11 @@ function setCache(endpoint, params = {}, data) {
 function clearMetricsCache() {
   try {
     const keys = Object.keys(localStorage).filter((k) =>
-      k.startsWith(CACHE_PREFIX)
+      k.startsWith(CACHE_PREFIX),
     );
-    keys.forEach((k) => localStorage.removeItem(k));
+    keys.forEach((k) => {
+      localStorage.removeItem(k);
+    });
   } catch (error) {
     console.warn("Cache clear error:", error);
   }
@@ -109,7 +113,9 @@ function getCacheInfo(endpoint, params = {}) {
   try {
     const key = buildCacheKey(endpoint, params);
     const cached = localStorage.getItem(key);
-    if (!cached) return null;
+    if (!cached) {
+      return null;
+    }
 
     const { expiry, timestamp } = JSON.parse(cached);
     return {
@@ -119,7 +125,7 @@ function getCacheInfo(endpoint, params = {}) {
       ttlRemaining: Math.max(0, expiry - Date.now()),
       isExpired: Date.now() > expiry,
     };
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 }

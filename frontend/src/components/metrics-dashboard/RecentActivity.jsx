@@ -1,17 +1,17 @@
-import { Card, List, Tag, Empty, Spin, Tooltip, Typography } from "antd";
 import {
-  CheckCircleOutlined,
-  SyncOutlined,
-  CloseCircleOutlined,
-  ClockCircleOutlined,
   ApiOutlined,
   BranchesOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  CloseCircleOutlined,
   InfoCircleOutlined,
   PlayCircleOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
-import PropTypes from "prop-types";
+import { Card, Empty, List, Spin, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import PropTypes from "prop-types";
 
 import "./MetricsDashboard.css";
 
@@ -149,7 +149,7 @@ RecentActivity.propTypes = {
         created_at: PropTypes.string.isRequired,
         execution_time: PropTypes.number,
         total_tokens: PropTypes.number,
-      })
+      }),
     ),
   }),
   loading: PropTypes.bool,
