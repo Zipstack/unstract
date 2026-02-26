@@ -6,6 +6,7 @@ default_stages:
 ci:
   skip:
     - hadolint-docker # Fails in pre-commit CI
+    - biome-check # Uses local npm/npx, not available in pre-commit CI
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
@@ -75,6 +76,15 @@ repos:
   #       entry: mypy .
   #       pass_filenames: false
   #       additional_dependencies: []
+
+  - repo: local
+    hooks:
+      - id: biome-check
+        name: biome check
+        entry: bash -c 'cd frontend && npx @biomejs/biome check --write --files-ignore-unknown=true --no-errors-on-unmatched "${@#frontend/}"' --
+        language: system
+        files: ^frontend/src/
+        types_or: [javascript, jsx, ts, tsx, json]
 
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.42.0

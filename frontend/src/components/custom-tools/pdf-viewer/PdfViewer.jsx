@@ -1,9 +1,9 @@
-import { useEffect, useRef, useMemo } from "react";
 import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
+import { highlightPlugin } from "@react-pdf-viewer/highlight";
 import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
 import PropTypes from "prop-types";
-import { highlightPlugin } from "@react-pdf-viewer/highlight";
+import { useEffect, useMemo, useRef } from "react";
 
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
@@ -11,9 +11,9 @@ import { PDF_WORKER_URL } from "../../../helpers/pdfWorkerConfig";
 
 let RenderHighlights;
 try {
-  RenderHighlights =
-    require("../../../plugins/pdf-highlight/RenderHighlights").RenderHighlights;
-} catch (err) {
+  const mod = await import("../../../plugins/pdf-highlight/RenderHighlights");
+  RenderHighlights = mod.RenderHighlights;
+} catch {
   // Do nothing, no plugin will be loaded.
 }
 
