@@ -54,6 +54,11 @@ class User(AbstractUser):
 
     # Third Party Authentication User ID
     user_id = models.CharField()
+    is_deprecated = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="Marks old user records when OAuth user changes email",
+    )
     project_storage_created = models.BooleanField(default=False)
     created_by = models.ForeignKey(
         "User",

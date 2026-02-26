@@ -58,6 +58,18 @@ function ConfigureDs({
     metadata && (metadata.access_token || (metadata.provider && metadata.uid));
   const isExistingConnector = Boolean(editItemId || hasOAuthCredentials);
 
+  // Determine if OAuth authentication method is selected
+  const isOAuthMethodSelected = () => {
+    if (!oAuthProvider?.length) return false;
+    // Check if auth_type is set to a non-OAuth value
+    const data = formData || {};
+    // If auth_type exists and is not "oauth", then OAuth is not selected
+    if (data.auth_type && data.auth_type !== "oauth") {
+      return false;
+    }
+    return true;
+  };
+
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
     if (!oAuthProvider?.length) {
@@ -152,7 +164,11 @@ function ConfigureDs({
     if (formRef && !formRef.current?.validateForm()) {
       return;
     }
-    if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
+    if (
+      oAuthProvider?.length &&
+      isOAuthMethodSelected() &&
+      (status !== "success" || !cacheKey?.length)
+    ) {
       const providerName =
         oAuthProvider === "google-oauth2" ? "Google" : "OAuth provider";
       setAlertDetails({
@@ -192,7 +208,7 @@ function ConfigureDs({
       }
     }
 
-    if (oAuthProvider?.length > 0) {
+    if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
       body["connector_metadata"] = {
         ...body["connector_metadata"],
         ...{ "oauth-key": cacheKey },
@@ -301,7 +317,7 @@ function ConfigureDs({
       url = `${url}${editItemId}/`;
     }
 
-    if (oAuthProvider?.length > 0) {
+    if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
       const encodedCacheKey = encodeURIComponent(cacheKey);
       url = url + `?oauth-key=${encodedCacheKey}`;
     }
@@ -329,7 +345,7 @@ function ConfigureDs({
           updateSession(type);
         }
 
-        if (oAuthProvider?.length > 0) {
+        if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
           localStorage.removeItem(oauthCacheKey);
           localStorage.removeItem(oauthStatusKey);
         }
@@ -396,6 +412,15 @@ function ConfigureDs({
         formRef={formRef}
         isStateUpdateRequired={true}
       >
+        {!isLoading && oAuthProvider?.length > 0 && isOAuthMethodSelected() && (
+          <OAuthDs
+            oAuthProvider={oAuthProvider}
+            setCacheKey={handleSetCacheKey}
+            setStatus={handleSetStatus}
+            selectedSourceId={selectedSourceId}
+            isExistingConnector={isExistingConnector}
+          />
+        )}
         <Row className="config-row">
           <Col span={12} className="config-col1">
             <CustomButton
