@@ -5,6 +5,7 @@ import {
   Layout,
   Popover,
   Space,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -340,7 +341,7 @@ const SideNavBar = ({ collapsed }) => {
 
   // Add Agentic Prompt Studio menu item if plugin is available and product is unstract
   if (agenticPromptStudioEnabled && isUnstract) {
-    data[0]?.subMenu?.splice(1, 0, {
+    const agenticMenuItem = {
       id: 1.2,
       title: "Agentic Prompt Studio",
       description: "Build and manage AI-powered extraction workflows",
@@ -349,7 +350,19 @@ const SideNavBar = ({ collapsed }) => {
       active: globalThis.location.pathname.startsWith(
         `/${orgName}/agentic-prompt-studio`,
       ),
-    });
+    };
+
+    // Add beta tag to title
+    agenticMenuItem.title = (
+      <>
+        {agenticMenuItem.title}
+        <Tag color="blue" className="sidebar-beta-tag">
+          BETA
+        </Tag>
+      </>
+    );
+
+    data[0]?.subMenu?.splice(1, 0, agenticMenuItem);
   }
 
   const shouldDisableAll = useMemo(() => {
@@ -470,7 +483,7 @@ const SideNavBar = ({ collapsed }) => {
                         />
                         {!collapsed && (
                           <div>
-                            <Typography className="sidebar-item-text fs-14">
+                            <Typography className="sidebar-item-text fs-14 sidebar-title-row">
                               {el.title}
                             </Typography>
                             <Typography className="sidebar-item-text fs-11">
