@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 
 import "./CheckboxWidget.css";
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
+
 const CheckboxWidget = ({
   id,
   value,

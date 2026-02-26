@@ -1,8 +1,8 @@
 import { Outlet } from "react-router-dom";
 
 import { useSessionStore } from "../../../store/session-store";
-import { Unauthorized } from "../../error/UnAuthorized/Unauthorized.jsx";
 import { NotFound } from "../../error/NotFound/NotFound.jsx";
+import { Unauthorized } from "../../error/UnAuthorized/Unauthorized.jsx";
 
 const RequireAdmin = () => {
   const { sessionDetails } = useSessionStore();

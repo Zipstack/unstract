@@ -1,5 +1,4 @@
-import { Button } from "antd";
-import { Row, Col } from "antd";
+import { Button, Col, Row } from "antd";
 
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
@@ -8,9 +7,10 @@ import { ProductContentLayout } from "./ProductContentLayout";
 
 let LoginForm = null;
 try {
-  LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+  const mod = await import("../../plugins/login-form/LoginForm");
+  LoginForm = mod.LoginForm;
 } catch {
-  // The components will remain null of it is not available
+  // Plugin not available (OSS version)
 }
 
 function Login() {

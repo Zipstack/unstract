@@ -65,7 +65,7 @@ export const useRetrievalStrategies = () => {
       setLoading,
       setError,
       getRetrievalStrategies,
-    ]
+    ],
   );
 
   const getStrategies = useCallback(
@@ -78,7 +78,7 @@ export const useRetrievalStrategies = () => {
       // Otherwise fetch from API
       return fetchStrategies(toolId);
     },
-    [strategies, shouldFetch, fetchStrategies]
+    [strategies, shouldFetch, fetchStrategies],
   );
 
   return {
