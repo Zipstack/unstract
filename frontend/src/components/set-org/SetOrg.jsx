@@ -1,6 +1,6 @@
+import { Button, Card } from "antd";
 import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
-import { Button, Card } from "antd";
 import { useLocation, useNavigate } from "react-router-dom";
 import "./SetOrg.css"; // Import your CSS file for styling
 import axios from "axios";
@@ -10,12 +10,12 @@ import {
   OrgAvatar,
   OrgSelection,
   RedGradCircle,
-  YellowGradCircle,
   UnstractBlackLogo,
+  YellowGradCircle,
 } from "../../assets/index";
 import { useExceptionHandler } from "../../hooks/useExceptionHandler";
-import { useAlertStore } from "../../store/alert-store";
 import { useUserSession } from "../../hooks/useUserSession.js";
+import { useAlertStore } from "../../store/alert-store";
 
 function SetOrg() {
   const { state } = useLocation();

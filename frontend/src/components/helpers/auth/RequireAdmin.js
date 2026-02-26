@@ -3,8 +3,8 @@ import { Outlet } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
-import { Unauthorized } from "../../error/UnAuthorized/Unauthorized.jsx";
 import { NotFound } from "../../error/NotFound/NotFound.jsx";
+import { Unauthorized } from "../../error/UnAuthorized/Unauthorized.jsx";
 
 const RequireAdmin = () => {
   const axiosPrivate = useAxiosPrivate();
