@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
 from django.db import IntegrityError
@@ -578,7 +579,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            file_type = uploaded_file.content_type
+            # Detect MIME from file content (not browser-supplied header)
+            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
+            uploaded_file.seek(0)
 
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
