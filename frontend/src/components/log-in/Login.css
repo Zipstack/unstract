@@ -58,7 +58,8 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: radial-gradient(
+  background:
+    radial-gradient(
       ellipse at 20% 50%,
       rgba(56, 112, 180, 0.12) 0%,
       transparent 60%
