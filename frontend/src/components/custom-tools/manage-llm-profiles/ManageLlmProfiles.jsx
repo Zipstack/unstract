@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, CopyOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Radio, Table, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 
@@ -208,7 +208,7 @@ function ManageLlmProfiles() {
     axiosPrivate(requestOptions)
       .then(() => {
         const modifiedLlmProfiles = [...llmProfiles].filter(
-          (item) => item?.profile_id !== profileId
+          (item) => item?.profile_id !== profileId,
         );
         const body = {
           llmProfiles: modifiedLlmProfiles,

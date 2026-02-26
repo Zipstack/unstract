@@ -4,24 +4,30 @@ import { useEffect, useRef, useState } from "react";
 import "./DocumentParser.css";
 import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { usePromptOutputStore } from "../../../store/prompt-output-store";
 import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { PromptCardWrapper } from "../prompt-card/PromptCardWrapper";
-import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let promptCardService;
 let promptPatchApiSps;
 let SpsPromptsEmptyState;
 try {
-  promptCardService =
-    require("../../../plugins/prompt-card/prompt-card-service").promptCardService;
-  promptPatchApiSps =
-    require("../../../plugins/simple-prompt-studio/helper").promptPatchApiSps;
-  SpsPromptsEmptyState =
-    require("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState").SpsPromptsEmptyState;
+  const pcMod = await import(
+    "../../../plugins/prompt-card/prompt-card-service"
+  );
+  promptCardService = pcMod.promptCardService;
+  const helperMod = await import(
+    "../../../plugins/simple-prompt-studio/helper"
+  );
+  promptPatchApiSps = helperMod.promptPatchApiSps;
+  const spsMod = await import(
+    "../../../plugins/simple-prompt-studio/SpsPromptsEmptyState"
+  );
+  SpsPromptsEmptyState = spsMod.SpsPromptsEmptyState;
 } catch {
   // The component will remain null of it is not available
 }
@@ -83,7 +89,7 @@ function DocumentParser({
             return updatedPromptsCopy[itemPromptId];
           }
           return item;
-        }
+        },
       );
       modifiedDetails["prompts"] = modifiedPrompts;
       updateCustomTool({ details: modifiedDetails });
@@ -121,7 +127,7 @@ function DocumentParser({
     setHasUnsavedChanges(true);
 
     const index = promptsAndNotes.findIndex(
-      (item) => item?.prompt_id === promptId
+      (item) => item?.prompt_id === promptId,
     );
 
     if (index === -1) {
@@ -160,7 +166,7 @@ function DocumentParser({
           const modifiedDetails = { ...details };
           const modifiedPrompts = [...(modifiedDetails?.prompts || [])];
           const promptIndex = modifiedPrompts.findIndex(
-            (item) => item?.prompt_id === promptId
+            (item) => item?.prompt_id === promptId,
           );
           if (promptIndex !== -1) {
             modifiedPrompts[promptIndex] = updatedPrompt;
@@ -192,7 +198,7 @@ function DocumentParser({
       .then(() => {
         const modifiedDetails = { ...details };
         const modifiedPrompts = [...(modifiedDetails?.prompts || [])].filter(
-          (item) => item?.prompt_id !== promptId
+          (item) => item?.prompt_id !== promptId,
         );
         modifiedDetails["prompts"] = modifiedPrompts;
         updateCustomTool({ details: modifiedDetails });

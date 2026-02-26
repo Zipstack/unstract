@@ -1,15 +1,15 @@
 .widget-form-item {
-    width: 100%;
+  width: 100%;
 }
 .widget-form-item .form-item-label {
-    margin-bottom: 5px;
+  margin-bottom: 5px;
 }
 .widget-form-item .form-item-required {
-    color: #ff4d4f;
+  color: #ff4d4f;
 }
 
 .widget-form-item .form-item-tooltip {
-    margin-left: 8px;
-    color: #5A5A5A;
-    cursor: help
+  margin-left: 8px;
+  color: #5a5a5a;
+  cursor: help;
 }
