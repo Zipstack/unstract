@@ -689,7 +689,10 @@ prompting/
 # Claude
 CLAUDE.md
 .claude/*
+# Must un-ignore each parent dir level before negating nested paths (gitignore won't descend into ignored dirs)
 !.claude/skills/
+.claude/skills/*
+!.claude/skills/worktree/
 CONTRIBUTION_GUIDE.md
 .mcp.json
 
