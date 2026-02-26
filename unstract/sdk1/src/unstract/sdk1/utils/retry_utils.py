@@ -87,7 +87,6 @@ def calculate_delay(
 
 def retry_with_exponential_backoff(  # noqa: C901
     max_retries: int,
-    max_time: float,
     base_delay: float,
     multiplier: float,
     jitter: bool,
@@ -100,7 +99,6 @@ def retry_with_exponential_backoff(  # noqa: C901
 
     Args:
         max_retries: Maximum number of retry attempts
-        max_time: Maximum total time in seconds
         base_delay: Initial delay in seconds
         multiplier: Backoff multiplier
         jitter: Whether to add jitter
@@ -116,7 +114,6 @@ def retry_with_exponential_backoff(  # noqa: C901
     def decorator(func: Callable) -> Callable:  # noqa: C901
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: C901, ANN401
-            start_time = time.time()
             last_exception = None
 
             for attempt in range(max_retries + 1):  # +1 for initial attempt
@@ -144,17 +141,6 @@ def retry_with_exponential_backoff(  # noqa: C901
                     if retry_predicate is not None:
                         should_retry = retry_predicate(e)
 
-                    # Check if we've exceeded max time
-                    elapsed_time = time.time() - start_time
-                    if elapsed_time >= max_time:
-                        logger_instance.exception(
-                            "Giving up '%s' after %.1fs (max time exceeded): %s",
-                            func.__name__,
-                            elapsed_time,
-                            e,
-                        )
-                        raise
-
                     # If not retryable or last attempt, raise the error
                     if not should_retry or attempt == max_retries:
                         if attempt > 0:
@@ -166,22 +152,8 @@ def retry_with_exponential_backoff(  # noqa: C901
                             )
                         raise
 
-                    # Calculate delay for next retry
-                    delay = calculate_delay(
-                        attempt, base_delay, multiplier, max_time, jitter
-                    )
-
-                    # Ensure we don't exceed max_time with the delay
-                    remaining_time = max_time - elapsed_time
-                    if delay >= remaining_time:
-                        logger_instance.exception(
-                            "Giving up '%s' - next delay %.1fs would exceed "
-                            "max time %.1fs",
-                            func.__name__,
-                            delay,
-                            max_time,
-                        )
-                        raise
+                    # Calculate delay for next retry (capped at 60s)
+                    delay = calculate_delay(attempt, base_delay, multiplier, 60.0, jitter)
 
                     # Log retry attempt
                     logger_instance.warning(
@@ -230,7 +202,6 @@ def create_retry_decorator(
 
     Environment variables (using prefix):
         {prefix}_MAX_RETRIES: Maximum retry attempts (default: 3)
-        {prefix}_MAX_TIME: Maximum total time in seconds (default: 60)
         {prefix}_BASE_DELAY: Initial delay in seconds (default: 1.0)
         {prefix}_MULTIPLIER: Backoff multiplier (default: 2.0)
         {prefix}_JITTER: Enable jitter true/false (default: true)
@@ -253,7 +224,6 @@ def create_retry_decorator(
 
     # Load configuration from environment
     max_retries = int(os.getenv(f"{prefix}_MAX_RETRIES", "3"))
-    max_time = float(os.getenv(f"{prefix}_MAX_TIME", "60"))
     base_delay = float(os.getenv(f"{prefix}_BASE_DELAY", "1.0"))
     multiplier = float(os.getenv(f"{prefix}_MULTIPLIER", "2.0"))
     use_jitter = os.getenv(f"{prefix}_JITTER", "true").strip().lower() in {
@@ -265,8 +235,6 @@ def create_retry_decorator(
 
     if max_retries < 0:
         raise ValueError(f"{prefix}_MAX_RETRIES must be >= 0")
-    if max_time <= 0:
-        raise ValueError(f"{prefix}_MAX_TIME must be > 0")
     if base_delay <= 0:
         raise ValueError(f"{prefix}_BASE_DELAY must be > 0")
     if multiplier <= 0:
@@ -277,7 +245,6 @@ def create_retry_decorator(
 
     return retry_with_exponential_backoff(
         max_retries=max_retries,
-        max_time=max_time,
         base_delay=base_delay,
         multiplier=multiplier,
         jitter=use_jitter,
@@ -290,7 +257,6 @@ def create_retry_decorator(
 
 # Retry configured through below envs.
 # - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
-# - PLATFORM_SERVICE_MAX_TIME (default: 60s)
 # - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
 # - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
 # - PLATFORM_SERVICE_JITTER (default: true)
@@ -298,7 +264,6 @@ retry_platform_service_call = create_retry_decorator("PLATFORM_SERVICE")
 
 # Retry configured through below envs.
 # - PROMPT_SERVICE_MAX_RETRIES (default: 3)
-# - PROMPT_SERVICE_MAX_TIME (default: 60s)
 # - PROMPT_SERVICE_BASE_DELAY (default: 1.0s)
 # - PROMPT_SERVICE_MULTIPLIER (default: 2.0)
 # - PROMPT_SERVICE_JITTER (default: true)
