@@ -178,7 +178,7 @@ function Workflows() {
       });
       if (apiCount > shown.length) {
         lines.push(
-          `- ...and ${apiCount - shown.length} more API deployment(s)`
+          `- ...and ${apiCount - shown.length} more API deployment(s)`,
         );
       }
     }
@@ -215,7 +215,7 @@ function Workflows() {
           })
           .catch((err) => {
             setAlertDetails(
-              handleException(err, `Unable to delete workflow ${project.id}`)
+              handleException(err, `Unable to delete workflow ${project.id}`),
             );
           });
       } else {
@@ -226,7 +226,7 @@ function Workflows() {
       }
     } catch (err) {
       setAlertDetails(
-        handleException(err, `Unable to delete workflow ${project.id}`)
+        handleException(err, `Unable to delete workflow ${project.id}`),
       );
     }
   };
@@ -297,7 +297,7 @@ function Workflows() {
       setPostHogCustomEvent("intent_new_wf_project", {
         info: "Clicked on '+ New Workflow' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
