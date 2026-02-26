@@ -38,7 +38,9 @@ function RjsfFormLayout({
   isStateUpdateRequired,
 }) {
   const formSchema = useMemo(() => {
-    if (!schema) return {};
+    if (!schema) {
+      return {};
+    }
     const rest = { ...schema };
     delete rest.title;
     delete rest.description;
@@ -176,7 +178,9 @@ function RjsfFormLayout({
         // Try to resolve nested schema/title from property path like ".a.b[0].c"
         const path = (property || "").replace(/^\./, "");
         const getFieldSchema = (root, pathStr) => {
-          if (!root || !pathStr) return undefined;
+          if (!root || !pathStr) {
+            return undefined;
+          }
           const tokens = pathStr
             .replace(/\[(\d+)\]/g, ".$1")
             .split(".")
@@ -285,11 +289,15 @@ function RjsfFormLayout({
             fields={fields}
             formData={formData}
             transformErrors={transformErrors}
-            onError={() => {}}
+            onError={() => {
+              /* intentionally empty */
+            }}
             onSubmit={(e) => validateAndSubmit?.(e.formData)}
             showErrorList={false}
             onChange={handleChange}
             templates={templates}
+            omitExtraData={true}
+            liveOmit={true}
           >
             {children || <></>}
           </Form>
