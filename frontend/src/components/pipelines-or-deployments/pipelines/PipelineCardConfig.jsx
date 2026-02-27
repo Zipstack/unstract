@@ -12,19 +12,18 @@ import {
   SyncOutlined,
 } from "@ant-design/icons";
 import { Image, Space, Switch, Tag, Tooltip, Typography } from "antd";
-import { useNavigate, useLocation } from "react-router-dom";
 import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
-
-import { useSessionStore } from "../../../store/session-store";
+import { useLocation, useNavigate } from "react-router-dom";
 import { formattedDateTime } from "../../../helpers/GetStaticData";
+import { useSessionStore } from "../../../store/session-store";
 import {
-  CardActionBox,
-  OwnerFieldRow,
-  LastRunFieldRow,
-  Last5RunsFieldRow,
-  WorkflowFieldRow,
   ApiEndpointSection,
+  CardActionBox,
+  Last5RunsFieldRow,
+  LastRunFieldRow,
+  OwnerFieldRow,
+  WorkflowFieldRow,
 } from "../../widgets/card-grid-view/CardFieldComponents";
 
 /**
@@ -59,7 +58,7 @@ function StatusPills({
             pageSize: listContext.pageSize,
             searchTerm: listContext.searchTerm,
           },
-        }
+        },
       );
     }
   };
@@ -162,7 +161,7 @@ StatusPills.propTypes = {
       status: PropTypes.string,
       timestamp: PropTypes.string,
       execution_id: PropTypes.string,
-    })
+    }),
   ),
   executionType: PropTypes.string,
   pipelineId: PropTypes.string,

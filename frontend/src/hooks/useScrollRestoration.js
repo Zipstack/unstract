@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * Shared hook for scroll restoration when navigating back to a list page.

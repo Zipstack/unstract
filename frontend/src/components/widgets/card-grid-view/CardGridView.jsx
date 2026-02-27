@@ -166,7 +166,7 @@ CardGridView.propTypes = {
         fields: PropTypes.array.isRequired,
         layout: PropTypes.oneOf(["horizontal", "vertical", "grid"]),
         className: PropTypes.string,
-      })
+      }),
     ),
     expandable: PropTypes.bool,
     expandedContent: PropTypes.func,

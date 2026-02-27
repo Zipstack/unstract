@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 
 import { fetchExecutionLogs } from "../components/pipelines-or-deployments/log-modal/fetchExecutionLogs";
 
@@ -37,7 +37,7 @@ function useExecutionLogs({
       setAlertDetails,
       page,
       pageSize,
-      setIsFetchingLogs
+      setIsFetchingLogs,
     );
   };
 
@@ -60,7 +60,7 @@ function useExecutionLogs({
       setAlertDetails,
       1,
       10,
-      setIsFetchingLogs
+      setIsFetchingLogs,
     );
   };
 

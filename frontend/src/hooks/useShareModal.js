@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 
 /**
  * Shared hook for share modal state and logic.
@@ -65,7 +65,7 @@ function useShareModal({
       setOpenShareModal(true);
     } catch (err) {
       setAlertDetails(
-        handleException(err, "Unable to fetch sharing information")
+        handleException(err, "Unable to fetch sharing information"),
       );
       setAllUsers([]);
     } finally {

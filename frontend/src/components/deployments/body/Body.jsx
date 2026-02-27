@@ -2,9 +2,9 @@ import PropTypes from "prop-types";
 
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
+import { CardGridView } from "../../widgets/card-grid-view";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import { CardGridView } from "../../widgets/card-grid-view";
 
 function Body({
   type,

@@ -94,14 +94,20 @@ function CardItem({
 
   // Check if field should be visible
   const isFieldVisible = (field) => {
-    if (field.visible === undefined) return true;
-    if (typeof field.visible === "function") return field.visible(item);
+    if (field.visible === undefined) {
+      return true;
+    }
+    if (typeof field.visible === "function") {
+      return field.visible(item);
+    }
     return field.visible;
   };
 
   // Render a single field
   const renderField = (field) => {
-    if (!isFieldVisible(field)) return null;
+    if (!isFieldVisible(field)) {
+      return null;
+    }
 
     const value = item[field.key];
 
@@ -130,7 +136,9 @@ function CardItem({
   // Render a section
   const renderSection = (section, index) => {
     const visibleFields = section.fields.filter(isFieldVisible);
-    if (visibleFields.length === 0) return null;
+    if (visibleFields.length === 0) {
+      return null;
+    }
 
     const layoutClass = `card-section-${section.layout || "horizontal"}`;
 
@@ -146,7 +154,9 @@ function CardItem({
 
   // Render card header actions
   const renderActions = () => {
-    if (!config.header?.actions?.length) return null;
+    if (!config.header?.actions?.length) {
+      return null;
+    }
 
     return (
       <Space size={8} className="card-item-actions">
@@ -156,7 +166,9 @@ function CardItem({
               typeof action.visible === "function"
                 ? action.visible(item)
                 : action.visible;
-            if (!isVisible) return null;
+            if (!isVisible) {
+              return null;
+            }
           }
 
           // Custom render for action
@@ -187,7 +199,9 @@ function CardItem({
 
   // Render chevron toggle for list mode
   const renderExpandChevron = () => {
-    if (!config.expandable || !config.expandedContent) return null;
+    if (!config.expandable || !config.expandedContent) {
+      return null;
+    }
 
     return (
       <Button

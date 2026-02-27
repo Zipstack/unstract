@@ -176,7 +176,9 @@ function Last5RunsFieldRow({
   StatusPillsComponent,
   listContext,
 }) {
-  if (!statuses?.length) return null;
+  if (!statuses?.length) {
+    return null;
+  }
 
   return (
     <Flex align="center" className="card-list-field-row">
@@ -286,7 +288,9 @@ WorkflowFieldRow.propTypes = {
  * @return {JSX.Element|null} Rendered API endpoint section or null
  */
 function ApiEndpointSection({ apiEndpoint }) {
-  if (!apiEndpoint) return null;
+  if (!apiEndpoint) {
+    return null;
+  }
 
   // Validate URL scheme to prevent javascript: or other malicious protocols
   const isValidUrl = (() => {

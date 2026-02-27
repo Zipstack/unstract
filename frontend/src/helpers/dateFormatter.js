@@ -1,13 +1,13 @@
 import {
-  format,
-  formatDistanceToNow,
-  isToday,
-  isYesterday,
-  isThisWeek,
   differenceInHours,
   differenceInMinutes,
-  parseISO,
+  format,
+  formatDistanceToNow,
+  isThisWeek,
+  isToday,
   isValid,
+  isYesterday,
+  parseISO,
 } from "date-fns";
 
 /**
@@ -135,7 +135,9 @@ function formatFullDate(isoDate) {
  * @return {boolean} True if the date is today
  */
 function checkIsToday(isoDate) {
-  if (!isoDate) return false;
+  if (!isoDate) {
+    return false;
+  }
   try {
     const date =
       typeof isoDate === "string" ? parseISO(isoDate) : new Date(isoDate);

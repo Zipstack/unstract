@@ -11,13 +11,13 @@ import PropTypes from "prop-types";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
 import {
-  CardActionBox,
-  OwnerFieldRow,
-  LastRunFieldRow,
-  Last5RunsFieldRow,
-  WorkflowFieldRow,
   ApiEndpointSection,
+  CardActionBox,
   CardHeaderRow,
+  Last5RunsFieldRow,
+  LastRunFieldRow,
+  OwnerFieldRow,
+  WorkflowFieldRow,
 } from "../../widgets/card-grid-view/CardFieldComponents";
 
 /**
