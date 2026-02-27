@@ -68,7 +68,7 @@ class FliptClient:
                 flag_key=flag_key, entity_id=entity_id, context=context or {}
             )
 
-            return result.value if hasattr(result, "value") else False
+            return result.enabled if hasattr(result, "enabled") else False
 
         except Exception as e:
             logger.error(f"Error evaluating flag {flag_key} for entity {entity_id}: {e}")
