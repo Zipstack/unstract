@@ -43,8 +43,8 @@ function useSessionValid() {
         (state) => state?.selectedProduct,
       );
     }
-  } catch (error) {
-    // Do nothing
+  } catch {
+    // Plugin hook may throw during initialization
   }
   const navToSelectProduct = (
     userSessionData,

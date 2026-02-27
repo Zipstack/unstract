@@ -11,7 +11,9 @@ const isLocalStorageAvailable = () => {
 };
 
 export const getLocalStorageValue = (key, defaultValue) => {
-  if (!isLocalStorageAvailable()) return defaultValue;
+  if (!isLocalStorageAvailable()) {
+    return defaultValue;
+  }
   try {
     const item = localStorage.getItem(key);
     return item ? JSON.parse(item) : defaultValue;
@@ -26,7 +28,9 @@ export const getLocalStorageValue = (key, defaultValue) => {
 };
 
 export const setLocalStorageValue = (key, value) => {
-  if (!isLocalStorageAvailable()) return;
+  if (!isLocalStorageAvailable()) {
+    return;
+  }
   try {
     localStorage.setItem(key, JSON.stringify(value));
   } catch {

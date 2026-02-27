@@ -40,8 +40,8 @@ function PersistentLogin() {
         (state) => state?.setSelectedProduct,
       );
     }
-  } catch (error) {
-    // Do nothing
+  } catch {
+    // Plugin hook may throw during initialization
   }
 
   useEffect(() => {
