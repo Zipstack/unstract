@@ -55,6 +55,10 @@
   transition: color 0.2s;
 }
 
+.sidebar-toggle-icon.pinned {
+  color: #1890ff;
+}
+
 .sidebar-toggle-container.ant-btn:hover .sidebar-toggle-icon {
   color: white;
 }
