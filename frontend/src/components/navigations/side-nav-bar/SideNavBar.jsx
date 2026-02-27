@@ -465,7 +465,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             onClick={handlePlatformClick}
                             data-testid={`sidebar-${el.title
                               ?.toLowerCase()
-                              ?.replace(/\s+/g, "-")}`}
+                              ?.replaceAll(/\s+/g, "-")}`}
                           >
                             <Image
                               src={el.image}
@@ -524,7 +524,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                           }}
                           data-testid={`sidebar-${el.title
                             ?.toLowerCase()
-                            ?.replace(/\s+/g, "-")}`}
+                            ?.replaceAll(/\s+/g, "-")}`}
                         >
                           <Image
                             src={el.image}
