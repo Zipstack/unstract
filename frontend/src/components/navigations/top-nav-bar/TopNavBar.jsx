@@ -1,49 +1,47 @@
 import {
+  LoginOutlined,
+  LogoutOutlined,
+  SettingOutlined,
+  UserOutlined,
+  UserSwitchOutlined,
+} from "@ant-design/icons";
+import {
   Alert,
   Button,
   Col,
   Dropdown,
+  Image,
   Row,
   Space,
   Typography,
-  Image,
 } from "antd";
-import {
-  UserOutlined,
-  UserSwitchOutlined,
-  LogoutOutlined,
-  DownloadOutlined,
-  FileProtectOutlined,
-  LikeOutlined,
-  LoginOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import { useEffect, useState, useMemo, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import PropTypes from "prop-types";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { UnstractLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
   homePagePath,
   onboardCompleted,
-  UNSTRACT_ADMIN,
 } from "../../../helpers/GetStaticData.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
 import "./TopNavBar.css";
+import config from "../../../config";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import config from "../../../config";
 
 let TrialDaysInfo;
 try {
-  TrialDaysInfo =
-    require("../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx").default;
-} catch (err) {
+  const mod = await import(
+    "../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx"
+  );
+  TrialDaysInfo = mod.default;
+} catch {
   // Plugin not found
 }
 
@@ -51,23 +49,27 @@ let selectedProductStore;
 let selectedProduct;
 
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import(
+    "../../../plugins/store/select-product-store.js"
+  );
 } catch {
   // Ignore if hook not available
 }
 
 let PlatformDropdown;
 try {
-  PlatformDropdown =
-    require("../../../plugins/platform-dropdown/PlatformDropDown.jsx").PlatformDropdown;
-} catch (err) {
+  const mod = await import(
+    "../../../plugins/platform-dropdown/PlatformDropDown.jsx"
+  );
+  PlatformDropdown = mod.PlatformDropdown;
+} catch {
   // Plugin not found
 }
 
 let WhispererLogo;
 try {
-  WhispererLogo =
-    require("../../../plugins/assets/llmWhisperer/index.js").WhispererLogo;
+  const mod = await import("../../../plugins/assets/llmWhisperer/index.js");
+  WhispererLogo = mod.WhispererLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -102,7 +104,8 @@ const CustomLogo = ({ onClick, className }) => {
 };
 let APIHubLogo;
 try {
-  APIHubLogo = require("../../../plugins/assets/verticals/index.js").APIHubLogo;
+  const mod = await import("../../../plugins/assets/verticals/index.js");
+  APIHubLogo = mod.APIHubLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -112,12 +115,18 @@ let unstractSubscriptionPlanStore;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 let UnstractPricingMenuLink;
 try {
-  unstractSubscriptionPlanStore = require("../../../plugins/store/unstract-subscription-plan-store");
-  UNSTRACT_SUBSCRIPTION_PLANS =
-    require("../../../plugins/unstract-subscription/helper/constants").UNSTRACT_SUBSCRIPTION_PLANS;
-  UnstractPricingMenuLink =
-    require("../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx").UnstractPricingMenuLink;
-} catch (err) {
+  unstractSubscriptionPlanStore = await import(
+    "../../../plugins/store/unstract-subscription-plan-store"
+  );
+  const constantsMod = await import(
+    "../../../plugins/unstract-subscription/helper/constants"
+  );
+  UNSTRACT_SUBSCRIPTION_PLANS = constantsMod.UNSTRACT_SUBSCRIPTION_PLANS;
+  const menuMod = await import(
+    "../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx"
+  );
+  UnstractPricingMenuLink = menuMod.UnstractPricingMenuLink;
+} catch {
   // Plugin unavailable.
 }
 
@@ -129,8 +138,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
-  const [approverStatus, setApproverStatus] = useState(false);
-  const [reviewerStatus, setReviewerStatus] = useState(false);
   const [reviewPageHeader, setReviewPageHeader] = useState("");
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -138,7 +145,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   if (selectedProductStore) {
     selectedProduct = selectedProductStore.useSelectedProductStore(
-      (state) => state?.selectedProduct
+      (state) => state?.selectedProduct,
     );
   }
 
@@ -146,10 +153,10 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
       unstractSubscriptionPlan =
         unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore(
-          (state) => state?.unstractSubscriptionPlan
+          (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 
@@ -161,8 +168,13 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     return unstractSubscriptionPlan?.remainingDays <= 0;
   }, [unstractSubscriptionPlan]);
 
-  const isUnstract = !(selectedProduct && selectedProduct !== "unstract");
-  const isAPIHub = selectedProduct && selectedProduct === "verticals";
+  // Detect product from URL path as a fallback when selectedProduct is not set
+  // (e.g., incognito/unauthenticated users visiting verticals pages)
+  const isVerticalsRoute = location.pathname.startsWith("/verticals");
+  const effectiveProduct =
+    selectedProduct || (isVerticalsRoute ? "verticals" : null);
+  const isUnstract = !(effectiveProduct && effectiveProduct !== "unstract");
+  const isAPIHub = effectiveProduct === "verticals";
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
   const isOpenSource = orgName === "mock_org";
 
@@ -171,15 +183,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     const { role } = sessionDetails;
     const isReviewer = role === "unstract_reviewer";
     const isSupervisor = role === "unstract_supervisor";
-    const isAdmin = role === UNSTRACT_ADMIN;
 
     setShowOnboardBanner(
       !onboardCompleted(sessionDetails?.adapters) &&
         !isReviewer &&
-        !isSupervisor
+        !isSupervisor,
     );
-    setApproverStatus(isAdmin || isSupervisor);
-    setReviewerStatus(isReviewer);
   }, [sessionDetails]);
 
   // Determine review page header
@@ -292,54 +301,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    // Review
-    if (isUnstract && !isSimpleLayout && (reviewerStatus || approverStatus)) {
-      menuItems.push({
-        key: "4",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <FileProtectOutlined /> Review
-          </Button>
-        ),
-      });
-    }
-
-    // Approve
-    if (isUnstract && !isSimpleLayout && approverStatus) {
-      menuItems.push({
-        key: "5",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review/approve`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <LikeOutlined /> Approve
-          </Button>
-        ),
-      });
-
-      menuItems.push({
-        key: "6",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <DownloadOutlined /> Download and Sync Manager
-          </Button>
-        ),
-      });
-    }
-
     if (
       isUnstract &&
       UnstractPricingMenuLink &&
@@ -398,8 +359,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [
     isUnstract,
     isSimpleLayout,
-    reviewerStatus,
-    approverStatus,
     allOrganization,
     cascadeOptions,
     orgName,

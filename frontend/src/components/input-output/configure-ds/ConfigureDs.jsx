@@ -1,4 +1,5 @@
-import { Col, Row } from "antd";
+import { InfoCircleOutlined } from "@ant-design/icons";
+import { Col, Popover, Row } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 
@@ -27,6 +28,7 @@ function ConfigureDs({
   isConnector,
   metadata,
   selectedSourceName,
+  selectedDocUrl,
 }) {
   const formRef = createRef(null);
   const axiosPrivate = useAxiosPrivate();
@@ -55,6 +57,18 @@ function ConfigureDs({
   const hasOAuthCredentials =
     metadata && (metadata.access_token || (metadata.provider && metadata.uid));
   const isExistingConnector = Boolean(editItemId || hasOAuthCredentials);
+
+  // Determine if OAuth authentication method is selected
+  const isOAuthMethodSelected = () => {
+    if (!oAuthProvider?.length) return false;
+    // Check if auth_type is set to a non-OAuth value
+    const data = formData || {};
+    // If auth_type exists and is not "oauth", then OAuth is not selected
+    if (data.auth_type && data.auth_type !== "oauth") {
+      return false;
+    }
+    return true;
+  };
 
   // Initialize OAuth state from localStorage after keys are available
   useEffect(() => {
@@ -150,7 +164,11 @@ function ConfigureDs({
     if (formRef && !formRef.current?.validateForm()) {
       return;
     }
-    if (oAuthProvider?.length && (status !== "success" || !cacheKey?.length)) {
+    if (
+      oAuthProvider?.length &&
+      isOAuthMethodSelected() &&
+      (status !== "success" || !cacheKey?.length)
+    ) {
       const providerName =
         oAuthProvider === "google-oauth2" ? "Google" : "OAuth provider";
       setAlertDetails({
@@ -190,7 +208,7 @@ function ConfigureDs({
       }
     }
 
-    if (oAuthProvider?.length > 0) {
+    if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
       body["connector_metadata"] = {
         ...body["connector_metadata"],
         ...{ "oauth-key": cacheKey },
@@ -299,7 +317,7 @@ function ConfigureDs({
       url = `${url}${editItemId}/`;
     }
 
-    if (oAuthProvider?.length > 0) {
+    if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
       const encodedCacheKey = encodeURIComponent(cacheKey);
       url = url + `?oauth-key=${encodedCacheKey}`;
     }
@@ -327,7 +345,7 @@ function ConfigureDs({
           updateSession(type);
         }
 
-        if (oAuthProvider?.length > 0) {
+        if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
           localStorage.removeItem(oauthCacheKey);
           localStorage.removeItem(oauthStatusKey);
         }
@@ -354,6 +372,28 @@ function ConfigureDs({
 
   return (
     <div className="config-layout">
+      {selectedDocUrl && (
+        <div className="config-doc-link">
+          <Popover
+            content={
+              <div>
+                Need help?{" "}
+                <a
+                  href={selectedDocUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  See documentation.
+                </a>
+              </div>
+            }
+            trigger="click"
+            placement="bottomRight"
+          >
+            <InfoCircleOutlined className="config-doc-icon" />
+          </Popover>
+        </div>
+      )}
       {!isLoading && oAuthProvider?.length > 0 && (
         <OAuthDs
           oAuthProvider={oAuthProvider}
@@ -372,6 +412,15 @@ function ConfigureDs({
         formRef={formRef}
         isStateUpdateRequired={true}
       >
+        {!isLoading && oAuthProvider?.length > 0 && isOAuthMethodSelected() && (
+          <OAuthDs
+            oAuthProvider={oAuthProvider}
+            setCacheKey={handleSetCacheKey}
+            setStatus={handleSetStatus}
+            selectedSourceId={selectedSourceId}
+            isExistingConnector={isExistingConnector}
+          />
+        )}
         <Row className="config-row">
           <Col span={12} className="config-col1">
             <CustomButton
@@ -415,6 +464,7 @@ ConfigureDs.propTypes = {
   isConnector: PropTypes.bool.isRequired,
   metadata: PropTypes.object,
   selectedSourceName: PropTypes.string.isRequired,
+  selectedDocUrl: PropTypes.string,
 };
 
 export { ConfigureDs };

@@ -3,14 +3,14 @@ import { Route, Routes } from "react-router-dom";
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
 import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
+import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
 import { LandingPage } from "../pages/LandingPage.jsx";
-import { SetOrgPage } from "../pages/SetOrgPage.jsx";
-import { useMainAppRoutes } from "./useMainAppRoutes.js";
-import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
-import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { SetOrgPage } from "../pages/SetOrgPage.jsx";
+import { ToolIdePage } from "../pages/ToolIdePage.jsx";
+import { useMainAppRoutes } from "./useMainAppRoutes.js";
 
 let PublicPromptStudioHelper;
 
@@ -24,73 +24,91 @@ let SelectProduct;
 let UnstractSubscriptionEndPage;
 let CustomPlanCheckoutPage;
 try {
-  SimplePromptStudioHelper =
-    require("../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx").SimplePromptStudioHelper;
-  SimplePromptStudio =
-    require("../plugins/simple-prompt-studio/SimplePromptStudio.jsx").SimplePromptStudio;
-  SpsLanding =
-    require("../plugins/simple-prompt-studio/SpsLanding.jsx").SpsLanding;
-  SpsUpload =
-    require("../plugins/simple-prompt-studio/SpsUpload.jsx").SpsUpload;
-} catch (err) {
+  const spsHelperMod = await import(
+    "../plugins/simple-prompt-studio/SimplePromptStudioHelper.jsx"
+  );
+  SimplePromptStudioHelper = spsHelperMod.SimplePromptStudioHelper;
+  const spsMod = await import(
+    "../plugins/simple-prompt-studio/SimplePromptStudio.jsx"
+  );
+  SimplePromptStudio = spsMod.SimplePromptStudio;
+  const spsLandingMod = await import(
+    "../plugins/simple-prompt-studio/SpsLanding.jsx"
+  );
+  SpsLanding = spsLandingMod.SpsLanding;
+  const spsUploadMod = await import(
+    "../plugins/simple-prompt-studio/SpsUpload.jsx"
+  );
+  SpsUpload = spsUploadMod.SpsUpload;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 try {
-  PublicPromptStudioHelper =
-    require("../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js").PublicPromptStudioHelper;
-} catch (err) {
+  const mod = await import(
+    "../plugins/prompt-studio-public-share/helpers/PublicPromptStudioHelper.js"
+  );
+  PublicPromptStudioHelper = mod.PublicPromptStudioHelper;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 let llmWhispererRouter;
 try {
-  llmWhispererRouter =
-    require("../plugins/routes/useLlmWhispererRoutes.js").useLlmWhispererRoutes;
-} catch (err) {
+  const mod = await import("../plugins/routes/useLlmWhispererRoutes.js");
+  llmWhispererRouter = mod.useLlmWhispererRoutes;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 let verticalsRouter;
 try {
-  verticalsRouter =
-    require("../plugins/routes/useVerticalsRoutes.js").useVerticalsRoutes;
-} catch (err) {
+  const mod = await import("../plugins/routes/useVerticalsRoutes.js");
+  verticalsRouter = mod.useVerticalsRoutes;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  SelectProduct =
-    require("../plugins/select-product/SelectProduct.jsx").SelectProduct;
-} catch (err) {
+  const mod = await import("../plugins/select-product/SelectProduct.jsx");
+  SelectProduct = mod.SelectProduct;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  UnstractSubscriptionEndPage =
-    require("../plugins/unstract-subscription/pages/UnstractSubscriptionEndPage.jsx").UnstractSubscriptionEndPage;
-} catch (err) {
+  const mod = await import(
+    "../plugins/unstract-subscription/pages/UnstractSubscriptionEndPage.jsx"
+  );
+  UnstractSubscriptionEndPage = mod.UnstractSubscriptionEndPage;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  CustomPlanCheckoutPage =
-    require("../plugins/unstract-subscription/pages/CustomPlanCheckoutPage.jsx").CustomPlanCheckoutPage;
-} catch (err) {
+  const mod = await import(
+    "../plugins/unstract-subscription/pages/CustomPlanCheckoutPage.jsx"
+  );
+  CustomPlanCheckoutPage = mod.CustomPlanCheckoutPage;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 try {
-  PaymentSuccessful =
-    require("../plugins/payment-successful/PaymentSuccessful.jsx").PaymentSuccessful;
-} catch (err) {
+  const mod = await import(
+    "../plugins/payment-successful/PaymentSuccessful.jsx"
+  );
+  PaymentSuccessful = mod.PaymentSuccessful;
+} catch {
   // Do nothing, Not-found Page will be triggered.
 }
 
 let LlmWhispererCustomCheckoutPage;
 try {
-  LlmWhispererCustomCheckoutPage =
-    require("../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx").LlmWhispererCustomCheckoutPage;
-} catch (err) {
+  const mod = await import(
+    "../plugins/llm-whisperer/pages/LlmWhispererCustomCheckoutPage.jsx"
+  );
+  LlmWhispererCustomCheckoutPage = mod.LlmWhispererCustomCheckoutPage;
+} catch {
   // NOSONAR
   // Do nothing, Not-found Page will be triggered.
 }

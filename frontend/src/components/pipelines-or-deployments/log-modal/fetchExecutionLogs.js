@@ -8,7 +8,7 @@ const fetchExecutionLogs = (
   setAlertDetails,
   page = 1,
   pageSize = 10,
-  setIsLoading = null
+  setIsLoading = null,
 ) => {
   setIsLoading?.(true);
 

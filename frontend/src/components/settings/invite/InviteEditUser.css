@@ -1,4 +1,4 @@
-.invite-user-container{
+.invite-user-container {
   width: 500px;
   display: flex;
   justify-content: center;
@@ -7,29 +7,29 @@
   padding: 16px;
 }
 
-.admin-toggle-container{
+.admin-toggle-container {
   display: flex;
   align-items: center;
   gap: 5px;
 }
 
-.invite-button-container{
+.invite-button-container {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
-.loader-container{
+.loader-container {
   position: absolute;
   left: 50%;
   transform: translate(-50%, 0);
 }
 
-.role-select{
-  width:auto;
-  min-width:200px;
+.role-select {
+  width: auto;
+  min-width: 200px;
 }
 
-.form-select{
+.form-select {
   margin: 0;
 }

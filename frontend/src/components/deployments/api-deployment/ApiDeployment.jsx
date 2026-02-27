@@ -2,33 +2,33 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
+import {
+  useInitialFetchCount,
+  usePromptStudioModal,
+} from "../../../hooks/usePromptStudioFetchCount";
+import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
+import { useShareModal } from "../../../hooks/useShareModal";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
+import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
 import { DeleteModal } from "../delete-modal/DeleteModal";
 import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
-import { apiDeploymentsService } from "./api-deployments-service";
 import { createApiDeploymentCardConfig } from "./ApiDeploymentCardConfig.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
-import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
-import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
-import {
-  useInitialFetchCount,
-  usePromptStudioModal,
-} from "../../../hooks/usePromptStudioFetchCount";
-import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
-import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
-import { useShareModal } from "../../../hooks/useShareModal";
+import { apiDeploymentsService } from "./api-deployments-service";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
@@ -109,7 +109,7 @@ function ApiDeployment() {
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   useEffect(() => {
@@ -152,8 +152,8 @@ function ApiDeployment() {
             data.count !== null && data.count !== undefined
               ? data.count
               : data.results
-              ? data.results.length
-              : data.length,
+                ? data.results.length
+                : data.length,
         }));
 
         activateScrollRestore();
@@ -177,7 +177,7 @@ function ApiDeployment() {
         getApiDeploymentList(
           pagination.current,
           pagination.pageSize,
-          searchTerm
+          searchTerm,
         );
         setAlertDetails({
           type: "success",
@@ -194,8 +194,8 @@ function ApiDeployment() {
     // Optimistic update - no loading spinner
     setTableData((prev) =>
       prev.map((item) =>
-        item.id === record.id ? { ...item, is_active: newStatus } : item
-      )
+        item.id === record.id ? { ...item, is_active: newStatus } : item,
+      ),
     );
 
     apiDeploymentsApiService
@@ -204,8 +204,8 @@ function ApiDeployment() {
         // Revert on error
         setTableData((prev) =>
           prev.map((item) =>
-            item.id === record.id ? { ...item, is_active: !newStatus } : item
-          )
+            item.id === record.id ? { ...item, is_active: !newStatus } : item,
+          ),
         );
         setAlertDetails(handleException(err));
       });
@@ -235,7 +235,7 @@ function ApiDeployment() {
       apiDeploymentsApiService,
       deployment.id,
       setApiKeys,
-      setOpenManageKeysModal
+      setOpenManageKeysModal,
     );
   };
 
@@ -281,14 +281,14 @@ function ApiDeployment() {
       pagination.current,
       pagination.pageSize,
       searchTerm,
-    ]
+    ],
   );
 
   // Using the custom hook to manage modal state
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (

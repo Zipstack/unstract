@@ -1,27 +1,26 @@
 import { DatePicker, Tabs } from "antd";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { useEffect, useState, useRef } from "react";
-
-import { LogsTable } from "../logs-table/LogsTable";
-import { DetailedLogs } from "../detailed-logs/DetailedLogs";
-import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ApiDeployments,
   ETLIcon,
-  Workflows,
   Task,
+  Workflows,
 } from "../../../assets/index";
+import { DetailedLogs } from "../detailed-logs/DetailedLogs";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
+import { LogsTable } from "../logs-table/LogsTable";
 import "./ExecutionLogs.css";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
-import { useAlertStore } from "../../../store/alert-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 
 function ExecutionLogs() {
   const { RangePicker } = DatePicker;
@@ -240,7 +239,7 @@ function ExecutionLogs() {
                     setSelectedDateRange(
                       value?.[0] && value?.[1]
                         ? [value[0].toISOString(), value[1].toISOString()]
-                        : []
+                        : [],
                     );
                   }}
                   onOk={onOk}

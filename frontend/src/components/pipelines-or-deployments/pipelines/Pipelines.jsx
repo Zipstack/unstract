@@ -11,29 +11,29 @@ import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
-import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import "./Pipelines.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { pipelineService } from "../pipeline-service.js";
-import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
-import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import useClearFileHistory from "../../../hooks/useClearFileHistory";
-import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
-import { SharePermission } from "../../widgets/share-permission/SharePermission";
-import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
-import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
-import { usePaginatedList } from "../../../hooks/usePaginatedList";
 import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
 import { useShareModal } from "../../../hooks/useShareModal";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
+import { pipelineService } from "../pipeline-service.js";
+import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -113,7 +113,7 @@ function Pipelines({ type }) {
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   useEffect(() => {
@@ -194,8 +194,8 @@ function Pipelines({ type }) {
     // Use functional update to avoid stale closure issues
     setTableData((prevData) =>
       prevData.map((item) =>
-        item.id === pipelineId ? { ...item, ...updatedFields } : item
-      )
+        item.id === pipelineId ? { ...item, ...updatedFields } : item,
+      ),
     );
   };
 
@@ -312,7 +312,7 @@ function Pipelines({ type }) {
       pipelineApiService,
       pipeline.id,
       setApiKeys,
-      setOpenManageKeysModal
+      setOpenManageKeysModal,
     );
   };
 
@@ -364,14 +364,14 @@ function Pipelines({ type }) {
       pagination.current,
       pagination.pageSize,
       searchTerm,
-    ]
+    ],
   );
 
   // Using the custom hook to manage modal state
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (

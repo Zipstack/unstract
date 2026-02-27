@@ -44,4 +44,6 @@ class PageUsage(models.Model):
         db_table = "page_usage"
         indexes = [
             models.Index(fields=["organization_id"]),
+            models.Index(fields=["run_id"], name="idx_page_usage_run_id"),
+            # idx_page_usage_created_org created via RunSQL (Django doesn't support INCLUDE)
         ]
