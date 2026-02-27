@@ -15,12 +15,18 @@ function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {
-      if (!importer || !source.includes("plugins/")) return null;
+      if (!importer) return null;
 
-      // Only handle relative imports that go through a plugins directory
+      // Only handle relative imports
       if (!source.startsWith(".")) return null;
 
       const resolved = path.resolve(path.dirname(importer), source);
+
+      // Only handle imports that resolve within a plugins directory.
+      // This covers both cross-plugin imports (e.g. "../plugins/foo")
+      // and intra-plugin sibling imports (e.g. "./TrialMessage" from
+      // within plugins/login-form/).
+      if (!resolved.includes("/plugins/")) return null;
 
       // Check common extensions
       const extensions = ["", ".js", ".jsx", ".ts", ".tsx"];
