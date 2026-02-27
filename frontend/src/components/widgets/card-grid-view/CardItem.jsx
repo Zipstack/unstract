@@ -114,22 +114,40 @@ function CardItem({
     // Custom renderer takes priority
     if (field.render) {
       return (
-        <div key={field.key} className={`card-field ${field.className || ""}`}>
+        <Flex
+          key={field.key}
+          align="center"
+          gap={8}
+          className={`card-field ${field.className || ""}`}
+        >
           {field.icon && <span className="card-field-icon">{field.icon}</span>}
-          <div className="card-field-content">{field.render(value, item)}</div>
-        </div>
+          <Flex vertical className="card-field-content">
+            {field.render(value, item)}
+          </Flex>
+        </Flex>
       );
     }
 
     // Default field rendering
     return (
-      <div key={field.key} className={`card-field ${field.className || ""}`}>
+      <Flex
+        key={field.key}
+        align="center"
+        gap={8}
+        className={`card-field ${field.className || ""}`}
+      >
         {field.icon && <span className="card-field-icon">{field.icon}</span>}
-        <div className="card-field-content">
-          {field.label && <div className="card-field-label">{field.label}</div>}
-          <div className="card-field-value">{value ?? "-"}</div>
-        </div>
-      </div>
+        <Flex vertical className="card-field-content">
+          {field.label && (
+            <Typography.Text type="secondary" className="card-field-label">
+              {field.label}
+            </Typography.Text>
+          )}
+          <Typography.Text className="card-field-value">
+            {value ?? "-"}
+          </Typography.Text>
+        </Flex>
+      </Flex>
     );
   };
 
@@ -140,15 +158,29 @@ function CardItem({
       return null;
     }
 
-    const layoutClass = `card-section-${section.layout || "horizontal"}`;
+    const layout = section.layout || "horizontal";
+    const className = `card-section card-section-${layout} ${section.className || ""}`;
+
+    // Grid layout needs CSS grid (auto-fit), can't use Flex
+    if (layout === "grid") {
+      return (
+        <div key={index} className={className}>
+          {visibleFields.map(renderField)}
+        </div>
+      );
+    }
 
     return (
-      <div
+      <Flex
         key={index}
-        className={`card-section ${layoutClass} ${section.className || ""}`}
+        vertical={layout === "vertical"}
+        wrap={layout === "horizontal"}
+        gap={layout === "vertical" ? 8 : 16}
+        align={layout === "horizontal" ? "center" : undefined}
+        className={className}
       >
         {visibleFields.map(renderField)}
-      </div>
+      </Flex>
     );
   };
 

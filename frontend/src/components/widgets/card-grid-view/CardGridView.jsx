@@ -1,4 +1,4 @@
-import { Col, Empty, Pagination, Row } from "antd";
+import { Col, Empty, Flex, Pagination, Row } from "antd";
 import PropTypes from "prop-types";
 
 import { CardItem } from "./CardItem.jsx";
@@ -134,7 +134,7 @@ function CardGridView({
       </Row>
 
       {showPagination && (
-        <div className="card-grid-pagination">
+        <Flex justify="flex-end" className="card-grid-pagination">
           <Pagination
             current={pagination.current}
             pageSize={pagination.pageSize}
@@ -146,7 +146,7 @@ function CardGridView({
               `${range[0]}-${range[1]} of ${total} items`
             }
           />
-        </div>
+        </Flex>
       )}
     </div>
   );

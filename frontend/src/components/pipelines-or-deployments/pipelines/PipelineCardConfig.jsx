@@ -1,4 +1,5 @@
 import {
+  AppstoreOutlined,
   CalendarOutlined,
   CheckCircleFilled,
   ClearOutlined,
@@ -11,7 +12,7 @@ import {
   ScheduleOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Image, Space, Switch, Tag, Tooltip, Typography } from "antd";
+import { Avatar, Flex, Space, Switch, Tag, Tooltip, Typography } from "antd";
 import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -68,26 +69,26 @@ function StatusPills({
     switch (statusLower) {
       case "completed":
       case "success":
-        return { label: "SUCCESS", className: "status-badge success" };
+        return { label: "SUCCESS", color: "success" };
       case "error":
       case "failed":
       case "failure":
-        return { label: "ERROR", className: "status-badge error" };
+        return { label: "ERROR", color: "error" };
       case "partial_success":
       case "partial success":
-        return { label: "PARTIAL", className: "status-badge partial_success" };
+        return { label: "PARTIAL", color: "warning" };
       case "executing":
       case "processing":
       case "running":
-        return { label: "EXECUTING", className: "status-badge executing" };
+        return { label: "EXECUTING", color: "processing" };
       case "pending":
-        return { label: "PENDING", className: "status-badge pending" };
+        return { label: "PENDING", color: "default" };
       case "stopped":
-        return { label: "STOPPED", className: "status-badge stopped" };
+        return { label: "STOPPED", color: "default" };
       default:
         return {
           label: status?.toUpperCase() || "UNKNOWN",
-          className: "status-badge unknown",
+          color: "default",
         };
     }
   };
@@ -102,33 +103,40 @@ function StatusPills({
         const key =
           run.execution_id || run.timestamp || `${config.label}-${index}`;
         const tooltipContent = (
-          <div className="status-tooltip-content">
+          <Space
+            direction="vertical"
+            size={4}
+            className="status-tooltip-content"
+          >
             {hasFileCounts && (
-              <div className="status-tooltip-counts">
-                <span className="status-tooltip-count success">
+              <Space size={12} className="status-tooltip-counts">
+                <Typography.Text className="status-tooltip-count success">
                   <CheckCircleFilled /> {run.successful_files}
-                </span>
-                <span className="status-tooltip-count error">
+                </Typography.Text>
+                <Typography.Text className="status-tooltip-count error">
                   <CloseCircleFilled /> {run.failed_files}
-                </span>
-              </div>
+                </Typography.Text>
+              </Space>
             )}
             {run.timestamp && (
-              <div className="status-tooltip-timestamp">
+              <Typography.Text className="status-tooltip-timestamp">
                 {formattedDateTime(run.timestamp)}
-              </div>
+              </Typography.Text>
             )}
             {isClickable && (
-              <div className="status-tooltip-hint">Click to view details</div>
+              <Typography.Text className="status-tooltip-hint">
+                Click to view details
+              </Typography.Text>
             )}
-          </div>
+          </Space>
         );
 
         if (isClickable) {
           return (
             <Tooltip key={key} title={tooltipContent}>
               <Tag
-                className={`${config.className} status-badge-clickable`}
+                color={config.color}
+                className="status-badge status-badge-clickable"
                 onClick={(e) => handleStatusClick(e, run)}
                 tabIndex={0}
                 role="button"
@@ -147,7 +155,9 @@ function StatusPills({
 
         return (
           <Tooltip key={key} title={tooltipContent}>
-            <Tag className={config.className}>{config.label}</Tag>
+            <Tag color={config.color} className="status-badge">
+              {config.label}
+            </Tag>
           </Tooltip>
         );
       })}
@@ -174,22 +184,32 @@ StatusPills.propTypes = {
  */
 function ConnectorFieldRow({ label, icon, instanceName, connectorName }) {
   return (
-    <div className="card-list-field-row">
-      <span className="card-list-field-label">{label}</span>
-      <div className="card-list-field-value">
-        <div className="card-list-field-icon">
-          <Image src={icon} preview={false} fallback="/default-connector.png" />
-        </div>
-        <div className="card-list-field-text">
-          <span className="card-list-field-instance-name">
+    <Flex align="center" className="card-list-field-row">
+      <Typography.Text type="secondary" className="card-list-field-label">
+        {label}
+      </Typography.Text>
+      <Space size={10} className="card-list-field-value">
+        <Avatar
+          src={icon}
+          size={32}
+          shape="square"
+          icon={<AppstoreOutlined />}
+        />
+        <Flex vertical gap={2} className="card-list-field-text">
+          <Typography.Text className="card-list-field-instance-name">
             {instanceName || connectorName}
-          </span>
+          </Typography.Text>
           {instanceName && (
-            <span className="card-list-field-subtext">{connectorName}</span>
+            <Typography.Text
+              type="secondary"
+              className="card-list-field-subtext"
+            >
+              {connectorName}
+            </Typography.Text>
           )}
-        </div>
-      </div>
-    </div>
+        </Flex>
+      </Space>
+    </Flex>
   );
 }
 
@@ -302,7 +322,7 @@ function createPipelineCardConfig({
               </Typography.Text>
             </Tooltip>
 
-            <div className="card-list-actions">
+            <Space size={16} className="card-list-actions">
               <Tooltip
                 title={pipeline.active ? "Disable pipeline" : "Enable pipeline"}
               >
@@ -324,7 +344,7 @@ function createPipelineCardConfig({
                 deleteTitle="Delete pipeline?"
                 kebabMenuItems={kebabMenuItems}
               />
-            </div>
+            </Space>
           </div>
 
           {/* Row-based content */}
@@ -354,13 +374,20 @@ function createPipelineCardConfig({
 
             {/* NEXT RUN AT row (only if scheduled) */}
             {pipeline.next_run_time && (
-              <div className="card-list-field-row">
-                <span className="card-list-field-label">Next Run At</span>
-                <div className="card-list-field-value">
+              <Flex align="center" className="card-list-field-row">
+                <Typography.Text
+                  type="secondary"
+                  className="card-list-field-label"
+                >
+                  Next Run At
+                </Typography.Text>
+                <Space size={10} className="card-list-field-value">
                   <ScheduleOutlined />
-                  <span>{formattedDateTime(pipeline.next_run_time)}</span>
-                </div>
-              </div>
+                  <Typography.Text>
+                    {formattedDateTime(pipeline.next_run_time)}
+                  </Typography.Text>
+                </Space>
+              </Flex>
             )}
 
             <Last5RunsFieldRow
@@ -373,18 +400,28 @@ function createPipelineCardConfig({
           </div>
 
           {/* Footer: Schedule | Total Runs */}
-          <div className="card-list-footer-row">
-            <div className="card-list-footer-item">
+          <Flex align="center" gap={32} className="card-list-footer-row">
+            <Space size={10} className="card-list-footer-item">
               <CalendarOutlined />
-              <span className="card-list-footer-label">Schedule</span>
-              <span>{scheduleDisplay}</span>
-            </div>
-            <div className="card-list-footer-item">
+              <Typography.Text
+                type="secondary"
+                className="card-list-footer-label"
+              >
+                Schedule
+              </Typography.Text>
+              <Typography.Text>{scheduleDisplay}</Typography.Text>
+            </Space>
+            <Space size={10} className="card-list-footer-item">
               <SyncOutlined />
-              <span className="card-list-footer-label">Total Runs</span>
-              <span>{pipeline.run_count || 0}</span>
-            </div>
-          </div>
+              <Typography.Text
+                type="secondary"
+                className="card-list-footer-label"
+              >
+                Total Runs
+              </Typography.Text>
+              <Typography.Text>{pipeline.run_count || 0}</Typography.Text>
+            </Space>
+          </Flex>
 
           <ApiEndpointSection apiEndpoint={pipeline.api_endpoint} />
         </div>

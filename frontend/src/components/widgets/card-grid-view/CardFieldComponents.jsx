@@ -12,6 +12,7 @@ import {
 import {
   Avatar,
   Button,
+  Card,
   Dropdown,
   Flex,
   Popconfirm,
@@ -304,39 +305,41 @@ function ApiEndpointSection({ apiEndpoint }) {
 
   return (
     <div className="card-list-endpoint-wrapper">
-      <div className="card-list-endpoint-row">
-        <Typography.Text type="secondary" className="card-list-field-label">
-          API Endpoint
-        </Typography.Text>
-        <div className="card-list-endpoint-value">
-          <Tooltip title={apiEndpoint} overlayStyle={{ maxWidth: 500 }}>
-            {isValidUrl ? (
-              <Typography.Link
-                href={apiEndpoint}
-                target="_blank"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {shortenApiEndpoint(apiEndpoint)}
-              </Typography.Link>
-            ) : (
-              <Typography.Text>
-                {shortenApiEndpoint(apiEndpoint)}
-              </Typography.Text>
-            )}
-          </Tooltip>
-          <Tooltip title="Copy endpoint">
-            <Button
-              className="copy-btn-outlined"
-              icon={<CopyOutlined />}
-              size="small"
-              onClick={(e) => {
-                e.stopPropagation();
-                copyToClipboard(apiEndpoint);
-              }}
-            />
-          </Tooltip>
-        </div>
-      </div>
+      <Card size="small" className="card-list-endpoint-row">
+        <Flex align="center" gap={12}>
+          <Typography.Text type="secondary" className="card-list-field-label">
+            API Endpoint
+          </Typography.Text>
+          <div className="card-list-endpoint-value">
+            <Tooltip title={apiEndpoint} overlayStyle={{ maxWidth: 500 }}>
+              {isValidUrl ? (
+                <Typography.Link
+                  href={apiEndpoint}
+                  target="_blank"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {shortenApiEndpoint(apiEndpoint)}
+                </Typography.Link>
+              ) : (
+                <Typography.Text>
+                  {shortenApiEndpoint(apiEndpoint)}
+                </Typography.Text>
+              )}
+            </Tooltip>
+            <Tooltip title="Copy endpoint">
+              <Button
+                className="copy-btn-outlined"
+                icon={<CopyOutlined />}
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  copyToClipboard(apiEndpoint);
+                }}
+              />
+            </Tooltip>
+          </div>
+        </Flex>
+      </Card>
     </div>
   );
 }

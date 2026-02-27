@@ -6,7 +6,7 @@ import {
   NotificationOutlined,
   SyncOutlined,
 } from "@ant-design/icons";
-import { Switch, Tooltip } from "antd";
+import { Flex, Space, Switch, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
@@ -90,7 +90,7 @@ function createApiDeploymentCardConfig({
             title={deployment.display_name}
             description={deployment.description}
           >
-            <div className="card-list-actions">
+            <Space size={16} className="card-list-actions">
               <Tooltip
                 title={
                   deployment.is_active
@@ -116,7 +116,7 @@ function createApiDeploymentCardConfig({
                 deleteTitle="Delete API deployment?"
                 kebabMenuItems={kebabMenuItems}
               />
-            </div>
+            </Space>
           </CardHeaderRow>
 
           <div className="card-list-row-layout">
@@ -139,15 +139,18 @@ function createApiDeploymentCardConfig({
             />
           </div>
 
-          <div className="card-list-footer-row">
-            <div className="card-list-footer-item">
-              <span className="card-list-footer-label">Total Runs</span>
-              <div className="card-list-footer-value">
-                <SyncOutlined />
-                <span>{deployment.run_count || 0}</span>
-              </div>
-            </div>
-          </div>
+          <Flex align="center" gap={32} className="card-list-footer-row">
+            <Space size={10} className="card-list-footer-item">
+              <SyncOutlined />
+              <Typography.Text
+                type="secondary"
+                className="card-list-footer-label"
+              >
+                Total Runs
+              </Typography.Text>
+              <Typography.Text>{deployment.run_count || 0}</Typography.Text>
+            </Space>
+          </Flex>
 
           <ApiEndpointSection apiEndpoint={deployment.api_endpoint} />
         </div>

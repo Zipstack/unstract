@@ -91,19 +91,6 @@
   margin-top: 0;
 }
 
-.card-section-horizontal {
-  display: flex;
-  gap: 16px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.card-section-vertical {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
 .card-section-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -111,12 +98,6 @@
 }
 
 /* Card Fields */
-.card-field {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .card-field-icon {
   display: flex;
   align-items: center;
@@ -133,7 +114,6 @@
 }
 
 .card-field-content {
-  flex: 1;
   min-width: 0;
 }
 
@@ -268,12 +248,6 @@
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  .card-section-horizontal {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-
   .card-field {
     width: 100%;
   }
@@ -435,48 +409,6 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.status-badge.success {
-  background: #f6ffed;
-  color: #52c41a;
-  border: 1px solid #b7eb8f;
-}
-
-.status-badge.error {
-  background: #fff2f0;
-  color: #ff4d4f;
-  border: 1px solid #ffccc7;
-}
-
-.status-badge.executing {
-  background: #fffbe6;
-  color: #d48806;
-  border: 1px solid #ffe58f;
-}
-
-.status-badge.pending {
-  background: #fafafa;
-  color: #595959;
-  border: 1px solid #d9d9d9;
-}
-
-.status-badge.stopped {
-  background: #f5f5f5;
-  color: #595959;
-  border: 1px solid #d9d9d9;
-}
-
-.status-badge.unknown {
-  background: #fafafa;
-  color: #595959;
-  border: 1px solid #d9d9d9;
-}
-
-.status-badge.partial_success {
-  background: #fff7e6;
-  color: #fa8c16;
-  border: 1px solid #ffd591;
-}
-
 /* Clickable status badges - AntD Tag with click handler */
 .status-badge.status-badge-clickable,
 .status-badge.ant-tag.status-badge-clickable {
@@ -530,6 +462,11 @@
 .status-tooltip-hint {
   margin-top: 4px;
   opacity: 0.8;
+}
+
+/* Override antd Typography color inside dark tooltips */
+.status-tooltip-content .ant-typography {
+  color: inherit;
 }
 
 /* Meta row with label/value pattern - VERTICAL STACKING */
@@ -942,8 +879,7 @@
   background: #fff;
   color: rgba(0, 0, 0, 0.65);
   margin-left: 8px;
-  height: auto;
-  min-width: auto;
+  padding: 2px 6px;
 }
 
 .copy-btn-outlined:hover {
@@ -962,8 +898,6 @@
 
 /* Pagination Controls */
 .card-grid-pagination {
-  display: flex;
-  justify-content: flex-end;
   margin-top: 8px;
   padding: 16px 0;
 }
@@ -994,8 +928,6 @@
 
 /* Each field row: label left, value right */
 .card-list-field-row {
-  display: flex;
-  align-items: center;
   padding: 14px 0;
   border-bottom: 1px solid #f5f5f5;
 }
@@ -1017,28 +949,8 @@
 
 /* Value column with icon */
 .card-list-field-value {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 10px;
   font-size: 14px;
   color: rgba(0, 0, 0, 0.85);
-}
-
-/* Connector icon container */
-.card-list-field-icon {
-  width: 32px;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.card-list-field-icon img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
 }
 
 /* Small icons (anticons, meta icons) get same width as connector icons */
@@ -1072,20 +984,11 @@
 
 /* Footer row - inline items */
 .card-list-footer-row {
-  display: flex;
-  align-items: center;
-  gap: 32px;
   padding: 14px 16px 0px 16px;
   font-size: 14px;
   color: rgba(0, 0, 0, 0.85);
   border-top: 1px solid #f0f0f0;
   background: #fafafa;
-}
-
-.card-list-footer-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
 }
 
 /* Footer icons - same width treatment as field icons */
@@ -1108,17 +1011,6 @@
   letter-spacing: 0.3px;
 }
 
-.card-list-footer-value {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.card-list-footer-value .anticon {
-  font-size: 14px;
-  color: rgba(0, 0, 0, 0.55);
-}
-
 /* API Endpoint wrapper - grey background like footer */
 .card-list-endpoint-wrapper {
   padding: 16px;
@@ -1126,15 +1018,14 @@
   border-radius: 0 0 8px 8px;
 }
 
-/* API Endpoint row - white inner box */
-.card-list-endpoint-row {
-  display: flex;
-  align-items: center;
-  padding: 12px 16px;
-  background: #fff;
-  border: 1px solid #e8e8e8;
+/* API Endpoint row - antd Card provides border/bg/radius */
+.card-list-endpoint-row.ant-card {
+  border-color: #e8e8e8;
   border-radius: 6px;
-  gap: 12px;
+}
+
+.card-list-endpoint-row.ant-card .ant-card-body {
+  padding: 12px 16px;
 }
 
 .card-list-endpoint-row .card-list-field-label {
@@ -1225,11 +1116,6 @@
     font-size: 11px;
   }
 
-  .card-list-field-icon {
-    width: 24px;
-    height: 24px;
-  }
-
   .card-list-footer-row {
     flex-wrap: wrap;
     gap: 16px;
@@ -1239,8 +1125,8 @@
     padding: 12px;
   }
 
-  .card-list-endpoint-row {
-    flex-wrap: wrap;
+  .card-list-endpoint-row.ant-card .ant-card-body {
+    padding: 8px 12px;
   }
 }
 
