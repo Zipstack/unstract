@@ -122,3 +122,17 @@
 .sidebar-beta-tag {
   margin-left: 8px;
 }
+
+.sidebar-antd-icon {
+  font-size: 22px;
+  color: #b4c2cf;
+  width: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.space-styles-active .sidebar-antd-icon,
+.space-styles:hover .sidebar-antd-icon {
+  color: white;
+}

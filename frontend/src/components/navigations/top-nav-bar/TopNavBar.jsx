@@ -1,7 +1,4 @@
 import {
-  DownloadOutlined,
-  FileProtectOutlined,
-  LikeOutlined,
   LoginOutlined,
   LogoutOutlined,
   SettingOutlined,
@@ -28,7 +25,6 @@ import {
   getBaseUrl,
   homePagePath,
   onboardCompleted,
-  UNSTRACT_ADMIN,
 } from "../../../helpers/GetStaticData.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
@@ -142,8 +138,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
-  const [approverStatus, setApproverStatus] = useState(false);
-  const [reviewerStatus, setReviewerStatus] = useState(false);
   const [reviewPageHeader, setReviewPageHeader] = useState("");
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -162,7 +156,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 
@@ -189,15 +183,12 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     const { role } = sessionDetails;
     const isReviewer = role === "unstract_reviewer";
     const isSupervisor = role === "unstract_supervisor";
-    const isAdmin = role === UNSTRACT_ADMIN;
 
     setShowOnboardBanner(
       !onboardCompleted(sessionDetails?.adapters) &&
         !isReviewer &&
         !isSupervisor,
     );
-    setApproverStatus(isAdmin || isSupervisor);
-    setReviewerStatus(isReviewer);
   }, [sessionDetails]);
 
   // Determine review page header
@@ -310,54 +301,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       });
     }
 
-    // Review
-    if (isUnstract && !isSimpleLayout && (reviewerStatus || approverStatus)) {
-      menuItems.push({
-        key: "4",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <FileProtectOutlined /> Review
-          </Button>
-        ),
-      });
-    }
-
-    // Approve
-    if (isUnstract && !isSimpleLayout && approverStatus) {
-      menuItems.push({
-        key: "5",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review/approve`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <LikeOutlined /> Approve
-          </Button>
-        ),
-      });
-
-      menuItems.push({
-        key: "6",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/review/download_and_sync`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <DownloadOutlined /> Download and Sync Manager
-          </Button>
-        ),
-      });
-    }
-
     if (
       isUnstract &&
       UnstractPricingMenuLink &&
@@ -416,8 +359,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   }, [
     isUnstract,
     isSimpleLayout,
-    reviewerStatus,
-    approverStatus,
     allOrganization,
     cascadeOptions,
     orgName,
