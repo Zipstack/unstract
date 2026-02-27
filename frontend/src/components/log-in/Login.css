@@ -698,12 +698,14 @@
 }
 
 .default-light-headline {
-  font-size: 36px !important;
+  font-size: 43px !important;
   font-weight: 700 !important;
-  line-height: 1.2 !important;
+  line-height: 1.15 !important;
   text-align: center;
   margin-top: 0 !important;
   margin-bottom: 44px !important;
+  max-width: 615px;
+  width: 100%;
 }
 
 .default-light-headline-dark {
