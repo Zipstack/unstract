@@ -9,16 +9,24 @@ import {
   ShareAltOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Popconfirm, Space, Tooltip, Typography } from "antd";
-import { Link } from "react-router-dom";
+import {
+  Avatar,
+  Button,
+  Dropdown,
+  Flex,
+  Popconfirm,
+  Space,
+  Tooltip,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
-
+import { Link } from "react-router-dom";
+import WorkflowIcon from "../../../assets/Workflows.svg";
 import {
   copyToClipboard,
   formattedDateTime,
   shortenApiEndpoint,
 } from "../../../helpers/GetStaticData";
-import WorkflowIcon from "../../../assets/Workflows.svg";
 
 /**
  * Reusable action box with Edit, Share, Delete icons and kebab menu
@@ -114,15 +122,17 @@ function OwnerFieldRow({ item, sessionDetails }) {
   const ownerDisplay = isOwner ? "You" : email?.split("@")[0] || "Unknown";
 
   return (
-    <div className="card-list-field-row">
-      <span className="card-list-field-label">Owner</span>
-      <div className="card-list-field-value">
+    <Flex align="center" className="card-list-field-row">
+      <Typography.Text type="secondary" className="card-list-field-label">
+        Owner
+      </Typography.Text>
+      <Space size={10} className="card-list-field-value">
         <UserOutlined />
         <Tooltip title={email}>
-          <span>{ownerDisplay}</span>
+          <Typography.Text>{ownerDisplay}</Typography.Text>
         </Tooltip>
-      </div>
-    </div>
+      </Space>
+    </Flex>
   );
 }
 
@@ -137,13 +147,17 @@ OwnerFieldRow.propTypes = {
  */
 function LastRunFieldRow({ lastRunTime }) {
   return (
-    <div className="card-list-field-row">
-      <span className="card-list-field-label">Last Run</span>
-      <div className="card-list-field-value">
+    <Flex align="center" className="card-list-field-row">
+      <Typography.Text type="secondary" className="card-list-field-label">
+        Last Run
+      </Typography.Text>
+      <Space size={10} className="card-list-field-value">
         <ClockCircleOutlined />
-        <span>{lastRunTime ? formattedDateTime(lastRunTime) : "Never"}</span>
-      </div>
-    </div>
+        <Typography.Text>
+          {lastRunTime ? formattedDateTime(lastRunTime) : "Never"}
+        </Typography.Text>
+      </Space>
+    </Flex>
   );
 }
 
@@ -165,9 +179,11 @@ function Last5RunsFieldRow({
   if (!statuses?.length) return null;
 
   return (
-    <div className="card-list-field-row">
-      <span className="card-list-field-label">Last 5 Runs</span>
-      <div className="card-list-field-value">
+    <Flex align="center" className="card-list-field-row">
+      <Typography.Text type="secondary" className="card-list-field-label">
+        Last 5 Runs
+      </Typography.Text>
+      <Space size={10} className="card-list-field-value">
         <HistoryOutlined />
         <StatusPillsComponent
           statuses={statuses}
@@ -175,8 +191,8 @@ function Last5RunsFieldRow({
           pipelineId={itemId}
           listContext={listContext}
         />
-      </div>
-    </div>
+      </Space>
+    </Flex>
   );
 }
 
@@ -205,21 +221,37 @@ function WorkflowFieldRow({
   // Guard against undefined orgName to prevent malformed URLs
   if (!orgName) {
     return (
-      <div className="card-list-field-row">
-        <span className="card-list-field-label">Workflow</span>
-        <div className="card-list-field-value">
-          <img src={WorkflowIcon} alt="" className="card-list-meta-icon" />
-          <span className="card-list-workflow-link-row">{workflowName}</span>
-        </div>
-      </div>
+      <Flex align="center" className="card-list-field-row">
+        <Typography.Text type="secondary" className="card-list-field-label">
+          Workflow
+        </Typography.Text>
+        <Space size={10} className="card-list-field-value">
+          <Avatar
+            src={WorkflowIcon}
+            size={14}
+            shape="square"
+            className="card-list-meta-icon"
+          />
+          <Typography.Text className="card-list-workflow-link-row">
+            {workflowName}
+          </Typography.Text>
+        </Space>
+      </Flex>
     );
   }
 
   return (
-    <div className="card-list-field-row">
-      <span className="card-list-field-label">Workflow</span>
-      <div className="card-list-field-value">
-        <img src={WorkflowIcon} alt="" className="card-list-meta-icon" />
+    <Flex align="center" className="card-list-field-row">
+      <Typography.Text type="secondary" className="card-list-field-label">
+        Workflow
+      </Typography.Text>
+      <Space size={10} className="card-list-field-value">
+        <Avatar
+          src={WorkflowIcon}
+          size={14}
+          shape="square"
+          className="card-list-meta-icon"
+        />
         <Link
           to={`/${orgName}/workflows/${workflowId}`}
           state={{
@@ -235,8 +267,8 @@ function WorkflowFieldRow({
           {workflowName}
           <ExportOutlined />
         </Link>
-      </div>
-    </div>
+      </Space>
+    </Flex>
   );
 }
 
@@ -269,20 +301,23 @@ function ApiEndpointSection({ apiEndpoint }) {
   return (
     <div className="card-list-endpoint-wrapper">
       <div className="card-list-endpoint-row">
-        <span className="card-list-field-label">API Endpoint</span>
+        <Typography.Text type="secondary" className="card-list-field-label">
+          API Endpoint
+        </Typography.Text>
         <div className="card-list-endpoint-value">
           <Tooltip title={apiEndpoint} overlayStyle={{ maxWidth: 500 }}>
             {isValidUrl ? (
-              <a
+              <Typography.Link
                 href={apiEndpoint}
                 target="_blank"
-                rel="noopener noreferrer"
                 onClick={(e) => e.stopPropagation()}
               >
                 {shortenApiEndpoint(apiEndpoint)}
-              </a>
+              </Typography.Link>
             ) : (
-              <span>{shortenApiEndpoint(apiEndpoint)}</span>
+              <Typography.Text>
+                {shortenApiEndpoint(apiEndpoint)}
+              </Typography.Text>
             )}
           </Tooltip>
           <Tooltip title="Copy endpoint">
@@ -312,8 +347,12 @@ ApiEndpointSection.propTypes = {
  */
 function CardHeaderRow({ title, description, children }) {
   return (
-    <div className="card-list-header-row">
-      <div className="card-list-title-section">
+    <Flex
+      justify="space-between"
+      align="center"
+      className="card-list-header-row"
+    >
+      <Flex vertical gap={4} className="card-list-title-section">
         <Tooltip title={title}>
           <Typography.Text className="card-list-name" strong>
             {title}
@@ -324,9 +363,9 @@ function CardHeaderRow({ title, description, children }) {
             {description}
           </Typography.Text>
         )}
-      </div>
+      </Flex>
       {children}
-    </div>
+    </Flex>
   );
 }
 

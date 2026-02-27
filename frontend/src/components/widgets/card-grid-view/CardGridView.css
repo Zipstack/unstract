@@ -66,6 +66,7 @@
 }
 
 .card-item-subtitle {
+  display: block;
   font-size: 12px;
   color: rgba(0, 0, 0, 0.55);
   margin-top: 2px;
@@ -1139,14 +1140,16 @@
   gap: 8px;
 }
 
-.card-list-endpoint-value a {
+.card-list-endpoint-value a,
+.card-list-endpoint-value .ant-typography-link {
   color: rgba(0, 0, 0, 0.85);
   text-decoration: none;
   font-size: 13px;
   font-family: monospace;
 }
 
-.card-list-endpoint-value a:hover {
+.card-list-endpoint-value a:hover,
+.card-list-endpoint-value .ant-typography-link:hover {
   color: rgba(0, 0, 0, 0.85);
 }
 

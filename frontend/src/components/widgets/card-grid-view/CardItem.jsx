@@ -1,7 +1,7 @@
 import { DownOutlined, UpOutlined } from "@ant-design/icons";
-import { Button, Card, Tooltip, Typography } from "antd";
+import { Button, Card, Flex, Space, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
-import { useState, useCallback, useRef, useEffect, memo } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Individual card item renderer for CardGridView
@@ -67,7 +67,7 @@ function CardItem({
         setExpanded((prev) => !prev);
       }
     },
-    [item, config.expandable, onClick]
+    [item, config.expandable, onClick],
   );
 
   // Toggle handler for chevron expansion
@@ -78,7 +78,7 @@ function CardItem({
         setExpanded((prev) => !prev);
       }
     },
-    [config.expandable]
+    [config.expandable],
   );
 
   // Resolve value from config - handles both string keys and functions
@@ -149,7 +149,7 @@ function CardItem({
     if (!config.header?.actions?.length) return null;
 
     return (
-      <div className="card-item-actions">
+      <Space size={8} className="card-item-actions">
         {config.header.actions.map((action) => {
           if (action.visible !== undefined) {
             const isVisible =
@@ -162,20 +162,20 @@ function CardItem({
           // Custom render for action
           if (action.render) {
             return (
-              <div
+              <span
                 key={action.key}
                 className="card-action-wrapper"
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => e.stopPropagation()}
               >
                 {action.render(item)}
-              </div>
+              </span>
             );
           }
 
           return null;
         })}
-      </div>
+      </Space>
     );
   };
 
@@ -251,21 +251,26 @@ function CardItem({
       onClick={handleCardClick}
     >
       {/* Card Header */}
-      <div className="card-item-header">
-        <div className="card-item-title-section">
+      <Flex
+        justify="space-between"
+        align="flex-start"
+        gap={12}
+        className="card-item-header"
+      >
+        <Flex vertical className="card-item-title-section">
           <Tooltip title={title}>
             <Typography.Text className="card-item-title" strong>
               {title}
             </Typography.Text>
           </Tooltip>
           {subtitle && (
-            <div className="card-item-subtitle">
-              <Typography.Text type="secondary">{subtitle}</Typography.Text>
-            </div>
+            <Typography.Text type="secondary" className="card-item-subtitle">
+              {subtitle}
+            </Typography.Text>
           )}
-        </div>
+        </Flex>
         {renderActions()}
-      </div>
+      </Flex>
 
       {/* Card Sections */}
       {config.sections?.map(renderSection)}
@@ -291,7 +296,7 @@ CardItem.propTypes = {
           key: PropTypes.string.isRequired,
           render: PropTypes.func,
           visible: PropTypes.oneOfType([PropTypes.bool, PropTypes.func]),
-        })
+        }),
       ),
     }).isRequired,
     sections: PropTypes.arrayOf(
@@ -305,11 +310,11 @@ CardItem.propTypes = {
             icon: PropTypes.node,
             visible: PropTypes.oneOfType([PropTypes.bool, PropTypes.func]),
             className: PropTypes.string,
-          })
+          }),
         ).isRequired,
         layout: PropTypes.oneOf(["horizontal", "vertical", "grid"]),
         className: PropTypes.string,
-      })
+      }),
     ),
     expandable: PropTypes.bool,
     expandedContent: PropTypes.func,
