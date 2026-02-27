@@ -26,6 +26,14 @@
   position: relative;
 }
 
+@media (max-width: 768px) {
+  .login-right-section {
+    height: auto;
+    overflow-y: auto;
+    width: 100%;
+  }
+}
+
 .login-right-section.llm-whisperer-light {
   background: #ffffff;
   overflow: hidden;
@@ -835,6 +843,11 @@
   font-family: inherit;
 }
 
+.product-toggle-btn:focus-visible {
+  outline: 2px solid #2f93f6;
+  outline-offset: 2px;
+}
+
 .product-toggle-btn-active {
   background: #fff;
   color: #2f93f6;
@@ -894,6 +907,11 @@
   font-size: 18px;
   font-weight: 500;
   color: #545454;
+}
+
+.region-option:focus-visible .region-flag {
+  box-shadow: 0 0 0 3px #2f93f6;
+  outline: 2px solid transparent;
 }
 
 .region-radio-indicator {

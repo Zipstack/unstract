@@ -1,30 +1,90 @@
 import { Typography } from "antd";
-import anthropicLogo from "../../plugins/assets/llmWhisperer/Anthropic.svg";
-import azureGptLogo from "../../plugins/assets/llmWhisperer/Azure GPT.png";
-import llmG2Badge from "../../plugins/assets/llmWhisperer/G2-Badge.png";
-import gdprBadge from "../../plugins/assets/llmWhisperer/GDPR.webp";
-import gregCrisciPhoto from "../../plugins/assets/llmWhisperer/Greg Crisci.jpeg";
-import hipaaBadge from "../../plugins/assets/llmWhisperer/HIPAA-1.png.webp";
-import isoBadge from "../../plugins/assets/llmWhisperer/ISO-27001.png";
-import openAiLogo from "../../plugins/assets/llmWhisperer/OpenAI-icon.svg";
-import quoteIcon from "../../plugins/assets/llmWhisperer/quote-icon.svg";
-import soc2Badge from "../../plugins/assets/llmWhisperer/SOC2-Type-II.png";
-import statIconAccuracy from "../../plugins/assets/llmWhisperer/stat-icon-accuracy.svg";
-import statIconManual from "../../plugins/assets/llmWhisperer/stat-icon-manual.svg";
-import statIconTouchpoints from "../../plugins/assets/llmWhisperer/stat-icon-touchpoints.svg";
-import vertexAiLogo from "../../plugins/assets/llmWhisperer/Vertex AI.svg";
-import christopherVarnerPhoto from "../../plugins/assets/unstract/Christopher Varner.jpeg";
-import cybersoftLogo from "../../plugins/assets/unstract/cybersoft.png";
-import endpointClinicalLogo from "../../plugins/assets/unstract/endpoint-clinical.svg";
-import unstractG2BadgeNew from "../../plugins/assets/unstract/G2-Badge-new.png";
-import medaxionLogo from "../../plugins/assets/unstract/medaxion.svg";
-import moodysLogo from "../../plugins/assets/unstract/moodys.png";
-import unstractQuoteIcon from "../../plugins/assets/unstract/quote-icon.svg";
-import unstractStatIconAccuracy from "../../plugins/assets/unstract/stat-icon-accuracy.svg";
-import unstractStatIconEfficiency from "../../plugins/assets/unstract/stat-icon-efficiency.svg";
-import unstractStatIconStp from "../../plugins/assets/unstract/stat-icon-stp.svg";
 
-const DEFAULT_COMPLIANCE_BADGES = [
+// Load assets from plugins directory (available in cloud, gitignored in OSS)
+async function loadAsset(path) {
+  try {
+    const mod = await import(/* @vite-ignore */ path);
+    return mod.default;
+  } catch {
+    return "";
+  }
+}
+
+// LLMWhisperer assets
+const anthropicLogo = await loadAsset(
+  "../../plugins/assets/llmWhisperer/Anthropic.svg",
+);
+const azureGptLogo = await loadAsset(
+  "../../plugins/assets/llmWhisperer/Azure GPT.png",
+);
+const llmG2Badge = await loadAsset(
+  "../../plugins/assets/llmWhisperer/G2-Badge.png",
+);
+const gdprBadge = await loadAsset(
+  "../../plugins/assets/llmWhisperer/GDPR.webp",
+);
+const gregCrisciPhoto = await loadAsset(
+  "../../plugins/assets/llmWhisperer/Greg Crisci.jpeg",
+);
+const hipaaBadge = await loadAsset(
+  "../../plugins/assets/llmWhisperer/HIPAA-1.png.webp",
+);
+const isoBadge = await loadAsset(
+  "../../plugins/assets/llmWhisperer/ISO-27001.png",
+);
+const openAiLogo = await loadAsset(
+  "../../plugins/assets/llmWhisperer/OpenAI-icon.svg",
+);
+const quoteIcon = await loadAsset(
+  "../../plugins/assets/llmWhisperer/quote-icon.svg",
+);
+const soc2Badge = await loadAsset(
+  "../../plugins/assets/llmWhisperer/SOC2-Type-II.png",
+);
+const statIconAccuracy = await loadAsset(
+  "../../plugins/assets/llmWhisperer/stat-icon-accuracy.svg",
+);
+const statIconManual = await loadAsset(
+  "../../plugins/assets/llmWhisperer/stat-icon-manual.svg",
+);
+const statIconTouchpoints = await loadAsset(
+  "../../plugins/assets/llmWhisperer/stat-icon-touchpoints.svg",
+);
+const vertexAiLogo = await loadAsset(
+  "../../plugins/assets/llmWhisperer/Vertex AI.svg",
+);
+
+// Unstract assets
+const christopherVarnerPhoto = await loadAsset(
+  "../../plugins/assets/unstract/Christopher Varner.jpeg",
+);
+const cybersoftLogo = await loadAsset(
+  "../../plugins/assets/unstract/cybersoft.png",
+);
+const endpointClinicalLogo = await loadAsset(
+  "../../plugins/assets/unstract/endpoint-clinical.svg",
+);
+const unstractG2BadgeNew = await loadAsset(
+  "../../plugins/assets/unstract/G2-Badge-new.png",
+);
+const medaxionLogo = await loadAsset(
+  "../../plugins/assets/unstract/medaxion.svg",
+);
+const moodysLogo = await loadAsset("../../plugins/assets/unstract/moodys.png");
+const unstractQuoteIcon = await loadAsset(
+  "../../plugins/assets/unstract/quote-icon.svg",
+);
+const unstractStatIconAccuracy = await loadAsset(
+  "../../plugins/assets/unstract/stat-icon-accuracy.svg",
+);
+const unstractStatIconEfficiency = await loadAsset(
+  "../../plugins/assets/unstract/stat-icon-efficiency.svg",
+);
+const unstractStatIconStp = await loadAsset(
+  "../../plugins/assets/unstract/stat-icon-stp.svg",
+);
+
+const COMPLIANCE_BADGES = [
   { name: "SOC2 Type II", logo: soc2Badge },
   { name: "GDPR", logo: gdprBadge },
   { name: "ISO", logo: isoBadge },
@@ -32,14 +92,14 @@ const DEFAULT_COMPLIANCE_BADGES = [
   { name: "G2 Users Love Us", logo: unstractG2BadgeNew },
 ];
 
-const DEFAULT_TRUSTED_LOGOS = [
+const TRUSTED_LOGOS = [
   { name: "Moody's", logo: moodysLogo },
   { name: "Endpoint Clinical", logo: endpointClinicalLogo },
   { name: "Cybersoft", logo: cybersoftLogo },
   { name: "Medaxion", logo: medaxionLogo },
 ];
 
-const DEFAULT_LLM_PROVIDERS = [
+const LLM_PROVIDERS = [
   { name: "Anthropic", logo: anthropicLogo },
   { name: "Azure GPT", logo: azureGptLogo },
   { name: "OpenAI", logo: openAiLogo },
@@ -59,7 +119,7 @@ function ProductContentLayout() {
       </Typography.Title>
 
       <div className="default-light-badges-row">
-        {DEFAULT_COMPLIANCE_BADGES.map((badge) => (
+        {COMPLIANCE_BADGES.map((badge) => (
           <div key={badge.name} className="default-light-compliance-badge">
             <img
               src={badge.logo}
@@ -86,7 +146,7 @@ function ProductContentLayout() {
               Trusted by Enterprises
             </Typography.Text>
             <div className="default-light-card-logos">
-              {DEFAULT_TRUSTED_LOGOS.map((company) => (
+              {TRUSTED_LOGOS.map((company) => (
                 <img
                   key={company.name}
                   src={company.logo}
@@ -114,7 +174,7 @@ function ProductContentLayout() {
               Plays well with leading LLMs
             </Typography.Text>
             <div className="default-light-card-logos">
-              {DEFAULT_LLM_PROVIDERS.map((provider) => (
+              {LLM_PROVIDERS.map((provider) => (
                 <img
                   key={provider.name}
                   src={provider.logo}
@@ -129,13 +189,6 @@ function ProductContentLayout() {
     </div>
   );
 }
-
-const LLM_PROVIDERS = [
-  { name: "Anthropic", logo: anthropicLogo },
-  { name: "Azure GPT", logo: azureGptLogo },
-  { name: "OpenAI", logo: openAiLogo },
-  { name: "Vertex AI", logo: vertexAiLogo },
-];
 
 const LLM_STATS = [
   {
@@ -257,13 +310,6 @@ function LlmWhispererContent() {
   );
 }
 
-const TRUSTED_BY_LOGOS = [
-  { name: "Moody's", logo: moodysLogo },
-  { name: "Endpoint Clinical", logo: endpointClinicalLogo },
-  { name: "Cybersoft", logo: cybersoftLogo },
-  { name: "Medaxion", logo: medaxionLogo },
-];
-
 const UNSTRACT_STATS_LIGHT = [
   {
     value: "20x",
@@ -285,14 +331,6 @@ const UNSTRACT_STATS_LIGHT = [
   },
 ];
 
-const UNSTRACT_COMPLIANCE_BADGES = [
-  { name: "SOC2 Type II", logo: soc2Badge },
-  { name: "GDPR", logo: gdprBadge },
-  { name: "ISO", logo: isoBadge },
-  { name: "HIPAA", logo: hipaaBadge },
-  { name: "G2 Users Love Us", logo: unstractG2BadgeNew },
-];
-
 function UnstractContent() {
   return (
     <div className="unstract-light-content">
@@ -307,7 +345,7 @@ function UnstractContent() {
       </Typography.Title>
 
       <div className="unstract-light-badges-row">
-        {UNSTRACT_COMPLIANCE_BADGES.map((badge) => (
+        {COMPLIANCE_BADGES.map((badge) => (
           <div key={badge.name} className="unstract-light-compliance-badge">
             <img
               src={badge.logo}
@@ -380,7 +418,7 @@ function UnstractContent() {
           <span className="unstract-light-trusted-line" />
         </div>
         <div className="unstract-light-trusted-logos">
-          {TRUSTED_BY_LOGOS.map((company) => (
+          {TRUSTED_LOGOS.map((company) => (
             <div key={company.name} className="unstract-light-trusted-badge">
               <img
                 src={company.logo}
