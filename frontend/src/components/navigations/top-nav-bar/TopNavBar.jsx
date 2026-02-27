@@ -149,7 +149,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const handleException = useExceptionHandler();
   const location = useLocation();
 
-  if (selectedProductStore) {
+  if (selectedProductStore?.useSelectedProductStore) {
     selectedProduct = selectedProductStore.useSelectedProductStore(
       (state) => state?.selectedProduct,
     );

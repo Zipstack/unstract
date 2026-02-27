@@ -25,7 +25,8 @@ try {
     "../plugins/store/select-product-store.js"
   );
   const helperMod = await import("../plugins/llm-whisperer/helper");
-  PRODUCT_NAMES = helperMod.PRODUCT_NAMES;
+  // Guard against empty/missing module export
+  PRODUCT_NAMES = helperMod.PRODUCT_NAMES ?? {};
 } catch {
   // Ignore if hook not available
 }
