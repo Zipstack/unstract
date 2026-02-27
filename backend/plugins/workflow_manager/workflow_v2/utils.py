@@ -14,6 +14,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 logger = logging.getLogger(__name__)
 
+SECS_IN_DAY = 24 * 3600
+DEFAULT_HITL_TTL_SECONDS = 90 * SECS_IN_DAY  # 90 days
+
 
 class WorkflowUtil:
     """Utility class for workflow operations.
@@ -154,20 +157,21 @@ class WorkflowUtil:
         return False
 
     @staticmethod
-    def get_hitl_ttl_seconds(workflow: Workflow) -> int | None:
+    def get_hitl_ttl_seconds(workflow: Workflow) -> int:
         """Get TTL in seconds for HITL settings for a workflow.
 
         Args:
             workflow (Workflow): The workflow to get HITL TTL settings for.
 
         Returns:
-            int | None: TTL in seconds if set, None for unlimited TTL.
+            int: TTL in seconds. Defaults to 90 days (2160 hours).
         """
         try:
             from pluggable_apps.manual_review_v2.helper import (
                 get_hitl_ttl_seconds_by_workflow,
             )
 
-            return get_hitl_ttl_seconds_by_workflow(workflow)
+            ttl = get_hitl_ttl_seconds_by_workflow(workflow)
+            return ttl if ttl is not None else DEFAULT_HITL_TTL_SECONDS
         except ImportError:
-            return None
+            return DEFAULT_HITL_TTL_SECONDS
