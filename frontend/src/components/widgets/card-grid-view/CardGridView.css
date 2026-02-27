@@ -469,6 +469,15 @@
   color: inherit;
 }
 
+/* Preserve icon colors inside dark tooltip background */
+.status-tooltip-count.success .anticon {
+  color: #52c41a;
+}
+
+.status-tooltip-count.error .anticon {
+  color: #ff4242;
+}
+
 /* Meta row with label/value pattern - VERTICAL STACKING */
 .card-list-meta-row {
   display: flex;

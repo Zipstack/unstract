@@ -403,8 +403,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
             # Apply granularity-based grouping to cached records
-            from datetime import datetime
-
             trunc_funcs = {
                 Granularity.HOUR: lambda ts: ts.replace(
                     minute=0, second=0, microsecond=0

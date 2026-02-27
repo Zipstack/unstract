@@ -15,6 +15,7 @@ from utils.models.base_model import BaseModel
 
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
+from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
 
@@ -386,8 +387,6 @@ class WorkflowExecution(BaseModel):
             List of dicts with execution_id, status, timestamp, and file counts.
             Ordered oldest to newest (for left-to-right timeline display).
         """
-        from workflow_manager.file_execution.models import WorkflowFileExecution
-
         executions = cls.objects.filter(pipeline_id=pipeline_id).order_by("-created_at")[
             :limit
         ]

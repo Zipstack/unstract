@@ -16,6 +16,7 @@ from scheduler.helper import SchedulerHelper
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.serializers import AuditSerializer
 from unstract.connectors.connectorkit import Connectorkit
@@ -206,8 +207,6 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def get_last_5_run_statuses(self, instance: Pipeline) -> list[dict]:
         """Fetch the last 5 execution statuses with timestamps for this pipeline."""
-        from workflow_manager.workflow_v2.models.execution import WorkflowExecution
-
         return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
 
     def get_next_run_time(self, instance: Pipeline) -> str | None:
