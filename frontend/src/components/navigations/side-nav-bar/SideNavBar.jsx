@@ -1,4 +1,4 @@
-import { BranchesOutlined } from "@ant-design/icons";
+import { BranchesOutlined, FileProtectOutlined } from "@ant-design/icons";
 import {
   Divider,
   Image,
@@ -165,10 +165,83 @@ SettingsPopoverContent.propTypes = {
   navigate: PropTypes.func.isRequired,
 };
 
+const HITL_MENU_ITEMS = [
+  { key: "review", label: "Review", subPath: "/review" },
+  {
+    key: "approve",
+    label: "Approve",
+    subPath: "/review/approve",
+    supervisorOnly: true,
+  },
+  {
+    key: "download",
+    label: "Download & Sync",
+    subPath: "/review/download_and_sync",
+    supervisorOnly: true,
+  },
+];
+
+const getHITLMenuItems = (orgName, role) => {
+  const isSupervisorOrAdmin = [
+    "unstract_supervisor",
+    "unstract_admin",
+  ].includes(role);
+  return HITL_MENU_ITEMS.filter(
+    (item) => !item.supervisorOnly || isSupervisorOrAdmin,
+  ).map((item) => ({
+    key: item.key,
+    label: item.label,
+    path: `/${orgName}${item.subPath}`,
+  }));
+};
+
+const getActiveHITLKey = (orgName) => {
+  const currentPath = globalThis.location.pathname;
+  const base = `/${orgName}/review`;
+  if (currentPath.startsWith(`${base}/approve`)) {
+    return "approve";
+  }
+  if (currentPath.startsWith(`${base}/download_and_sync`)) {
+    return "download";
+  }
+  if (currentPath.startsWith(base)) {
+    return "review";
+  }
+  return "review";
+};
+
+const HITLPopoverContent = ({ orgName, role, navigate }) => {
+  const hitlMenuItems = getHITLMenuItems(orgName, role);
+  const currentActiveKey = getActiveHITLKey(orgName);
+
+  return (
+    <nav className="settings-sidebar-popover">
+      {hitlMenuItems.map((menuItem) => (
+        <button
+          key={menuItem.key}
+          type="button"
+          className={`settings-menu-item ${
+            currentActiveKey === menuItem.key ? "active" : ""
+          }`}
+          onClick={() => navigate(menuItem.path)}
+        >
+          {menuItem.label}
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+HITLPopoverContent.propTypes = {
+  orgName: PropTypes.string.isRequired,
+  role: PropTypes.string.isRequired,
+  navigate: PropTypes.func.isRequired,
+};
+
 const SideNavBar = ({ collapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, flags } = sessionDetails;
+  const { orgName, flags, role } = sessionDetails;
 
   try {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
@@ -385,6 +458,37 @@ const SideNavBar = ({ collapsed }) => {
     data[0]?.subMenu?.splice(1, 0, agenticMenuItem);
   }
 
+  // Add HITL Review section if plugin is available and user has HITL role
+  const isHITLRole = [
+    "unstract_reviewer",
+    "unstract_supervisor",
+    "unstract_admin",
+  ].includes(role);
+  if (manualReviewSettingsEnabled && isHITLRole && isUnstract) {
+    const hasReviewSection = data.some((item) => item.mainTitle === "REVIEW");
+    const settingsIndex = data.findIndex(
+      (item) => item.mainTitle === "SETTINGS",
+    );
+    if (!hasReviewSection && settingsIndex !== -1) {
+      data.splice(settingsIndex, 0, {
+        id: 2.5,
+        mainTitle: "REVIEW",
+        subMenu: [
+          {
+            id: 2.51,
+            title: "HITL",
+            description: "Human-in-the-loop document review",
+            isHITL: true,
+            path: `/${orgName}/review`,
+            active: globalThis.location.pathname.startsWith(
+              `/${orgName}/review`,
+            ),
+          },
+        ],
+      });
+    }
+  }
+
   const shouldDisableAll = useMemo(() => {
     if (
       !unstractSubscriptionPlan ||
@@ -423,6 +527,61 @@ const SideNavBar = ({ collapsed }) => {
               )}
               <Space direction="vertical" className="menu-item-body">
                 {item.subMenu.map((el) => {
+                  // HITL item has a hover menu
+                  if (el.isHITL) {
+                    const handleHITLClick = () => {
+                      if (!el.disable) {
+                        navigate(el.path);
+                      }
+                    };
+
+                    const hitlContent = (
+                      <Tooltip title={collapsed ? el.title : ""}>
+                        <Space
+                          className={`space-styles ${
+                            el.active ? "space-styles-active" : ""
+                          } ${el.disable ? "space-styles-disable" : ""}`}
+                          onClick={handleHITLClick}
+                        >
+                          <FileProtectOutlined className="sidebar-antd-icon" />
+                          {!collapsed && (
+                            <div>
+                              <Typography className="sidebar-item-text fs-14">
+                                {el.title}
+                              </Typography>
+                              <Typography className="sidebar-item-text fs-11">
+                                {el.description}
+                              </Typography>
+                            </div>
+                          )}
+                        </Space>
+                      </Tooltip>
+                    );
+
+                    if (el.disable) {
+                      return <div key={el.id}>{hitlContent}</div>;
+                    }
+
+                    return (
+                      <Popover
+                        key={el.id}
+                        content={
+                          <HITLPopoverContent
+                            orgName={orgName}
+                            role={role}
+                            navigate={navigate}
+                          />
+                        }
+                        trigger="hover"
+                        placement="rightTop"
+                        arrow={false}
+                        overlayClassName="settings-popover-overlay"
+                      >
+                        {hitlContent}
+                      </Popover>
+                    );
+                  }
+
                   // Platform item has a hover menu and click navigates to platform settings
                   if (el.id === 3.6) {
                     const handlePlatformClick = () => {
