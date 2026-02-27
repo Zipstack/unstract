@@ -10,6 +10,7 @@ unified interface.
 """
 
 import logging
+import threading
 import uuid
 from typing import Any
 from uuid import UUID
@@ -85,6 +86,11 @@ class InternalAPIClient(CachedAPIClientMixin):
     _shared_session = None
     _initialization_count = 0
 
+    # Task counter for periodic singleton reset (FR-3.2)
+    _task_counter: int = 0
+    _task_counter_lock: threading.Lock = threading.Lock()
+    _last_reset_time: float | None = None
+
     def __init__(self, config: WorkerConfig | None = None):
         """Initialize the facade with all specialized clients and caching.
 
@@ -126,6 +132,8 @@ class InternalAPIClient(CachedAPIClientMixin):
                 logger.info("Creating shared HTTP session (GIL-safe singleton pattern)")
             # Create the first base client to establish the session
             self.base_client = BaseAPIClient(self.config)
+            # The first client owns the session; reset_singleton() handles final cleanup
+            self.base_client._owns_session = False
             # Share the session for reuse (atomic assignment)
             InternalAPIClient._shared_session = self.base_client.session
             InternalAPIClient._shared_base_client = self.base_client
@@ -140,35 +148,35 @@ class InternalAPIClient(CachedAPIClientMixin):
             self.base_client.session = (
                 InternalAPIClient._shared_session
             )  # Use shared session
+            self.base_client._owns_session = False
+
+        # Helper to share session on a client
+        def _share_session(client: BaseAPIClient) -> None:
+            client.session.close()  # Close the freshly-created session
+            client.session = InternalAPIClient._shared_session
+            client._owns_session = False
 
         # Create specialized clients with shared session (outside lock for performance)
         self.execution_client = ExecutionAPIClient(self.config)
-        self.execution_client.session.close()
-        self.execution_client.session = InternalAPIClient._shared_session
+        _share_session(self.execution_client)
 
         self.workflow_client = WorkflowAPIClient()
-        self.workflow_client.session.close()
-        self.workflow_client.session = InternalAPIClient._shared_session
+        _share_session(self.workflow_client)
 
         self.file_client = FileAPIClient(self.config)
-        self.file_client.session.close()
-        self.file_client.session = InternalAPIClient._shared_session
+        _share_session(self.file_client)
 
         self.webhook_client = WebhookAPIClient(self.config)
-        self.webhook_client.session.close()
-        self.webhook_client.session = InternalAPIClient._shared_session
+        _share_session(self.webhook_client)
 
         self.organization_client = OrganizationAPIClient(self.config)
-        self.organization_client.session.close()
-        self.organization_client.session = InternalAPIClient._shared_session
+        _share_session(self.organization_client)
 
         self.tool_client = ToolAPIClient(self.config)
-        self.tool_client.session.close()
-        self.tool_client.session = InternalAPIClient._shared_session
+        _share_session(self.tool_client)
 
         self.usage_client = UsageAPIClient(self.config)
-        self.usage_client.session.close()
-        self.usage_client.session = InternalAPIClient._shared_session
+        _share_session(self.usage_client)
 
     def _initialize_core_clients_traditional(self) -> None:
         """Initialize clients the traditional way (for backward compatibility)."""
@@ -246,6 +254,60 @@ class InternalAPIClient(CachedAPIClientMixin):
             self.workflow_client.close()
             self.usage_client.close()
             logger.debug("Closed all InternalAPIClient sessions (traditional mode)")
+
+    @classmethod
+    def reset_singleton(cls):
+        """Reset shared singleton session state. Safe to call anytime.
+
+        Note: In thread/gevent/eventlet pools, this may close the session while
+        other threads have in-flight requests. The BaseAPIClient retry logic
+        handles transient connection errors from this race. For prefork pools,
+        this is a non-issue (one task per process).
+        """
+        if cls._shared_session is not None:
+            try:
+                cls._shared_session.close()
+            except Exception as e:
+                logger.warning("Failed to close shared session during reset: %s", e)
+            cls._shared_session = None
+            cls._shared_base_client = None
+            cls._initialization_count = 0
+            cls._task_counter = 0
+            logger.info("Reset InternalAPIClient singleton state")
+
+    @classmethod
+    def increment_task_counter(cls) -> None:
+        """Increment task counter and reset singleton if threshold reached.
+
+        Called via task_postrun signal after each task completes.
+        Uses a lock for thread safety in case threads/gevent/eventlet pools are used.
+        When singleton disabled (default), reset_singleton() is a no-op.
+        """
+        from shared.infrastructure.config.worker_config import WorkerConfig
+
+        threshold = WorkerConfig().singleton_reset_task_threshold
+        with cls._task_counter_lock:
+            cls._task_counter += 1
+            if threshold > 0 and cls._task_counter >= threshold:
+                import time
+
+                logger.info(
+                    "Task counter reached threshold (%d/%d), resetting singleton session",
+                    cls._task_counter,
+                    threshold,
+                )
+                cls.reset_singleton()
+                cls._last_reset_time = time.time()
+
+    @classmethod
+    def get_task_counter_info(cls) -> dict:
+        """Get task counter state for observability."""
+        return {
+            "task_counter": cls._task_counter,
+            "last_reset_time": cls._last_reset_time,
+            "shared_session_active": cls._shared_session is not None,
+            "initialization_count": cls._initialization_count,
+        }
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit with safe cleanup."""
