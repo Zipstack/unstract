@@ -12,12 +12,17 @@
   overflow: hidden;
 }
 
-/* Wrapper for scrollable content */
+/* Wrapper for scrollable content - scrollbar hidden but scrollable */
 .sidebar-content-wrapper {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.sidebar-content-wrapper::-webkit-scrollbar {
+  display: none;
 }
 
 /* Hide scrollbar when sidebar is collapsed */
