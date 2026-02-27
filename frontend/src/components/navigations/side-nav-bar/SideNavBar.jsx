@@ -5,6 +5,7 @@ import {
   Layout,
   Popover,
   Space,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -14,6 +15,7 @@ import { useNavigate } from "react-router-dom";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
+import DashboardIcon from "../../../assets/dashboard.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
@@ -117,10 +119,18 @@ const getSettingsMenuItems = (orgName) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
-  if (currentPath.includes("/settings/platform")) return "platform";
-  if (currentPath.includes("/users")) return "users";
-  if (currentPath.includes("/settings/triad")) return "triad";
-  if (currentPath.includes("/settings/review")) return "review";
+  if (currentPath.includes("/settings/platform")) {
+    return "platform";
+  }
+  if (currentPath.includes("/users")) {
+    return "users";
+  }
+  if (currentPath.includes("/settings/triad")) {
+    return "triad";
+  }
+  if (currentPath.includes("/settings/review")) {
+    return "review";
+  }
   return "platform";
 };
 
@@ -167,7 +177,7 @@ const SideNavBar = ({ collapsed }) => {
           (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 
@@ -318,9 +328,20 @@ const SideNavBar = ({ collapsed }) => {
     },
   ];
 
+  // Add dashboard/metrics menu items
   if (dashboardSideMenuItem) {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
+  // Add metrics dashboard menu item (available for both OSS and cloud)
+  unstractMenuItems[1].subMenu.unshift({
+    id: 2.0,
+    title: "Dashboard",
+    tag: "New",
+    description: "View platform usage metrics and analytics",
+    image: DashboardIcon,
+    path: `/${orgName}/metrics`,
+    active: globalThis.location.pathname.startsWith(`/${orgName}/metrics`),
+  });
 
   // If selectedProduct is verticals and menu is null, don't show any sidebar items
   const data =
@@ -340,7 +361,7 @@ const SideNavBar = ({ collapsed }) => {
 
   // Add Agentic Prompt Studio menu item if plugin is available and product is unstract
   if (agenticPromptStudioEnabled && isUnstract) {
-    data[0]?.subMenu?.splice(1, 0, {
+    const agenticMenuItem = {
       id: 1.2,
       title: "Agentic Prompt Studio",
       description: "Build and manage AI-powered extraction workflows",
@@ -349,7 +370,19 @@ const SideNavBar = ({ collapsed }) => {
       active: globalThis.location.pathname.startsWith(
         `/${orgName}/agentic-prompt-studio`,
       ),
-    });
+    };
+
+    // Add beta tag to title
+    agenticMenuItem.title = (
+      <>
+        {agenticMenuItem.title}
+        <Tag color="blue" className="sidebar-beta-tag">
+          BETA
+        </Tag>
+      </>
+    );
+
+    data[0]?.subMenu?.splice(1, 0, agenticMenuItem);
   }
 
   const shouldDisableAll = useMemo(() => {
@@ -470,8 +503,13 @@ const SideNavBar = ({ collapsed }) => {
                         />
                         {!collapsed && (
                           <div>
-                            <Typography className="sidebar-item-text fs-14">
+                            <Typography className="sidebar-item-text fs-14 sidebar-title-row">
                               {el.title}
+                              {el.tag && (
+                                <Tag color="blue" className="sidebar-item-tag">
+                                  {el.tag}
+                                </Tag>
+                              )}
                             </Typography>
                             <Typography className="sidebar-item-text fs-11">
                               {el.description}

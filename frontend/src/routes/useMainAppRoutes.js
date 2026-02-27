@@ -13,6 +13,7 @@ import { CustomTools } from "../pages/CustomTools.jsx";
 import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
+import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
@@ -187,6 +188,7 @@ function useMainAppRoutes() {
         )}
         <Route path="logs" element={<LogsPage />} />
         <Route path="logs/:type/:id/" element={<LogsPage />} />
+        <Route path="metrics" element={<MetricsDashboardPage />} />
         <Route
           path="settings/llms"
           element={<ToolsSettingsPage type="llm" />}
