@@ -1,6 +1,62 @@
 .side-bar {
   background-color: #0d3a63 !important;
+  overflow: hidden;
+  height: 100%;
+}
+
+/* Ant Design's internal wrapper - needs flex layout for scroll */
+.side-bar .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Wrapper for scrollable content - scrollbar hidden but scrollable */
+.sidebar-content-wrapper {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+
+.sidebar-content-wrapper::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hide scrollbar when sidebar is collapsed */
+.side-bar.ant-layout-sider-collapsed .sidebar-content-wrapper {
+  overflow-y: hidden;
+}
+
+/* Toggle container - fixed at bottom */
+.sidebar-toggle-container.ant-btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+  height: auto;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0;
+  flex-shrink: 0;
+  background: transparent;
+  width: 100%;
+}
+
+.sidebar-toggle-container.ant-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar-toggle-icon {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.sidebar-toggle-icon.pinned {
+  color: #1890ff;
 }
 
 .secondary-list-wrapper {
@@ -73,15 +129,6 @@
   color: white;
 }
 
-.sidebar-item-tag {
-  margin-left: 6px;
-  font-size: 10px;
-  line-height: 16px;
-  padding: 0 4px;
-  border-radius: 4px;
-  vertical-align: middle;
-}
-
 .slider-wrap {
   padding: 12px;
 }
@@ -112,27 +159,4 @@
 .sidebar-divider {
   background-color: rgba(255, 255, 255, 0.3);
   margin: 10px 0;
-}
-
-.sidebar-title-row {
-  display: flex;
-  align-items: center;
-}
-
-.sidebar-beta-tag {
-  margin-left: 8px;
-}
-
-.sidebar-antd-icon {
-  font-size: 22px;
-  color: #b4c2cf;
-  width: 25px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.space-styles-active .sidebar-antd-icon,
-.space-styles:hover .sidebar-antd-icon {
-  color: white;
 }

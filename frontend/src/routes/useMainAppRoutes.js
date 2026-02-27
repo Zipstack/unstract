@@ -87,7 +87,7 @@ try {
   const mod1 = await import("../plugins/onboard-product/OnboardProduct.jsx");
   OnboardProduct = mod1.OnboardProduct;
   const mod2 = await import("../plugins/llm-whisperer/helper.js");
-  PRODUCT_NAMES = mod2.PRODUCT_NAMES;
+  PRODUCT_NAMES = mod2.PRODUCT_NAMES ?? {};
 } catch {
   // Do nothing.
 }

@@ -143,7 +143,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const handleException = useExceptionHandler();
   const location = useLocation();
 
-  if (selectedProductStore) {
+  if (selectedProductStore?.useSelectedProductStore) {
     selectedProduct = selectedProductStore.useSelectedProductStore(
       (state) => state?.selectedProduct,
     );
@@ -156,8 +156,8 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (_error) {
-    // Do nothing
+  } catch {
+    // Plugin hook may throw during initialization
   }
 
   const shouldDisableRouting = useMemo(() => {
@@ -259,28 +259,34 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   // Build dropdown menu items
   const items = useMemo(() => {
-    const menuItems = [];
+    const handleLogin = () => {
+      const baseUrl = getBaseUrl();
+      const newURL = baseUrl + "/api/v1/login";
+      window.location.href = newURL;
+    };
 
-    // Profile
-    if (isUnstract && !isSimpleLayout) {
-      menuItems.push({
-        key: "1",
-        label: (
-          <Button
-            onClick={() => navigate(`/${orgName}/profile`)}
-            className="logout-button"
-            disabled={shouldDisableRouting}
-            type="text"
-          >
-            <UserOutlined /> Profile
-          </Button>
-        ),
-      });
-    }
+    const handleClick = isLoggedIn ? logout : handleLogin;
+    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const label = isLoggedIn ? "Logout" : "Login";
 
-    // Switch Organization
-    if (allOrganization?.length > 1) {
-      menuItems.push({
+    return [
+      // Profile
+      isUnstract &&
+        !isSimpleLayout && {
+          key: "1",
+          label: (
+            <Button
+              onClick={() => navigate(`/${orgName}/profile`)}
+              className="logout-button"
+              disabled={shouldDisableRouting}
+              type="text"
+            >
+              <UserOutlined /> Profile
+            </Button>
+          ),
+        },
+      // Switch Organization
+      allOrganization?.length > 1 && {
         key: "3",
         label: (
           <Dropdown
@@ -298,64 +304,45 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             </div>
           </Dropdown>
         ),
-      });
-    }
-
-    if (
+      },
+      // Pricing
       isUnstract &&
-      UnstractPricingMenuLink &&
-      sessionDetails?.isAdmin &&
-      !sessionDetails?.provider
-    ) {
-      menuItems.push({
-        key: "7",
-        label: <UnstractPricingMenuLink orgName={orgName} />,
-      });
-    }
-
-    // Custom Plans
-    if (isUnstract && isStaff && !isOpenSource) {
-      menuItems.push({
-        key: "8",
+        UnstractPricingMenuLink &&
+        sessionDetails?.isAdmin &&
+        !sessionDetails?.provider && {
+          key: "7",
+          label: <UnstractPricingMenuLink orgName={orgName} />,
+        },
+      // Custom Plans
+      isUnstract &&
+        isStaff &&
+        !isOpenSource && {
+          key: "8",
+          label: (
+            <Button
+              onClick={() => navigate(`/${orgName}/admin/custom-plans`)}
+              className="logout-button"
+              type="text"
+            >
+              <SettingOutlined /> Custom Plans
+            </Button>
+          ),
+        },
+      // Login/Logout
+      {
+        key: "2",
         label: (
           <Button
-            onClick={() => navigate(`/${orgName}/admin/custom-plans`)}
+            onClick={handleClick}
+            icon={icon}
             className="logout-button"
             type="text"
           >
-            <SettingOutlined /> Custom Plans
+            {label}
           </Button>
         ),
-      });
-    }
-
-    const handleLogin = () => {
-      const baseUrl = getBaseUrl();
-      const newURL = baseUrl + "/api/v1/login";
-      window.location.href = newURL;
-    };
-
-    // Logout
-
-    const handleClick = isLoggedIn ? logout : handleLogin;
-    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
-    const label = isLoggedIn ? "Logout" : "Login";
-
-    menuItems.push({
-      key: "2",
-      label: (
-        <Button
-          onClick={handleClick}
-          icon={icon}
-          className="logout-button"
-          type="text"
-        >
-          {label}
-        </Button>
-      ),
-    });
-
-    return menuItems.filter(Boolean); // remove any undefined items
+      },
+    ].filter(Boolean);
   }, [
     isUnstract,
     isSimpleLayout,

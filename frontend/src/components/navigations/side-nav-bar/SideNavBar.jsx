@@ -1,21 +1,20 @@
-import { BranchesOutlined, FileProtectOutlined } from "@ant-design/icons";
+import { BranchesOutlined, DoubleRightOutlined } from "@ant-design/icons";
 import {
+  Button,
   Divider,
   Image,
   Layout,
   Popover,
   Space,
-  Tag,
   Tooltip,
   Typography,
 } from "antd";
 import PropTypes from "prop-types";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
-import DashboardIcon from "../../../assets/dashboard.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
@@ -25,6 +24,10 @@ import TerminalIcon from "../../../assets/terminal.svg";
 import TextExtractorIcon from "../../../assets/text-extractor.svg";
 import VectorDbIcon from "../../../assets/vector-db.svg";
 import Workflows from "../../../assets/Workflows.svg";
+import {
+  getLocalStorageValue,
+  setLocalStorageValue,
+} from "../../../helpers/localStorage";
 import { useSessionStore } from "../../../store/session-store";
 
 import "./SideNavBar.css";
@@ -165,83 +168,52 @@ SettingsPopoverContent.propTypes = {
   navigate: PropTypes.func.isRequired,
 };
 
-const HITL_MENU_ITEMS = [
-  { key: "review", label: "Review", subPath: "/review" },
-  {
-    key: "approve",
-    label: "Approve",
-    subPath: "/review/approve",
-    supervisorOnly: true,
-  },
-  {
-    key: "download",
-    label: "Download & Sync",
-    subPath: "/review/download_and_sync",
-    supervisorOnly: true,
-  },
-];
-
-const getHITLMenuItems = (orgName, role) => {
-  const isSupervisorOrAdmin = [
-    "unstract_supervisor",
-    "unstract_admin",
-  ].includes(role);
-  return HITL_MENU_ITEMS.filter(
-    (item) => !item.supervisorOnly || isSupervisorOrAdmin,
-  ).map((item) => ({
-    key: item.key,
-    label: item.label,
-    path: `/${orgName}${item.subPath}`,
-  }));
-};
-
-const getActiveHITLKey = (orgName) => {
-  const currentPath = globalThis.location.pathname;
-  const base = `/${orgName}/review`;
-  if (currentPath.startsWith(`${base}/approve`)) {
-    return "approve";
-  }
-  if (currentPath.startsWith(`${base}/download_and_sync`)) {
-    return "download";
-  }
-  if (currentPath.startsWith(base)) {
-    return "review";
-  }
-  return "review";
-};
-
-const HITLPopoverContent = ({ orgName, role, navigate }) => {
-  const hitlMenuItems = getHITLMenuItems(orgName, role);
-  const currentActiveKey = getActiveHITLKey(orgName);
-
-  return (
-    <nav className="settings-sidebar-popover">
-      {hitlMenuItems.map((menuItem) => (
-        <button
-          key={menuItem.key}
-          type="button"
-          className={`settings-menu-item ${
-            currentActiveKey === menuItem.key ? "active" : ""
-          }`}
-          onClick={() => navigate(menuItem.path)}
-        >
-          {menuItem.label}
-        </button>
-      ))}
-    </nav>
-  );
-};
-
-HITLPopoverContent.propTypes = {
-  orgName: PropTypes.string.isRequired,
-  role: PropTypes.string.isRequired,
-  navigate: PropTypes.func.isRequired,
-};
-
-const SideNavBar = ({ collapsed }) => {
+const SideNavBar = ({ collapsed, setCollapsed }) => {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
-  const { orgName, flags, role } = sessionDetails;
+  const { orgName, flags } = sessionDetails;
+
+  const [isPinned, setIsPinned] = useState(() =>
+    getLocalStorageValue("sidebarPinned", false),
+  );
+  const collapseTimeoutRef = useRef(null);
+
+  const clearCollapseTimeout = () => {
+    if (collapseTimeoutRef.current) {
+      clearTimeout(collapseTimeoutRef.current);
+      collapseTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    setLocalStorageValue("sidebarPinned", isPinned);
+    if (isPinned) {
+      clearCollapseTimeout();
+      setCollapsed(false);
+    }
+    return clearCollapseTimeout;
+  }, [isPinned, setCollapsed]);
+
+  const handleMouseEnter = () => {
+    clearCollapseTimeout();
+    if (!isPinned) {
+      setCollapsed(false);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (!isPinned) {
+      collapseTimeoutRef.current = setTimeout(() => setCollapsed(true), 300);
+    }
+  };
+
+  const togglePin = () => {
+    const newPinned = !isPinned;
+    setIsPinned(newPinned);
+    if (newPinned) {
+      setCollapsed(false);
+    }
+  };
 
   try {
     if (unstractSubscriptionPlanStore?.useUnstractSubscriptionPlanStore) {
@@ -261,7 +233,7 @@ const SideNavBar = ({ collapsed }) => {
   }
 
   let menu;
-  if (sideMenu) {
+  if (sideMenu?.useSideMenu) {
     menu = sideMenu.useSideMenu();
   }
 
@@ -401,20 +373,9 @@ const SideNavBar = ({ collapsed }) => {
     },
   ];
 
-  // Add dashboard/metrics menu items
   if (dashboardSideMenuItem) {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
-  // Add metrics dashboard menu item (available for both OSS and cloud)
-  unstractMenuItems[1].subMenu.unshift({
-    id: 2.0,
-    title: "Dashboard",
-    tag: "New",
-    description: "View platform usage metrics and analytics",
-    image: DashboardIcon,
-    path: `/${orgName}/metrics`,
-    active: globalThis.location.pathname.startsWith(`/${orgName}/metrics`),
-  });
 
   // If selectedProduct is verticals and menu is null, don't show any sidebar items
   const data =
@@ -434,7 +395,7 @@ const SideNavBar = ({ collapsed }) => {
 
   // Add Agentic Prompt Studio menu item if plugin is available and product is unstract
   if (agenticPromptStudioEnabled && isUnstract) {
-    const agenticMenuItem = {
+    data[0]?.subMenu?.splice(1, 0, {
       id: 1.2,
       title: "Agentic Prompt Studio",
       description: "Build and manage AI-powered extraction workflows",
@@ -443,50 +404,7 @@ const SideNavBar = ({ collapsed }) => {
       active: globalThis.location.pathname.startsWith(
         `/${orgName}/agentic-prompt-studio`,
       ),
-    };
-
-    // Add beta tag to title
-    agenticMenuItem.title = (
-      <>
-        {agenticMenuItem.title}
-        <Tag color="blue" className="sidebar-beta-tag">
-          BETA
-        </Tag>
-      </>
-    );
-
-    data[0]?.subMenu?.splice(1, 0, agenticMenuItem);
-  }
-
-  // Add HITL Review section if plugin is available and user has HITL role
-  const isHITLRole = [
-    "unstract_reviewer",
-    "unstract_supervisor",
-    "unstract_admin",
-  ].includes(role);
-  if (manualReviewSettingsEnabled && isHITLRole && isUnstract) {
-    const hasReviewSection = data.some((item) => item.mainTitle === "REVIEW");
-    const settingsIndex = data.findIndex(
-      (item) => item.mainTitle === "SETTINGS",
-    );
-    if (!hasReviewSection && settingsIndex !== -1) {
-      data.splice(settingsIndex, 0, {
-        id: 2.5,
-        mainTitle: "REVIEW",
-        subMenu: [
-          {
-            id: 2.51,
-            title: "HITL",
-            description: "Human-in-the-loop document review",
-            isHITL: true,
-            path: `/${orgName}/review`,
-            active: globalThis.location.pathname.startsWith(
-              `/${orgName}/review`,
-            ),
-          },
-        ],
-      });
-    }
+    });
   }
 
   const shouldDisableAll = useMemo(() => {
@@ -501,8 +419,8 @@ const SideNavBar = ({ collapsed }) => {
     return unstractSubscriptionPlan?.remainingDays < 0;
   }, [unstractSubscriptionPlan, isUnstract]);
 
-  data.forEach((mainMenuItem) => {
-    mainMenuItem.subMenu.forEach((subMenuItem) => {
+  data?.forEach((mainMenuItem) => {
+    mainMenuItem?.subMenu?.forEach((subMenuItem) => {
       subMenuItem.disable = shouldDisableAll;
     });
   });
@@ -515,88 +433,98 @@ const SideNavBar = ({ collapsed }) => {
       className="side-bar"
       width={240}
       collapsedWidth={65}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
-      <div className="main-slider">
-        <div className="slider-wrap">
-          {data?.map((item, index) => (
-            <div key={item?.id}>
-              {!collapsed && (
-                <Typography className="sidebar-main-heading">
-                  {item.mainTitle}
-                </Typography>
-              )}
-              <Space direction="vertical" className="menu-item-body">
-                {item.subMenu.map((el) => {
-                  // HITL item has a hover menu
-                  if (el.isHITL) {
-                    const handleHITLClick = () => {
-                      if (!el.disable) {
-                        navigate(el.path);
+      <div className="sidebar-content-wrapper">
+        <div className="main-slider">
+          <div className="slider-wrap">
+            {data?.map((item, index) => (
+              <div key={item?.id}>
+                {!collapsed && (
+                  <Typography className="sidebar-main-heading">
+                    {item?.mainTitle}
+                  </Typography>
+                )}
+                <Space direction="vertical" className="menu-item-body">
+                  {item?.subMenu?.map((el) => {
+                    // Platform item has a hover menu and click navigates to platform settings
+                    if (el.id === 3.6) {
+                      const handlePlatformClick = () => {
+                        if (!el.disable) {
+                          navigate(el.path);
+                        }
+                      };
+
+                      const platformContent = (
+                        <Tooltip title={collapsed ? el.title : ""}>
+                          <Space
+                            className={`space-styles ${
+                              el.active ? "space-styles-active" : ""
+                            } ${el.disable ? "space-styles-disable" : ""}`}
+                            onClick={handlePlatformClick}
+                            data-testid={`sidebar-${el.title
+                              ?.toLowerCase()
+                              ?.replaceAll(/\s+/g, "-")}`}
+                          >
+                            <Image
+                              src={el.image}
+                              alt="side_icon"
+                              className="menu-item-icon"
+                              preview={false}
+                            />
+                            {!collapsed && (
+                              <div>
+                                <Typography className="sidebar-item-text fs-14">
+                                  {el.title}
+                                </Typography>
+                                <Typography className="sidebar-item-text fs-11">
+                                  {el.description}
+                                </Typography>
+                              </div>
+                            )}
+                          </Space>
+                        </Tooltip>
+                      );
+
+                      // Don't show popover when disabled
+                      if (el.disable) {
+                        return <div key={el.id}>{platformContent}</div>;
                       }
-                    };
 
-                    const hitlContent = (
-                      <Tooltip title={collapsed ? el.title : ""}>
-                        <Space
-                          className={`space-styles ${
-                            el.active ? "space-styles-active" : ""
-                          } ${el.disable ? "space-styles-disable" : ""}`}
-                          onClick={handleHITLClick}
+                      return (
+                        <Popover
+                          key={el.id}
+                          content={
+                            <SettingsPopoverContent
+                              orgName={orgName}
+                              navigate={navigate}
+                            />
+                          }
+                          trigger="hover"
+                          placement="rightTop"
+                          arrow={false}
+                          overlayClassName="settings-popover-overlay"
                         >
-                          <FileProtectOutlined className="sidebar-antd-icon" />
-                          {!collapsed && (
-                            <div>
-                              <Typography className="sidebar-item-text fs-14">
-                                {el.title}
-                              </Typography>
-                              <Typography className="sidebar-item-text fs-11">
-                                {el.description}
-                              </Typography>
-                            </div>
-                          )}
-                        </Space>
-                      </Tooltip>
-                    );
-
-                    if (el.disable) {
-                      return <div key={el.id}>{hitlContent}</div>;
+                          {platformContent}
+                        </Popover>
+                      );
                     }
 
                     return (
-                      <Popover
-                        key={el.id}
-                        content={
-                          <HITLPopoverContent
-                            orgName={orgName}
-                            role={role}
-                            navigate={navigate}
-                          />
-                        }
-                        trigger="hover"
-                        placement="rightTop"
-                        arrow={false}
-                        overlayClassName="settings-popover-overlay"
-                      >
-                        {hitlContent}
-                      </Popover>
-                    );
-                  }
-
-                  // Platform item has a hover menu and click navigates to platform settings
-                  if (el.id === 3.6) {
-                    const handlePlatformClick = () => {
-                      if (!el.disable) {
-                        navigate(el.path);
-                      }
-                    };
-
-                    const platformContent = (
-                      <Tooltip title={collapsed ? el.title : ""}>
+                      <Tooltip key={el.id} title={collapsed ? el.title : ""}>
                         <Space
                           className={`space-styles ${
                             el.active ? "space-styles-active" : ""
                           } ${el.disable ? "space-styles-disable" : ""}`}
-                          onClick={handlePlatformClick}
+                          onClick={() => {
+                            if (!el.disable) {
+                              navigate(el.path);
+                            }
+                          }}
+                          data-testid={`sidebar-${el.title
+                            ?.toLowerCase()
+                            ?.replaceAll(/\s+/g, "-")}`}
                         >
                           <Image
                             src={el.image}
@@ -617,82 +545,37 @@ const SideNavBar = ({ collapsed }) => {
                         </Space>
                       </Tooltip>
                     );
-
-                    // Don't show popover when disabled
-                    if (el.disable) {
-                      return <div key={el.id}>{platformContent}</div>;
-                    }
-
-                    return (
-                      <Popover
-                        key={el.id}
-                        content={
-                          <SettingsPopoverContent
-                            orgName={orgName}
-                            navigate={navigate}
-                          />
-                        }
-                        trigger="hover"
-                        placement="rightTop"
-                        arrow={false}
-                        overlayClassName="settings-popover-overlay"
-                      >
-                        {platformContent}
-                      </Popover>
-                    );
-                  }
-
-                  return (
-                    <Tooltip key={el.id} title={collapsed ? el.title : ""}>
-                      <Space
-                        className={`space-styles ${
-                          el.active ? "space-styles-active" : ""
-                        } ${el.disable ? "space-styles-disable" : ""}`}
-                        onClick={() => {
-                          if (!el.disable) {
-                            navigate(el.path);
-                          }
-                        }}
-                      >
-                        <Image
-                          src={el.image}
-                          alt="side_icon"
-                          className="menu-item-icon"
-                          preview={false}
-                        />
-                        {!collapsed && (
-                          <div>
-                            <Typography className="sidebar-item-text fs-14 sidebar-title-row">
-                              {el.title}
-                              {el.tag && (
-                                <Tag color="blue" className="sidebar-item-tag">
-                                  {el.tag}
-                                </Tag>
-                              )}
-                            </Typography>
-                            <Typography className="sidebar-item-text fs-11">
-                              {el.description}
-                            </Typography>
-                          </div>
-                        )}
-                      </Space>
-                    </Tooltip>
-                  );
-                })}
-              </Space>
-              {index < data.length - 1 && (
-                <Divider className="sidebar-divider" />
-              )}
-            </div>
-          ))}
+                  })}
+                </Space>
+                {index < data.length - 1 && (
+                  <Divider className="sidebar-divider" />
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+      {!collapsed && (
+        <Button
+          type="text"
+          className="sidebar-toggle-container"
+          onClick={togglePin}
+          aria-pressed={isPinned}
+          aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar"}
+          icon={
+            <DoubleRightOutlined
+              className={`sidebar-toggle-icon${isPinned ? " pinned" : ""}`}
+            />
+          }
+        />
+      )}
     </Sider>
   );
 };
 
 SideNavBar.propTypes = {
   collapsed: PropTypes.bool.isRequired,
+  setCollapsed: PropTypes.func.isRequired,
 };
 
 export default SideNavBar;
