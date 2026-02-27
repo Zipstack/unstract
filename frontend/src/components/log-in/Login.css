@@ -691,7 +691,7 @@
   align-items: center;
   padding: 40px 36px;
   width: 100%;
-  max-width: 620px;
+  max-width: 635px;
   justify-content: center;
   position: relative;
   z-index: 1;
@@ -704,6 +704,8 @@
   text-align: center;
   margin-top: 0 !important;
   margin-bottom: 44px !important;
+  max-width: 635px;
+  width: 100%;
 }
 
 .default-light-headline-dark {
