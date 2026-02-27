@@ -1,8 +1,4 @@
-import {
-  BranchesOutlined,
-  DoubleLeftOutlined,
-  DoubleRightOutlined,
-} from "@ant-design/icons";
+import { BranchesOutlined, DoubleRightOutlined } from "@ant-design/icons";
 import {
   Button,
   Divider,
@@ -559,22 +555,20 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           </div>
         </div>
       </div>
-      <Tooltip title={isPinned ? "Collapse sidebar" : "Keep expanded"}>
+      {!collapsed && (
         <Button
           type="text"
           className="sidebar-toggle-container"
           onClick={togglePin}
           aria-pressed={isPinned}
-          aria-label={isPinned ? "Collapse sidebar" : "Keep expanded"}
+          aria-label={isPinned ? "Unpin sidebar" : "Pin sidebar"}
           icon={
-            isPinned ? (
-              <DoubleLeftOutlined className="sidebar-toggle-icon" />
-            ) : (
-              <DoubleRightOutlined className="sidebar-toggle-icon" />
-            )
+            <DoubleRightOutlined
+              className={`sidebar-toggle-icon${isPinned ? " pinned" : ""}`}
+            />
           }
         />
-      </Tooltip>
+      )}
     </Sider>
   );
 };
