@@ -25,8 +25,8 @@
   overflow-y: hidden;
 }
 
-/* Pin container - fixed at bottom, centered */
-.sidebar-pin-container.ant-btn {
+/* Toggle container - fixed at bottom */
+.sidebar-toggle-container.ant-btn {
   display: flex;
   justify-content: center;
   align-items: center;
@@ -40,22 +40,18 @@
   width: 100%;
 }
 
-.sidebar-pin-container.ant-btn:hover {
+.sidebar-toggle-container.ant-btn:hover {
   background: rgba(255, 255, 255, 0.1);
 }
 
-.sidebar-pin-icon {
+.sidebar-toggle-icon {
   color: rgba(255, 255, 255, 0.6);
-  font-size: 16px;
+  font-size: 14px;
   transition: color 0.2s;
 }
 
-.sidebar-pin-icon:hover {
+.sidebar-toggle-container.ant-btn:hover .sidebar-toggle-icon {
   color: white;
-}
-
-.sidebar-pin-icon.pinned {
-  color: #1890ff;
 }
 
 .secondary-list-wrapper {

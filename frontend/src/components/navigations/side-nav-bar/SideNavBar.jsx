@@ -1,7 +1,7 @@
 import {
   BranchesOutlined,
-  PushpinFilled,
-  PushpinOutlined,
+  DoubleLeftOutlined,
+  DoubleRightOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -237,7 +237,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
   }
 
   let menu;
-  if (sideMenu) {
+  if (sideMenu?.useSideMenu) {
     menu = sideMenu.useSideMenu();
   }
 
@@ -559,18 +559,18 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           </div>
         </div>
       </div>
-      <Tooltip title={isPinned ? "Unpin sidebar" : "Keep expanded"}>
+      <Tooltip title={isPinned ? "Collapse sidebar" : "Keep expanded"}>
         <Button
           type="text"
-          className="sidebar-pin-container"
+          className="sidebar-toggle-container"
           onClick={togglePin}
           aria-pressed={isPinned}
-          aria-label={isPinned ? "Unpin sidebar" : "Keep expanded"}
+          aria-label={isPinned ? "Collapse sidebar" : "Keep expanded"}
           icon={
             isPinned ? (
-              <PushpinFilled className="sidebar-pin-icon pinned" />
+              <DoubleLeftOutlined className="sidebar-toggle-icon" />
             ) : (
-              <PushpinOutlined className="sidebar-pin-icon" />
+              <DoubleRightOutlined className="sidebar-toggle-icon" />
             )
           }
         />
