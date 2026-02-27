@@ -167,8 +167,18 @@ SettingsPopoverContent.propTypes = {
 
 const HITL_MENU_ITEMS = [
   { key: "review", label: "Review", subPath: "/review" },
-  { key: "approve", label: "Approve", subPath: "/review/approve", supervisorOnly: true },
-  { key: "download", label: "Download & Sync", subPath: "/review/download_and_sync", supervisorOnly: true },
+  {
+    key: "approve",
+    label: "Approve",
+    subPath: "/review/approve",
+    supervisorOnly: true,
+  },
+  {
+    key: "download",
+    label: "Download & Sync",
+    subPath: "/review/download_and_sync",
+    supervisorOnly: true,
+  },
 ];
 
 const getHITLMenuItems = (orgName, role) => {
@@ -176,17 +186,27 @@ const getHITLMenuItems = (orgName, role) => {
     "unstract_supervisor",
     "unstract_admin",
   ].includes(role);
-  return HITL_MENU_ITEMS
-    .filter((item) => !item.supervisorOnly || isSupervisorOrAdmin)
-    .map((item) => ({ key: item.key, label: item.label, path: `/${orgName}${item.subPath}` }));
+  return HITL_MENU_ITEMS.filter(
+    (item) => !item.supervisorOnly || isSupervisorOrAdmin,
+  ).map((item) => ({
+    key: item.key,
+    label: item.label,
+    path: `/${orgName}${item.subPath}`,
+  }));
 };
 
 const getActiveHITLKey = (orgName) => {
   const currentPath = globalThis.location.pathname;
   const base = `/${orgName}/review`;
-  if (currentPath.startsWith(`${base}/approve`)) return "approve";
-  if (currentPath.startsWith(`${base}/download_and_sync`)) return "download";
-  if (currentPath.startsWith(base)) return "review";
+  if (currentPath.startsWith(`${base}/approve`)) {
+    return "approve";
+  }
+  if (currentPath.startsWith(`${base}/download_and_sync`)) {
+    return "download";
+  }
+  if (currentPath.startsWith(base)) {
+    return "review";
+  }
   return "review";
 };
 
@@ -445,11 +465,9 @@ const SideNavBar = ({ collapsed }) => {
     "unstract_admin",
   ].includes(role);
   if (manualReviewSettingsEnabled && isHITLRole && isUnstract) {
-    const hasReviewSection = data.some(
-      (item) => item.mainTitle === "REVIEW",
-    );
+    const hasReviewSection = data.some((item) => item.mainTitle === "REVIEW");
     const settingsIndex = data.findIndex(
-      (item) => item.mainTitle === "SETTINGS"
+      (item) => item.mainTitle === "SETTINGS",
     );
     if (!hasReviewSection && settingsIndex !== -1) {
       data.splice(settingsIndex, 0, {
@@ -463,7 +481,7 @@ const SideNavBar = ({ collapsed }) => {
             isHITL: true,
             path: `/${orgName}/review`,
             active: globalThis.location.pathname.startsWith(
-              `/${orgName}/review`
+              `/${orgName}/review`,
             ),
           },
         ],

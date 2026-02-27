@@ -156,7 +156,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
           (state) => state?.unstractSubscriptionPlan,
         );
     }
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 
