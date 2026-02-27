@@ -112,6 +112,14 @@ help = "Runs the Unstract backend (Gunicorn)"
 cmd = "uv run manage.py migrate"
 help = "Performs DB migrations for Unstract backend"
 
+[tool.poe.tasks.worker-metrics]
+cmd = "celery -A backend worker --loglevel=info -Q dashboard_metric_events --autoscale 4,1"
+help = "Runs the Unstract dashboard metrics worker"
+
+[tool.poe.tasks.flower]
+cmd = "celery -A backend flower --port=5555"
+help = "Runs the Unstract Celery Monitoring Tool"
+
 [tool.poe.tasks.beat]
 cmd = "celery -A backend beat --loglevel=info"
 help = "Runs the Unstract Celery Beat service"

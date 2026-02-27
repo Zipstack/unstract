@@ -18,7 +18,7 @@ try {
   );
   const commonMod = await import("../../../plugins/helpers/common");
   SELECTED_PRODUCT = commonMod.SELECTED_PRODUCT;
-  PRODUCT_NAMES = commonMod.PRODUCT_NAMES;
+  PRODUCT_NAMES = commonMod.PRODUCT_NAMES ?? {};
 } catch {
   // Ignore if hook not available
 }
@@ -40,8 +40,8 @@ function PersistentLogin() {
         (state) => state?.setSelectedProduct,
       );
     }
-  } catch (error) {
-    // Do nothing
+  } catch {
+    // Plugin hook may throw during initialization
   }
 
   useEffect(() => {

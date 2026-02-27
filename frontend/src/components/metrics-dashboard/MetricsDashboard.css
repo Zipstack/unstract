@@ -1,0 +1,318 @@
+/* Metrics Dashboard Styles */
+
+.metrics-dashboard {
+  padding: 24px;
+  background: #f5f5f5;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+}
+
+/* Topbar - Full width covering entire space */
+.metrics-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: -24px -24px 20px -24px;
+  padding: 12px 24px;
+  background: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.metrics-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.metrics-topbar-icon {
+  font-size: 20px;
+  color: #1890ff;
+}
+
+.metrics-topbar-left h4 {
+  font-weight: 600;
+  color: #262626;
+}
+
+.metrics-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metrics-header-button {
+  padding: 0px 4px;
+}
+
+.metrics-error {
+  margin-bottom: 16px;
+}
+
+/* Summary Cards - Matching Reference Design */
+.metrics-summary {
+  margin-bottom: 24px;
+}
+
+.summary-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border-radius: 12px;
+  height: 100%;
+  min-height: 90px;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.summary-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.summary-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex-shrink: 0;
+}
+
+.summary-card-icon span {
+  font-size: 24px;
+}
+
+.summary-card-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.summary-card-label {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.summary-card-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #1a1a1a;
+  line-height: 1.2;
+}
+
+.summary-card-suffix {
+  font-size: 16px;
+  font-weight: 500;
+  color: #666;
+}
+
+/* Chart Card */
+.chart-card .ant-card-head-title {
+  font-weight: 600;
+}
+
+.metric-card {
+  height: 100%;
+  border-radius: 8px;
+  transition: box-shadow 0.3s ease;
+}
+
+.metric-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.metric-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.metric-icon {
+  font-size: 16px;
+}
+
+.metric-count {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* Loading State */
+.metrics-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+  min-height: 200px;
+}
+
+.metrics-empty {
+  padding: 40px;
+}
+
+/* Chart Components */
+.metrics-chart-card {
+  height: 100%;
+}
+
+.chart-container {
+  width: 100%;
+  min-height: 280px;
+}
+
+/* Chart Tooltip */
+.metrics-chart-tooltip {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e8e8e8;
+  border-radius: 4px;
+  padding: 10px 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.metrics-chart-tooltip .tooltip-label {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: #262626;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 6px;
+}
+
+.metrics-chart-tooltip p {
+  margin: 4px 0;
+  font-size: 13px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .metrics-topbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin: -16px -16px 16px -16px;
+    padding: 12px 16px;
+  }
+
+  .metrics-topbar-left {
+    justify-content: center;
+  }
+
+  .metrics-topbar-right {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .metrics-dashboard {
+    padding: 16px;
+  }
+}
+
+/* Period Info */
+.period-info {
+  margin-bottom: 16px;
+  padding: 12px;
+  background: white;
+  border-radius: 6px;
+}
+
+/* Recent Activity Styles */
+.recent-activity-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.recent-activity-item {
+  padding: 10px 0 !important;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.recent-activity-item:last-child {
+  border-bottom: none;
+}
+
+.recent-activity-content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+}
+
+.recent-activity-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.recent-activity-type {
+  display: flex;
+  align-items: center;
+  font-size: 13px;
+}
+
+.recent-activity-file {
+  font-size: 13px;
+  color: #595959;
+  max-width: 100%;
+}
+
+.recent-activity-meta {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.recent-activity-info {
+  font-size: 11px;
+  color: #8c8c8c;
+  cursor: help;
+}
+
+.recent-activity-time {
+  font-size: 12px;
+}
+
+/* LLM Usage Table */
+.llm-usage-card .ant-card-body {
+  padding: 0;
+}
+
+.llm-usage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.llm-usage-title {
+  font-size: 16px;
+  color: #262626;
+}
+
+.llm-usage-table .ant-table-thead > tr > th {
+  background: #fafafa;
+  color: #595959;
+  font-weight: 600;
+  font-size: 13px;
+  border-bottom: 2px solid #f0f0f0;
+}
+
+.llm-usage-table .ant-table-tbody > tr > td {
+  color: #434343;
+  font-size: 14px;
+}
+
+.llm-usage-table .ant-table-tbody > tr:hover > td {
+  background: #f5f7fa;
+}
+
+.llm-usage-table .ant-table-tbody > tr > td:not(:first-child) {
+  font-variant-numeric: tabular-nums;
+}
