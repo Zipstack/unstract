@@ -44,7 +44,7 @@ function optionalPluginImports() {
     },
     load(id) {
       if (id === EMPTY_MODULE_ID) {
-        return "export default undefined;";
+        return "throw new Error('Optional plugin not available');";
       }
       return null;
     },
