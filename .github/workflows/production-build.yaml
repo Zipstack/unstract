@@ -37,13 +37,13 @@ jobs:
     steps:
       - name: Checkout code for release
         if: github.event_name == 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
@@ -123,7 +123,7 @@ jobs:
       # Upload status for summary job
       - name: Upload build status
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-status-${{ matrix.service_name }}
           path: build-status/${{ matrix.service_name }}.json
@@ -137,7 +137,7 @@ jobs:
     steps:
       # Download all build status artifacts
       - name: Download build statuses
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: build-status-*
           merge-multiple: true
