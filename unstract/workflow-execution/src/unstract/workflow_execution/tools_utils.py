@@ -8,6 +8,7 @@ from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
 from unstract.tool_sandbox.dto import RunnerContainerRunResponse
+from unstract.tool_sandbox.exceptions import ToolNotFoundInRegistryError
 from unstract.workflow_execution.constants import ToolExecution
 from unstract.workflow_execution.constants import ToolRuntimeVariable as ToolRV
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -195,6 +196,10 @@ class ToolsUtils:
                 logger.warning(
                     f"ToolExecutionException - Retrying ({retry_count + 1}/{max_retries})"
                 )
+            except ToolNotFoundInRegistryError:
+                # Don't retry configuration errors - tool image is not available
+                logger.error("Tool image not found in container registry - not retrying")
+                raise
             except Exception as e:
                 if retry_count < max_retries - 1:
                     logger.warning(

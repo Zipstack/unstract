@@ -1,9 +1,9 @@
-import PropTypes from "prop-types";
-import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import { Button, Space, Switch, Table, Tooltip } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { Button, Space, Switch, Table, Tooltip } from "antd";
+import PropTypes from "prop-types";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
+import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
 function DisplayNotifications({
   setIsForm,

@@ -1,7 +1,6 @@
 import { useCallback } from "react";
-
-import useRequestUrl from "../../hooks/useRequestUrl";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
+import useRequestUrl from "../../hooks/useRequestUrl";
 
 export const usePromptStudioService = () => {
   const axiosPrivate = useAxiosPrivate();
@@ -22,7 +21,7 @@ export const usePromptStudioService = () => {
       });
       return response.data;
     },
-    [axiosPrivate, getUrl]
+    [axiosPrivate, getUrl],
   );
 
   return { getPromptStudioCount, getRetrievalStrategies };

@@ -64,7 +64,7 @@ function Prompt() {
       .catch((err) => {
         setIsPromptOpen(true);
         setAlertDetails(
-          handleException(err, "Failed to generate the workflow")
+          handleException(err, "Failed to generate the workflow"),
         );
       })
       .finally(() => {

@@ -20,6 +20,7 @@ The following filesystems are supported
 - Unstract Cloud Storage
 - Box
 - Dropbox (issues exist around file discovery/listing)
+- SharePoint / OneDrive
 - HTTP(S)
 
 ## Databases
@@ -54,4 +55,25 @@ If the [GCSHelper](/src/unstract/connectors/gcs_helper.py) is used, the followin
 
 ### Running tests
 
-TODO: Use a test framework and document way to run tests
+#### Connector-Specific Testing
+For detailed setup and integration testing:
+1. Copy `sample.env` to `.env` in the connectors directory
+2. Configure connector credentials in `.env`
+
+#### Running Unit Tests
+
+```bash
+cd unstract/connectors
+
+# Install test dependencies
+uv sync --group test
+
+# Run all tests for a connector
+uv run pytest tests/filesystems/test_sharepoint_fs.py -v
+
+# Run unit tests only
+uv run pytest tests/filesystems/test_sharepoint_fs.py::TestSharePointFSUnit -v
+
+# Run integration tests (requires .env credentials)
+uv run pytest tests/filesystems/test_sharepoint_fs.py::TestSharePointFSIntegration -v -s
+```
