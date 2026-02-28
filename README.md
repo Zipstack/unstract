@@ -12,7 +12,22 @@
     <a href="LICENSE"><img src="https://img.shields.io/github/license/Zipstack/unstract" alt="License"></a>
     <a href="https://docs.unstract.com/unstract/unstract_platform/quick_start"><img src="https://img.shields.io/badge/tutorials-docs-brightgreen" alt="Tutorials"></a>
     <a href="https://status.unstract.com"><img src="https://img.shields.io/badge/uptime-status-brightgreen" alt="Uptime Status"></a>
+    <a href="https://hub.docker.com/u/unstract"><img src="https://img.shields.io/docker/pulls/unstract/backend" alt="Docker Pulls"></a>
     <a href="https://deepwiki.com/Zipstack/unstract"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+    <a href="https://cla-assistant.io/Zipstack/unstract"><img src="https://cla-assistant.io/readme/badge/Zipstack/unstract" alt="CLA assistant"></a>
+  </p>
+  <p>
+    <img src="https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FZipstack%2Funstract%2Frefs%2Fheads%2Fmain%2Fpyproject.toml" alt="Python Version from PEP 621 TOML">
+    <a href="https://github.com/astral-sh/uv"><img src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json" alt="uv"></a>
+    <a href="https://vite.dev/"><img src="https://img.shields.io/badge/Vite-6.x-646CFF?logo=vite&logoColor=white" alt="Vite"></a>
+    <a href="https://bun.sh/"><img src="https://img.shields.io/badge/Bun-1.x-000000?logo=bun&logoColor=white" alt="Bun"></a>
+    <a href="https://biomejs.dev/"><img src="https://img.shields.io/badge/Biome-2.x-60A5FA?logo=biome&logoColor=white" alt="Biome"></a>
+  </p>
+  <p>
+    <a href="https://results.pre-commit.ci/latest/github/Zipstack/unstract/main"><img src="https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg" alt="pre-commit.ci status"></a>
+    <a href="https://sonarcloud.io/summary/new_code?id=Zipstack_unstract"><img src="https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status" alt="Quality Gate Status"></a>
+    <a href="https://sonarcloud.io/summary/new_code?id=Zipstack_unstract"><img src="https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=code_smells" alt="Code Smells"></a>
+    <a href="https://sonarcloud.io/summary/new_code?id=Zipstack_unstract"><img src="https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=duplicated_lines_density" alt="Duplicated Lines (%)"></a>
   </p>
 </div>
 
