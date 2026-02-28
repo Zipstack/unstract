@@ -1,24 +1,26 @@
 <div align="center">
-<img src="docs/assets/unstract_u_logo.png" style="height: 120px">
-
-# Unstract
-
-## Turn Unstructured Documents into Structured Data
-
-[Documentation](https://docs.unstract.com) | [Cloud Edition](https://unstract.com/start-for-free/) | [Enterprise](https://unstract.com/pricing/) | [Slack Community](https://join-slack.unstract.com)
-
-[![License](https://img.shields.io/github/license/Zipstack/unstract)](LICENSE)
-[![Tutorials](https://img.shields.io/badge/tutorials-docs-brightgreen)](https://docs.unstract.com/unstract/unstract_platform/quick_start)
-[![Uptime Status](https://img.shields.io/badge/uptime-status-brightgreen)](https://status.unstract.com)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Zipstack/unstract)
-
+  <img src="docs/assets/unstract_u_logo.png" style="height: 120px">
+  <h1>Unstract</h1>
+  <h2>Turn Unstructured Documents into Structured Data</h2>
+  <p>
+    <a href="https://docs.unstract.com">Documentation</a> |
+    <a href="https://unstract.com/start-for-free/">Cloud Edition</a> |
+    <a href="https://unstract.com/pricing/">Enterprise</a> |
+    <a href="https://join-slack.unstract.com">Slack Community</a>
+  </p>
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/Zipstack/unstract" alt="License"></a>
+    <a href="https://docs.unstract.com/unstract/unstract_platform/quick_start"><img src="https://img.shields.io/badge/tutorials-docs-brightgreen" alt="Tutorials"></a>
+    <a href="https://status.unstract.com"><img src="https://img.shields.io/badge/uptime-status-brightgreen" alt="Uptime Status"></a>
+    <a href="https://deepwiki.com/Zipstack/unstract"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+  </p>
 </div>
 
 ## What is Unstract?
 
 Unstract uses LLMs to extract structured JSON from documents — PDFs, images, scans, you name it. Define what you want to extract using natural language prompts, and deploy as an API or ETL pipeline.
 
-Built for teams in finance, insurance, healthcare, KYC/compliance, and much more.
+Built for teams in **finance**, **insurance**, **healthcare**, **KYC/compliance**, and much more.
 
 ## Current State vs. Unstract
 
@@ -30,25 +32,25 @@ Built for teams in finance, insurance, healthcare, KYC/compliance, and much more
 | Deployment | Custom infrastructure | `./run-platform.sh` or managed cloud |
 | Output | Unstructured text blobs | Clean JSON, ready for your database |
 
-If Unstract helps you, star this repo!
-
-![Star Unstract](docs/assets/github_star.gif)
+> ⭐ If Unstract helps you, star this repo!
+>
+> ![Star Unstract](docs/assets/github_star.gif)
 
 ## ✨ Key Features
 
-**Prompt Studio** — Define document extraction schemas with natural language. [Docs](https://docs.unstract.com/unstract/unstract_platform/features/prompt_studio/prompt_studio_intro/)
+**Prompt Studio** — Define document extraction schemas with natural language. [Docs →](https://docs.unstract.com/unstract/unstract_platform/features/prompt_studio/prompt_studio_intro/)
 
 ![Prompt Studio](docs/assets/prompt_studio.gif)
 
-**REST API** — Send a document, get JSON back. [Docs](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_intro/)
+**API Deployment** — Send a document over REST API, get JSON back. [Docs →](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_intro/)
 
 ![API Deployment](docs/assets/api_deployment.gif)
 
-**ETL Pipeline** — Pull documents from a folder, process them, load to your warehouse. [Docs](https://docs.unstract.com/unstract/unstract_platform/etl_pipeline/unstract_etl_pipeline_intro/)
+**ETL Pipeline** — Pull documents from a folder, process them, load to your warehouse. [Docs →](https://docs.unstract.com/unstract/unstract_platform/etl_pipeline/unstract_etl_pipeline_intro/)
 
-**MCP Server** — Connect to AI agents (Claude, etc.) via Model Context Protocol. [Docs](https://docs.unstract.com/unstract/unstract_platform/mcp/unstract_platform_mcp_server/)
+**MCP Server** — Connect to AI agents (Claude, etc.) via Model Context Protocol. [Docs →](https://docs.unstract.com/unstract/unstract_platform/mcp/unstract_platform_mcp_server/)
 
-**n8n Node** — Drop into existing automation workflows. [Docs](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_n8n_custom_node/)
+**n8n Node** — Drop into existing automation workflows. [Docs →](https://docs.unstract.com/unstract/unstract_platform/api_deployment/unstract_api_deployment_n8n_custom_node/)
 
 ## 🚀 Quickstart (~5 mins)
 
@@ -118,29 +120,29 @@ That's it!
 
 ## 🔐 Backup Encryption Key
 
-> **Warning**
-> Copy the value of `ENCRYPTION_KEY` from `backend/.env` or `platform-service/.env` to a secure location.
->
+> [!WARNING]
 > This key encrypts adapter credentials — losing it makes existing adapters inaccessible!
+
+Copy the value of `ENCRYPTION_KEY` from `backend/.env` or `platform-service/.env` to a secure location.
 
 ## 🏗️ Unstract Architecture
 
 ```text
-┌─────────────────────────────────────────────────────────────┐
-│                          Unstract                           │
+┌────────────────────────────────────────────────────────────┐
+│                          Unstract                          │
 ├─────────────┬─────────────┬─────────────┬──────────────────┤
 │  Frontend   │   Backend   │   Worker    │ Platform Service │
 │  (React)    │  (Django)   │  (Celery)   │   (FastAPI)      │
 ├─────────────┴─────────────┴─────────────┴──────────────────┤
-│                      Cache (Redis)                          │
-├─────────────────────────────────────────────────────────────┤
-│                  Message Queue (RabbitMQ)                    │
-├─────────────────────────────────────────────────────────────┤
-│                   Database (PostgreSQL)                      │
-├─────────────────────────────────────────────────────────────┤
+│                      Cache (Redis)                         │
+├────────────────────────────────────────────────────────────┤
+│                  Message Queue (RabbitMQ)                  │
+├────────────────────────────────────────────────────────────┤
+│                   Database (PostgreSQL)                    │
+├────────────────────────────────────────────────────────────┤
 │  LLM Adapters    │  Vector DBs    │  Text Extractors       │
 │  (OpenAI, etc.)  │ (Qdrant, etc.) │  (LLMWhisperer)        │
-└─────────────────────────────────────────────────────────────┘
+└────────────────────────────────────────────────────────────┘
 ```
 
 ## 📄 Document File Formats
@@ -207,7 +209,7 @@ Follow [these steps](backend/README.md#authentication) to change the default use
 
 ## 🏢 Use Cases by Industry
 
-[Finance & Banking](#) | [Insurance](#) | [Healthcare](#) | [Income Tax](#)
+Finance & Banking | Insurance | Healthcare | Income Tax
 
 ## ☁️ Cloud & Enterprise
 
@@ -224,13 +226,13 @@ For teams that need managed infrastructure, advanced accuracy features, or compl
 
 ## 📚 Cookbooks
 
-- [Unstract + PostgreSQL + DeepSeek](#)
-- [Unstract + n8n](#)
-- [Unstract + Snowflake](#)
-- [Unstract + BigQuery](#)
-- [Unstract + Crew.AI](#)
-- [Unstract + PydanticAI](#)
-- [Unstract MCP Server](#)
+- [Unstract + PostgreSQL + DeepSeek](https://unstract.com/blog/open-source-document-data-extraction-with-unstract-deepseek/)
+- [Unstract + n8n](https://unstract.com/blog/unstract-n8n/)
+- [Unstract + Snowflake](https://unstract.com/blog/process-unstructured-data-with-unstract-snowflake/)
+- [Unstract + BigQuery](https://unstract.com/blog/process-unstructured-data-with-unstract-bigquery/)
+- [Unstract + Crew.AI](https://unstract.com/blog/agentic-document-extraction-processing-with-unstract-crew-ai/)
+- [Unstract + PydanticAI](https://unstract.com/blog/building-real-world-ai-agents-with-pydanticai-and-unstract/)
+- [Unstract MCP Server](https://unstract.com/blog/unstract-mcp-server/)
 
 ## 🤝 Contributing
 
@@ -258,9 +260,10 @@ Unstract is released under the [AGPL-3.0 License](LICENSE).
 ---
 
 <div align="center">
-
-Built with ❤️ by [Zipstack](https://zipstack.com)
-
-[Website](https://unstract.com) · [Documentation](https://docs.unstract.com) · [Pricing](https://unstract.com/pricing/)
-
+  <p>Built with ❤️ by <a href="https://zipstack.com">Zipstack</a></p>
+  <p>
+    <a href="https://unstract.com">Website</a> ·
+    <a href="https://docs.unstract.com">Documentation</a> ·
+    <a href="https://unstract.com/pricing/">Pricing</a>
+  </p>
 </div>
