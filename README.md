@@ -224,20 +224,20 @@ Follow [these steps](backend/README.md#authentication) to change the default use
 
 ## 🏢 Use Cases by Industry
 
-Finance & Banking | Insurance | Healthcare | Income Tax
+[Finance & Banking →](https://unstract.com/finance-automation/) | [Insurance](https://unstract.com/insurance-automation/) → | [Healthcare →](https://unstract.com/healthcare-automation/) | [Income Tax →](https://unstract.com/ai-income-tax-forms-data-extraction/)
 
 ## ☁️ Cloud & Enterprise
 
 For teams that need managed infrastructure, advanced accuracy features, or compliance certifications.
 
-- **LLMChallenge** — dual-LLM verification
-- **SinglePass & Summarized Extraction** — reduce LLM token costs
-- **Human-in-the-Loop** — review interface with document highlighting
-- **SSO & Enterprise RBAC** — SAML/OIDC integration with granular role-based access control
-- **SOC 2, HIPAA, ISO 27001, GDPR Compliant** — third-party audited security certifications
-- **Priority Support with SLA** — dedicated support team with response time guarantees
+- ✅ **LLMChallenge** — dual-LLM verification
+- ✅ **SinglePass & Summarized Extraction** — reduce LLM token costs
+- ✅ **Human-in-the-Loop** — review interface with document highlighting
+- ✅ **SSO & Enterprise RBAC** — SAML/OIDC integration with granular role-based access control
+- ✅ **SOC 2, HIPAA, ISO 27001, GDPR Compliant** — third-party audited security certifications
+- ✅ **Priority Support with SLA** — dedicated support team with response time guarantees
 
-[Start a Free Trial](https://unstract.com/start-for-free/) | [Book a Demo](https://unstract.com/schedule-a-demo/)
+<a href="https://unstract.com/schedule-a-demo/"><img src="docs/assets/book-demo-button-blue.svg" alt="Book a Demo"></a>
 
 ## 📚 Cookbooks
 
@@ -256,13 +256,13 @@ We welcome contributions! The easiest way to start:
 1. Pick an issue tagged [`good first issue`](https://github.com/Zipstack/unstract/labels/good%20first%20issue)
 2. Submit a PR
 
-[Report Bug](https://github.com/Zipstack/unstract/issues/new?template=bug_report.md) | [Request Feature](https://github.com/Zipstack/unstract/issues/new?template=feature_request.md)
+[Report Bug →](https://github.com/Zipstack/unstract/issues/new?template=bug_report.md) | [Request Feature →](https://github.com/Zipstack/unstract/issues/new?template=feature_request.md)
 
 ## 👋 Community
 
 Join the LLM-powered document automation community:
 
-[![Blog](https://img.shields.io/badge/BLOG-FF6B6B?style=flat-square)](https://unstract.com/blog/) [![LinkedIn](https://img.shields.io/badge/FOLLOW%20US%20ON%20LINKEDIN-C8A2E8?style=flat-square)](https://www.linkedin.com/showcase/unstract/) [![Slack](https://img.shields.io/badge/SLACK-4CAF50?style=flat-square)](https://join-slack.unstract.com) [![X](https://img.shields.io/badge/FOLLOW%20US%20ON%20X-FFD700?style=flat-square)](https://twitter.com/GetUnstract)
+[![Blog](https://img.shields.io/badge/BLOG-FF6B6B?style=flat)](https://unstract.com/blog/) [![LinkedIn](https://img.shields.io/badge/FOLLOW%20US%20ON%20LINKEDIN-C8A2E8?style=flat)](https://www.linkedin.com/showcase/unstract/) [![Slack](https://img.shields.io/badge/SLACK-4CAF50?style=flat)](https://join-slack.unstract.com) [![X](https://img.shields.io/badge/FOLLOW%20US%20ON%20X-FFD700?style=flat)](https://twitter.com/GetUnstract)
 
 ## 📊 A Note on Analytics
 
