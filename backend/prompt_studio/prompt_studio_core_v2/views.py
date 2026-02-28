@@ -5,8 +5,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
+from celery import signature
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -43,16 +45,11 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     DeploymentUsageCheckError,
-    IndexingAPIError,
     MaxProfilesReachedError,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
-from account_v2.constants import Common
-from celery import signature
-
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
-from utils.local_context import StateStore
 from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
     get_retrieval_strategy_metadata,
 )
@@ -430,7 +427,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
-        profile_manager_id: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
+        profile_manager_id: str = request.data.get(
+            ToolStudioPromptKeys.PROFILE_MANAGER_ID
+        )
         if not run_id:
             run_id = CommonUtils.generate_uuid()
 
@@ -442,7 +441,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Build file path
         doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id, is_create=False, user_id=user_id,
+            org_id,
+            is_create=False,
+            user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
@@ -515,7 +516,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Build file path
         doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id, is_create=False, user_id=user_id,
+            org_id,
+            is_create=False,
+            user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
@@ -523,9 +526,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Fetch all active prompts
         prompts = list(
-            ToolStudioPrompt.objects.filter(
-                tool_id=custom_tool.tool_id
-            ).order_by("sequence_number")
+            ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
+                "sequence_number"
+            )
         )
 
         context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
@@ -565,7 +568,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["get"])
-    def task_status(self, request: HttpRequest, pk: Any = None, task_id: str = None) -> Response:
+    def task_status(
+        self, request: HttpRequest, pk: Any = None, task_id: str = None
+    ) -> Response:
         """Poll the status of an async Prompt Studio task.
 
         Task IDs now point to executor worker tasks dispatched via the
@@ -679,6 +684,28 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name = (
                 f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
             )
+
+        # For ORIGINAL view, check if a converted PDF exists for preview
+        if (
+            view_type != FileViewTypes.EXTRACT
+            and view_type != FileViewTypes.SUMMARIZE
+            and file_converter_plugin
+        ):
+            converted_name = f"converted/{filename_without_extension}.pdf"
+            try:
+                contents = PromptStudioFileHelper.fetch_file_contents(
+                    file_name=converted_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                    allowed_content_types=allowed_content_types,
+                )
+                return Response(contents, status=status.HTTP_200_OK)
+            except (FileNotFoundError, FileNotFound):
+                pass  # No converted file — fall through to return original
+            except Exception:
+                logger.exception(f"Error fetching converted file: {converted_name}")
+
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
                 file_name=file_name,
@@ -689,7 +716,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except FileNotFoundError:
             raise FileNotFound()
-        return Response({"data": contents}, status=status.HTTP_200_OK)
+        return Response(contents, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
@@ -704,16 +731,32 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            file_type = uploaded_file.content_type
-            # Convert non-PDF files
+            # Detect MIME from file content (not browser-supplied header)
+            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
+            uploaded_file.seek(0)
+
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
-                file_data, file_name = file_converter_service.process_file(
-                    uploaded_file, file_name
-                )
+                if file_converter_service.should_convert_to_pdf(file_type):
+                    # Convert and store in converted/ subdir for preview
+                    converted_data, converted_name = file_converter_service.process_file(
+                        uploaded_file, file_name
+                    )
+                    PromptStudioFileHelper.upload_converted_for_ide(
+                        org_id=UserSessionUtils.get_organization_id(request),
+                        user_id=custom_tool.created_by.user_id,
+                        tool_id=str(custom_tool.tool_id),
+                        file_name=converted_name,
+                        file_data=converted_data,
+                    )
+                    # Reset uploaded_file for storing original in main dir
+                    uploaded_file.seek(0)
+                    file_data = uploaded_file
+                # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
             logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
 
+            # Store original file in main dir (always the original)
             PromptStudioFileHelper.upload_for_ide(
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
@@ -722,7 +765,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 file_data=file_data,
             )
 
-            # Create a record in the db for the file
+            # Create a record in the db for the file (document_name = original filename)
             document = PromptStudioDocumentHelper.create(
                 tool_id=str(custom_tool.tool_id), document_name=file_name
             )

@@ -1,33 +1,33 @@
 /* Styles for InputOutput */
 
 .wf-input-output-layout {
-    height: 100%;
+  height: 100%;
 }
 
 .wf-input-output-box {
-    border-radius: 8px;
-    border: 1px solid #D4D4D4;
-    background-color: #F8FBFF;
+  border-radius: 8px;
+  border: 1px solid #d4d4d4;
+  background-color: #f8fbff;
 }
 
 .wf-input-output-placeholder {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .wf-input-output-md {
-    height: 100%;
-    padding: 12px;
-    overflow-y: auto;
+  height: 100%;
+  padding: 12px;
+  overflow-y: auto;
 }
 
 .wf-input-output-md-right {
-    margin-right: 6px;
+  margin-right: 6px;
 }
 
 .wf-input-output-md-left {
-    margin-left: 6px;
+  margin-left: 6px;
 }

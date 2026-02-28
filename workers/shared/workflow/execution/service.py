@@ -1038,9 +1038,7 @@ class WorkerWorkflowExecutionService:
                 else file_name
             ),
             "execution_data_dir": str(file_handler.file_execution_dir),
-            "messaging_channel": getattr(
-                execution_service, "messaging_channel", ""
-            ),
+            "messaging_channel": getattr(execution_service, "messaging_channel", ""),
             "file_hash": metadata.get("source_hash", ""),
             "exec_metadata": metadata,
         }
@@ -1439,6 +1437,7 @@ class WorkerWorkflowExecutionService:
             # Process final output through destination (matching backend exactly)
             output_result = None
             processing_error = None  # No processing error since workflow succeeded
+            metadata = None  # Initialize to avoid unbound variable in exception path
 
             try:
                 # CRITICAL: Log file destination routing decision

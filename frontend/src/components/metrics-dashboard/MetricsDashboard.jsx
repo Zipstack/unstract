@@ -1,0 +1,250 @@
+import {
+  BarChartOutlined,
+  DashboardOutlined,
+  FileSearchOutlined,
+  ReloadOutlined,
+  SlackOutlined,
+  ThunderboltOutlined,
+} from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Col,
+  DatePicker,
+  Row,
+  Space,
+  Tabs,
+  Typography,
+} from "antd";
+import dayjs from "dayjs";
+import { useCallback, useMemo, useState } from "react";
+
+import {
+  useMetricsOverview,
+  useRecentActivity,
+  useWorkflowTokenUsage,
+} from "../../hooks/useMetricsData";
+import { LLMUsageTable } from "./LLMUsageTable";
+import { HITLChart, PagesChart, TrendAnalysisChart } from "./MetricsChart";
+import { MetricsSummary } from "./MetricsSummary";
+import { RecentActivity } from "./RecentActivity";
+
+import "./MetricsDashboard.css";
+
+// Cloud-only: Plan banner with subscription details
+let PlanBanner;
+try {
+  PlanBanner =
+    require("../../plugins/unstract-subscription/components/PlanBanner.jsx").PlanBanner;
+} catch {
+  // Plugin unavailable - no banner on OSS
+}
+
+const { Title } = Typography;
+const { RangePicker } = DatePicker;
+
+function MetricsDashboard() {
+  // Date range state (default: last 30 days)
+  const [dateRange, setDateRange] = useState([
+    dayjs().subtract(30, "day"),
+    dayjs(),
+  ]);
+
+  // Fixed 30-day range for activity charts (independent of date picker)
+  const chartStart = useMemo(
+    () => dayjs().subtract(30, "day").toISOString(),
+    [],
+  );
+  const chartEnd = useMemo(() => dayjs().toISOString(), []);
+
+  // API hooks - pass date range to overview (for summary cards)
+  const {
+    data: overviewData,
+    loading: overviewLoading,
+    error: overviewError,
+    refetch: refetchOverview,
+  } = useMetricsOverview(
+    dateRange[0]?.toISOString(),
+    dateRange[1]?.toISOString(),
+  );
+
+  // Fixed 30-day data for charts
+  const {
+    data: chartData,
+    loading: chartLoading,
+    refetch: refetchChart,
+  } = useMetricsOverview(chartStart, chartEnd);
+
+  // Recent activity (real-time, no date filter)
+  const {
+    data: activityData,
+    loading: activityLoading,
+    refetch: refetchActivity,
+  } = useRecentActivity(5);
+
+  // Per-workflow LLM token usage (uses same date range as summary cards)
+  const {
+    data: tokenUsageData,
+    loading: tokenUsageLoading,
+    refetch: refetchTokenUsage,
+  } = useWorkflowTokenUsage(
+    dateRange[0]?.toISOString(),
+    dateRange[1]?.toISOString(),
+  );
+
+  // Handle date range change
+  const handleDateChange = useCallback((dates) => {
+    if (dates && dates.length === 2) {
+      setDateRange(dates);
+    }
+  }, []);
+
+  // Handle refresh
+  const handleRefresh = useCallback(() => {
+    refetchOverview();
+    refetchChart();
+    refetchActivity();
+    refetchTokenUsage();
+  }, [refetchOverview, refetchChart, refetchActivity, refetchTokenUsage]);
+
+  const tabItems = [
+    {
+      key: "overview",
+      label: (
+        <span>
+          <DashboardOutlined /> Overview
+        </span>
+      ),
+      children: (
+        <>
+          <Row gutter={[16, 16]}>
+            <Col xs={24}>
+              <MetricsSummary data={overviewData} loading={overviewLoading} />
+            </Col>
+            <Col xs={24} lg={16}>
+              <PagesChart data={chartData} loading={chartLoading} />
+            </Col>
+            <Col xs={24} lg={8}>
+              <RecentActivity data={activityData} loading={activityLoading} />
+            </Col>
+            <Col xs={24} lg={12}>
+              <HITLChart data={chartData} loading={chartLoading} />
+            </Col>
+            <Col xs={24} lg={12}>
+              <TrendAnalysisChart data={chartData} loading={chartLoading} />
+            </Col>
+          </Row>
+        </>
+      ),
+    },
+    {
+      key: "llm-usage",
+      label: (
+        <span>
+          <ThunderboltOutlined /> LLM Usage
+        </span>
+      ),
+      children: (
+        <Row gutter={[16, 16]}>
+          <Col xs={24}>
+            <LLMUsageTable
+              data={tokenUsageData}
+              loading={tokenUsageLoading}
+              onRefresh={refetchTokenUsage}
+            />
+          </Col>
+        </Row>
+      ),
+    },
+  ];
+
+  return (
+    <div className="metrics-dashboard">
+      <div className="metrics-topbar">
+        <div className="metrics-topbar-left">
+          <BarChartOutlined className="metrics-topbar-icon" />
+          <Title level={4} style={{ margin: 0 }}>
+            Dashboard
+          </Title>
+        </div>
+
+        <Space className="metrics-topbar-right">
+          <Button
+            icon={<FileSearchOutlined />}
+            type="link"
+            onClick={() =>
+              window.open(
+                "https://docs.unstract.com/unstract/index.html",
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
+            className="metrics-header-button"
+          >
+            Documentation
+          </Button>
+          <Button
+            icon={<SlackOutlined />}
+            type="link"
+            onClick={() =>
+              window.open(
+                "https://join-slack.unstract.com/",
+                "_blank",
+                "noopener,noreferrer",
+              )
+            }
+            className="metrics-header-button"
+          >
+            Slack Community
+          </Button>
+        </Space>
+      </div>
+
+      {PlanBanner && <PlanBanner />}
+
+      {overviewError && (
+        <Alert
+          message="Error loading metrics"
+          description={overviewError}
+          type="error"
+          showIcon
+          closable
+          className="metrics-error"
+        />
+      )}
+
+      <Tabs
+        items={tabItems}
+        defaultActiveKey="overview"
+        tabBarExtraContent={
+          <Space>
+            <RangePicker
+              value={dateRange}
+              onChange={handleDateChange}
+              disabledDate={(current) => current && current > dayjs()}
+              allowClear={false}
+              size="middle"
+              presets={[
+                {
+                  label: "Last 7 Days",
+                  value: [dayjs().subtract(7, "day"), dayjs()],
+                },
+                {
+                  label: "Last 30 Days",
+                  value: [dayjs().subtract(30, "day"), dayjs()],
+                },
+                {
+                  label: "Last 90 Days",
+                  value: [dayjs().subtract(90, "day"), dayjs()],
+                },
+              ]}
+            />
+            <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+          </Space>
+        }
+      />
+    </div>
+  );
+}
+
+export { MetricsDashboard };

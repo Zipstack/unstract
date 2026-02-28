@@ -1,0 +1,76 @@
+name: Frontend Lint (Biome)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+    paths:
+      - "frontend/**"
+
+jobs:
+  biome-check:
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.8"
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
+      - name: Run Biome check
+        id: biome
+        working-directory: frontend
+        continue-on-error: true
+        run: |
+          bun x @biomejs/biome check src/ --reporter=github 2>&1 | tee biome-output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Generate lint report
+        if: always()
+        working-directory: frontend
+        run: |
+          echo "## Frontend Lint Report (Biome)" >> biome-report.md
+          echo "" >> biome-report.md
+
+          if [ "${{ steps.biome.outputs.exit_code }}" = "0" ]; then
+            echo "✅ **All checks passed!** No linting or formatting issues found." >> biome-report.md
+          else
+            echo "❌ **Issues found.** Please fix the following problems:" >> biome-report.md
+            echo "" >> biome-report.md
+            echo '```' >> biome-report.md
+            cat biome-output.txt >> biome-report.md
+            echo '```' >> biome-report.md
+            echo "" >> biome-report.md
+            echo "Run \`cd frontend && bun run check:fix\` to auto-fix issues." >> biome-report.md
+          fi
+
+      - name: Render lint report to PR
+        uses: marocchino/sticky-pull-request-comment@773744901bac0e8cbb5a0dc842800d45e9b2b405 # v2.9.4
+        if: always() && hashFiles('frontend/biome-report.md') != '' && github.event.pull_request.head.repo.fork == false
+        with:
+          header: frontend-lint-results
+          recreate: true
+          path: frontend/biome-report.md
+
+      - name: Output lint report to job summary
+        if: always() && hashFiles('frontend/biome-report.md') != ''
+        shell: bash
+        run: |
+          cat frontend/biome-report.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Fail if Biome found issues
+        if: steps.biome.outputs.exit_code != '0'
+        run: exit 1

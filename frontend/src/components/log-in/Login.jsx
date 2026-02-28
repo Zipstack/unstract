@@ -1,5 +1,4 @@
-import { Button } from "antd";
-import { Row, Col } from "antd";
+import { Button, Col, Row } from "antd";
 
 import { getBaseUrl } from "../../helpers/GetStaticData";
 import "./Login.css";
@@ -8,22 +7,30 @@ import { ProductContentLayout } from "./ProductContentLayout";
 
 let LoginForm = null;
 try {
-  LoginForm = require("../../plugins/login-form/LoginForm").LoginForm;
+  const mod = await import("../../plugins/login-form/LoginForm");
+  LoginForm = mod.LoginForm;
 } catch {
-  // The components will remain null of it is not available
+  // Plugin not available (OSS version)
 }
 
 function Login() {
   const baseUrl = getBaseUrl();
-  const loginURL = baseUrl + "/api/v1/login";
-  const signupURL = baseUrl + "/api/v1/signup";
+  const selectedProduct = localStorage.getItem("selectedProduct");
+  const isValidProduct =
+    selectedProduct && ["unstract", "llm-whisperer"].includes(selectedProduct);
 
   const handleLogin = () => {
-    window.location.href = loginURL;
+    const loginUrl = isValidProduct
+      ? `${baseUrl}/api/v1/login?selectedProduct=${selectedProduct}`
+      : `${baseUrl}/api/v1/login`;
+    window.location.href = loginUrl;
   };
 
   const handleSignup = () => {
-    window.location.href = signupURL;
+    const signupUrl = isValidProduct
+      ? `${baseUrl}/api/v1/signup?selectedProduct=${selectedProduct}`
+      : `${baseUrl}/api/v1/signup`;
+    window.location.href = signupUrl;
   };
 
   return (
