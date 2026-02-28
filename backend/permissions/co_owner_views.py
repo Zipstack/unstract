@@ -21,7 +21,59 @@ class CoOwnerManagementMixin:
     Adds:
         - POST <pk>/owners/     -> add_co_owner
         - DELETE <pk>/owners/<user_id>/ -> remove_co_owner
+
+    Subclasses can opt in to co-owner email notifications by setting:
+        notification_resource_name_field = "<model_field>"
+    and overriding:
+        get_notification_resource_type(resource) -> str | None
     """
+
+    notification_resource_name_field: str | None = None
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        """Return the ResourceType value for notifications, or None to skip."""
+        return None
+
+    def _send_co_owner_notification(
+        self, resource: Any, user: User, request: Request
+    ) -> None:
+        """Send an email notification to a newly added co-owner.
+
+        Does nothing when the notification plugin is not installed (OSS)
+        or when the ViewSet has not opted in.
+        """
+        from plugins import get_plugin
+
+        plugin = get_plugin("notification")
+        if not plugin:
+            return
+
+        resource_type = self.get_notification_resource_type(resource)
+        if not resource_type:
+            return
+
+        name_field = self.notification_resource_name_field
+        if not name_field:
+            return
+
+        resource_name = getattr(resource, name_field, None) or ""
+
+        try:
+            service = plugin["service_class"]()
+            service.send_sharing_notification(
+                resource_type=resource_type,
+                resource_name=resource_name,
+                resource_id=str(resource.pk),
+                shared_by=request.user,
+                shared_to=[user],
+                resource_instance=resource,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send co-owner notification for %s %s",
+                resource.__class__.__name__,
+                resource.pk,
+            )
 
     @action(detail=True, methods=["post"], url_path="owners")
     def add_co_owner(self, request: Request, pk: Any = None) -> Response:
@@ -43,6 +95,8 @@ class CoOwnerManagementMixin:
             resource.pk,
             request.user.email,
         )
+
+        self._send_co_owner_notification(resource, user, request)
 
         co_owners = [{"id": u.id, "email": u.email} for u in resource.co_owners.all()]
         return Response(

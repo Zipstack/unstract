@@ -138,6 +138,18 @@ class AdapterViewSet(GenericViewSet):
 
 class AdapterInstanceViewSet(CoOwnerManagementMixin, ModelViewSet):
     serializer_class = AdapterInstanceSerializer
+    notification_resource_name_field = "adapter_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        adapter_type_to_resource = {
+            "LLM": ResourceType.LLM.value,
+            "EMBEDDING": ResourceType.EMBEDDING.value,
+            "VECTOR_DB": ResourceType.VECTOR_DB.value,
+            "X2TEXT": ResourceType.X2TEXT.value,
+        }
+        return adapter_type_to_resource.get(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
         if self.action in ["update", "retrieve"]:

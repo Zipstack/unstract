@@ -191,6 +191,13 @@ class DeploymentExecution(views.APIView):
 
 
 class APIDeploymentViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
+    notification_resource_name_field = "display_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.API_DEPLOYMENT.value  # type: ignore
+
     def get_permissions(self) -> list[Any]:
         if self.action in [
             "destroy",

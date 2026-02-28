@@ -5,6 +5,7 @@ from uuid import uuid4
 
 from django.test import RequestFactory, TestCase
 from permissions.co_owner_serializers import AddCoOwnerSerializer, RemoveCoOwnerSerializer
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import (
     IsOwner,
     IsOwnerOrSharedUser,
@@ -362,3 +363,114 @@ class TestRemoveCoOwnerSerializer(TestCase):
 
         resource.co_owners.remove.assert_called_once_with(creator)
         resource.save.assert_not_called()
+
+
+class TestCoOwnerNotification(TestCase):
+    """Tests for co-owner addition email notifications."""
+
+    def _make_mixin(
+        self, resource_name_field: str | None = None, resource_type: str | None = None
+    ) -> CoOwnerManagementMixin:
+        """Create a mixin instance with optional notification opt-in."""
+        mixin = CoOwnerManagementMixin()
+        if resource_name_field is not None:
+            mixin.notification_resource_name_field = resource_name_field
+        if resource_type is not None:
+            # Override the method to return the given type
+            mixin.get_notification_resource_type = lambda self_unused: resource_type  # type: ignore[assignment]
+        return mixin
+
+    def _make_resource(self, name_value: str = "My Resource") -> Mock:
+        resource = Mock()
+        resource.pk = uuid4()
+        resource.__class__ = type("FakeModel", (), {})
+        resource.workflow_name = name_value
+        return resource
+
+    def _make_request(self) -> Mock:
+        request = Mock()
+        request.user = Mock()
+        request.user.email = "actor@example.com"
+        return request
+
+    @patch("plugins.get_plugin")
+    def test_add_co_owner_sends_notification(self, mock_get_plugin: Mock) -> None:
+        """Notification is sent when plugin is available and ViewSet opts in."""
+        mock_service_instance = Mock()
+        mock_get_plugin.return_value = {"service_class": Mock(return_value=mock_service_instance)}
+
+        mixin = self._make_mixin(
+            resource_name_field="workflow_name",
+            resource_type="workflow",
+        )
+        resource = self._make_resource("Test Workflow")
+        user = Mock()
+        user.email = "newowner@example.com"
+        request = self._make_request()
+
+        mixin._send_co_owner_notification(resource, user, request)
+
+        mock_service_instance.send_sharing_notification.assert_called_once_with(
+            resource_type="workflow",
+            resource_name="Test Workflow",
+            resource_id=str(resource.pk),
+            shared_by=request.user,
+            shared_to=[user],
+            resource_instance=resource,
+        )
+
+    @patch("plugins.get_plugin")
+    def test_add_co_owner_no_notification_when_plugin_missing(
+        self, mock_get_plugin: Mock
+    ) -> None:
+        """No-op when notification plugin is not installed (OSS)."""
+        mock_get_plugin.return_value = {}
+
+        mixin = self._make_mixin(
+            resource_name_field="workflow_name",
+            resource_type="workflow",
+        )
+        resource = self._make_resource()
+        user = Mock()
+        request = self._make_request()
+
+        # Should not raise
+        mixin._send_co_owner_notification(resource, user, request)
+
+    @patch("plugins.get_plugin")
+    def test_add_co_owner_notification_failure_does_not_break(
+        self, mock_get_plugin: Mock
+    ) -> None:
+        """Notification errors are logged but do not propagate."""
+        mock_service_instance = Mock()
+        mock_service_instance.send_sharing_notification.side_effect = RuntimeError("email down")
+        mock_get_plugin.return_value = {"service_class": Mock(return_value=mock_service_instance)}
+
+        mixin = self._make_mixin(
+            resource_name_field="workflow_name",
+            resource_type="workflow",
+        )
+        resource = self._make_resource()
+        user = Mock()
+        request = self._make_request()
+
+        # Should not raise
+        mixin._send_co_owner_notification(resource, user, request)
+
+    @patch("plugins.get_plugin")
+    def test_add_co_owner_no_notification_when_resource_type_none(
+        self, mock_get_plugin: Mock
+    ) -> None:
+        """No notification when ViewSet does not opt in (returns None)."""
+        mock_get_plugin.return_value = {"service_class": Mock()}
+
+        # Default mixin — no opt-in
+        mixin = CoOwnerManagementMixin()
+        resource = self._make_resource()
+        user = Mock()
+        request = self._make_request()
+
+        mixin._send_co_owner_notification(resource, user, request)
+
+        # service_class should never have been instantiated
+        mock_get_plugin.return_value["service_class"].assert_not_called()

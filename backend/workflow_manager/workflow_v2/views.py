@@ -72,6 +72,12 @@ def make_execution_response(response: ExecutionResponse) -> Any:
 
 class WorkflowViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
+    notification_resource_name_field = "workflow_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.WORKFLOW.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
         if self.action in [

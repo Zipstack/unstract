@@ -44,6 +44,16 @@ logger = logging.getLogger(__name__)
 class PipelineViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
+    notification_resource_name_field = "pipeline_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        if resource.pipeline_type == ResourceType.ETL.value:
+            return ResourceType.ETL.value  # type: ignore
+        if resource.pipeline_type == ResourceType.TASK.value:
+            return ResourceType.TASK.value  # type: ignore
+        return None
 
     def get_permissions(self) -> list[Any]:
         if self.action in [
