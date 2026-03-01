@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/zipstack-unstract-badge.png)](https://mseep.ai/app/zipstack-unstract)
+
 <div align="center">
   <img src="docs/assets/unstract_u_logo.png" style="height: 120px">
   <h1>Unstract</h1>
