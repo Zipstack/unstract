@@ -68,13 +68,84 @@ class FliptClient:
                 flag_key=flag_key, entity_id=entity_id, context=context or {}
             )
 
-            return result.value if hasattr(result, "value") else False
+            return result.enabled if hasattr(result, "enabled") else False
 
         except Exception as e:
             logger.error(f"Error evaluating flag {flag_key} for entity {entity_id}: {e}")
             return False
         finally:
             # Always close the client to free resources
+            if client:
+                try:
+                    client.close()
+                except Exception as e:
+                    logger.error(f"Error closing Flipt client: {e}")
+
+    def evaluate_variant(
+        self,
+        flag_key: str,
+        entity_id: str | None = "unstract",
+        context: dict | None = None,
+        namespace_key: str | None = None,
+    ) -> dict:
+        """Evaluate a variant feature flag for a given entity.
+
+        Args:
+            flag_key: The key of the feature flag to evaluate
+            entity_id: The ID of the entity for which to evaluate the flag
+            context: Additional context for evaluation
+            namespace_key: The namespace to evaluate the flag in
+
+        Returns:
+            dict: {"match": bool, "variant_key": str, "variant_attachment": str,
+                   "segment_keys": list[str]}
+                  Returns empty dict with match=False if service unavailable or error.
+        """
+        default_result = {
+            "match": False,
+            "variant_key": "",
+            "variant_attachment": "",
+            "segment_keys": [],
+        }
+        if namespace_key is not None:
+            warnings.warn(
+                "namespace_key parameter is deprecated and will be ignored",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if not self.service_available:
+            logger.warning("Flipt service not available, returning default for all flags")
+            return default_result
+
+        client = None
+        try:
+            client = FliptGrpcClient(opts=self.grpc_opts)
+
+            result = client.evaluate_variant(
+                flag_key=flag_key, entity_id=entity_id, context=context or {}
+            )
+
+            return {
+                "match": result.match if hasattr(result, "match") else False,
+                "variant_key": (
+                    result.variant_key if hasattr(result, "variant_key") else ""
+                ),
+                "variant_attachment": (
+                    result.variant_attachment
+                    if hasattr(result, "variant_attachment")
+                    else ""
+                ),
+                "segment_keys": (
+                    list(result.segment_keys) if hasattr(result, "segment_keys") else []
+                ),
+            }
+
+        except Exception as e:
+            logger.error(
+                f"Error evaluating variant flag {flag_key} for entity {entity_id}: {e}"
+            )
+            return default_result
+        finally:
             if client:
                 try:
                     client.close()
