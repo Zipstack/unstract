@@ -160,6 +160,8 @@ Copy the value of `ENCRYPTION_KEY` from `backend/.env` or `platform-service/.env
 └────────────────────────────────────────────────────────────┘
 ```
 
+Also see [architecture](docs/ARCHITECTURE.md).
+
 ## 📄 Document File Formats
 
 | Category | Formats |
@@ -224,7 +226,7 @@ Follow [these steps](backend/README.md#authentication) to change the default use
 
 ## 🏢 Use Cases by Industry
 
-[Finance & Banking →](https://unstract.com/finance-automation/) | [Insurance](https://unstract.com/insurance-automation/) → | [Healthcare →](https://unstract.com/healthcare-automation/) | [Income Tax →](https://unstract.com/ai-income-tax-forms-data-extraction/)
+[Finance & Banking →](https://unstract.com/finance-automation/) | [Insurance →](https://unstract.com/insurance-automation/) | [Healthcare →](https://unstract.com/healthcare-automation/) | [Income Tax →](https://unstract.com/ai-income-tax-forms-data-extraction/)
 
 ## ☁️ Cloud & Enterprise
 
