@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from account_usage.models import PageUsage
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
@@ -23,6 +24,19 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
 from unstract.core.data_models import ExecutionStatus
+
+
+def _get_hitl_queue_model():
+    """Get HITLQueue model if available (cloud-only).
+
+    Returns None on OSS where manual_review_v2 is not installed.
+    """
+    try:
+        from pluggable_apps.manual_review_v2.models import HITLQueue
+
+        return HITLQueue
+    except ImportError:
+        return None
 
 
 def _get_usage_queryset():
@@ -110,6 +124,10 @@ class MetricsQueryService:
 
         Sums pages_processed field grouped by time period.
 
+        Note: PageUsage.organization_id stores the Organization's string
+        identifier (organization.organization_id), NOT the UUID PK.
+        We look up the string identifier from the UUID passed by callers.
+
         Args:
             organization_id: Organization UUID string
             start_date: Start of date range
@@ -119,11 +137,17 @@ class MetricsQueryService:
         Returns:
             List of dicts with 'period' and 'value' keys
         """
+        try:
+            org = Organization.objects.get(id=organization_id)
+            org_identifier = org.organization_id
+        except Organization.DoesNotExist:
+            return []
+
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
             PageUsage.objects.filter(
-                organization_id=organization_id,
+                organization_id=org_identifier,
                 created_at__gte=start_date,
                 created_at__lte=end_date,
             )
@@ -458,6 +482,9 @@ class MetricsQueryService:
     ) -> list[dict[str, Any]]:
         """Query HITL review counts from manual_review_v2.
 
+        Counts all HITLQueue records created in the date range,
+        regardless of their current state.
+
         Returns empty list on OSS where manual_review_v2 is not installed.
 
         Args:
@@ -469,15 +496,14 @@ class MetricsQueryService:
         Returns:
             List of dicts with 'period' and 'value' keys
         """
-        try:
-            from manual_review_v2.models import ManualReviewEntity
-        except ImportError:
+        HITLQueue = _get_hitl_queue_model()
+        if HITLQueue is None:
             return []
 
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            ManualReviewEntity.objects.filter(
+            HITLQueue._base_manager.filter(
                 organization_id=organization_id,
                 created_at__gte=start_date,
                 created_at__lte=end_date,
@@ -497,6 +523,9 @@ class MetricsQueryService:
     ) -> list[dict[str, Any]]:
         """Query completed HITL reviews from manual_review_v2.
 
+        Counts HITLQueue records with state='approved' that were approved
+        within the date range (using approved_at timestamp).
+
         Returns empty list on OSS where manual_review_v2 is not installed.
 
         Args:
@@ -508,21 +537,20 @@ class MetricsQueryService:
         Returns:
             List of dicts with 'period' and 'value' keys
         """
-        try:
-            from manual_review_v2.models import ManualReviewEntity
-        except ImportError:
+        HITLQueue = _get_hitl_queue_model()
+        if HITLQueue is None:
             return []
 
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            ManualReviewEntity.objects.filter(
+            HITLQueue._base_manager.filter(
                 organization_id=organization_id,
-                status="APPROVED",
-                modified_at__gte=start_date,
-                modified_at__lte=end_date,
+                state=HITLQueue.State.APPROVED,
+                approved_at__gte=start_date,
+                approved_at__lte=end_date,
             )
-            .annotate(period=trunc_func("modified_at"))
+            .annotate(period=trunc_func("approved_at"))
             .values("period")
             .annotate(value=Count("id"))
             .order_by("period")
@@ -595,6 +623,14 @@ class MetricsQueryService:
             "failed_pages": sum(
                 r["value"] or 0
                 for r in cls.get_failed_pages(organization_id, start_date, end_date)
+            ),
+            "hitl_reviews": sum(
+                r["value"]
+                for r in cls.get_hitl_reviews(organization_id, start_date, end_date)
+            ),
+            "hitl_completions": sum(
+                r["value"]
+                for r in cls.get_hitl_completions(organization_id, start_date, end_date)
             ),
         }
 
