@@ -13,7 +13,6 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
-import { useSessionStore } from "../../../store/session-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
 import { useUsageStore } from "../../../store/usage-store";
