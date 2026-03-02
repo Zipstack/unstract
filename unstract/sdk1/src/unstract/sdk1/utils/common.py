@@ -151,10 +151,12 @@ class LLMResponseCompat:
 
     def __str__(self) -> str:
         """Return text for string operations like join()."""
-        return self.text
+        return self.text or ""
 
     def __repr__(self) -> str:
         """Return detailed representation with text preview."""
+        if self.text is None:
+            return "LLMResponseCompat(text=None)"
         text_preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
         return f"LLMResponseCompat(text={text_preview!r})"
 
