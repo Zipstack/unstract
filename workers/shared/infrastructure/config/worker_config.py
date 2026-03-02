@@ -247,14 +247,14 @@ class WorkerConfig:
     # by directly assigning shared_session to client.session, which breaks fork detection.
     # Only enable if you understand the fork-safety implications and are not using prefork pool.
     enable_api_client_singleton: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_API_CLIENT_SINGLETON", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("ENABLE_API_CLIENT_SINGLETON", "false").lower() == "true"
+        )
     )
     enable_organization_context_cache: bool = field(
-        default_factory=lambda: os.getenv(
-            "ENABLE_ORGANIZATION_CONTEXT_CACHE", "true"
-        ).lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("ENABLE_ORGANIZATION_CONTEXT_CACHE", "true").lower() == "true"
+        )
     )
     api_client_pool_size: int = field(
         default_factory=lambda: int(os.getenv("API_CLIENT_POOL_SIZE", "3"))
@@ -270,16 +270,19 @@ class WorkerConfig:
 
     # Debug Logging Control (Performance Optimization)
     enable_debug_logging: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_DEBUG_LOGGING", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("ENABLE_DEBUG_LOGGING", "false").lower() == "true"
+        )
     )
     debug_api_client_init: bool = field(
-        default_factory=lambda: os.getenv("DEBUG_API_CLIENT_INIT", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("DEBUG_API_CLIENT_INIT", "false").lower() == "true"
+        )
     )
     debug_organization_context: bool = field(
-        default_factory=lambda: os.getenv("DEBUG_ORGANIZATION_CONTEXT", "false").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("DEBUG_ORGANIZATION_CONTEXT", "false").lower() == "true"
+        )
     )
 
     # Task Timeout Settings (in seconds)
@@ -294,8 +297,9 @@ class WorkerConfig:
         default_factory=lambda: os.getenv("ENABLE_METRICS", "true").lower() == "true"
     )
     enable_health_server: bool = field(
-        default_factory=lambda: os.getenv("ENABLE_HEALTH_SERVER", "true").lower()
-        == "true"
+        default_factory=lambda: (
+            os.getenv("ENABLE_HEALTH_SERVER", "true").lower() == "true"
+        )
     )
     metrics_port: int = field(
         default_factory=lambda: int(os.getenv("METRICS_PORT", "8080"))
