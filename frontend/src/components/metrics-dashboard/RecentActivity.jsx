@@ -12,6 +12,8 @@ import { Card, Empty, List, Spin, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
+import { useSessionStore } from "../../store/session-store";
 
 import "./MetricsDashboard.css";
 
@@ -49,16 +51,19 @@ const TYPE_CONFIG = {
     label: "ETL Pipeline",
     icon: <BranchesOutlined />,
     color: "#722ed1",
+    logType: "ETL",
   },
   api: {
     label: "API Request",
     icon: <ApiOutlined />,
     color: "#1890ff",
+    logType: "API",
   },
   workflow: {
     label: "Workflow",
     icon: <PlayCircleOutlined />,
     color: "#52c41a",
+    logType: "WF",
   },
 };
 
@@ -69,6 +74,18 @@ const TYPE_CONFIG = {
  * @return {JSX.Element} The rendered recent activity component.
  */
 function RecentActivity({ data, loading }) {
+  const navigate = useNavigate();
+  const { sessionDetails } = useSessionStore();
+  const orgName = sessionDetails?.orgName;
+
+  const handleActivityClick = (item) => {
+    if (!item.execution_id || !orgName) return;
+    const typeConfig = TYPE_CONFIG[item.type] || TYPE_CONFIG.workflow;
+    navigate(`/${orgName}/logs/${typeConfig.logType}/${item.execution_id}`, {
+      state: { from: "metrics" },
+    });
+  };
+
   if (loading) {
     return (
       <Card title="Recent Activity" className="metrics-chart-card">
@@ -100,7 +117,10 @@ function RecentActivity({ data, loading }) {
           const typeConfig = TYPE_CONFIG[item.type] || TYPE_CONFIG.workflow;
 
           return (
-            <List.Item className="recent-activity-item">
+            <List.Item
+              className="recent-activity-item recent-activity-clickable"
+              onClick={() => handleActivityClick(item)}
+            >
               <div className="recent-activity-content">
                 <div className="recent-activity-header">
                   <span
@@ -142,6 +162,7 @@ RecentActivity.propTypes = {
     activity: PropTypes.arrayOf(
       PropTypes.shape({
         id: PropTypes.string.isRequired,
+        execution_id: PropTypes.string,
         type: PropTypes.oneOf(["etl", "api", "workflow"]).isRequired,
         file_name: PropTypes.string.isRequired,
         status: PropTypes.string.isRequired,

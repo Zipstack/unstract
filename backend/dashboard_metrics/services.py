@@ -24,6 +24,20 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
 from unstract.core.data_models import ExecutionStatus
+from account_v2.models import Organization
+
+
+def _get_hitl_queue_model():
+    """Get HITLQueue model if available (cloud-only).
+
+    Returns None on OSS where manual_review_v2 is not installed.
+    """
+    try:
+        from pluggable_apps.manual_review_v2.models import HITLQueue
+
+        return HITLQueue
+    except ImportError:
+        return None
 
 
 def _get_hitl_queue_model():
@@ -695,6 +709,7 @@ class MetricsQueryService:
             results.append(
                 {
                     "id": str(execution.id),
+                    "execution_id": str(execution.workflow_execution.id),
                     "type": exec_type,
                     "file_name": execution.file_name,
                     "status": execution.status,
