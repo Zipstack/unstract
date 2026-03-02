@@ -1038,9 +1038,7 @@ class WorkerWorkflowExecutionService:
                 else file_name
             ),
             "execution_data_dir": str(file_handler.file_execution_dir),
-            "messaging_channel": getattr(
-                execution_service, "messaging_channel", ""
-            ),
+            "messaging_channel": getattr(execution_service, "messaging_channel", ""),
             "file_hash": metadata.get("source_hash", ""),
             "exec_metadata": metadata,
         }

@@ -11,6 +11,7 @@ import {
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSessionStore } from "../../../store/session-store";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
@@ -106,7 +107,7 @@ function SocketMessages() {
         );
       }
     },
-    [handleLogMessages, pushStagedMessage, updateCusToolMessages]
+    [handleLogMessages, pushStagedMessage, updateCusToolMessages],
   );
 
   // Subscribe/unsubscribe to the socket channel

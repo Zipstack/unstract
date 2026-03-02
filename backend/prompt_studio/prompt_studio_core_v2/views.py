@@ -8,6 +8,7 @@ from typing import Any
 import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
+from celery import signature
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -44,16 +45,11 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     DeploymentUsageCheckError,
-    IndexingAPIError,
     MaxProfilesReachedError,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
-from account_v2.constants import Common
-from celery import signature
-
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
-from utils.local_context import StateStore
 from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
     get_retrieval_strategy_metadata,
 )
@@ -431,7 +427,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
-        profile_manager_id: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
+        profile_manager_id: str = request.data.get(
+            ToolStudioPromptKeys.PROFILE_MANAGER_ID
+        )
         if not run_id:
             run_id = CommonUtils.generate_uuid()
 
@@ -443,7 +441,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Build file path
         doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id, is_create=False, user_id=user_id,
+            org_id,
+            is_create=False,
+            user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
@@ -516,7 +516,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Build file path
         doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id, is_create=False, user_id=user_id,
+            org_id,
+            is_create=False,
+            user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
@@ -524,9 +526,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Fetch all active prompts
         prompts = list(
-            ToolStudioPrompt.objects.filter(
-                tool_id=custom_tool.tool_id
-            ).order_by("sequence_number")
+            ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
+                "sequence_number"
+            )
         )
 
         context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
@@ -566,7 +568,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
     @action(detail=True, methods=["get"])
-    def task_status(self, request: HttpRequest, pk: Any = None, task_id: str = None) -> Response:
+    def task_status(
+        self, request: HttpRequest, pk: Any = None, task_id: str = None
+    ) -> Response:
         """Poll the status of an async Prompt Studio task.
 
         Task IDs now point to executor worker tasks dispatched via the

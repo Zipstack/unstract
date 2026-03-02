@@ -76,7 +76,11 @@ const PromptCard = memo(
             (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
               item?.component?.prompt_key === promptKey ||
               item?.component?.tool_id === details?.tool_id) &&
+<<<<<<< HEAD
             (item?.level === "INFO" || item?.level === "ERROR")
+=======
+            (item?.level === "INFO" || item?.level === "ERROR"),
+>>>>>>> 2f4f2dc874e8d6e080175c5d3b2cc2f2aa4b87e7
         );
 
       // If no matching message is found, return early

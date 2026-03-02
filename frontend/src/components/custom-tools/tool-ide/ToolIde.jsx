@@ -270,7 +270,7 @@ function ToolIde() {
       // On success the spinner stays until a socket event arrives.
       deleteIndexDoc(docId);
       setAlertDetails(
-        handleException(err, `${doc?.document_name} - Failed to index`)
+        handleException(err, `${doc?.document_name} - Failed to index`),
       );
     });
   };
