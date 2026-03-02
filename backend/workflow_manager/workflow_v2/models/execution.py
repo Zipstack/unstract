@@ -9,6 +9,7 @@ from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
+from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
@@ -257,6 +258,22 @@ class WorkflowExecution(BaseModel):
         )
 
         return total_cost
+
+    @property
+    def aggregated_total_pages_processed(self) -> int | None:
+        """Retrieve aggregated total pages processed for this execution.
+
+        Returns:
+            int | None: Total pages processed across all file executions,
+            or None if no page usage data exists.
+        """
+        file_execution_ids = list(self.file_executions.values_list("id", flat=True))
+        if not file_execution_ids:
+            return None
+
+        return UsageHelper.get_aggregated_pages_processed(
+            run_ids=[str(fid) for fid in file_execution_ids]
+        )
 
     @property
     def is_completed(self) -> bool:

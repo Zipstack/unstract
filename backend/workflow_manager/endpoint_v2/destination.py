@@ -694,6 +694,9 @@ class DestinationConnector(BaseConnector):
 
         # Combine both metadata
         workflow_metadata["usage"] = usage_metadata
+        workflow_metadata["total_pages_processed"] = (
+            UsageHelper.get_aggregated_pages_processed(run_id=file_execution_id)
+        )
 
         return workflow_metadata
 
