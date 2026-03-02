@@ -10,10 +10,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import Any
 
+from account_v2.models import Organization
 from celery import shared_task
 from django.core.cache import cache
 from django.db.utils import DatabaseError, OperationalError
 from django.utils import timezone
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from .models import (
     EventMetricsDaily,
@@ -241,9 +243,6 @@ def _run_aggregation() -> dict[str, Any]:
 
     Separated from the task function to keep the lock management clean.
     """
-    from account_v2.models import Organization
-    from workflow_manager.workflow_v2.models.execution import WorkflowExecution
-
     end_date = timezone.now()
 
     # Query windows for each granularity
