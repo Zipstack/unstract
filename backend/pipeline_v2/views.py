@@ -9,6 +9,7 @@ from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpResponse
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
@@ -40,12 +41,18 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class PipelineViewSet(viewsets.ModelViewSet):
+class PipelineViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 

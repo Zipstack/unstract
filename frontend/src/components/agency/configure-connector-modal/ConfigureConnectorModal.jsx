@@ -199,7 +199,7 @@ function ConfigureConnectorModal({
               connector_name: selectedConnector.connector.connector_name,
             },
           );
-        } catch (err) {
+        } catch (_err) {
           // If an error occurs while setting custom posthog event, ignore it and continue
         }
       }
@@ -232,7 +232,9 @@ function ConfigureConnectorModal({
   };
 
   const handleAddFolder = () => {
-    if (!selectedFolderPath) return;
+    if (!selectedFolderPath) {
+      return;
+    }
 
     // HACK: For GDrive connectors, strip the "root/" prefix to avoid duplication
     // since backend will add it back during execution. This helps avoid a migration
@@ -314,7 +316,10 @@ function ConfigureConnectorModal({
           updatePayload.configuration = validatedFormData;
         }
         if (Object.keys(updatePayload).length > 0) {
-          await handleEndpointUpdate(updatePayload);
+          const result = await handleEndpointUpdate(updatePayload);
+          if (!result) {
+            return;
+          }
         }
         // Update initial values after successful save
         setInitialFormDataConfig(cloneDeep(validatedFormData));
@@ -482,7 +487,9 @@ function ConfigureConnectorModal({
 
   // Helper function to render connector label
   const renderConnectorLabel = (connDetails, availableConnectors) => {
-    if (!connDetails?.id) return undefined;
+    if (!connDetails?.id) {
+      return undefined;
+    }
 
     const selectedConnector = availableConnectors.find(
       (conn) => conn.value === connDetails.id,
@@ -736,7 +743,9 @@ function ConfigureConnectorModal({
           connectorMode={connMode}
           addNewItem={handleConnectorCreated}
           editItemId={null}
-          setEditItemId={() => {}}
+          setEditItemId={() => {
+            // No-op: edit not supported in this context
+          }}
         />
       )}
 

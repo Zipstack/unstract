@@ -2,6 +2,10 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from permissions.co_owner_serializers import (
+    CoOwnerRepresentationMixin,
+    SharedUserListMixin,
+)
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -27,7 +31,9 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 logger = logging.getLogger(__name__)
 
 
-class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
+class WorkflowSerializer(
+    CoOwnerRepresentationMixin, IntegrityErrorMixin, AuditSerializer
+):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
 
     class Meta:
@@ -56,9 +62,8 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             many=True,
             context=self.context,
         ).data
-        representation["created_by_email"] = (
-            instance.created_by.email if instance.created_by else None
-        )
+        request = self.context.get("request")
+        self.add_co_owner_fields(instance, representation, request)
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:
@@ -161,22 +166,20 @@ class FileHistorySerializer(ModelSerializer):
         return obj.has_exceeded_limit(obj.workflow)
 
 
-class SharedUserListSerializer(ModelSerializer):
+class SharedUserListSerializer(SharedUserListMixin, ModelSerializer):
     """Serializer for returning workflow with shared user details."""
 
     shared_users = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
         model = Workflow
-        fields = ["id", "workflow_name", "shared_users", "shared_to_org", "created_by"]
-
-    def get_shared_users(self, obj):
-        """Return list of shared users with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
-
-    def get_created_by(self, obj):
-        """Return creator details."""
-        if obj.created_by:
-            return {"id": obj.created_by.id, "email": obj.created_by.email}
-        return None
+        fields = [
+            "id",
+            "workflow_name",
+            "shared_users",
+            "co_owners",
+            "shared_to_org",
+            "created_by",
+        ]

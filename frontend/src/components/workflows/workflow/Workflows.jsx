@@ -5,26 +5,28 @@ import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { useAlertStore } from "../../../store/alert-store";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
-import { useSessionStore } from "../../../store/session-store";
-import { useWorkflowStore } from "../../../store/workflow-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
-import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
-import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import "./Workflows.css";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { useAlertStore } from "../../../store/alert-store";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store";
+import { useWorkflowStore } from "../../../store/workflow-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
+import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
+import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
+import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "./workflow-service";
+import "./Workflows.css";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -59,8 +61,22 @@ function Workflows() {
   const [sharePermissionEdit, setSharePermissionEdit] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
-
   const { setAlertDetails } = useAlertStore();
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: projectApiService,
+    setAlertDetails,
+    onListRefresh: () => getProjectList(),
+  });
   const sessionDetails = useSessionStore((state) => state?.sessionDetails);
   const { updateWorkflow } = useWorkflowStore();
   const orgName = sessionDetails?.orgName;
@@ -289,6 +305,11 @@ function Workflows() {
     }
   };
 
+  const handleCoOwner = (event, workflow) => {
+    event.stopPropagation();
+    handleCoOwnerAction(workflow.id);
+  };
+
   const handleNewWorkflowBtnClick = () => {
     showNewProject();
     toggleModal(true);
@@ -364,6 +385,7 @@ function Workflows() {
               handleEdit={updateProject}
               handleDelete={deleteProject}
               handleShare={handleShare}
+              handleCoOwner={handleCoOwner}
               titleProp="workflow_name"
               descriptionProp="description"
               idProp="id"
@@ -393,12 +415,26 @@ function Workflows() {
               componentName={"SharePermission"}
               open={shareOpen}
               setOpen={setShareOpen}
-              adapter={selectedWorkflow}
+              sharedItem={selectedWorkflow}
               permissionEdit={sharePermissionEdit}
               loading={shareLoading}
               allUsers={allUsers}
               onApply={onShare}
               isSharableToOrg={true}
+            />
+          )}
+          {coOwnerOpen && (
+            <CoOwnerManagement
+              open={coOwnerOpen}
+              setOpen={setCoOwnerOpen}
+              resourceId={coOwnerResourceId}
+              resourceType="Workflow"
+              allUsers={coOwnerAllUsers}
+              coOwners={coOwnerData.coOwners}
+              createdBy={coOwnerData.createdBy}
+              loading={coOwnerLoading}
+              onAddCoOwner={onAddCoOwner}
+              onRemoveCoOwner={onRemoveCoOwner}
             />
           )}
         </div>

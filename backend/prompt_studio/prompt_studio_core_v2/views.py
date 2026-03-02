@@ -12,6 +12,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
@@ -81,7 +82,7 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-class PromptStudioCoreView(viewsets.ModelViewSet):
+class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
@@ -90,6 +91,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
+            return [IsOwner()]
+
+        if self.action in ["add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -116,6 +120,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
+        instance = CustomTool.objects.get(pk=serializer.data["tool_id"])
+        if instance.created_by:
+            instance.co_owners.add(instance.created_by)
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )

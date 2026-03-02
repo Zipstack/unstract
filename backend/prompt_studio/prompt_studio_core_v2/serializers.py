@@ -5,6 +5,7 @@ from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
@@ -33,7 +34,9 @@ except ImportError:
     from file_management.constants import FileInformationKey as FileKey
 
 
-class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
+class CustomToolSerializer(
+    CoOwnerRepresentationMixin, IntegrityErrorMixin, AuditSerializer
+):
     shared_users = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.all(), required=False, allow_null=True, many=True
     )
@@ -152,7 +155,10 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output
-        data["created_by_email"] = instance.created_by.email
+
+        # Co-owner information
+        request = self.context.get("request")
+        self.add_co_owner_fields(instance, data, request)
 
         return data
 
@@ -171,6 +177,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     """Used for listing users of Custom tool."""
 
     created_by = UserSerializer()
+    co_owners = UserSerializer(many=True, read_only=True)
     shared_users = UserSerializer(many=True)
 
     class Meta:
@@ -179,6 +186,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "tool_id",
             "tool_name",
             "created_by",
+            "co_owners",
             "shared_users",
             "shared_to_org",
         )

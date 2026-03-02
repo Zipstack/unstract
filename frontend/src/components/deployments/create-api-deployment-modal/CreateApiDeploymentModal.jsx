@@ -106,7 +106,7 @@ const CreateApiDeploymentModal = ({
         deployment_name: formDetails?.api_name,
         workflow_name: wf?.workflow_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -175,6 +175,17 @@ const CreateApiDeploymentModal = ({
         });
       })
       .catch((err) => {
+        if (err?.response?.status === 404) {
+          setOpen(false);
+          clearFormDetails();
+          updateTableData();
+          setAlertDetails({
+            type: "error",
+            content:
+              "This resource is no longer accessible. It may have been removed or your access has been revoked.",
+          });
+          return;
+        }
         if (err.response?.data) {
           setBackendErrors(err.response.data);
         } else {

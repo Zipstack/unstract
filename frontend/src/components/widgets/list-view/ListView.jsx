@@ -18,13 +18,12 @@ import {
 } from "@ant-design/icons";
 import { useNavigate } from "react-router-dom";
 
-import { useSessionStore } from "../../../store/session-store";
-
 function ListView({
   listOfTools,
   handleEdit,
   handleDelete,
   handleShare,
+  handleCoOwner,
   titleProp,
   descriptionProp,
   iconProp,
@@ -35,7 +34,6 @@ function ListView({
   type,
 }) {
   const navigate = useNavigate();
-  const { sessionDetails } = useSessionStore();
   const handleDeleteClick = (event, tool) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleDelete(event, tool);
@@ -44,6 +42,58 @@ function ListView({
   const handleShareClick = (event, tool, isEdit) => {
     event.stopPropagation(); // Stop propagation to prevent list item click
     handleShare(event, tool, isEdit);
+  };
+
+  const handleCoOwnerClick = (event, tool) => {
+    event.stopPropagation();
+    handleCoOwner(event, tool);
+  };
+
+  const renderOwnerBadge = (item) => {
+    const name = item?.is_owner ? "Me" : item?.created_by_email || "-";
+    const extra =
+      item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+    const ownerLabel = `${name}${extra}`;
+
+    const badgeContent = (
+      <>
+        <Avatar
+          size={20}
+          className="adapters-list-user-avatar"
+          icon={<UserOutlined />}
+        />
+        <Typography.Text disabled className="adapters-list-user-prefix">
+          Owned By:
+        </Typography.Text>
+        <Typography.Text className="shared-username">
+          {ownerLabel}
+        </Typography.Text>
+      </>
+    );
+
+    if (handleCoOwner) {
+      return (
+        <Tooltip title="Manage Co-Owners">
+          <button
+            type="button"
+            className="adapters-list-profile-container owner-clickable owner-badge-btn"
+            onClick={(event) => handleCoOwnerClick(event, item)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                handleCoOwnerClick(event, item);
+              }
+            }}
+          >
+            {badgeContent}
+          </button>
+        </Tooltip>
+      );
+    }
+
+    return (
+      <div className="adapters-list-profile-container">{badgeContent}</div>
+    );
   };
 
   const renderTitle = (item) => {
@@ -82,25 +132,7 @@ function ListView({
           <div className="adapters-list-title-container display-flex-left">
             {title}
           </div>
-          {showOwner && (
-            <div className="adapters-list-profile-container">
-              <Avatar
-                size={20}
-                className="adapters-list-user-avatar"
-                icon={<UserOutlined />}
-              />
-              <Typography.Text disabled className="adapters-list-user-prefix">
-                Owned By:
-              </Typography.Text>
-              <Typography.Text className="shared-username">
-                {item?.created_by_email
-                  ? item?.created_by_email === sessionDetails.email
-                    ? "Me"
-                    : item?.created_by_email
-                  : "-"}
-              </Typography.Text>
-            </div>
-          )}
+          {showOwner && renderOwnerBadge(item)}
         </div>
         <div
           className="action-button-container"
@@ -204,6 +236,7 @@ ListView.propTypes = {
   handleEdit: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   handleShare: PropTypes.func,
+  handleCoOwner: PropTypes.func,
   titleProp: PropTypes.string.isRequired,
   descriptionProp: PropTypes.string,
   iconProp: PropTypes.string,

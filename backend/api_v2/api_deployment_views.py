@@ -6,6 +6,7 @@ from typing import Any
 from configuration.models import Configuration
 from django.db.models import QuerySet
 from django.http import HttpResponse
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
@@ -242,9 +243,15 @@ class DeploymentExecution(views.APIView):
         )
 
 
-class APIDeploymentViewSet(viewsets.ModelViewSet):
+class APIDeploymentViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -313,7 +320,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
                 workflow_id__in=workflow_ids, created_by=request.user
             )
 
-            serializer = APIDeploymentListSerializer(deployments, many=True)
+            serializer = APIDeploymentListSerializer(
+                deployments, many=True, context={"request": request}
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except PromptStudioRegistry.DoesNotExist:

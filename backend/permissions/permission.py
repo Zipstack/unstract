@@ -8,10 +8,21 @@ from utils.user_context import UserContext
 
 
 class IsOwner(permissions.BasePermission):
-    """Custom permission to only allow owners of an object."""
+    """Custom permission to only allow owners of an object.
+
+    Owners include both the original creator (created_by)
+    and any co-owners.
+    """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        return True if obj.created_by == request.user else False
+        if obj.created_by == request.user:
+            return True
+        if (
+            hasattr(obj, "co_owners")
+            and obj.co_owners.filter(pk=request.user.pk).exists()
+        ):
+            return True
+        return False
 
 
 class IsOrganizationMember(permissions.BasePermission):
@@ -26,14 +37,16 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-            )
-            else False
-        )
+        if obj.created_by == request.user:
+            return True
+        if (
+            hasattr(obj, "co_owners")
+            and obj.co_owners.filter(pk=request.user.pk).exists()
+        ):
+            return True
+        if obj.shared_users.filter(pk=request.user.pk).exists():
+            return True
+        return False
 
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
@@ -42,15 +55,25 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-                or obj.shared_to_org
-            )
-            else False
-        )
+        if obj.created_by == request.user:
+            return True
+        if (
+            hasattr(obj, "co_owners")
+            and obj.co_owners.filter(pk=request.user.pk).exists()
+        ):
+            return True
+        if obj.shared_users.filter(pk=request.user.pk).exists():
+            return True
+        if obj.shared_to_org:
+            return True
+        return False
+
+
+def _is_adapter_owner(request: Request, obj: AdapterInstance) -> bool:
+    """Check if the user is an owner (created_by or co_owner) of the adapter."""
+    if obj.created_by == request.user:
+        return True
+    return bool(obj.co_owners.filter(pk=request.user.pk).exists())
 
 
 class IsFrictionLessAdapter(permissions.BasePermission):
@@ -64,7 +87,7 @@ class IsFrictionLessAdapter(permissions.BasePermission):
         if obj.is_friction_less:
             return False
 
-        return True if obj.created_by == request.user else False
+        return _is_adapter_owner(request, obj)
 
 
 class IsFrictionLessAdapterDelete(permissions.BasePermission):
@@ -78,4 +101,4 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
         if obj.is_friction_less:
             return True
 
-        return True if obj.created_by == request.user else False
+        return _is_adapter_owner(request, obj)

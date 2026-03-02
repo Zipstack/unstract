@@ -1,0 +1,17 @@
+.co-owner-search {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.co-owner-creator-tag {
+  margin-left: 8px;
+}
+
+.co-owner-modal .shared-user-avatar {
+  background-color: #00a6ed;
+  margin-right: 15px;
+}
+
+.co-owner-modal .shared-username {
+  font-weight: 500;
+}

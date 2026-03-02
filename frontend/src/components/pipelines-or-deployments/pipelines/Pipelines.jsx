@@ -33,30 +33,32 @@ import {
   displayURL,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
-import { useAlertStore } from "../../../store/alert-store.js";
-import { useSessionStore } from "../../../store/session-store.js";
-import { Layout } from "../../deployments/layout/Layout.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
-import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
-import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
-import { LogsModal } from "../log-modal/LogsModal.jsx";
-import "./Pipelines.css";
 import useClearFileHistory from "../../../hooks/useClearFileHistory";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { useAlertStore } from "../../../store/alert-store.js";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store.js";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { Layout } from "../../deployments/layout/Layout.jsx";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
+import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
+import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
 import * as fetchExecutionLogsModule from "../log-modal/fetchExecutionLogs.js";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { pipelineService } from "../pipeline-service.js";
+import "./Pipelines.css";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -88,6 +90,21 @@ function Pipelines({ type }) {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [isLoadingShare, setIsLoadingShare] = useState(false);
+  // Co-owner state
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: pipelineApiService,
+    setAlertDetails,
+    onListRefresh: () => getPipelineList(),
+  });
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
@@ -233,7 +250,9 @@ function Pipelines({ type }) {
       .catch((err) => {
         setAlertDetails(handleException(err));
       })
-      .finally(() => {});
+      .finally(() => {
+        // No-op: cleanup not needed
+      });
   };
 
   const deletePipeline = () => {
@@ -341,6 +360,11 @@ function Pipelines({ type }) {
       .finally(() => {
         setIsLoadingShare(false);
       });
+  };
+
+  const handleCoOwner = (record) => {
+    const row = record || selectedPorD;
+    handleCoOwnerAction(row.id);
   };
 
   const actionItems = [
@@ -665,12 +689,33 @@ function Pipelines({ type }) {
       key: "created_by_email",
       align: "center",
       render: (email, record) => {
-        const isOwner = record.created_by === sessionDetails?.userId;
+        const isOwner = record?.is_owner;
         return (
-          <Tooltip title={email}>
-            <Typography.Text className="p-or-d-typography">
+          <Tooltip title="Manage Co-Owners">
+            <span
+              style={{
+                cursor: "pointer",
+                color: "#1890ff",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+              }}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedPorD(record);
+                handleCoOwner(record);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedPorD(record);
+                  handleCoOwner(record);
+                }
+              }}
+            >
               {isOwner ? "You" : email?.split("@")[0] || "Unknown"}
-            </Typography.Text>
+              {record?.co_owners_count > 1 && ` +${record.co_owners_count - 1}`}
+            </span>
           </Tooltip>
         );
       },
@@ -774,12 +819,26 @@ function Pipelines({ type }) {
         <SharePermission
           open={openShareModal}
           setOpen={setOpenShareModal}
-          adapter={selectedPorD}
+          sharedItem={selectedPorD}
           permissionEdit={true}
           loading={isLoadingShare}
           allUsers={Array.isArray(allUsers) ? allUsers : []}
           onApply={onShare}
           isSharableToOrg={true}
+        />
+      )}
+      {coOwnerOpen && (
+        <CoOwnerManagement
+          open={coOwnerOpen}
+          setOpen={setCoOwnerOpen}
+          resourceId={selectedPorD?.id}
+          resourceType="Pipeline"
+          allUsers={coOwnerAllUsers}
+          coOwners={coOwnerData.coOwners}
+          createdBy={coOwnerData.createdBy}
+          loading={coOwnerLoading}
+          onAddCoOwner={onAddCoOwner}
+          onRemoveCoOwner={onRemoveCoOwner}
         />
       )}
     </div>

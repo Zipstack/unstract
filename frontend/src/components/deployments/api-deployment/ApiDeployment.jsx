@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
@@ -30,6 +31,7 @@ import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
@@ -66,6 +68,20 @@ function ApiDeployment() {
   const [openShareModal, setOpenShareModal] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const [isLoadingShare, setIsLoadingShare] = useState(false);
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: apiDeploymentsApiService,
+    setAlertDetails,
+    onListRefresh: () => getApiDeploymentList(),
+  });
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
@@ -150,12 +166,34 @@ function ApiDeployment() {
       title: "Owner",
       key: "created_by",
       render: (_, record) => {
-        const currentUser = sessionDetails?.userId;
-        const isOwner = record?.created_by === currentUser;
+        const isOwner = record?.is_owner;
         return (
-          <Space>
-            {isOwner ? "You" : record?.created_by_email || "Unknown"}
-          </Space>
+          <Tooltip title="Manage Co-Owners">
+            <span
+              style={{
+                cursor: "pointer",
+                color: "#1890ff",
+                textDecoration: "underline",
+                textDecorationStyle: "dotted",
+              }}
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                setSelectedRow(record);
+                handleCoOwner(record);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setSelectedRow(record);
+                  handleCoOwner(record);
+                }
+              }}
+            >
+              {isOwner ? "You" : record?.created_by_email || "Unknown"}
+              {record?.co_owners_count > 1 && ` +${record.co_owners_count - 1}`}
+            </span>
+          </Tooltip>
         );
       },
       align: "left",
@@ -247,7 +285,6 @@ function ApiDeployment() {
     record.is_active = !record?.is_active;
     apiDeploymentsApiService
       .updateApiDeployment(record)
-      .then(() => {})
       .catch((err) => {
         setAlertDetails(handleException(err));
       })
@@ -314,6 +351,11 @@ function ApiDeployment() {
       .finally(() => {
         setIsLoadingShare(false);
       });
+  };
+
+  const handleCoOwner = (record) => {
+    const row = record || selectedRow;
+    handleCoOwnerAction(row.id);
   };
 
   const actionItems = [
@@ -557,12 +599,24 @@ function ApiDeployment() {
       <SharePermission
         open={openShareModal}
         setOpen={setOpenShareModal}
-        adapter={selectedRow}
+        sharedItem={selectedRow}
         permissionEdit={true}
         loading={isLoadingShare}
         allUsers={allUsers}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={selectedRow?.id}
+        resourceType="API Deployment"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );
