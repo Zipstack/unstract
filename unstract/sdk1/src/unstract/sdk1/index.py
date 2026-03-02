@@ -399,7 +399,8 @@ class Index:
             document = Document(
                 text=text,
                 doc_id=doc_id,
-                metadata={"section": item["section"]},
+                # Include doc_id in metadata for retrieval filtering
+                metadata={"section": item["section"], "doc_id": doc_id},
             )
             document.id_ = doc_id
             documents.append(document)

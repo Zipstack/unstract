@@ -22,6 +22,7 @@ import CustomTools from "../../../assets/custom-tools-icon.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
+import LookupsIcon from "../../../assets/lookups.svg";
 import PlatformSettingsIcon from "../../../assets/platform-settings.svg";
 import task from "../../../assets/task.svg";
 import TerminalIcon from "../../../assets/terminal.svg";
@@ -326,6 +327,16 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           image: CustomTools,
           path: `/${orgName}/tools`,
           active: globalThis.location.pathname.startsWith(`/${orgName}/tools`),
+        },
+        {
+          id: 1.2,
+          title: "Look-Ups",
+          description: "Enrich extracted data with reference lookups",
+          image: LookupsIcon,
+          path: `/${orgName}/lookups`,
+          active: globalThis.location.pathname.startsWith(
+            `/${orgName}/lookups`,
+          ),
         },
         {
           id: 1.3,

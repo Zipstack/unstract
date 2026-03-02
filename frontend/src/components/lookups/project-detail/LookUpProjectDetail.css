@@ -1,0 +1,38 @@
+.lookup-project-detail {
+  padding: 16px 24px;
+  height: 100%;
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.project-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.project-back-btn {
+  color: #000;
+  padding: 4px 8px;
+}
+
+.project-name {
+  margin: 0 !important;
+  font-weight: 600 !important;
+}
+
+.loading-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 400px;
+}
+
+/* Ensure tabs content is scrollable */
+.lookup-project-detail .ant-tabs-content {
+  max-height: calc(100vh - 240px);
+  overflow-y: auto;
+}

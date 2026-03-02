@@ -34,7 +34,6 @@ function JsonView({
             />
           ))}
         </Tabs>
-        <div className="combined-op-segment"></div>
       </div>
       <div className="combined-op-divider" />
       <JsonViewBody

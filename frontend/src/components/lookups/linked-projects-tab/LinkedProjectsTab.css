@@ -1,0 +1,17 @@
+.linked-projects-tab {
+  padding: 24px;
+  height: 100%;
+  max-height: calc(100vh - 380px);
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}

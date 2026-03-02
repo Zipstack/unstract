@@ -18,12 +18,13 @@
 
 .appBody {
   background-color: var(--page-bg-2);
-  overflow: hidden;
-  height: 100%;
+  overflow: auto;
+  height: calc(100vh - 60px);
 }
 
 .appBody2 {
   height: 100%;
+  overflow-y: auto;
 }
 .btn_style {
   margin: 0 5px;

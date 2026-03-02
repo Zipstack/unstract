@@ -1,7 +1,10 @@
 import { Route } from "react-router-dom";
+
 import { RequireAdmin } from "../components/helpers/auth/RequireAdmin.js";
 import { CustomToolsHelper } from "../components/helpers/custom-tools/CustomToolsHelper.js";
 import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
+import { LookUpProjectDetail } from "../components/lookups/project-detail/LookUpProjectDetail.jsx";
+import { LookUpProjectList } from "../components/lookups/project-list/LookUpProjectList.jsx";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
@@ -13,6 +16,7 @@ import { CustomTools } from "../pages/CustomTools.jsx";
 import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
+import { LookUpsPage } from "../pages/LookUpsPage.jsx";
 import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
@@ -173,6 +177,10 @@ function useMainAppRoutes() {
           <Route path="" element={<AgencyPage />} />
         </Route>
         <Route path="tools" element={<CustomTools />} />
+        <Route path="lookups" element={<LookUpsPage />}>
+          <Route path="" element={<LookUpProjectList />} />
+          <Route path=":projectId" element={<LookUpProjectDetail />} />
+        </Route>
         <Route path="" element={<CustomToolsHelper />}>
           <Route path="tools/:id" element={<ToolIdePage />} />
           <Route

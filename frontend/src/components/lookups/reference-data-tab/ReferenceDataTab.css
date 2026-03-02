@@ -1,0 +1,158 @@
+.reference-data-tab {
+  padding: 16px 0;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* Header */
+.ref-tab-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 24px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ref-tab-title {
+  margin: 0 0 4px 0 !important;
+}
+
+/* Cards Container */
+.ref-cards-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Data Card */
+.ref-data-card {
+  width: 100%;
+  max-width: 680px;
+  background: #fff;
+  border: 1px solid #e8e8e8;
+  border-radius: 8px;
+  padding: 0;
+  transition: box-shadow 0.2s ease;
+}
+
+.ref-data-card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+/* Card Header */
+.ref-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.ref-card-filename {
+  font-size: 14px !important;
+  font-weight: 600 !important;
+}
+
+.ref-card-delete {
+  color: #8c8c8c;
+  padding: 4px;
+}
+
+.ref-card-delete:hover {
+  color: #ff4d4f;
+}
+
+/* Card Body */
+.ref-card-body {
+  padding: 4px 20px 12px 20px;
+}
+
+/* Card Row */
+.ref-card-row {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.ref-card-row:last-child {
+  border-bottom: none;
+}
+
+.ref-card-label {
+  width: 180px;
+  flex-shrink: 0;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.5px;
+  color: #8c8c8c !important;
+}
+
+.ref-card-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ref-card-icon {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+/* Empty & Loading States */
+.ref-loading,
+.ref-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 60px 0;
+}
+
+/* Upload dragger styles */
+.upload-dragger {
+  padding: 48px 16px;
+  text-align: center;
+  background: #fafafa;
+  border: 1px dashed #d9d9d9;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.upload-dragger:hover {
+  border-color: #1890ff;
+}
+
+.upload-dragger.dragging {
+  border-color: #1890ff;
+  background: #e6f7ff;
+}
+
+.upload-dragger.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.upload-dragger .ant-upload-drag-icon {
+  margin-bottom: 16px;
+}
+
+.upload-dragger .ant-upload-drag-icon .anticon {
+  font-size: 48px;
+  color: #1890ff;
+}
+
+.upload-dragger .ant-upload-text {
+  margin: 0 0 4px;
+  color: rgba(0, 0, 0, 0.85);
+  font-size: 16px;
+}
+
+.upload-dragger .ant-upload-hint {
+  color: rgba(0, 0, 0, 0.45);
+  font-size: 14px;
+}

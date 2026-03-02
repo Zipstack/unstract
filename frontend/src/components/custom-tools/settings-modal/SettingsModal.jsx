@@ -4,6 +4,7 @@ import {
   DiffOutlined,
   FileTextOutlined,
   MessageOutlined,
+  SearchOutlined,
 } from "@ant-design/icons";
 import { Col, Menu, Modal, Row, Typography } from "antd";
 import PropTypes from "prop-types";
@@ -21,7 +22,16 @@ let SummarizeManager = null;
 const EvaluationManager = null;
 let ChallengeManager = null;
 let HighlightManager = null;
+let LookupManager = null;
 try {
+  SummarizeManager =
+    require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
+  ChallengeManager =
+    require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
+  HighlightManager =
+    require("../../../plugins/highlight-manager/HighlightManager").HighlightManager;
+  LookupManager =
+    require("../../../plugins/lookup-manager/LookupManager").LookupManager;
   const smMod = await import(
     "../../../plugins/summarize-manager/SummarizeManager"
   );
@@ -115,6 +125,12 @@ function SettingsModal({ open, setOpen, handleUpdateTool }) {
           handleUpdateTool={handleUpdateTool}
           type="highlight"
         />
+      );
+    }
+    if (LookupManager) {
+      items.push(getMenuItem("Lookups", 9, <SearchOutlined />));
+      listOfComponents[9] = (
+        <LookupManager handleUpdateTool={handleUpdateTool} />
       );
     }
     setMenuItems(items);

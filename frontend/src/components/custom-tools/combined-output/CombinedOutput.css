@@ -37,3 +37,18 @@
 .combined-op-layout .gap {
   margin-bottom: 12px;
 }
+
+/* Enrichment info bar styling */
+.enrichment-info-bar {
+  padding: 8px 12px;
+  background-color: #f6ffed;
+  border: 1px solid #b7eb8f;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.combined-op-segment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
