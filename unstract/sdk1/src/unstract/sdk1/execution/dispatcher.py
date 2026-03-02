@@ -25,7 +25,11 @@ logger = logging.getLogger(__name__)
 # Constants matching workers/shared/enums values.
 # Defined here to avoid an SDK1 → workers package dependency.
 _TASK_NAME = "execute_extraction"
-_QUEUE_NAME = "executor"
+
+# Queue-per-executor prefix.  Each executor gets its own Celery queue
+# named ``celery_executor_{executor_name}``, derived automatically
+# from ``ExecutionContext.executor_name``.
+_QUEUE_PREFIX = "celery_executor_"
 
 # Caller-side timeout (seconds) for AsyncResult.get().
 # This controls how long the *caller* waits for the executor to
@@ -77,6 +81,16 @@ class ExecutionDispatcher:
         """
         self._app = celery_app
 
+    @staticmethod
+    def _get_queue(executor_name: str) -> str:
+        """Derive the Celery queue name from *executor_name*.
+
+        Convention: ``celery_executor_{executor_name}``.
+        Adding a new executor automatically gets its own queue —
+        no registry change needed.
+        """
+        return f"{_QUEUE_PREFIX}{executor_name}"
+
     def dispatch(
         self,
         context: ExecutionContext,
@@ -108,20 +122,22 @@ class ExecutionDispatcher:
                 )
             )
 
+        queue = self._get_queue(context.executor_name)
         logger.info(
             "Dispatching execution: executor=%s operation=%s "
-            "run_id=%s request_id=%s timeout=%ss",
+            "run_id=%s request_id=%s timeout=%ss queue=%s",
             context.executor_name,
             context.operation,
             context.run_id,
             context.request_id,
             timeout,
+            queue,
         )
 
         async_result = self._app.send_task(
             _TASK_NAME,
             args=[context.to_dict()],
-            queue=_QUEUE_NAME,
+            queue=queue,
         )
         logger.info(
             "Task sent: celery_task_id=%s, waiting for result...",
@@ -172,19 +188,21 @@ class ExecutionDispatcher:
                 "No Celery app configured on ExecutionDispatcher"
             )
 
+        queue = self._get_queue(context.executor_name)
         logger.info(
             "Dispatching async execution: executor=%s "
-            "operation=%s run_id=%s request_id=%s",
+            "operation=%s run_id=%s request_id=%s queue=%s",
             context.executor_name,
             context.operation,
             context.run_id,
             context.request_id,
+            queue,
         )
 
         async_result = self._app.send_task(
             _TASK_NAME,
             args=[context.to_dict()],
-            queue=_QUEUE_NAME,
+            queue=queue,
         )
         return async_result.id
 
@@ -228,21 +246,23 @@ class ExecutionDispatcher:
                 "No Celery app configured on ExecutionDispatcher"
             )
 
+        queue = self._get_queue(context.executor_name)
         logger.info(
             "Dispatching with callback: executor=%s "
             "operation=%s run_id=%s request_id=%s "
-            "on_success=%s on_error=%s",
+            "on_success=%s on_error=%s queue=%s",
             context.executor_name,
             context.operation,
             context.run_id,
             context.request_id,
             on_success,
             on_error,
+            queue,
         )
 
         send_kwargs: dict[str, Any] = {
             "args": [context.to_dict()],
-            "queue": _QUEUE_NAME,
+            "queue": queue,
         }
         if on_success is not None:
             send_kwargs["link"] = on_success

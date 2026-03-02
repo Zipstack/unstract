@@ -52,7 +52,6 @@ class LegacyExecutor(BaseExecutor):
         Operation.ANSWER_PROMPT.value: "_handle_answer_prompt",
         Operation.SINGLE_PASS_EXTRACTION.value: "_handle_single_pass_extraction",
         Operation.SUMMARIZE.value: "_handle_summarize",
-        Operation.AGENTIC_EXTRACTION.value: "_handle_agentic_extraction",
         Operation.IDE_INDEX.value: "_handle_ide_index",
         Operation.STRUCTURE_PIPELINE.value: "_handle_structure_pipeline",
     }
@@ -221,9 +220,21 @@ class LegacyExecutor(BaseExecutor):
                 context.run_id,
             )
             shim.stream_log("Text extraction completed")
+            result_data: dict[str, Any] = {
+                IKeys.EXTRACTED_TEXT: process_response.extracted_text,
+            }
+            # Include highlight metadata when available
+            # (used by agentic extraction for PDF source referencing)
+            if (
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.line_metadata
+            ):
+                result_data["highlight_metadata"] = (
+                    process_response.extraction_metadata.line_metadata
+                )
             return ExecutionResult(
                 success=True,
-                data={IKeys.EXTRACTED_TEXT: process_response.extracted_text},
+                data=result_data,
             )
         except AdapterError as e:
             name = x2text.x2text_instance.get_name()
@@ -1027,6 +1038,30 @@ class LegacyExecutor(BaseExecutor):
             VectorDB,
         ) = self._get_prompt_deps()
 
+        # ---- Initialize highlight plugin (if enabled + installed) ----------
+        process_text_fn = None
+        enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        if enable_highlight:
+            from executor.executors.plugins import ExecutorPluginLoader
+
+            highlight_cls = ExecutorPluginLoader.get("highlight-data")
+            if highlight_cls:
+                from executor.executors.file_utils import FileUtils
+
+                fs_instance = FileUtils.get_fs_instance(
+                    execution_source=execution_source
+                )
+                highlight_instance = highlight_cls(
+                    file_path=file_path,
+                    fs_instance=fs_instance,
+                    execution_source=execution_source,
+                )
+                process_text_fn = highlight_instance.run
+                logger.info(
+                    "Highlight plugin initialized for file=%s",
+                    doc_name,
+                )
+
         # ---- First pass: collect variable names + required fields ----------
         for output in prompts:
             variable_names.append(output[PSKeys.NAME])
@@ -1139,20 +1174,21 @@ class LegacyExecutor(BaseExecutor):
                     message=msg, code=status_code
                 ) from e
 
-            # TABLE and LINE_ITEM types require plugins not yet available
+            # TABLE type is handled by TableExtractorExecutor (separate
+            # queue).  LINE_ITEM is not supported.  The backend dispatcher
+            # must route these types to the correct executor; if they
+            # reach LegacyExecutor it's a mis-route.
             if output[PSKeys.TYPE] == PSKeys.TABLE:
                 raise LegacyExecutorError(
                     message=(
-                        "TABLE extraction requires plugins not yet "
-                        "available in the executor worker."
+                        "TABLE extraction is handled by "
+                        "TableExtractorExecutor.  Route TABLE prompts "
+                        "with executor_name='table'."
                     )
                 )
             if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
                 raise LegacyExecutorError(
-                    message=(
-                        "LINE_ITEM extraction requires plugins not yet "
-                        "available in the executor worker."
-                    )
+                    message="LINE_ITEM extraction is not supported."
                 )
 
             # ---- Retrieval + Answer ----------------------------------------
@@ -1211,6 +1247,7 @@ class LegacyExecutor(BaseExecutor):
                         metadata=metadata,
                         execution_source=execution_source,
                         file_path=file_path,
+                        process_text=process_text_fn,
                     )
                 else:
                     logger.warning(
@@ -1234,6 +1271,76 @@ class LegacyExecutor(BaseExecutor):
                     tool_id=tool_id,
                     doc_name=doc_name,
                 )
+
+                # ---- Challenge (quality verification) ----------------------
+                if tool_settings.get(PSKeys.ENABLE_CHALLENGE):
+                    from executor.executors.plugins import (
+                        ExecutorPluginLoader,
+                    )
+
+                    challenge_cls = ExecutorPluginLoader.get("challenge")
+                    if challenge_cls:
+                        challenge_llm_id = tool_settings.get(
+                            PSKeys.CHALLENGE_LLM
+                        )
+                        if challenge_llm_id:
+                            shim.stream_log(
+                                f"Running challenge for: {prompt_name}"
+                            )
+                            challenge_llm = LLM(
+                                adapter_instance_id=challenge_llm_id,
+                                tool=shim,
+                                usage_kwargs={
+                                    **usage_kwargs,
+                                    PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
+                                },
+                                capture_metrics=True,
+                            )
+                            challenger = challenge_cls(
+                                llm=llm,
+                                challenge_llm=challenge_llm,
+                                context="\n".join(context_list),
+                                tool_settings=tool_settings,
+                                output=output,
+                                structured_output=structured_output,
+                                run_id=run_id,
+                                platform_key=platform_api_key,
+                                metadata=metadata,
+                            )
+                            challenger.run()
+                            logger.info(
+                                "Challenge completed: prompt=%s",
+                                prompt_name,
+                            )
+
+                # ---- Evaluation (prompt evaluation) ------------------------
+                eval_settings = output.get(PSKeys.EVAL_SETTINGS, {})
+                if eval_settings.get(PSKeys.EVAL_SETTINGS_EVALUATE):
+                    from executor.executors.plugins import (
+                        ExecutorPluginLoader,
+                    )
+
+                    evaluator_cls = ExecutorPluginLoader.get("evaluation")
+                    if evaluator_cls:
+                        shim.stream_log(
+                            f"Running evaluation for: {prompt_name}"
+                        )
+                        evaluator = evaluator_cls(
+                            query=output.get(PSKeys.COMBINED_PROMPT, ""),
+                            context="\n".join(context_list),
+                            response=structured_output.get(prompt_name),
+                            reference_answer=output.get(
+                                "reference_answer", ""
+                            ),
+                            prompt=output,
+                            structured_output=structured_output,
+                            platform_key=platform_api_key,
+                        )
+                        evaluator.run()
+                        logger.info(
+                            "Evaluation completed: prompt=%s",
+                            prompt_name,
+                        )
 
                 shim.stream_log(f"Completed prompt: {prompt_name}")
 
@@ -1518,23 +1625,3 @@ class LegacyExecutor(BaseExecutor):
                 code=status_code,
             ) from e
 
-    def _handle_agentic_extraction(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
-        """Handle ``Operation.AGENTIC_EXTRACTION``.
-
-        Agentic extraction requires the agentic extraction plugin
-        (AutoGen-based multi-agent system).  This is not available
-        in the executor worker — it will be migrated when plugin
-        support is added.
-
-        Returns:
-            ExecutionResult.failure indicating the plugin is required.
-        """
-        raise LegacyExecutorError(
-            message=(
-                "Agentic extraction requires the agentic extraction "
-                "plugin which is not yet available in the executor "
-                "worker."
-            ),
-        )

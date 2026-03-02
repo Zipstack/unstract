@@ -29,9 +29,20 @@ class Operation(str, Enum):
     ANSWER_PROMPT = "answer_prompt"
     SINGLE_PASS_EXTRACTION = "single_pass_extraction"
     SUMMARIZE = "summarize"
-    AGENTIC_EXTRACTION = "agentic_extraction"
     IDE_INDEX = "ide_index"
     STRUCTURE_PIPELINE = "structure_pipeline"
+    TABLE_EXTRACT = "table_extract"
+    SMART_TABLE_EXTRACT = "smart_table_extract"
+    SPS_ANSWER_PROMPT = "sps_answer_prompt"
+    SPS_INDEX = "sps_index"
+    AGENTIC_EXTRACT = "agentic_extract"
+    AGENTIC_SUMMARIZE = "agentic_summarize"
+    AGENTIC_UNIFORMIZE = "agentic_uniformize"
+    AGENTIC_FINALIZE = "agentic_finalize"
+    AGENTIC_GENERATE_PROMPT = "agentic_generate_prompt"
+    AGENTIC_GENERATE_PROMPT_PIPELINE = "agentic_generate_prompt_pipeline"
+    AGENTIC_COMPARE = "agentic_compare"
+    AGENTIC_TUNE_FIELD = "agentic_tune_field"
 
 
 @dataclass

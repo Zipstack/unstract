@@ -562,12 +562,12 @@ def _run_agentic_extraction(
 ) -> dict:
     """Execute agentic extraction pipeline via dispatcher.
 
-    Currently returns failure since the agentic extraction plugin
-    is not yet available in the executor worker.
+    Routes to AgenticPromptStudioExecutor (cloud plugin) which handles
+    the full multi-agent extraction pipeline using AutoGen.
     """
     agentic_ctx = ExecutionContext(
-        executor_name="legacy",
-        operation="agentic_extraction",
+        executor_name="agentic",
+        operation="agentic_extract",
         run_id=file_execution_id,
         execution_source="tool",
         organization_id=organization_id,

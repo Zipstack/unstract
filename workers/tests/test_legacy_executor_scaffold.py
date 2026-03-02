@@ -86,7 +86,8 @@ class TestUnsupportedOperation:
 # --- 4. All operations are implemented (no stubs remain) ---
 # TestHandlerStubs and TestOrchestratorWrapping removed:
 # All operations (extract, index, answer_prompt, single_pass_extraction,
-# summarize, agentic_extraction) are now fully implemented.
+# summarize) are now fully implemented. Agentic operations moved to
+# AgenticPromptStudioExecutor (cloud plugin).
 
 
 # --- 6. Celery eager-mode chain ---
@@ -133,9 +134,32 @@ class TestCeleryEagerChain:
 
 class TestDispatchTableCoverage:
     def test_every_operation_has_handler(self):
+        """Every Operation handled by LegacyExecutor is in _OPERATION_MAP.
+
+        Operations handled by cloud executors (discovered via entry points)
+        are excluded — they have their own executor classes.
+        """
         from executor.executors.legacy_executor import LegacyExecutor
 
+        # Operations handled by cloud executors, not LegacyExecutor
+        cloud_executor_operations = {
+            "table_extract",                    # TableExtractorExecutor
+            "smart_table_extract",              # SmartTableExtractorExecutor
+            "sps_answer_prompt",                # SimplePromptStudioExecutor
+            "sps_index",                        # SimplePromptStudioExecutor
+            "agentic_extract",                  # AgenticPromptStudioExecutor
+            "agentic_summarize",                # AgenticPromptStudioExecutor
+            "agentic_uniformize",               # AgenticPromptStudioExecutor
+            "agentic_finalize",                 # AgenticPromptStudioExecutor
+            "agentic_generate_prompt",          # AgenticPromptStudioExecutor
+            "agentic_generate_prompt_pipeline", # AgenticPromptStudioExecutor
+            "agentic_compare",                  # AgenticPromptStudioExecutor
+            "agentic_tune_field",               # AgenticPromptStudioExecutor
+        }
+
         for op in Operation:
+            if op.value in cloud_executor_operations:
+                continue
             assert op.value in LegacyExecutor._OPERATION_MAP, (
                 f"Operation {op.value} missing from _OPERATION_MAP"
             )

@@ -1,11 +1,11 @@
-"""Phase 2F — single_pass_extraction, summarize, agentic_extraction tests.
+"""Phase 2F — single_pass_extraction, summarize, agentic operations tests.
 
 Verifies:
 1. single_pass_extraction delegates to answer_prompt
 2. summarize constructs prompt and calls LLM
 3. summarize missing params return failure
 4. summarize prompt includes prompt_keys
-5. agentic_extraction raises LegacyExecutorError (plugin-dependent)
+5. agentic operations rejected by LegacyExecutor (cloud executor handles them)
 """
 
 from unittest.mock import MagicMock, patch
@@ -301,31 +301,30 @@ class TestSummarize:
 
 
 # ---------------------------------------------------------------------------
-# 3. agentic_extraction
+# 3. agentic operations — handled by AgenticPromptStudioExecutor (cloud)
 # ---------------------------------------------------------------------------
 
 
 class TestAgenticExtraction:
-    def test_returns_failure(self):
-        """agentic_extraction returns failure (plugin not available)."""
+    def test_legacy_rejects_agentic_operations(self):
+        """LegacyExecutor does not handle agentic operations (cloud executor)."""
         _register_legacy()
         executor = ExecutorRegistry.get("legacy")
 
-        ctx = _make_context(operation="agentic_extraction")
+        ctx = _make_context(operation="agentic_extract")
         result = executor.execute(ctx)
 
         assert result.success is False
-        assert "agentic extraction" in result.error.lower()
-        assert "plugin" in result.error.lower()
+        assert "does not support" in result.error
 
-    def test_orchestrator_wraps_error(self):
-        """ExecutionOrchestrator also returns failure for agentic."""
+    def test_orchestrator_wraps_unsupported_agentic(self):
+        """ExecutionOrchestrator returns failure for agentic ops on legacy."""
         from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 
         _register_legacy()
         orchestrator = ExecutionOrchestrator()
-        ctx = _make_context(operation="agentic_extraction")
+        ctx = _make_context(operation="agentic_extract")
         result = orchestrator.execute(ctx)
 
         assert result.success is False
-        assert "plugin" in result.error.lower()
+        assert "does not support" in result.error

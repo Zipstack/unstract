@@ -149,8 +149,10 @@ class QueueName(str, Enum):
     # Scheduler queue
     SCHEDULER = "scheduler"
 
-    # Executor queue
-    EXECUTOR = "executor"
+    # Executor queue — queue-per-executor naming convention.
+    # The dispatcher derives queue names as ``celery_executor_{executor_name}``.
+    # The "legacy" executor is the default OSS executor.
+    EXECUTOR = "celery_executor_legacy"
 
     def to_env_var_name(self) -> str:
         """Convert queue name to environment variable name.

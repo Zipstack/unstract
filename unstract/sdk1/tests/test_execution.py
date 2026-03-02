@@ -662,7 +662,7 @@ class TestExecutionDispatcher:
         mock_app.send_task.assert_called_once_with(
             "execute_extraction",
             args=[ctx.to_dict()],
-            queue="executor",
+            queue="celery_executor_legacy",
         )
         mock_app.send_task.return_value.get.assert_called_once_with(
             timeout=60, disable_sync_subtasks=False
@@ -753,7 +753,7 @@ class TestExecutionDispatcher:
         mock_app.send_task.assert_called_once_with(
             "execute_extraction",
             args=[ctx.to_dict()],
-            queue="executor",
+            queue="celery_executor_legacy",
         )
 
     def test_dispatch_no_app_raises_value_error(
@@ -841,7 +841,7 @@ class TestExecutionDispatcher:
         mock_app.send_task.assert_called_once_with(
             "execute_extraction",
             args=[ctx.to_dict()],
-            queue="executor",
+            queue="celery_executor_legacy",
             link=on_success,
             link_error=on_error,
         )

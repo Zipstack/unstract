@@ -427,7 +427,7 @@ class TestStructureToolSmartTable:
 
 
 class TestStructureToolAgentic:
-    """Agentic project routes to agentic_extraction."""
+    """Agentic project routes to AgenticPromptStudioExecutor."""
 
     @patch(_PATCH_SHIM)
     @patch(_PATCH_FILE_STORAGE)
@@ -465,21 +465,20 @@ class TestStructureToolAgentic:
         dispatcher_instance = MagicMock()
         MockDispatcher.return_value = dispatcher_instance
 
-        # Agentic extraction currently fails (plugin not available)
-        agentic_result = ExecutionResult.failure(
-            error="Agentic extraction requires the agentic extraction plugin"
+        # Simulate successful agentic extraction
+        agentic_result = ExecutionResult(
+            success=True,
+            data={"output": {"field": "value"}},
         )
         dispatcher_instance.dispatch.return_value = agentic_result
 
         result = execute_structure_tool(base_params)
 
-        assert result["success"] is False
-        assert "agentic" in result["error"].lower()
-
-        # Should dispatch to agentic_extraction
+        # Should dispatch to agentic executor with agentic_extract operation
         calls = dispatcher_instance.dispatch.call_args_list
         assert len(calls) == 1
-        assert calls[0][0][0].operation == "agentic_extraction"
+        assert calls[0][0][0].executor_name == "agentic"
+        assert calls[0][0][0].operation == "agentic_extract"
 
 
 class TestStructureToolProfileOverrides:

@@ -71,7 +71,7 @@ class TestWorkerEnumsAndRegistry:
     def test_queue_name_executor_exists(self):
         from shared.enums.worker_enums import QueueName
 
-        assert QueueName.EXECUTOR.value == "executor"
+        assert QueueName.EXECUTOR.value == "celery_executor_legacy"
 
     def test_task_name_execute_extraction_exists(self):
         from shared.enums.task_enums import TaskName
@@ -88,7 +88,7 @@ class TestWorkerEnumsAndRegistry:
         from shared.infrastructure.config.registry import WorkerRegistry
 
         config = WorkerRegistry.get_queue_config(WorkerType.EXECUTOR)
-        assert "executor" in config.all_queues()
+        assert "celery_executor_legacy" in config.all_queues()
 
     def test_task_routing_includes_execute_extraction(self):
         from shared.enums.worker_enums import WorkerType

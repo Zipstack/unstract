@@ -91,6 +91,13 @@ def execute_extraction(
                 ),
                 "operation": context.operation,
             }
+        elif context.operation in ("table_extract", "smart_table_extract"):
+            context._log_component = {
+                "tool_id": params.get("tool_id", ""),
+                "run_id": context.run_id,
+                "doc_name": str(params.get("file_name", "")),
+                "operation": context.operation,
+            }
         else:
             context._log_component = {
                 "tool_id": params.get("tool_id", ""),

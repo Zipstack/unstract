@@ -4,9 +4,10 @@ Ported from prompt-service/.../services/answer_prompt.py.
 Flask dependencies (app.logger, PluginManager, APIError) replaced with
 standard logging and executor exceptions.
 
-Plugin-dependent features (highlight, challenge, table-extraction,
-line-item-extraction) are omitted — they require a plugin loading
-mechanism that will be added in a later phase.
+Highlight/word-confidence support is available via the ``process_text``
+callback parameter — callers pass the highlight-data plugin's ``run``
+method when the plugin is installed.  Challenge and evaluation plugins
+are integrated at the caller level (LegacyExecutor).
 """
 
 import ipaddress
@@ -104,6 +105,7 @@ class AnswerPromptService:
         metadata: dict[str, Any],
         file_path: str = "",
         execution_source: str | None = "ide",
+        process_text: Any = None,
     ) -> str:
         """Construct the full prompt and run LLM completion.
 
@@ -116,6 +118,8 @@ class AnswerPromptService:
             metadata: Metadata dict (updated in place with highlight info).
             file_path: Path to the extracted text file.
             execution_source: "ide" or "tool".
+            process_text: Optional callback for text processing during
+                completion (e.g. highlight-data plugin's ``run`` method).
 
         Returns:
             The LLM answer string.
@@ -156,6 +160,7 @@ class AnswerPromptService:
             enable_word_confidence=enable_word_confidence,
             file_path=file_path,
             execution_source=execution_source,
+            process_text=process_text,
         )
 
     @staticmethod
@@ -212,11 +217,15 @@ class AnswerPromptService:
         enable_word_confidence: bool = False,
         file_path: str = "",
         execution_source: str | None = None,
+        process_text: Any = None,
     ) -> str:
         """Run LLM completion and extract the answer.
 
-        Highlight/word-confidence plugin support is not available in the
-        executor worker yet — those features are skipped here.
+        Args:
+            process_text: Optional callback for text processing during
+                completion (e.g. highlight-data plugin's ``run`` method).
+                When provided, the SDK passes LLM response text through
+                this callback, enabling source attribution.
         """
         try:
             from unstract.sdk1.exceptions import RateLimitError as SdkRateLimitError
@@ -228,7 +237,7 @@ class AnswerPromptService:
         try:
             completion = llm.complete(
                 prompt=prompt,
-                process_text=None,
+                process_text=process_text,
                 extract_json=prompt_type.lower() != PSKeys.TEXT,
             )
             answer: str = completion[PSKeys.RESPONSE].text

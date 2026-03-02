@@ -578,13 +578,13 @@ class TestSanitySummarize:
 
 
 class TestSanityAgenticExtraction:
-    """Full-chain agentic_extraction test."""
+    """Full-chain agentic operations test — rejected by LegacyExecutor."""
 
-    def test_agentic_extraction_fails_full_chain(self, eager_app):
-        """No mocks needed → failure mentioning agentic and plugin."""
+    def test_agentic_extract_rejected_by_legacy(self, eager_app):
+        """Agentic operations are handled by cloud executor, not legacy."""
         ctx = ExecutionContext(
             executor_name="legacy",
-            operation="agentic_extraction",
+            operation="agentic_extract",
             run_id="run-sanity-agentic",
             execution_source="tool",
         )
@@ -592,8 +592,7 @@ class TestSanityAgenticExtraction:
         result = ExecutionResult.from_dict(result_dict)
 
         assert result.success is False
-        assert "agentic" in result.error.lower()
-        assert "plugin" in result.error.lower()
+        assert "does not support" in result.error
 
 
 class TestSanityResponseContracts:
