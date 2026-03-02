@@ -1,17 +1,15 @@
 """Lightweight Celery app for dispatching tasks to worker-v2 workers.
 
-The Django backend uses Redis as its Celery broker for internal tasks
-(beat, periodic tasks, etc.). The worker-v2 workers (executor,
-file_processing, etc.) use a separate broker configured via
-``WORKER_CELERY_BROKER_URL``.
-
-This module provides a Celery app connected to that worker-v2 broker
-for dispatching tasks (via ExecutionDispatcher) to worker-v2 workers.
+The Django backend already has a Celery app for internal tasks (beat,
+periodic tasks, etc.) whose broker URL is set via CELERY_BROKER_URL.
+Workers use the same broker. This module provides a second Celery app
+instance that reuses the same broker URL (from Django settings) but
+bypasses Celery's env-var-takes-priority behaviour so it can coexist
+with the main Django Celery app in the same process.
 
 Problem: Celery reads the ``CELERY_BROKER_URL`` environment variable
 with highest priority — overriding constructor args, ``conf.update()``,
-and ``config_from_object()``.  Since Django sets that env var to Redis,
-every Celery app created in this process inherits Redis as broker.
+and ``config_from_object()``.
 
 Solution: Subclass Celery and override ``connection_for_write`` /
 ``connection_for_read`` so they always use our explicit broker URL,
@@ -19,7 +17,6 @@ bypassing the config resolution chain entirely.
 """
 
 import logging
-import os
 from urllib.parse import quote_plus
 
 from celery import Celery
@@ -58,26 +55,20 @@ def get_worker_celery_app() -> Celery:
     """Get or create a Celery app for dispatching to worker-v2 workers.
 
     The app uses:
-    - Worker-v2 broker (WORKER_CELERY_BROKER_URL env var)
+    - Same broker as the workers (built from CELERY_BROKER_BASE_URL,
+      CELERY_BROKER_USER, CELERY_BROKER_PASS via Django settings)
     - Same PostgreSQL result backend as the Django Celery app
 
     Returns:
         Celery app configured for worker-v2 dispatch.
-
-    Raises:
-        ValueError: If WORKER_CELERY_BROKER_URL is not set.
     """
     global _worker_app
     if _worker_app is not None:
         return _worker_app
 
-    broker_url = os.environ.get("WORKER_CELERY_BROKER_URL")
-    if not broker_url:
-        raise ValueError(
-            "WORKER_CELERY_BROKER_URL is not set. "
-            "This should point to the broker used by worker-v2 "
-            "workers (e.g., redis://unstract-redis:6379)."
-        )
+    # Reuse the broker URL already built by Django settings (base.py)
+    # from CELERY_BROKER_BASE_URL + CELERY_BROKER_USER + CELERY_BROKER_PASS
+    broker_url = settings.CELERY_BROKER_URL
 
     # Reuse the same PostgreSQL result backend as Django's Celery app
     result_backend = (

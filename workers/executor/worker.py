@@ -36,7 +36,7 @@ def check_executor_health():
                 "worker_type": "executor",
                 "registered_executors": executors,
                 "executor_count": len(executors),
-                "queues": ["executor"],
+                "queues": ["celery_executor_legacy"],
             },
         )
 
