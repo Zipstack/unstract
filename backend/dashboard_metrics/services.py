@@ -19,6 +19,7 @@ from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
 from unstract.core.data_models import ExecutionStatus
@@ -716,8 +717,6 @@ class MetricsQueryService:
             List of dicts with workflow_id, workflow_name, total_tokens,
             total_cost, and call_count, ordered by total_tokens descending.
         """
-        from workflow_manager.workflow_v2.models.workflow import Workflow
-
         # Query Usage grouped by workflow_id
         usage_qs = (
             _get_usage_queryset()

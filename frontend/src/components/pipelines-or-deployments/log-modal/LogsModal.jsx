@@ -14,6 +14,7 @@ const LogsModal = ({
   logRecord,
   totalLogs,
   fetchExecutionLogs,
+  loading = false,
 }) => {
   const [selectedLogId, setSelectedLogId] = useState(null);
   const [logDescModalOpen, setLogDescModalOpen] = useState(false);
@@ -128,6 +129,7 @@ const LogsModal = ({
           dataSource={logRecord}
           rowKey="id"
           align="left"
+          loading={loading}
           pagination={{
             total: totalLogs,
             onChange: (page, pageSize) => {
@@ -170,6 +172,7 @@ LogsModal.propTypes = {
   logRecord: PropTypes.array.isRequired,
   totalLogs: PropTypes.number.isRequired,
   fetchExecutionLogs: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
 };
 
 export { LogsModal };
