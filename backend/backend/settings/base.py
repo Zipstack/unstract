@@ -130,6 +130,7 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
 
+
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
@@ -343,6 +344,7 @@ SHARED_APPS = (
     "tags",
     "configuration",
     "lookup",
+    "dashboard_metrics",
 )
 TENANT_APPS = []
 
@@ -351,10 +353,12 @@ INSTALLED_APPS = list(SHARED_APPS) + [
 ]
 DEFAULT_MODEL_BACKEND = "django.contrib.auth.backends.ModelBackend"
 GOOGLE_MODEL_BACKEND = "social_core.backends.google.GoogleOAuth2"
+AZUREAD_TENANT_MODEL_BACKEND = "social_core.backends.azuread_tenant.AzureADTenantOAuth2"
 
 AUTHENTICATION_BACKENDS = (
     DEFAULT_MODEL_BACKEND,
     GOOGLE_MODEL_BACKEND,
+    AZUREAD_TENANT_MODEL_BACKEND,
 )
 
 PUBLIC_ORG_ID = "public"
@@ -565,6 +569,9 @@ SOCIAL_AUTH_TRAILING_SLASH = False
 for key in [
     "GOOGLE_OAUTH2_KEY",
     "GOOGLE_OAUTH2_SECRET",
+    "AZUREAD_TENANT_OAUTH2_KEY",
+    "AZUREAD_TENANT_OAUTH2_SECRET",
+    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
@@ -591,6 +598,34 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
     "prompt": "consent",
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
+
+# Social Auth: Azure AD Tenant OAuth2 (SharePoint/OneDrive)
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_RESOURCE = "https://graph.microsoft.com/"
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SCOPE = [
+    "openid",
+    "profile",
+    "offline_access",
+    "https://graph.microsoft.com/Files.ReadWrite.All",
+    "https://graph.microsoft.com/Sites.ReadWrite.All",
+]
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_AUTH_EXTRA_ARGUMENTS: dict[str, str] = {}
+
+# Dashboard Metrics Cache TTLs (in seconds)
+DASHBOARD_CACHE_TTL_CURRENT_BUCKET = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_CURRENT_BUCKET", 60)
+)
+DASHBOARD_CACHE_TTL_HISTORICAL = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_HISTORICAL", 28800)
+)
+DASHBOARD_CACHE_TTL_OVERVIEW = int(os.environ.get("DASHBOARD_CACHE_TTL_OVERVIEW", 300))
+DASHBOARD_CACHE_TTL_SUMMARY = int(os.environ.get("DASHBOARD_CACHE_TTL_SUMMARY", 900))
+DASHBOARD_CACHE_TTL_SERIES = int(os.environ.get("DASHBOARD_CACHE_TTL_SERIES", 1800))
+DASHBOARD_CACHE_TTL_WORKFLOW_USAGE = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600)
+)
+DASHBOARD_BUCKET_CACHE_ENABLED = (
+    os.environ.get("DASHBOARD_BUCKET_CACHE_ENABLED", "true").lower() == "true"
+)
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

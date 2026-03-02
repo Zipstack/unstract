@@ -4,12 +4,13 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
+import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { AddSource } from "../add-source/AddSource";
 import { ListOfSources } from "../list-of-sources/ListOfSources";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
-import useRequestUrl from "../../../hooks/useRequestUrl";
+import "./AddSourceModal.css";
 
 function AddSourceModal({
   open,
@@ -25,6 +26,7 @@ function AddSourceModal({
   const [metadata, setMetadata] = useState({});
   const [titles, setTitles] = useState({});
   const [selectedSourceName, setSelectedSourceName] = useState("");
+  const [selectedDocUrl, setSelectedDocUrl] = useState("");
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -59,6 +61,8 @@ function AddSourceModal({
         // A delay added in order to avoid glitch in the UI when the modal is closed.
         setSelectedSourceId(null);
         setEditItemId(null);
+        // Clear metadata to prevent stale data when adding a new connector
+        setMetadata({});
       }, 500);
     }
 
@@ -67,9 +71,10 @@ function AddSourceModal({
 
   useEffect(() => {
     const selectedSource = sourcesList.find(
-      (item) => item?.id === selectedSourceId
+      (item) => item?.id === selectedSourceId,
     );
     setSelectedSourceName(selectedSource?.name);
+    setSelectedDocUrl(selectedSource?.doc_url || "");
   }, [selectedSourceId]);
 
   const getSourceDetails = () => {
@@ -117,7 +122,9 @@ function AddSourceModal({
         url = getUrl(`supported_connectors/`);
       }
     } else {
-      if (!type) return;
+      if (!type) {
+        return;
+      }
       url = getUrl(`supported_adapters/?adapter_type=${type.toUpperCase()}`);
     }
 
@@ -134,7 +141,7 @@ function AddSourceModal({
         const updatedSources = sources?.map((source) => ({
           ...source,
           isDisabled: disabledIdsByType[source?.adapter_type]?.includes(
-            source?.id
+            source?.id,
           ),
         }));
         setSourcesList(updatedSources || []);
@@ -184,6 +191,7 @@ function AddSourceModal({
       centered
       footer={null}
       closable={true}
+      className="add-source-modal"
     >
       {selectedSourceId ? (
         <AddSource
@@ -195,6 +203,7 @@ function AddSourceModal({
           addNewItem={addNewItem}
           editItemId={editItemId}
           metadata={metadata}
+          selectedDocUrl={selectedDocUrl}
         />
       ) : isLoading ? (
         <SpinnerLoader />

@@ -18,7 +18,7 @@ function useAxiosPrivate() {
           logout();
         }
         return Promise.reject(error);
-      }
+      },
     );
 
     return () => {

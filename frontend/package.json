@@ -52,9 +52,9 @@
     "react-markdown": "^8.0.7",
     "react-product-fruits": "^2.2.6",
     "react-router-dom": "^6.11.2",
-    "react-scripts": "5.0.1",
     "react-social-login-buttons": "^3.9.1",
     "react-syntax-highlighter": "^15.6.1",
+
     "recharts": "^3.5.1",
     "remark-gfm": "^3.0.1",
     "socket.io-client": "^4.7.2",
@@ -62,22 +62,19 @@
     "zustand": "^4.3.8"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "lint": "eslint src/",
-    "lint:fix": "eslint src/ --fix",
-    "prettier": "prettier --check src/",
-    "prettier:fix": "prettier --write src/",
-    "lint:all": "npm run lint:fix && npm run prettier:fix",
-    "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\\.jsx\\?$' | sed 's|^frontend/||' | sort -u | xargs -r sh -c 'eslint --fix \"$@\" && prettier --write \"$@\"' _ || echo 'No JS/JSX files changed'"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app",
-      "react-app/jest"
-    ]
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "lint": "biome lint src/",
+    "lint:fix": "biome lint --write src/",
+    "format": "biome format src/",
+    "format:fix": "biome format --write src/",
+    "check": "biome check src/",
+    "check:fix": "biome check --write src/",
+    "lint:all": "biome check --write src/",
+    "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep '\\.jsx\\?$' | sed 's|^frontend/||' | sort -u | xargs -r biome check --write"
   },
   "browserslist": {
     "production": [
@@ -92,18 +89,14 @@
     ]
   },
   "devDependencies": {
-    "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
-    "eslint": "^8.41.0",
-    "eslint-config-google": "^0.14.0",
-    "eslint-config-prettier": "^8.8.0",
-    "eslint-plugin-prettier": "^4.2.1",
-    "eslint-plugin-react": "^7.32.2",
-    "prettier": "^2.8.8",
-    "prettier-quick": "^0.0.5",
-    "webpack": "^5.84.0"
+    "@biomejs/biome": "^2.3.13",
+    "@vitejs/plugin-react": "^4.4.0",
+    "baseline-browser-mapping": "^2.9.19",
+    "vite": "^7.0.0",
+    "vite-plugin-svgr": "^4.5.0",
+    "vitest": "^3.2.0"
   },
   "engines": {
-    "node": ">=16.0.0 <20",
-    "npm": ">=8.19.4"
+    "node": ">=20.19.0"
   }
 }

@@ -1,12 +1,12 @@
 import {
   CheckCircleOutlined,
   DeleteOutlined,
+  InfoCircleOutlined,
   LoadingOutlined,
   MoreOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
   SyncOutlined,
-  InfoCircleOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -21,23 +21,24 @@ import {
 } from "antd";
 import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
-import { useEffect, useState, useRef, useCallback } from "react";
-
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ExpandCardBtn } from "./ExpandCardBtn";
 
 let PromptRunBtnSps;
 try {
-  PromptRunBtnSps =
-    require("../../../plugins/simple-prompt-studio/PromptRunBtnSps").PromptRunBtnSps;
+  const mod = await import(
+    "../../../plugins/simple-prompt-studio/PromptRunBtnSps"
+  );
+  PromptRunBtnSps = mod.PromptRunBtnSps;
 } catch {
   // The component will remain 'undefined' it is not available
 }
@@ -94,11 +95,11 @@ function Header({
         promptId,
         "enable_postprocessing_webhook",
         true,
-        true
+        true,
       ).catch(() => {
         setStateFn(!value);
       });
-    }, 300)
+    }, 300),
   );
 
   const debouncedWebhookUrlChangeRef = useRef(
@@ -108,11 +109,11 @@ function Header({
         promptId,
         "postprocessing_webhook_url",
         true,
-        true
+        true,
       ).catch(() => {
         setStateFn(promptDetails?.postprocessing_webhook_url || "");
       });
-    }, 500)
+    }, 500),
   );
 
   const handleRunBtnClick = (promptRunType, docId = null) => {
@@ -126,7 +127,7 @@ function Header({
     handleChange(check, promptDetails?.prompt_id, "active", true, true).catch(
       () => {
         setIsDisablePrompt(!check);
-      }
+      },
     );
   };
   const handleRequiredChange = (value) => {
@@ -137,7 +138,7 @@ function Header({
       promptDetails?.prompt_id,
       "required",
       true,
-      true
+      true,
     ).catch(() => {
       setRequired(promptDetails?.required || null); // Rollback state in case of error
     });
@@ -150,7 +151,7 @@ function Header({
       newValue,
       promptDetails?.prompt_id,
       handleChange,
-      setWebhookEnabled
+      setWebhookEnabled,
     );
   };
 
@@ -160,20 +161,24 @@ function Header({
       value,
       promptDetails?.prompt_id,
       handleChange,
-      setWebhookUrl
+      setWebhookUrl,
     );
   };
 
   // Fetch available lookup projects for this PS project (lazy load on dropdown open)
   const fetchAvailableLookups = useCallback(async () => {
-    if (!details?.tool_id || !sessionDetails?.orgId) return;
-    if (lookupsFetched) return; // Already fetched, skip
+    if (!details?.tool_id || !sessionDetails?.orgId) {
+      return;
+    }
+    if (lookupsFetched) {
+      return;
+    } // Already fetched, skip
 
     setLookupLoading(true);
     try {
       const response = await axiosPrivate.get(
         `/api/v1/unstract/${sessionDetails.orgId}/prompt-studio/prompt/available_lookups/`,
-        { params: { tool_id: details.tool_id } }
+        { params: { tool_id: details.tool_id } },
       );
       setAvailableLookups(response?.data || []);
       setLookupsFetched(true);
@@ -197,7 +202,7 @@ function Header({
         promptDetails?.prompt_id,
         "lookup_project",
         true,
-        true
+        true,
       ).catch(() => {
         // Rollback on error
         setLookupEnabled(true);
@@ -219,7 +224,7 @@ function Header({
       promptDetails?.prompt_id,
       "lookup_project",
       true,
-      true
+      true,
     ).catch(() => {
       // Rollback on error
       setLookupEnabled(!!promptDetails?.lookup_project);
@@ -503,7 +508,7 @@ function Header({
                 onClick={() =>
                   handleRunBtnClick(
                     PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ONE_DOC,
-                    selectedDoc?.document_id
+                    selectedDoc?.document_id,
                   )
                 }
                 disabled={
@@ -526,7 +531,7 @@ function Header({
                 className="prompt-card-action-button"
                 onClick={() =>
                   handleRunBtnClick(
-                    PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS
+                    PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ALL_LLMS_ALL_DOCS,
                   )
                 }
                 disabled={
@@ -548,7 +553,9 @@ function Header({
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={() => {}}
+            handleGetOutput={() => {
+              /* noop */
+            }}
             promptDetails={promptDetails}
           />
         )}

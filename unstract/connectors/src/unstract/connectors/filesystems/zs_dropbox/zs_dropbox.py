@@ -37,6 +37,10 @@ class DropboxFS(UnstractFileSystem):
         return "/icons/connector-icons/Dropbox.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/dropbox_filesystem/"
+
+    @staticmethod
     def get_json_schema() -> str:
         f = open(f"{os.path.dirname(__file__)}/static/json_schema.json")
         schema = f.read()

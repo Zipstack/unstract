@@ -30,6 +30,7 @@ jobs:
             platform-service,
             prompt-service,
             runner,
+            worker-unified,
             x2text-service,
           ]
 
@@ -146,7 +147,7 @@ jobs:
         id: summary
         run: |
           # Initialize variables
-          TOTAL_SERVICES=6
+          TOTAL_SERVICES=7
           OVERALL_RESULT='${{ needs.build-and-push.result }}'
           SUCCESS_COUNT=0
           FAILED_COUNT=0
@@ -237,7 +238,7 @@ jobs:
             echo "|---------|--------|" >> $GITHUB_STEP_SUMMARY
 
             # Define services in order
-            for service in backend frontend platform-service prompt-service runner x2text-service; do
+            for service in backend frontend platform-service prompt-service runner worker-unified x2text-service; do
               if [ -f "build-status/${service}.json" ]; then
                 STATUS=$(jq -r '.status' "build-status/${service}.json")
                 if [ "$STATUS" = "success" ]; then

@@ -8,15 +8,17 @@ import { useAxiosPrivate } from "./useAxiosPrivate";
 
 let promptOutputApiSps;
 try {
-  promptOutputApiSps =
-    require("../plugins/simple-prompt-studio/helper").promptOutputApiSps;
+  const mod = await import("../plugins/simple-prompt-studio/helper");
+  promptOutputApiSps = mod.promptOutputApiSps;
 } catch {
   // The component will remain null of it is not available
 }
 let publicOutputsApi;
 try {
-  publicOutputsApi =
-    require("../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicOutputsApi;
+  const mod = await import(
+    "../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
+  publicOutputsApi = mod.publicOutputsApi;
 } catch {
   // The component will remain null of it is not available
 }
@@ -35,7 +37,7 @@ const usePromptOutput = () => {
     docId,
     llmProfile,
     isSinglePass,
-    isIncludeSinglePass = true
+    isIncludeSinglePass = true,
   ) => {
     let key = `${promptId}__${docId}__${llmProfile}`;
 
@@ -107,7 +109,7 @@ const usePromptOutput = () => {
         docId,
         llmProfile,
         isSinglePass,
-        true
+        true,
       );
       // Apply lookup enrichment in-place if available
       // The lookup_enrichment object is keyed by field name (e.g., {"vendor_name": "Amazon Web Services"})
@@ -119,7 +121,7 @@ const usePromptOutput = () => {
         lookupEnrichment &&
         Object.keys(lookupEnrichment).length > 0 &&
         promptKey &&
-        Object.prototype.hasOwnProperty.call(lookupEnrichment, promptKey)
+        Object.hasOwn(lookupEnrichment, promptKey)
       ) {
         // Match prompt_key to enrichment key (works for both individual and single-pass modes)
         // Each item has its own output value, and we match by the prompt's field name
@@ -150,13 +152,14 @@ const usePromptOutput = () => {
         lookupReplacement: item?.lookup_replacement,
       };
 
-      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
+      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded) {
         return;
+      }
 
       if (item?.is_single_pass_extract) {
         const tokenUsageId = generatePromptOutputKeyForSinglePass(
           llmProfile,
-          docId
+          docId,
         );
         tokenUsageDetails[tokenUsageId] = item?.token_usage;
         tokenUsageDetails[
@@ -174,7 +177,7 @@ const usePromptOutput = () => {
         docId,
         llmProfile,
         false,
-        false
+        false,
       );
       tokenUsageDetails[tokenUsageId] = item?.token_usage;
     });
@@ -216,14 +219,14 @@ const usePromptOutput = () => {
     docId = null,
     promptId = null,
     llmProfile = null,
-    isSinglePassExtract = false
+    isSinglePassExtract = false,
   ) => {
     const url = getUrl(
       toolId,
       docId,
       promptId,
       llmProfile,
-      isSinglePassExtract
+      isSinglePassExtract,
     );
     const requestOptions = {
       method: "GET",
