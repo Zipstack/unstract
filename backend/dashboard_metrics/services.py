@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 
 from account_usage.models import PageUsage
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
@@ -22,7 +23,6 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from dashboard_metrics.models import Granularity
 from unstract.core.data_models import ExecutionStatus
-from account_v2.models import Organization
 
 
 def _get_hitl_queue_model():
