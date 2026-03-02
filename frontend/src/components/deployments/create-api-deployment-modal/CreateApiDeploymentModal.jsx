@@ -3,11 +3,11 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
-import { useAlertStore } from "../../../store/alert-store";
-import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { useWorkflowStore } from "../../../store/workflow-store.js";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { useAlertStore } from "../../../store/alert-store";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
+import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 
 const defaultFromDetails = {
   display_name: "",
@@ -36,7 +36,7 @@ const CreateApiDeploymentModal = ({
   const handleException = useExceptionHandler();
   const { Option } = Select;
   const [formDetails, setFormDetails] = useState(
-    isEdit ? { ...selectedRow } : { ...defaultFromDetails }
+    isEdit ? { ...selectedRow } : { ...defaultFromDetails },
   );
   const [isLoading, setIsLoading] = useState(false);
   const [form] = Form.useForm();
@@ -57,7 +57,7 @@ const CreateApiDeploymentModal = ({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== changedFieldName
+          (error) => error.attr !== changedFieldName,
         );
         return { ...prevErrors, errors: updatedErrors };
       }
@@ -82,33 +82,15 @@ const CreateApiDeploymentModal = ({
     setOpen(false);
   };
 
-  const updateTableData = () => {
-    apiDeploymentsApiService
-      .getApiDeploymentsList()
-      .then((res) => {
-        setTableData(res?.data);
-      })
-      .catch((err) => {
-        setAlertDetails({
-          type: "error",
-          content: "Error fetching API deployments",
-        });
-      });
-  };
-
   const createApiDeployment = () => {
-    try {
-      const wf = workflowEndpointList.find(
-        (item) => item?.workflow === formDetails?.workflow
-      );
-      setPostHogCustomEvent("intent_success_api_deployment", {
-        info: "Clicked on 'Save' button",
-        deployment_name: formDetails?.api_name,
-        workflow_name: wf?.workflow_name,
-      });
-    } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
+    const wf = workflowEndpointList.find(
+      (item) => item?.workflow === formDetails?.workflow,
+    );
+    setPostHogCustomEvent("intent_success_api_deployment", {
+      info: "Clicked on 'Save' button",
+      deployment_name: formDetails?.api_name,
+      workflow_name: wf?.workflow_name,
+    });
 
     setIsLoading(true);
     const body = formDetails;
@@ -125,7 +107,8 @@ const CreateApiDeploymentModal = ({
             onDeploymentCreated();
           }
         } else {
-          updateTableData();
+          // Add new deployment to list
+          setTableData((prev) => [res?.data, ...prev]);
           setSelectedRow(res?.data);
           openCodeModal(true);
         }
@@ -150,13 +133,25 @@ const CreateApiDeploymentModal = ({
           }
         } else {
           setAlertDetails(
-            handleException(err, "Failed to create API deployment")
+            handleException(err, "Failed to create API deployment"),
           );
         }
       })
       .finally(() => {
         setIsLoading(false);
       });
+  };
+
+  const mergeUpdatedRow = (updatedData) => {
+    setTableData((prev) => {
+      const index = prev.findIndex((item) => item?.id === updatedData?.id);
+      if (index !== -1) {
+        const newData = [...prev];
+        newData[index] = { ...newData[index], ...updatedData };
+        return newData;
+      }
+      return prev;
+    });
   };
 
   const updateApiDeployment = () => {
@@ -166,7 +161,7 @@ const CreateApiDeploymentModal = ({
     apiDeploymentsApiService
       .updateApiDeployment(body)
       .then((res) => {
-        updateTableData();
+        mergeUpdatedRow(res?.data);
         setOpen(false);
         clearFormDetails();
         setAlertDetails({
@@ -179,7 +174,7 @@ const CreateApiDeploymentModal = ({
           setBackendErrors(err.response.data);
         } else {
           setAlertDetails(
-            handleException(err, "Failed to update API deployment")
+            handleException(err, "Failed to update API deployment"),
           );
         }
       })

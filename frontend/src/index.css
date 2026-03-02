@@ -31,7 +31,7 @@ body {
 /* Custom scroll bar css starts */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #E8EDF2 transparent;
+  scrollbar-color: #e8edf2 transparent;
 }
 
 ::-webkit-scrollbar {
@@ -48,12 +48,12 @@ body {
 /* Handle */
 ::-webkit-scrollbar-thumb {
   border-radius: 4px;
-  background: #E8EDF2;
+  background: #e8edf2;
 }
 
 /* Handle on hover */
 ::-webkit-scrollbar-thumb:hover {
-  background: #D4DCE5;
+  background: #d4dce5;
 }
 
 /* Corner where both X and Y scroll bar meets */

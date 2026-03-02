@@ -3,6 +3,7 @@ import {
   generateUUID,
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
+  pollForCompletion,
 } from "../helpers/GetStaticData";
 import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";
@@ -68,7 +69,7 @@ const usePromptRun = () => {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to generate prompt output")
+          handleException(err, "Failed to generate prompt output"),
         );
         const statusKey = generateApiRunStatusId(docId, profileId);
         removePromptStatus(promptId, statusKey);
@@ -105,7 +106,7 @@ const usePromptRun = () => {
         docId,
         profileId,
         null,
-        false
+        false,
       );
       const statusKey = generateApiRunStatusId(docId, profileId);
       promptRunApiStatus[promptId][statusKey] = PROMPT_RUN_API_STATUSES.RUNNING;
@@ -137,7 +138,7 @@ const usePromptRun = () => {
     promptRunType,
     promptId = null,
     profileId = null,
-    docId = null
+    docId = null,
   ) => {
     const promptIds = promptId
       ? [promptId]
@@ -194,7 +195,7 @@ const usePromptRun = () => {
 
     const paramValues = { promptId, profileId, docId };
     const missingParams = params.requiredParams.filter(
-      (param) => !paramValues[param]
+      (param) => !paramValues[param],
     );
 
     if (missingParams.length > 0) return;
@@ -202,7 +203,7 @@ const usePromptRun = () => {
     ({ apiRequestsToQueue, promptRunApiStatus } = prepareApiRequests(
       params.prompts,
       params.profiles,
-      params.docs
+      params.docs,
     ));
 
     addPromptStatus(promptRunApiStatus);

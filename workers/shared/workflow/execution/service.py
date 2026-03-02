@@ -1439,6 +1439,7 @@ class WorkerWorkflowExecutionService:
             # Process final output through destination (matching backend exactly)
             output_result = None
             processing_error = None  # No processing error since workflow succeeded
+            metadata = None  # Initialize to avoid unbound variable in exception path
 
             try:
                 # CRITICAL: Log file destination routing decision

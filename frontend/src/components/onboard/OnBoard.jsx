@@ -2,12 +2,11 @@ import { CheckCircleFilled } from "@ant-design/icons";
 import { Button, Card, Col, Layout, Row, Space, Typography } from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
-import logo from "../../assets/UnstractLogoBlack.svg";
+import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectLLM from "../../assets/connect_llm.svg";
 import ConnectVectorDb from "../../assets/connect_vector_db.svg";
-import ConnectEmbedding from "../../assets/connect_embedding.svg";
 import ConnectTextExtractor from "../../assets/connect_x2text.svg";
+import logo from "../../assets/UnstractLogoBlack.svg";
 import { homePagePath, onboardCompleted } from "../../helpers/GetStaticData.js";
 import { useSessionStore } from "../../store/session-store.js";
 import { AddSourceModal } from "../input-output/add-source-modal/AddSourceModal.jsx";

@@ -1,5 +1,5 @@
 import { CheckOutlined } from "@ant-design/icons";
-import { Flex, Typography, Image } from "antd";
+import { Flex, Image, Typography } from "antd";
 import PropTypes from "prop-types";
 
 import { DsSettingsCard } from "../ds-settings-card/DsSettingsCard";

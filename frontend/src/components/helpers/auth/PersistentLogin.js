@@ -3,9 +3,9 @@ import { Outlet, useLocation } from "react-router-dom";
 
 import useSessionValid from "../../../hooks/useSessionValid";
 import { useSessionStore } from "../../../store/session-store";
-import { SocketMessages } from "../socket-messages/SocketMessages";
-import { GenericLoader } from "../../generic-loader/GenericLoader";
 import { PromptRun } from "../../custom-tools/prompt-card/PromptRun";
+import { GenericLoader } from "../../generic-loader/GenericLoader";
+import { SocketMessages } from "../socket-messages/SocketMessages";
 
 let selectedProductStore;
 let selectedProduct;
@@ -13,10 +13,12 @@ let setSelectedProduct;
 let SELECTED_PRODUCT;
 let PRODUCT_NAMES = {};
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
-  SELECTED_PRODUCT =
-    require("../../../plugins/helpers/common").SELECTED_PRODUCT;
-  PRODUCT_NAMES = require("../../../plugins/helpers/common").PRODUCT_NAMES;
+  selectedProductStore = await import(
+    "../../../plugins/store/select-product-store.js"
+  );
+  const commonMod = await import("../../../plugins/helpers/common");
+  SELECTED_PRODUCT = commonMod.SELECTED_PRODUCT;
+  PRODUCT_NAMES = commonMod.PRODUCT_NAMES ?? {};
 } catch {
   // Ignore if hook not available
 }
@@ -32,14 +34,14 @@ function PersistentLogin() {
   try {
     if (selectedProductStore?.useSelectedProductStore) {
       selectedProduct = selectedProductStore?.useSelectedProductStore(
-        (state) => state?.selectedProduct
+        (state) => state?.selectedProduct,
       );
       setSelectedProduct = selectedProductStore.useSelectedProductStore(
-        (state) => state?.setSelectedProduct
+        (state) => state?.setSelectedProduct,
       );
     }
-  } catch (error) {
-    // Do nothing
+  } catch {
+    // Plugin hook may throw during initialization
   }
 
   useEffect(() => {

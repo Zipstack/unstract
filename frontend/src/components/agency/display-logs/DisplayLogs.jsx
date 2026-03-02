@@ -1,5 +1,5 @@
-import { useEffect, useRef } from "react";
 import { Col, Row, Typography } from "antd";
+import { useEffect, useRef } from "react";
 
 import "./DisplayLogs.css";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";

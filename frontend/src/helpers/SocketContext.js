@@ -18,7 +18,13 @@ const SocketProvider = ({ children }) => {
     const newSocket = io(getBaseUrl(), {
       transports: ["websocket"],
       path: "/api/v1/socket",
-    });
+    };
+    if (!import.meta.env.MODE || import.meta.env.MODE === "development") {
+      baseUrl = import.meta.env.VITE_BACKEND_URL;
+    } else {
+      baseUrl = getBaseUrl();
+    }
+    const newSocket = io(baseUrl, body);
     setSocket(newSocket);
     // Clean up the socket connection on browser unload
     window.onbeforeunload = () => {
