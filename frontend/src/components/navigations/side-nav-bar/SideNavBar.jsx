@@ -10,6 +10,7 @@ import {
   Layout,
   Popover,
   Space,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -19,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
+import DashboardIcon from "../../../assets/dashboard.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
@@ -454,6 +456,17 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
   }
 
+  // Add metrics dashboard menu item (available for both OSS and cloud)
+  unstractMenuItems[1].subMenu.unshift({
+    id: 2.0,
+    title: "Dashboard",
+    tag: "New",
+    description: "View platform usage metrics and analytics",
+    image: DashboardIcon,
+    path: `/${orgName}/metrics`,
+    active: globalThis.location.pathname.startsWith(`/${orgName}/metrics`),
+  });
+
   // If selectedProduct is verticals and menu is null, don't show any sidebar items
   const data =
     selectedProduct === "verticals" && menu === null
@@ -702,6 +715,14 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             <div>
                               <Typography className="sidebar-item-text fs-14">
                                 {el.title}
+                                {el.tag && (
+                                  <Tag
+                                    color="blue"
+                                    className="sidebar-menu-tag"
+                                  >
+                                    {el.tag}
+                                  </Tag>
+                                )}
                               </Typography>
                               <Typography className="sidebar-item-text fs-11">
                                 {el.description}

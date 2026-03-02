@@ -774,6 +774,8 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             "etl_pipeline_executions": MetricsQueryService.get_etl_pipeline_executions,
             "llm_usage": MetricsQueryService.get_llm_usage_cost,
             "prompt_executions": MetricsQueryService.get_prompt_executions,
+            "hitl_reviews": MetricsQueryService.get_hitl_reviews,
+            "hitl_completions": MetricsQueryService.get_hitl_completions,
         }
 
         # Filter by specific metric if requested

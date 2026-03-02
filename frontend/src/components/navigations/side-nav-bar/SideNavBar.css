@@ -174,3 +174,11 @@
 .space-styles:hover .sidebar-antd-icon {
   color: white;
 }
+
+.sidebar-menu-tag {
+  margin-left: 6px;
+  font-size: 10px;
+  line-height: 16px;
+  padding: 0 4px;
+  border-radius: 4px;
+}
