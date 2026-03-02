@@ -1,0 +1,59 @@
+{
+  "title": "Azure AI Foundry LLM",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "api_base"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: azure-ai-foundry-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your Azure AI Foundry API key from the Azure portal."
+    },
+    "api_base": {
+      "type": "string",
+      "title": "Endpoint URL",
+      "format": "uri",
+      "default": "",
+      "description": "Azure AI Foundry endpoint URL. Example: https://<resource-name>.<region>.inference.ai.azure.com/ or https://<deployment>-serverless.<region>.inference.ai.azure.com/"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "",
+      "description": "The model name deployed in Azure AI Foundry. Examples: command-r-plus, mistral-large-latest, gpt-4o"
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to limit LLM replies. Leave empty to use model default."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "Maximum number of retries to attempt when a request fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Request timeout in seconds."
+    }
+  }
+}
