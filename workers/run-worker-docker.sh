@@ -52,7 +52,7 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["log_consumer"]="celery_log_task_queue"
     ["scheduler"]="scheduler"
-    ["executor"]="executor"
+    ["executor"]="celery_executor_legacy"
 )
 
 # Worker health ports

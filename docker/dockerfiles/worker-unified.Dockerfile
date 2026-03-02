@@ -83,6 +83,17 @@ RUN uv sync --group deploy --locked && \
     touch requirements.txt && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
 
+# Install executor plugins from prompt-service (cloud-only, no-op for OSS).
+# Each plugin with an "unstract.executor.executors" entry point gets installed
+# so that importlib.metadata.entry_points() can discover it at worker startup.
+RUN for plugin_dir in /unstract/prompt-service/src/unstract/prompt_service/plugins/*/; do \
+      if [ -f "$plugin_dir/pyproject.toml" ] && \
+         grep -q 'unstract.executor.executors' "$plugin_dir/pyproject.toml" 2>/dev/null; then \
+        echo "Installing executor plugin: $(basename $plugin_dir)" && \
+        uv pip install "$plugin_dir" || true; \
+      fi; \
+    done
+
 # Switch to worker user
 USER worker
 
