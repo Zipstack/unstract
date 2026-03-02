@@ -18,6 +18,7 @@ import json
 import sys
 import uuid
 from pathlib import Path
+import urllib.parse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -176,6 +177,9 @@ def to_icon_name(display_name: str) -> str:
 
 def fetch_url(url: str, timeout: int = 10) -> bytes | None:
     """Fetch content from URL with error handling."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return None
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"

@@ -718,10 +718,15 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
         # Handle JSON mode - convert to response_format
         result_metadata = adapter_metadata.copy()
         json_mode = result_metadata.pop("json_mode", False)
-        if json_mode:
-            result_metadata["response_format"] = {"type": "json_object"}
 
-        return OllamaLLMParameters(**result_metadata).model_dump()
+        validated = OllamaLLMParameters(**result_metadata).model_dump()
+
+        # Re-insert response_format after model_dump() since
+        # OllamaLLMParameters doesn't declare the field and Pydantic drops it.
+        if json_mode:
+            validated["response_format"] = {"type": "json_object"}
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
