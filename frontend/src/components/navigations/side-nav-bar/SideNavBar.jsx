@@ -494,6 +494,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       active: globalThis.location.pathname.startsWith(
         `/${orgName}/agentic-prompt-studio`,
       ),
+      tag: "BETA",
     });
   }
 
