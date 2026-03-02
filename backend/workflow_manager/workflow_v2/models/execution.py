@@ -10,6 +10,7 @@ from pipeline_v2.models import Pipeline
 from tags.models import Tag
 from usage_v2.constants import UsageKeys
 from usage_v2.models import Usage
+from usage_v2.helper import UsageHelper
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel
 
@@ -266,7 +267,6 @@ class WorkflowExecution(BaseModel):
             int | None: Total pages processed across all file executions,
             or None if no page usage data exists.
         """
-        from usage_v2.helper import UsageHelper
 
         file_execution_ids = list(self.file_executions.values_list("id", flat=True))
         if not file_execution_ids:
