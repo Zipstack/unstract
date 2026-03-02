@@ -48,7 +48,7 @@ class KeywordTableRetriever(BaseRetriever):
             keyword_index = KeywordTableIndex(
                 nodes=[node.node for node in all_nodes],
                 show_progress=True,
-                llm=self.llm,  # Use the provided LLM instead of defaulting to OpenAI
+                llm=self.llama_index_llm,
             )
 
             # Create retriever from keyword index

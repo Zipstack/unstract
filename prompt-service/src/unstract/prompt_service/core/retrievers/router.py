@@ -32,7 +32,7 @@ class RouterRetriever(BaseRetriever):
         return vector_store_index.as_query_engine(
             similarity_top_k=self.top_k,
             filters=filters,
-            llm=self.llm,
+            llm=self.llama_index_llm,
         )
 
     def _add_keyword_search_tool(self, query_engine_tools, vector_store_index, filters):
@@ -41,7 +41,7 @@ class RouterRetriever(BaseRetriever):
             keyword_query_engine = vector_store_index.as_query_engine(
                 similarity_top_k=self.top_k * 2,
                 filters=filters,
-                llm=self.llm,
+                llm=self.llama_index_llm,
             )
             query_engine_tools.append(
                 QueryEngineTool(
@@ -64,7 +64,7 @@ class RouterRetriever(BaseRetriever):
             broad_query_engine = vector_store_index.as_query_engine(
                 similarity_top_k=self.top_k * 3,
                 filters=filters,
-                llm=self.llm,
+                llm=self.llama_index_llm,
             )
             query_engine_tools.append(
                 QueryEngineTool(
@@ -135,10 +135,10 @@ class RouterRetriever(BaseRetriever):
 
             # Create and execute router query
             router_query_engine = RouterQueryEngine.from_defaults(
-                selector=LLMSingleSelector.from_defaults(llm=self.llm),
+                selector=LLMSingleSelector.from_defaults(llm=self.llama_index_llm),
                 query_engine_tools=query_engine_tools,
                 verbose=True,
-                llm=self.llm,
+                llm=self.llama_index_llm,
             )
 
             response = router_query_engine.query(self.prompt)
