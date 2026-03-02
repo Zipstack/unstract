@@ -37,7 +37,10 @@ function optionalPluginImports() {
       // Only handle relative imports
       if (!source.startsWith(".")) return null;
 
-      const resolved = path.resolve(path.dirname(importer), source);
+      // Strip query strings and hashes (e.g. "./logo.svg?react" → "./logo.svg")
+      // so path.extname and fs.existsSync work correctly.
+      const sourcePath = source.split("?")[0].split("#")[0];
+      const resolved = path.resolve(path.dirname(importer), sourcePath);
 
       // Only handle imports that resolve within a plugins directory.
       // This covers both cross-plugin imports (e.g. "../plugins/foo")
@@ -55,7 +58,7 @@ function optionalPluginImports() {
 
       if (!exists) {
         // Asset files need a default export so static imports work.
-        const ext = path.extname(resolved).toLowerCase();
+        const ext = path.extname(sourcePath).toLowerCase();
         if (ASSET_EXTENSIONS.has(ext)) {
           return EMPTY_ASSET_MODULE_ID;
         }
