@@ -1,6 +1,6 @@
 import { DatePicker, Tabs } from "antd";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import {
   ApiDeployments,
   ETLIcon,
@@ -26,6 +26,7 @@ function ExecutionLogs() {
   const { RangePicker } = DatePicker;
   const [activeTab, setActiveTab] = useState("ETL");
   const { id } = useParams();
+  const location = useLocation();
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -47,6 +48,20 @@ function ExecutionLogs() {
   const [autoRefresh, setAutoRefresh] = useState(false);
   const autoRefreshIntervalRef = useRef(null);
   const currentPath = location.pathname !== `/${sessionDetails?.orgName}/logs`;
+
+  // Compute back route - use location state if available, otherwise default to logs listing
+  const backRoute = id
+    ? location.state?.from || `/${sessionDetails?.orgName}/logs`
+    : null;
+
+  // State to pass back for scroll restoration
+  const backRouteState =
+    id && location.state?.scrollToCardId
+      ? {
+          scrollToCardId: location.state.scrollToCardId,
+          cardExpanded: location.state.cardExpanded,
+        }
+      : null;
 
   const items = [
     {
@@ -206,6 +221,8 @@ function ExecutionLogs() {
         title={"Execution Logs"}
         CustomButtons={customButtons}
         enableSearch={false}
+        previousRoute={backRoute}
+        previousRouteState={backRouteState}
       />
       <div className="file-log-layout">
         {id ? (

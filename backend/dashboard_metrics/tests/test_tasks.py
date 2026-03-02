@@ -1,7 +1,7 @@
 """Unit tests for Dashboard Metrics Celery tasks."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from django.test import TestCase, TransactionTestCase
 from django.utils import timezone
@@ -37,7 +37,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_hour_from_datetime(self):
         """Test truncating a datetime to the hour."""
-        from datetime import datetime
 
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
         result = _truncate_to_hour(dt)
@@ -49,7 +48,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_hour_naive_datetime(self):
         """Test truncating a naive datetime makes it aware."""
-        from datetime import datetime
 
         dt = datetime(2024, 1, 15, 14, 35, 22)
         result = _truncate_to_hour(dt)
@@ -60,7 +58,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_day(self):
         """Test truncating a datetime to midnight."""
-        from datetime import datetime
 
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
         result = _truncate_to_day(dt)
@@ -73,7 +70,6 @@ class TestTimeHelpers(TestCase):
 
     def test_truncate_to_month(self):
         """Test truncating a datetime to first day of month."""
-        from datetime import datetime
 
         dt = datetime(2024, 1, 15, 14, 35, 22, tzinfo=timezone.utc)
         result = _truncate_to_month(dt)
