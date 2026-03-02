@@ -4,9 +4,7 @@
   <h2>Turn Unstructured Documents into Structured Data</h2>
   <p>
     <a href="https://docs.unstract.com">Documentation</a> |
-    <a href="https://unstract.com/start-for-free/">Cloud Edition</a> |
     <a href="https://unstract.com/pricing/">Enterprise</a> |
-    <a href="https://join-slack.unstract.com">Slack Community</a>
   </p>
   <p>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/Zipstack/unstract" alt="License"></a>
