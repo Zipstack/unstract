@@ -30,23 +30,6 @@ VERSION=dev docker compose -f docker-compose.yaml --profile optional up -d
 
 Now access frontend at http://frontend.unstract.localhost
 
-## V2 Workers (Optional)
-
-V2 workers use a unified container architecture and are **disabled by default**.
-
-```bash
-# Default: Run with legacy workers only
-VERSION=dev docker compose -f docker-compose.yaml up -d
-
-# Enable V2 workers (unified container)
-VERSION=dev docker compose -f docker-compose.yaml --profile workers-v2 up -d
-
-# Or use the platform script
-./run-platform.sh --workers-v2
-```
-
-V2 workers available: `api-deployment`, `callback`, `file-processing`, `general`, `notification`, `log-consumer`, `scheduler`
-
 ## Overriding a service's config
 
 By making use of the [merge compose files](https://docs.docker.com/compose/how-tos/multiple-compose-files/merge/) feature its possible to override some configuration that's used by the services.
@@ -100,56 +83,55 @@ This can be useful during development to:
    VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml watch
    ```
 
-1. Make changes to your code in your local editor
-1. Changes are automatically synced to the container and services restart as needed
-1. For debugging:
-   - Configure IDE to connect to the appropriate debugpy port
-   Here's an example `launch.json` (for VSCode) to attach to a the `backend` container on port 5678.
-   It assumes that a workspace involving unstract and unstract-sdk is setup.
-   For more information on this refer [VSCode docs](https://code.visualstudio.com/docs/devcontainers/attach-container#_attach-to-a-docker-container).
+2. Make changes to your code - they're automatically synced and services restart as needed
 
-   ```json
-    {
-      "name": "Docker: Backend Remote Debug",
-      "type": "debugpy",
-      "request": "attach",
-      "connect": {
-        "host": "localhost",
-        "port": 5678
-      },
-      "pathMappings": [
-        {
-          "localRoot": "${workspaceFolder:unstract}/backend",
-          "remoteRoot": "/app"
-        },
-        {
-          "localRoot": "${workspaceFolder:unstract}/unstract",
-          "remoteRoot": "/unstract"
-        },
-        // Uncomment below to use and debug local version of unstract-sdk
-        // {
-        // 	"localRoot": "${workspaceFolder:unstract-sdk}/src/unstract/sdk",
-        // 	"remoteRoot": "/unstract-sdk/src/unstract/sdk"
-        // },
-      ],
-      "justMyCode": false,
-      "django": true,
-      "presentation": {
-        "group": "docker-debug"
-      }
-    }
-   ```
+3. View logs: `docker compose logs -f [service_name]`
 
-   - Set breakpoints in your code
-   - Trigger the code path and the debugger will pause at your breakpoints
+## Debugging Containers
 
-1. View logs in real-time:
+Enable debugpy by adding `compose.debug.yaml`:
 
-   ```bash
-   docker compose logs -f [service_name]
-   ```
+```bash
+VERSION=dev docker compose -f docker-compose.yaml -f compose.override.yaml -f compose.debug.yaml watch
+```
 
-This workflow eliminates the need to rebuild containers or manually restart services during development, significantly improving productivity.
+Debug ports per service:
+
+| Service | Port |
+|---------|------|
+| backend | 5678 |
+| runner | 5679 |
+| platform-service | 5680 |
+| prompt-service | 5681 |
+| **V2 Workers** | |
+| worker-file-processing-v2 | 5682 |
+| worker-callback-v2 | 5683 |
+| worker-api-deployment-v2 | 5684 |
+| worker-general-v2 | 5685 |
+| worker-notification-v2 | 5686 |
+| worker-log-consumer-v2 | 5687 |
+| worker-scheduler-v2 | 5688 |
+
+### VSCode Configuration
+
+Example `launch.json` to attach to the `backend` container:
+
+```json
+{
+  "name": "Docker: Backend Remote Debug",
+  "type": "debugpy",
+  "request": "attach",
+  "connect": { "host": "localhost", "port": 5678 },
+  "pathMappings": [
+    { "localRoot": "${workspaceFolder:unstract}/backend", "remoteRoot": "/app" },
+    { "localRoot": "${workspaceFolder:unstract}/unstract", "remoteRoot": "/unstract" }
+  ],
+  "justMyCode": false,
+  "django": true
+}
+```
+
+See [VSCode docs](https://code.visualstudio.com/docs/devcontainers/attach-container#_attach-to-a-docker-container) for more details.
 
 ## `src` Folder Layout and `gunicorn`
 

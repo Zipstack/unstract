@@ -1,23 +1,23 @@
-import { Form, Input, Modal, Select, Space, Typography, Button } from "antd";
+import { ClockCircleOutlined, ScheduleOutlined } from "@ant-design/icons";
+import { Button, Form, Input, Modal, Select, Space, Typography } from "antd";
+import cronstrue from "cronstrue";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import { ScheduleOutlined, ClockCircleOutlined } from "@ant-design/icons";
-import cronstrue from "cronstrue";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store";
 import CronGenerator from "../../cron-generator/CronGenerator.jsx";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import "./EtlTaskDeploy.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { useWorkflowStore } from "../../../store/workflow-store.js";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { useInitialFetchCount } from "../../../hooks/usePromptStudioFetchCount";
+import { useWorkflowStore } from "../../../store/workflow-store.js";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
 
 const defaultFromDetails = {
   pipeline_name: "",
@@ -49,7 +49,7 @@ const EtlTaskDeploy = ({
   const { Option } = Select;
   const [workflowList, setWorkflowList] = useState([]);
   const [formDetails, setFormDetails] = useState(
-    isEdit ? { ...selectedRow } : { ...defaultFromDetails }
+    isEdit ? { ...selectedRow } : { ...defaultFromDetails },
   );
   const [isLoading, setLoading] = useState(false);
   const [openCronGenerator, setOpenCronGenerator] = useState(false);
@@ -64,7 +64,7 @@ const EtlTaskDeploy = ({
   const { getPromptStudioCount } = usePromptStudioService();
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   useEffect(() => {
@@ -102,7 +102,7 @@ const EtlTaskDeploy = ({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== changedFieldName
+          (error) => error.attr !== changedFieldName,
         );
         return { ...prevErrors, errors: updatedErrors };
       }
@@ -116,7 +116,7 @@ const EtlTaskDeploy = ({
         res?.data.map((record) => ({
           ...record,
           id: record.workflow,
-        }))
+        })),
       )
       .catch(() => {
         return [];
@@ -221,7 +221,7 @@ const EtlTaskDeploy = ({
   const createPipeline = () => {
     try {
       const wf = workflowList.find(
-        (item) => item?.id === formDetails?.workflow
+        (item) => item?.id === formDetails?.workflow,
       );
       setPostHogCustomEvent(posthogDeploymentEventText[`${type}_success`], {
         info: "Clicked on 'Save and Deploy' button",
