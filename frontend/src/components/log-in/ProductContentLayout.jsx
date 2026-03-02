@@ -33,7 +33,7 @@ const isoBadge = await loadAsset(
   "../../plugins/assets/llmWhisperer/ISO-27001.png",
 );
 const openAiLogo = await loadAsset(
-  "../../plugins/assets/llmWhisperer/OpenAI-icon.svg",
+  "../../plugins/assets/llmWhisperer/OpenAI.png",
 );
 const quoteIcon = await loadAsset(
   "../../plugins/assets/llmWhisperer/quote-icon.svg",
@@ -111,8 +111,9 @@ function ProductContentLayout() {
     <div className="default-light-content">
       <Typography.Title level={2} className="default-light-headline">
         <span className="default-light-headline-dark">
-          {"Parse, Structure and Automate "}
+          {"Parse, Structure and Automate"}
         </span>
+        <br />
         <span className="default-light-headline-accent">
           Document Extraction
         </span>
