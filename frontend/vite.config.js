@@ -5,12 +5,29 @@ import { defineConfig, loadEnv } from "vite";
 import svgr from "vite-plugin-svgr";
 
 const EMPTY_MODULE_ID = "\0optional-plugin-empty";
+const EMPTY_ASSET_MODULE_ID = "\0optional-plugin-empty-asset";
+
+const ASSET_EXTENSIONS = new Set([
+  ".svg",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".ico",
+  ".bmp",
+  ".tiff",
+]);
 
 // Rollup plugin that resolves missing optional plugin imports to an empty
 // module instead of failing the build.  This lets the existing
 // `try { await import("./plugins/...") } catch {}` pattern work at build
 // time: Rollup will bundle an empty module for any plugin path that does
 // not exist on disk, and the catch block handles the rest at runtime.
+//
+// Asset imports (images, SVGs, etc.) are resolved to a module that exports
+// an empty string as default, so static `import logo from "..."` statements
+// don't break the build.
 function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
@@ -37,6 +54,11 @@ function optionalPluginImports() {
       );
 
       if (!exists) {
+        // Asset files need a default export so static imports work.
+        const ext = path.extname(resolved).toLowerCase();
+        if (ASSET_EXTENSIONS.has(ext)) {
+          return EMPTY_ASSET_MODULE_ID;
+        }
         return EMPTY_MODULE_ID;
       }
 
@@ -45,6 +67,9 @@ function optionalPluginImports() {
     load(id) {
       if (id === EMPTY_MODULE_ID) {
         return "throw new Error('Optional plugin not available');";
+      }
+      if (id === EMPTY_ASSET_MODULE_ID) {
+        return "export default '';";
       }
       return null;
     },
