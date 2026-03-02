@@ -1,6 +1,6 @@
-import { Form, Checkbox } from "antd";
+import { Checkbox, Form } from "antd";
 import PropTypes from "prop-types";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 
 const FilterPromptFields = React.memo(
   ({ isOpen, selectedPrompts, setSelectedPrompts }) => {
@@ -34,7 +34,7 @@ const FilterPromptFields = React.memo(
         ))}
       </Form>
     );
-  }
+  },
 );
 
 FilterPromptFields.displayName = "FilterPromptFields";

@@ -1,8 +1,8 @@
-import { useEffect, useState, useRef } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import PropTypes from "prop-types";
-import { Button, Space, Typography } from "antd";
 import { ArrowLeftOutlined, QuestionCircleOutlined } from "@ant-design/icons";
+import { Button, Space, Typography } from "antd";
+import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import "./MenuLayout.css";
 import { useSessionStore } from "../../store/session-store";
@@ -35,7 +35,29 @@ function MenuLayout({ children }) {
           <Button
             size="small"
             type="text"
-            onClick={() => navigate(`/${sessionDetails.orgName}/workflows`)}
+            onClick={() => {
+              if (location.state?.from) {
+                const from = location.state.from;
+                const fromState =
+                  typeof from === "object" && from.state ? from.state : {};
+                const mergedState = {
+                  ...fromState,
+                  ...(location.state?.scrollToCardId && {
+                    scrollToCardId: location.state.scrollToCardId,
+                  }),
+                };
+                const nextState = Object.keys(mergedState).length
+                  ? mergedState
+                  : undefined;
+                if (typeof from === "object") {
+                  navigate({ ...from, state: nextState });
+                } else {
+                  navigate(from, { state: nextState });
+                }
+              } else {
+                navigate(`/${sessionDetails.orgName}/workflows`);
+              }
+            }}
           >
             <ArrowLeftOutlined />
           </Button>

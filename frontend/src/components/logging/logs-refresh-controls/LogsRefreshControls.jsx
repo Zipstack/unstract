@@ -1,5 +1,5 @@
-import { Switch, Button, Typography, Tooltip } from "antd";
 import { ReloadOutlined } from "@ant-design/icons";
+import { Button, Switch, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import "./LogsRefreshControls.css";
 
