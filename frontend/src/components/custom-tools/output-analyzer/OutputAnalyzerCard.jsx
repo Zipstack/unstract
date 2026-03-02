@@ -57,7 +57,7 @@ function OutputAnalyzerCard({ doc, selectedPrompts, totalFields }) {
       setIsDocLoading(true);
       try {
         const res = await axiosPrivate.get(fileUrlEndpoint);
-        const base64String = res?.data?.data?.data || "";
+        const base64String = res?.data?.data || "";
         const blob = base64toBlob(base64String);
         setFileUrl(URL.createObjectURL(blob));
       } catch (err) {

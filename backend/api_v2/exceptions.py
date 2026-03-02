@@ -1,4 +1,9 @@
+from typing import TYPE_CHECKING
+
 from rest_framework.exceptions import APIException
+
+if TYPE_CHECKING:
+    from workflow_manager.workflow_v2.dto import ExecutionResponse
 
 
 class NotFoundException(APIException):
@@ -85,6 +90,84 @@ class RateLimitExceeded(APIException):
                 detail = RateLimitMessages.get_global_limit_exceeded_message()
 
         super().__init__(detail, code)
+
+
+class ToolNotFoundInRegistry(APIException):
+    """Raised when a tool image is not found in the container registry.
+
+    This indicates a server-side platform deployment state issue - the
+    requested tool image is not available in the container registry.
+    HTTP 500 Internal Server Error is used because this is a server-side
+    configuration/deployment problem, not a client-actionable error.
+    """
+
+    status_code = 500
+    default_detail = "Tool not found in container registry"
+
+    # Error code used to identify this error in execution results
+    ERROR_CODE = "TOOL_IMAGE_NOT_FOUND"
+
+    def __init__(
+        self,
+        detail: str | None = None,
+        code: str | None = None,
+        tool_name: str = "",
+    ):
+        if detail is None:
+            if tool_name:
+                detail = (
+                    f"Tool '{tool_name}' not found in container registry. "
+                    f"Please ensure the tool is properly deployed."
+                )
+            else:
+                detail = self.default_detail
+        super().__init__(detail, code)
+
+
+def _check_error_code(error_value: str | None) -> bool:
+    """Check if error string contains the tool not found error code.
+
+    Uses deterministic error code matching instead of fragile string patterns.
+    """
+    if not error_value:
+        return False
+    return ToolNotFoundInRegistry.ERROR_CODE in str(error_value)
+
+
+def contains_tool_not_found_error(
+    response: "dict | ExecutionResponse",
+) -> bool:
+    """Check if response contains a tool not found in registry error.
+
+    Uses deterministic error code matching (TOOL_IMAGE_NOT_FOUND) instead of
+    fragile string pattern matching to identify this specific error condition.
+
+    Args:
+        response: Either a dict (from POST) or ExecutionResponse (from GET)
+
+    Returns:
+        bool: True if tool not found error is detected
+    """
+    # Get error and result from response
+    if isinstance(response, dict):
+        error = response.get("error")
+        result = response.get("result", [])
+    else:
+        error = getattr(response, "error", None)
+        result = getattr(response, "result", []) or []
+
+    # Check top-level error for error code
+    if _check_error_code(error):
+        return True
+
+    # Check file-level errors in result array
+    if isinstance(result, list):
+        for item in result:
+            if isinstance(item, dict):
+                if _check_error_code(item.get("error")):
+                    return True
+
+    return False
 
 
 class PresignedURLFetchError(APIException):

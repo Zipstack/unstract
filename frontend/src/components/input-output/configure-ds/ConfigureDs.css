@@ -20,3 +20,14 @@
 .config-tc-btn {
   background-color: #4bb543 !important;
 }
+
+.config-doc-link {
+  text-align: right;
+  margin-bottom: 8px;
+}
+
+.config-doc-icon {
+  font-size: 16px;
+  color: #1890ff;
+  cursor: pointer;
+}
