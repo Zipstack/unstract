@@ -511,7 +511,7 @@ class LookupPromptTemplateViewSet(viewsets.ModelViewSet):
                 {
                     "valid": True,
                     "resolved_template": resolved[:1000],  # First 1000 chars
-                    "variables_found": list(resolver.get_all_variables(template_text)),
+                    "variables_found": resolver.detect_variables(template_text),
                 }
             )
 

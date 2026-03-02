@@ -1,23 +1,23 @@
-import { useState, useEffect } from "react";
-import PropTypes from "prop-types";
 import {
+  CheckOutlined,
+  PlayCircleOutlined,
+  SaveOutlined,
+} from "@ant-design/icons";
+import {
+  Alert,
   Button,
   Card,
+  Divider,
   Form,
   Input,
+  Modal,
   Select,
   Space,
-  Typography,
   Tag,
-  Divider,
-  Modal,
-  Alert,
+  Typography,
 } from "antd";
-import {
-  SaveOutlined,
-  PlayCircleOutlined,
-  CheckOutlined,
-} from "@ant-design/icons";
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -81,12 +81,14 @@ export function TemplateTab({ project, onUpdate }) {
   }, [project.template]);
 
   const fetchLLMAdapters = async () => {
-    if (!sessionDetails?.orgId) return;
+    if (!sessionDetails?.orgId) {
+      return;
+    }
 
     setLoadingLLMs(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`
+        `/api/v1/unstract/${sessionDetails.orgId}/adapter/?adapter_type=LLM`,
       );
       setLlmAdapters(response.data || []);
     } catch (error) {
@@ -104,7 +106,7 @@ export function TemplateTab({ project, onUpdate }) {
   const fetchTemplate = async () => {
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/${project.template.id}/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/${project.template.id}/`,
       );
       setTemplate(response.data);
       form.setFieldsValue({
@@ -113,7 +115,7 @@ export function TemplateTab({ project, onUpdate }) {
         llm_adapter_id: response.data.llm_config?.adapter_id,
       });
       extractVariables(response.data.template_text);
-    } catch (error) {
+    } catch {
       setAlertDetails({
         type: "error",
         content: "Failed to fetch template",
@@ -153,19 +155,21 @@ export function TemplateTab({ project, onUpdate }) {
 
       if (template) {
         // Update existing
-        await axiosPrivate.patch(
+        const response = await axiosPrivate.patch(
           `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/${template.id}/`,
           payload,
-          { headers }
+          { headers },
         );
+        setTemplate(response.data);
       } else {
         // Create new
-        await axiosPrivate.post(
+        const response = await axiosPrivate.post(
           `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-templates/`,
           payload,
-          { headers }
+          { headers },
         );
-        // Template is automatically linked to project via the OneToOneField
+        // Set template from response so subsequent saves use PATCH
+        setTemplate(response.data);
       }
 
       setAlertDetails({
@@ -173,7 +177,6 @@ export function TemplateTab({ project, onUpdate }) {
         content: "Template saved successfully",
       });
       onUpdate();
-      fetchTemplate();
     } catch (error) {
       setAlertDetails({
         type: "error",
@@ -194,7 +197,8 @@ export function TemplateTab({ project, onUpdate }) {
           template_text: templateText,
           sample_data: {},
           sample_reference: "Sample reference data",
-        }
+        },
+        { headers: { "X-CSRFToken": sessionDetails?.csrfToken } },
       );
 
       if (response.data.valid) {
@@ -209,7 +213,7 @@ export function TemplateTab({ project, onUpdate }) {
           content: response.data.error || "Template validation failed",
         });
       }
-    } catch (error) {
+    } catch {
       setAlertDetails({
         type: "error",
         content: "Failed to validate template",
@@ -227,7 +231,8 @@ export function TemplateTab({ project, onUpdate }) {
           input_data: testData,
           use_cache: false,
           timeout_seconds: 30,
-        }
+        },
+        { headers: { "X-CSRFToken": sessionDetails?.csrfToken } },
       );
 
       Modal.success({
@@ -280,8 +285,8 @@ export function TemplateTab({ project, onUpdate }) {
                 }
                 return Promise.reject(
                   new Error(
-                    "Template must contain {{reference_data}} placeholder"
-                  )
+                    "Template must contain {{reference_data}} placeholder",
+                  ),
                 );
               },
             },
@@ -369,7 +374,9 @@ export function TemplateTab({ project, onUpdate }) {
           const testData = {};
           variables.forEach((v) => {
             const value = document.getElementById(`test-${v}`)?.value;
-            if (value) testData[v] = value;
+            if (value) {
+              testData[v] = value;
+            }
           });
           handleTest(testData);
           setTestModalOpen(false);

@@ -1,18 +1,19 @@
-import { useState, useEffect } from "react";
-import PropTypes from "prop-types";
-import { Button, Tag, Typography, Progress, Modal } from "antd";
 import {
-  UploadOutlined,
-  DeleteOutlined,
+  CalendarOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  LoadingOutlined,
-  SyncOutlined,
+  DatabaseOutlined,
+  DeleteOutlined,
+  FileOutlined,
   FileTextOutlined,
   InboxOutlined,
-  CalendarOutlined,
-  FileOutlined,
+  LoadingOutlined,
+  SyncOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
+import { Button, Modal, Progress, Space, Tag, Typography } from "antd";
+import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -27,6 +28,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [indexing, setIndexing] = useState(false);
 
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
@@ -40,10 +42,10 @@ export function ReferenceDataTab({ project, onUpdate }) {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(
-        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/data_sources/`
+        `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/data_sources/`,
       );
       setDataSources(response.data || []);
-    } catch (error) {
+    } catch {
       setAlertDetails({
         type: "error",
         content: "Failed to fetch data sources",
@@ -54,7 +56,9 @@ export function ReferenceDataTab({ project, onUpdate }) {
   };
 
   const handleUpload = async (file) => {
-    if (!file) return;
+    if (!file) {
+      return;
+    }
 
     setUploading(true);
     const formData = new FormData();
@@ -71,7 +75,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
             "Content-Type": "multipart/form-data",
             "X-CSRFToken": sessionDetails?.csrfToken,
           },
-        }
+        },
       );
 
       setAlertDetails({
@@ -118,7 +122,9 @@ export function ReferenceDataTab({ project, onUpdate }) {
     event.stopPropagation();
     setIsDragging(false);
 
-    if (uploading) return;
+    if (uploading) {
+      return;
+    }
 
     const file = event.dataTransfer?.files?.[0];
     if (file) {
@@ -140,7 +146,7 @@ export function ReferenceDataTab({ project, onUpdate }) {
               headers: {
                 "X-CSRFToken": sessionDetails?.csrfToken,
               },
-            }
+            },
           );
           setAlertDetails({
             type: "success",
@@ -148,11 +154,54 @@ export function ReferenceDataTab({ project, onUpdate }) {
           });
           fetchDataSources();
           onUpdate();
-        } catch (error) {
+        } catch {
           setAlertDetails({
             type: "error",
             content: "Failed to delete reference data",
           });
+        }
+      },
+    });
+  };
+
+  const handleIndexAll = async () => {
+    Modal.confirm({
+      title: "Index All Reference Data",
+      content:
+        "This will index all completed reference data using the default profile. Continue?",
+      okText: "Index All",
+      okType: "primary",
+      onOk: async () => {
+        setIndexing(true);
+        try {
+          const response = await axiosPrivate.post(
+            `/api/v1/unstract/${sessionDetails?.orgId}/lookup/lookup-projects/${project.id}/index_all/`,
+            {},
+            {
+              headers: {
+                "X-CSRFToken": sessionDetails?.csrfToken,
+              },
+            },
+          );
+
+          const results = response.data?.results || {};
+          setAlertDetails({
+            type: "success",
+            content: `Indexing completed: ${results.success || 0} successful, ${
+              results.failed || 0
+            } failed`,
+          });
+
+          fetchDataSources();
+          onUpdate();
+        } catch (error) {
+          setAlertDetails({
+            type: "error",
+            content:
+              error.response?.data?.detail || "Failed to index reference data",
+          });
+        } finally {
+          setIndexing(false);
         }
       },
     });
@@ -217,17 +266,28 @@ export function ReferenceDataTab({ project, onUpdate }) {
             Upload and manage reference data files for enrichment
           </Text>
         </div>
-        <Button
-          type="primary"
-          icon={<UploadOutlined />}
-          onClick={() => {
-            setUploading(false);
-            setIsDragging(false);
-            setUploadModalOpen(true);
-          }}
-        >
-          Upload Data
-        </Button>
+        <Space>
+          <Button
+            type="default"
+            icon={<DatabaseOutlined />}
+            onClick={handleIndexAll}
+            loading={indexing}
+            disabled={indexing || dataSources.length === 0}
+          >
+            Index All
+          </Button>
+          <Button
+            type="primary"
+            icon={<UploadOutlined />}
+            onClick={() => {
+              setUploading(false);
+              setIsDragging(false);
+              setUploadModalOpen(true);
+            }}
+          >
+            Upload Data
+          </Button>
+        </Space>
       </div>
 
       <div className="ref-cards-container">
