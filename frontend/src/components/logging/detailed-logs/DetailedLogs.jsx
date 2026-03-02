@@ -1,5 +1,4 @@
 import {
-  ArrowLeftOutlined,
   CalendarOutlined,
   ClockCircleOutlined,
   CloseCircleFilled,
@@ -29,7 +28,6 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import "./DetailedLogs.css";
 import {
   formattedDateTime,
