@@ -16,9 +16,9 @@ This script creates:
 import argparse
 import json
 import sys
+import urllib.parse
 import uuid
 from pathlib import Path
-import urllib.parse
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
