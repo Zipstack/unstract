@@ -83,18 +83,14 @@ const CreateApiDeploymentModal = ({
   };
 
   const createApiDeployment = () => {
-    try {
-      const wf = workflowEndpointList.find(
-        (item) => item?.workflow === formDetails?.workflow,
-      );
-      setPostHogCustomEvent("intent_success_api_deployment", {
-        info: "Clicked on 'Save' button",
-        deployment_name: formDetails?.api_name,
-        workflow_name: wf?.workflow_name,
-      });
-    } catch (_err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
+    const wf = workflowEndpointList.find(
+      (item) => item?.workflow === formDetails?.workflow,
+    );
+    setPostHogCustomEvent("intent_success_api_deployment", {
+      info: "Clicked on 'Save' button",
+      deployment_name: formDetails?.api_name,
+      workflow_name: wf?.workflow_name,
+    });
 
     setIsLoading(true);
     const body = formDetails;
@@ -146,6 +142,18 @@ const CreateApiDeploymentModal = ({
       });
   };
 
+  const mergeUpdatedRow = (updatedData) => {
+    setTableData((prev) => {
+      const index = prev.findIndex((item) => item?.id === updatedData?.id);
+      if (index !== -1) {
+        const newData = [...prev];
+        newData[index] = { ...newData[index], ...updatedData };
+        return newData;
+      }
+      return prev;
+    });
+  };
+
   const updateApiDeployment = () => {
     setIsLoading(true);
     const body = formDetails;
@@ -153,16 +161,7 @@ const CreateApiDeploymentModal = ({
     apiDeploymentsApiService
       .updateApiDeployment(body)
       .then((res) => {
-        // Merge updated record into existing tableData
-        setTableData((prev) => {
-          const index = prev.findIndex((item) => item?.id === res?.data?.id);
-          if (index !== -1) {
-            const newData = [...prev];
-            newData[index] = { ...newData[index], ...res?.data };
-            return newData;
-          }
-          return prev;
-        });
+        mergeUpdatedRow(res?.data);
         setOpen(false);
         clearFormDetails();
         setAlertDetails({

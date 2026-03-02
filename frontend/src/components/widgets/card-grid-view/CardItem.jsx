@@ -53,7 +53,8 @@ function CardItem({
         e.target.closest("a") ||
         e.target.closest(".status-badge-clickable") ||
         e.target.closest(".action-icon-btn") ||
-        e.target.closest(".ant-popover")
+        e.target.closest(".ant-popover") ||
+        e.target.closest(".card-action-wrapper")
       ) {
         return;
       }
@@ -206,12 +207,7 @@ function CardItem({
           // Custom render for action
           if (action.render) {
             return (
-              <span
-                key={action.key}
-                className="card-action-wrapper"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => e.stopPropagation()}
-              >
+              <span key={action.key} className="card-action-wrapper">
                 {action.render(item)}
               </span>
             );

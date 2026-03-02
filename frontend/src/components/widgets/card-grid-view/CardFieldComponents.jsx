@@ -296,7 +296,7 @@ function ApiEndpointSection({ apiEndpoint }) {
   // Validate URL scheme to prevent javascript: or other malicious protocols
   const isValidUrl = (() => {
     try {
-      const parsed = new URL(apiEndpoint, window.location.origin);
+      const parsed = new URL(apiEndpoint, globalThis.location.origin);
       return ["http:", "https:"].includes(parsed.protocol);
     } catch {
       return false;

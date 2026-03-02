@@ -1,5 +1,6 @@
 import { Card, Col, Row, Skeleton } from "antd";
 import PropTypes from "prop-types";
+import { useMemo } from "react";
 
 /**
  * Loading skeleton that matches the card grid layout
@@ -21,12 +22,16 @@ function LoadingSkeleton({ gridConfig, count = 6 }) {
 
   const columns = gridConfig?.columns || defaultColumns;
   const gutter = gridConfig?.gutter || [16, 16];
+  const skeletonIds = useMemo(
+    () => Array.from({ length: count }, (_, i) => `skeleton-${i}`),
+    [count],
+  );
 
   return (
     <Row gutter={gutter} className="card-skeleton-row">
-      {Array.from({ length: count }).map((_, index) => (
+      {skeletonIds.map((id) => (
         <Col
-          key={`skeleton-${index}`}
+          key={id}
           xs={columns.xs}
           sm={columns.sm}
           md={columns.md}

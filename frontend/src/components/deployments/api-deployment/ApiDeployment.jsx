@@ -148,12 +148,7 @@ function ApiDeployment() {
           ...prev,
           current: page,
           pageSize,
-          total:
-            data.count !== null && data.count !== undefined
-              ? data.count
-              : data.results
-                ? data.results.length
-                : data.length,
+          total: data.count ?? data.results?.length ?? data.length,
         }));
 
         activateScrollRestore();
@@ -189,24 +184,23 @@ function ApiDeployment() {
       });
   };
 
+  const updateItemStatus = (itemId, isActive) => {
+    setTableData((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, is_active: isActive } : item,
+      ),
+    );
+  };
+
   const updateStatus = (record) => {
     const newStatus = !record?.is_active;
     // Optimistic update - no loading spinner
-    setTableData((prev) =>
-      prev.map((item) =>
-        item.id === record.id ? { ...item, is_active: newStatus } : item,
-      ),
-    );
+    updateItemStatus(record.id, newStatus);
 
     apiDeploymentsApiService
       .updateApiDeployment({ ...record, is_active: newStatus })
       .catch((err) => {
-        // Revert on error
-        setTableData((prev) =>
-          prev.map((item) =>
-            item.id === record.id ? { ...item, is_active: !newStatus } : item,
-          ),
-        );
+        updateItemStatus(record.id, !newStatus);
         setAlertDetails(handleException(err));
       });
   };

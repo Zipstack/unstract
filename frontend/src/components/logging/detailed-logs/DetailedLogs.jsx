@@ -23,12 +23,11 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
 import "./DetailedLogs.css";
 import {
   formattedDateTime,
