@@ -1,5 +1,5 @@
-import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 
 const useExceptionHandler = () => {
   const navigate = useNavigate();
@@ -8,7 +8,7 @@ const useExceptionHandler = () => {
     errMessage = "Something went wrong",
     setBackendErrors = undefined,
     title = "Failed",
-    duration = 0
+    duration = 0,
   ) => {
     if (!err) {
       return {
@@ -76,7 +76,7 @@ const useExceptionHandler = () => {
                       (error) =>
                         `• ${error.attr ? error.attr + ": " : ""}${
                           error.detail || "Unknown error"
-                        }`
+                        }`,
                     )
                     .join("\n");
               }

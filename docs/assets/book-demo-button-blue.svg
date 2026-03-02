@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="200" height="50" viewBox="0 0 200 50">
+  <defs>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600&amp;display=swap');
+    </style>
+    <linearGradient id="blueGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#2563eb" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <rect x="5" y="5" width="190" height="40" rx="20" ry="20" fill="url(#blueGradient)" filter="url(#shadow)"/>
+  <text x="100" y="30" font-family="'Montserrat', sans-serif" font-size="14" font-weight="600" fill="white" text-anchor="middle">Book a Demo →</text>
+</svg>

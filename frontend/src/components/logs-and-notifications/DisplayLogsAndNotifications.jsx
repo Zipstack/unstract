@@ -1,13 +1,13 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LogsHeader } from "./LogsHeader";
 import "./DisplayLogsAndNotifications.css";
-import { LogsAndNotificationsTable } from "./LogsAndNotificationsTable";
 import { useAxiosPrivate } from "../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../store/alert-store";
 import { useSessionStore } from "../../store/session-store";
 import { useSocketLogsStore } from "../../store/socket-logs-store";
-import { useAlertStore } from "../../store/alert-store";
-import { useExceptionHandler } from "../../hooks/useExceptionHandler";
+import { LogsAndNotificationsTable } from "./LogsAndNotificationsTable";
 
 export function DisplayLogsAndNotifications() {
   const [contentHeight, setContentHeight] = useState(0);
@@ -103,7 +103,7 @@ export function DisplayLogsAndNotifications() {
       document.addEventListener("mousemove", onMouseMove);
       document.addEventListener("mouseup", onMouseUp);
     },
-    [contentHeight]
+    [contentHeight],
   );
 
   const onMouseMove = useCallback(
@@ -115,7 +115,7 @@ export function DisplayLogsAndNotifications() {
       const maxHeight = parentHeight - 40;
       setContentHeight(Math.max(0, Math.min(maxHeight, newHeight)));
     },
-    [getParentHeight]
+    [getParentHeight],
   );
 
   const onMouseUp = useCallback(() => {
