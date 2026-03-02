@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-
+import { useEffect, useState } from "react";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { FileExplorer } from "../file-system/FileSystem.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ManageFiles({
   selectedConnector,

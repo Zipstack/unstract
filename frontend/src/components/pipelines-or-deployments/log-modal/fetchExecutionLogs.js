@@ -7,7 +7,7 @@ const fetchExecutionLogs = (
   setExecutionLogsTotalCount,
   setAlertDetails,
   page = 1,
-  pageSize = 10
+  pageSize = 10,
 ) => {
   const requestOptions = {
     method: "GET",

@@ -1,8 +1,4 @@
 import logging
-from typing import Any
-
-import requests
-from celery import shared_task
 
 from backend.celery_service import app as celery_app
 from notification_v2.enums import AuthorizationType
@@ -105,56 +101,3 @@ class Webhook(NotificationProvider):
             if not authorization_header or not authorization_key:
                 raise ValueError("Custom header or key missing for custom authorization.")
         return headers
-
-
-@shared_task(bind=True, name="send_webhook_notification")
-def send_webhook_notification(
-    self,
-    url: str,
-    payload: Any,
-    headers: Any = None,
-    timeout: int = 10,
-    max_retries: int | None = None,
-    retry_delay: int = 10,
-):
-    """Celery task to send a webhook with retries and error handling.
-
-    Args:
-        url (str): The URL to which the webhook should be sent.
-        payload (dict): The payload to be sent in the webhook request.
-        headers (dict, optional): Optional headers to include in the request.
-        Defaults to None.
-        timeout (int, optional): The request timeout in seconds. Defaults to 10.
-        max_retries (int, optional): The maximum number of retries allowed.
-        Defaults to None.
-        retry_delay (int, optional): The delay between retries in seconds.
-        Defaults to 10.
-
-    Returns:
-        None
-    """
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
-        response.raise_for_status()
-        if not (200 <= response.status_code < 300):
-            logger.error(
-                f"Request to {url} failed with status code {response.status_code}. "
-                f"Response: {response.text}"
-            )
-    except requests.exceptions.RequestException as exc:
-        if max_retries is not None:
-            if self.request.retries < max_retries:
-                logger.warning(
-                    f"Request to {url} failed. Retrying in {retry_delay} seconds. "
-                    f"Attempt {self.request.retries + 1}/{max_retries}. Error: {exc}"
-                )
-                raise self.retry(exc=exc, countdown=retry_delay)
-            else:
-                logger.error(
-                    f"Failed to send webhook to {url} after {max_retries} attempts. "
-                    f"Error: {exc}"
-                )
-                return None
-        else:
-            logger.error(f"Webhook request to {url} failed with error: {exc}")
-            return None
