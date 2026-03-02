@@ -91,14 +91,10 @@ class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
             dict[str, str]: Connector creds dict to connect with
         """
         connector_metadata = None
-        if ConnectorInstance.supportsOAuth(connector_id=connector_id):
-            logger.info(f"Fetching oauth data for {connector_id}")
-            oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
-            if not oauth_key:
-                raise MissingParamException(
-                    "OAuth authentication required. Please sign in with Google first."
-                )
-            logger.info(f"Using OAuth cache key for {connector_id}")
+        oauth_key = self.request.query_params.get(ConnectorAuthKey.OAUTH_KEY)
+
+        # Only use OAuth flow if connector supports it AND oauth_key is provided
+        if ConnectorInstance.supportsOAuth(connector_id=connector_id) and oauth_key:
             connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
                 delete_key=False,  # Don't delete yet - wait for successful operation

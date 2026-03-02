@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
 from django.db import IntegrityError
@@ -538,6 +539,28 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
             file_name = (
                 f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
             )
+
+        # For ORIGINAL view, check if a converted PDF exists for preview
+        if (
+            view_type != FileViewTypes.EXTRACT
+            and view_type != FileViewTypes.SUMMARIZE
+            and file_converter_plugin
+        ):
+            converted_name = f"converted/{filename_without_extension}.pdf"
+            try:
+                contents = PromptStudioFileHelper.fetch_file_contents(
+                    file_name=converted_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                    allowed_content_types=allowed_content_types,
+                )
+                return Response(contents, status=status.HTTP_200_OK)
+            except (FileNotFoundError, FileNotFound):
+                pass  # No converted file — fall through to return original
+            except Exception:
+                logger.exception(f"Error fetching converted file: {converted_name}")
+
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
                 file_name=file_name,
@@ -548,7 +571,7 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
             )
         except FileNotFoundError:
             raise FileNotFound()
-        return Response({"data": contents}, status=status.HTTP_200_OK)
+        return Response(contents, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
@@ -563,16 +586,32 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            file_type = uploaded_file.content_type
-            # Convert non-PDF files
+            # Detect MIME from file content (not browser-supplied header)
+            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
+            uploaded_file.seek(0)
+
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
-                file_data, file_name = file_converter_service.process_file(
-                    uploaded_file, file_name
-                )
+                if file_converter_service.should_convert_to_pdf(file_type):
+                    # Convert and store in converted/ subdir for preview
+                    converted_data, converted_name = file_converter_service.process_file(
+                        uploaded_file, file_name
+                    )
+                    PromptStudioFileHelper.upload_converted_for_ide(
+                        org_id=UserSessionUtils.get_organization_id(request),
+                        user_id=custom_tool.created_by.user_id,
+                        tool_id=str(custom_tool.tool_id),
+                        file_name=converted_name,
+                        file_data=converted_data,
+                    )
+                    # Reset uploaded_file for storing original in main dir
+                    uploaded_file.seek(0)
+                    file_data = uploaded_file
+                # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
             logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
 
+            # Store original file in main dir (always the original)
             PromptStudioFileHelper.upload_for_ide(
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
@@ -581,7 +620,7 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
                 file_data=file_data,
             )
 
-            # Create a record in the db for the file
+            # Create a record in the db for the file (document_name = original filename)
             document = PromptStudioDocumentHelper.create(
                 tool_id=str(custom_tool.tool_id), document_name=file_name
             )
