@@ -1,5 +1,4 @@
 from unstract.prompt_service.core.retrievers.retriever_llm import RetrieverLLM
-from unstract.prompt_service.utils.llm_helper import get_llama_index_llm
 from unstract.sdk1.llm import LLM
 from unstract.sdk1.vector_db import VectorDB
 
@@ -25,20 +24,17 @@ class BaseRetriever:
         self.prompt = prompt
         self.doc_id = doc_id
         self.top_k = top_k
-        self.llm: RetrieverLLM | None = _get_llm(llm)
+        self.llm: RetrieverLLM | None = self._get_llm(llm)
 
-    @property
-    def llama_index_llm(self) -> RetrieverLLM | None:
-        """Return a llama-index compatible LLM, lazily created from SDK1 LLM.
+    @staticmethod
+    def _get_llm(llm: LLM | None) -> RetrieverLLM | None:
+        """Convert SDK1 LLM to a llama-index compatible RetrieverLLM.
 
         Llama-index components (KeywordTableIndex, SubQuestionQueryEngine,
         etc.) expect an instance of ``llama_index.core.llms.llm.LLM``.
         SDK1's ``LLM`` wraps litellm directly and is *not* compatible.
-        This property bridges the gap via ``RetrieverLLM``.
         """
-        if self._llama_index_llm is None and self.llm is not None:
-            self._llama_index_llm = get_llama_index_llm(self.llm)
-        return self._llama_index_llm
+        return RetrieverLLM(llm=llm) if llm else None
 
     @staticmethod
     def retrieve() -> set[str]:
