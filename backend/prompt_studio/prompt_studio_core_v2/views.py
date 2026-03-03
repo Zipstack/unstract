@@ -396,12 +396,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             on_success=signature(
                 "ide_index_complete",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="celery_prompt_studio",
+                queue="celery",
             ),
             on_error=signature(
                 "ide_index_error",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="celery_prompt_studio",
+                queue="celery",
             ),
             task_id=executor_task_id,
         )
@@ -477,12 +477,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             on_success=signature(
                 "ide_prompt_complete",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="celery_prompt_studio",
+                queue="celery",
             ),
             on_error=signature(
                 "ide_prompt_error",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="celery_prompt_studio",
+                queue="celery",
             ),
             task_id=executor_task_id,
         )
@@ -553,12 +553,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             on_success=signature(
                 "ide_prompt_complete",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="celery_prompt_studio",
+                queue="celery",
             ),
             on_error=signature(
                 "ide_prompt_error",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="celery_prompt_studio",
+                queue="celery",
             ),
             task_id=executor_task_id,
         )
