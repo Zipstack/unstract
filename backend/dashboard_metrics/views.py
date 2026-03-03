@@ -403,8 +403,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
             # Apply granularity-based grouping to cached records
-            from datetime import datetime
-
             trunc_funcs = {
                 Granularity.HOUR: lambda ts: ts.replace(
                     minute=0, second=0, microsecond=0
@@ -774,6 +772,8 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             "etl_pipeline_executions": MetricsQueryService.get_etl_pipeline_executions,
             "llm_usage": MetricsQueryService.get_llm_usage_cost,
             "prompt_executions": MetricsQueryService.get_prompt_executions,
+            "hitl_reviews": MetricsQueryService.get_hitl_reviews,
+            "hitl_completions": MetricsQueryService.get_hitl_completions,
         }
 
         # Filter by specific metric if requested

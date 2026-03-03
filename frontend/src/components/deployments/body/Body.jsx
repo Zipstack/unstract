@@ -1,12 +1,23 @@
-import { Table } from "antd";
 import PropTypes from "prop-types";
 
 import { deploymentsStaticContent } from "../../../helpers/GetStaticData";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
+import { CardGridView } from "../../widgets/card-grid-view";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-function Body({ type, columns, tableData, isTableLoading, openAddModal }) {
+function Body({
+  type,
+  tableData,
+  isTableLoading,
+  openAddModal,
+  cardConfig,
+  onCardClick,
+  listMode = false,
+  forceExpandedId = null,
+  scrollToId = null,
+  pagination = null,
+}) {
   if (isTableLoading) {
     return <SpinnerLoader />;
   }
@@ -21,22 +32,21 @@ function Body({ type, columns, tableData, isTableLoading, openAddModal }) {
       </IslandLayout>
     );
   }
+
   return (
     <IslandLayout>
-      <div className="body-div">
-        <div className="table-div">
-          <Table
-            className="table"
-            size="middle"
-            columns={columns}
-            dataSource={tableData}
-            rowKey="id"
-            loading={{
-              indicator: <SpinnerLoader />,
-              spinning: isTableLoading,
-            }}
-          />
-        </div>
+      <div className="body-div pipeline-card-grid-container">
+        <CardGridView
+          data={tableData}
+          cardConfig={cardConfig}
+          loading={isTableLoading}
+          onCardClick={onCardClick}
+          rowKey="id"
+          listMode={listMode}
+          forceExpandedId={forceExpandedId}
+          scrollToId={scrollToId}
+          pagination={pagination}
+        />
       </div>
     </IslandLayout>
   );
@@ -44,10 +54,20 @@ function Body({ type, columns, tableData, isTableLoading, openAddModal }) {
 
 Body.propTypes = {
   type: PropTypes.string.isRequired,
-  columns: PropTypes.array.isRequired,
   tableData: PropTypes.array.isRequired,
   isTableLoading: PropTypes.bool.isRequired,
   openAddModal: PropTypes.func.isRequired,
+  cardConfig: PropTypes.object.isRequired,
+  onCardClick: PropTypes.func,
+  listMode: PropTypes.bool,
+  forceExpandedId: PropTypes.string,
+  scrollToId: PropTypes.string,
+  pagination: PropTypes.shape({
+    current: PropTypes.number,
+    pageSize: PropTypes.number,
+    total: PropTypes.number,
+    onChange: PropTypes.func,
+  }),
 };
 
 export { Body };

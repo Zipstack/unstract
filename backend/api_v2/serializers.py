@@ -431,6 +431,9 @@ class APIDeploymentListSerializer(CoOwnerRepresentationMixin, ModelSerializer):
     created_by_email = SerializerMethodField()
     co_owners_count = SerializerMethodField()
     is_owner = SerializerMethodField()
+    last_5_run_statuses = SerializerMethodField()
+    run_count = SerializerMethodField()
+    last_run_time = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -447,6 +450,9 @@ class APIDeploymentListSerializer(CoOwnerRepresentationMixin, ModelSerializer):
             "created_by_email",
             "co_owners_count",
             "is_owner",
+            "last_5_run_statuses",
+            "run_count",
+            "last_run_time",
         ]
 
     def get_created_by_email(self, obj):
@@ -466,6 +472,23 @@ class APIDeploymentListSerializer(CoOwnerRepresentationMixin, ModelSerializer):
         if request and hasattr(request, "user"):
             return obj.co_owners.filter(pk=request.user.pk).exists()
         return False
+
+    def get_run_count(self, instance) -> int:
+        """Get total execution count for this API deployment."""
+        return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
+
+    def get_last_run_time(self, instance) -> str | None:
+        """Get the timestamp of the most recent execution."""
+        last_execution = (
+            WorkflowExecution.objects.filter(pipeline_id=instance.id)
+            .order_by("-created_at")
+            .first()
+        )
+        return last_execution.created_at.isoformat() if last_execution else None
+
+    def get_last_5_run_statuses(self, instance) -> list[dict]:
+        """Fetch the last 5 execution statuses with timestamps for this API deployment."""
+        return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
 
 
 class APIKeyListSerializer(ModelSerializer):
