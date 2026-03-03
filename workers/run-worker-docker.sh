@@ -46,7 +46,7 @@ declare -A PLUGGABLE_WORKERS=()
 # Worker queue mappings
 declare -A WORKER_QUEUES=(
     ["api_deployment"]="celery_api_deployments"
-    ["general"]="celery"
+    ["general"]="celery,celery_prompt_studio"
     ["file_processing"]="file_processing,api_file_processing"
     ["callback"]="file_processing_callback,api_file_processing_callback"
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"

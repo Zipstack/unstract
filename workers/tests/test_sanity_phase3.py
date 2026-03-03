@@ -800,6 +800,57 @@ class TestWorkflowServiceDetection:
         result = service._is_structure_tool_workflow(mock_exec_service)
         assert result is True
 
+    def test_registry_prefix_match(self):
+        """Image from backend with registry prefix matches default base name."""
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        service = WorkerWorkflowExecutionService()
+
+        # Worker uses default "unstract/tool-structure", but backend sends
+        # image with registry prefix (common in K8s deployments)
+        mock_exec_service = MagicMock()
+        ti = MagicMock()
+        ti.image_name = "gcr.io/my-project/tool-structure"
+        mock_exec_service.tool_instances = [ti]
+
+        result = service._is_structure_tool_workflow(mock_exec_service)
+        assert result is True
+
+    def test_registry_prefix_with_tag_match(self):
+        """Image with registry prefix and tag still matches."""
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        service = WorkerWorkflowExecutionService()
+
+        mock_exec_service = MagicMock()
+        ti = MagicMock()
+        ti.image_name = "us.gcr.io/prod/tool-structure:v1.2.3"
+        mock_exec_service.tool_instances = [ti]
+
+        result = service._is_structure_tool_workflow(mock_exec_service)
+        assert result is True
+
+    @patch.dict("os.environ", {"STRUCTURE_TOOL_IMAGE_NAME": "gcr.io/prod/tool-structure"})
+    def test_env_has_registry_prefix_instance_has_different_prefix(self):
+        """Both env and instance have different registry prefixes, same base."""
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        service = WorkerWorkflowExecutionService()
+
+        mock_exec_service = MagicMock()
+        ti = MagicMock()
+        ti.image_name = "ecr.aws/other/tool-structure"
+        mock_exec_service.tool_instances = [ti]
+
+        result = service._is_structure_tool_workflow(mock_exec_service)
+        assert result is True
+
 
 class TestStructureToolParamsPassthrough:
     """Task receives correct params from WorkerWorkflowExecutionService."""

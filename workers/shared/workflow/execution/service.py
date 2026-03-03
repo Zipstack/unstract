@@ -991,12 +991,26 @@ class WorkerWorkflowExecutionService:
     def _is_structure_tool_workflow(
         self, execution_service: WorkflowExecutionService
     ) -> bool:
-        """Check if workflow uses the structure tool."""
+        """Check if workflow uses the structure tool.
+
+        Compares the base image name (last path component without tag)
+        to handle registry prefixes like gcr.io/project/tool-structure
+        vs the default unstract/tool-structure.
+        """
         structure_image = os.environ.get(
             "STRUCTURE_TOOL_IMAGE_NAME", "unstract/tool-structure"
         )
+        structure_base = structure_image.split(":")[0].rsplit("/", 1)[-1]
         for ti in execution_service.tool_instances:
-            if ti.image_name == structure_image:
+            ti_name = str(ti.image_name) if ti.image_name else ""
+            if not ti_name:
+                continue
+            ti_base = ti_name.split(":")[0].rsplit("/", 1)[-1]
+            if ti_name == structure_image or ti_base == structure_base:
+                logger.info(
+                    "Detected structure tool workflow "
+                    f"(image={ti_name}, expected={structure_image})"
+                )
                 return True
         return False
 
