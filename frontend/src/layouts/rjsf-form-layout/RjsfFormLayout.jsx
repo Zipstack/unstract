@@ -38,7 +38,9 @@ function RjsfFormLayout({
   isStateUpdateRequired,
 }) {
   const formSchema = useMemo(() => {
-    if (!schema) return {};
+    if (!schema) {
+      return {};
+    }
     const rest = { ...schema };
     delete rest.title;
     delete rest.description;
@@ -176,7 +178,9 @@ function RjsfFormLayout({
         // Try to resolve nested schema/title from property path like ".a.b[0].c"
         const path = (property || "").replace(/^\./, "");
         const getFieldSchema = (root, pathStr) => {
-          if (!root || !pathStr) return undefined;
+          if (!root || !pathStr) {
+            return undefined;
+          }
           const tokens = pathStr
             .replace(/\[(\d+)\]/g, ".$1")
             .split(".")
@@ -285,11 +289,22 @@ function RjsfFormLayout({
             fields={fields}
             formData={formData}
             transformErrors={transformErrors}
-            onError={() => {}}
+            onError={() => {
+              /* intentionally empty */
+            }}
             onSubmit={(e) => validateAndSubmit?.(e.formData)}
             showErrorList={false}
             onChange={handleChange}
             templates={templates}
+            // Must be false: tool instance metadata contains fields like
+            // prompt_registry_id and tool_instance_id that are not defined
+            // in the RJSF schema (e.g. Prompt Studio tools). Setting this to
+            // true strips those fields from the form submission, causing the
+            // PATCH to /tool_instance/ to lose them — breaking workflow execution.
+            omitExtraData={false}
+            // Only applies when omitExtraData is true; explicitly false here
+            // to prevent live-stripping of any non-schema fields during edits.
+            liveOmit={false}
           >
             {children || <></>}
           </Form>

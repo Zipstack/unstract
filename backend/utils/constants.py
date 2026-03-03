@@ -48,6 +48,15 @@ class CeleryQueue:
     CELERY_API_DEPLOYMENTS = "celery_api_deployments"
 
 
+class FileProcessingQueue:
+    """Queue names for file processing tasks (consumed by workers v2)."""
+
+    FILE_PROCESSING = "file_processing"
+    API_FILE_PROCESSING = "api_file_processing"
+    FILE_PROCESSING_CALLBACK = "file_processing_callback"
+    API_FILE_PROCESSING_CALLBACK = "api_file_processing_callback"
+
+
 class ExecutionLogConstants:
     """Constants for ExecutionLog.
 

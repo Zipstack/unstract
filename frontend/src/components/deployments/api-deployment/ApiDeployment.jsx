@@ -1,33 +1,23 @@
-import {
-  CloudDownloadOutlined,
-  CodeOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  EllipsisOutlined,
-  FileSearchOutlined,
-  KeyOutlined,
-  NotificationOutlined,
-  ShareAltOutlined,
-} from "@ant-design/icons";
-import { Button, Dropdown, Space, Switch, Tooltip, Typography } from "antd";
-import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
 import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
+import { useShareModal } from "../../../hooks/useShareModal";
 import { useAlertStore } from "../../../store/alert-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { useSessionStore } from "../../../store/session-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { fetchExecutionLogs } from "../../pipelines-or-deployments/log-modal/fetchExecutionLogs";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
@@ -37,12 +27,13 @@ import { DeleteModal } from "../delete-modal/DeleteModal";
 import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
+import { createApiDeploymentCardConfig } from "./ApiDeploymentCardConfig.jsx";
 import { apiDeploymentsService } from "./api-deployments-service";
 
 function ApiDeployment() {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
-  const navigate = useNavigate();
+  const location = useLocation();
   const apiDeploymentsApiService = apiDeploymentsService();
   const workflowApiService = workflowService();
   const [isTableLoading, setIsTableLoading] = useState(true);
@@ -52,150 +43,84 @@ function ApiDeployment() {
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [selectedRow, setSelectedRow] = useState({});
   const [tableData, setTableData] = useState([]);
+  const [filteredData, setFilteredData] = useState([]);
   const [apiKeys, setApiKeys] = useState([]);
   const [isEdit, setIsEdit] = useState(false);
   const [workflowEndpointList, setWorkflowEndpointList] = useState([]);
   const handleException = useExceptionHandler();
-  const [openLogsModal, setOpenLogsModal] = useState(false);
-  const [executionLogs, setExecutionLogs] = useState([]);
-  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const axiosPrivate = useAxiosPrivate();
-  const { getApiKeys, downloadPostmanCollection, copyUrl } =
-    usePipelineHelper();
+  const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
-  const [openShareModal, setOpenShareModal] = useState(false);
-  const [allUsers, setAllUsers] = useState([]);
-  const [isLoadingShare, setIsLoadingShare] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
+
+  // Ref to forward the fetch function to hooks (avoids declaration ordering)
+  const fetchListRef = useRef(null);
+
+  const {
+    pagination,
+    setPagination,
+    searchTerm,
+    setSearchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+  });
+
+  const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
+    useScrollRestoration({
+      location,
+      setSearchTerm,
+      setPagination,
+      fetchData: (...args) => fetchListRef.current?.(...args),
+    });
+
+  const {
+    openLogsModal,
+    setOpenLogsModal,
+    executionLogs,
+    executionLogsTotalCount,
+    isFetchingLogs,
+    handleFetchLogs,
+    handleViewLogs,
+  } = useExecutionLogs({
+    axiosPrivate,
+    handleException,
+    sessionDetails,
+    setAlertDetails,
+  });
+
+  const {
+    openShareModal,
+    setOpenShareModal,
+    allUsers,
+    isLoadingShare,
+    handleShare,
+    onShare,
+  } = useShareModal({
+    apiService: apiDeploymentsApiService,
+    setSelectedItem: setSelectedRow,
+    setAlertDetails,
+    handleException,
+    refreshList: () =>
+      getApiDeploymentList(pagination.current, pagination.pageSize, searchTerm),
+  });
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
     getPromptStudioCount,
   );
 
-  const handleFetchLogs = (page, pageSize) => {
-    fetchExecutionLogs(
-      axiosPrivate,
-      handleException,
-      sessionDetails,
-      selectedRow,
-      setExecutionLogs,
-      setExecutionLogsTotalCount,
-      setAlertDetails,
-      page,
-      pageSize,
-    );
-  };
-
-  const columns = [
-    {
-      title: "API Name",
-      key: "display_name",
-      render: (_, record) => (
-        <Typography.Text strong>{record?.display_name}</Typography.Text>
-      ),
-      align: "left",
-    },
-    {
-      title: "Description",
-      key: "description",
-      render: (_, record) => <Space>{record?.description}</Space>,
-      align: "left",
-    },
-    {
-      title: "API Endpoint",
-      key: "api_endpoint",
-      render: (_, record) => (
-        <Space direction="horizontal" className="display-flex-space-between">
-          <div>
-            <Typography.Text>
-              {displayURL(record?.api_endpoint)}
-            </Typography.Text>
-          </div>
-          <div>
-            <Tooltip title="click to copy">
-              <Button
-                size="small"
-                onClick={() => copyUrl(record?.api_endpoint)}
-              >
-                <CopyOutlined />
-              </Button>
-            </Tooltip>
-          </div>
-        </Space>
-      ),
-      align: "left",
-    },
-    {
-      title: "Workflow",
-      key: "workflow_name",
-      render: (_, record) => (
-        <Tooltip title="view workflow">
-          <Space
-            className="workflowName"
-            onClick={() =>
-              navigate(
-                `/${sessionDetails?.orgName}/workflows/${record?.workflow}`,
-              )
-            }
-          >
-            {record?.workflow_name}
-          </Space>
-        </Tooltip>
-      ),
-      align: "left",
-    },
-    {
-      title: "Owner",
-      key: "created_by",
-      render: (_, record) => {
-        const currentUser = sessionDetails?.userId;
-        const isOwner = record?.created_by === currentUser;
-        return (
-          <Space>
-            {isOwner ? "You" : record?.created_by_email || "Unknown"}
-          </Space>
-        );
-      },
-      align: "left",
-    },
-    {
-      title: "Enabled",
-      key: "active",
-      dataIndex: "active",
-      align: "center",
-      render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.is_active}
-          onChange={(e) => {
-            updateStatus(record);
-          }}
-        />
-      ),
-    },
-    {
-      title: "Actions",
-      key: "pipeline_id",
-      align: "center",
-      render: (_, record) => (
-        <Dropdown
-          menu={{ items: actionItems }}
-          placement="bottomLeft"
-          trigger={["click"]}
-          onOpenChange={() => setSelectedRow(record)}
-        >
-          <EllipsisOutlined className="cur-pointer" />
-        </Dropdown>
-      ),
-    },
-  ];
-
   useEffect(() => {
     getApiDeploymentList();
     getWorkflows();
   }, []);
+
+  useEffect(() => {
+    setFilteredData(tableData);
+  }, [tableData]);
+
   const getWorkflows = () => {
     workflowApiService
       .getWorkflowEndpointList("SOURCE", "API")
@@ -210,28 +135,45 @@ function ApiDeployment() {
       });
   };
 
-  const getApiDeploymentList = () => {
+  const getApiDeploymentList = (page = 1, pageSize = 10, search = "") => {
     setIsTableLoading(true);
 
     apiDeploymentsApiService
-      .getApiDeploymentsList()
+      .getApiDeploymentsList(page, pageSize, search)
       .then((res) => {
-        setTableData(res?.data);
+        const data = res?.data;
+        const results = data.results || data;
+        setTableData(results);
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+          total: data.count ?? data.results?.length ?? data.length,
+        }));
+
+        activateScrollRestore();
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+        clearPendingScroll();
       })
       .finally(() => {
         setIsTableLoading(false);
       });
   };
 
+  fetchListRef.current = getApiDeploymentList;
+
   const deleteApiDeployment = () => {
     apiDeploymentsApiService
       .deleteApiDeployment(selectedRow.id)
       .then((res) => {
         setOpenDeleteModal(false);
-        getApiDeploymentList();
+        getApiDeploymentList(
+          pagination.current,
+          pagination.pageSize,
+          searchTerm,
+        );
         setAlertDetails({
           type: "success",
           content: "API Deployment Deleted Successfully",
@@ -242,17 +184,24 @@ function ApiDeployment() {
       });
   };
 
+  const updateItemStatus = (itemId, isActive) => {
+    setTableData((prev) =>
+      prev.map((item) =>
+        item.id === itemId ? { ...item, is_active: isActive } : item,
+      ),
+    );
+  };
+
   const updateStatus = (record) => {
-    setIsTableLoading(true);
-    record.is_active = !record?.is_active;
+    const newStatus = !record?.is_active;
+    // Optimistic update - no loading spinner
+    updateItemStatus(record.id, newStatus);
+
     apiDeploymentsApiService
-      .updateApiDeployment(record)
-      .then(() => {})
+      .updateApiDeployment({ ...record, is_active: newStatus })
       .catch((err) => {
+        updateItemStatus(record.id, !newStatus);
         setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsTableLoading(false);
       });
   };
 
@@ -261,235 +210,73 @@ function ApiDeployment() {
     setOpenAddApiModal(true);
   };
 
-  const handleShare = async () => {
-    setIsLoadingShare(true);
-    setOpenShareModal(true);
-    // Fetch all users
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        apiDeploymentsApiService.getAllUsers(),
-        apiDeploymentsApiService.getSharedUsers(selectedRow.id),
-      ]);
-
-      const userList =
-        usersResponse?.data?.members?.map((member) => ({
-          id: member.id,
-          email: member.email,
-        })) || [];
-
-      // Pass the complete user list - SharePermission component will handle filtering
-      setAllUsers(userList);
-
-      // Update selected row with shared user info for the SharePermission component
-      const updatedSelectedRow = {
-        ...selectedRow,
-        ...sharedUsersResponse.data,
-      };
-      setSelectedRow(updatedSelectedRow);
-    } catch (err) {
-      setAlertDetails(
-        handleException(err, `Unable to fetch sharing information`),
-      );
-      setOpenShareModal(false);
-    } finally {
-      setIsLoadingShare(false);
-    }
+  // Handlers for card view actions
+  const handleEditDeployment = () => {
+    openAddModal(true);
   };
 
-  const onShare = (sharedUsers, api, shareWithEveryone) => {
-    setIsLoadingShare(true);
-    apiDeploymentsApiService
-      .updateSharing(selectedRow.id, sharedUsers, shareWithEveryone)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Sharing permissions updated successfully",
-        });
-        setOpenShareModal(false);
-        getApiDeploymentList(); // Refresh the list
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoadingShare(false);
-      });
+  const handleDeleteDeployment = () => {
+    setOpenDeleteModal(true);
   };
 
-  const actionItems = [
-    // Configuration Section
-    {
-      key: "1",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => openAddModal(true)}
-        >
-          <div>
-            <EditOutlined />
-          </div>
-          <div>
-            <Typography.Text>Edit</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "2",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() =>
-            getApiKeys(
-              apiDeploymentsApiService,
-              selectedRow?.id,
-              setApiKeys,
-              setOpenManageKeysModal,
-            )
-          }
-        >
-          <div>
-            <KeyOutlined />
-          </div>
-          <div>
-            <Typography.Text>Manage Keys</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "3",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={handleShare}
-        >
-          <div>
-            <ShareAltOutlined />
-          </div>
-          <div>
-            <Typography.Text>Share</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "4",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenNotificationModal(true)}
-        >
-          <div>
-            <NotificationOutlined />
-          </div>
-          <div>
-            <Typography.Text>Setup Notifications</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "divider-config",
-      type: "divider",
-    },
-    // Operation Section
-    {
-      key: "5",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => {
-            setOpenLogsModal(true);
-            fetchExecutionLogs(
-              axiosPrivate,
-              handleException,
-              sessionDetails,
-              selectedRow,
-              setExecutionLogs,
-              setExecutionLogsTotalCount,
-              setAlertDetails,
-            );
-          }}
-        >
-          <div>
-            <FileSearchOutlined />
-          </div>
-          <div>
-            <Typography.Text>View Logs</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "divider-operation",
-      type: "divider",
-    },
-    // Developer related Section
-    {
-      key: "6",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenCodeModal(true)}
-        >
-          <div>
-            <CodeOutlined />
-          </div>
-          <div>
-            <Typography.Text>Code Snippets</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "7",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() =>
-            downloadPostmanCollection(apiDeploymentsApiService, selectedRow?.id)
-          }
-        >
-          <div>
-            <CloudDownloadOutlined />
-          </div>
-          <div>
-            <Typography.Text>Download Postman Collection</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "divider-dev-related",
-      type: "divider",
-    },
-    // Delete related section
-    {
-      key: "8",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenDeleteModal(true)}
-        >
-          <div>
-            <DeleteOutlined />
-          </div>
-          <div>
-            <Typography.Text>Delete</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-  ];
+  const handleViewLogsDeployment = (deployment) => {
+    handleViewLogs(deployment, setSelectedRow);
+  };
+
+  const handleManageKeysDeployment = (deployment) => {
+    setSelectedRow(deployment);
+    getApiKeys(
+      apiDeploymentsApiService,
+      deployment.id,
+      setApiKeys,
+      setOpenManageKeysModal,
+    );
+  };
+
+  const handleSetupNotificationsDeployment = (deployment) => {
+    setSelectedRow(deployment);
+    setOpenNotificationModal(true);
+  };
+
+  const handleCodeSnippetsDeployment = (deployment) => {
+    setSelectedRow(deployment);
+    setOpenCodeModal(true);
+  };
+
+  const handleDownloadPostmanDeployment = (deployment) => {
+    downloadPostmanCollection(apiDeploymentsApiService, deployment.id);
+  };
+
+  // Card view configuration
+  const apiDeploymentCardConfig = useMemo(
+    () =>
+      createApiDeploymentCardConfig({
+        setSelectedRow,
+        updateStatus,
+        sessionDetails,
+        location,
+        onEdit: handleEditDeployment,
+        onShare: handleShare,
+        onDelete: handleDeleteDeployment,
+        onViewLogs: handleViewLogsDeployment,
+        onManageKeys: handleManageKeysDeployment,
+        onSetupNotifications: handleSetupNotificationsDeployment,
+        onCodeSnippets: handleCodeSnippetsDeployment,
+        onDownloadPostman: handleDownloadPostmanDeployment,
+        listContext: {
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+          searchTerm,
+        },
+      }),
+    [
+      sessionDetails,
+      location,
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+    ],
+  );
 
   // Using the custom hook to manage modal state
   const { showModal, handleModalClose } = usePromptStudioModal(
@@ -505,10 +292,21 @@ function ApiDeployment() {
       )}
       <Layout
         type="api"
-        columns={columns}
-        tableData={tableData}
+        tableData={filteredData}
         isTableLoading={isTableLoading}
         openAddModal={openAddModal}
+        cardConfig={apiDeploymentCardConfig}
+        listMode={true}
+        scrollToId={scrollRestoreId}
+        enableSearch={true}
+        onSearch={handleSearch}
+        setSearchList={setFilteredData}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: handlePaginationChange,
+        }}
       />
       {openAddApiModal && (
         <CreateApiDeploymentModal
@@ -547,6 +345,7 @@ function ApiDeployment() {
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
         fetchExecutionLogs={handleFetchLogs}
+        loading={isFetchingLogs}
       />
       <NotificationModal
         open={openNotificationModal}

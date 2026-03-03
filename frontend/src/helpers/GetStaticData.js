@@ -67,7 +67,9 @@ const replaceFirstRoute = (url, newRoute) => {
 };
 
 const formatBytes = (bytes, decimals = 1) => {
-  if (!+bytes) return "0 B";
+  if (!+bytes) {
+    return "0 B";
+  }
 
   const k = 1000;
   const dm = decimals < 0 ? 0 : decimals;
@@ -82,6 +84,7 @@ const formatBytes = (bytes, decimals = 1) => {
 
 const O_AUTH_PROVIDERS = {
   GOOGLE: "google-oauth2",
+  MICROSOFT: "azuread-tenant-oauth2",
 };
 
 const CONNECTOR_TYPE_MAP = {
@@ -334,7 +337,7 @@ const isJson = (text) => {
       return typeof json === "object";
     }
     return false;
-  } catch (err) {
+  } catch (_err) {
     return false;
   }
 };
@@ -545,8 +548,39 @@ const displayURL = (text) => {
   return getBaseUrl() + "/" + text;
 };
 
+// Helper to strip trailing slashes without regex (avoids ReDoS concerns)
+const stripTrailingSlashes = (str) => {
+  let end = str.length;
+  while (end > 0 && str[end - 1] === "/") {
+    end--;
+  }
+  return str.slice(0, end);
+};
+
+const shortenApiEndpoint = (url) => {
+  if (typeof url !== "string" || url.trim() === "") {
+    return "";
+  }
+  try {
+    // Parse URL to strip query/hash and get clean pathname
+    const parsed = new URL(url, globalThis.location.origin);
+    const path = stripTrailingSlashes(parsed.pathname);
+    const parts = path.split("/").filter(Boolean);
+    const suffix = parts[parts.length - 1] || "";
+    return suffix ? `.../${suffix}` : ".../";
+  } catch {
+    // Fallback for invalid URLs - strip query/hash manually
+    const path = stripTrailingSlashes(url.split("?")[0].split("#")[0]);
+    const parts = path.split("/").filter(Boolean);
+    const suffix = parts[parts.length - 1] || "";
+    return suffix ? `.../${suffix}` : ".../";
+  }
+};
+
 const formatNumberWithCommas = (number) => {
-  if (!number && number !== 0) return null;
+  if (!number && number !== 0) {
+    return null;
+  }
 
   // Convert the number to a string and split into integer and decimal parts.
   const [integerPart, decimalPart] = number.toString().split(".");
@@ -608,7 +642,9 @@ const generateCoverageKey = (promptId, profileId) => {
 };
 
 function formatSecondsToHMS(seconds) {
-  if (isNaN(seconds) || seconds < 0) return "00:00:00";
+  if (isNaN(seconds) || seconds < 0) {
+    return "00:00:00";
+  }
 
   const hrs = Math.floor(seconds / 3600);
   const mins = Math.floor((seconds % 3600) / 60);
@@ -650,16 +686,24 @@ const convertTimestampToHHMMSS = (timestamp) => {
 
 const formatTimeDisplay = (seconds) => {
   // Format time display for TTL or duration display
-  if (seconds <= 0) return "Expired";
+  if (seconds <= 0) {
+    return "Expired";
+  }
 
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
 
   const parts = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+  if (hours > 0) {
+    parts.push(`${hours}h`);
+  }
+  if (minutes > 0) {
+    parts.push(`${minutes}m`);
+  }
+  if (secs > 0 || parts.length === 0) {
+    parts.push(`${secs}s`);
+  }
 
   return parts.join(" ");
 };
@@ -739,6 +783,7 @@ export {
   pollForCompletion,
   getDocIdFromKey,
   displayURL,
+  shortenApiEndpoint,
   formatNumberWithCommas,
   isValidJsonKey,
   PROMPT_RUN_TYPES,

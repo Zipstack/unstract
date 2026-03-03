@@ -30,7 +30,6 @@ from notification_v2.internal_serializers import (
     WebhookTestSerializer,
 )
 from notification_v2.models import Notification
-from notification_v2.provider.webhook.webhook import send_webhook_notification
 
 logger = logging.getLogger(__name__)
 
@@ -126,13 +125,18 @@ class WebhookSendAPIView(APIView):
             headers = self._build_headers(validated_data)
 
             # Send webhook notification task
-            task = send_webhook_notification.delay(
-                url=validated_data["url"],
-                payload=validated_data["payload"],
-                headers=headers,
-                timeout=validated_data["timeout"],
-                max_retries=validated_data["max_retries"],
-                retry_delay=validated_data["retry_delay"],
+            task = celery_app.send_task(
+                "send_webhook_notification",
+                args=[
+                    validated_data["url"],
+                    validated_data["payload"],
+                    headers,
+                    validated_data["timeout"],
+                ],
+                kwargs={
+                    "max_retries": validated_data["max_retries"],
+                    "retry_delay": validated_data["retry_delay"],
+                },
             )
 
             # Prepare response
@@ -241,7 +245,8 @@ class WebhookBatchAPIView(APIView):
                     headers = self._build_headers(webhook_data)
                     countdown = i * delay_between if delay_between > 0 else 0
 
-                    task = send_webhook_notification.apply_async(
+                    task = celery_app.send_task(
+                        "send_webhook_notification",
                         args=[
                             webhook_data["url"],
                             webhook_data["payload"],

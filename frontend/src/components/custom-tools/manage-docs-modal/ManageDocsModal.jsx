@@ -459,7 +459,7 @@ function ManageDocsModal({
         info: "Clicked on index button",
         document_name: item?.document_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -559,7 +559,7 @@ function ManageDocsModal({
       setPostHogCustomEvent("ps_uploaded_file", {
         info: "Clicked on '+ Upload New File' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -595,8 +595,18 @@ function ManageDocsModal({
           return; // Stop further execution
         }
 
-        // If the file is not a PDF, show the modal for confirmation
-        if (fileType !== "application/pdf") {
+        // File types that can be uploaded directly without conversion
+        const DIRECT_UPLOAD_TYPES = new Set([
+          "application/pdf",
+          "text/plain",
+          "text/csv",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel.sheet.macroenabled.12",
+        ]);
+
+        if (!DIRECT_UPLOAD_TYPES.has(fileType)) {
+          // Non-direct types: show ConfirmMultiDoc modal or error
           if (!ConfirmMultiDoc) {
             setAlertDetails({
               type: "error",
@@ -606,7 +616,7 @@ function ManageDocsModal({
           setFileToUpload(file); // Store the file to be uploaded
           setIsModalVisible(true); // Show the modal
         } else {
-          // If the file is a PDF, proceed with the upload immediately
+          // PDF, CSV, TXT, Excel — proceed with the upload immediately
           resolve(file);
         }
       };
