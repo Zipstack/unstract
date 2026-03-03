@@ -446,7 +446,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             run_id = CommonUtils.generate_uuid()
 
         # Check output count before prompt run for HubSpot notification
-        output_count_before = PromptStudioOutputManager.objects.count()
+        # Filter through tool FK to scope by organization (PromptStudioOutputManager
+        # lacks DefaultOrganizationManagerMixin)
+        output_count_before = PromptStudioOutputManager.objects.filter(
+            tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
+        ).count()
 
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
@@ -645,7 +649,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         file_converter_plugin = get_plugin("file_converter")
 
         # Check document count before upload for HubSpot notification
-        doc_count_before = DocumentManager.objects.count()
+        # Filter through tool FK to scope by organization (DocumentManager
+        # lacks DefaultOrganizationManagerMixin)
+        doc_count_before = DocumentManager.objects.filter(
+            tool__in=CustomTool.objects.all()
+        ).count()
 
         documents = []
         for uploaded_file in uploaded_files:
