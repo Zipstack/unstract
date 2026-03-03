@@ -1,9 +1,11 @@
 import logging
 from collections import OrderedDict
+from datetime import datetime
 from typing import Any
 
 from croniter import croniter
 from django.conf import settings
+from django.utils import timezone
 from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from pipeline_v2.constants import PipelineConstants as PC
 from pipeline_v2.constants import PipelineKey as PK
@@ -15,6 +17,7 @@ from scheduler.helper import SchedulerHelper
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.serializers import AuditSerializer
 from unstract.connectors.connectorkit import Connectorkit
@@ -28,6 +31,8 @@ class PipelineSerializer(
 ):
     api_endpoint = SerializerMethodField()
     created_by_email = SerializerMethodField()
+    last_5_run_statuses = SerializerMethodField()
+    next_run_time = SerializerMethodField()
 
     class Meta:
         model = Pipeline
@@ -206,6 +211,21 @@ class PipelineSerializer(
             return first_co_owner.email
         return obj.created_by.email if obj.created_by else None
 
+    def get_last_5_run_statuses(self, instance: Pipeline) -> list[dict]:
+        """Fetch the last 5 execution statuses with timestamps for this pipeline."""
+        return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
+
+    def get_next_run_time(self, instance: Pipeline) -> str | None:
+        """Calculate next scheduled run time from cron expression."""
+        if not instance.cron_string or not instance.active:
+            return None
+        try:
+            cron = croniter(instance.cron_string, timezone.now())
+            next_run: datetime = cron.get_next(datetime)
+            return next_run.isoformat()
+        except Exception:
+            return None
+
     def create(self, validated_data: dict[str, Any]) -> Any:
         # TODO: Deduce pipeline type based on WF?
         validated_data[PK.ACTIVE] = True
@@ -248,6 +268,8 @@ class PipelineSerializer(
         """
         repr[PC.SOURCE_NAME] = PC.NOT_CONFIGURED
         repr[PC.DESTINATION_NAME] = PC.NOT_CONFIGURED
+        repr["source_instance_name"] = None
+        repr["destination_instance_name"] = None
 
         for endpoint in workflow_endpoints:
             if endpoint.endpoint_type == WorkflowEndpoint.EndpointType.SOURCE:
@@ -255,6 +277,10 @@ class PipelineSerializer(
                     repr[PC.SOURCE_NAME], repr[PC.SOURCE_ICON] = self._get_name_and_icon(
                         connectors=connectors,
                         connector_id=endpoint.connector_instance.connector_id,
+                    )
+                    # User-set connector instance name
+                    repr["source_instance_name"] = (
+                        endpoint.connector_instance.connector_name
                     )
             elif endpoint.endpoint_type == WorkflowEndpoint.EndpointType.DESTINATION:
                 if (
@@ -268,6 +294,10 @@ class PipelineSerializer(
                             connectors=connectors,
                             connector_id=endpoint.connector_instance.connector_id,
                         )
+                    )
+                    # User-set connector instance name
+                    repr["destination_instance_name"] = (
+                        endpoint.connector_instance.connector_name
                     )
         return repr
 
