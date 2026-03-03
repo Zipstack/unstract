@@ -1037,13 +1037,18 @@ class WorkerWorkflowExecutionService:
         except Exception as e:
             logger.warning(f"Could not read workflow metadata: {e}")
 
+        # Get API key from the same source used to create execution_service
+        platform_api_key = self._get_platform_service_api_key(
+            execution_service.organization_id
+        )
+
         params = {
             "organization_id": execution_service.organization_id,
             "workflow_id": execution_service.workflow_id,
             "execution_id": execution_service.execution_id,
             "file_execution_id": execution_service.file_execution_id,
             "tool_instance_metadata": tool_instance.metadata,
-            "platform_service_api_key": execution_service.platform_service_api_key,
+            "platform_service_api_key": platform_api_key,
             "input_file_path": str(file_handler.infile),
             "output_dir_path": str(file_handler.execution_dir),
             "source_file_name": str(
