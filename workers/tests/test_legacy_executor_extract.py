@@ -20,11 +20,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from executor.executors.constants import (
-    ExecutionSource,
     FileStorageKeys,
     IndexingConstants as IKeys,
 )
-from executor.executors.exceptions import ExtractionError, LegacyExecutorError
+from executor.executors.exceptions import LegacyExecutorError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionMetadata,

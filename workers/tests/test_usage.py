@@ -12,7 +12,6 @@ Verifies:
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from executor.executors.usage import UsageHelper
 

@@ -5,10 +5,7 @@ ExecutionContext dict, runs the appropriate executor via
 ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
-import logging
-
 from celery import shared_task
-
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.logging import WorkerLogger
 
@@ -28,9 +25,7 @@ logger = WorkerLogger.get_logger(__name__)
     max_retries=3,
     retry_jitter=True,
 )
-def execute_extraction(
-    self, execution_context_dict: dict
-) -> dict:
+def execute_extraction(self, execution_context_dict: dict) -> dict:
     """Execute an extraction operation via the executor framework.
 
     This is the single Celery task entry point for all extraction
@@ -59,9 +54,7 @@ def execute_extraction(
     try:
         context = ExecutionContext.from_dict(execution_context_dict)
     except (KeyError, ValueError) as exc:
-        logger.error(
-            "Invalid execution context: %s", exc, exc_info=True
-        )
+        logger.error("Invalid execution context: %s", exc, exc_info=True)
         return ExecutionResult.failure(
             error=f"Invalid execution context: {exc}"
         ).to_dict()
@@ -86,9 +79,7 @@ def execute_extraction(
             context._log_component = {
                 "tool_id": answer_params.get("tool_id", ""),
                 "run_id": context.run_id,
-                "doc_name": str(
-                    pipeline_opts.get("source_file_name", "")
-                ),
+                "doc_name": str(pipeline_opts.get("source_file_name", "")),
                 "operation": context.operation,
             }
         elif context.operation in ("table_extract", "smart_table_extract"):
@@ -112,8 +103,7 @@ def execute_extraction(
     result = orchestrator.execute(context)
 
     logger.info(
-        "execute_extraction complete: "
-        "celery_task_id=%s request_id=%s success=%s",
+        "execute_extraction complete: " "celery_task_id=%s request_id=%s success=%s",
         self.request.id,
         context.request_id,
         result.success,

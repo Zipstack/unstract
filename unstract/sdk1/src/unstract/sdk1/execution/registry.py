@@ -26,7 +26,9 @@ class ExecutorRegistry:
             @property
             def name(self) -> str:
                 return "legacy"
+
             ...
+
 
         executor = ExecutorRegistry.get("legacy")
     """
@@ -54,12 +56,9 @@ class ExecutorRegistry:
                 already registered.
         """
         if not (
-            isinstance(executor_cls, type)
-            and issubclass(executor_cls, BaseExecutor)
+            isinstance(executor_cls, type) and issubclass(executor_cls, BaseExecutor)
         ):
-            raise TypeError(
-                f"{executor_cls!r} is not a BaseExecutor subclass"
-            )
+            raise TypeError(f"{executor_cls!r} is not a BaseExecutor subclass")
 
         # Instantiate temporarily to read the name property
         instance = executor_cls()
@@ -98,8 +97,7 @@ class ExecutorRegistry:
         if executor_cls is None:
             available = ", ".join(sorted(cls._registry)) or "(none)"
             raise KeyError(
-                f"No executor registered with name {name!r}. "
-                f"Available: {available}"
+                f"No executor registered with name {name!r}. " f"Available: {available}"
             )
         return executor_cls()
 

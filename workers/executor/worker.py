@@ -64,14 +64,11 @@ def healthcheck(self):
         "status": "healthy",
         "worker_type": "executor",
         "task_id": self.request.id,
-        "worker_name": (
-            config.worker_name if config else "executor-worker"
-        ),
+        "worker_name": (config.worker_name if config else "executor-worker"),
     }
 
 
 # Import tasks so shared_task definitions bind to this app.
-import executor.tasks  # noqa: E402, F401
-
 # Import executors to trigger @ExecutorRegistry.register at import time.
 import executor.executors  # noqa: E402, F401
+import executor.tasks  # noqa: E402, F401

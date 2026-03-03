@@ -312,7 +312,10 @@ class PromptStudioHelper:
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id, is_create=False, user_id=user_id, tool_id=tool_id,
+            org_id,
+            is_create=False,
+            user_id=user_id,
+            tool_id=tool_id,
         )
         file_path = str(Path(file_path) / file_name)
 
@@ -339,9 +342,7 @@ class PromptStudioHelper:
 
             if summary_profile != default_profile:
                 PromptStudioHelper.validate_adapter_status(summary_profile)
-                PromptStudioHelper.validate_profile_manager_owner_access(
-                    summary_profile
-                )
+                PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
 
             summarize_file_path = PromptStudioHelper.summarize(
                 file_name, org_id, run_id, tool
@@ -597,9 +598,7 @@ class PromptStudioHelper:
         prompt_grammer = tool.prompt_grammer
         if prompt_grammer:
             for word, synonyms in prompt_grammer.items():
-                grammar_list.append(
-                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms}
-                )
+                grammar_list.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active
@@ -625,12 +624,8 @@ class PromptStudioHelper:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
         output[TSPKeys.EVAL_SETTINGS] = {}
-        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = (
-            prompt.evaluate
-        )
-        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [
-            monitor_llm
-        ]
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [monitor_llm]
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED] = (
             tool.exclude_failed
         )
@@ -641,10 +636,8 @@ class PromptStudioHelper:
         output = PromptStudioHelper.fetch_table_settings_if_enabled(
             doc_name, prompt, org_id, user_id, tool_id, output
         )
-        variable_map = (
-            PromptStudioVariableService.frame_variable_replacement_map(
-                doc_id=document_id, prompt_object=prompt
-            )
+        variable_map = PromptStudioVariableService.frame_variable_replacement_map(
+            doc_id=document_id, prompt_object=prompt
         )
         if variable_map:
             output[TSPKeys.VARIABLE_MAP] = variable_map
@@ -661,9 +654,7 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
         tool_settings[TSPKeys.GRAMMAR] = grammar_list
         tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
-        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = (
-            tool.enable_word_confidence
-        )
+        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
         tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
             settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
         )
@@ -756,9 +747,7 @@ class PromptStudioHelper:
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
-                grammar.append(
-                    {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms}
-                )
+                grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
@@ -822,9 +811,7 @@ class PromptStudioHelper:
         if tool.summarize_as_source:
             path_obj = Path(file_path)
             file_path = str(
-                path_obj.parent.parent
-                / TSPKeys.SUMMARIZE
-                / (path_obj.stem + ".txt")
+                path_obj.parent.parent / TSPKeys.SUMMARIZE / (path_obj.stem + ".txt")
             )
 
         file_hash = fs_instance.get_hash_from_file(path=file_path)

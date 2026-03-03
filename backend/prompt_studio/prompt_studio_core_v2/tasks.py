@@ -3,9 +3,8 @@ import logging
 import uuid
 from typing import Any
 
-from celery import shared_task
-
 from account_v2.constants import Common
+from celery import shared_task
 from utils.constants import Account
 from utils.local_context import StateStore
 from utils.log_events import _emit_websocket_event
@@ -34,9 +33,7 @@ def _json_safe(data: Any) -> Any:
     return json.loads(json.dumps(data, cls=_UUIDEncoder))
 
 
-def _setup_state_store(
-    log_events_id: str, request_id: str, org_id: str = ""
-) -> None:
+def _setup_state_store(log_events_id: str, request_id: str, org_id: str = "") -> None:
     """Restore thread-local context that was captured in the Django view."""
     StateStore.set(Common.LOG_EVENTS_ID, log_events_id)
     StateStore.set(Common.REQUEST_ID, request_id)
@@ -61,12 +58,14 @@ def _emit_result(
     _emit_websocket_event(
         room=log_events_id,
         event=PROMPT_STUDIO_RESULT_EVENT,
-        data=_json_safe({
-            "task_id": task_id,
-            "status": "completed",
-            "operation": operation,
-            "result": result,
-        }),
+        data=_json_safe(
+            {
+                "task_id": task_id,
+                "status": "completed",
+                "operation": operation,
+                "result": result,
+            }
+        ),
     )
 
 
@@ -113,13 +112,13 @@ def ide_index_complete(
     Performs post-indexing ORM bookkeeping and pushes a socket event to
     the frontend.
     """
+    from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
     from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
         DocumentIndexingService,
     )
     from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
         PromptStudioIndexHelper,
     )
-    from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 
     cb = callback_kwargs or {}
     log_events_id = cb.get("log_events_id", "")
@@ -461,15 +460,11 @@ def run_single_pass_extraction(
             document_id=document_id,
             run_id=run_id,
         )
-        _emit_result(
-            log_events_id, self.request.id, "single_pass_extraction", response
-        )
+        _emit_result(log_events_id, self.request.id, "single_pass_extraction", response)
         return response
     except Exception as e:
         logger.exception("run_single_pass_extraction failed")
-        _emit_error(
-            log_events_id, self.request.id, "single_pass_extraction", str(e)
-        )
+        _emit_error(log_events_id, self.request.id, "single_pass_extraction", str(e))
         raise
     finally:
         _clear_state_store()

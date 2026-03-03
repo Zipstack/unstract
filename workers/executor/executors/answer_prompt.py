@@ -334,11 +334,7 @@ class AnswerPromptService:
 
                 structured_output[prompt_key] = processed_data
 
-                if (
-                    enable_highlight
-                    and metadata
-                    and updated_highlight_data is not None
-                ):
+                if enable_highlight and metadata and updated_highlight_data is not None:
                     metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
                         updated_highlight_data
                     )

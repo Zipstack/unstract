@@ -5,8 +5,6 @@ extract → summarize → index → answer_prompt pipeline in a single
 executor invocation.
 """
 
-import datetime
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

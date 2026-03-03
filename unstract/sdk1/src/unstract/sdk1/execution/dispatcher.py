@@ -64,6 +64,7 @@ class ExecutionDispatcher:
     Fire-and-forget with callbacks::
 
         from celery import signature
+
         task = dispatcher.dispatch_with_callback(
             context,
             on_success=signature("my_success_task", args=[...], queue="q"),
@@ -111,16 +112,10 @@ class ExecutionDispatcher:
             ValueError: If no Celery app is configured.
         """
         if self._app is None:
-            raise ValueError(
-                "No Celery app configured on ExecutionDispatcher"
-            )
+            raise ValueError("No Celery app configured on ExecutionDispatcher")
 
         if timeout is None:
-            timeout = int(
-                os.environ.get(
-                    _DEFAULT_TIMEOUT_ENV, _DEFAULT_TIMEOUT
-                )
-            )
+            timeout = int(os.environ.get(_DEFAULT_TIMEOUT_ENV, _DEFAULT_TIMEOUT))
 
         queue = self._get_queue(context.executor_name)
         logger.info(
@@ -155,8 +150,7 @@ class ExecutionDispatcher:
             )
         except Exception as exc:
             logger.error(
-                "Dispatch failed: executor=%s operation=%s "
-                "run_id=%s error=%s",
+                "Dispatch failed: executor=%s operation=%s " "run_id=%s error=%s",
                 context.executor_name,
                 context.operation,
                 context.run_id,
@@ -184,9 +178,7 @@ class ExecutionDispatcher:
             ValueError: If no Celery app is configured.
         """
         if self._app is None:
-            raise ValueError(
-                "No Celery app configured on ExecutionDispatcher"
-            )
+            raise ValueError("No Celery app configured on ExecutionDispatcher")
 
         queue = self._get_queue(context.executor_name)
         logger.info(
@@ -242,9 +234,7 @@ class ExecutionDispatcher:
             ValueError: If no Celery app is configured.
         """
         if self._app is None:
-            raise ValueError(
-                "No Celery app configured on ExecutionDispatcher"
-            )
+            raise ValueError("No Celery app configured on ExecutionDispatcher")
 
         queue = self._get_queue(context.executor_name)
         logger.info(

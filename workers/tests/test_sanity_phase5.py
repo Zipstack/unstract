@@ -14,7 +14,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from executor.executors.constants import (
-    IndexingConstants as IKeys,
     PromptServiceConstants as PSKeys,
 )
 from unstract.sdk1.execution.context import ExecutionContext, Operation

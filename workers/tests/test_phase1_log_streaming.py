@@ -13,7 +13,6 @@ Tests cover:
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.execution.context import ExecutionContext

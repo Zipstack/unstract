@@ -16,7 +16,6 @@ Verifies:
 import pytest
 
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 

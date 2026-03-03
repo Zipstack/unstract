@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from executor.executor_tool_shim import ExecutorToolShim
-from executor.executors.constants import ExecutionSource, IndexingConstants as IKeys
+from executor.executors.constants import ExecutionSource
+from executor.executors.constants import IndexingConstants as IKeys
 from executor.executors.dto import (
     ChunkingConfig,
     FileInfo,
@@ -22,6 +23,7 @@ from executor.executors.dto import (
 )
 from executor.executors.exceptions import ExtractionError, LegacyExecutorError
 from executor.executors.file_utils import FileUtils
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
@@ -77,16 +79,13 @@ class LegacyExecutor(BaseExecutor):
         """
         # Extract log streaming info (set by tasks.py for IDE sessions).
         self._log_events_id: str = context.log_events_id or ""
-        self._log_component: dict[str, str] = getattr(
-            context, "_log_component", {}
-        )
+        self._log_component: dict[str, str] = getattr(context, "_log_component", {})
 
         handler_name = self._OPERATION_MAP.get(context.operation)
         if handler_name is None:
             return ExecutionResult.failure(
                 error=(
-                    f"LegacyExecutor does not support operation "
-                    f"'{context.operation}'"
+                    f"LegacyExecutor does not support operation " f"'{context.operation}'"
                 )
             )
 
@@ -105,8 +104,7 @@ class LegacyExecutor(BaseExecutor):
             result = handler(context)
             elapsed = time.monotonic() - start
             logger.info(
-                "Handler %s completed in %.2fs "
-                "(run_id=%s success=%s)",
+                "Handler %s completed in %.2fs " "(run_id=%s success=%s)",
                 handler_name,
                 elapsed,
                 context.run_id,
@@ -160,9 +158,7 @@ class LegacyExecutor(BaseExecutor):
         usage_kwargs: dict[Any, Any] = params.get(IKeys.USAGE_KWARGS, {})
         tags: list[str] | None = params.get(IKeys.TAGS)
         execution_source: str = context.execution_source
-        tool_exec_metadata: dict[str, Any] = params.get(
-            IKeys.TOOL_EXECUTION_METATADA, {}
-        )
+        tool_exec_metadata: dict[str, Any] = params.get(IKeys.TOOL_EXECUTION_METATADA, {})
         execution_data_dir: str | None = params.get(IKeys.EXECUTION_DATA_DIR)
 
         # Build adapter shim and X2Text
@@ -179,8 +175,7 @@ class LegacyExecutor(BaseExecutor):
         fs = FileUtils.get_fs_instance(execution_source=execution_source)
 
         logger.info(
-            "Starting text extraction: x2text_adapter=%s file=%s "
-            "run_id=%s",
+            "Starting text extraction: x2text_adapter=%s file=%s " "run_id=%s",
             x2text_instance_id,
             Path(file_path).name,
             context.run_id,
@@ -279,6 +274,7 @@ class LegacyExecutor(BaseExecutor):
         Wrapped in a method so tests can mock it cleanly.
         """
         from executor.executors.index import Index
+
         from unstract.sdk1.embedding import EmbeddingCompat
         from unstract.sdk1.vector_db import VectorDB
 
@@ -288,9 +284,7 @@ class LegacyExecutor(BaseExecutor):
     # Phase 5C — Compound IDE index handler (extract + index)
     # ------------------------------------------------------------------
 
-    def _handle_ide_index(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
+    def _handle_ide_index(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.IDE_INDEX`` — compound extract then index.
 
         This compound operation combines ``_handle_extract`` and
@@ -318,8 +312,7 @@ class LegacyExecutor(BaseExecutor):
             if not index_params:
                 missing.append("index_params")
             return ExecutionResult.failure(
-                error=f"ide_index missing required params: "
-                f"{', '.join(missing)}"
+                error=f"ide_index missing required params: " f"{', '.join(missing)}"
             )
 
         # Step 1: Extract
@@ -366,9 +359,7 @@ class LegacyExecutor(BaseExecutor):
     # Phase 5D — Compound structure pipeline handler
     # ------------------------------------------------------------------
 
-    def _handle_structure_pipeline(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
+    def _handle_structure_pipeline(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.STRUCTURE_PIPELINE``.
 
         Runs the full structure-tool pipeline in a single executor
@@ -407,15 +398,9 @@ class LegacyExecutor(BaseExecutor):
         pipeline_options = params.get("pipeline_options", {})
         summarize_params = params.get("summarize_params")
 
-        skip_extraction = pipeline_options.get(
-            "skip_extraction_and_indexing", False
-        )
-        is_summarization = pipeline_options.get(
-            "is_summarization_enabled", False
-        )
-        is_single_pass = pipeline_options.get(
-            "is_single_pass_enabled", False
-        )
+        skip_extraction = pipeline_options.get("skip_extraction_and_indexing", False)
+        is_summarization = pipeline_options.get("is_summarization_enabled", False)
+        is_single_pass = pipeline_options.get("is_single_pass_enabled", False)
         input_file_path = pipeline_options.get("input_file_path", "")
         source_file_name = pipeline_options.get("source_file_name", "")
 
@@ -437,9 +422,7 @@ class LegacyExecutor(BaseExecutor):
             extract_result = self._handle_extract(extract_ctx)
             if not extract_result.success:
                 return extract_result
-            extracted_text = extract_result.data.get(
-                IKeys.EXTRACTED_TEXT, ""
-            )
+            extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
 
         # ---- Step 2: Summarize (if enabled) ----
         if is_summarization:
@@ -466,9 +449,7 @@ class LegacyExecutor(BaseExecutor):
         # ---- Step 4: Table settings injection ----
         if not is_single_pass:
             outputs = answer_params.get("outputs", [])
-            extracted_file_path = index_template.get(
-                "extracted_file_path", ""
-            )
+            extracted_file_path = index_template.get("extracted_file_path", "")
             for output in outputs:
                 if "table_settings" in output:
                     table_settings = output["table_settings"]
@@ -511,16 +492,12 @@ class LegacyExecutor(BaseExecutor):
 
         # Add extracted text for HITL raw view
         if extracted_text:
-            structured_output["metadata"]["extracted_text"] = (
-                extracted_text
-            )
+            structured_output["metadata"]["extracted_text"] = extracted_text
 
         # Merge index metrics
         if index_metrics:
             existing_metrics = structured_output.get("metrics", {})
-            merged = self._merge_pipeline_metrics(
-                existing_metrics, index_metrics
-            )
+            merged = self._merge_pipeline_metrics(existing_metrics, index_metrics)
             structured_output["metrics"] = merged
 
         return ExecutionResult(success=True, data=structured_output)
@@ -539,31 +516,19 @@ class LegacyExecutor(BaseExecutor):
         file_hash.
         """
         extract_file_path = summarize_params.get("extract_file_path", "")
-        summarize_file_path = summarize_params.get(
-            "summarize_file_path", ""
-        )
+        summarize_file_path = summarize_params.get("summarize_file_path", "")
         platform_api_key = summarize_params.get("platform_api_key", "")
-        llm_adapter_id = summarize_params.get(
-            "llm_adapter_instance_id", ""
-        )
+        llm_adapter_id = summarize_params.get("llm_adapter_instance_id", "")
         summarize_prompt = summarize_params.get("summarize_prompt", "")
         prompt_keys = summarize_params.get("prompt_keys", [])
         outputs = answer_params.get("outputs", [])
 
-        fs = FileUtils.get_fs_instance(
-            execution_source=context.execution_source
-        )
+        fs = FileUtils.get_fs_instance(execution_source=context.execution_source)
 
         # Set chunk_size=0 for all outputs when summarizing
-        embedding = answer_params.get("tool_settings", {}).get(
-            "embedding", ""
-        )
-        vector_db = answer_params.get("tool_settings", {}).get(
-            "vector-db", ""
-        )
-        x2text = answer_params.get("tool_settings", {}).get(
-            "x2text_adapter", ""
-        )
+        embedding = answer_params.get("tool_settings", {}).get("embedding", "")
+        vector_db = answer_params.get("tool_settings", {}).get("vector-db", "")
+        x2text = answer_params.get("tool_settings", {}).get("x2text_adapter", "")
         for output in outputs:
             output["embedding"] = embedding
             output["vector-db"] = vector_db
@@ -574,9 +539,7 @@ class LegacyExecutor(BaseExecutor):
         # Check cache
         summarized_context = ""
         if fs.exists(summarize_file_path):
-            summarized_context = fs.read(
-                path=summarize_file_path, mode="r"
-            )
+            summarized_context = fs.read(path=summarize_file_path, mode="r")
 
         if not summarized_context:
             # Read extracted text
@@ -614,9 +577,7 @@ class LegacyExecutor(BaseExecutor):
             )
 
         # Update answer_params
-        summarize_file_hash = fs.get_hash_from_file(
-            path=summarize_file_path
-        )
+        summarize_file_hash = fs.get_hash_from_file(path=summarize_file_path)
         answer_params["file_hash"] = summarize_file_hash
         answer_params["file_path"] = str(summarize_file_path)
 
@@ -642,9 +603,7 @@ class LegacyExecutor(BaseExecutor):
         file_hash = index_template.get("file_hash", "")
         is_highlight = index_template.get("is_highlight_enabled", False)
         platform_api_key = index_template.get("platform_api_key", "")
-        extracted_file_path = index_template.get(
-            "extracted_file_path", ""
-        )
+        extracted_file_path = index_template.get("extracted_file_path", "")
 
         index_metrics: dict = {}
         seen_params: set = set()
@@ -669,8 +628,7 @@ class LegacyExecutor(BaseExecutor):
 
                 indexing_start = datetime.datetime.now()
                 logger.info(
-                    "Pipeline indexing: chunk_size=%s "
-                    "chunk_overlap=%s vector_db=%s",
+                    "Pipeline indexing: chunk_size=%s " "chunk_overlap=%s vector_db=%s",
                     chunk_size,
                     chunk_overlap,
                     vector_db,
@@ -707,20 +665,14 @@ class LegacyExecutor(BaseExecutor):
                         index_result.error,
                     )
 
-                elapsed = (
-                    datetime.datetime.now() - indexing_start
-                ).total_seconds()
+                elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
                 output_name = output.get("name", "")
-                index_metrics[output_name] = {
-                    "indexing": {"time_taken(s)": elapsed}
-                }
+                index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
 
         return index_metrics
 
     @staticmethod
-    def _merge_pipeline_metrics(
-        metrics1: dict, metrics2: dict
-    ) -> dict:
+    def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:
         """Merge two metrics dicts, combining sub-dicts for shared keys."""
         merged: dict = {}
         all_keys = set(metrics1) | set(metrics2)
@@ -782,9 +734,7 @@ class LegacyExecutor(BaseExecutor):
         chunk_overlap: int = params.get(IKeys.CHUNK_OVERLAP, 128)
         reindex: bool = params.get(IKeys.REINDEX, False)
         enable_highlight: bool = params.get(IKeys.ENABLE_HIGHLIGHT, False)
-        enable_word_confidence: bool = params.get(
-            IKeys.ENABLE_WORD_CONFIDENCE, False
-        )
+        enable_word_confidence: bool = params.get(IKeys.ENABLE_WORD_CONFIDENCE, False)
         usage_kwargs: dict[Any, Any] = params.get(IKeys.USAGE_KWARGS, {})
         tags: list[str] | None = params.get(IKeys.TAGS)
         execution_source: str = context.execution_source
@@ -810,9 +760,7 @@ class LegacyExecutor(BaseExecutor):
             log_events_id=self._log_events_id,
             component=self._log_component,
         )
-        fs_instance = FileUtils.get_fs_instance(
-            execution_source=execution_source
-        )
+        fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
 
         logger.info(
             "Starting indexing: chunk_size=%d chunk_overlap=%d "
@@ -842,9 +790,7 @@ class LegacyExecutor(BaseExecutor):
                 fs=fs_instance,
             )
             logger.info("Skipping indexing for chunk_size=0. Doc ID: %s", doc_id)
-            return ExecutionResult(
-                success=True, data={IKeys.DOC_ID: doc_id}
-            )
+            return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
 
         chunking_config = ChunkingConfig(
             chunk_size=chunk_size, chunk_overlap=chunk_overlap
@@ -862,9 +808,7 @@ class LegacyExecutor(BaseExecutor):
                 chunking_config=chunking_config,
                 processing_options=processing_options,
             )
-            doc_id = index.generate_index_key(
-                file_info=file_info, fs=fs_instance
-            )
+            doc_id = index.generate_index_key(file_info=file_info, fs=fs_instance)
             logger.debug("Generated index key: doc_id=%s", doc_id)
             shim.stream_log("Checking document index status...")
 
@@ -901,9 +845,7 @@ class LegacyExecutor(BaseExecutor):
                 Path(file_path).name,
             )
             shim.stream_log("Document indexing completed")
-            return ExecutionResult(
-                success=True, data={IKeys.DOC_ID: doc_id}
-            )
+            return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
         except Exception as e:
             logger.error(
                 "Indexing failed: file=%s error=%s",
@@ -931,6 +873,7 @@ class LegacyExecutor(BaseExecutor):
         from executor.executors.variable_replacement import (
             VariableReplacementService,
         )
+
         from unstract.sdk1.embedding import EmbeddingCompat
         from unstract.sdk1.llm import LLM
         from unstract.sdk1.vector_db import VectorDB
@@ -967,9 +910,7 @@ class LegacyExecutor(BaseExecutor):
                         v[k1] = None
         return structured_output
 
-    def _handle_answer_prompt(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
+    def _handle_answer_prompt(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.ANSWER_PROMPT`` — multi-prompt extraction.
 
         Migrated from ``prompt_processor()`` in the prompt-service
@@ -984,6 +925,8 @@ class LegacyExecutor(BaseExecutor):
         """
         from executor.executors.constants import (
             PromptServiceConstants as PSKeys,
+        )
+        from executor.executors.constants import (
             RetrievalStrategy,
         )
 
@@ -1000,12 +943,8 @@ class LegacyExecutor(BaseExecutor):
         doc_name = str(params.get(PSKeys.FILE_NAME, ""))
         log_events_id: str = params.get(PSKeys.LOG_EVENTS_ID, "")
         custom_data: dict[str, Any] = params.get(PSKeys.CUSTOM_DATA, {})
-        execution_source = params.get(
-            PSKeys.EXECUTION_SOURCE, context.execution_source
-        )
-        platform_api_key: str = params.get(
-            PSKeys.PLATFORM_SERVICE_API_KEY, ""
-        )
+        execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
+        platform_api_key: str = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
 
         structured_output: dict[str, Any] = {}
         metadata: dict[str, Any] = {
@@ -1019,8 +958,7 @@ class LegacyExecutor(BaseExecutor):
         context_retrieval_metrics: dict[str, Any] = {}
 
         logger.info(
-            "Starting answer_prompt: tool_id=%s prompt_count=%d "
-            "file=%s run_id=%s",
+            "Starting answer_prompt: tool_id=%s prompt_count=%d " "file=%s run_id=%s",
             tool_id,
             len(prompts),
             doc_name,
@@ -1048,9 +986,7 @@ class LegacyExecutor(BaseExecutor):
             if highlight_cls:
                 from executor.executors.file_utils import FileUtils
 
-                fs_instance = FileUtils.get_fs_instance(
-                    execution_source=execution_source
-                )
+                fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
                 highlight_instance = highlight_cls(
                     file_path=file_path,
                     fs_instance=fs_instance,
@@ -1095,21 +1031,17 @@ class LegacyExecutor(BaseExecutor):
             shim.stream_log(f"Processing prompt: {prompt_name}")
 
             # {{variable}} template replacement
-            if VariableReplacementService.is_variables_present(
-                prompt_text=prompt_text
-            ):
+            if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
                 is_ide = execution_source == "ide"
-                prompt_text = (
-                    VariableReplacementService.replace_variables_in_prompt(
-                        prompt=output,
-                        structured_output=structured_output,
-                        log_events_id=log_events_id,
-                        tool_id=tool_id,
-                        prompt_name=prompt_name,
-                        doc_name=doc_name,
-                        custom_data=custom_data,
-                        is_ide=is_ide,
-                    )
+                prompt_text = VariableReplacementService.replace_variables_in_prompt(
+                    prompt=output,
+                    structured_output=structured_output,
+                    log_events_id=log_events_id,
+                    tool_id=tool_id,
+                    prompt_name=prompt_name,
+                    doc_name=doc_name,
+                    custom_data=custom_data,
+                    is_ide=is_ide,
                 )
 
             logger.info(
@@ -1170,9 +1102,7 @@ class LegacyExecutor(BaseExecutor):
                 msg = f"Couldn't fetch adapter. {e}"
                 logger.error(msg)
                 status_code = getattr(e, "status_code", None) or 500
-                raise LegacyExecutorError(
-                    message=msg, code=status_code
-                ) from e
+                raise LegacyExecutorError(message=msg, code=status_code) from e
 
             # TABLE type is handled by TableExtractorExecutor (separate
             # queue).  LINE_ITEM is not supported.  The backend dispatcher
@@ -1199,24 +1129,19 @@ class LegacyExecutor(BaseExecutor):
                 valid_strategies = {s.value for s in RetrievalStrategy}
 
                 if retrieval_strategy in valid_strategies:
-                    shim.stream_log(
-                        f"Retrieving context for: {prompt_name}"
-                    )
+                    shim.stream_log(f"Retrieving context for: {prompt_name}")
                     logger.info(
-                        "Performing retrieval: prompt=%s strategy=%s "
-                        "chunk_size=%d",
+                        "Performing retrieval: prompt=%s strategy=%s " "chunk_size=%d",
                         prompt_name,
                         retrieval_strategy,
                         chunk_size,
                     )
                     if chunk_size == 0:
-                        context_list = (
-                            RetrievalService.retrieve_complete_context(
-                                execution_source=execution_source,
-                                file_path=file_path,
-                                context_retrieval_metrics=context_retrieval_metrics,
-                                prompt_key=prompt_name,
-                            )
+                        context_list = RetrievalService.retrieve_complete_context(
+                            execution_source=execution_source,
+                            file_path=file_path,
+                            context_retrieval_metrics=context_retrieval_metrics,
+                            prompt_key=prompt_name,
                         )
                     else:
                         context_list = RetrievalService.run_retrieval(
@@ -1235,9 +1160,7 @@ class LegacyExecutor(BaseExecutor):
                     )
 
                     # Run prompt with retrieved context
-                    shim.stream_log(
-                        f"Running LLM completion for: {prompt_name}"
-                    )
+                    shim.stream_log(f"Running LLM completion for: {prompt_name}")
                     answer = AnswerPromptService.construct_and_run_prompt(
                         tool_settings=tool_settings,
                         output=output,
@@ -1251,8 +1174,7 @@ class LegacyExecutor(BaseExecutor):
                     )
                 else:
                     logger.warning(
-                        "Skipping retrieval: invalid strategy=%s "
-                        "for prompt=%s",
+                        "Skipping retrieval: invalid strategy=%s " "for prompt=%s",
                         retrieval_strategy,
                         prompt_name,
                     )
@@ -1280,13 +1202,9 @@ class LegacyExecutor(BaseExecutor):
 
                     challenge_cls = ExecutorPluginLoader.get("challenge")
                     if challenge_cls:
-                        challenge_llm_id = tool_settings.get(
-                            PSKeys.CHALLENGE_LLM
-                        )
+                        challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
                         if challenge_llm_id:
-                            shim.stream_log(
-                                f"Running challenge for: {prompt_name}"
-                            )
+                            shim.stream_log(f"Running challenge for: {prompt_name}")
                             challenge_llm = LLM(
                                 adapter_instance_id=challenge_llm_id,
                                 tool=shim,
@@ -1322,16 +1240,12 @@ class LegacyExecutor(BaseExecutor):
 
                     evaluator_cls = ExecutorPluginLoader.get("evaluation")
                     if evaluator_cls:
-                        shim.stream_log(
-                            f"Running evaluation for: {prompt_name}"
-                        )
+                        shim.stream_log(f"Running evaluation for: {prompt_name}")
                         evaluator = evaluator_cls(
                             query=output.get(PSKeys.COMBINED_PROMPT, ""),
                             context="\n".join(context_list),
                             response=structured_output.get(prompt_name),
-                            reference_answer=output.get(
-                                "reference_answer", ""
-                            ),
+                            reference_answer=output.get("reference_answer", ""),
                             prompt=output,
                             structured_output=structured_output,
                             platform_key=platform_api_key,
@@ -1421,9 +1335,7 @@ class LegacyExecutor(BaseExecutor):
                     f"characters. No explanation is required. "
                     f"If you cannot extract the number, output 0."
                 )
-                answer = AnswerPromptService.run_completion(
-                    llm=llm, prompt=prompt
-                )
+                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
                 try:
                     structured_output[prompt_name] = float(answer)
                 except Exception:
@@ -1440,9 +1352,7 @@ class LegacyExecutor(BaseExecutor):
                     f"variable. No explanation is required. If you cannot "
                     f'extract the email, output "NA".'
                 )
-                answer = AnswerPromptService.run_completion(
-                    llm=llm, prompt=prompt
-                )
+                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
                 structured_output[prompt_name] = answer
 
         elif output_type == PSKeys.DATE:
@@ -1455,12 +1365,10 @@ class LegacyExecutor(BaseExecutor):
                     f"The date should be in ISO date time format. "
                     f"No explanation is required. The date should be "
                     f"directly assignable to a date variable. "
-                    f'If you cannot convert the string into a date, '
+                    f"If you cannot convert the string into a date, "
                     f'output "NA".'
                 )
-                answer = AnswerPromptService.run_completion(
-                    llm=llm, prompt=prompt
-                )
+                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
                 structured_output[prompt_name] = answer
 
         elif output_type == PSKeys.BOOLEAN:
@@ -1473,9 +1381,7 @@ class LegacyExecutor(BaseExecutor):
                     f"If the context is trying to convey that the answer "
                     f'is true, then return "yes", else return "no".'
                 )
-                answer = AnswerPromptService.run_completion(
-                    llm=llm, prompt=prompt
-                )
+                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
                 structured_output[prompt_name] = answer.lower() == "yes"
 
         elif output_type == PSKeys.JSON:
@@ -1484,9 +1390,7 @@ class LegacyExecutor(BaseExecutor):
                 structured_output=structured_output,
                 output=output,
                 llm=llm,
-                enable_highlight=tool_settings.get(
-                    PSKeys.ENABLE_HIGHLIGHT, False
-                ),
+                enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
                 enable_word_confidence=tool_settings.get(
                     PSKeys.ENABLE_WORD_CONFIDENCE, False
                 ),
@@ -1519,15 +1423,12 @@ class LegacyExecutor(BaseExecutor):
                 {"output": dict, "metadata": dict, "metrics": dict}
         """
         logger.info(
-            "single_pass_extraction delegating to answer_prompt "
-            "(run_id=%s)",
+            "single_pass_extraction delegating to answer_prompt " "(run_id=%s)",
             context.run_id,
         )
         return self._handle_answer_prompt(context)
 
-    def _handle_summarize(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
+    def _handle_summarize(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.SUMMARIZE`` — document summarization.
 
         Called by the structure tool when ``summarize_as_source`` is
@@ -1545,7 +1446,7 @@ class LegacyExecutor(BaseExecutor):
         Returns:
             ExecutionResult with ``data`` containing::
 
-                {"data": str}   # summarized text
+                {"data": str}  # summarized text
         """
         from executor.executors.constants import PromptServiceConstants as PSKeys
 
@@ -1555,18 +1456,14 @@ class LegacyExecutor(BaseExecutor):
         summarize_prompt: str = params.get("summarize_prompt", "")
         doc_context: str = params.get(PSKeys.CONTEXT, "")
         prompt_keys: list[str] = params.get("prompt_keys", [])
-        platform_api_key: str = params.get(
-            PSKeys.PLATFORM_SERVICE_API_KEY, ""
-        )
+        platform_api_key: str = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
 
         if not llm_adapter_id:
             return ExecutionResult.failure(
                 error="Missing required param: llm_adapter_instance_id"
             )
         if not doc_context:
-            return ExecutionResult.failure(
-                error="Missing required param: context"
-            )
+            return ExecutionResult.failure(error="Missing required param: context")
 
         logger.info(
             "Starting summarization: prompt_keys=%s run_id=%s",
@@ -1577,12 +1474,9 @@ class LegacyExecutor(BaseExecutor):
         # Build the summarize prompt
         prompt = f"{summarize_prompt}\n\n"
         if prompt_keys:
-            prompt += (
-                f"Focus on these fields: {', '.join(prompt_keys)}\n\n"
-            )
+            prompt += f"Focus on these fields: {', '.join(prompt_keys)}\n\n"
         prompt += (
-            f"Context:\n---------------\n{doc_context}\n"
-            f"-----------------\n\nSummary:"
+            f"Context:\n---------------\n{doc_context}\n" f"-----------------\n\nSummary:"
         )
 
         shim = ExecutorToolShim(
@@ -1604,24 +1498,17 @@ class LegacyExecutor(BaseExecutor):
             from executor.executors.answer_prompt import AnswerPromptService
 
             shim.stream_log("Running document summarization...")
-            summary = AnswerPromptService.run_completion(
-                llm=llm, prompt=prompt
-            )
-            logger.info(
-                "Summarization completed: run_id=%s", context.run_id
-            )
+            summary = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
+            logger.info("Summarization completed: run_id=%s", context.run_id)
             shim.stream_log("Summarization completed")
             return ExecutionResult(
                 success=True,
                 data={"data": summary},
             )
         except Exception as e:
-            logger.error(
-                "Summarization failed: error=%s", str(e)
-            )
+            logger.error("Summarization failed: error=%s", str(e))
             status_code = getattr(e, "status_code", None) or 500
             raise LegacyExecutorError(
                 message=f"Error during summarization: {e}",
                 code=status_code,
             ) from e
-

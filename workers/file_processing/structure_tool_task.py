@@ -23,7 +23,8 @@ from typing import Any
 
 from file_processing.worker import app
 from shared.enums.task_enums import TaskName
-from unstract.sdk1.constants import MetadataKey, ToolEnv, UsageKwargs
+
+from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.result import ExecutionResult
@@ -39,6 +40,7 @@ EXECUTOR_TIMEOUT = int(os.environ.get("EXECUTOR_RESULT_TIMEOUT", 3600))
 # Constants mirrored from tools/structure/src/constants.py
 # These are the keys used in tool_metadata and payload dicts.
 # -----------------------------------------------------------------------
+
 
 class _SK:
     """SettingsKeys subset needed by the structure tool task."""
@@ -94,9 +96,7 @@ class _SK:
 # -----------------------------------------------------------------------
 
 
-def _apply_profile_overrides(
-    tool_metadata: dict, profile_data: dict
-) -> list[str]:
+def _apply_profile_overrides(tool_metadata: dict, profile_data: dict) -> list[str]:
     """Apply profile overrides to tool metadata.
 
     Standalone version of StructureTool._apply_profile_overrides.
@@ -153,9 +153,7 @@ def _override_section(
             new_value = profile_data[profile_key]
             if old_value != new_value:
                 section[section_key] = new_value
-                change_desc = (
-                    f"{section_name}.{section_key}: {old_value} -> {new_value}"
-                )
+                change_desc = f"{section_name}.{section_key}: {old_value} -> {new_value}"
                 changes.append(change_desc)
                 logger.info("Overrode %s", change_desc)
     return changes
@@ -206,9 +204,7 @@ def execute_structure_tool(self, params: dict) -> dict:
         return _execute_structure_tool_impl(params)
     except Exception as e:
         logger.error("Structure tool task failed: %s", e, exc_info=True)
-        return ExecutionResult.failure(
-            error=f"Structure tool failed: {e}"
-        ).to_dict()
+        return ExecutionResult.failure(error=f"Structure tool failed: {e}").to_dict()
 
 
 def _execute_structure_tool_impl(params: dict) -> dict:
@@ -245,16 +241,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     fs = _get_file_storage()
 
     # ---- Step 2: Fetch tool metadata ----
-    prompt_registry_id = tool_instance_metadata.get(
-        _SK.PROMPT_REGISTRY_ID, ""
-    )
-    logger.info(
-        "Fetching exported tool with UUID '%s'", prompt_registry_id
-    )
+    prompt_registry_id = tool_instance_metadata.get(_SK.PROMPT_REGISTRY_ID, "")
+    logger.info("Fetching exported tool with UUID '%s'", prompt_registry_id)
 
-    tool_metadata, is_agentic = _fetch_tool_metadata(
-        platform_helper, prompt_registry_id
-    )
+    tool_metadata, is_agentic = _fetch_tool_metadata(platform_helper, prompt_registry_id)
 
     # ---- Route agentic vs regular ----
     if is_agentic:
@@ -273,17 +263,13 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         )
 
     # ---- Step 3: Profile overrides ----
-    _handle_profile_overrides(
-        exec_metadata, platform_helper, tool_metadata
-    )
+    _handle_profile_overrides(exec_metadata, platform_helper, tool_metadata)
 
     # ---- Extract settings from tool_metadata ----
     settings = tool_instance_metadata
     is_challenge_enabled = settings.get(_SK.ENABLE_CHALLENGE, False)
     is_summarization_enabled = settings.get(_SK.SUMMARIZE_AS_SOURCE, False)
-    is_single_pass_enabled = settings.get(
-        _SK.SINGLE_PASS_EXTRACTION_MODE, False
-    )
+    is_single_pass_enabled = settings.get(_SK.SINGLE_PASS_EXTRACTION_MODE, False)
     challenge_llm = settings.get(_SK.CHALLENGE_LLM_ADAPTER_ID, "")
     is_highlight_enabled = settings.get(_SK.ENABLE_HIGHLIGHT, False)
 
@@ -311,8 +297,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     )
     if skip_extraction_and_indexing:
         logger.info(
-            "Skipping extraction and indexing for Excel table "
-            "with valid JSON schema"
+            "Skipping extraction and indexing for Excel table " "with valid JSON schema"
         )
 
     # ---- Step 5: Build pipeline params ----
@@ -371,15 +356,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         prompt_keys = [o[_SK.NAME] for o in outputs]
         summarize_params = {
             "llm_adapter_instance_id": tool_settings[_SK.LLM],
-            "summarize_prompt": tool_settings.get(
-                _SK.SUMMARIZE_PROMPT, ""
-            ),
-            "extract_file_path": str(
-                execution_run_data_folder / _SK.EXTRACT
-            ),
-            "summarize_file_path": str(
-                execution_run_data_folder / _SK.SUMMARIZE
-            ),
+            "summarize_prompt": tool_settings.get(_SK.SUMMARIZE_PROMPT, ""),
+            "extract_file_path": str(execution_run_data_folder / _SK.EXTRACT),
+            "summarize_file_path": str(execution_run_data_folder / _SK.SUMMARIZE),
             "platform_api_key": platform_service_api_key,
             "prompt_keys": prompt_keys,
         }
@@ -409,9 +388,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "summarize_params": summarize_params,
         },
     )
-    pipeline_result = dispatcher.dispatch(
-        pipeline_ctx, timeout=EXECUTOR_TIMEOUT
-    )
+    pipeline_result = dispatcher.dispatch(pipeline_ctx, timeout=EXECUTOR_TIMEOUT)
     if not pipeline_result.success:
         return pipeline_result.to_dict()
 
@@ -420,24 +397,17 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # ---- Step 7: Write output files ----
     # (metadata/metrics merging already done by executor pipeline)
     try:
-        output_path = (
-            Path(output_dir_path)
-            / f"{Path(source_file_name).stem}.json"
-        )
+        output_path = Path(output_dir_path) / f"{Path(source_file_name).stem}.json"
         logger.info("Writing output to %s", output_path)
         fs.json_dump(path=output_path, data=structured_output)
         logger.info("Output written successfully to workflow storage")
     except (OSError, json.JSONDecodeError) as e:
-        return ExecutionResult.failure(
-            error=f"Error writing output file: {e}"
-        ).to_dict()
+        return ExecutionResult.failure(error=f"Error writing output file: {e}").to_dict()
 
     # Write tool result to METADATA.json
     _write_tool_result(fs, execution_data_dir, structured_output)
 
-    return ExecutionResult(
-        success=True, data=structured_output
-    ).to_dict()
+    return ExecutionResult(success=True, data=structured_output).to_dict()
 
 
 # -----------------------------------------------------------------------
@@ -464,9 +434,7 @@ def _get_file_storage():
     return FileSystem(FileStorageType.WORKFLOW_EXECUTION).get_file_storage()
 
 
-def _fetch_tool_metadata(
-    platform_helper, prompt_registry_id: str
-) -> tuple[dict, bool]:
+def _fetch_tool_metadata(platform_helper, prompt_registry_id: str) -> tuple[dict, bool]:
     """Fetch tool metadata from platform, trying prompt studio then agentic.
 
     Returns:
@@ -481,9 +449,7 @@ def _fetch_tool_metadata(
             prompt_registry_id=prompt_registry_id
         )
     except Exception as e:
-        logger.info(
-            "Not found as prompt studio project, trying agentic: %s", e
-        )
+        logger.info("Not found as prompt studio project, trying agentic: %s", e)
 
     if exported_tool and _SK.TOOL_METADATA in exported_tool:
         tool_metadata = exported_tool[_SK.TOOL_METADATA]
@@ -524,9 +490,7 @@ def _handle_profile_overrides(
     try:
         llm_profile = platform_helper.get_llm_profile(llm_profile_id)
         if llm_profile:
-            profile_name = llm_profile.get(
-                "profile_name", llm_profile_id
-            )
+            profile_name = llm_profile.get("profile_name", llm_profile_id)
             logger.info(
                 "Applying profile overrides from profile: %s",
                 profile_name,
@@ -538,13 +502,9 @@ def _handle_profile_overrides(
                     "; ".join(changes),
                 )
             else:
-                logger.info(
-                    "Profile overrides applied - no changes needed"
-                )
+                logger.info("Profile overrides applied - no changes needed")
     except Exception as e:
-        raise RuntimeError(
-            f"Error applying profile overrides: {e}"
-        ) from e
+        raise RuntimeError(f"Error applying profile overrides: {e}") from e
 
 
 def _run_agentic_extraction(
@@ -578,15 +538,11 @@ def _run_agentic_extraction(
             "tool_instance_metadata": tool_instance_metadata,
         },
     )
-    agentic_result = dispatcher.dispatch(
-        agentic_ctx, timeout=EXECUTOR_TIMEOUT
-    )
+    agentic_result = dispatcher.dispatch(agentic_ctx, timeout=EXECUTOR_TIMEOUT)
     return agentic_result.to_dict()
 
 
-def _write_tool_result(
-    fs: Any, execution_data_dir: str, data: dict
-) -> None:
+def _write_tool_result(fs: Any, execution_data_dir: str, data: dict) -> None:
     """Write tool result to METADATA.json (matches BaseTool.write_tool_result)."""
     try:
         metadata_path = Path(execution_data_dir) / "METADATA.json"

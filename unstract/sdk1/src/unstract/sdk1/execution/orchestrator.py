@@ -26,9 +26,7 @@ class ExecutionOrchestrator:
         result = orchestrator.execute(context)
     """
 
-    def execute(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
+    def execute(self, context: ExecutionContext) -> ExecutionResult:
         """Resolve the executor and run it.
 
         Args:
@@ -59,8 +57,7 @@ class ExecutionOrchestrator:
         except Exception as exc:
             elapsed = time.monotonic() - start
             logger.exception(
-                "Executor %r raised an unhandled exception "
-                "after %.2fs",
+                "Executor %r raised an unhandled exception " "after %.2fs",
                 context.executor_name,
                 elapsed,
             )
@@ -71,8 +68,7 @@ class ExecutionOrchestrator:
 
         elapsed = time.monotonic() - start
         logger.info(
-            "Execution completed: executor=%s operation=%s "
-            "success=%s elapsed=%.2fs",
+            "Execution completed: executor=%s operation=%s " "success=%s elapsed=%.2fs",
             context.executor_name,
             context.operation,
             result.success,

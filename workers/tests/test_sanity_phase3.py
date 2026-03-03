@@ -7,14 +7,11 @@ single ``structure_pipeline`` operation to the executor worker instead of
 are assembled and the result is written to filesystem.
 """
 
-import json
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from shared.enums.task_enums import TaskName
-from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.result import ExecutionResult
 
 # ---------------------------------------------------------------------------
@@ -897,4 +894,3 @@ class TestHelperFunctions:
             _should_skip_extraction_for_smart_table("file.xlsx", outputs)
             is True
         )
-

@@ -98,16 +98,12 @@ class ExecutorToolShim(StreamMixin):
         """
         if env_key == ToolEnv.PLATFORM_API_KEY:
             if not self.platform_api_key:
-                raise SdkError(
-                    f"Env variable '{env_key}' is required"
-                )
+                raise SdkError(f"Env variable '{env_key}' is required")
             return self.platform_api_key
 
         env_value = os.environ.get(env_key)
         if env_value is None or env_value == "":
-            raise SdkError(
-                f"Env variable '{env_key}' is required"
-            )
+            raise SdkError(f"Env variable '{env_key}' is required")
         return env_value
 
     def stream_log(
@@ -155,9 +151,7 @@ class ExecutorToolShim(StreamMixin):
                     exc_info=True,
                 )
 
-    def stream_error_and_exit(
-        self, message: str, err: Exception | None = None
-    ) -> None:
+    def stream_error_and_exit(self, message: str, err: Exception | None = None) -> None:
         """Log error and raise SdkError.
 
         Unlike the base StreamMixin which may call ``sys.exit(1)``

@@ -1,11 +1,10 @@
 import logging
 
+from executor.executors.exceptions import RetrievalError
+from executor.executors.retrievers.base_retriever import BaseRetriever
 from llama_index.core import VectorStoreIndex
 from llama_index.core.indices.keyword_table import KeywordTableIndex
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-
-from executor.executors.exceptions import RetrievalError
-from executor.executors.retrievers.base_retriever import BaseRetriever
 
 logger = logging.getLogger(__name__)
 

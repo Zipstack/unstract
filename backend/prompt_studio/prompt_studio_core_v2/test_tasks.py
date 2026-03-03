@@ -9,7 +9,7 @@ Requires Django to be configured (source .env before running):
 """
 
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import django
 
@@ -17,16 +17,16 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.dev")
 django.setup()
 
 import pytest  # noqa: E402
-from celery import Celery  # noqa: E402
-
 from account_v2.constants import Common  # noqa: E402
+from celery import Celery  # noqa: E402
+from utils.local_context import StateStore  # noqa: E402
+
 from prompt_studio.prompt_studio_core_v2.tasks import (  # noqa: E402
     PROMPT_STUDIO_RESULT_EVENT,
     run_fetch_response,
     run_index_document,
     run_single_pass_extraction,
 )
-from utils.local_context import StateStore  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Celery eager-mode app for testing
@@ -72,9 +72,7 @@ class TestTaskNames:
 
 class TestRunIndexDocument:
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_result(self, mock_helper, mock_emit):
         mock_helper.index_document.return_value = "unique-id-123"
         result = run_index_document.apply(
@@ -92,14 +90,10 @@ class TestRunIndexDocument:
         )
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_emits_completed_event(self, mock_helper, mock_emit):
         mock_helper.index_document.return_value = "unique-id-123"
-        run_index_document.apply(
-            kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}
-        ).get()
+        run_index_document.apply(kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}).get()
 
         mock_emit.assert_called_once()
         kwargs = mock_emit.call_args.kwargs
@@ -107,15 +101,11 @@ class TestRunIndexDocument:
         assert kwargs["event"] == PROMPT_STUDIO_RESULT_EVENT
         assert kwargs["data"]["status"] == "completed"
         assert kwargs["data"]["operation"] == "index_document"
-        assert kwargs["data"]["result"] == {
-            "message": "Document indexed successfully."
-        }
+        assert kwargs["data"]["result"] == {"message": "Document indexed successfully."}
         assert "task_id" in kwargs["data"]
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_failure_emits_error_and_reraises(self, mock_helper, mock_emit):
         mock_helper.index_document.side_effect = RuntimeError("index boom")
 
@@ -129,22 +119,16 @@ class TestRunIndexDocument:
         assert "index boom" in mock_emit.call_args.kwargs["data"]["error"]
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared_on_success(self, mock_helper, mock_emit):
         mock_helper.index_document.return_value = "ok"
-        run_index_document.apply(
-            kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}
-        ).get()
+        run_index_document.apply(kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}).get()
 
         assert StateStore.get(Common.LOG_EVENTS_ID) is None
         assert StateStore.get(Common.REQUEST_ID) is None
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared_on_failure(self, mock_helper, mock_emit):
         mock_helper.index_document.side_effect = RuntimeError("fail")
         with pytest.raises(RuntimeError):
@@ -156,9 +140,7 @@ class TestRunIndexDocument:
         assert StateStore.get(Common.REQUEST_ID) is None
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_set_during_execution(self, mock_helper, mock_emit):
         """Verify StateStore has the right values while the helper runs."""
         captured = {}
@@ -169,9 +151,7 @@ class TestRunIndexDocument:
             return "ok"
 
         mock_helper.index_document.side_effect = capture_state
-        run_index_document.apply(
-            kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}
-        ).get()
+        run_index_document.apply(kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}).get()
 
         assert captured["log_events_id"] == "session-room-xyz"
         assert captured["request_id"] == "req-001"
@@ -181,9 +161,7 @@ class TestRunIndexDocument:
 
 class TestRunFetchResponse:
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_response(self, mock_helper, mock_emit):
         expected = {"output": {"field": "value"}, "metadata": {"tokens": 42}}
         mock_helper.prompt_responder.return_value = expected
@@ -208,9 +186,7 @@ class TestRunFetchResponse:
         )
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_emits_fetch_response_event(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {"output": "data"}
         run_fetch_response.apply(
@@ -222,9 +198,7 @@ class TestRunFetchResponse:
         assert data["operation"] == "fetch_response"
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_failure_emits_error(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.side_effect = ValueError("prompt fail")
 
@@ -236,9 +210,7 @@ class TestRunFetchResponse:
         assert "prompt fail" in data["error"]
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_optional_params_default_none(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {}
         run_fetch_response.apply(kwargs=COMMON_KWARGS).get()
@@ -254,9 +226,7 @@ class TestRunFetchResponse:
         )
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {}
         run_fetch_response.apply(kwargs=COMMON_KWARGS).get()
@@ -265,9 +235,7 @@ class TestRunFetchResponse:
 
 class TestRunSinglePassExtraction:
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_response(self, mock_helper, mock_emit):
         expected = {"output": {"key": "val"}}
         mock_helper.prompt_responder.return_value = expected
@@ -284,9 +252,7 @@ class TestRunSinglePassExtraction:
         )
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_emits_single_pass_event(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {"data": "ok"}
         run_single_pass_extraction.apply(kwargs=COMMON_KWARGS).get()
@@ -296,9 +262,7 @@ class TestRunSinglePassExtraction:
         assert data["operation"] == "single_pass_extraction"
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_failure_emits_error(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.side_effect = TypeError("single pass fail")
 
@@ -309,9 +273,7 @@ class TestRunSinglePassExtraction:
         assert data["status"] == "failed"
 
     @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
-    @patch(
-        "prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper"
-    )
+    @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {}
         run_single_pass_extraction.apply(kwargs=COMMON_KWARGS).get()
@@ -365,12 +327,12 @@ class TestViewsDispatchTasks:
             "single_pass_extraction",
         ]:
             source = inspect.getsource(getattr(PromptStudioCoreView, method_name))
-            assert "StateStore.get(Common.LOG_EVENTS_ID)" in source, (
-                f"{method_name} missing LOG_EVENTS_ID capture"
-            )
-            assert "StateStore.get(Common.REQUEST_ID)" in source, (
-                f"{method_name} missing REQUEST_ID capture"
-            )
+            assert (
+                "StateStore.get(Common.LOG_EVENTS_ID)" in source
+            ), f"{method_name} missing LOG_EVENTS_ID capture"
+            assert (
+                "StateStore.get(Common.REQUEST_ID)" in source
+            ), f"{method_name} missing REQUEST_ID capture"
 
 
 # ===================================================================
@@ -381,7 +343,7 @@ class TestTaskStatusAction:
         from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 
         assert hasattr(PromptStudioCoreView, "task_status")
-        assert callable(getattr(PromptStudioCoreView, "task_status"))
+        assert callable(PromptStudioCoreView.task_status)
 
     def test_task_status_url_registered(self):
         from prompt_studio.prompt_studio_core_v2.urls import urlpatterns
@@ -444,15 +406,9 @@ class TestCeleryConfig:
         from backend.celery_config import CeleryConfig
 
         routes = CeleryConfig.task_routes
-        assert routes["prompt_studio_index_document"] == {
-            "queue": "celery_prompt_studio"
-        }
-        assert routes["prompt_studio_fetch_response"] == {
-            "queue": "celery_prompt_studio"
-        }
-        assert routes["prompt_studio_single_pass"] == {
-            "queue": "celery_prompt_studio"
-        }
+        assert routes["prompt_studio_index_document"] == {"queue": "celery_prompt_studio"}
+        assert routes["prompt_studio_fetch_response"] == {"queue": "celery_prompt_studio"}
+        assert routes["prompt_studio_single_pass"] == {"queue": "celery_prompt_studio"}
 
     def test_celery_app_loads_routes(self):
         from backend.celery_service import app
