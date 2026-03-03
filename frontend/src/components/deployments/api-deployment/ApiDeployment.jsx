@@ -59,6 +59,8 @@ function ApiDeployment() {
     coOwnerData,
     coOwnerLoading,
     coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
     onAddCoOwner,
     onRemoveCoOwner,
   } = useCoOwnerManagement({
@@ -262,6 +264,10 @@ function ApiDeployment() {
     downloadPostmanCollection(apiDeploymentsApiService, deployment.id);
   };
 
+  const handleManageCoOwners = (deployment) => {
+    handleCoOwnerAction(deployment.id);
+  };
+
   // Card view configuration
   const apiDeploymentCardConfig = useMemo(
     () =>
@@ -278,6 +284,7 @@ function ApiDeployment() {
         onSetupNotifications: handleSetupNotificationsDeployment,
         onCodeSnippets: handleCodeSnippetsDeployment,
         onDownloadPostman: handleDownloadPostmanDeployment,
+        onManageCoOwners: handleManageCoOwners,
         listContext: {
           page: pagination.current,
           pageSize: pagination.pageSize,
@@ -381,7 +388,7 @@ function ApiDeployment() {
       <CoOwnerManagement
         open={coOwnerOpen}
         setOpen={setCoOwnerOpen}
-        resourceId={selectedRow?.id}
+        resourceId={coOwnerResourceId}
         resourceType="API Deployment"
         allUsers={coOwnerAllUsers}
         coOwners={coOwnerData.coOwners}

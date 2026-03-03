@@ -63,6 +63,8 @@ function Pipelines({ type }) {
     coOwnerData,
     coOwnerLoading,
     coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
     onAddCoOwner,
     onRemoveCoOwner,
   } = useCoOwnerManagement({
@@ -340,6 +342,10 @@ function Pipelines({ type }) {
     downloadPostmanCollection(pipelineApiService, pipeline.id);
   };
 
+  const handleManageCoOwners = (pipeline) => {
+    handleCoOwnerAction(pipeline.id);
+  };
+
   // Card view configuration - no actionItems needed, all handlers passed directly
   const pipelineCardConfig = useMemo(
     () =>
@@ -360,6 +366,7 @@ function Pipelines({ type }) {
         onManageKeys: handleManageKeysPipeline,
         onSetupNotifications: handleSetupNotificationsPipeline,
         onDownloadPostman: handleDownloadPostmanPipeline,
+        onManageCoOwners: handleManageCoOwners,
         // Loading states
         isClearingFileHistory,
         // Pipeline type for status pill navigation
@@ -473,7 +480,7 @@ function Pipelines({ type }) {
         <CoOwnerManagement
           open={coOwnerOpen}
           setOpen={setCoOwnerOpen}
-          resourceId={selectedPorD?.id}
+          resourceId={coOwnerResourceId}
           resourceType="Pipeline"
           allUsers={coOwnerAllUsers}
           coOwners={coOwnerData.coOwners}
