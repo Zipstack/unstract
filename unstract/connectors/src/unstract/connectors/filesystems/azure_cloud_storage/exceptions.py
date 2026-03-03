@@ -24,28 +24,23 @@ def parse_azure_error(e: Exception) -> ConnectorError:
         client_error = e.message if hasattr(e, "message") else str(e)
         error_message += (
             f"Authentication failed. Please check your connection credentials. \n"
-            f"Error: \n```\n{client_error}\n```"
+            f"```\n{client_error}\n```"
         )
         # ClientAuthenticationError typically indicates 401 Unauthorized
         status_code = getattr(e, "status_code", None) or 401
         return ConnectorError(error_message, status_code=status_code)
     elif isinstance(e, AzureException.ServiceRequestError):
         client_error = e.message if hasattr(e, "message") else str(e)
-        error_message += (
-            f"Failed to connect to Azure service. \n" f"Error: \n```\n{client_error}\n```"
-        )
+        error_message += f"Failed to connect to Azure service. \n```\n{client_error}\n```"
         return ConnectorError(error_message)
     elif isinstance(e, AzureException.HttpResponseError):
         client_error = e.message if hasattr(e, "message") else str(e)
         error_message += (
-            f"Azure service returned an error response. \n"
-            f"Error: \n```\n{client_error}\n```"
+            f"Azure service returned an error response. \n" f"```\n{client_error}\n```"
         )
         # Preserve the HTTP status code from Azure's response
         status_code = getattr(e, "status_code", None)
         return AzureHttpError(error_message, status_code=status_code)
     else:
-        error_message += (
-            f"Error from Azure Cloud Storage. \n" f"Error: \n```\n{str(e)}\n```"
-        )
+        error_message += f"Error from Azure Cloud Storage. \n```\n{str(e)}\n```"
         return ConnectorError(error_message)
