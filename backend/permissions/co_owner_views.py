@@ -34,7 +34,20 @@ class CoOwnerManagementMixin:
         """Return the ResourceType value for notifications, or None to skip."""
         return None
 
-    def _send_co_owner_notification(
+    def _get_notification_context(self, resource: Any) -> tuple[str, str] | None:
+        """Return (resource_type, resource_name) or None if not opted in."""
+        resource_type = self.get_notification_resource_type(resource)
+        if not resource_type:
+            return None
+
+        name_field = self.notification_resource_name_field
+        if not name_field:
+            return None
+
+        resource_name: str = getattr(resource, name_field, None) or ""
+        return resource_type, resource_name
+
+    def _send_co_owner_added_notification(
         self, resource: Any, user: User, request: Request
     ) -> None:
         """Send an email notification to a newly added co-owner.
@@ -42,35 +55,64 @@ class CoOwnerManagementMixin:
         Does nothing when the notification plugin is not installed (OSS)
         or when the ViewSet has not opted in.
         """
-        from plugins import get_plugin
-
-        plugin = get_plugin("notification")
-        if not plugin:
+        ctx = self._get_notification_context(resource)
+        if not ctx:
             return
 
-        resource_type = self.get_notification_resource_type(resource)
-        if not resource_type:
-            return
-
-        name_field = self.notification_resource_name_field
-        if not name_field:
-            return
-
-        resource_name = getattr(resource, name_field, None) or ""
+        resource_type, resource_name = ctx
 
         try:
-            service = plugin["service_class"]()
-            service.send_sharing_notification(
+            from plugins.notification.co_owner_notification import (
+                CoOwnerNotificationService,
+            )
+
+            service = CoOwnerNotificationService()
+            service.send_co_owner_added_notification(
                 resource_type=resource_type,
                 resource_name=resource_name,
                 resource_id=str(resource.pk),
-                shared_by=request.user,
-                shared_to=[user],
+                added_by=request.user,
+                added_users=[user],
                 resource_instance=resource,
             )
         except Exception:
             logger.exception(
-                "Failed to send co-owner notification for %s %s",
+                "Failed to send co-owner added notification for %s %s",
+                resource.__class__.__name__,
+                resource.pk,
+            )
+
+    def _send_co_owner_revoked_notification(
+        self, resource: Any, user: User, request: Request
+    ) -> None:
+        """Send an email notification to a removed co-owner.
+
+        Does nothing when the notification plugin is not installed (OSS)
+        or when the ViewSet has not opted in.
+        """
+        ctx = self._get_notification_context(resource)
+        if not ctx:
+            return
+
+        resource_type, resource_name = ctx
+
+        try:
+            from plugins.notification.co_owner_notification import (
+                CoOwnerNotificationService,
+            )
+
+            service = CoOwnerNotificationService()
+            service.send_co_owner_revoked_notification(
+                resource_type=resource_type,
+                resource_name=resource_name,
+                resource_id=str(resource.pk),
+                removed_by=request.user,
+                removed_users=[user],
+                resource_instance=resource,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to send co-owner revoked notification for %s %s",
                 resource.__class__.__name__,
                 resource.pk,
             )
@@ -96,7 +138,7 @@ class CoOwnerManagementMixin:
             request.user.email,
         )
 
-        self._send_co_owner_notification(resource, user, request)
+        self._send_co_owner_added_notification(resource, user, request)
 
         co_owners = [{"id": u.id, "email": u.email} for u in resource.co_owners.all()]
         return Response(
@@ -134,5 +176,7 @@ class CoOwnerManagementMixin:
             resource.pk,
             request.user.email,
         )
+
+        self._send_co_owner_revoked_notification(resource, user_to_remove, request)
 
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -46,6 +46,18 @@ logger = logging.getLogger(__name__)
 class PipelineViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
+    notification_resource_name_field = "pipeline_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        """Return the ResourceType value based on pipeline type."""
+        from plugins.notification.constants import ResourceType
+
+        type_map = {
+            "ETL": ResourceType.ETL.value,
+            "TASK": ResourceType.TASK.value,
+        }
+        return type_map.get(resource.pipeline_type)
+
     pagination_class = CustomPagination
     filter_backends = [OrderingFilter]
     ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
