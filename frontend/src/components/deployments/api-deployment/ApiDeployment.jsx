@@ -25,7 +25,6 @@ import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerMana
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
-import { DeleteModal } from "../delete-modal/DeleteModal";
 import { DisplayCode } from "../display-code/DisplayCode";
 import { Layout } from "../layout/Layout";
 import { ManageKeys } from "../manage-keys/ManageKeys";
@@ -40,7 +39,6 @@ function ApiDeployment() {
   const workflowApiService = workflowService();
   const [isTableLoading, setIsTableLoading] = useState(true);
   const [openAddApiModal, setOpenAddApiModal] = useState(false);
-  const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [openCodeModal, setOpenCodeModal] = useState(false);
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [selectedRow, setSelectedRow] = useState({});
@@ -181,11 +179,11 @@ function ApiDeployment() {
 
   fetchListRef.current = getApiDeploymentList;
 
-  const deleteApiDeployment = () => {
+  const deleteApiDeployment = (item) => {
+    const id = item?.id || selectedRow.id;
     apiDeploymentsApiService
-      .deleteApiDeployment(selectedRow.id)
-      .then((res) => {
-        setOpenDeleteModal(false);
+      .deleteApiDeployment(id)
+      .then(() => {
         getApiDeploymentList(
           pagination.current,
           pagination.pageSize,
@@ -232,8 +230,8 @@ function ApiDeployment() {
     openAddModal(true);
   };
 
-  const handleDeleteDeployment = () => {
-    setOpenDeleteModal(true);
+  const handleDeleteDeployment = (item) => {
+    deleteApiDeployment(item);
   };
 
   const handleViewLogsDeployment = (deployment) => {
@@ -328,6 +326,7 @@ function ApiDeployment() {
           pageSize: pagination.pageSize,
           total: pagination.total,
           onChange: handlePaginationChange,
+          itemLabel: "APIs",
         }}
       />
       {openAddApiModal && (
@@ -342,11 +341,6 @@ function ApiDeployment() {
           workflowEndpointList={workflowEndpointList}
         />
       )}
-      <DeleteModal
-        open={openDeleteModal}
-        setOpen={setOpenDeleteModal}
-        deleteRecord={deleteApiDeployment}
-      />
       <ManageKeys
         isDialogOpen={openManageKeysModal}
         setDialogOpen={setOpenManageKeysModal}
