@@ -36,7 +36,7 @@ def parse_azure_error(e: Exception) -> ConnectorError:
     elif isinstance(e, AzureException.HttpResponseError):
         client_error = e.message if hasattr(e, "message") else str(e)
         error_message += (
-            f"Azure service returned an error response. \n" f"```\n{client_error}\n```"
+            f"Azure service returned an error response. \n```\n{client_error}\n```"
         )
         # Preserve the HTTP status code from Azure's response
         status_code = getattr(e, "status_code", None)
