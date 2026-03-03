@@ -6,25 +6,25 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useAlertStore } from "../../../store/alert-store";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./Workflows.css";
-import { workflowService } from "./workflow-service";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
-import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
+import { workflowService } from "./workflow-service";
 
 const PROJECT_FILTER_OPTIONS = [
   { label: "My Workflows", value: "mine" },
@@ -44,7 +44,7 @@ function Workflows() {
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
 
   const [projectList, setProjectList] = useState();
@@ -89,7 +89,7 @@ function Workflows() {
       return;
     }
     const filteredList = projectListRef.current.filter((item) =>
-      item.workflow_name.toLowerCase().includes(searchText.toLowerCase())
+      item.workflow_name.toLowerCase().includes(searchText.toLowerCase()),
     );
     setSearchList(filteredList);
   }
@@ -120,7 +120,10 @@ function Workflows() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, `Unable to update workflow ${editingProject.id}`)
+          handleException(
+            err,
+            `Unable to update workflow ${editingProject.id}`,
+          ),
         );
       })
       .finally(() => {
@@ -146,37 +149,85 @@ function Workflows() {
     });
   }
 
-  const canDeleteProject = async (id) => {
-    let status = false;
-    await projectApiService.canUpdate(id).then((res) => {
-      status = res?.data?.can_update || false;
-    });
-    return status;
+  const checkWorkflowUsage = async (id) => {
+    const res = await projectApiService.canUpdate(id);
+    const data = res?.data || {};
+    return {
+      canUpdate: data.can_update || false,
+      pipelines: data.pipelines || [],
+      apiNames: data.api_names || [],
+      pipelineCount: data.pipeline_count || 0,
+      apiCount: data.api_count || 0,
+    };
+  };
+
+  const getUsageMessage = (workflowName, usage) => {
+    const { pipelines, apiNames, pipelineCount, apiCount } = usage;
+    const totalCount = pipelineCount + apiCount;
+    if (totalCount === 0) {
+      return `Cannot delete \`${workflowName}\` as it is currently in use.`;
+    }
+
+    const displayLimit = 3;
+    const lines = [];
+
+    if (apiNames.length > 0) {
+      const shown = apiNames.slice(0, displayLimit);
+      shown.forEach((name) => {
+        lines.push(`- \`${name}\` (API Deployment)`);
+      });
+      if (apiCount > shown.length) {
+        lines.push(
+          `- ...and ${apiCount - shown.length} more API deployment(s)`,
+        );
+      }
+    }
+
+    if (pipelines.length > 0) {
+      const shown = pipelines.slice(0, displayLimit);
+      shown.forEach((p) => {
+        const name = p.pipeline_name;
+        const type = p.pipeline_type;
+        lines.push(`- \`${name}\` (${type} Pipeline)`);
+      });
+      const remaining = pipelineCount - shown.length;
+      if (remaining > 0) {
+        lines.push(`- ...and ${remaining} more pipeline(s)`);
+      }
+    }
+
+    const details = lines.join("\n");
+    return `Cannot delete \`${workflowName}\` as it is used in:\n${details}`;
   };
 
   const deleteProject = async (_evt, project) => {
-    const canDelete = await canDeleteProject(project.id);
-    if (canDelete) {
-      projectApiService
-        .deleteProject(project.id)
-        .then(() => {
-          getProjectList();
-          setAlertDetails({
-            type: "success",
-            content: "Workflow deleted successfully",
+    try {
+      const usage = await checkWorkflowUsage(project.id);
+      if (usage.canUpdate) {
+        projectApiService
+          .deleteProject(project.id)
+          .then(() => {
+            getProjectList();
+            setAlertDetails({
+              type: "success",
+              content: "Workflow deleted successfully",
+            });
+          })
+          .catch((err) => {
+            setAlertDetails(
+              handleException(err, `Unable to delete workflow ${project.id}`),
+            );
           });
-        })
-        .catch((err) => {
-          setAlertDetails(
-            handleException(err, `Unable to delete workflow ${project.id}`)
-          );
+      } else {
+        setAlertDetails({
+          type: "error",
+          content: getUsageMessage(project.workflow_name, usage),
         });
-    } else {
-      setAlertDetails({
-        type: "error",
-        content:
-          "Cannot delete this Workflow, since it is used in one or many of the API/ETL/Task pipelines",
-      });
+      }
+    } catch (err) {
+      setAlertDetails(
+        handleException(err, `Unable to delete workflow ${project.id}`),
+      );
     }
   };
 
@@ -208,7 +259,7 @@ function Workflows() {
       setShareOpen(true);
     } catch (err) {
       setAlertDetails(
-        handleException(err, `Unable to fetch sharing information`)
+        handleException(err, `Unable to fetch sharing information`),
       );
     } finally {
       setShareLoading(false);
@@ -221,7 +272,7 @@ function Workflows() {
       await projectApiService.updateSharing(
         workflow.id,
         selectedUsers,
-        shareWithEveryone
+        shareWithEveryone,
       );
       setShareOpen(false);
       setAlertDetails({
@@ -231,7 +282,7 @@ function Workflows() {
       getProjectList(); // Refresh the list
     } catch (error) {
       setAlertDetails(
-        handleException(error, "Unable to update workflow sharing")
+        handleException(error, "Unable to update workflow sharing"),
       );
     } finally {
       setShareLoading(false);
@@ -246,7 +297,7 @@ function Workflows() {
       setPostHogCustomEvent("intent_new_wf_project", {
         info: "Clicked on '+ New Workflow' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -267,7 +318,7 @@ function Workflows() {
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (

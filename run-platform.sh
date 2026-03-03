@@ -71,7 +71,6 @@ display_help() {
   echo -e "   -p, --only-pull     Only do docker images pull"
   echo -e "   -b, --build-local   Build docker images locally"
   echo -e "   -u, --update        Update services version"
-  echo -e "   -w, --workers-v2    Use v2 dedicated worker containers"
   echo -e "   -x, --trace         Enables trace mode"
   echo -e "   -V, --verbose       Print verbose logs"
   echo -e "   -v, --version       Docker images version tag (default \"latest\")"
@@ -97,9 +96,6 @@ parse_args() {
         ;;
       -u | --update)
         opt_update=true
-        ;;
-      -w | --workers-v2)
-        opt_workers_v2=true
         ;;
       -x | --trace)
         set -o xtrace  # display every line before execution; enables PS4
@@ -132,7 +128,6 @@ parse_args() {
   debug "OPTION only_pull: $opt_only_pull"
   debug "OPTION build_local: $opt_build_local"
   debug "OPTION upgrade: $opt_update"
-  debug "OPTION workers_v2: $opt_workers_v2"
   debug "OPTION verbose: $opt_verbose"
   debug "OPTION version: $opt_version"
 }
@@ -284,13 +279,8 @@ build_services() {
 run_services() {
   pushd "$script_dir/docker" 1>/dev/null
 
-  if [ "$opt_workers_v2" = true ]; then
-    echo -e "$blue_text""Starting docker containers with V2 dedicated workers in detached mode""$default_text"
-    VERSION=$opt_version $docker_compose_cmd --profile workers-v2 up -d
-  else
-    echo -e "$blue_text""Starting docker containers with existing backend-based workers in detached mode""$default_text"
-    VERSION=$opt_version $docker_compose_cmd up -d
-  fi
+  echo -e "$blue_text""Starting docker containers in detached mode""$default_text"
+  VERSION=$opt_version $docker_compose_cmd up -d
 
   if [ "$opt_update" = true ]; then
     echo ""
@@ -333,7 +323,6 @@ opt_only_env=false
 opt_only_pull=false
 opt_build_local=false
 opt_update=false
-opt_workers_v2=false
 opt_verbose=false
 opt_version="latest"
 

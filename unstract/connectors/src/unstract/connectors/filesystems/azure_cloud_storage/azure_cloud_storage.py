@@ -60,6 +60,10 @@ class AzureCloudStorageFS(UnstractFileSystem):
         return "/icons/connector-icons/azure_blob_storage.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/azure_cloud_storage/"
+
+    @staticmethod
     def get_json_schema() -> str:
         f = open(f"{os.path.dirname(__file__)}/static/json_schema.json")
         schema = f.read()
