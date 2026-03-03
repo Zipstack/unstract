@@ -380,6 +380,7 @@ function Pipelines({ type }) {
           pageSize: pagination.pageSize,
           total: pagination.total,
           onChange: handlePaginationChange,
+          itemLabel: "pipelines",
         }}
       />
       {openEtlOrTaskModal && (

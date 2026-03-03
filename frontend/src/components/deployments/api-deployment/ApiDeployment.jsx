@@ -304,6 +304,7 @@ function ApiDeployment() {
           pageSize: pagination.pageSize,
           total: pagination.total,
           onChange: handlePaginationChange,
+          itemLabel: "APIs",
         }}
       />
       {openAddApiModal && (
