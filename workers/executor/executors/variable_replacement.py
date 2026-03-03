@@ -11,10 +11,9 @@ from functools import lru_cache
 from typing import Any
 
 import requests as pyrequests
-from requests.exceptions import RequestException
-
 from executor.executors.constants import VariableConstants, VariableType
 from executor.executors.exceptions import CustomDataError, LegacyExecutorError
+from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +21,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # VariableReplacementHelper — low-level replacement logic
 # ---------------------------------------------------------------------------
+
 
 class VariableReplacementHelper:
     @staticmethod
@@ -48,8 +48,7 @@ class VariableReplacementHelper:
             output = structure_output[variable]
         except KeyError:
             logger.warning(
-                "Prompt with %s is not executed yet. "
-                "Unable to replace the variable",
+                "Prompt with %s is not executed yet. " "Unable to replace the variable",
                 variable,
             )
         return output
@@ -187,6 +186,7 @@ class VariableReplacementHelper:
 # ---------------------------------------------------------------------------
 # VariableReplacementService — high-level orchestration
 # ---------------------------------------------------------------------------
+
 
 class VariableReplacementService:
     @staticmethod

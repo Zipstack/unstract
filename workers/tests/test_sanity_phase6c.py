@@ -10,7 +10,7 @@ Verifies:
 7. Highlight metadata populated when plugin provides data via process_text
 """
 
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from executor.executors.answer_prompt import AnswerPromptService

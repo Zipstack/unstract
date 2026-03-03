@@ -16,6 +16,4 @@ def add_hex_line_numbers(text: str) -> str:
     """
     lines = text.split("\n")
     hex_width = max(len(hex(len(lines))) - 2, 1)
-    return "\n".join(
-        f"0x{i:0{hex_width}X}: {line}" for i, line in enumerate(lines)
-    )
+    return "\n".join(f"0x{i:0{hex_width}X}: {line}" for i, line in enumerate(lines))

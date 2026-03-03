@@ -98,7 +98,9 @@ def get_worker_celery_app() -> Celery:
     _worker_app = app
     # Log broker host only (mask credentials)
     safe_broker = broker_url.split("@")[-1] if "@" in broker_url else broker_url
-    safe_backend = result_backend.split("@")[-1] if "@" in result_backend else result_backend
+    safe_backend = (
+        result_backend.split("@")[-1] if "@" in result_backend else result_backend
+    )
     logger.info(
         "Created worker dispatch Celery app (broker=%s, result_backend=%s)",
         safe_broker,

@@ -200,7 +200,6 @@ class TestLegacyExcludesAgentic:
 class TestStructureToolAgenticRouting:
     def test_structure_tool_dispatches_agentic_extract(self):
         """Verify _run_agentic_extraction sends executor_name='agentic'."""
-        from unittest.mock import patch
 
         from file_processing.structure_tool_task import _run_agentic_extraction
 

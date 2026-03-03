@@ -11,11 +11,8 @@ import pytest
 
 from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
-    RetrievalStrategy,
 )
-from executor.executors.exceptions import LegacyExecutorError
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.result import ExecutionResult
 
 
 # ---------------------------------------------------------------------------

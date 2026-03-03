@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Any, Self
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from unstract.sdk1.constants import LogLevel, ToolEnv
@@ -244,7 +244,7 @@ class TestExecutionResult:
         assert d["error"] == "fail"
 
     def test_default_empty_dicts(self: Self) -> None:
-        """data and metadata default to empty dicts."""
+        """Data and metadata default to empty dicts."""
         result = ExecutionResult(success=True)
         assert result.data == {}
         assert result.metadata == {}
@@ -301,9 +301,7 @@ def _make_executor_class(
         def name(self) -> str:
             return executor_name
 
-        def execute(
-            self, context: ExecutionContext
-        ) -> ExecutionResult:
+        def execute(self, context: ExecutionContext) -> ExecutionResult:
             return ExecutionResult(
                 success=True,
                 data={"echo": context.operation},
@@ -380,9 +378,7 @@ class TestExecutorRegistry:
             def name(self) -> str:
                 return "decorated"
 
-            def execute(
-                self, context: ExecutionContext
-            ) -> ExecutionResult:
+            def execute(self, context: ExecutionContext) -> ExecutionResult:
                 return ExecutionResult(success=True)
 
         executor = ExecutorRegistry.get("decorated")
@@ -474,9 +470,7 @@ def _make_failing_executor_class(
         def name(self) -> str:
             return executor_name
 
-        def execute(
-            self, context: ExecutionContext
-        ) -> ExecutionResult:
+        def execute(self, context: ExecutionContext) -> ExecutionResult:
             raise exc
 
     _FailExecutor.__name__ = f"{executor_name.title()}FailExecutor"
@@ -524,23 +518,17 @@ class TestExecutionOrchestrator:
     def test_unknown_executor_returns_failure(self: Self) -> None:
         """Unknown executor_name yields a failure result (not exception)."""
         orchestrator = ExecutionOrchestrator()
-        result = orchestrator.execute(
-            self._make_context(executor_name="nonexistent")
-        )
+        result = orchestrator.execute(self._make_context(executor_name="nonexistent"))
         assert result.success is False
         assert "nonexistent" in result.error
 
     def test_executor_exception_returns_failure(self: Self) -> None:
         """Unhandled executor exception is wrapped in failure result."""
         ExecutorRegistry.register(
-            _make_failing_executor_class(
-                "boom", RuntimeError("kaboom")
-            )
+            _make_failing_executor_class("boom", RuntimeError("kaboom"))
         )
         orchestrator = ExecutionOrchestrator()
-        result = orchestrator.execute(
-            self._make_context(executor_name="boom")
-        )
+        result = orchestrator.execute(self._make_context(executor_name="boom"))
         assert result.success is False
         assert "RuntimeError" in result.error
         assert "kaboom" in result.error
@@ -548,14 +536,10 @@ class TestExecutionOrchestrator:
     def test_exception_result_has_elapsed_metadata(self: Self) -> None:
         """Failure from exception includes elapsed_seconds metadata."""
         ExecutorRegistry.register(
-            _make_failing_executor_class(
-                "slow_fail", ValueError("bad input")
-            )
+            _make_failing_executor_class("slow_fail", ValueError("bad input"))
         )
         orchestrator = ExecutionOrchestrator()
-        result = orchestrator.execute(
-            self._make_context(executor_name="slow_fail")
-        )
+        result = orchestrator.execute(self._make_context(executor_name="slow_fail"))
         assert result.success is False
         assert "elapsed_seconds" in result.metadata
         assert isinstance(result.metadata["elapsed_seconds"], float)
@@ -565,9 +549,7 @@ class TestExecutionOrchestrator:
         ExecutorRegistry.register(_make_executor_class("passthru"))
         orchestrator = ExecutionOrchestrator()
 
-        ctx = self._make_context(
-            executor_name="passthru", operation="answer_prompt"
-        )
+        ctx = self._make_context(executor_name="passthru", operation="answer_prompt")
         result = orchestrator.execute(ctx)
 
         assert result.success is True
@@ -583,19 +565,13 @@ class TestExecutionOrchestrator:
             def name(self) -> str:
                 return "graceful_fail"
 
-            def execute(
-                self, context: ExecutionContext
-            ) -> ExecutionResult:
-                return ExecutionResult.failure(
-                    error="LLM rate limited"
-                )
+            def execute(self, context: ExecutionContext) -> ExecutionResult:
+                return ExecutionResult.failure(error="LLM rate limited")
 
         ExecutorRegistry.register(FailingExecutor)
         orchestrator = ExecutionOrchestrator()
 
-        result = orchestrator.execute(
-            self._make_context(executor_name="graceful_fail")
-        )
+        result = orchestrator.execute(self._make_context(executor_name="graceful_fail"))
         assert result.success is False
         assert result.error == "LLM rate limited"
 
@@ -714,9 +690,7 @@ class TestExecutionDispatcher:
         self: Self,
     ) -> None:
         """TimeoutError from AsyncResult.get() is wrapped in failure."""
-        mock_app = self._make_mock_app(
-            side_effect=TimeoutError("Task timed out")
-        )
+        mock_app = self._make_mock_app(side_effect=TimeoutError("Task timed out"))
         dispatcher = ExecutionDispatcher(celery_app=mock_app)
         ctx = self._make_context()
 
@@ -729,9 +703,7 @@ class TestExecutionDispatcher:
         self: Self,
     ) -> None:
         """Any exception from AsyncResult.get() becomes a failure."""
-        mock_app = self._make_mock_app(
-            side_effect=RuntimeError("broker down")
-        )
+        mock_app = self._make_mock_app(side_effect=RuntimeError("broker down"))
         dispatcher = ExecutionDispatcher(celery_app=mock_app)
         ctx = self._make_context()
 
@@ -816,9 +788,7 @@ class TestExecutionDispatcher:
         assert context_dict["executor_name"] == "agentic_table"
         assert context_dict["operation"] == "agentic_extraction"
         assert context_dict["organization_id"] == "org-42"
-        assert context_dict["executor_params"] == {
-            "schema": {"name": "str"}
-        }
+        assert context_dict["executor_params"] == {"schema": {"name": "str"}}
 
     # ---- Phase 5A: dispatch_with_callback ----
 
@@ -928,16 +898,12 @@ class TestExecutionDispatcher:
             executor_params={"prompt_key": "p1"},
         )
 
-        dispatcher.dispatch_with_callback(
-            ctx, on_success=MagicMock()
-        )
+        dispatcher.dispatch_with_callback(ctx, on_success=MagicMock())
 
         sent_args = mock_app.send_task.call_args
         context_dict = sent_args[1]["args"][0]
         assert context_dict["operation"] == "answer_prompt"
-        assert context_dict["executor_params"] == {
-            "prompt_key": "p1"
-        }
+        assert context_dict["executor_params"] == {"prompt_key": "p1"}
 
     def test_dispatch_with_callback_custom_task_id(
         self: Self,
@@ -947,9 +913,7 @@ class TestExecutionDispatcher:
         dispatcher = ExecutionDispatcher(celery_app=mock_app)
         ctx = self._make_context()
 
-        result = dispatcher.dispatch_with_callback(
-            ctx, task_id="pre-gen-id-123"
-        )
+        result = dispatcher.dispatch_with_callback(ctx, task_id="pre-gen-id-123")
 
         call_kwargs = mock_app.send_task.call_args
         assert call_kwargs[1]["task_id"] == "pre-gen-id-123"
@@ -993,16 +957,12 @@ class _MockExecutorToolShim:
 
         if env_key == ToolEnv.PLATFORM_API_KEY:
             if not self.platform_api_key:
-                raise SdkError(
-                    f"Env variable '{env_key}' is required"
-                )
+                raise SdkError(f"Env variable '{env_key}' is required")
             return self.platform_api_key
 
         env_value = os.environ.get(env_key)
         if env_value is None or env_value == "":
-            raise SdkError(
-                f"Env variable '{env_key}' is required"
-            )
+            raise SdkError(f"Env variable '{env_key}' is required")
         return env_value
 
     def stream_log(
@@ -1022,9 +982,7 @@ class _MockExecutorToolShim:
         py_level = _level_map.get(level, logging.INFO)
         logging.getLogger("executor_tool_shim").log(py_level, log)
 
-    def stream_error_and_exit(
-        self, message: str, err: Exception | None = None
-    ) -> None:
+    def stream_error_and_exit(self, message: str, err: Exception | None = None) -> None:
         raise SdkError(message, actual_err=err)
 
 
@@ -1058,9 +1016,7 @@ class TestExecutorToolShim:
         with pytest.raises(SdkError, match="NONEXISTENT_VAR"):
             shim.get_env_or_die("NONEXISTENT_VAR")
 
-    def test_empty_env_var_raises(
-        self: Self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_empty_env_var_raises(self: Self, monkeypatch: pytest.MonkeyPatch) -> None:
         """get_env_or_die() raises SdkError for empty env var."""
         monkeypatch.setenv("EMPTY_VAR", "")
         shim = _MockExecutorToolShim(platform_api_key="sk-test")

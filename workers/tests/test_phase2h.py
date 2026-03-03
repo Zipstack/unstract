@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import requests as real_requests
 
-from executor.executors.constants import VariableConstants, VariableType
+from executor.executors.constants import VariableType
 from executor.executors.exceptions import CustomDataError, LegacyExecutorError
 from executor.executors.postprocessor import (
     _validate_structured_output,

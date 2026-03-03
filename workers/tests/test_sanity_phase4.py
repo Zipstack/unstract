@@ -16,16 +16,14 @@ This validates the full contract:
 All tests use execution_source="ide" to match the real IDE path.
 """
 
-import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from executor.executors.constants import (
-    IndexingConstants as IKeys,
     PromptServiceConstants as PSKeys,
 )
-from unstract.sdk1.execution.context import ExecutionContext, Operation
+from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult

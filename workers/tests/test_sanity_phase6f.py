@@ -11,7 +11,6 @@ Verifies:
 
 from unittest.mock import MagicMock
 
-import pytest
 
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher

@@ -31,9 +31,7 @@ class BaseExecutor(ABC):
         """
 
     @abstractmethod
-    def execute(
-        self, context: ExecutionContext
-    ) -> ExecutionResult:
+    def execute(self, context: ExecutionContext) -> ExecutionResult:
         """Run the extraction strategy described by *context*.
 
         Args:

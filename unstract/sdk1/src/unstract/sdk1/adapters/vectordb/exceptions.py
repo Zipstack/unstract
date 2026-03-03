@@ -23,7 +23,6 @@ def parse_vector_db_err(e: Exception, vector_db: VectorDBAdapter) -> VectorDBErr
     # protobuf runtime version (KeyError: '_POINTID').
     try:
         from qdrant_client.http.exceptions import ApiException as QdrantAPIException
-
         from unstract.sdk1.adapters.vectordb.qdrant.src import Qdrant
 
         if isinstance(e, QdrantAPIException):

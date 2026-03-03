@@ -12,7 +12,6 @@ Two entry point groups are used:
 """
 
 import logging
-from typing import Any
 
 logger = logging.getLogger(__name__)
 

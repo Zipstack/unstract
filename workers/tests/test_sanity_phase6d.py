@@ -14,7 +14,7 @@ Verifies:
 11. Challenge mutates structured_output (via mock)
 """
 
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 from executor.executors.answer_prompt import AnswerPromptService

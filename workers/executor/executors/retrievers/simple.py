@@ -1,10 +1,9 @@
 import logging
 import time
 
+from executor.executors.retrievers.base_retriever import BaseRetriever
 from llama_index.core import VectorStoreIndex
 from llama_index.core.vector_stores import ExactMatchFilter, MetadataFilters
-
-from executor.executors.retrievers.base_retriever import BaseRetriever
 
 logger = logging.getLogger(__name__)
 

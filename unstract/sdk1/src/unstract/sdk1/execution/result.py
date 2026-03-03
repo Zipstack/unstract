@@ -35,9 +35,7 @@ class ExecutionResult:
     def __post_init__(self) -> None:
         """Validate result consistency after initialization."""
         if not self.success and not self.error:
-            raise ValueError(
-                "error message is required when success is False"
-            )
+            raise ValueError("error message is required when success is False")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict for Celery."""

@@ -1,11 +1,10 @@
 import logging
 
+from executor.executors.exceptions import RetrievalError
+from executor.executors.retrievers.base_retriever import BaseRetriever
 from llama_index.core.query_engine import SubQuestionQueryEngine
 from llama_index.core.schema import QueryBundle
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
-
-from executor.executors.exceptions import RetrievalError
-from executor.executors.retrievers.base_retriever import BaseRetriever
 
 logger = logging.getLogger(__name__)
 

@@ -9,9 +9,8 @@ Verifies:
 6. Cloud executor entry point name matches pyproject.toml
 """
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
@@ -40,7 +39,6 @@ class TestTableExtractOperation:
 class TestTasksLogComponent:
     def test_table_extract_log_component(self):
         """tasks.py builds correct log_component for table_extract."""
-        from executor.tasks import execute_extraction
 
         # Build a mock context dict
         ctx_dict = {
@@ -86,7 +84,6 @@ class TestTasksLogComponent:
 class TestTableExtractorExecutorRegistration:
     def test_mock_table_executor_discovered_via_entry_point(self):
         """Simulate cloud executor discovery via entry point."""
-        from executor.executors.plugins.loader import ExecutorPluginLoader
         from unstract.sdk1.execution.executor import BaseExecutor
 
         # Create a mock TableExtractorExecutor
