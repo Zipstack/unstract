@@ -32,16 +32,7 @@ class CeleryConfig:
 
     task_acks_late = True
 
-    # Route long-running Prompt Studio IDE tasks to a dedicated queue
-    # so they don't compete with beat/logging/API-deployment tasks.
-    task_routes = {
-        "prompt_studio_index_document": {"queue": "celery_prompt_studio"},
-        "prompt_studio_fetch_response": {"queue": "celery_prompt_studio"},
-        "prompt_studio_single_pass": {"queue": "celery_prompt_studio"},
-        # Phase 5B: Fire-and-forget callback tasks (sub-second, run on
-        # same queue as the old blocking tasks they replace).
-        "ide_index_complete": {"queue": "celery_prompt_studio"},
-        "ide_index_error": {"queue": "celery_prompt_studio"},
-        "ide_prompt_complete": {"queue": "celery_prompt_studio"},
-        "ide_prompt_error": {"queue": "celery_prompt_studio"},
-    }
+    # Prompt Studio IDE tasks run on the default "celery" queue.
+    # The callback tasks (ide_*) are sub-second ORM writes + Socket.IO
+    # emits. The legacy tasks are kept for backward compatibility.
+    # No explicit routing needed — all go to default "celery" queue.
