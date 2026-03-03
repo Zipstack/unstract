@@ -209,4 +209,77 @@ function useWorkflowTokenUsage(startDate, endDate) {
   return { data, loading, error, refetch };
 }
 
-export { useMetricsOverview, useRecentActivity, useWorkflowTokenUsage };
+/**
+ * Hook for fetching subscription usage data (cloud-only).
+ * Calls /subscription/usage/ and /subscription/usage/daily/ endpoints.
+ * Returns null gracefully on OSS where these endpoints don't exist.
+ *
+ * @return {Object} { data, loading, error, refetch }
+ */
+function useSubscriptionUsage() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
+  const orgId = sessionDetails?.orgId;
+
+  const fetchUsage = useCallback(async () => {
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const baseUrl = `/api/v1/unstract/${orgId}`;
+      const [totalRes, dailyRes] = await Promise.all([
+        axiosPrivate.get(`${baseUrl}/subscription/usage/`),
+        axiosPrivate.get(`${baseUrl}/subscription/usage/daily/`),
+      ]);
+
+      const totalPages = totalRes.data?.usage_data?.pages_processed || 0;
+      const dailyUsage = (dailyRes.data?.usage_data?.usage || []).map(
+        (item) => ({
+          key: item.record_date,
+          pagesExtracted: item.pages_processed,
+          date: item.record_date,
+        }),
+      );
+
+      setData({ totalPages, dailyUsage });
+    } catch (err) {
+      // 404 = endpoints don't exist (OSS) — not an error, just no data
+      if (err.response?.status === 404) {
+        setData(null);
+      } else {
+        setError(
+          err.response?.data?.message || "Failed to fetch subscription usage",
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [axiosPrivate, orgId]);
+
+  useEffect(() => {
+    if (orgId) {
+      fetchUsage();
+    } else {
+      setData(null);
+      setLoading(false);
+      setError(null);
+    }
+  }, [orgId]); // eslint-disable-line
+
+  return { data, loading, error, refetch: fetchUsage };
+}
+
+export {
+  useMetricsOverview,
+  useRecentActivity,
+  useSubscriptionUsage,
+  useWorkflowTokenUsage,
+};

@@ -287,6 +287,38 @@
   font-size: 12px;
 }
 
+/* Subscription Usage Tab */
+.subscription-usage-tab {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.subscription-plan-card {
+  text-align: center;
+  padding: 20px;
+  background: #e6f4ff;
+  border: 1px solid #91caff;
+  border-radius: 8px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.subscription-plan-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 4px;
+}
+
+.subscription-plan-pages {
+  font-size: 14px;
+  color: #595959;
+}
+
+.subscription-overdue-tag {
+  margin-bottom: 12px;
+}
+
 /* LLM Usage Table */
 .llm-usage-card .ant-card-body {
   padding: 0;

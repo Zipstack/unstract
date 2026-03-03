@@ -1,5 +1,6 @@
 import {
   BarChartOutlined,
+  CreditCardOutlined,
   DashboardOutlined,
   FileSearchOutlined,
   ReloadOutlined,
@@ -17,11 +18,13 @@ import {
   Typography,
 } from "antd";
 import dayjs from "dayjs";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { evictExpiredCache } from "../../helpers/metricsCache";
 import {
   useMetricsOverview,
   useRecentActivity,
+  useSubscriptionUsage,
   useWorkflowTokenUsage,
 } from "../../hooks/useMetricsData";
 import { LLMUsageTable } from "./LLMUsageTable";
@@ -34,28 +37,50 @@ import "./MetricsDashboard.css";
 // Cloud-only: Plan banner with subscription details
 let PlanBanner;
 try {
-  PlanBanner =
-    require("../../plugins/unstract-subscription/components/PlanBanner.jsx").PlanBanner;
+  const mod = await import(
+    "../../plugins/unstract-subscription/components/PlanBanner.jsx"
+  );
+  PlanBanner = mod.PlanBanner;
 } catch {
   // Plugin unavailable - no banner on OSS
+}
+
+// Cloud-only: Subscription usage tab
+let SubscriptionUsageTab;
+try {
+  const mod = await import(
+    "../../plugins/unstract-subscription/components/SubscriptionUsageTab.jsx"
+  );
+  SubscriptionUsageTab = mod.SubscriptionUsageTab;
+} catch {
+  // Plugin unavailable - no subscription tab on OSS
 }
 
 const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 function MetricsDashboard() {
+  // Evict expired cache entries on mount
+  useEffect(() => {
+    evictExpiredCache();
+  }, []);
+
+  // Stabilise "now" to start-of-minute so remounts within the same
+  // minute produce identical ISO strings → same cache keys → cache hits.
+  const [stableNow] = useState(() => dayjs().startOf("minute"));
+
   // Date range state (default: last 30 days)
-  const [dateRange, setDateRange] = useState([
-    dayjs().subtract(30, "day"),
-    dayjs(),
+  const [dateRange, setDateRange] = useState(() => [
+    stableNow.subtract(30, "day"),
+    stableNow,
   ]);
 
   // Fixed 30-day range for activity charts (independent of date picker)
   const chartStart = useMemo(
-    () => dayjs().subtract(30, "day").toISOString(),
-    [],
+    () => stableNow.subtract(30, "day").toISOString(),
+    [stableNow],
   );
-  const chartEnd = useMemo(() => dayjs().toISOString(), []);
+  const chartEnd = useMemo(() => stableNow.toISOString(), [stableNow]);
 
   // API hooks - pass date range to overview (for summary cards)
   const {
@@ -92,6 +117,16 @@ function MetricsDashboard() {
     dateRange[1]?.toISOString(),
   );
 
+  // Subscription usage (cloud-only, returns null on OSS)
+  const {
+    data: subscriptionData,
+    loading: subscriptionLoading,
+    refetch: refetchSubscription,
+  } = useSubscriptionUsage();
+
+  // Active tab (controls date picker visibility)
+  const [activeTab, setActiveTab] = useState("overview");
+
   // Handle date range change
   const handleDateChange = useCallback((dates) => {
     if (dates && dates.length === 2) {
@@ -105,7 +140,14 @@ function MetricsDashboard() {
     refetchChart();
     refetchActivity();
     refetchTokenUsage();
-  }, [refetchOverview, refetchChart, refetchActivity, refetchTokenUsage]);
+    refetchSubscription();
+  }, [
+    refetchOverview,
+    refetchChart,
+    refetchActivity,
+    refetchTokenUsage,
+    refetchSubscription,
+  ]);
 
   const tabItems = [
     {
@@ -158,6 +200,26 @@ function MetricsDashboard() {
     },
   ];
 
+  // Cloud-only: add subscription usage tab when data is available
+  if (SubscriptionUsageTab && (subscriptionData || subscriptionLoading)) {
+    tabItems.push({
+      key: "subscription",
+      label: (
+        <span>
+          <CreditCardOutlined /> Subscription
+        </span>
+      ),
+      children: (
+        <SubscriptionUsageTab
+          data={subscriptionData}
+          loading={subscriptionLoading}
+          overviewData={overviewData}
+          overviewLoading={overviewLoading}
+        />
+      ),
+    });
+  }
+
   return (
     <div className="metrics-dashboard">
       <div className="metrics-topbar">
@@ -200,7 +262,7 @@ function MetricsDashboard() {
         </Space>
       </div>
 
-      {PlanBanner && <PlanBanner />}
+      {PlanBanner && subscriptionData && <PlanBanner />}
 
       {overviewError && (
         <Alert
@@ -215,30 +277,33 @@ function MetricsDashboard() {
 
       <Tabs
         items={tabItems}
-        defaultActiveKey="overview"
+        activeKey={activeTab}
+        onChange={setActiveTab}
         tabBarExtraContent={
           <Space>
-            <RangePicker
-              value={dateRange}
-              onChange={handleDateChange}
-              disabledDate={(current) => current && current > dayjs()}
-              allowClear={false}
-              size="middle"
-              presets={[
-                {
-                  label: "Last 7 Days",
-                  value: [dayjs().subtract(7, "day"), dayjs()],
-                },
-                {
-                  label: "Last 30 Days",
-                  value: [dayjs().subtract(30, "day"), dayjs()],
-                },
-                {
-                  label: "Last 90 Days",
-                  value: [dayjs().subtract(90, "day"), dayjs()],
-                },
-              ]}
-            />
+            {activeTab !== "subscription" && (
+              <RangePicker
+                value={dateRange}
+                onChange={handleDateChange}
+                disabledDate={(current) => current && current > dayjs()}
+                allowClear={false}
+                size="middle"
+                presets={[
+                  {
+                    label: "Last 7 Days",
+                    value: [dayjs().subtract(7, "day"), dayjs()],
+                  },
+                  {
+                    label: "Last 30 Days",
+                    value: [dayjs().subtract(30, "day"), dayjs()],
+                  },
+                  {
+                    label: "Last 90 Days",
+                    value: [dayjs().subtract(90, "day"), dayjs()],
+                  },
+                ]}
+              />
+            )}
             <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
           </Space>
         }

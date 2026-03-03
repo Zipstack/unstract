@@ -82,7 +82,7 @@ function RecentActivity({ data, loading }) {
     if (!item.execution_id || !orgName) return;
     const typeConfig = TYPE_CONFIG[item.type] || TYPE_CONFIG.workflow;
     navigate(`/${orgName}/logs/${typeConfig.logType}/${item.execution_id}`, {
-      state: { from: "metrics" },
+      state: { from: "dashboard" },
     });
   };
 
