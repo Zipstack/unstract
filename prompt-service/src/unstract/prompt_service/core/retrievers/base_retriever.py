@@ -25,8 +25,7 @@ class BaseRetriever:
         self.prompt = prompt
         self.doc_id = doc_id
         self.top_k = top_k
-        self.llm = llm if llm else None
-        self._llama_index_llm: RetrieverLLM | None = None
+        self.llm: RetrieverLLM | None = _get_llm(llm)
 
     @property
     def llama_index_llm(self) -> RetrieverLLM | None:
