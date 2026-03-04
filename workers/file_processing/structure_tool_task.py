@@ -590,9 +590,9 @@ def _write_tool_result(
         else:
             existing["tool_metadata"].append(tool_meta_entry)
 
-        existing["total_elapsed_time"] = existing.get(
-            "total_elapsed_time", 0.0
-        ) + elapsed_time
+        existing["total_elapsed_time"] = (
+            existing.get("total_elapsed_time", 0.0) + elapsed_time
+        )
 
         # Add tool result
         existing["tool_result"] = data
