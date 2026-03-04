@@ -97,7 +97,7 @@ def _emit_error(
 #
 # These are lightweight callbacks invoked by Celery `link` / `link_error`
 # after the executor worker finishes.  They run on the backend
-# (celery_prompt_studio queue) and do only post-ORM writes + socket
+# (prompt_studio_callback queue) and do only post-ORM writes + socket
 # emission — no heavy computation.
 # ------------------------------------------------------------------
 
@@ -171,6 +171,13 @@ def ide_index_complete(
         return result
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
+        # Clear the indexing flag so subsequent requests are not blocked
+        try:
+            DocumentIndexingService.remove_document_indexing(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            )
+        except Exception:
+            logger.exception("Failed to clear indexing flag for %s", doc_id_key)
         _emit_error(
             log_events_id,
             executor_task_id,

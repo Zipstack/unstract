@@ -32,7 +32,7 @@ class CeleryConfig:
 
     task_acks_late = True
 
-    # Prompt Studio IDE tasks run on the default "celery" queue.
-    # The callback tasks (ide_*) are sub-second ORM writes + Socket.IO
-    # emits. The legacy tasks are kept for backward compatibility.
-    # No explicit routing needed — all go to default "celery" queue.
+    # Prompt Studio IDE callback tasks (ide_index_complete, ide_prompt_complete, etc.)
+    # run on the "prompt_studio_callback" queue, processed by a dedicated Django
+    # backend Celery worker (worker-prompt-studio-callback in docker-compose).
+    # These are sub-second ORM writes + Socket.IO emits after executor completion.
