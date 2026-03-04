@@ -38,6 +38,12 @@ logger = logging.getLogger(__name__)
 class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
+    notification_resource_name_field = "connector_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.CONNECTOR.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
         if self.action in ["update", "destroy", "partial_update"]:
