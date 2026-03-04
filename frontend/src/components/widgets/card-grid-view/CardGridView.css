@@ -1,0 +1,1152 @@
+/* CardGridView - Responsive Grid Layout */
+.card-grid-view {
+  width: 60%;
+  min-width: 700px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px 10px 40px 10px;
+}
+
+.card-grid-row {
+  margin: 0 !important;
+  row-gap: 16px;
+}
+
+/* CardItem - Individual Card Styling */
+.card-grid-item {
+  height: 100%;
+  transition: all 0.2s ease;
+  border-radius: 8px;
+}
+
+.card-grid-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.card-grid-item .ant-card-head {
+  min-height: auto;
+  padding: 12px 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.card-grid-item .ant-card-head-title {
+  padding: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.card-grid-item .ant-card-extra {
+  padding: 0;
+}
+
+.card-grid-item .ant-card-body {
+  padding: 16px;
+}
+
+/* Card Header */
+.card-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.card-item-title-section {
+  flex: 1;
+  min-width: 0;
+}
+
+.card-item-title {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-item-subtitle {
+  display: block;
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Card Sections */
+.card-section {
+  margin-top: 12px;
+}
+
+.card-section:first-child {
+  margin-top: 0;
+}
+
+.card-section-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+/* Card Fields */
+.card-field-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.card-field-icon img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.card-field-content {
+  min-width: 0;
+}
+
+.card-field-label {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-field-value {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Connector display (source/destination) */
+.card-connector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-connector-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.card-connector-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.card-connector-name {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Status Pills */
+.card-status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.card-status-success {
+  background-color: #f6ffed;
+  color: #237804;
+  border: 1px solid #b7eb8f;
+}
+
+.card-status-failure,
+.card-status-failed {
+  background-color: #fff2f0;
+  color: #cf1322;
+  border: 1px solid #ffccc7;
+}
+
+.card-status-processing,
+.card-status-running {
+  background-color: #e6f7ff;
+  color: #096dd9;
+  border: 1px solid #91d5ff;
+}
+
+.card-status-pending,
+.card-status-unknown {
+  background-color: #fafafa;
+  color: rgba(0, 0, 0, 0.55);
+  border: 1px solid #d9d9d9;
+}
+
+/* Expanded Content */
+.card-expanded-content {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+  animation: cardExpandAnimation 0.2s ease-out;
+}
+
+@keyframes cardExpandAnimation {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Loading Skeleton */
+.card-skeleton-row {
+  margin: 0 !important;
+}
+
+.card-skeleton-item .ant-card-body {
+  padding: 16px;
+}
+
+/* Empty State */
+.card-grid-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+  padding: 24px;
+}
+
+/* Action Menu */
+.card-action-menu {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.card-action-menu:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .card-field {
+    width: 100%;
+  }
+}
+
+/* ==============================
+   List Mode Card Layout
+   ============================== */
+
+/* List mode card item - full width horizontal layout */
+.card-grid-item.card-list-mode {
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.card-grid-item.card-list-mode .ant-card-body {
+  padding: 0;
+}
+
+/* Card content container */
+.card-list-content {
+  position: relative;
+  width: 100%;
+}
+
+/* Actions at top-right (absolute position) */
+.card-list-actions-absolute {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  z-index: 1;
+}
+
+/* 2-column layout */
+.card-list-two-column {
+  display: flex;
+  gap: 48px;
+  padding: 16px 180px 16px 16px;
+  align-items: end;
+  justify-content: center;
+}
+
+/* Title section - contains name and description */
+.card-list-title-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Description subtext styling */
+.card-list-description {
+  font-size: 13px;
+  color: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px;
+}
+
+/* Single column layout - title, connectors, meta stacked vertically */
+.card-list-single-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 180px 16px 16px;
+}
+
+.card-list-info-column {
+  flex: 0 0 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-list-connectors-column {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+/* Stack meta rows vertically */
+.card-list-meta-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Workflow link - styled with icon */
+.card-list-workflow-link {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
+}
+
+.card-list-workflow-link:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.card-list-workflow-link-icon {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.card-list-name {
+  font-family: var(--font-family);
+  font-size: 16px;
+  font-weight: var(--font-weight-600);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 300px;
+}
+
+/* Status Badges Container */
+.status-badges-container {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Status Badges - AntD Tag for Last 5 runs */
+.status-badge,
+.status-badge.ant-tag {
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font-family);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: default;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+  white-space: nowrap;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.status-badge:hover,
+.status-badge.ant-tag:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* Clickable status badges - AntD Tag with click handler */
+.status-badge.status-badge-clickable,
+.status-badge.ant-tag.status-badge-clickable {
+  cursor: pointer;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.status-badge.status-badge-clickable:hover,
+.status-badge.ant-tag.status-badge-clickable:hover {
+  transform: scale(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.status-badge.status-badge-clickable:focus-visible,
+.status-badge.ant-tag.status-badge-clickable:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+}
+
+/* Status tooltip styling */
+.status-tooltip-content {
+  font-size: 11px;
+}
+
+.status-tooltip-counts {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.status-tooltip-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-tooltip-count.success {
+  color: #52c41a;
+}
+
+.status-tooltip-count.error {
+  color: #ff4242;
+}
+
+.status-tooltip-timestamp {
+  margin-bottom: 2px;
+}
+
+.status-tooltip-hint {
+  margin-top: 4px;
+  opacity: 0.8;
+}
+
+/* Override antd Typography color inside dark tooltips */
+.status-tooltip-content .ant-typography {
+  color: inherit;
+}
+
+/* Preserve icon colors inside dark tooltip background */
+.status-tooltip-count.success .anticon {
+  color: #52c41a;
+}
+
+.status-tooltip-count.error .anticon {
+  color: #ff4242;
+}
+
+/* Meta row with label/value pattern - VERTICAL STACKING */
+.card-list-meta-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--font-family);
+}
+
+/* Status row - full width below 2-column layout */
+.card-list-status-row {
+  margin-top: 8px;
+}
+
+.card-list-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 200px;
+}
+
+/* Meta item labels - light grey, sentence case with icons */
+.card-list-meta-label {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.55);
+  letter-spacing: 0.3px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 90px;
+}
+
+.card-list-meta-label .anticon {
+  font-size: 14px;
+}
+
+.card-list-meta-icon {
+  width: 14px;
+  height: 14px;
+  vertical-align: middle;
+}
+
+/* Meta item values - dark color */
+.card-list-meta-value {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  font-weight: 400;
+}
+
+/* Connector flow display - VERTICAL STACKING */
+.connector-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.connector-flow-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Clickable connector styling */
+.connector-flow-clickable {
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 6px;
+  transition: background 0.2s ease;
+}
+
+.connector-flow-clickable:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+/* Larger connector icons */
+.connector-flow-icon {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+
+.connector-flow-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Connector text container */
+.connector-flow-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+/* Connector instance name - user-set name, prominent */
+.connector-flow-instance-name {
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}
+
+/* Connector type name - smaller subtext */
+.connector-flow-type-name {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+/* Legacy connector name style (fallback) */
+.connector-flow-name {
+  font-family: var(--font-family);
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+  white-space: nowrap;
+}
+
+/* Hide arrow - no longer used in vertical layout */
+.connector-flow-arrow {
+  display: none;
+}
+
+/* Connector tooltip styling */
+.connector-tooltip {
+  text-align: center;
+}
+
+.connector-tooltip-hint {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+/* Card list actions */
+.card-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Action box - white bordered container for action icons */
+.card-list-action-box {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 12px;
+  border: 1px solid #e8e8e8;
+  border-radius: 6px;
+  background: #fff;
+}
+
+/* Icon action group - Edit, Share, Delete */
+.action-icon-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+/* Action icon buttons - supports both native button and AntD Button */
+.action-icon-btn,
+.action-icon-btn.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: #092c4c;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    transform 0.15s ease;
+  padding: 4px;
+  border: none;
+  outline: none;
+  height: auto;
+  width: auto;
+}
+
+.action-icon-btn:hover,
+.action-icon-btn.ant-btn:hover {
+  transform: scale(1.1);
+  color: #092c4c;
+}
+
+.action-icon-btn:focus-visible,
+.action-icon-btn.ant-btn:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.action-icon-btn.edit-icon:hover,
+.action-icon-btn.edit-icon.ant-btn:hover {
+  color: #0958d9;
+}
+
+.action-icon-btn.share-icon:hover,
+.action-icon-btn.share-icon.ant-btn:hover {
+  color: #0958d9;
+}
+
+.action-icon-btn.delete-icon:hover,
+.action-icon-btn.delete-icon.ant-btn:hover {
+  color: #cf1322;
+}
+
+/* List mode expanded content - hidden by default, shown on hover */
+.card-list-expanded {
+  display: flex;
+  gap: 24px;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  padding-top: 0;
+  margin-top: 0;
+  border-top: none;
+  transition:
+    max-height 0.3s ease,
+    opacity 0.2s ease,
+    padding 0.2s ease,
+    margin 0.2s ease;
+}
+
+/* Expanded state - triggered via chevron toggle */
+.card-list-expanded.expanded {
+  max-height: 500px;
+  opacity: 1;
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid #f0f0f0;
+}
+
+/* Chevron toggle button - supports both native button and AntD Button */
+.card-expand-chevron,
+.card-expand-chevron.ant-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: rgba(0, 0, 0, 0.55);
+  transition: all 0.2s ease;
+  font-size: 12px;
+  background: none;
+  border: none;
+  outline: none;
+  height: auto;
+  width: auto;
+}
+
+.card-expand-chevron:hover,
+.card-expand-chevron.ant-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.card-expand-chevron:focus-visible,
+.card-expand-chevron.ant-btn:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+}
+
+/* Expanded content wrapper */
+.card-list-expanded-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* Info fields row */
+.card-list-expanded-info {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.card-list-expanded-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-list-expanded-label {
+  font-family: var(--font-family);
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+  letter-spacing: 0.3px;
+}
+
+.card-list-expanded-value {
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* Expanded view action buttons */
+.card-list-expanded-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-top: 8px;
+  justify-content: center;
+}
+
+.card-list-expanded-actions .ant-btn {
+  font-size: 13px;
+}
+
+/* Responsive adjustments for list mode */
+@media (max-width: 992px) {
+  .card-list-two-column {
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-right: 180px;
+  }
+
+  .card-list-single-column {
+    padding-right: 180px;
+  }
+
+  .card-list-connectors-column {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .card-list-two-column {
+    padding-right: 150px;
+  }
+
+  .card-list-single-column {
+    padding-right: 150px;
+  }
+
+  .connector-flow-icon {
+    width: 24px;
+    height: 24px;
+  }
+
+  .connector-flow-instance-name {
+    font-size: 12px;
+  }
+
+  .connector-flow-type-name {
+    font-size: 10px;
+  }
+
+  .card-list-meta-row {
+    gap: 12px;
+  }
+
+  .card-list-meta-label {
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 576px) {
+  .card-list-two-column {
+    padding-right: 120px;
+  }
+
+  .card-list-single-column {
+    padding-right: 120px;
+  }
+
+  .connector-flow-text {
+    display: none;
+  }
+
+  .card-list-name {
+    max-width: 200px;
+  }
+
+  .card-list-expanded.expanded {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .card-list-workflow-link {
+    font-size: 11px;
+  }
+
+  .action-icon-group {
+    gap: 10px;
+  }
+
+  .action-icon-btn {
+    font-size: 16px;
+  }
+}
+
+/* Style Ant Design copyable icon to be grey */
+.card-list-expanded-value .ant-typography-copy {
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.card-list-expanded-value .ant-typography-copy:hover {
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* Outlined copy button style - matches Execution Logs page */
+.copy-btn-outlined {
+  border: 1px solid #d9d9d9;
+  background: #fff;
+  color: rgba(0, 0, 0, 0.65);
+  margin-left: 8px;
+  padding: 2px 6px;
+}
+
+.copy-btn-outlined:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+/* Responsive override for card-grid-view on smaller screens */
+@media (max-width: 900px) {
+  .card-grid-view {
+    width: 100%;
+    min-width: auto;
+    padding: 16px 8px 40px 8px;
+  }
+}
+
+/* Pagination Controls */
+.card-grid-pagination {
+  margin-top: 8px;
+  padding: 16px 0;
+}
+
+/* ==============================
+   Row-Based Card Layout (v2 Redesign)
+   No expand/collapse - all content visible
+   ============================== */
+
+/* Header row: Name left, actions right */
+.card-list-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+  background: #fafafa;
+  border-radius: 8px 8px 0 0;
+}
+
+/* Row-based card layout - each field is its own row */
+.card-list-row-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0 16px;
+}
+
+/* Each field row: label left, value right */
+.card-list-field-row {
+  padding: 14px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+
+.card-list-field-row:last-child {
+  border-bottom: none;
+}
+
+/* Label column - fixed width, uppercase */
+.card-list-field-label {
+  width: 120px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* Value column with icon */
+.card-list-field-value {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* Small icons (anticons, meta icons) get same width as connector icons */
+.card-list-field-value > .anticon,
+.card-list-field-value > .card-list-meta-icon {
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+/* Connector text with instance name and type subtext */
+.card-list-field-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-list-field-instance-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.card-list-field-subtext {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+/* Footer row - inline items */
+.card-list-footer-row {
+  padding: 14px 16px 0px 16px;
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+/* Footer icons - same width treatment as field icons */
+.card-list-footer-item > .anticon {
+  width: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+.card-list-footer-label {
+  width: 80px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+/* API Endpoint wrapper - grey background like footer */
+.card-list-endpoint-wrapper {
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 0 0 8px 8px;
+}
+
+/* API Endpoint row - antd Card provides border/bg/radius */
+.card-list-endpoint-row.ant-card {
+  border-color: #e8e8e8;
+  border-radius: 6px;
+}
+
+.card-list-endpoint-row.ant-card .ant-card-body {
+  padding: 12px 16px;
+}
+
+.card-list-endpoint-row .card-list-field-label {
+  width: auto;
+  min-width: 100px;
+}
+
+.card-list-endpoint-value {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-list-endpoint-value a,
+.card-list-endpoint-value .ant-typography-link {
+  color: rgba(0, 0, 0, 0.85);
+  text-decoration: none;
+  font-size: 13px;
+  font-family: monospace;
+}
+
+.card-list-endpoint-value a:hover,
+.card-list-endpoint-value .ant-typography-link:hover {
+  color: rgba(0, 0, 0, 0.85);
+}
+
+/* Kebab menu button - supports both native button and AntD Button */
+.card-kebab-menu,
+.card-kebab-menu.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  background: none;
+  border: none;
+  outline: none;
+  height: auto;
+  width: auto;
+}
+
+.card-kebab-menu:hover,
+.card-kebab-menu.ant-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: rgba(0, 0, 0, 0.85);
+}
+
+.card-kebab-menu:focus-visible,
+.card-kebab-menu.ant-btn:focus-visible {
+  outline: 2px solid #1890ff;
+  outline-offset: 2px;
+}
+
+/* Workflow link in row layout */
+.card-list-workflow-link-row {
+  font-size: 14px;
+  color: rgba(0, 0, 0, 0.85);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: color 0.2s ease;
+}
+
+.card-list-workflow-link-row:hover {
+  color: #1677ff;
+}
+
+.card-list-workflow-link-row .anticon {
+  font-size: 11px;
+  color: rgba(0, 0, 0, 0.55);
+}
+
+/* Responsive adjustments for row layout */
+@media (max-width: 768px) {
+  .card-list-header-row {
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .card-list-field-label {
+    width: 100px;
+    font-size: 11px;
+  }
+
+  .card-list-footer-row {
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  .card-list-endpoint-wrapper {
+    padding: 12px;
+  }
+
+  .card-list-endpoint-row.ant-card .ant-card-body {
+    padding: 8px 12px;
+  }
+}
+
+@media (max-width: 576px) {
+  .card-list-field-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .card-list-field-label {
+    width: auto;
+  }
+}

@@ -24,7 +24,7 @@ import {
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -91,12 +91,14 @@ ActionColumnHeader.propTypes = {
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
   const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { sessionDetails } = useSessionStore();
   const { getUrl } = useRequestUrl();
   const copyToClipboard = useCopyToClipboard();
+  const cameFromDashboard = location.state?.from === "dashboard";
 
   const [executionDetails, setExecutionDetails] = useState();
   const [executionFiles, setExecutionFiles] = useState();
@@ -462,7 +464,13 @@ const DetailedLogs = () => {
             type="text"
             shape="circle"
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
+            onClick={() =>
+              navigate(
+                cameFromDashboard
+                  ? `/${sessionDetails?.orgName}/dashboard`
+                  : `/${sessionDetails?.orgName}/logs`,
+              )
+            }
           />
           {type} Execution ID {id}
           <Button
