@@ -890,13 +890,13 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         if params["end_date"] - params["start_date"] > max_range:
             params["start_date"] = params["end_date"] - max_range
 
-        deployment_type = request.query_params.get(
-            "deployment_type", "API"
-        ).upper()
+        deployment_type = request.query_params.get("deployment_type", "API").upper()
         if deployment_type not in self.VALID_DEPLOYMENT_TYPES:
             return Response(
-                {"error": f"Invalid deployment_type. Must be one of: "
-                 f"{', '.join(sorted(self.VALID_DEPLOYMENT_TYPES))}"},
+                {
+                    "error": f"Invalid deployment_type. Must be one of: "
+                    f"{', '.join(sorted(self.VALID_DEPLOYMENT_TYPES))}"
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

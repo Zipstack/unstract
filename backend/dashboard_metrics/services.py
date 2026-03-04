@@ -896,9 +896,7 @@ class MetricsQueryService:
                 we_id = file_exec_map.get(row["run_id"])
                 dep_id = exec_to_dep.get(we_id) if we_id else None
                 if dep_id:
-                    dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (
-                        row["pages"] or 0
-                    )
+                    dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (row["pages"] or 0)
 
         # Step 5: Aggregate token usage by deployment
         dep_agg: dict[str, dict[str, Any]] = {}
@@ -953,9 +951,7 @@ class MetricsQueryService:
                         else None
                     ),
                     "last_execution_date": (
-                        stats["last_date"].isoformat()
-                        if stats.get("last_date")
-                        else None
+                        stats["last_date"].isoformat() if stats.get("last_date") else None
                     ),
                 }
             )
