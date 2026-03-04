@@ -73,12 +73,12 @@ function formatValue(value) {
  */
 function formatMetricName(metric) {
   return metric
-    .replace(/_/g, " ")
+    .replaceAll("_", " ")
     .replace(/\b\w/g, (l) => l.toUpperCase())
-    .replace(/\bApi\b/g, "API")
-    .replace(/\bEtl\b/g, "ETL")
-    .replace(/\bLlm\b/g, "LLM")
-    .replace(/\bHitl\b/g, "HITL");
+    .replaceAll("Api", "API")
+    .replaceAll("Etl", "ETL")
+    .replaceAll("Llm", "LLM")
+    .replaceAll("Hitl", "HITL");
 }
 
 /**

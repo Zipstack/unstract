@@ -17,13 +17,13 @@ from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
+from unstract.core.data_models import ExecutionStatus
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
-from unstract.core.data_models import ExecutionStatus
 
 
 def _get_hitl_queue_model():
@@ -735,39 +735,14 @@ class MetricsQueryService:
         return results
 
     @staticmethod
-    def get_deployment_usage(
-        organization_id: str,
-        deployment_type: str,
-        start_date: datetime,
-        end_date: datetime,
-    ) -> list[dict[str, Any]]:
-        """Get LLM usage grouped by deployment.
-
-        Joins workflow_execution -> deployment table -> usage to aggregate
-        token usage per deployment. Supports 4 deployment types:
-        - API: workflow_execution.pipeline_id -> api_deployment
-        - ETL: workflow_execution.pipeline_id -> pipeline (type=ETL)
-        - TASK: workflow_execution.pipeline_id -> pipeline (type=TASK)
-        - WF: workflow_execution with no pipeline (direct workflow runs)
-
-        Also includes execution status counts, pages processed (via
-        page_usage), and execution date range per deployment.
-
-        Args:
-            organization_id: Organization ID (PK)
-            deployment_type: One of API, ETL, TASK, WF
-            start_date: Start of date range
-            end_date: End of date range
+    def _get_deployment_names(
+        organization_id: str, deployment_type: str
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        """Get deployment ID->name mapping and execution filter for a type.
 
         Returns:
-            List of dicts ordered by total_tokens descending, each with:
-            deployment_id, deployment_name, total_tokens, total_cost,
-            call_count, execution_count, completed_executions,
-            failed_executions, total_pages_processed,
-            first_execution_date, last_execution_date.
+            (dep_names, exec_filter) or ({}, {}) if type is invalid.
         """
-        # Step 1: Get deployment ID -> name mapping based on type
-        # Use _base_manager to bypass DefaultOrganizationManagerMixin
         if deployment_type == "API":
             dep_list = list(
                 APIDeployment._base_manager.filter(
@@ -794,33 +769,18 @@ class MetricsQueryService:
                 "workflow_id__in": [d[0] for d in dep_list],
             }
         else:
-            return []
+            return {}, {}
 
         dep_names = {str(dep_id): name for dep_id, name in dep_list}
+        return dep_names, exec_filter
 
-        if not dep_names:
-            return []
-
-        # Step 2: Get executions with status and timestamp
-        # Indexes used: (pipeline_id, -created_at) or (workflow_id, -created_at)
-        dep_field = "workflow_id" if deployment_type == "WF" else "pipeline_id"
-
-        exec_rows = list(
-            WorkflowExecution.objects.filter(
-                workflow__organization_id=organization_id,
-                created_at__gte=start_date,
-                created_at__lte=end_date,
-                **exec_filter,
-            ).values("id", dep_field, "status", "created_at")
-        )
-
-        if not exec_rows:
-            return []
-
-        # Build mapping and aggregate execution-level stats by deployment
+    @staticmethod
+    def _build_exec_stats(
+        exec_rows: list[dict], dep_field: str
+    ) -> tuple[dict[str, str], dict[str, dict[str, Any]]]:
+        """Build exec->deployment mapping and per-deployment stats."""
         exec_to_dep: dict[str, str] = {}
         dep_exec_stats: dict[str, dict[str, Any]] = {}
-
         completed_status = str(ExecutionStatus.COMPLETED)
         error_status = str(ExecutionStatus.ERROR)
 
@@ -853,14 +813,121 @@ class MetricsQueryService:
                 if stats["last_date"] is None or ts > stats["last_date"]:
                     stats["last_date"] = ts
 
-        # Step 3: Query LLM usage for these executions
-        # Index used: usage.execution_id
-        execution_id_list = list(exec_to_dep.keys())
+        return exec_to_dep, dep_exec_stats
 
+    @staticmethod
+    def _get_pages_by_deployment(
+        exec_rows: list[dict], exec_to_dep: dict[str, str]
+    ) -> dict[str, int]:
+        """Query pages processed, aggregated by deployment."""
+        file_exec_map = {}
+        for fid, weid in WorkflowFileExecution.objects.filter(
+            workflow_execution_id__in=[e["id"] for e in exec_rows],
+        ).values_list("id", "workflow_execution_id"):
+            file_exec_map[str(fid)] = str(weid)
+
+        dep_pages: dict[str, int] = {}
+        if not file_exec_map:
+            return dep_pages
+
+        page_rows = (
+            PageUsage.objects.filter(
+                run_id__in=list(file_exec_map.keys()),
+            )
+            .values("run_id")
+            .annotate(pages=Sum("pages_processed"))
+        )
+        for row in page_rows:
+            we_id = file_exec_map.get(row["run_id"])
+            dep_id = exec_to_dep.get(we_id) if we_id else None
+            if dep_id:
+                dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (
+                    row["pages"] or 0
+                )
+        return dep_pages
+
+    @staticmethod
+    def _aggregate_usage_by_deployment(
+        usage_rows: list[dict], exec_to_dep: dict[str, str]
+    ) -> dict[str, dict[str, Any]]:
+        """Aggregate LLM token usage by deployment."""
+        dep_agg: dict[str, dict[str, Any]] = {}
+        for row in usage_rows:
+            dep_id = exec_to_dep.get(row["execution_id"])
+            if not dep_id:
+                continue
+            if dep_id not in dep_agg:
+                dep_agg[dep_id] = {
+                    "total_tokens": 0,
+                    "total_cost": 0,
+                    "call_count": 0,
+                }
+            agg = dep_agg[dep_id]
+            agg["total_tokens"] += row["total_tokens"] or 0
+            agg["total_cost"] += row["total_cost"] or 0
+            agg["call_count"] += row["call_count"] or 0
+        return dep_agg
+
+    @staticmethod
+    def get_deployment_usage(
+        organization_id: str,
+        deployment_type: str,
+        start_date: datetime,
+        end_date: datetime,
+    ) -> list[dict[str, Any]]:
+        """Get LLM usage grouped by deployment.
+
+        Joins workflow_execution -> deployment table -> usage to aggregate
+        token usage per deployment. Supports 4 deployment types:
+        - API: workflow_execution.pipeline_id -> api_deployment
+        - ETL: workflow_execution.pipeline_id -> pipeline (type=ETL)
+        - TASK: workflow_execution.pipeline_id -> pipeline (type=TASK)
+        - WF: workflow_execution with no pipeline (direct workflow runs)
+
+        Also includes execution status counts, pages processed (via
+        page_usage), and execution date range per deployment.
+
+        Args:
+            organization_id: Organization ID (PK)
+            deployment_type: One of API, ETL, TASK, WF
+            start_date: Start of date range
+            end_date: End of date range
+
+        Returns:
+            List of dicts ordered by total_tokens descending.
+        """
+        # Step 1: Get deployment names and execution filter
+        dep_names, exec_filter = MetricsQueryService._get_deployment_names(
+            organization_id, deployment_type
+        )
+        if not dep_names:
+            return []
+
+        # Step 2: Get executions with status and timestamp
+        dep_field = (
+            "workflow_id" if deployment_type == "WF" else "pipeline_id"
+        )
+        exec_rows = list(
+            WorkflowExecution.objects.filter(
+                workflow__organization_id=organization_id,
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+                **exec_filter,
+            ).values("id", dep_field, "status", "created_at")
+        )
+        if not exec_rows:
+            return []
+
+        # Step 3: Build exec->deployment mapping and stats
+        exec_to_dep, dep_exec_stats = (
+            MetricsQueryService._build_exec_stats(exec_rows, dep_field)
+        )
+
+        # Step 4: Query LLM usage
         usage_rows = list(
             _get_usage_queryset()
             .filter(
-                execution_id__in=execution_id_list,
+                execution_id__in=list(exec_to_dep.keys()),
                 usage_type="llm",
                 created_at__gte=start_date,
                 created_at__lte=end_date,
@@ -873,62 +940,20 @@ class MetricsQueryService:
             )
         )
 
-        # Step 4: Query pages processed
-        # Join: workflow_file_execution (FK index) -> page_usage (run_id index)
-        # Build file_exec -> workflow_exec mapping
-        file_exec_map = {}
-        for fid, weid in WorkflowFileExecution.objects.filter(
-            workflow_execution_id__in=[e["id"] for e in exec_rows],
-        ).values_list("id", "workflow_execution_id"):
-            file_exec_map[str(fid)] = str(weid)
+        # Step 5: Query pages and aggregate usage
+        dep_pages = MetricsQueryService._get_pages_by_deployment(
+            exec_rows, exec_to_dep
+        )
+        dep_agg = MetricsQueryService._aggregate_usage_by_deployment(
+            usage_rows, exec_to_dep
+        )
 
-        # Aggregate pages per file execution
-        dep_pages: dict[str, int] = {}
-        if file_exec_map:
-            page_rows = (
-                PageUsage.objects.filter(
-                    run_id__in=list(file_exec_map.keys()),
-                )
-                .values("run_id")
-                .annotate(pages=Sum("pages_processed"))
-            )
-            for row in page_rows:
-                we_id = file_exec_map.get(row["run_id"])
-                dep_id = exec_to_dep.get(we_id) if we_id else None
-                if dep_id:
-                    dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (row["pages"] or 0)
-
-        # Step 5: Aggregate token usage by deployment
-        dep_agg: dict[str, dict[str, Any]] = {}
-        for row in usage_rows:
-            dep_id = exec_to_dep.get(row["execution_id"])
-            if not dep_id:
-                continue
-            if dep_id not in dep_agg:
-                dep_agg[dep_id] = {
-                    "total_tokens": 0,
-                    "total_cost": 0,
-                    "call_count": 0,
-                    "execution_ids": set(),
-                }
-            agg = dep_agg[dep_id]
-            agg["total_tokens"] += row["total_tokens"] or 0
-            agg["total_cost"] += row["total_cost"] or 0
-            agg["call_count"] += row["call_count"] or 0
-            agg["execution_ids"].add(row["execution_id"])
+        # Ensure all deployments with executions appear in results
+        empty_agg = {"total_tokens": 0, "total_cost": 0, "call_count": 0}
+        for dep_id in dep_exec_stats:
+            dep_agg.setdefault(dep_id, dict(empty_agg))
 
         # Step 6: Build results sorted by total_tokens descending
-        # Include deployments that have executions even if no LLM usage
-        all_dep_ids = set(dep_exec_stats.keys())
-        for dep_id in all_dep_ids:
-            if dep_id not in dep_agg:
-                dep_agg[dep_id] = {
-                    "total_tokens": 0,
-                    "total_cost": 0,
-                    "call_count": 0,
-                    "execution_ids": set(),
-                }
-
         results = []
         for dep_id, agg in sorted(
             dep_agg.items(), key=lambda x: x[1]["total_tokens"], reverse=True
@@ -951,7 +976,9 @@ class MetricsQueryService:
                         else None
                     ),
                     "last_execution_date": (
-                        stats["last_date"].isoformat() if stats.get("last_date") else None
+                        stats["last_date"].isoformat()
+                        if stats.get("last_date")
+                        else None
                     ),
                 }
             )

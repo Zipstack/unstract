@@ -110,7 +110,8 @@ function evictExpiredCache() {
         if (!expiry || Date.now() > expiry) {
           localStorage.removeItem(k);
         }
-      } catch (_e) {
+      } catch {
+        // Malformed cache entry — remove it
         localStorage.removeItem(k);
       }
     });

@@ -329,14 +329,14 @@ function MetricsDashboard() {
                     value: [dayjs().subtract(30, "day"), dayjs()],
                   },
                   // 90-day preset only for overview (deployment usage capped at 30 days)
-                  ...(activeTab !== "llm-usage"
-                    ? [
+                  ...(activeTab === "llm-usage"
+                    ? []
+                    : [
                         {
                           label: "Last 90 Days",
                           value: [dayjs().subtract(90, "day"), dayjs()],
                         },
-                      ]
-                    : []),
+                      ]),
                 ]}
               />
             )}
