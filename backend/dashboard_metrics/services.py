@@ -17,7 +17,6 @@ from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
-from unstract.core.data_models import ExecutionStatus
 from usage_v2.models import Usage
 from workflow_manager.execution.enum import ExecutionEntity
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -25,6 +24,7 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
+from unstract.core.data_models import ExecutionStatus
 
 
 def _get_hitl_queue_model():
@@ -748,9 +748,7 @@ class MetricsQueryService:
             (dep_names, exec_filter) or ({}, {}) if type is invalid.
         """
         if deployment_type == ExecutionEntity.API.value:
-            dep_list = list(
-                APIDeployment.objects.all().values_list("id", "display_name")
-            )
+            dep_list = list(APIDeployment.objects.all().values_list("id", "display_name"))
             exec_filter = {"pipeline_id__in": [d[0] for d in dep_list]}
         elif deployment_type in (
             ExecutionEntity.ETL.value,
@@ -763,9 +761,7 @@ class MetricsQueryService:
             )
             exec_filter = {"pipeline_id__in": [d[0] for d in dep_list]}
         elif deployment_type == ExecutionEntity.WORKFLOW.value:
-            dep_list = list(
-                Workflow.objects.all().values_list("id", "workflow_name")
-            )
+            dep_list = list(Workflow.objects.all().values_list("id", "workflow_name"))
             exec_filter = {
                 "pipeline_id__isnull": True,
                 "workflow_id__in": [d[0] for d in dep_list],
