@@ -19,12 +19,7 @@ import {
 import PropTypes from "prop-types";
 import { useState } from "react";
 
-import {
-  ApiDeployments,
-  ETLIcon,
-  Task,
-  Workflows,
-} from "../../assets/index";
+import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";
 
 import "./MetricsDashboard.css";
