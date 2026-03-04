@@ -20,6 +20,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from utils.user_context import UserContext
+from workflow_manager.execution.enum import ExecutionEntity
 
 from .cache import (
     cache_metrics_response,
@@ -860,7 +861,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         data = MetricsQueryService.get_recent_activity(org_id, limit)
         return Response({"activity": data})
 
-    VALID_DEPLOYMENT_TYPES = {"API", "ETL", "TASK", "WF"}
+    VALID_DEPLOYMENT_TYPES = {e.value for e in ExecutionEntity}
 
     @action(detail=False, methods=["get"], url_path="workflow-token-usage")
     @cache_metrics_response(endpoint="workflow_token_usage")
@@ -890,7 +891,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         if params["end_date"] - params["start_date"] > max_range:
             params["start_date"] = params["end_date"] - max_range
 
-        deployment_type = request.query_params.get("deployment_type", "API").upper()
+        deployment_type = request.query_params.get(
+            "deployment_type", ExecutionEntity.API.value
+        ).upper()
         if deployment_type not in self.VALID_DEPLOYMENT_TYPES:
             return Response(
                 {

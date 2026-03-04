@@ -18,6 +18,7 @@ from django.db.models import CharField, Count, OuterRef, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
+from workflow_manager.execution.enum import ExecutionEntity
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -743,14 +744,17 @@ class MetricsQueryService:
         Returns:
             (dep_names, exec_filter) or ({}, {}) if type is invalid.
         """
-        if deployment_type == "API":
+        if deployment_type == ExecutionEntity.API.value:
             dep_list = list(
                 APIDeployment._base_manager.filter(
                     organization_id=organization_id
                 ).values_list("id", "display_name")
             )
             exec_filter = {"pipeline_id__in": [d[0] for d in dep_list]}
-        elif deployment_type in ("ETL", "TASK"):
+        elif deployment_type in (
+            ExecutionEntity.ETL.value,
+            ExecutionEntity.TASK.value,
+        ):
             dep_list = list(
                 Pipeline._base_manager.filter(
                     organization_id=organization_id,
@@ -758,7 +762,7 @@ class MetricsQueryService:
                 ).values_list("id", "pipeline_name")
             )
             exec_filter = {"pipeline_id__in": [d[0] for d in dep_list]}
-        elif deployment_type == "WF":
+        elif deployment_type == ExecutionEntity.WORKFLOW.value:
             dep_list = list(
                 Workflow._base_manager.filter(
                     organization_id=organization_id
@@ -902,7 +906,11 @@ class MetricsQueryService:
             return []
 
         # Step 2: Get executions with status and timestamp
-        dep_field = "workflow_id" if deployment_type == "WF" else "pipeline_id"
+        dep_field = (
+            "workflow_id"
+            if deployment_type == ExecutionEntity.WORKFLOW.value
+            else "pipeline_id"
+        )
         exec_rows = list(
             WorkflowExecution.objects.filter(
                 workflow__organization_id=organization_id,
