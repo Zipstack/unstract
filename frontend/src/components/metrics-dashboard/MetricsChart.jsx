@@ -72,7 +72,13 @@ function formatValue(value) {
  * @return {string} Human-readable metric name
  */
 function formatMetricName(metric) {
-  return metric.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+  return metric
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (l) => l.toUpperCase())
+    .replace(/\bApi\b/g, "API")
+    .replace(/\bEtl\b/g, "ETL")
+    .replace(/\bLlm\b/g, "LLM")
+    .replace(/\bHitl\b/g, "HITL");
 }
 
 /**
@@ -497,13 +503,13 @@ function HITLChart({ data, loading }) {
             />
             <Bar
               dataKey="hitl_reviews"
-              name="hitl_reviews"
+              name="HITL Reviews"
               fill={HITL_COLORS.hitl_reviews}
               radius={[4, 4, 0, 0]}
             />
             <Bar
               dataKey="hitl_completions"
-              name="hitl_completions"
+              name="HITL Completions"
               fill={HITL_COLORS.hitl_completions}
               radius={[4, 4, 0, 0]}
             />

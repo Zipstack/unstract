@@ -39,19 +39,6 @@ def _get_hitl_queue_model():
         return None
 
 
-def _get_hitl_queue_model():
-    """Get HITLQueue model if available (cloud-only).
-
-    Returns None on OSS where manual_review_v2 is not installed.
-    """
-    try:
-        from pluggable_apps.manual_review_v2.models import HITLQueue
-
-        return HITLQueue
-    except ImportError:
-        return None
-
-
 def _get_usage_queryset():
     """Get Usage queryset bypassing the organization context filter.
 

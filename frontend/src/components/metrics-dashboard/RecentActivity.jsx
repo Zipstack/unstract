@@ -119,7 +119,15 @@ function RecentActivity({ data, loading }) {
           return (
             <List.Item
               className="recent-activity-item recent-activity-clickable"
+              tabIndex={0}
+              role="button"
               onClick={() => handleActivityClick(item)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  handleActivityClick(item);
+                }
+              }}
             >
               <div className="recent-activity-content">
                 <div className="recent-activity-header">

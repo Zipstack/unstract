@@ -200,8 +200,8 @@ function MetricsDashboard() {
     },
   ];
 
-  // Cloud-only: add subscription usage tab when data is available
-  if (SubscriptionUsageTab && (subscriptionData || subscriptionLoading)) {
+  // Cloud-only: add subscription usage tab
+  if (SubscriptionUsageTab) {
     tabItems.push({
       key: "subscription",
       label: (

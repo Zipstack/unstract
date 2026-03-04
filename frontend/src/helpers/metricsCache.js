@@ -107,7 +107,7 @@ function evictExpiredCache() {
     keys.forEach((k) => {
       try {
         const { expiry } = JSON.parse(localStorage.getItem(k));
-        if (Date.now() > expiry) {
+        if (!expiry || Date.now() > expiry) {
           localStorage.removeItem(k);
         }
       } catch (_e) {
