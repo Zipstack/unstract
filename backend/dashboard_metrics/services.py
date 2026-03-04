@@ -779,40 +779,39 @@ class MetricsQueryService:
         """Build exec->deployment mapping and per-deployment stats."""
         exec_to_dep: dict[str, str] = {}
         dep_exec_stats: dict[str, dict[str, Any]] = {}
-        completed_status = ExecutionStatus.COMPLETED.value
-        error_status = ExecutionStatus.ERROR.value
+        status_counters = {
+            ExecutionStatus.COMPLETED.value: "completed",
+            ExecutionStatus.ERROR.value: "failed",
+        }
+
+        def _default_stats() -> dict[str, Any]:
+            return {
+                "total": 0,
+                "completed": 0,
+                "failed": 0,
+                "first_execution_at": None,
+                "last_execution_at": None,
+            }
 
         for e in exec_rows:
             exec_id = str(e["id"])
             dep_id = str(e[dep_field])
             exec_to_dep[exec_id] = dep_id
 
-            if dep_id not in dep_exec_stats:
-                dep_exec_stats[dep_id] = {
-                    "total": 0,
-                    "completed": 0,
-                    "failed": 0,
-                    "first_execution_at": None,
-                    "last_execution_at": None,
-                }
-            stats = dep_exec_stats[dep_id]
+            stats = dep_exec_stats.setdefault(dep_id, _default_stats())
             stats["total"] += 1
 
-            status = str(e["status"]) if e["status"] else ""
-            if status == completed_status:
-                stats["completed"] += 1
-            elif status == error_status:
-                stats["failed"] += 1
+            counter_key = status_counters.get(str(e["status"] or ""))
+            if counter_key:
+                stats[counter_key] += 1
 
             ts = e["created_at"]
-            if ts:
-                if (
-                    stats["first_execution_at"] is None
-                    or ts < stats["first_execution_at"]
-                ):
-                    stats["first_execution_at"] = ts
-                if stats["last_execution_at"] is None or ts > stats["last_execution_at"]:
-                    stats["last_execution_at"] = ts
+            if not ts:
+                continue
+            first = stats["first_execution_at"]
+            last = stats["last_execution_at"]
+            stats["first_execution_at"] = ts if first is None else min(first, ts)
+            stats["last_execution_at"] = ts if last is None else max(last, ts)
 
         return exec_to_dep, dep_exec_stats
 

@@ -74,7 +74,7 @@ function formatValue(value) {
 function formatMetricName(metric) {
   return metric
     .replaceAll("_", " ")
-    .replace(/\b\w/g, (l) => l.toUpperCase())
+    .replaceAll(/\b\w/g, (l) => l.toUpperCase())
     .replaceAll("Api", "API")
     .replaceAll("Etl", "ETL")
     .replaceAll("Llm", "LLM")
