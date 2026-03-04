@@ -86,7 +86,6 @@ class FliptClient:
         flag_key: str,
         entity_id: str | None = "unstract",
         context: dict | None = None,
-        namespace_key: str | None = None,
     ) -> dict:
         """Evaluate a variant feature flag for a given entity.
 
@@ -94,7 +93,6 @@ class FliptClient:
             flag_key: The key of the feature flag to evaluate
             entity_id: The ID of the entity for which to evaluate the flag
             context: Additional context for evaluation
-            namespace_key: The namespace to evaluate the flag in
 
         Returns:
             dict: {"match": bool, "variant_key": str, "variant_attachment": str,
@@ -107,12 +105,6 @@ class FliptClient:
             "variant_attachment": "",
             "segment_keys": [],
         }
-        if namespace_key is not None:
-            warnings.warn(
-                "namespace_key parameter is deprecated and will be ignored",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         if not self.service_available:
             logger.warning("Flipt service not available, returning default for all flags")
             return default_result
