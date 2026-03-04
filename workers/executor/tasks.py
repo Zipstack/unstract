@@ -108,4 +108,12 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
         context.request_id,
         result.success,
     )
-    return result.to_dict()
+
+    # Strip sensitive/bulky fields before returning via Celery result
+    # backend. Celery's trace logger prints the full return value, so
+    # customer document content must not appear in logs.
+    result_dict = result.to_dict()
+    metadata = result_dict.get("data", {}).get("metadata", {})
+    metadata.pop("extracted_text", None)
+    metadata.pop("context", None)
+    return result_dict
