@@ -131,7 +131,7 @@
 
 .login-right-section.default-light {
   background: #ffffff;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .login-right-section.default-light::before {
