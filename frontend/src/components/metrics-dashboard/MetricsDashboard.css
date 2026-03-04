@@ -157,6 +157,39 @@
   padding: 40px;
 }
 
+/* Dashboard Empty State */
+.metrics-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.metrics-empty-state-icon {
+  width: 120px;
+  height: 120px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+}
+
+.metrics-empty-state-title {
+  margin-bottom: 8px !important;
+  color: #262626;
+}
+
+.metrics-empty-state-text {
+  font-size: 14px;
+  line-height: 22px;
+  max-width: 360px;
+  margin-bottom: 24px;
+}
+
+.metrics-empty-state-actions {
+  margin-top: 8px;
+}
+
 /* Chart Components */
 .metrics-chart-card {
   height: 100%;

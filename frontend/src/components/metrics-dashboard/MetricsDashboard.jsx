@@ -4,6 +4,7 @@ import {
   DashboardOutlined,
   FileSearchOutlined,
   ReloadOutlined,
+  RocketOutlined,
   SlackOutlined,
   ThunderboltOutlined,
 } from "@ant-design/icons";
@@ -19,13 +20,16 @@ import {
 } from "antd";
 import dayjs from "dayjs";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
+import { EmptyPlaceholder } from "../../assets";
 import { evictExpiredCache } from "../../helpers/metricsCache";
 import {
   useMetricsOverview,
   useRecentActivity,
   useSubscriptionUsage,
 } from "../../hooks/useMetricsData";
+import { useSessionStore } from "../../store/session-store";
 import { DeploymentUsageTable } from "./LLMUsageTable";
 import { HITLChart, PagesChart, TrendAnalysisChart } from "./MetricsChart";
 import { MetricsSummary } from "./MetricsSummary";
@@ -59,6 +63,10 @@ const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 function MetricsDashboard() {
+  const navigate = useNavigate();
+  const { sessionDetails } = useSessionStore();
+  const orgName = sessionDetails?.orgName;
+
   // Evict expired cache entries on mount
   useEffect(() => {
     evictExpiredCache();
@@ -131,6 +139,19 @@ function MetricsDashboard() {
     refetchSubscription();
   }, [refetchOverview, refetchChart, refetchActivity, refetchSubscription]);
 
+  // Check if all data sources are empty (no activity at all)
+  const isDataLoading = overviewLoading || chartLoading || activityLoading;
+  const hasNoData = useMemo(() => {
+    if (isDataLoading) {
+      return false;
+    }
+    const hasOverview =
+      overviewData?.totals?.some((m) => m.total_value > 0) || false;
+    const hasChart = chartData?.daily_trend?.length > 0 || false;
+    const hasActivity = activityData?.activity?.length > 0 || false;
+    return !hasOverview && !hasChart && !hasActivity;
+  }, [isDataLoading, overviewData, chartData, activityData]);
+
   const tabItems = [
     {
       key: "overview",
@@ -139,7 +160,32 @@ function MetricsDashboard() {
           <DashboardOutlined /> Overview
         </span>
       ),
-      children: (
+      children: hasNoData ? (
+        <div className="metrics-empty-state">
+          <EmptyPlaceholder className="metrics-empty-state-icon" />
+          <Typography.Title level={4} className="metrics-empty-state-title">
+            No activity yet
+          </Typography.Title>
+          <Typography.Text
+            type="secondary"
+            className="metrics-empty-state-text"
+          >
+            Run a workflow or API deployment to see your metrics here.
+          </Typography.Text>
+          <Space className="metrics-empty-state-actions">
+            <Button
+              type="primary"
+              icon={<RocketOutlined />}
+              onClick={() => navigate(`/${orgName}/workflows`)}
+            >
+              Create Workflow
+            </Button>
+            <Button onClick={() => navigate(`/${orgName}/tools`)}>
+              Open Prompt Studio
+            </Button>
+          </Space>
+        </div>
+      ) : (
         <>
           <Row gutter={[16, 16]}>
             <Col xs={24}>
