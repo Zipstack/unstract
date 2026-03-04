@@ -1,6 +1,7 @@
 import logging
 
 from llama_index.core.query_engine import SubQuestionQueryEngine
+from llama_index.core.question_gen.llm_generators import LLMQuestionGenerator
 from llama_index.core.schema import QueryBundle
 from llama_index.core.tools import QueryEngineTool, ToolMetadata
 
@@ -39,8 +40,12 @@ class SubquestionRetriever(BaseRetriever):
             ]
             query_bundle = QueryBundle(query_str=self.prompt)
 
+            question_gen = LLMQuestionGenerator.from_defaults(
+                llm=self.llm,
+            )
             query_engine = SubQuestionQueryEngine.from_defaults(
                 query_engine_tools=query_engine_tools,
+                question_gen=question_gen,
                 use_async=True,
                 llm=self.llm,
             )
