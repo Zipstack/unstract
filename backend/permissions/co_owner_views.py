@@ -10,7 +10,10 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from permissions.co_owner_serializers import AddCoOwnerSerializer, RemoveCoOwnerSerializer
+from permissions.co_owner_serializers import (
+    AddCoOwnerSerializer,
+    RemoveCoOwnerSerializer,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +134,11 @@ class CoOwnerManagementMixin:
 
         user = User.objects.get(id=serializer.validated_data["user_id"])
         logger.info(
-            "Co-owner %s added to %s %s by %s",
-            user.email,
+            "Co-owner user_id=%s added to %s %s by user_id=%s",
+            user.id,
             resource.__class__.__name__,
             resource.pk,
-            request.user.email,
+            request.user.id,
         )
 
         self._send_co_owner_added_notification(resource, user, request)
@@ -170,11 +173,11 @@ class CoOwnerManagementMixin:
         serializer.save()
 
         logger.info(
-            "Owner %s removed from %s %s by %s",
-            user_to_remove.email,
+            "Owner user_id=%s removed from %s %s by user_id=%s",
+            user_to_remove.id,
             resource.__class__.__name__,
             resource.pk,
-            request.user.email,
+            request.user.id,
         )
 
         self._send_co_owner_revoked_notification(resource, user_to_remove, request)

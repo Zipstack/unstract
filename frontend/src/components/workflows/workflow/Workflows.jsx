@@ -2,7 +2,7 @@ import { PlusOutlined, UserOutlined } from "@ant-design/icons";
 import { Typography } from "antd";
 import isEmpty from "lodash/isEmpty";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
@@ -62,6 +62,11 @@ function Workflows() {
   const [shareLoading, setShareLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const { setAlertDetails } = useAlertStore();
+  const handleListRefresh = useCallback(
+    () => getProjectList(),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
   const {
     coOwnerOpen,
     setCoOwnerOpen,
@@ -75,7 +80,7 @@ function Workflows() {
   } = useCoOwnerManagement({
     service: projectApiService,
     setAlertDetails,
-    onListRefresh: () => getProjectList(),
+    onListRefresh: handleListRefresh,
   });
   const sessionDetails = useSessionStore((state) => state?.sessionDetails);
   const { updateWorkflow } = useWorkflowStore();

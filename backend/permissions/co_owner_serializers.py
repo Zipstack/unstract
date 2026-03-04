@@ -3,7 +3,7 @@
 from typing import Any
 
 from account_v2.models import User
-from django.db import models
+from django.db import models, transaction
 from rest_framework import serializers
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
@@ -36,13 +36,7 @@ class CoOwnerRepresentationMixin:
         representation: dict[str, Any],
         request: Any = None,
     ) -> dict[str, Any]:
-        first_co_owner = instance.co_owners.first()
-        if first_co_owner:
-            created_by_email = first_co_owner.email
-        elif instance.created_by:
-            created_by_email = instance.created_by.email
-        else:
-            created_by_email = None
+        created_by_email = instance.created_by.email if instance.created_by else None
         representation["created_by_email"] = created_by_email
         representation["co_owners_count"] = instance.co_owners.count()
         representation["is_owner"] = (
@@ -90,7 +84,7 @@ class RemoveCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
     """Serializer for validating co-owner removal."""
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
-        """Validate removal won't leave resource without owners."""
+        """Validate the user is actually a co-owner."""
         resource: models.Model = self.context["resource"]
         user_to_remove: User = self.context["user_to_remove"]
 
@@ -98,17 +92,18 @@ class RemoveCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
         if not resource.co_owners.filter(id=user_to_remove.id).exists():
             raise serializers.ValidationError("User is not an owner of this resource.")
 
-        if resource.co_owners.count() <= 1:
-            raise serializers.ValidationError(
-                "Cannot remove the last owner. "
-                "Add another owner before removing this one."
-            )
-
         return attrs
 
     def save(self, **kwargs: Any) -> models.Model:
-        """Remove user as owner. created_by is audit-only and never changes."""
+        """Remove user as owner atomically to prevent race conditions."""
         resource: models.Model = self.context["resource"]
         user_to_remove: User = self.context["user_to_remove"]
-        resource.co_owners.remove(user_to_remove)
-        return resource
+        with transaction.atomic():
+            locked = type(resource).objects.select_for_update().get(pk=resource.pk)
+            if locked.co_owners.count() <= 1:
+                raise serializers.ValidationError(
+                    "Cannot remove the last owner. "
+                    "Add another owner before removing this one."
+                )
+            locked.co_owners.remove(user_to_remove)
+            return locked

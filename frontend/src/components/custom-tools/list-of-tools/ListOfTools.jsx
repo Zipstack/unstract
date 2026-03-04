@@ -1,7 +1,7 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
@@ -71,35 +71,38 @@ function ListOfTools() {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
-  const promptStudioCoOwnerService = {
-    getAllUsers: () =>
-      axiosPrivate({
-        method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
-      }),
-    getSharedUsers: (id) =>
-      axiosPrivate({
-        method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${id}`,
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-      }),
-    addCoOwner: (id, userId) =>
-      axiosPrivate({
-        method: "POST",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/`,
-        headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
-          "Content-Type": "application/json",
-        },
-        data: { user_id: userId },
-      }),
-    removeCoOwner: (id, userId) =>
-      axiosPrivate({
-        method: "DELETE",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/${userId}/`,
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-      }),
-  };
+  const promptStudioCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+      getSharedUsers: (id) =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${id}`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: { user_id: userId },
+        }),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "DELETE",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/${userId}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [axiosPrivate, sessionDetails?.orgId, sessionDetails?.csrfToken],
+  );
 
   const {
     coOwnerOpen,

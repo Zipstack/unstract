@@ -329,6 +329,7 @@ function Pipelines({ type }) {
   };
 
   const handleManageCoOwners = (pipeline) => {
+    if (!pipeline?.id) return;
     handleCoOwnerAction(pipeline.id);
   };
 

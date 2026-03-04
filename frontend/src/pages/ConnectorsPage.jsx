@@ -190,6 +190,7 @@ function ConnectorsPage() {
   };
 
   const handleCoOwner = (_event, connector) => {
+    if (!connector?.id) return;
     handleCoOwnerAction(connector.id);
   };
 

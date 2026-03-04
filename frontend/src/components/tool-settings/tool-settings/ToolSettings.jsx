@@ -252,6 +252,7 @@ function ToolSettings({ type }) {
   };
 
   const handleCoOwner = (_event, adapter) => {
+    if (!adapter?.id) return;
     if (adapter?.is_deprecated) {
       setAlertDetails({
         type: "error",

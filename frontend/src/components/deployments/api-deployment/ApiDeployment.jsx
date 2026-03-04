@@ -263,6 +263,7 @@ function ApiDeployment() {
   };
 
   const handleManageCoOwners = (deployment) => {
+    if (!deployment?.id) return;
     handleCoOwnerAction(deployment.id);
   };
 

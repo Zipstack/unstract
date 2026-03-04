@@ -3,7 +3,15 @@ import {
   QuestionCircleOutlined,
   UserOutlined,
 } from "@ant-design/icons";
-import { Avatar, List, Modal, Popconfirm, Select, Typography } from "antd";
+import {
+  Avatar,
+  Button,
+  List,
+  Modal,
+  Popconfirm,
+  Select,
+  Typography,
+} from "antd";
 import PropTypes from "prop-types";
 import { useMemo, useState } from "react";
 
@@ -64,6 +72,7 @@ function CoOwnerManagement({
   };
 
   const handleApply = async () => {
+    if (pendingAdds.length === 0) return;
     const usersToAdd = [...pendingAdds];
     setApplying(true);
     try {
@@ -101,6 +110,7 @@ function CoOwnerManagement({
       onOk={handleApply}
       okText={"Apply"}
       confirmLoading={applying}
+      okButtonProps={{ disabled: pendingAdds.length === 0 }}
       maskClosable={false}
       centered
       closable={true}
@@ -135,12 +145,15 @@ function CoOwnerManagement({
                   <List.Item
                     extra={
                       isPending ? (
-                        <Typography.Text>
-                          <DeleteOutlined
-                            className="action-icon-buttons"
-                            onClick={() => handleRemovePending(item?.id)}
-                          />
-                        </Typography.Text>
+                        <Button
+                          type="text"
+                          size="small"
+                          icon={
+                            <DeleteOutlined className="action-icon-buttons" />
+                          }
+                          onClick={() => handleRemovePending(item?.id)}
+                          aria-label={`Remove pending co-owner ${item?.email}`}
+                        />
                       ) : (
                         totalOwners > 1 && (
                           <div
@@ -158,15 +171,20 @@ function CoOwnerManagement({
                               icon={<QuestionCircleOutlined />}
                               onConfirm={() => handleRemoveExisting(item?.id)}
                             >
-                              <Typography.Text>
-                                <DeleteOutlined
-                                  className="action-icon-buttons"
-                                  style={{
-                                    opacity:
-                                      removingUserId === item?.id ? 0.4 : 1,
-                                  }}
-                                />
-                              </Typography.Text>
+                              <Button
+                                type="text"
+                                size="small"
+                                icon={
+                                  <DeleteOutlined
+                                    className="action-icon-buttons"
+                                    style={{
+                                      opacity:
+                                        removingUserId === item?.id ? 0.4 : 1,
+                                    }}
+                                  />
+                                }
+                                aria-label={`Remove co-owner ${item?.email}`}
+                              />
                             </Popconfirm>
                           </div>
                         )

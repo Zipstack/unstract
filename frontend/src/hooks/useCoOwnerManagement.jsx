@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { useExceptionHandler } from "./useExceptionHandler";
 
@@ -13,6 +13,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
   const [coOwnerLoading, setCoOwnerLoading] = useState(false);
   const [coOwnerAllUsers, setCoOwnerAllUsers] = useState([]);
   const [coOwnerResourceId, setCoOwnerResourceId] = useState(null);
+  const latestRequestRef = useRef(null);
 
   const refreshCoOwnerData = useCallback(
     async (resourceId) => {
@@ -43,6 +44,8 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
 
   const handleCoOwner = useCallback(
     async (resourceId) => {
+      const requestId = {};
+      latestRequestRef.current = requestId;
       setCoOwnerResourceId(resourceId);
       setCoOwnerLoading(true);
       setCoOwnerOpen(true);
@@ -52,6 +55,8 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
           service.getAllUsers(),
           service.getSharedUsers(resourceId),
         ]);
+
+        if (latestRequestRef.current !== requestId) return;
 
         const userList =
           usersResponse?.data?.members?.map((member) => ({
@@ -65,12 +70,15 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
           createdBy: sharedUsersResponse.data?.created_by || null,
         });
       } catch (err) {
+        if (latestRequestRef.current !== requestId) return;
         setAlertDetails(
           handleException(err, "Unable to fetch co-owner information"),
         );
         setCoOwnerOpen(false);
       } finally {
-        setCoOwnerLoading(false);
+        if (latestRequestRef.current === requestId) {
+          setCoOwnerLoading(false);
+        }
       }
     },
     [service, setAlertDetails, handleException],
