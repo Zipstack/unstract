@@ -17,13 +17,13 @@ from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
-from unstract.core.data_models import ExecutionStatus
 from usage_v2.models import Usage
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
+from unstract.core.data_models import ExecutionStatus
 
 
 def _get_hitl_queue_model():
@@ -841,9 +841,7 @@ class MetricsQueryService:
             we_id = file_exec_map.get(row["run_id"])
             dep_id = exec_to_dep.get(we_id) if we_id else None
             if dep_id:
-                dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (
-                    row["pages"] or 0
-                )
+                dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (row["pages"] or 0)
         return dep_pages
 
     @staticmethod
@@ -904,9 +902,7 @@ class MetricsQueryService:
             return []
 
         # Step 2: Get executions with status and timestamp
-        dep_field = (
-            "workflow_id" if deployment_type == "WF" else "pipeline_id"
-        )
+        dep_field = "workflow_id" if deployment_type == "WF" else "pipeline_id"
         exec_rows = list(
             WorkflowExecution.objects.filter(
                 workflow__organization_id=organization_id,
@@ -919,8 +915,8 @@ class MetricsQueryService:
             return []
 
         # Step 3: Build exec->deployment mapping and stats
-        exec_to_dep, dep_exec_stats = (
-            MetricsQueryService._build_exec_stats(exec_rows, dep_field)
+        exec_to_dep, dep_exec_stats = MetricsQueryService._build_exec_stats(
+            exec_rows, dep_field
         )
 
         # Step 4: Query LLM usage
@@ -941,9 +937,7 @@ class MetricsQueryService:
         )
 
         # Step 5: Query pages and aggregate usage
-        dep_pages = MetricsQueryService._get_pages_by_deployment(
-            exec_rows, exec_to_dep
-        )
+        dep_pages = MetricsQueryService._get_pages_by_deployment(exec_rows, exec_to_dep)
         dep_agg = MetricsQueryService._aggregate_usage_by_deployment(
             usage_rows, exec_to_dep
         )
@@ -976,9 +970,7 @@ class MetricsQueryService:
                         else None
                     ),
                     "last_execution_date": (
-                        stats["last_date"].isoformat()
-                        if stats.get("last_date")
-                        else None
+                        stats["last_date"].isoformat() if stats.get("last_date") else None
                     ),
                 }
             )
