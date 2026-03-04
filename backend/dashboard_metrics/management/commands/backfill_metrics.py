@@ -207,9 +207,7 @@ class Command(BaseCommand):
             return [org_id]
 
         # Start with all org IDs (organization_id is the Auth0 org identifier)
-        all_org_ids = set(
-            Organization.objects.values_list("organization_id", flat=True)
-        )
+        all_org_ids = set(Organization.objects.values_list("organization_id", flat=True))
         self.stdout.write(f"Total organizations: {len(all_org_ids)}")
 
         # Filter: Active subscription (cloud only)
