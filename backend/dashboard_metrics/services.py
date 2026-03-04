@@ -17,6 +17,7 @@ from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
+from unstract.core.data_models import ExecutionStatus
 from usage_v2.models import Usage
 from workflow_manager.execution.enum import ExecutionEntity
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -24,7 +25,6 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
-from unstract.core.data_models import ExecutionStatus
 
 
 def _get_hitl_queue_model():
@@ -820,27 +820,40 @@ class MetricsQueryService:
     def _get_pages_by_deployment(
         exec_rows: list[dict], exec_to_dep: dict[str, str]
     ) -> dict[str, int]:
-        """Query pages processed, aggregated by deployment."""
-        file_exec_map = {}
-        for fid, weid in WorkflowFileExecution.objects.filter(
-            workflow_execution_id__in=[e["id"] for e in exec_rows],
-        ).values_list("id", "workflow_execution_id"):
-            file_exec_map[str(fid)] = str(weid)
+        """Query pages processed, aggregated by deployment.
 
-        dep_pages: dict[str, int] = {}
-        if not file_exec_map:
-            return dep_pages
+        Uses a Subquery to resolve run_id -> workflow_execution_id at the
+        DB level, avoiding materialising all WorkflowFileExecution rows
+        into a Python dict.
+        """
+        exec_ids = [e["id"] for e in exec_rows]
+        if not exec_ids:
+            return {}
 
+        # Single query: pages grouped by workflow_execution_id
         page_rows = (
             PageUsage.objects.filter(
-                run_id__in=list(file_exec_map.keys()),
+                run_id__in=WorkflowFileExecution.objects.filter(
+                    workflow_execution_id__in=exec_ids,
+                ).values("id"),
             )
-            .values("run_id")
+            .annotate(
+                exec_id=Cast(
+                    Subquery(
+                        WorkflowFileExecution.objects.filter(
+                            id=OuterRef("run_id"),
+                        ).values("workflow_execution_id")[:1]
+                    ),
+                    CharField(),
+                )
+            )
+            .values("exec_id")
             .annotate(pages=Sum("pages_processed"))
         )
+
+        dep_pages: dict[str, int] = {}
         for row in page_rows:
-            we_id = file_exec_map.get(row["run_id"])
-            dep_id = exec_to_dep.get(we_id) if we_id else None
+            dep_id = exec_to_dep.get(row["exec_id"])
             if dep_id:
                 dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (row["pages"] or 0)
         return dep_pages

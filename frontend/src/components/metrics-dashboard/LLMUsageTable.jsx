@@ -39,7 +39,7 @@ const columns = [
       <span>
         Tokens{" "}
         <Tooltip title="Total LLM tokens consumed by this deployment">
-          <InfoCircleOutlined style={{ color: "#8c8c8c", fontSize: 12 }} />
+          <InfoCircleOutlined className="llm-usage-info-icon" />
         </Tooltip>
       </span>
     ),
@@ -72,7 +72,7 @@ const columns = [
           {total.toLocaleString()}{" "}
           {completed > 0 && (
             <Tooltip title={`${completed} completed`}>
-              <Tag color="success" style={{ marginInlineEnd: 2 }}>
+              <Tag color="success" className="llm-usage-tag-compact">
                 <CheckCircleOutlined /> {completed}
               </Tag>
             </Tooltip>
@@ -194,7 +194,7 @@ function DeploymentUsageTable({ startDate, endDate }) {
           description={error}
           type="error"
           showIcon
-          style={{ margin: "16px 24px" }}
+          className="llm-usage-error-alert"
         />
       );
     }
@@ -231,9 +231,11 @@ function DeploymentUsageTable({ startDate, endDate }) {
         size="small"
         className="deployment-type-tabs"
       />
-      <Text type="secondary" style={{ fontSize: 12, padding: "0 24px" }}>
-        Limited to the last 30 days of data
-      </Text>
+      {data?.range_truncated && (
+        <Text type="secondary" className="llm-usage-subtitle">
+          Date range was limited to the last 30 days
+        </Text>
+      )}
       {renderContent()}
     </Card>
   );

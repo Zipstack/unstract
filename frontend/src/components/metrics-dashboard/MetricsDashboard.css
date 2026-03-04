@@ -399,3 +399,21 @@
 .llm-usage-table .ant-table-tbody > tr > td:not(:first-child) {
   font-variant-numeric: tabular-nums;
 }
+
+.llm-usage-tag-compact {
+  margin-inline-end: 2px;
+}
+
+.llm-usage-error-alert {
+  margin: 16px 24px;
+}
+
+.llm-usage-subtitle {
+  font-size: 12px;
+  padding: 0 24px;
+}
+
+.llm-usage-info-icon {
+  color: #8c8c8c;
+  font-size: 12px;
+}

@@ -894,6 +894,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
                 "deployment_type": params["deployment_type"],
+                "range_truncated": params["range_truncated"],
                 "deployments": data,
             }
         )

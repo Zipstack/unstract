@@ -92,6 +92,9 @@ class DeploymentUsageQuerySerializer(MetricsQuerySerializer):
         max_range = timedelta(days=30)
         if attrs["end_date"] - attrs["start_date"] > max_range:
             attrs["start_date"] = attrs["end_date"] - max_range
+            attrs["range_truncated"] = True
+        else:
+            attrs["range_truncated"] = False
 
         # Normalize deployment_type to uppercase
         attrs["deployment_type"] = attrs["deployment_type"].upper()
