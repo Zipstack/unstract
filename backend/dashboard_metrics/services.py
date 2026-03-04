@@ -24,7 +24,6 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
 from unstract.core.data_models import ExecutionStatus
-from account_v2.models import Organization
 
 
 def _get_hitl_queue_model():
