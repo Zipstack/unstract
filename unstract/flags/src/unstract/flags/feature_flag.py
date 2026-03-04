@@ -49,7 +49,6 @@ def check_feature_flag_status(
 
 def check_feature_flag_variant(
     flag_key: str,
-    namespace_key: str | None = None,
     entity_id: str = "unstract",
     context: dict[str, str] | None = None,
 ) -> dict:
@@ -61,9 +60,6 @@ def check_feature_flag_variant(
 
     Args:
         flag_key: The flag key of the feature flag.
-        namespace_key: The namespace key of the feature flag.
-            If None, reads UNSTRACT_FEATURE_FLAG_NAMESPACE env var,
-            falling back to "default".
         entity_id: An identifier for the evaluation entity. Used by Flipt
             for consistent percentage-based rollout hashing only — it does
             NOT influence segment constraint matching.
