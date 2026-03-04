@@ -32,6 +32,7 @@ import { TokenUsage } from "../token-usage/TokenUsage";
 import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
 import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
+import { LookupReplacementIndicator } from "./LookupReplacementIndicator";
 import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
 import { PromptRunTimer } from "./PromptRunTimer";
@@ -94,9 +95,9 @@ function PromptOutput({
   );
 
   const handleTable = (profileId, promptOutputData) => {
-    if (tableSettings?.document_type !== "rent_rolls")
+    if (tableSettings?.document_type !== "rent_rolls") {
       return <TableOutput output={promptOutputData?.output} />;
-    else
+    } else {
       return (
         <>
           <DisplayPromptResult
@@ -113,6 +114,9 @@ function PromptOutput({
             setOpenExpandModal={setOpenExpandModal}
           />
           <div className="prompt-profile-run">
+            <LookupReplacementIndicator
+              lookupReplacement={promptOutputData?.lookupReplacement}
+            />
             <CopyPromptOutputBtn
               copyToClipboard={() =>
                 copyOutputToClipboard(
@@ -123,6 +127,7 @@ function PromptOutput({
           </div>
         </>
       );
+    }
   };
 
   const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
@@ -205,6 +210,9 @@ function PromptOutput({
             }
           />
           <div className="prompt-profile-run">
+            <LookupReplacementIndicator
+              lookupReplacement={promptOutputData?.lookupReplacement}
+            />
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
               copyToClipboard={() =>
@@ -440,6 +448,11 @@ function PromptOutput({
                           promptDetails={promptDetails}
                         />
                         <div className="prompt-profile-run">
+                          <LookupReplacementIndicator
+                            lookupReplacement={
+                              promptOutputData?.lookupReplacement
+                            }
+                          />
                           <CopyPromptOutputBtn
                             isDisabled={isTableExtraction}
                             copyToClipboard={() =>
