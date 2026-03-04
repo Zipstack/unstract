@@ -17,6 +17,7 @@ from api_v2.models import APIDeployment
 from django.db.models import CharField, Count, OuterRef, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
+from unstract.core.data_models import ExecutionStatus
 from usage_v2.models import Usage
 from workflow_manager.execution.enum import ExecutionEntity
 from workflow_manager.file_execution.models import WorkflowFileExecution
@@ -24,7 +25,6 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from dashboard_metrics.models import Granularity
-from unstract.core.data_models import ExecutionStatus
 
 
 def _get_hitl_queue_model():
@@ -737,18 +737,19 @@ class MetricsQueryService:
 
     @staticmethod
     def _get_deployment_names(
-        organization_id: str, deployment_type: str
+        deployment_type: str,
     ) -> tuple[dict[str, str], dict[str, Any]]:
         """Get deployment ID->name mapping and execution filter for a type.
+
+        Uses the default model manager which auto-filters by the current
+        user's organization via DefaultOrganizationManagerMixin.
 
         Returns:
             (dep_names, exec_filter) or ({}, {}) if type is invalid.
         """
         if deployment_type == ExecutionEntity.API.value:
             dep_list = list(
-                APIDeployment._base_manager.filter(
-                    organization_id=organization_id
-                ).values_list("id", "display_name")
+                APIDeployment.objects.all().values_list("id", "display_name")
             )
             exec_filter = {"pipeline_id__in": [d[0] for d in dep_list]}
         elif deployment_type in (
@@ -756,17 +757,14 @@ class MetricsQueryService:
             ExecutionEntity.TASK.value,
         ):
             dep_list = list(
-                Pipeline._base_manager.filter(
-                    organization_id=organization_id,
+                Pipeline.objects.filter(
                     pipeline_type=deployment_type,
                 ).values_list("id", "pipeline_name")
             )
             exec_filter = {"pipeline_id__in": [d[0] for d in dep_list]}
         elif deployment_type == ExecutionEntity.WORKFLOW.value:
             dep_list = list(
-                Workflow._base_manager.filter(
-                    organization_id=organization_id
-                ).values_list("id", "workflow_name")
+                Workflow.objects.all().values_list("id", "workflow_name")
             )
             exec_filter = {
                 "pipeline_id__isnull": True,
@@ -900,7 +898,7 @@ class MetricsQueryService:
         """
         # Step 1: Get deployment names and execution filter
         dep_names, exec_filter = MetricsQueryService._get_deployment_names(
-            organization_id, deployment_type
+            deployment_type
         )
         if not dep_names:
             return []
@@ -929,8 +927,7 @@ class MetricsQueryService:
 
         # Step 4: Query LLM usage
         usage_rows = list(
-            _get_usage_queryset()
-            .filter(
+            Usage.objects.filter(
                 execution_id__in=list(exec_to_dep.keys()),
                 usage_type="llm",
                 created_at__gte=start_date,
