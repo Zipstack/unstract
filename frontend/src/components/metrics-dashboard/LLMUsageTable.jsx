@@ -5,6 +5,7 @@ import {
   ReloadOutlined,
 } from "@ant-design/icons";
 import {
+  Alert,
   Button,
   Card,
   Empty,
@@ -122,7 +123,7 @@ const columns = [
 function DeploymentUsageTable({ startDate, endDate }) {
   const [activeType, setActiveType] = useState("API");
 
-  const { data, loading, refetch } = useDeploymentUsage(
+  const { data, loading, error, refetch } = useDeploymentUsage(
     activeType,
     startDate,
     endDate,
@@ -188,6 +189,18 @@ function DeploymentUsageTable({ startDate, endDate }) {
         <div className="metrics-loading">
           <Spin />
         </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <Alert
+          message="Failed to load usage data"
+          description={error}
+          type="error"
+          showIcon
+          style={{ margin: "16px 24px" }}
+        />
       );
     }
 
