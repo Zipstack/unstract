@@ -5,7 +5,7 @@ tables from historical data in source tables (Usage, PageUsage, WorkflowExecutio
 
 Usage:
     python manage.py backfill_metrics --days=30
-    python manage.py backfill_metrics --days=90 --org-id=12
+    python manage.py backfill_metrics --days=90 --org-id=org_abc123
     python manage.py backfill_metrics --days=7 --dry-run
     python manage.py backfill_metrics --days=90 --active-only
 """
@@ -200,14 +200,16 @@ class Command(BaseCommand):
         """
         # Single org mode
         if org_id:
-            if not Organization.objects.filter(id=org_id).exists():
+            if not Organization.objects.filter(organization_id=org_id).exists():
                 self.stderr.write(self.style.ERROR(f"Organization {org_id} not found"))
                 return []
             self.stdout.write(f"Single org mode: {org_id}")
             return [org_id]
 
-        # Start with all org IDs
-        all_org_ids = set(Organization.objects.values_list("id", flat=True))
+        # Start with all org IDs (organization_id is the Auth0 org identifier)
+        all_org_ids = set(
+            Organization.objects.values_list("organization_id", flat=True)
+        )
         self.stdout.write(f"Total organizations: {len(all_org_ids)}")
 
         # Filter: Active subscription (cloud only)
