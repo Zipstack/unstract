@@ -25,9 +25,8 @@ import {
   useMetricsOverview,
   useRecentActivity,
   useSubscriptionUsage,
-  useWorkflowTokenUsage,
 } from "../../hooks/useMetricsData";
-import { LLMUsageTable } from "./LLMUsageTable";
+import { DeploymentUsageTable } from "./LLMUsageTable";
 import { HITLChart, PagesChart, TrendAnalysisChart } from "./MetricsChart";
 import { MetricsSummary } from "./MetricsSummary";
 import { RecentActivity } from "./RecentActivity";
@@ -107,16 +106,6 @@ function MetricsDashboard() {
     refetch: refetchActivity,
   } = useRecentActivity(5);
 
-  // Per-workflow LLM token usage (uses same date range as summary cards)
-  const {
-    data: tokenUsageData,
-    loading: tokenUsageLoading,
-    refetch: refetchTokenUsage,
-  } = useWorkflowTokenUsage(
-    dateRange[0]?.toISOString(),
-    dateRange[1]?.toISOString(),
-  );
-
   // Subscription usage (cloud-only, returns null on OSS)
   const {
     data: subscriptionData,
@@ -139,15 +128,8 @@ function MetricsDashboard() {
     refetchOverview();
     refetchChart();
     refetchActivity();
-    refetchTokenUsage();
     refetchSubscription();
-  }, [
-    refetchOverview,
-    refetchChart,
-    refetchActivity,
-    refetchTokenUsage,
-    refetchSubscription,
-  ]);
+  }, [refetchOverview, refetchChart, refetchActivity, refetchSubscription]);
 
   const tabItems = [
     {
@@ -183,16 +165,15 @@ function MetricsDashboard() {
       key: "llm-usage",
       label: (
         <span>
-          <ThunderboltOutlined /> LLM Usage
+          <ThunderboltOutlined /> Usage by Deployment
         </span>
       ),
       children: (
         <Row gutter={[16, 16]}>
           <Col xs={24}>
-            <LLMUsageTable
-              data={tokenUsageData}
-              loading={tokenUsageLoading}
-              onRefresh={refetchTokenUsage}
+            <DeploymentUsageTable
+              startDate={dateRange[0]?.toISOString()}
+              endDate={dateRange[1]?.toISOString()}
             />
           </Col>
         </Row>
@@ -297,10 +278,15 @@ function MetricsDashboard() {
                     label: "Last 30 Days",
                     value: [dayjs().subtract(30, "day"), dayjs()],
                   },
-                  {
-                    label: "Last 90 Days",
-                    value: [dayjs().subtract(90, "day"), dayjs()],
-                  },
+                  // 90-day preset only for overview (deployment usage capped at 30 days)
+                  ...(activeTab !== "llm-usage"
+                    ? [
+                        {
+                          label: "Last 90 Days",
+                          value: [dayjs().subtract(90, "day"), dayjs()],
+                        },
+                      ]
+                    : []),
                 ]}
               />
             )}

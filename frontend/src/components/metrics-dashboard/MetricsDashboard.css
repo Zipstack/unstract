@@ -319,6 +319,11 @@
   margin-bottom: 12px;
 }
 
+/* Deployment Type Tabs */
+.deployment-type-tabs {
+  padding-left: 24px;
+}
+
 /* LLM Usage Table */
 .llm-usage-card .ant-card-body {
   padding: 0;

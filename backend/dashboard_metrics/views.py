@@ -860,33 +860,52 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         data = MetricsQueryService.get_recent_activity(org_id, limit)
         return Response({"activity": data})
 
+    VALID_DEPLOYMENT_TYPES = {"API", "ETL", "TASK", "WF"}
+
     @action(detail=False, methods=["get"], url_path="workflow-token-usage")
     @cache_metrics_response(endpoint="workflow_token_usage")
     def workflow_token_usage(self, request: Request) -> Response:
-        """Get per-workflow LLM token usage breakdown.
+        """Get LLM token usage grouped by deployment.
 
-        Returns token usage and cost aggregated per workflow for the
-        given date range. Cached for 1 hour; pass ?refresh=true to
-        bypass cache.
+        Returns token usage and cost aggregated per deployment for the
+        given date range and deployment type. Cached for 1 hour;
+        pass ?refresh=true to bypass cache.
 
         Query Parameters:
             start_date: Start of date range (ISO 8601)
             end_date: End of date range (ISO 8601)
+            deployment_type: One of API, ETL, TASK, WF (default: API)
             refresh: If "true", bypass cache and fetch fresh data
 
         Returns:
-            200: List of workflows with token usage
+            200: List of deployments with token usage
             500: Error occurred
         """
         query_serializer = MetricsQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
         params = query_serializer.validated_data
 
+        # Enforce 30-day max range for deployment usage queries
+        max_range = timedelta(days=30)
+        if params["end_date"] - params["start_date"] > max_range:
+            params["start_date"] = params["end_date"] - max_range
+
+        deployment_type = request.query_params.get(
+            "deployment_type", "API"
+        ).upper()
+        if deployment_type not in self.VALID_DEPLOYMENT_TYPES:
+            return Response(
+                {"error": f"Invalid deployment_type. Must be one of: "
+                 f"{', '.join(sorted(self.VALID_DEPLOYMENT_TYPES))}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         organization = self._get_organization()
         org_id = str(organization.id)
 
-        data = MetricsQueryService.get_workflow_token_usage(
+        data = MetricsQueryService.get_deployment_usage(
             org_id,
+            deployment_type,
             params["start_date"],
             params["end_date"],
         )
@@ -894,7 +913,8 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
-                "workflows": data,
+                "deployment_type": deployment_type,
+                "deployments": data,
             }
         )
 
