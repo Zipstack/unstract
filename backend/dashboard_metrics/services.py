@@ -806,7 +806,10 @@ class MetricsQueryService:
 
             ts = e["created_at"]
             if ts:
-                if stats["first_execution_at"] is None or ts < stats["first_execution_at"]:
+                if (
+                    stats["first_execution_at"] is None
+                    or ts < stats["first_execution_at"]
+                ):
                     stats["first_execution_at"] = ts
                 if stats["last_execution_at"] is None or ts > stats["last_execution_at"]:
                     stats["last_execution_at"] = ts
