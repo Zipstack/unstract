@@ -28,9 +28,9 @@ from dashboard_metrics.services import MetricsQueryService
 
 logger = logging.getLogger(__name__)
 
-# Cloud-only: Subscription model for --subscribed-only filtering
+# Cloud-only: Subscription model for --active-only filtering
 try:
-    from subscription_v2.models import Subscription
+    from pluggable_apps.subscription_v2.models import Subscription
 
     HAS_SUBSCRIPTION = True
 except ImportError:
