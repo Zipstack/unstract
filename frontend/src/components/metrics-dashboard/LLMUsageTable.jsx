@@ -108,8 +108,8 @@ const columns = [
   },
   {
     title: "Last Run",
-    dataIndex: "last_execution_date",
-    key: "last_execution_date",
+    dataIndex: "last_execution_at",
+    key: "last_execution_at",
     render: (value) => (value ? value.split("T")[0] : "-"),
     width: 110,
   },

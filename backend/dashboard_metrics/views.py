@@ -20,7 +20,6 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
 from utils.user_context import UserContext
-from workflow_manager.execution.enum import ExecutionEntity
 
 from .cache import (
     cache_metrics_response,
@@ -35,6 +34,7 @@ from .models import (
     MetricType,
 )
 from .serializers import (
+    DeploymentUsageQuerySerializer,
     EventMetricsHourlySerializer,
     MetricsQuerySerializer,
 )
@@ -861,8 +861,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         data = MetricsQueryService.get_recent_activity(org_id, limit)
         return Response({"activity": data})
 
-    VALID_DEPLOYMENT_TYPES = {e.value for e in ExecutionEntity}
-
     @action(detail=False, methods=["get"], url_path="workflow-token-usage")
     @cache_metrics_response(endpoint="workflow_token_usage")
     def workflow_token_usage(self, request: Request) -> Response:
@@ -880,35 +878,14 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         Returns:
             200: List of deployments with token usage
-            500: Error occurred
+            400: Invalid parameters
         """
-        query_serializer = MetricsQuerySerializer(data=request.query_params)
-        query_serializer.is_valid(raise_exception=True)
-        params = query_serializer.validated_data
-
-        # Enforce 30-day max range for deployment usage queries
-        max_range = timedelta(days=30)
-        if params["end_date"] - params["start_date"] > max_range:
-            params["start_date"] = params["end_date"] - max_range
-
-        deployment_type = request.query_params.get(
-            "deployment_type", ExecutionEntity.API.value
-        ).upper()
-        if deployment_type not in self.VALID_DEPLOYMENT_TYPES:
-            return Response(
-                {
-                    "error": f"Invalid deployment_type. Must be one of: "
-                    f"{', '.join(sorted(self.VALID_DEPLOYMENT_TYPES))}"
-                },
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        organization = self._get_organization()
-        org_id = str(organization.id)
+        serializer = DeploymentUsageQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
 
         data = MetricsQueryService.get_deployment_usage(
-            org_id,
-            deployment_type,
+            params["deployment_type"],
             params["start_date"],
             params["end_date"],
         )
@@ -916,7 +893,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
-                "deployment_type": deployment_type,
+                "deployment_type": params["deployment_type"],
                 "deployments": data,
             }
         )

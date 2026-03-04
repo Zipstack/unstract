@@ -779,8 +779,8 @@ class MetricsQueryService:
         """Build exec->deployment mapping and per-deployment stats."""
         exec_to_dep: dict[str, str] = {}
         dep_exec_stats: dict[str, dict[str, Any]] = {}
-        completed_status = str(ExecutionStatus.COMPLETED)
-        error_status = str(ExecutionStatus.ERROR)
+        completed_status = ExecutionStatus.COMPLETED.value
+        error_status = ExecutionStatus.ERROR.value
 
         for e in exec_rows:
             exec_id = str(e["id"])
@@ -792,8 +792,8 @@ class MetricsQueryService:
                     "total": 0,
                     "completed": 0,
                     "failed": 0,
-                    "first_date": None,
-                    "last_date": None,
+                    "first_execution_at": None,
+                    "last_execution_at": None,
                 }
             stats = dep_exec_stats[dep_id]
             stats["total"] += 1
@@ -806,10 +806,10 @@ class MetricsQueryService:
 
             ts = e["created_at"]
             if ts:
-                if stats["first_date"] is None or ts < stats["first_date"]:
-                    stats["first_date"] = ts
-                if stats["last_date"] is None or ts > stats["last_date"]:
-                    stats["last_date"] = ts
+                if stats["first_execution_at"] is None or ts < stats["first_execution_at"]:
+                    stats["first_execution_at"] = ts
+                if stats["last_execution_at"] is None or ts > stats["last_execution_at"]:
+                    stats["last_execution_at"] = ts
 
         return exec_to_dep, dep_exec_stats
 
@@ -866,7 +866,6 @@ class MetricsQueryService:
 
     @staticmethod
     def get_deployment_usage(
-        organization_id: str,
         deployment_type: str,
         start_date: datetime,
         end_date: datetime,
@@ -884,7 +883,6 @@ class MetricsQueryService:
         page_usage), and execution date range per deployment.
 
         Args:
-            organization_id: Organization ID (PK)
             deployment_type: One of API, ETL, TASK, WF
             start_date: Start of date range
             end_date: End of date range
@@ -905,9 +903,9 @@ class MetricsQueryService:
             if deployment_type == ExecutionEntity.WORKFLOW.value
             else "pipeline_id"
         )
+        # exec_filter already scopes to org-owned deployment IDs
         exec_rows = list(
             WorkflowExecution.objects.filter(
-                workflow__organization_id=organization_id,
                 created_at__gte=start_date,
                 created_at__lte=end_date,
                 **exec_filter,
@@ -965,13 +963,15 @@ class MetricsQueryService:
                     "completed_executions": stats.get("completed", 0),
                     "failed_executions": stats.get("failed", 0),
                     "total_pages_processed": dep_pages.get(dep_id, 0),
-                    "first_execution_date": (
-                        stats["first_date"].isoformat()
-                        if stats.get("first_date")
+                    "first_execution_at": (
+                        stats["first_execution_at"].isoformat()
+                        if stats.get("first_execution_at")
                         else None
                     ),
-                    "last_execution_date": (
-                        stats["last_date"].isoformat() if stats.get("last_date") else None
+                    "last_execution_at": (
+                        stats["last_execution_at"].isoformat()
+                        if stats.get("last_execution_at")
+                        else None
                     ),
                 }
             )
