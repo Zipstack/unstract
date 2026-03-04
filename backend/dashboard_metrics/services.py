@@ -821,38 +821,36 @@ class MetricsQueryService:
     ) -> dict[str, int]:
         """Query pages processed, aggregated by deployment.
 
-        Uses a Subquery to resolve run_id -> workflow_execution_id at the
-        DB level, avoiding materialising all WorkflowFileExecution rows
-        into a Python dict.
+        Two queries:
+        1. WorkflowFileExecution → map file_exec_id to workflow_execution_id
+        2. PageUsage → aggregate pages by file_exec_id, then map to deployment
         """
         exec_ids = [e["id"] for e in exec_rows]
         if not exec_ids:
             return {}
 
-        # Single query: pages grouped by workflow_execution_id
+        # Map file_execution_id → workflow_execution_id
+        file_exec_map: dict[str, str] = {}
+        for fid, weid in WorkflowFileExecution.objects.filter(
+            workflow_execution_id__in=exec_ids,
+        ).values_list("id", "workflow_execution_id"):
+            file_exec_map[str(fid)] = str(weid)
+
+        if not file_exec_map:
+            return {}
+
         page_rows = (
             PageUsage.objects.filter(
-                run_id__in=WorkflowFileExecution.objects.filter(
-                    workflow_execution_id__in=exec_ids,
-                ).values("id"),
+                run_id__in=list(file_exec_map.keys()),
             )
-            .annotate(
-                exec_id=Cast(
-                    Subquery(
-                        WorkflowFileExecution.objects.filter(
-                            id=OuterRef("run_id"),
-                        ).values("workflow_execution_id")[:1]
-                    ),
-                    CharField(),
-                )
-            )
-            .values("exec_id")
+            .values("run_id")
             .annotate(pages=Sum("pages_processed"))
         )
 
         dep_pages: dict[str, int] = {}
         for row in page_rows:
-            dep_id = exec_to_dep.get(row["exec_id"])
+            we_id = file_exec_map.get(row["run_id"])
+            dep_id = exec_to_dep.get(we_id) if we_id else None
             if dep_id:
                 dep_pages[dep_id] = dep_pages.get(dep_id, 0) + (row["pages"] or 0)
         return dep_pages
