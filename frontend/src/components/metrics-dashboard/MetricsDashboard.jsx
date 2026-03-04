@@ -1,5 +1,4 @@
 import {
-  BarChartOutlined,
   CreditCardOutlined,
   DashboardOutlined,
   FileSearchOutlined,
@@ -59,7 +58,6 @@ try {
   // Plugin unavailable - no subscription tab on OSS
 }
 
-const { Title } = Typography;
 const { RangePicker } = DatePicker;
 
 function MetricsDashboard() {
@@ -251,10 +249,16 @@ function MetricsDashboard() {
     <div className="metrics-dashboard">
       <div className="metrics-topbar">
         <div className="metrics-topbar-left">
-          <BarChartOutlined className="metrics-topbar-icon" />
-          <Title level={4} style={{ margin: 0 }}>
+          <Typography
+            style={{
+              fontWeight: 600,
+              fontSize: "16px",
+              display: "inline",
+              lineHeight: "24px",
+            }}
+          >
             Dashboard
-          </Title>
+          </Typography>
         </div>
 
         <Space className="metrics-topbar-right">

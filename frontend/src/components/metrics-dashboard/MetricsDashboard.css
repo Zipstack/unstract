@@ -261,7 +261,7 @@
 }
 
 .recent-activity-item {
-  padding: 10px 0 !important;
+  padding: 10px 24px !important;
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -373,6 +373,10 @@
 .llm-usage-title {
   font-size: 16px;
   color: #262626;
+}
+
+.llm-usage-table {
+  padding: 0 24px;
 }
 
 .llm-usage-table .ant-table-thead > tr > th {
