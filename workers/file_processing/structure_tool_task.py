@@ -18,6 +18,7 @@ After (Celery-based):
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -388,7 +389,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "summarize_params": summarize_params,
         },
     )
+    pipeline_start = time.monotonic()
     pipeline_result = dispatcher.dispatch(pipeline_ctx, timeout=EXECUTOR_TIMEOUT)
+    pipeline_elapsed = time.monotonic() - pipeline_start
+
     if not pipeline_result.success:
         return pipeline_result.to_dict()
 
@@ -400,12 +404,20 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         output_path = Path(output_dir_path) / f"{Path(source_file_name).stem}.json"
         logger.info("Writing output to %s", output_path)
         fs.json_dump(path=output_path, data=structured_output)
+
+        # Overwrite INFILE with JSON output (matches Docker-based tool behavior).
+        # The destination connector reads from INFILE and checks MIME type —
+        # if we don't overwrite it, INFILE still has the original PDF.
+        logger.info("Overwriting INFILE with structured output: %s", input_file_path)
+        fs.json_dump(path=input_file_path, data=structured_output)
+
         logger.info("Output written successfully to workflow storage")
     except (OSError, json.JSONDecodeError) as e:
         return ExecutionResult.failure(error=f"Error writing output file: {e}").to_dict()
 
-    # Write tool result to METADATA.json
-    _write_tool_result(fs, execution_data_dir, structured_output)
+    # Write tool result + tool_metadata to METADATA.json
+    # (destination connector reads output_type from tool_metadata)
+    _write_tool_result(fs, execution_data_dir, structured_output, pipeline_elapsed)
 
     return ExecutionResult(success=True, data=structured_output).to_dict()
 
@@ -542,8 +554,17 @@ def _run_agentic_extraction(
     return agentic_result.to_dict()
 
 
-def _write_tool_result(fs: Any, execution_data_dir: str, data: dict) -> None:
-    """Write tool result to METADATA.json (matches BaseTool.write_tool_result)."""
+def _write_tool_result(
+    fs: Any, execution_data_dir: str, data: dict, elapsed_time: float = 0.0
+) -> None:
+    """Write tool result and tool_metadata to METADATA.json.
+
+    Matches BaseTool._update_exec_metadata() + write_tool_result():
+    - tool_metadata: list of dicts with tool_name, output_type, elapsed_time
+      (destination connector reads output_type from here)
+    - total_elapsed_time: cumulative elapsed time
+    - tool_result: the structured output data
+    """
     try:
         metadata_path = Path(execution_data_dir) / "METADATA.json"
 
@@ -556,6 +577,22 @@ def _write_tool_result(fs: Any, execution_data_dir: str, data: dict) -> None:
                     existing = json.loads(existing_raw)
             except Exception:
                 pass
+
+        # Add tool_metadata (matches BaseTool._update_exec_metadata)
+        # The destination connector reads output_type from tool_metadata[-1]
+        tool_meta_entry = {
+            "tool_name": "structure",
+            "output_type": "JSON",
+            "elapsed_time": elapsed_time,
+        }
+        if "tool_metadata" not in existing:
+            existing["tool_metadata"] = [tool_meta_entry]
+        else:
+            existing["tool_metadata"].append(tool_meta_entry)
+
+        existing["total_elapsed_time"] = existing.get(
+            "total_elapsed_time", 0.0
+        ) + elapsed_time
 
         # Add tool result
         existing["tool_result"] = data
