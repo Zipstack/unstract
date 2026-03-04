@@ -293,16 +293,6 @@ function ApiEndpointSection({ apiEndpoint }) {
     return null;
   }
 
-  // Validate URL scheme to prevent javascript: or other malicious protocols
-  const isValidUrl = (() => {
-    try {
-      const parsed = new URL(apiEndpoint, globalThis.location.origin);
-      return ["http:", "https:"].includes(parsed.protocol);
-    } catch {
-      return false;
-    }
-  })();
-
   return (
     <div className="card-list-endpoint-wrapper">
       <Card size="small" className="card-list-endpoint-row">
@@ -312,19 +302,9 @@ function ApiEndpointSection({ apiEndpoint }) {
           </Typography.Text>
           <div className="card-list-endpoint-value">
             <Tooltip title={apiEndpoint} overlayStyle={{ maxWidth: 500 }}>
-              {isValidUrl ? (
-                <Typography.Link
-                  href={apiEndpoint}
-                  target="_blank"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  {shortenApiEndpoint(apiEndpoint)}
-                </Typography.Link>
-              ) : (
-                <Typography.Text>
-                  {shortenApiEndpoint(apiEndpoint)}
-                </Typography.Text>
-              )}
+              <Typography.Text>
+                {shortenApiEndpoint(apiEndpoint)}
+              </Typography.Text>
             </Tooltip>
             <Tooltip title="Copy endpoint">
               <Button
