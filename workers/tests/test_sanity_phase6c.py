@@ -316,11 +316,11 @@ class TestHandleAnswerPromptHighlight:
             result = executor._handle_answer_prompt(ctx)
 
         assert result.success
-        # Verify highlight plugin was instantiated
+        # Verify highlight plugin was instantiated with correct args
         mock_highlight_cls.assert_called_once_with(
             file_path="/data/doc.txt",
             fs_instance=mock_fs,
-            execution_source="ide",
+            enable_word_confidence=False,
         )
         # Verify process_text was the highlight instance's run method
         llm_complete_call = mock_llm.complete.call_args

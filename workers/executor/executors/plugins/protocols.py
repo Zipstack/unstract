@@ -10,23 +10,33 @@ from typing import Any, Protocol, runtime_checkable
 
 @runtime_checkable
 class HighlightDataProtocol(Protocol):
-    """Cross-cutting: source attribution from LLMWhisperer metadata."""
+    """Cross-cutting: source attribution from LLMWhisperer metadata.
+
+    Matches the cloud ``HighlightData`` plugin constructor which
+    accepts ``enable_word_confidence`` (not ``execution_source``).
+    The filesystem instance is determined by the caller and passed in.
+    """
 
     def __init__(
         self,
         file_path: str,
-        fs_instance: Any,
-        execution_source: str = "",
+        fs_instance: Any = None,
+        enable_word_confidence: bool = False,
         **kwargs: Any,
     ) -> None: ...
 
-    def run(self, response: str, is_json: bool = False, **kwargs: Any) -> dict: ...
+    def run(
+        self,
+        response: Any = None,
+        is_json: bool = False,
+        original_text: str = "",
+        **kwargs: Any,
+    ) -> dict: ...
 
-    def get_highlight_data(self) -> Any: ...
-
-    def get_confidence_data(self) -> Any: ...
-
-    def extract_word_confidence(self, **kwargs: Any) -> dict: ...
+    @staticmethod
+    def extract_word_confidence(
+        original_text: str, is_json: bool = False
+    ) -> dict: ...
 
 
 @runtime_checkable

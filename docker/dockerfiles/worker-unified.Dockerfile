@@ -84,13 +84,14 @@ RUN uv sync --group deploy --locked && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
 
 # Install executor plugins from workers/plugins/ (cloud-only, no-op for OSS).
-# Each plugin with an "unstract.executor.executors" entry point gets installed
-# so that importlib.metadata.entry_points() can discover it at worker startup.
+# Plugins register via setuptools entry points in two groups:
+#   - unstract.executor.executors  (executor classes, e.g. table_extractor)
+#   - unstract.executor.plugins    (utility plugins, e.g. highlight-data, challenge)
 # Editable installs (-e) ensure Path(__file__) resolves to the source directory,
 # giving plugins access to non-Python assets (.md prompts, .txt templates, etc.).
 RUN for plugin_dir in /app/plugins/*/; do \
       if [ -f "$plugin_dir/pyproject.toml" ] && \
-         grep -q 'unstract.executor.executors' "$plugin_dir/pyproject.toml" 2>/dev/null; then \
+         grep -qE 'unstract\.executor\.(executors|plugins)' "$plugin_dir/pyproject.toml" 2>/dev/null; then \
         echo "Installing executor plugin: $(basename $plugin_dir)" && \
         uv pip install -e "$plugin_dir" || true; \
       fi; \

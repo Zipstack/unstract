@@ -979,6 +979,7 @@ class LegacyExecutor(BaseExecutor):
         # ---- Initialize highlight plugin (if enabled + installed) ----------
         process_text_fn = None
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
         if enable_highlight:
             from executor.executors.plugins import ExecutorPluginLoader
 
@@ -990,13 +991,36 @@ class LegacyExecutor(BaseExecutor):
                 highlight_instance = highlight_cls(
                     file_path=file_path,
                     fs_instance=fs_instance,
-                    execution_source=execution_source,
+                    enable_word_confidence=enable_word_confidence,
                 )
                 process_text_fn = highlight_instance.run
                 logger.info(
                     "Highlight plugin initialized for file=%s",
                     doc_name,
                 )
+
+        # ---- Merge tool_settings as defaults into each prompt output --------
+        # Single-pass payloads carry adapter IDs and chunk config in
+        # tool_settings only (not per-prompt), while answer_prompt payloads
+        # carry them per-prompt.  Merging tool_settings as a base ensures
+        # both paths work.
+        _ts_defaults = {
+            k: v
+            for k, v in tool_settings.items()
+            if k
+            in {
+                PSKeys.CHUNK_SIZE,
+                PSKeys.CHUNK_OVERLAP,
+                PSKeys.LLM,
+                PSKeys.VECTOR_DB,
+                PSKeys.EMBEDDING,
+                PSKeys.X2TEXT_ADAPTER,
+                PSKeys.RETRIEVAL_STRATEGY,
+                PSKeys.SIMILARITY_TOP_K,
+            }
+        }
+        if _ts_defaults:
+            prompts = [{**_ts_defaults, **p} for p in prompts]
 
         # ---- First pass: collect variable names + required fields ----------
         for output in prompts:
