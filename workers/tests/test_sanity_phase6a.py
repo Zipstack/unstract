@@ -32,26 +32,50 @@ def _reset_plugin_loader():
 
 
 class TestPluginLoaderNoPlugins:
-    """When no cloud plugins are installed, loader returns None / empty."""
+    """When no cloud plugins are installed, loader returns None / empty.
 
-    def test_get_returns_none_for_unknown_plugin(self):
+    Mocks entry_points to simulate a clean OSS environment where
+    no cloud executor plugins are pip-installed.
+    """
+
+    @patch(
+        "importlib.metadata.entry_points",
+        return_value=[],
+    )
+    def test_get_returns_none_for_unknown_plugin(self, _mock_eps):
         result = ExecutorPluginLoader.get("nonexistent-plugin")
         assert result is None
 
-    def test_get_returns_none_for_highlight_data(self):
+    @patch(
+        "importlib.metadata.entry_points",
+        return_value=[],
+    )
+    def test_get_returns_none_for_highlight_data(self, _mock_eps):
         """highlight-data is a cloud plugin, not installed in OSS."""
         result = ExecutorPluginLoader.get("highlight-data")
         assert result is None
 
-    def test_get_returns_none_for_challenge(self):
+    @patch(
+        "importlib.metadata.entry_points",
+        return_value=[],
+    )
+    def test_get_returns_none_for_challenge(self, _mock_eps):
         result = ExecutorPluginLoader.get("challenge")
         assert result is None
 
-    def test_get_returns_none_for_evaluation(self):
+    @patch(
+        "importlib.metadata.entry_points",
+        return_value=[],
+    )
+    def test_get_returns_none_for_evaluation(self, _mock_eps):
         result = ExecutorPluginLoader.get("evaluation")
         assert result is None
 
-    def test_discover_executors_returns_empty(self):
+    @patch(
+        "importlib.metadata.entry_points",
+        return_value=[],
+    )
+    def test_discover_executors_returns_empty(self, _mock_eps):
         discovered = ExecutorPluginLoader.discover_executors()
         assert discovered == []
 
@@ -60,7 +84,8 @@ class TestPluginLoaderNoPlugins:
 
 
 class TestPluginLoaderClear:
-    def test_clear_resets_plugins(self):
+    @patch("importlib.metadata.entry_points", return_value=[])
+    def test_clear_resets_plugins(self, _mock_eps):
         # Force discovery (caches empty dict)
         ExecutorPluginLoader.get("anything")
         assert ExecutorPluginLoader._plugins is not None
@@ -68,7 +93,8 @@ class TestPluginLoaderClear:
         ExecutorPluginLoader.clear()
         assert ExecutorPluginLoader._plugins is None
 
-    def test_get_after_clear_re_discovers(self):
+    @patch("importlib.metadata.entry_points", return_value=[])
+    def test_get_after_clear_re_discovers(self, _mock_eps):
         """After clear(), next get() re-runs discovery."""
         ExecutorPluginLoader.get("x")
         assert ExecutorPluginLoader._plugins == {}

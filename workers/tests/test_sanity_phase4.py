@@ -47,6 +47,9 @@ _PATCH_RUN_COMPLETION = (
 _PATCH_INDEX_UTILS = (
     "unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key"
 )
+_PATCH_PLUGIN_LOADER = (
+    "executor.executors.plugins.loader.ExecutorPluginLoader.get"
+)
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -497,10 +500,13 @@ class TestIDEIndex:
 class TestIDEAnswerPrompt:
     """IDE answer_prompt payload → executor → {output, metadata, metrics}."""
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
-    def test_ide_answer_prompt_text(self, mock_shim_cls, mock_deps, _mock_idx, eager_app):
+    def test_ide_answer_prompt_text(
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
+    ):
         """IDE text prompt → output dict with prompt_key → answer."""
         llm = _mock_llm("INV-2024-001")
         mock_deps.return_value = _mock_prompt_deps(llm)
@@ -517,11 +523,12 @@ class TestIDEAnswerPrompt:
         assert "metrics" in result.data
         assert result.data["output"]["invoice_number"] == "INV-2024-001"
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_answer_prompt_metadata_has_run_id(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """IDE response metadata contains run_id and file_name."""
         llm = _mock_llm("answer")
@@ -536,11 +543,12 @@ class TestIDEAnswerPrompt:
         assert metadata["run_id"] == "run-ide-ap"
         assert metadata["file_name"] == "invoice.pdf"
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_answer_prompt_with_eval_settings(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """Prompt with eval_settings passes through to executor cleanly."""
         llm = _mock_llm("answer")
@@ -560,11 +568,12 @@ class TestIDEAnswerPrompt:
 
         assert result.success is True
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_answer_prompt_platform_key_reaches_shim(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """PLATFORM_SERVICE_API_KEY in payload reaches ExecutorToolShim."""
         llm = _mock_llm("answer")
@@ -579,11 +588,12 @@ class TestIDEAnswerPrompt:
         call_kwargs = mock_shim_cls.call_args
         assert call_kwargs.kwargs.get("platform_api_key") == "pk-ide-test"
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_answer_prompt_webhook_settings(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """Prompt with webhook settings passes through cleanly."""
         llm = _mock_llm("answer")
@@ -604,11 +614,12 @@ class TestIDEAnswerPrompt:
 class TestIDESinglePass:
     """IDE single_pass_extraction → executor → same shape as answer_prompt."""
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_single_pass_multi_prompt(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """Single pass with multiple prompts → all fields in output."""
         llm = _mock_llm("single pass value")
@@ -624,11 +635,12 @@ class TestIDESinglePass:
         assert "revenue" in result.data["output"]
         assert "date" in result.data["output"]
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_single_pass_has_metadata(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """Single pass returns metadata with run_id."""
         llm = _mock_llm("value")
@@ -688,11 +700,12 @@ class TestIDEDispatcherIntegration:
         assert result.success is True
         assert result.data["extracted_text"] == "dispatcher extracted"
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_dispatcher_answer_prompt_round_trip(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """ExecutionDispatcher.dispatch() → answer_prompt → ExecutionResult."""
         llm = _mock_llm("dispatcher answer")
@@ -711,11 +724,12 @@ class TestIDEDispatcherIntegration:
         assert result.data["output"]["invoice_number"] == "dispatcher answer"
         assert "metadata" in result.data
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_dispatcher_single_pass_round_trip(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """ExecutionDispatcher.dispatch() → single_pass → ExecutionResult."""
         llm = _mock_llm("sp dispatch")
@@ -789,11 +803,12 @@ class TestIDEExecutionSourceRouting:
         # This is verified by the fact that no dump_json was called
         # on the fs mock. In IDE mode, whisper_hash metadata is skipped.
 
+    @patch(_PATCH_PLUGIN_LOADER, return_value=None)
     @patch(_PATCH_INDEX_UTILS, return_value="doc-id-ide")
     @patch(_PATCH_PROMPT_DEPS)
     @patch(_PATCH_SHIM)
     def test_ide_source_in_answer_prompt_enables_variable_replacement(
-        self, mock_shim_cls, mock_deps, _mock_idx, eager_app
+        self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
         """execution_source='ide' in payload sets is_ide=True for variable replacement."""
         llm = _mock_llm("var answer")

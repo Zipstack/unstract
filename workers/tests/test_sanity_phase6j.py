@@ -373,10 +373,12 @@ class TestCeleryChainCloudExecutors:
 # ---------------------------------------------------------------------------
 
 class TestCrossCuttingHighlight:
-    def test_highlight_plugin_not_installed_no_error(self):
+    @patch("importlib.metadata.entry_points", return_value=[])
+    def test_highlight_plugin_not_installed_no_error(self, _mock_eps):
         """When highlight plugin not installed, extraction still works."""
         from executor.executors.plugins.loader import ExecutorPluginLoader
 
+        ExecutorPluginLoader.clear()
         assert ExecutorPluginLoader.get("highlight-data") is None
         # No error — graceful degradation
 

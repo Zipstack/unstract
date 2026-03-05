@@ -581,7 +581,7 @@ def _write_tool_result(
         # Add tool_metadata (matches BaseTool._update_exec_metadata)
         # The destination connector reads output_type from tool_metadata[-1]
         tool_meta_entry = {
-            "tool_name": "structure",
+            "tool_name": "structure_tool",
             "output_type": "JSON",
             "elapsed_time": elapsed_time,
         }
