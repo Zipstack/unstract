@@ -204,7 +204,10 @@ class Command(BaseCommand):
         """
         # Single org mode
         if org_id:
-            org = Organization.objects.filter(id=org_id).first()
+            try:
+                org = Organization.objects.filter(id=org_id).first()
+            except (ValueError, TypeError):
+                org = None
             if not org:
                 self.stderr.write(self.style.ERROR(f"Organization {org_id} not found"))
                 return []
