@@ -187,23 +187,31 @@ class UnstractFileSystem(UnstractConnector, ABC):
         Returns:
             List of file metadata dictionaries
         """
-        all_files = []
+        all_files: list[dict[str, Any]] = []
         fs_fsspec = self.get_fsspec_fs()
 
-        for root, dirs, _ in fs_fsspec.walk(directory, maxdepth=max_depth):
-            try:
-                fs_metadata_list = fs_fsspec.listdir(root, detail=True)
-                for metadata in fs_metadata_list:
-                    if not include_dirs and self.is_dir_by_metadata(metadata):
-                        continue
-                    all_files.append(metadata)
+        def _on_walk_error(error: Exception) -> None:
+            """Callback for walk errors — preserves user error reporting."""
+            logger.warning(f"Failed to list directory: {error}")
+            self._store_user_error(f"Could not access directory: {error}")
 
-                    if limit is not None and len(all_files) >= limit:
-                        return all_files
-            except Exception as e:
-                logger.warning(f"Failed to list directory {root}: {e}")
-                self._store_user_error(f"Could not access directory: {root}")
-                continue
+        for root, dirs, files in fs_fsspec.walk(
+            directory, maxdepth=max_depth, detail=True, on_error=_on_walk_error
+        ):
+            if include_dirs:
+                items = list(dirs.values()) + list(files.values())
+            else:
+                items = list(files.values())
+
+            for metadata in items:
+                # Safety check: some providers (GCS zero-size objects, Azure
+                # is_directory tag) mis-classify directories as files.
+                if not include_dirs and self.is_dir_by_metadata(metadata):
+                    continue
+                all_files.append(metadata)
+
+                if limit is not None and len(all_files) >= limit:
+                    return all_files
         return all_files
 
     def report_errors_to_user(self) -> list[str]:
