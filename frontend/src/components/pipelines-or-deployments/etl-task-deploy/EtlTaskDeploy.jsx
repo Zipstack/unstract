@@ -205,10 +205,6 @@ const EtlTaskDeploy = ({
         updatePipelineTable(res?.data);
         setOpen(false);
         clearFormDetails();
-        setAlertDetails({
-          type: "success",
-          content: "Pipeline Updated Successfully",
-        });
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "", setBackendErrors));
@@ -219,18 +215,12 @@ const EtlTaskDeploy = ({
   };
 
   const createPipeline = () => {
-    try {
-      const wf = workflowList.find(
-        (item) => item?.id === formDetails?.workflow,
-      );
-      setPostHogCustomEvent(posthogDeploymentEventText[`${type}_success`], {
-        info: "Clicked on 'Save and Deploy' button",
-        deployment_name: formDetails?.pipeline_name,
-        workflow_name: wf?.workflow_name,
-      });
-    } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
+    const wf = workflowList.find((item) => item?.id === formDetails?.workflow);
+    setPostHogCustomEvent(posthogDeploymentEventText[`${type}_success`], {
+      info: "Clicked on 'Save and Deploy' button",
+      deployment_name: formDetails?.pipeline_name,
+      workflow_name: wf?.workflow_name,
+    });
 
     const body = formDetails;
     body["pipeline_type"] = type.toUpperCase();

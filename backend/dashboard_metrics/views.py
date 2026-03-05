@@ -34,6 +34,7 @@ from .models import (
     MetricType,
 )
 from .serializers import (
+    DeploymentUsageQuerySerializer,
     EventMetricsHourlySerializer,
     MetricsQuerySerializer,
 )
@@ -403,8 +404,6 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
             # Apply granularity-based grouping to cached records
-            from datetime import datetime
-
             trunc_funcs = {
                 Granularity.HOUR: lambda ts: ts.replace(
                     minute=0, second=0, microsecond=0
@@ -774,6 +773,8 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             "etl_pipeline_executions": MetricsQueryService.get_etl_pipeline_executions,
             "llm_usage": MetricsQueryService.get_llm_usage_cost,
             "prompt_executions": MetricsQueryService.get_prompt_executions,
+            "hitl_reviews": MetricsQueryService.get_hitl_reviews,
+            "hitl_completions": MetricsQueryService.get_hitl_completions,
         }
 
         # Filter by specific metric if requested
@@ -863,30 +864,28 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=["get"], url_path="workflow-token-usage")
     @cache_metrics_response(endpoint="workflow_token_usage")
     def workflow_token_usage(self, request: Request) -> Response:
-        """Get per-workflow LLM token usage breakdown.
+        """Get LLM token usage grouped by deployment.
 
-        Returns token usage and cost aggregated per workflow for the
-        given date range. Cached for 1 hour; pass ?refresh=true to
-        bypass cache.
+        Returns token usage and cost aggregated per deployment for the
+        given date range and deployment type. Cached for 1 hour;
+        pass ?refresh=true to bypass cache.
 
         Query Parameters:
             start_date: Start of date range (ISO 8601)
             end_date: End of date range (ISO 8601)
+            deployment_type: One of API, ETL, TASK, WF (default: API)
             refresh: If "true", bypass cache and fetch fresh data
 
         Returns:
-            200: List of workflows with token usage
-            500: Error occurred
+            200: List of deployments with token usage
+            400: Invalid parameters
         """
-        query_serializer = MetricsQuerySerializer(data=request.query_params)
-        query_serializer.is_valid(raise_exception=True)
-        params = query_serializer.validated_data
+        serializer = DeploymentUsageQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
 
-        organization = self._get_organization()
-        org_id = str(organization.id)
-
-        data = MetricsQueryService.get_workflow_token_usage(
-            org_id,
+        data = MetricsQueryService.get_deployment_usage(
+            params["deployment_type"],
             params["start_date"],
             params["end_date"],
         )
@@ -894,7 +893,9 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
-                "workflows": data,
+                "deployment_type": params["deployment_type"],
+                "range_truncated": params["range_truncated"],
+                "deployments": data,
             }
         )
 
