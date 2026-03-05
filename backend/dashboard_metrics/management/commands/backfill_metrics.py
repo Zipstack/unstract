@@ -5,7 +5,7 @@ tables from historical data in source tables (Usage, PageUsage, WorkflowExecutio
 
 Usage:
     python manage.py backfill_metrics --days=30
-    python manage.py backfill_metrics --days=90 --org-id=org_abc123
+    python manage.py backfill_metrics --days=90 --org-id=5
     python manage.py backfill_metrics --days=7 --dry-run
     python manage.py backfill_metrics --days=90 --active-only
 """
@@ -192,7 +192,11 @@ class Command(BaseCommand):
         org_id: str | None,
         active_only: bool,
     ) -> list[str]:
-        """Resolve the list of organization IDs to process.
+        """Resolve the list of organization PKs to process.
+
+        Returns Organization.id (int PK) values as strings, since all
+        downstream queries (services, bulk upserts) use the FK which
+        references Organization.id, not Organization.organization_id.
 
         Applies filters in order:
         1. Single org (--org-id) — returns immediately
@@ -200,35 +204,40 @@ class Command(BaseCommand):
         """
         # Single org mode
         if org_id:
-            if not Organization.objects.filter(organization_id=org_id).exists():
+            org = Organization.objects.filter(id=org_id).first()
+            if not org:
                 self.stderr.write(self.style.ERROR(f"Organization {org_id} not found"))
                 return []
             self.stdout.write(f"Single org mode: {org_id}")
-            return [org_id]
+            return [str(org.id)]
 
-        # Start with all org IDs (organization_id is the Auth0 org identifier)
-        all_org_ids = set(Organization.objects.values_list("organization_id", flat=True))
-        self.stdout.write(f"Total organizations: {len(all_org_ids)}")
-
-        # Filter: Active subscription (cloud only)
-        if active_only:
-            if not HAS_SUBSCRIPTION:
-                self.stdout.write(
-                    self.style.WARNING(
-                        "subscription_v2 not available (OSS mode), ignoring --active-only"
-                    )
+        # Get org PKs based on filtering mode
+        if active_only and HAS_SUBSCRIPTION:
+            active_org_id_strings = set(
+                Subscription.objects.filter(is_active=True).values_list(
+                    "organization_id", flat=True
                 )
-            else:
-                active_sub_org_ids = set(
-                    Subscription.objects.filter(is_active=True).values_list(
-                        "organization_id", flat=True
-                    )
+            )
+            # Map org_* strings back to Organization PKs
+            all_org_ids = set(
+                Organization.objects.filter(
+                    organization_id__in=active_org_id_strings
+                ).values_list("id", flat=True)
+            )
+            self.stdout.write(
+                f"Active organizations (subscription filter): {len(all_org_ids)}"
+            )
+        elif active_only and not HAS_SUBSCRIPTION:
+            self.stdout.write(
+                self.style.WARNING(
+                    "subscription_v2 not available (OSS mode), ignoring --active-only"
                 )
-                all_org_ids &= active_sub_org_ids
-                self.stdout.write(
-                    f"After active subscription filter: {len(all_org_ids)} orgs "
-                    f"({len(active_sub_org_ids)} with active subscription)"
-                )
+            )
+            all_org_ids = set(Organization.objects.values_list("id", flat=True))
+            self.stdout.write(f"Total organizations: {len(all_org_ids)}")
+        else:
+            all_org_ids = set(Organization.objects.values_list("id", flat=True))
+            self.stdout.write(f"Total organizations: {len(all_org_ids)}")
 
         return sorted(str(oid) for oid in all_org_ids)
 
