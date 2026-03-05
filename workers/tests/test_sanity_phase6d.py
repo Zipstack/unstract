@@ -20,6 +20,7 @@ import pytest
 from executor.executors.answer_prompt import AnswerPromptService
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError
+from unstract.sdk1.execution.result import ExecutionResult
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +146,44 @@ class TestTableLineItemGuard:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
            return_value="doc-id-1")
-    def test_table_type_raises_with_routing_guidance(
+    def test_table_type_delegates_to_table_executor(
         self, mock_key, mock_shim_cls
     ):
+        """TABLE prompts are delegated to TableExtractorExecutor in-process."""
+        mock_shim_cls.return_value = MagicMock()
+        executor = _get_executor()
+        ctx = _make_context(output_type=PSKeys.TABLE)  # "table"
+        llm = _mock_llm()
+        patches = _standard_patches(executor, llm)
+
+        mock_table_executor = MagicMock()
+        mock_table_executor.execute.return_value = ExecutionResult(
+            success=True,
+            data={"output": {"table_data": "extracted"}, "metadata": {"metrics": {}}},
+        )
+
+        with patches["_get_prompt_deps"], patches["shim"], patches["index_key"]:
+            with patch(
+                "unstract.sdk1.execution.registry.ExecutorRegistry.get",
+                return_value=mock_table_executor,
+            ):
+                result = executor._handle_answer_prompt(ctx)
+
+        assert result.success
+        assert result.data["output"]["field1"] == {"table_data": "extracted"}
+        mock_table_executor.execute.assert_called_once()
+        # Verify the sub-context was built with table executor params
+        sub_ctx = mock_table_executor.execute.call_args[0][0]
+        assert sub_ctx.executor_name == "table"
+        assert sub_ctx.operation == "table_extract"
+
+    @patch("executor.executors.legacy_executor.ExecutorToolShim")
+    @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
+           return_value="doc-id-1")
+    def test_table_type_raises_when_plugin_missing(
+        self, mock_key, mock_shim_cls
+    ):
+        """TABLE prompts raise error when table executor plugin is not installed."""
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
         ctx = _make_context(output_type=PSKeys.TABLE)  # "table"
@@ -155,8 +191,12 @@ class TestTableLineItemGuard:
         patches = _standard_patches(executor, llm)
 
         with patches["_get_prompt_deps"], patches["shim"], patches["index_key"]:
-            with pytest.raises(LegacyExecutorError, match="TableExtractorExecutor"):
-                executor._handle_answer_prompt(ctx)
+            with patch(
+                "unstract.sdk1.execution.registry.ExecutorRegistry.get",
+                side_effect=KeyError("No executor registered with name 'table'"),
+            ):
+                with pytest.raises(LegacyExecutorError, match="table executor plugin"):
+                    executor._handle_answer_prompt(ctx)
 
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",

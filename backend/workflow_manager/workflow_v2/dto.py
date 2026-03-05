@@ -61,11 +61,11 @@ class ExecutionResponse:
 
         for item in self.result:
             if not isinstance(item, dict):
-                break
+                continue
 
             result = item.get("result")
             if not isinstance(result, dict):
-                break
+                continue
 
             self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
 

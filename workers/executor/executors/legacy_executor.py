@@ -1100,6 +1100,73 @@ class LegacyExecutor(BaseExecutor):
                 file_path=file_path,
             )
 
+            # TABLE/RECORD: delegate to TableExtractorExecutor in-process.
+            # The table executor plugin handles PDF table detection,
+            # header extraction, and CSV-to-JSON post-processing.
+            if output.get(PSKeys.TYPE) in (PSKeys.TABLE, PSKeys.RECORD):
+                from unstract.sdk1.execution.registry import ExecutorRegistry
+
+                try:
+                    table_executor = ExecutorRegistry.get("table")
+                except KeyError:
+                    raise LegacyExecutorError(
+                        message=(
+                            "TABLE extraction requires the table executor "
+                            "plugin. Install the table_extractor plugin."
+                        )
+                    )
+
+                table_ctx = ExecutionContext(
+                    executor_name="table",
+                    operation="table_extract",
+                    run_id=run_id,
+                    execution_source=execution_source,
+                    organization_id=context.organization_id,
+                    request_id=context.request_id,
+                    executor_params={
+                        "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
+                        "table_settings": output.get(PSKeys.TABLE_SETTINGS, {}),
+                        "prompt": output.get(PSKeys.PROMPT, ""),
+                        "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                        "execution_id": execution_id,
+                        "tool_id": tool_id,
+                        "file_name": doc_name,
+                    },
+                )
+                table_ctx._log_component = self._log_component
+                table_ctx.log_events_id = self._log_events_id
+
+                shim.stream_log(f"Running table extraction for: {prompt_name}")
+                table_result = table_executor.execute(table_ctx)
+
+                if table_result.success:
+                    structured_output[prompt_name] = table_result.data.get(
+                        "output", ""
+                    )
+                    table_metrics = (
+                        table_result.data.get("metadata", {}).get("metrics", {})
+                    )
+                    metrics.setdefault(prompt_name, {}).update(
+                        {"table_extraction": table_metrics}
+                    )
+                    logger.info(
+                        "TABLE extraction completed: prompt=%s", prompt_name
+                    )
+                else:
+                    structured_output[prompt_name] = ""
+                    logger.error(
+                        "TABLE extraction failed for prompt=%s: %s",
+                        prompt_name,
+                        table_result.error,
+                    )
+                shim.stream_log(f"Completed prompt: {prompt_name}")
+                continue
+
+            if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
+                raise LegacyExecutorError(
+                    message="LINE_ITEM extraction is not supported."
+                )
+
             # Create adapters
             try:
                 usage_kwargs = {
@@ -1133,23 +1200,6 @@ class LegacyExecutor(BaseExecutor):
                 logger.error(msg)
                 status_code = getattr(e, "status_code", None) or 500
                 raise LegacyExecutorError(message=msg, code=status_code) from e
-
-            # TABLE type is handled by TableExtractorExecutor (separate
-            # queue).  LINE_ITEM is not supported.  The backend dispatcher
-            # must route these types to the correct executor; if they
-            # reach LegacyExecutor it's a mis-route.
-            if output[PSKeys.TYPE] == PSKeys.TABLE:
-                raise LegacyExecutorError(
-                    message=(
-                        "TABLE extraction is handled by "
-                        "TableExtractorExecutor.  Route TABLE prompts "
-                        "with executor_name='table'."
-                    )
-                )
-            if output[PSKeys.TYPE] == PSKeys.LINE_ITEM:
-                raise LegacyExecutorError(
-                    message="LINE_ITEM extraction is not supported."
-                )
 
             # ---- Retrieval + Answer ----------------------------------------
             context_list: list[str] = []
