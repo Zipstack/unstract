@@ -336,14 +336,13 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
     @staticmethod
     def _map_vertex_fields(metadata: dict[str, "Any"]) -> None:
         """Map user-facing field names to litellm's vertex_* parameter names."""
-        if "json_credentials" in metadata and not metadata.get(
-            "vertex_credentials"
-        ):
+        if "json_credentials" in metadata and not metadata.get("vertex_credentials"):
             metadata["vertex_credentials"] = metadata["json_credentials"]
         if "project" in metadata and not metadata.get("vertex_project"):
             metadata["vertex_project"] = metadata["project"]
-        if "location" in metadata and not metadata.get("vertex_location"):
-            metadata["vertex_location"] = metadata["location"]
+        loc = metadata.get("location")
+        if loc and loc.strip() and not metadata.get("vertex_location"):
+            metadata["vertex_location"] = loc.strip()
 
     @staticmethod
     def _get_thinking_config(

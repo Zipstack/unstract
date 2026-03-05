@@ -35,7 +35,7 @@
       "location": {
         "type": "string",
         "title": "Location",
-        "default": "global",
+        "default": "",
         "description": "The Google Cloud region for the Vertex AI endpoint (e.g., us-central1, global). If left empty, defaults to us-central1."
       },
       "embed_batch_size": {
