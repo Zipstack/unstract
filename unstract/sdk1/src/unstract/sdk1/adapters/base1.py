@@ -330,7 +330,20 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     safety_settings: list[dict[str, str]]
+
+    @staticmethod
+    def _map_vertex_fields(metadata: dict[str, "Any"]) -> None:
+        """Map user-facing field names to litellm's vertex_* parameter names."""
+        if "json_credentials" in metadata and not metadata.get(
+            "vertex_credentials"
+        ):
+            metadata["vertex_credentials"] = metadata["json_credentials"]
+        if "project" in metadata and not metadata.get("vertex_project"):
+            metadata["vertex_project"] = metadata["project"]
+        if "location" in metadata and not metadata.get("vertex_location"):
+            metadata["vertex_location"] = metadata["location"]
 
     @staticmethod
     def _get_thinking_config(
@@ -365,13 +378,8 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAILLMParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         # Handle Vertex AI thinking configuration (for Gemini models)
         enable_thinking = metadata_copy.get("enable_thinking", False)
@@ -778,6 +786,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     embed_batch_size: int | None = 10
     embed_mode: str | None = "default"
 
@@ -789,13 +798,8 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAIEmbeddingParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         return VertexAIEmbeddingParameters(**metadata_copy).model_dump()
 
