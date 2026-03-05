@@ -11,7 +11,6 @@ from llama_index.core.vector_stores.types import (
     VectorStore,
     VectorStoreQueryResult,
 )
-
 from unstract.sdk1.adapters.vectordb import adapters
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.exceptions import parse_vector_db_err
@@ -88,9 +87,7 @@ class VectorDB:
                 self._tool, self._adapter_instance_id
             )
 
-            self._adapter_name = vector_db_config.pop(
-                Common.ADAPTER_NAME, ""
-            )
+            self._adapter_name = vector_db_config.pop(Common.ADAPTER_NAME, "")
             vector_db_adapter_id = vector_db_config.get(Common.ADAPTER_ID)
             if vector_db_adapter_id not in self.vector_db_adapters:
                 raise SdkError(f"VectorDB adapter not supported : {vector_db_adapter_id}")

@@ -9,7 +9,6 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -87,9 +86,7 @@ class LLM:
                 self._adapter_id = llm_config[Common.ADAPTER_ID]
                 self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
-                self._adapter_name = llm_config.pop(
-                    SdkCommon.ADAPTER_NAME, ""
-                )
+                self._adapter_name = llm_config.pop(SdkCommon.ADAPTER_NAME, "")
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id

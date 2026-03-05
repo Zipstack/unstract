@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 import litellm
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
@@ -68,9 +67,7 @@ class Embedding:
                 self._adapter_id = embedding_config[Common.ADAPTER_ID]
                 self._adapter_metadata = embedding_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
-                self._adapter_name = embedding_config.pop(
-                    SdkCommon.ADAPTER_NAME, ""
-                )
+                self._adapter_name = embedding_config.pop(SdkCommon.ADAPTER_NAME, "")
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id
