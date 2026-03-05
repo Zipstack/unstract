@@ -34,9 +34,7 @@ class HighlightDataProtocol(Protocol):
     ) -> dict: ...
 
     @staticmethod
-    def extract_word_confidence(
-        original_text: str, is_json: bool = False
-    ) -> dict: ...
+    def extract_word_confidence(original_text: str, is_json: bool = False) -> dict: ...
 
 
 @runtime_checkable
