@@ -92,7 +92,10 @@ class AnswerPromptService:
                     )
 
         if promptx != output[PSKeys.PROMPT]:
-            logger.debug("Prompt modified by variable replacement for: %s", output.get(PSKeys.NAME, ""))
+            logger.debug(
+                "Prompt modified by variable replacement for: %s",
+                output.get(PSKeys.NAME, ""),
+            )
         return promptx
 
     @staticmethod
