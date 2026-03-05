@@ -9,9 +9,11 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
+from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
 from unstract.sdk1.platform import PlatformHelper
@@ -85,6 +87,9 @@ class LLM:
                 self._adapter_id = llm_config[Common.ADAPTER_ID]
                 self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
+                self._adapter_name = llm_config.pop(
+                    SdkCommon.ADAPTER_NAME, ""
+                )
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id
@@ -93,6 +98,7 @@ class LLM:
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
                 self._adapter_instance_id = ""
+                self._adapter_name = ""
                 self._tool = None
 
             # Retrieve the adapter class.
@@ -260,8 +266,13 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
+            adapter_info = (
+                f"'{self._adapter_name}' ({self.adapter.get_provider()})"
+                if self._adapter_name
+                else f"'{self.adapter.get_provider()}'"
+            )
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter {adapter_info}: "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -335,8 +346,13 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
+            adapter_info = (
+                f"'{self._adapter_name}' ({self.adapter.get_provider()})"
+                if self._adapter_name
+                else f"'{self.adapter.get_provider()}'"
+            )
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter {adapter_info}: "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
