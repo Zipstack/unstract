@@ -524,12 +524,27 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         doc_path = str(Path(doc_path) / document.document_name)
 
-        # Fetch all active prompts
+        # Fetch prompts eligible for single-pass extraction.
+        # Mirrors the filtering in _execute_prompts_in_single_pass:
+        # only active, non-NOTES, non-TABLE/RECORD prompts.
         prompts = list(
             ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
                 "sequence_number"
             )
         )
+        prompts = [
+            p
+            for p in prompts
+            if p.prompt_type != ToolStudioPromptKeys.NOTES
+            and p.active
+            and p.enforce_type != ToolStudioPromptKeys.TABLE
+            and p.enforce_type != ToolStudioPromptKeys.RECORD
+        ]
+        if not prompts:
+            return Response(
+                {"error": "No active prompts found for single pass extraction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
             tool=custom_tool,

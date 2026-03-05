@@ -546,14 +546,6 @@ class PromptStudioHelper:
             tool=util,
         )
 
-        if DocumentIndexingService.is_document_indexing(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id
-        ):
-            return None, {
-                "status": IndexingStatus.PENDING_STATUS.value,
-                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-            }
-
         # Extract (blocking, usually cached)
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
@@ -794,6 +786,9 @@ class PromptStudioHelper:
                 settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
             ),
             TSPKeys.SUMMARIZE_AS_SOURCE: tool.summarize_as_source,
+            TSPKeys.RETRIEVAL_STRATEGY: default_profile.retrieval_strategy
+            or TSPKeys.SIMPLE,
+            TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
 
         for p in prompts:
@@ -1450,13 +1445,6 @@ class PromptStudioHelper:
             fs=fs_instance,
             tool=util,
         )
-        if DocumentIndexingService.is_document_indexing(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id
-        ):
-            return {
-                "status": IndexingStatus.PENDING_STATUS.value,
-                "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-            }
         logger.info(f"Extracting text from {file_path} for {doc_id}")
         extracted_text = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
@@ -1772,6 +1760,13 @@ class PromptStudioHelper:
             )
             return {"status": IndexingStatus.COMPLETED_STATUS.value, "output": doc_id}
         except (IndexingError, IndexingAPIError, SdkError) as e:
+            # Clear the indexing flag so subsequent requests are not blocked
+            try:
+                DocumentIndexingService.remove_document_indexing(
+                    org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+                )
+            except Exception:
+                logger.exception("Failed to clear indexing flag for %s", doc_id_key)
             msg = str(e)
             if isinstance(e, SdkError) and hasattr(e.actual_err, "response"):
                 msg = e.actual_err.response.json().get("error", str(e))
@@ -1862,6 +1857,10 @@ class PromptStudioHelper:
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
+        tool_settings[TSPKeys.RETRIEVAL_STRATEGY] = (
+            default_profile.retrieval_strategy or TSPKeys.SIMPLE
+        )
+        tool_settings[TSPKeys.SIMILARITY_TOP_K] = default_profile.similarity_top_k
         for prompt in prompts:
             if not prompt.prompt:
                 raise EmptyPromptError()

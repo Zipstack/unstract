@@ -998,6 +998,12 @@ class LegacyExecutor(BaseExecutor):
                     "Highlight plugin initialized for file=%s",
                     doc_name,
                 )
+            else:
+                logger.warning(
+                    "Highlight is enabled but highlight-data plugin is not "
+                    "installed.  Coordinates will not be produced.  Install "
+                    "the plugin via: pip install -e <path-to-highlight-data>"
+                )
 
         # ---- Merge tool_settings as defaults into each prompt output --------
         # Single-pass payloads carry adapter IDs and chunk config in
