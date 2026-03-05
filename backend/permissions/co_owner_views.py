@@ -6,7 +6,6 @@ from typing import Any
 from account_v2.models import User
 from django.shortcuts import get_object_or_404
 from rest_framework import status
-from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 
@@ -120,7 +119,6 @@ class CoOwnerManagementMixin:
                 resource.pk,
             )
 
-    @action(detail=True, methods=["post"], url_path="owners")
     def add_co_owner(self, request: Request, pk: Any = None) -> Response:
         """Add a co-owner to the resource."""
         resource = self.get_object()  # type: ignore[attr-defined]
@@ -149,11 +147,6 @@ class CoOwnerManagementMixin:
             status=status.HTTP_200_OK,
         )
 
-    @action(
-        detail=True,
-        methods=["delete"],
-        url_path="owners/(?P<user_id>[^/.]+)",
-    )
     def remove_co_owner(
         self, request: Request, pk: Any = None, user_id: Any = None
     ) -> Response:

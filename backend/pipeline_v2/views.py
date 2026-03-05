@@ -103,7 +103,7 @@ class PipelineViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
             F("created_at").desc(),
         )
 
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "execute":

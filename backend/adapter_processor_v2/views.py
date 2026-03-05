@@ -178,7 +178,7 @@ class AdapterInstanceViewSet(CoOwnerManagementMixin, ModelViewSet):
             )
         else:
             queryset = AdapterInstance.objects.for_user(self.request.user)
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def get_serializer_class(
         self,
@@ -214,8 +214,6 @@ class AdapterInstanceViewSet(CoOwnerManagementMixin, ModelViewSet):
                 )
 
             instance = serializer.save()
-            if instance.created_by:
-                instance.co_owners.add(instance.created_by)
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )

@@ -287,7 +287,7 @@ class APIDeploymentViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(display_name__icontains=search)
 
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:

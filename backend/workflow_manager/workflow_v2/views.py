@@ -103,7 +103,7 @@ class WorkflowViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
             Workflow.objects.for_user(self.request.user).filter(**filter_args)
             if filter_args
             else Workflow.objects.for_user(self.request.user)
-        )
+        ).prefetch_related("co_owners")
         order_by = self.request.query_params.get("order_by")
         if order_by == "desc":
             queryset = queryset.order_by("-modified_at")

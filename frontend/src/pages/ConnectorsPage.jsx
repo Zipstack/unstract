@@ -1,6 +1,6 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
@@ -31,28 +31,31 @@ function ConnectorsPage() {
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
 
-  const connectorCoOwnerService = {
-    getAllUsers: () => axiosPrivate.get(getUrl("users/")),
-    getSharedUsers: (id) =>
-      axiosPrivate.get(getUrl(`connector/users/${id}/`), {
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-      }),
-    addCoOwner: (id, userId) =>
-      axiosPrivate.post(
-        getUrl(`connector/${id}/owners/`),
-        { user_id: userId },
-        {
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-            "Content-Type": "application/json",
+  const connectorCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () => axiosPrivate.get(getUrl("users/")),
+      getSharedUsers: (id) =>
+        axiosPrivate.get(getUrl(`connector/users/${id}/`), {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate.post(
+          getUrl(`connector/${id}/owners/`),
+          { user_id: userId },
+          {
+            headers: {
+              "X-CSRFToken": sessionDetails?.csrfToken,
+              "Content-Type": "application/json",
+            },
           },
-        },
-      ),
-    removeCoOwner: (id, userId) =>
-      axiosPrivate.delete(getUrl(`connector/${id}/owners/${userId}/`), {
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-      }),
-  };
+        ),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate.delete(getUrl(`connector/${id}/owners/${userId}/`), {
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [sessionDetails?.csrfToken],
+  );
 
   const {
     coOwnerOpen,

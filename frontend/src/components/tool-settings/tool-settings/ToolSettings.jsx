@@ -1,6 +1,6 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
@@ -50,35 +50,38 @@ function ToolSettings({ type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
 
-  const adapterCoOwnerService = {
-    getAllUsers: () =>
-      axiosPrivate({
-        method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
-      }),
-    getSharedUsers: (id) =>
-      axiosPrivate({
-        method: "GET",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${id}/`,
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-      }),
-    addCoOwner: (id, userId) =>
-      axiosPrivate({
-        method: "POST",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/`,
-        headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
-          "Content-Type": "application/json",
-        },
-        data: { user_id: userId },
-      }),
-    removeCoOwner: (id, userId) =>
-      axiosPrivate({
-        method: "DELETE",
-        url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/${userId}/`,
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-      }),
-  };
+  const adapterCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+      getSharedUsers: (id) =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${id}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: { user_id: userId },
+        }),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "DELETE",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/${userId}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [sessionDetails?.orgId, sessionDetails?.csrfToken],
+  );
 
   const {
     coOwnerOpen,

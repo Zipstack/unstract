@@ -84,7 +84,7 @@ class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
                 )
                 queryset = queryset.none()
 
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.
@@ -165,14 +165,12 @@ class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
         except Exception as exc:
             logger.error(f"Error while obtaining ConnectorAuth: {exc}")
             raise OAuthTimeOut
-        instance = serializer.save(
+        serializer.save(
             connector_id=connector_id,
             connector_metadata=connector_metadata,
             created_by=self.request.user,
             modified_by=self.request.user,
         )  # type: ignore
-        if instance.created_by:
-            instance.co_owners.add(instance.created_by)
 
         # Clean up OAuth cache after successful create
         self._cleanup_oauth_cache(connector_id)

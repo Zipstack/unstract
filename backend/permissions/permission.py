@@ -69,13 +69,6 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
         return False
 
 
-def _is_adapter_owner(request: Request, obj: AdapterInstance) -> bool:
-    """Check if the user is an owner (created_by or co_owner) of the adapter."""
-    if obj.created_by == request.user:
-        return True
-    return bool(obj.co_owners.filter(pk=request.user.pk).exists())
-
-
 class IsFrictionLessAdapter(permissions.BasePermission):
     """Hack for friction-less onboarding not allowing user to view or updating
     friction less adapter.
@@ -87,7 +80,7 @@ class IsFrictionLessAdapter(permissions.BasePermission):
         if obj.is_friction_less:
             return False
 
-        return _is_adapter_owner(request, obj)
+        return IsOwner().has_object_permission(request, view, obj)
 
 
 class IsFrictionLessAdapterDelete(permissions.BasePermission):
@@ -101,4 +94,4 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
         if obj.is_friction_less:
             return True
 
-        return _is_adapter_owner(request, obj)
+        return IsOwner().has_object_permission(request, view, obj)

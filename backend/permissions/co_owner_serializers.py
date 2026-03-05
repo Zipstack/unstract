@@ -38,9 +38,10 @@ class CoOwnerRepresentationMixin:
     ) -> dict[str, Any]:
         created_by_email = instance.created_by.email if instance.created_by else None
         representation["created_by_email"] = created_by_email
-        representation["co_owners_count"] = instance.co_owners.count()
+        co_owners = instance.co_owners.all()
+        representation["co_owners_count"] = len(co_owners)
         representation["is_owner"] = (
-            instance.co_owners.filter(pk=request.user.pk).exists()
+            any(u.pk == request.user.pk for u in co_owners)
             if request and hasattr(request, "user")
             else False
         )
@@ -63,10 +64,8 @@ class AddCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
         ).exists():
             raise serializers.ValidationError("User not found in your organization.")
 
-        user = User.objects.get(id=value)
-
         # Check user is not already a co-owner (creator is always in co_owners)
-        if resource.co_owners.filter(id=user.id).exists():
+        if resource.co_owners.filter(id=value).exists():
             raise serializers.ValidationError("User is already an owner.")
 
         return value
@@ -75,8 +74,7 @@ class AddCoOwnerSerializer(serializers.Serializer):  # type: ignore[misc]
         """Add user as co-owner."""
         resource: models.Model = self.context["resource"]
         user_id = self.validated_data["user_id"]
-        user = User.objects.get(id=user_id)
-        resource.co_owners.add(user)
+        resource.co_owners.add(user_id)
         return resource
 
 

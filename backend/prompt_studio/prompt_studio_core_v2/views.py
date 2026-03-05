@@ -105,7 +105,9 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        return CustomTool.objects.for_user(self.request.user)
+        return CustomTool.objects.for_user(self.request.user).prefetch_related(
+            "co_owners"
+        )
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
@@ -126,9 +128,6 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
                 f"{ToolStudioErrors.TOOL_NAME_EXISTS}, \
                     {ToolStudioErrors.DUPLICATE_API}"
             )
-        instance = CustomTool.objects.get(pk=serializer.data["tool_id"])
-        if instance.created_by:
-            instance.co_owners.add(instance.created_by)
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
