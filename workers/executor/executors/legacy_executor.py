@@ -1140,18 +1140,14 @@ class LegacyExecutor(BaseExecutor):
                 table_result = table_executor.execute(table_ctx)
 
                 if table_result.success:
-                    structured_output[prompt_name] = table_result.data.get(
-                        "output", ""
-                    )
-                    table_metrics = (
-                        table_result.data.get("metadata", {}).get("metrics", {})
+                    structured_output[prompt_name] = table_result.data.get("output", "")
+                    table_metrics = table_result.data.get("metadata", {}).get(
+                        "metrics", {}
                     )
                     metrics.setdefault(prompt_name, {}).update(
                         {"table_extraction": table_metrics}
                     )
-                    logger.info(
-                        "TABLE extraction completed: prompt=%s", prompt_name
-                    )
+                    logger.info("TABLE extraction completed: prompt=%s", prompt_name)
                 else:
                     structured_output[prompt_name] = ""
                     logger.error(
