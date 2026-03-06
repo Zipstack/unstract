@@ -30,6 +30,7 @@ class BaseAdapterSerializer(AuditSerializer):
         fields = "__all__"
 
     def validate(self, data):
+        data = super().validate(data)
         adapter_name = data.get("adapter_name")
         if adapter_name is not None:
             data["adapter_name"] = validate_name_field(
