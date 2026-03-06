@@ -307,7 +307,10 @@ def ide_prompt_complete(
         )
 
         _emit_result(log_events_id, executor_task_id, operation, response)
-        return response
+        # Return minimal status — full data is sent via websocket above.
+        # Returning the full response would cause Celery to log sensitive
+        # extracted data in its "Task succeeded" message.
+        return {"status": "completed", "operation": operation}
     except Exception as e:
         logger.exception("ide_prompt_complete callback failed")
         _emit_error(log_events_id, executor_task_id, operation, str(e))
@@ -435,7 +438,8 @@ def run_fetch_response(
             profile_manager_id=profile_manager_id,
         )
         _emit_result(log_events_id, self.request.id, "fetch_response", response)
-        return response
+        # Return minimal status to avoid logging sensitive extracted data
+        return {"status": "completed", "operation": "fetch_response"}
     except Exception as e:
         logger.exception("run_fetch_response failed")
         _emit_error(log_events_id, self.request.id, "fetch_response", str(e))
@@ -469,7 +473,8 @@ def run_single_pass_extraction(
             run_id=run_id,
         )
         _emit_result(log_events_id, self.request.id, "single_pass_extraction", response)
-        return response
+        # Return minimal status to avoid logging sensitive extracted data
+        return {"status": "completed", "operation": "single_pass_extraction"}
     except Exception as e:
         logger.exception("run_single_pass_extraction failed")
         _emit_error(log_events_id, self.request.id, "single_pass_extraction", str(e))

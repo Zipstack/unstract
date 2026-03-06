@@ -189,12 +189,16 @@ class LegacyExecutor(BaseExecutor):
             context.run_id,
         )
         shim.stream_log("Initializing text extractor...")
+        shim.stream_log(
+            f"Using text extractor: {type(x2text.x2text_instance).__name__}"
+        )
 
         try:
             shim.stream_log("Extracting text from document...")
             if enable_highlight and isinstance(
                 x2text.x2text_instance, (LLMWhisperer, LLMWhispererV2)
             ):
+                shim.stream_log("Extracting text with highlight support enabled...")
                 process_response: TextExtractionResult = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
@@ -247,6 +251,7 @@ class LegacyExecutor(BaseExecutor):
                 process_response.extraction_metadata
                 and process_response.extraction_metadata.line_metadata
             ):
+                shim.stream_log("Saving extraction metadata...")
                 result_data["highlight_metadata"] = (
                     process_response.extraction_metadata.line_metadata
                 )
@@ -430,8 +435,19 @@ class LegacyExecutor(BaseExecutor):
         extracted_text = ""
         index_metrics: dict = {}
 
+        shim = ExecutorToolShim(
+            platform_api_key=extract_params.get("platform_api_key", ""),
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
+        step = 1
+
         # ---- Step 1: Extract ----
         if not skip_extraction:
+            shim.stream_log(
+                f"Pipeline step {step}: Extracting text from document..."
+            )
+            step += 1
             extract_ctx = ExecutionContext(
                 executor_name=context.executor_name,
                 operation=Operation.EXTRACT.value,
@@ -449,6 +465,10 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Step 2: Summarize (if enabled) ----
         if is_summarization:
+            shim.stream_log(
+                f"Pipeline step {step}: Summarizing extracted text..."
+            )
+            step += 1
             summarize_result = self._run_pipeline_summarize(
                 context=context,
                 summarize_params=summarize_params or {},
@@ -462,6 +482,10 @@ class LegacyExecutor(BaseExecutor):
             answer_params["file_path"] = input_file_path
         elif not is_single_pass:
             # ---- Step 3: Index per output with dedup ----
+            shim.stream_log(
+                f"Pipeline step {step}: Indexing document into vector store..."
+            )
+            step += 1
             index_metrics = self._run_pipeline_index(
                 context=context,
                 index_template=index_template,
@@ -486,6 +510,10 @@ class LegacyExecutor(BaseExecutor):
                     output["table_settings"] = table_settings
 
         # ---- Step 5: Answer prompt / Single pass ----
+        mode_label = "single pass" if is_single_pass else "prompt"
+        shim.stream_log(
+            f"Pipeline step {step}: Running {mode_label} execution..."
+        )
         operation = (
             Operation.SINGLE_PASS_EXTRACTION.value
             if is_single_pass
@@ -523,6 +551,7 @@ class LegacyExecutor(BaseExecutor):
             merged = self._merge_pipeline_metrics(existing_metrics, index_metrics)
             structured_output["metrics"] = merged
 
+        shim.stream_log("Pipeline completed successfully")
         return ExecutionResult(success=True, data=structured_output)
 
     def _run_pipeline_summarize(
@@ -818,6 +847,9 @@ class LegacyExecutor(BaseExecutor):
         chunking_config = ChunkingConfig(
             chunk_size=chunk_size, chunk_overlap=chunk_overlap
         )
+        shim.stream_log(
+            f"Configured chunking: size={chunk_size}, overlap={chunk_overlap}"
+        )
 
         Index, EmbeddingCompat, VectorDB = self._get_indexing_deps()
 
@@ -845,6 +877,7 @@ class LegacyExecutor(BaseExecutor):
                 adapter_instance_id=vector_db_instance_id,
                 embedding=embedding,
             )
+            shim.stream_log("Initialized embedding and vector DB adapters")
 
             doc_id_found = index.is_document_indexed(
                 doc_id=doc_id, embedding=embedding, vector_db=vector_db
@@ -855,6 +888,10 @@ class LegacyExecutor(BaseExecutor):
                 doc_id_found,
                 reindex,
             )
+            if doc_id_found and reindex:
+                shim.stream_log("Document already indexed, re-indexing...")
+            elif not doc_id_found:
+                shim.stream_log("Indexing document for the first time...")
             shim.stream_log("Indexing document into vector store...")
             index.perform_indexing(
                 vector_db=vector_db,
@@ -1003,6 +1040,11 @@ class LegacyExecutor(BaseExecutor):
         process_text_fn = None
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
         enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
+        pipeline_shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
         if enable_highlight:
             from executor.executors.plugins import ExecutorPluginLoader
 
@@ -1021,12 +1063,14 @@ class LegacyExecutor(BaseExecutor):
                     "Highlight plugin initialized for file=%s",
                     doc_name,
                 )
+                pipeline_shim.stream_log("Highlight data plugin ready")
             else:
                 logger.warning(
                     "Highlight is enabled but highlight-data plugin is not "
                     "installed.  Coordinates will not be produced.  Install "
                     "the plugin via: pip install -e <path-to-highlight-data>"
                 )
+                pipeline_shim.stream_log("Highlight data plugin not available")
 
         # ---- Merge tool_settings as defaults into each prompt output --------
         # Single-pass payloads carry adapter IDs and chunk config in
@@ -1095,6 +1139,9 @@ class LegacyExecutor(BaseExecutor):
                     doc_name=doc_name,
                     custom_data=custom_data,
                     is_ide=is_ide,
+                )
+                shim.stream_log(
+                    f"Resolved template variables for: {prompt_name}"
                 )
 
             logger.info(
@@ -1170,6 +1217,9 @@ class LegacyExecutor(BaseExecutor):
                     metrics.setdefault(prompt_name, {}).update(
                         {"table_extraction": table_metrics}
                     )
+                    shim.stream_log(
+                        f"Table extraction completed for: {prompt_name}"
+                    )
                     logger.info("TABLE extraction completed: prompt=%s", prompt_name)
                 else:
                     structured_output[prompt_name] = ""
@@ -1214,6 +1264,9 @@ class LegacyExecutor(BaseExecutor):
                         adapter_instance_id=output[PSKeys.VECTOR_DB],
                         embedding=embedding,
                     )
+                shim.stream_log(
+                    f"Initialized LLM and retrieval adapters for: {prompt_name}"
+                )
             except Exception as e:
                 msg = f"Couldn't fetch adapter. {e}"
                 logger.error(msg)
@@ -1252,6 +1305,10 @@ class LegacyExecutor(BaseExecutor):
                             context_retrieval_metrics=context_retrieval_metrics,
                         )
                     metadata[PSKeys.CONTEXT][prompt_name] = context_list
+                    shim.stream_log(
+                        f"Retrieved {len(context_list)} context chunks"
+                        f" for: {prompt_name}"
+                    )
                     logger.debug(
                         "Retrieved %d context chunks for prompt: %s",
                         len(context_list),
@@ -1292,6 +1349,9 @@ class LegacyExecutor(BaseExecutor):
                     tool_id=tool_id,
                     doc_name=doc_name,
                 )
+                shim.stream_log(
+                    f"Applied type conversion for: {prompt_name}"
+                )
 
                 # ---- Challenge (quality verification) ----------------------
                 if tool_settings.get(PSKeys.ENABLE_CHALLENGE):
@@ -1325,6 +1385,10 @@ class LegacyExecutor(BaseExecutor):
                                 metadata=metadata,
                             )
                             challenger.run()
+                            shim.stream_log(
+                                f"Challenge verification completed"
+                                f" for: {prompt_name}"
+                            )
                             logger.info(
                                 "Challenge completed: prompt=%s",
                                 prompt_name,
@@ -1375,6 +1439,9 @@ class LegacyExecutor(BaseExecutor):
                 if vector_db:
                     vector_db.close()
 
+        pipeline_shim.stream_log(
+            f"All {len(prompts)} prompts processed successfully"
+        )
         logger.info(
             "All prompts processed: tool_id=%s prompt_count=%d file=%s",
             tool_id,

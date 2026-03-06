@@ -65,6 +65,7 @@ class _SK:
     ENABLE_SINGLE_PASS_EXTRACTION = "enable_single_pass_extraction"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     SUMMARIZE_PROMPT = "summarize_prompt"
     TABLE_SETTINGS = "table_settings"
     INPUT_FILE = "input_file"
@@ -273,10 +274,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     is_single_pass_enabled = settings.get(_SK.SINGLE_PASS_EXTRACTION_MODE, False)
     challenge_llm = settings.get(_SK.CHALLENGE_LLM_ADAPTER_ID, "")
     is_highlight_enabled = settings.get(_SK.ENABLE_HIGHLIGHT, False)
+    is_word_confidence_enabled = settings.get(_SK.ENABLE_WORD_CONFIDENCE, False)
     logger.info(
         "HIGHLIGHT_DEBUG structure_tool: is_highlight_enabled=%s "
-        "from settings keys=%s",
+        "is_word_confidence_enabled=%s from settings keys=%s",
         is_highlight_enabled,
+        is_word_confidence_enabled,
         list(settings.keys()),
     )
 
@@ -290,6 +293,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     tool_settings[_SK.ENABLE_SINGLE_PASS_EXTRACTION] = is_single_pass_enabled
     tool_settings[_SK.SUMMARIZE_AS_SOURCE] = is_summarization_enabled
     tool_settings[_SK.ENABLE_HIGHLIGHT] = is_highlight_enabled
+    tool_settings[_SK.ENABLE_WORD_CONFIDENCE] = is_word_confidence_enabled
 
     _, file_name = os.path.split(input_file_path)
     if is_summarization_enabled:

@@ -109,15 +109,4 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
         result.success,
     )
 
-    # Strip sensitive/bulky fields before returning via Celery result
-    # backend.  The trace logger is already suppressed (worker.py sets
-    # celery.app.trace to WARNING), but we still remove raw extracted
-    # text to avoid bloating the result backend storage.
-    #
-    # NOTE: Do NOT strip "context" or "highlight_data" — the backend
-    # (PromptStudioHelper / OutputManagerHelper) reads these from the
-    # result to persist in the database and return to the IDE.
-    result_dict = result.to_dict()
-    metadata = result_dict.get("data", {}).get("metadata", {})
-    metadata.pop("extracted_text", None)
-    return result_dict
+    return result.to_dict()
