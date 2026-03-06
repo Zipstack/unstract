@@ -170,3 +170,30 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
                 file_execution_id=validated_file_execution_id,
                 message="Failed to retrieve usage data",
             )
+
+    def get_aggregated_pages_processed(
+        self, file_execution_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> int | None:
+        """Get aggregated pages processed for a file execution.
+
+        Args:
+            file_execution_id: File execution ID to get pages data for
+            organization_id: Optional organization ID override
+
+        Returns:
+            Total pages processed count, or None if no data found
+        """
+        try:
+            validated_id = self._validate_file_execution_id(file_execution_id)
+            endpoint = f"v1/usage/aggregated-pages-processed/{validated_id}/"
+            response = self.get(endpoint, organization_id=organization_id)
+
+            if response and response.get("success"):
+                return response.get("data", {}).get("total_pages_processed")
+            return None
+
+        except Exception as e:
+            logger.error(
+                f"Failed to get pages processed for {file_execution_id}: {str(e)}"
+            )
+            return None
