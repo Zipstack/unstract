@@ -67,6 +67,8 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         return validate_name_field(value, field_name="Display name")
 
     def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
         return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):

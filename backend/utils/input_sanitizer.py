@@ -7,7 +7,7 @@ HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
 # Pattern to detect javascript: protocol
 JS_PROTOCOL_PATTERN = re.compile(r"javascript\s*:", re.IGNORECASE)
 # Pattern to detect event handlers (onclick, onerror, etc.)
-EVENT_HANDLER_PATTERN = re.compile(r"on\w+\s*=", re.IGNORECASE)
+EVENT_HANDLER_PATTERN = re.compile(r"(?:^|\s)on\w+\s*=", re.IGNORECASE)
 
 
 def validate_no_html_tags(value: str, field_name: str = "This field") -> str:
