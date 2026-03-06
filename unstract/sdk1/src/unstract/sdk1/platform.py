@@ -140,8 +140,8 @@ class PlatformHelper:
             provider = adapter_data.get("adapter_id", "").split("|")[0]
             # TODO: Print metadata after redacting sensitive information
             tool.stream_log(
-                f"Retrieved config for '{adapter_instance_id}', type: "
-                f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
+                f"Retrieved adapter config — name: '{adapter_name}', "
+                f"type: '{adapter_type}', provider: '{provider}'",
                 level=LogLevel.DEBUG,
             )
         except HTTPError as e:
@@ -188,7 +188,7 @@ class PlatformHelper:
             return adapter_metadata
 
         tool.stream_log(
-            f"Retrieving config from DB for '{adapter_instance_id}'",
+            "Retrieving adapter configuration from platform service",
             level=LogLevel.DEBUG,
         )
 

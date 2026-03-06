@@ -198,14 +198,21 @@ class TestExecutorToolShimProgress:
             component={},
         )
 
-        cases = [
-            (LogLevel.DEBUG, "INFO"),
+        # DEBUG is below the shim's log_level (INFO) so it should NOT
+        # be published to the frontend.
+        shim.stream_log("msg", level=LogLevel.DEBUG)
+        assert not mock_lp.log_progress.called, (
+            "DEBUG should be filtered out (below INFO threshold)"
+        )
+
+        # INFO and above should be published with the correct mapped level.
+        published_cases = [
             (LogLevel.INFO, "INFO"),
             (LogLevel.WARN, "WARN"),
             (LogLevel.ERROR, "ERROR"),
             (LogLevel.FATAL, "ERROR"),
         ]
-        for sdk_level, expected_wf_level in cases:
+        for sdk_level, expected_wf_level in published_cases:
             mock_lp.reset_mock()
             shim.stream_log("msg", level=sdk_level)
             call_kwargs = mock_lp.log_progress.call_args

@@ -4,6 +4,8 @@ Celery worker for the pluggable executor system.
 Routes execute_extraction tasks to registered executors.
 """
 
+import logging
+
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.config.registry import WorkerRegistry
@@ -12,6 +14,11 @@ from shared.infrastructure.logging import WorkerLogger
 # Setup worker
 logger = WorkerLogger.setup(WorkerType.EXECUTOR)
 app, config = WorkerBuilder.build_celery_app(WorkerType.EXECUTOR)
+
+# Suppress Celery trace logging of task return values.
+# The trace logger prints the full result dict on task success, which
+# can contain sensitive customer data (extracted text, summaries, etc.).
+logging.getLogger("celery.app.trace").setLevel(logging.WARNING)
 
 
 def check_executor_health():

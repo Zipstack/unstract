@@ -131,6 +131,13 @@ class ExecutorToolShim(StreamMixin):
         py_level = _LEVEL_MAP.get(level, logging.INFO)
         logger.log(py_level, log)
 
+        # Respect log level threshold for frontend publishing (matches
+        # StreamMixin.stream_log behaviour).  Python logging above still
+        # captures everything for debugging.
+        _levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.FATAL]
+        if _levels.index(level) < _levels.index(self.log_level):
+            return
+
         # Publish progress to frontend via the log consumer queue.
         if self.log_events_id:
             try:

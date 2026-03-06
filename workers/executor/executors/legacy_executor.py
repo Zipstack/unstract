@@ -180,6 +180,14 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
+        logger.info(
+            "HIGHLIGHT_DEBUG _handle_extract: enable_highlight=%s "
+            "x2text_type=%s file=%s run_id=%s",
+            enable_highlight,
+            type(x2text.x2text_instance).__name__,
+            Path(file_path).name,
+            context.run_id,
+        )
         shim.stream_log("Initializing text extractor...")
 
         try:
@@ -209,6 +217,21 @@ class LegacyExecutor(BaseExecutor):
                     fs=fs,
                 )
 
+            has_metadata = bool(
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.line_metadata
+            )
+            logger.info(
+                "HIGHLIGHT_DEBUG extraction result: has_line_metadata=%s "
+                "whisper_hash=%s run_id=%s",
+                has_metadata,
+                getattr(
+                    process_response.extraction_metadata, "whisper_hash", None
+                )
+                if process_response.extraction_metadata
+                else None,
+                context.run_id,
+            )
             logger.info(
                 "Text extraction completed: file=%s run_id=%s",
                 Path(file_path).name,

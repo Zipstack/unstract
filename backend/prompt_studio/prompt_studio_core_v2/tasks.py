@@ -1,6 +1,7 @@
 import json
 import logging
 import uuid
+from datetime import date, datetime
 from typing import Any
 
 from account_v2.constants import Common
@@ -14,23 +15,24 @@ logger = logging.getLogger(__name__)
 PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result"
 
 
-class _UUIDEncoder(json.JSONEncoder):
-    """JSON encoder that converts uuid.UUID objects to strings."""
+class _SafeEncoder(json.JSONEncoder):
+    """JSON encoder that converts uuid.UUID and datetime objects to strings."""
 
     def default(self, obj: Any) -> Any:
         if isinstance(obj, uuid.UUID):
             return str(obj)
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
         return super().default(obj)
 
 
 def _json_safe(data: Any) -> Any:
-    """Round-trip through JSON to convert non-serializable types (UUID → str).
+    """Round-trip through JSON to convert non-serializable types.
 
-    DRF serializers return uuid.UUID objects for PrimaryKeyRelatedField
-    and UUIDField. Socket.IO's pubsub uses stdlib json.dumps which
-    cannot handle them, so we sanitize here before emitting.
+    Handles uuid.UUID (from DRF serializers) and datetime/date objects
+    (from plugins or ORM fields) that stdlib json.dumps cannot handle.
     """
-    return json.loads(json.dumps(data, cls=_UUIDEncoder))
+    return json.loads(json.dumps(data, cls=_SafeEncoder))
 
 
 def _setup_state_store(log_events_id: str, request_id: str, org_id: str = "") -> None:
@@ -171,13 +173,6 @@ def ide_index_complete(
         return result
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
-        # Clear the indexing flag so subsequent requests are not blocked
-        try:
-            DocumentIndexingService.remove_document_indexing(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-            )
-        except Exception:
-            logger.exception("Failed to clear indexing flag for %s", doc_id_key)
         _emit_error(
             log_events_id,
             executor_task_id,
@@ -288,6 +283,12 @@ def ide_prompt_complete(
 
         data = result_dict.get("data", {})
 
+        # Sanitize outputs and metadata so that any non-JSON-safe
+        # values (e.g. datetime from plugins) are converted before
+        # they reach Django JSONField saves.
+        outputs = _json_safe(data.get("output", {}))
+        metadata = _json_safe(data.get("metadata", {}))
+
         # Re-fetch prompt ORM objects for OutputManagerHelper
         prompts = list(
             ToolStudioPrompt.objects.filter(prompt_id__in=prompt_ids).order_by(
@@ -298,11 +299,11 @@ def ide_prompt_complete(
         response = OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
             prompts=prompts,
-            outputs=data.get("output", []),
+            outputs=outputs,
             document_id=document_id,
             is_single_pass_extract=is_single_pass,
             profile_manager_id=profile_manager_id,
-            metadata=data.get("metadata", {}),
+            metadata=metadata,
         )
 
         _emit_result(log_events_id, executor_task_id, operation, response)

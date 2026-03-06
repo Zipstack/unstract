@@ -203,6 +203,12 @@ class LLMWhispererHelper:
             ),
             WhispererConfig.ADD_LINE_NOS: extra_params.enable_highlight,
             WhispererConfig.INCLUDE_LINE_CONFIDENCE: extra_params.enable_highlight,
+        }
+        logger.info(
+            "HIGHLIGHT_DEBUG whisper params: ADD_LINE_NOS=%s",
+            params.get(WhispererConfig.ADD_LINE_NOS),
+        )
+        params.update({
             # Not providing default value to maintain legacy compatablity
             # these are optional params and identifiers for audit
             WhispererConfig.TAG: extra_params.tag
@@ -219,7 +225,7 @@ class LLMWhispererHelper:
                 WhispererDefaults.WAIT_TIMEOUT,
             ),
             WhispererConfig.WAIT_FOR_COMPLETION: WhispererDefaults.WAIT_FOR_COMPLETION,
-        }
+        })
         if params[WhispererConfig.MODE] == Modes.LOW_COST.value:
             params.update(
                 {

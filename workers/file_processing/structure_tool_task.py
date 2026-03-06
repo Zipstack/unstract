@@ -273,6 +273,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     is_single_pass_enabled = settings.get(_SK.SINGLE_PASS_EXTRACTION_MODE, False)
     challenge_llm = settings.get(_SK.CHALLENGE_LLM_ADAPTER_ID, "")
     is_highlight_enabled = settings.get(_SK.ENABLE_HIGHLIGHT, False)
+    logger.info(
+        "HIGHLIGHT_DEBUG structure_tool: is_highlight_enabled=%s "
+        "from settings keys=%s",
+        is_highlight_enabled,
+        list(settings.keys()),
+    )
 
     tool_id = tool_metadata[_SK.TOOL_ID]
     tool_settings = tool_metadata[_SK.TOOL_SETTINGS]
