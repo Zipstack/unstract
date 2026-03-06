@@ -13,17 +13,11 @@ EVENT_HANDLER_PATTERN = re.compile(r"on\w+\s*=", re.IGNORECASE)
 def validate_no_html_tags(value: str, field_name: str = "This field") -> str:
     """Reject values containing HTML/script tags."""
     if HTML_TAG_PATTERN.search(value):
-        raise ValidationError(
-            f"{field_name} must not contain HTML or script tags."
-        )
+        raise ValidationError(f"{field_name} must not contain HTML or script tags.")
     if JS_PROTOCOL_PATTERN.search(value):
-        raise ValidationError(
-            f"{field_name} must not contain JavaScript protocols."
-        )
+        raise ValidationError(f"{field_name} must not contain JavaScript protocols.")
     if EVENT_HANDLER_PATTERN.search(value):
-        raise ValidationError(
-            f"{field_name} must not contain event handler attributes."
-        )
+        raise ValidationError(f"{field_name} must not contain event handler attributes.")
     return value
 
 

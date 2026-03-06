@@ -22,12 +22,11 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
-
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey

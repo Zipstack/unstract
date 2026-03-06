@@ -2,13 +2,13 @@ import logging
 from typing import Any
 
 from account_v2.models import User
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer

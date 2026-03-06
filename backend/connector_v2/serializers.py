@@ -3,13 +3,13 @@ from collections import OrderedDict
 from typing import Any
 
 from connector_auth_v2.models import ConnectorAuth
-from utils.input_sanitizer import validate_name_field
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
+from utils.input_sanitizer import validate_name_field
 
 from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
