@@ -19,7 +19,7 @@ from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
 )
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
-from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.constants import Common, LogLevel
 from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import IndexingError, SdkError, VectorDBError, X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -199,7 +199,13 @@ class Index:
             extracted_text = process_response.extracted_text
         # TODO: Handle prepend of context where error is raised and remove this
         except AdapterError as e:
-            msg = f"Error from text extractor '{x2text.x2text_instance.get_name()}'. "
+            adapter_name = getattr(x2text, "_adapter_name", "")
+            adapter_info = (
+                f"'{adapter_name}' ({x2text.x2text_instance.get_name()})"
+                if adapter_name
+                else f"'{x2text.x2text_instance.get_name()}'"
+            )
+            msg = f"Error from text extractor {adapter_info}. "
             msg += str(e)
             raise X2TextError(msg) from e
         if process_text:
@@ -496,11 +502,19 @@ class Index:
         # Whole adapter config is used currently even though it contains some keys
         # which might not be relevant to indexing. This is easier for now than
         # marking certain keys of the adapter config as necessary.
+        vector_db_config = PlatformHelper.get_adapter_config(self.tool, vector_db)
+        embedding_config = PlatformHelper.get_adapter_config(self.tool, embedding)
+        x2text_config = PlatformHelper.get_adapter_config(self.tool, x2text)
+        # Strip adapter name metadata before hashing to maintain
+        # backward compatibility with existing index keys.
+        for config in (vector_db_config, embedding_config, x2text_config):
+            if config:
+                config.pop(Common.ADAPTER_NAME, None)
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": PlatformHelper.get_adapter_config(self.tool, vector_db),
-            "embedding_config": PlatformHelper.get_adapter_config(self.tool, embedding),
-            "x2text_config": PlatformHelper.get_adapter_config(self.tool, x2text),
+            "vector_db_config": vector_db_config,
+            "embedding_config": embedding_config,
+            "x2text_config": x2text_config,
             # Typed and hashed as strings since the final hash is persisted
             # and this is required to be backward compatible
             "chunk_size": str(chunk_size),

@@ -8,6 +8,7 @@ from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
+from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.platform import PlatformHelper
@@ -66,6 +67,7 @@ class Embedding:
                 self._adapter_id = embedding_config[Common.ADAPTER_ID]
                 self._adapter_metadata = embedding_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
+                self._adapter_name = embedding_config.pop(SdkCommon.ADAPTER_NAME, "")
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id
@@ -75,6 +77,7 @@ class Embedding:
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
                 self._adapter_instance_id = ""
+                self._adapter_name = ""
                 self._tool = None
 
             # Retrieve the adapter class.
@@ -95,8 +98,12 @@ class Embedding:
         try:
             self._length = len(self.get_embedding(self._TEST_SNIPPET))
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            adapter_info = (
+                f"{self._adapter_name} ({self.adapter.get_name()})"
+                if self._adapter_name
+                else self.adapter.get_name()
+            )
+            raise parse_litellm_err(e, adapter_info) from e
 
     def get_embedding(self, text: str) -> list[float]:
         """Return embedding vector for query string."""
@@ -110,8 +117,12 @@ class Embedding:
 
             return resp["data"][0]["embedding"]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            adapter_info = (
+                f"{self._adapter_name} ({self.adapter.get_name()})"
+                if self._adapter_name
+                else self.adapter.get_name()
+            )
+            raise parse_litellm_err(e, adapter_info) from e
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for list of query strings."""
@@ -123,8 +134,12 @@ class Embedding:
 
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            adapter_info = (
+                f"{self._adapter_name} ({self.adapter.get_name()})"
+                if self._adapter_name
+                else self.adapter.get_name()
+            )
+            raise parse_litellm_err(e, adapter_info) from e
 
     async def get_aembedding(self, text: str) -> list[float]:
         """Return async embedding vector for query string."""

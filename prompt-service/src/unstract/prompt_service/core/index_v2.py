@@ -21,7 +21,7 @@ from unstract.prompt_service.dto import (
 from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
 )
-from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.constants import Common, LogLevel
 from unstract.sdk1.embedding import Embedding
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.file_storage.impl import FileStorage
@@ -83,17 +83,25 @@ class Index:
         # Whole adapter config is used currently even though it contains some keys
         # which might not be relevant to indexing. This is easier for now than
         # marking certain keys of the adapter config as necessary.
+        vector_db_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.vector_db_instance_id
+        )
+        embedding_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.embedding_instance_id
+        )
+        x2text_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.x2text_instance_id
+        )
+        # Strip adapter name metadata before hashing to maintain
+        # backward compatibility with existing index keys.
+        for config in (vector_db_config, embedding_config, x2text_config):
+            if config:
+                config.pop(Common.ADAPTER_NAME, None)
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.vector_db_instance_id
-            ),
-            "embedding_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.embedding_instance_id
-            ),
-            "x2text_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.x2text_instance_id
-            ),
+            "vector_db_config": vector_db_config,
+            "embedding_config": embedding_config,
+            "x2text_config": x2text_config,
             # Typed and hashed as strings since the final hash is persisted
             # and this is required to be backward compatible
             "chunk_size": str(self.chunking_config.chunk_size),
