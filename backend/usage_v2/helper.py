@@ -105,9 +105,7 @@ class UsageHelper:
             for row in rows:
                 usage_type = row["usage_type"]
                 llm_reason = row["llm_usage_reason"]
-                cost_str = UsageHelper._format_float_positional(
-                    row["sum_cost"] or 0.0
-                )
+                cost_str = UsageHelper._format_float_positional(row["sum_cost"] or 0.0)
 
                 key = usage_type
                 item: dict[str, Any] = {
@@ -125,9 +123,7 @@ class UsageHelper:
                 result.setdefault(key, []).append(item)
             return result
         except Exception as e:
-            logger.error(
-                "Error querying per-model usage for run_id %s: %s", run_id, e
-            )
+            logger.error("Error querying per-model usage for run_id %s: %s", run_id, e)
             return {}
 
     @staticmethod

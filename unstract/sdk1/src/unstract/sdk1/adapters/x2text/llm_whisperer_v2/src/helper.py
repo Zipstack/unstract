@@ -208,24 +208,26 @@ class LLMWhispererHelper:
             "HIGHLIGHT_DEBUG whisper params: ADD_LINE_NOS=%s",
             params.get(WhispererConfig.ADD_LINE_NOS),
         )
-        params.update({
-            # Not providing default value to maintain legacy compatablity
-            # these are optional params and identifiers for audit
-            WhispererConfig.TAG: extra_params.tag
-            or config.get(
-                WhispererConfig.TAG,
-                WhispererDefaults.TAG,
-            ),
-            WhispererConfig.USE_WEBHOOK: config.get(WhispererConfig.USE_WEBHOOK, ""),
-            WhispererConfig.WEBHOOK_METADATA: config.get(
-                WhispererConfig.WEBHOOK_METADATA
-            ),
-            WhispererConfig.WAIT_TIMEOUT: config.get(
-                WhispererConfig.WAIT_TIMEOUT,
-                WhispererDefaults.WAIT_TIMEOUT,
-            ),
-            WhispererConfig.WAIT_FOR_COMPLETION: WhispererDefaults.WAIT_FOR_COMPLETION,
-        })
+        params.update(
+            {
+                # Not providing default value to maintain legacy compatablity
+                # these are optional params and identifiers for audit
+                WhispererConfig.TAG: extra_params.tag
+                or config.get(
+                    WhispererConfig.TAG,
+                    WhispererDefaults.TAG,
+                ),
+                WhispererConfig.USE_WEBHOOK: config.get(WhispererConfig.USE_WEBHOOK, ""),
+                WhispererConfig.WEBHOOK_METADATA: config.get(
+                    WhispererConfig.WEBHOOK_METADATA
+                ),
+                WhispererConfig.WAIT_TIMEOUT: config.get(
+                    WhispererConfig.WAIT_TIMEOUT,
+                    WhispererDefaults.WAIT_TIMEOUT,
+                ),
+                WhispererConfig.WAIT_FOR_COMPLETION: WhispererDefaults.WAIT_FOR_COMPLETION,
+            }
+        )
         if params[WhispererConfig.MODE] == Modes.LOW_COST.value:
             params.update(
                 {
