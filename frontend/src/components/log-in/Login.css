@@ -18,12 +18,44 @@
 .login-right-section {
   width: 50%;
   height: 100vh;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
   background-color: #eceff3;
   display: flex;
   justify-content: center;
-  align-items: center;
+  align-items: flex-start;
   position: relative;
+}
+
+@media (min-width: 769px) and (max-width: 1200px) {
+  .default-light-content {
+    padding: 24px 20px;
+    max-width: 100%;
+  }
+
+  .default-light-headline {
+    font-size: 34px !important;
+    margin-bottom: 30px !important;
+    max-width: 100%;
+  }
+
+  .default-light-product-card {
+    max-width: 100%;
+  }
+
+  .default-light-card-text {
+    font-size: 16px !important;
+    line-height: 20px !important;
+  }
+
+  .default-light-compliance-logo {
+    width: 56px;
+    height: 56px;
+  }
+
+  .default-light-product-card + .default-light-product-card {
+    margin-top: 40px;
+  }
 }
 
 @media (max-width: 768px) {
@@ -695,6 +727,8 @@
   justify-content: center;
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
+  margin: auto 0;
 }
 
 .default-light-headline {
@@ -766,6 +800,7 @@
   background:
     linear-gradient(#f2f8e6, #f2f8e6) padding-box,
     linear-gradient(135deg, #50e6ff, #c8ea7e) border-box;
+  box-sizing: border-box;
 }
 
 .default-light-card-text {
@@ -968,6 +1003,8 @@
   justify-content: center;
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
+  margin: auto 0;
 }
 
 .llm-light-headline {
@@ -1192,6 +1229,8 @@
   justify-content: center;
   position: relative;
   z-index: 1;
+  box-sizing: border-box;
+  margin: auto 0;
 }
 
 .unstract-light-headline {
