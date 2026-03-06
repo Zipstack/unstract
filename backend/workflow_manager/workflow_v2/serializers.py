@@ -16,6 +16,8 @@ from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+
 from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
 from workflow_manager.workflow_v2.constants import WorkflowExecutionKey, WorkflowKey
@@ -45,6 +47,12 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             "message": "A workflow with this name already exists.",
         }
     }
+
+    def validate_workflow_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Workflow name")
+
+    def validate_description(self, value: str) -> str:
+        return validate_no_html_tags(value, field_name="Description")
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)

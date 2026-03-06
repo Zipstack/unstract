@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from account_v2.models import User
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
@@ -50,6 +51,12 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             ),
         }
     }
+
+    def validate_tool_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Tool name")
+
+    def validate_description(self, value: str) -> str:
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""

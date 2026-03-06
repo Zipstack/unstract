@@ -3,6 +3,7 @@ from collections import OrderedDict
 from typing import Any
 
 from connector_auth_v2.models import ConnectorAuth
+from utils.input_sanitizer import validate_name_field
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
@@ -27,6 +28,9 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+
+    def validate_connector_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Connector name")
 
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None

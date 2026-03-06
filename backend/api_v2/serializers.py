@@ -27,6 +27,8 @@ from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey
 from backend.serializers import AuditSerializer
@@ -61,6 +63,12 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate_display_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Display name")
+
+    def validate_description(self, value: str) -> str:
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""
