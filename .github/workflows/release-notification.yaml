@@ -10,7 +10,7 @@ jobs:
     steps:
 
       - name: Send Slack notification
-        uses: slackapi/slack-github-action@v2.1.0
+        uses: slackapi/slack-github-action@v2.1.1
         with:
           webhook-type: incoming-webhook
           payload: |
