@@ -57,6 +57,30 @@ services:
     labels:
       - traefik.enable=false
 
+  # Celery worker for Prompt Studio IDE callbacks.
+  # Processes post-execution ORM updates and Socket.IO notifications
+  # after executor workers complete tasks (ide_index_complete, ide_prompt_complete, etc.).
+  worker-prompt-studio-callback:
+    image: unstract/backend:${VERSION}
+    container_name: unstract-worker-prompt-studio-callback
+    restart: unless-stopped
+    entrypoint: .venv/bin/celery
+    command: "-A backend worker --loglevel=info -Q prompt_studio_callback --autoscale=${WORKER_PROMPT_STUDIO_CALLBACK_AUTOSCALE:-4,1}"
+    env_file:
+      - ../backend/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-prompt-studio-callback
+    labels:
+      - traefik.enable=false
+    volumes:
+      - prompt_studio_data:/app/prompt-studio-data
+
   # Celery Flower
   celery-flower:
     image: unstract/backend:${VERSION}
@@ -482,6 +506,42 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+
+  worker-executor-v2:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-executor-v2
+    restart: unless-stopped
+    command: ["executor"]
+    ports:
+      - "8092:8088"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-executor-v2
+      - WORKER_TYPE=executor
+      - WORKER_NAME=executor-worker-v2
+      - EXECUTOR_METRICS_PORT=8088
+      - HEALTH_PORT=8088
+      # Configurable Celery options
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy}
+      - CELERY_POOL=${WORKER_EXECUTOR_POOL:-prefork}
+      - CELERY_PREFETCH_MULTIPLIER=${WORKER_EXECUTOR_PREFETCH_MULTIPLIER:-1}
+      - CELERY_CONCURRENCY=${WORKER_EXECUTOR_CONCURRENCY:-2}
+      - CELERY_EXTRA_ARGS=${WORKER_EXECUTOR_EXTRA_ARGS:-}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - workers-v2
 
 volumes:
   prompt_studio_data:

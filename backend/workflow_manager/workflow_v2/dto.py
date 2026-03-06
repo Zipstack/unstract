@@ -61,13 +61,22 @@ class ExecutionResponse:
 
         for item in self.result:
             if not isinstance(item, dict):
-                break
+                continue
 
+            # Handle metadata nested inside item["result"]["metadata"]
             result = item.get("result")
-            if not isinstance(result, dict):
-                break
+            if isinstance(result, dict):
+                self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
 
-            self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
+            # Handle top-level item["metadata"] (workers cache path)
+            if "metadata" in item:
+                if keys_to_remove:
+                    item_metadata = item["metadata"]
+                    if isinstance(item_metadata, dict):
+                        for key in keys_to_remove:
+                            item_metadata.pop(key, None)
+                else:
+                    item.pop("metadata", None)
 
     def remove_result_metrics(self) -> None:
         """Removes the 'metrics' key from the 'result' dictionary within each

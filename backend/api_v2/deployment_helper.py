@@ -273,7 +273,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
                 result.remove_result_metadata_keys(["extracted_text"])
-            if not include_metadata:
+            if include_metadata:
+                cls._enrich_result_with_usage_metadata(result)
+            else:
                 result.remove_result_metadata_keys()
             if not include_metrics:
                 result.remove_result_metrics()
@@ -292,6 +294,35 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 error=str(error),
             )
         return APIExecutionResponseSerializer(result).data
+
+    @staticmethod
+    def _enrich_result_with_usage_metadata(result: ExecutionResponse) -> None:
+        """Enrich each file result's metadata with per-model usage breakdown.
+
+        Queries the Usage table for each file_execution_id and injects
+        cost arrays (extraction_llm, challenge_llm, embedding) into the
+        result metadata, matching the legacy prompt-service response format.
+        """
+        if not isinstance(result.result, list):
+            return
+
+        from usage_v2.helper import UsageHelper
+
+        for item in result.result:
+            if not isinstance(item, dict):
+                continue
+            file_exec_id = item.get("file_execution_id")
+            if not file_exec_id:
+                continue
+            inner_result = item.get("result")
+            if not isinstance(inner_result, dict):
+                continue
+            metadata = inner_result.get("metadata")
+            if not isinstance(metadata, dict):
+                continue
+            usage_by_model = UsageHelper.get_usage_by_model(file_exec_id)
+            if usage_by_model:
+                metadata.update(usage_by_model)
 
     @staticmethod
     def get_execution_status(execution_id: str) -> ExecutionResponse:

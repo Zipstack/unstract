@@ -110,7 +110,7 @@ class VectorDB:
             return self.vector_db_adapter_class.get_vector_db_instance()
         except Exception as e:
             self._tool.stream_log(
-                log=f"Unable to get vector_db {self._adapter_instance_id}: {e}",
+                log=f"Unable to get vector database: {e}",
                 level=LogLevel.ERROR,
             )
             raise VectorDBError(f"Error getting vectorDB instance: {e}") from e

@@ -82,6 +82,10 @@ class LLMWhispererV2(X2TextAdapter):
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         enable_highlight = kwargs.get(X2TextConstants.ENABLE_HIGHLIGHT, False)
+        logger.info(
+            "HIGHLIGHT_DEBUG LLMWhispererV2.process: enable_highlight=%s",
+            enable_highlight,
+        )
         extra_params = WhispererRequestParams(
             tag=kwargs.get(X2TextConstants.TAGS),
             enable_highlight=enable_highlight,

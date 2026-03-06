@@ -1,0 +1,109 @@
+"""Lightweight Celery app for dispatching tasks to worker-v2 workers.
+
+The Django backend already has a Celery app for internal tasks (beat,
+periodic tasks, etc.) whose broker URL is set via CELERY_BROKER_URL.
+Workers use the same broker. This module provides a second Celery app
+instance that reuses the same broker URL (from Django settings) but
+bypasses Celery's env-var-takes-priority behaviour so it can coexist
+with the main Django Celery app in the same process.
+
+Problem: Celery reads the ``CELERY_BROKER_URL`` environment variable
+with highest priority — overriding constructor args, ``conf.update()``,
+and ``config_from_object()``.
+
+Solution: Subclass Celery and override ``connection_for_write`` /
+``connection_for_read`` so they always use our explicit broker URL,
+bypassing the config resolution chain entirely.
+"""
+
+import logging
+from urllib.parse import quote_plus
+
+from celery import Celery
+from django.conf import settings
+from kombu import Queue
+
+logger = logging.getLogger(__name__)
+
+_worker_app: Celery | None = None
+
+
+class _WorkerDispatchCelery(Celery):
+    """Celery subclass that forces an explicit broker URL.
+
+    Works around Celery's env-var-takes-priority behaviour where
+    ``CELERY_BROKER_URL`` always overrides per-app configuration.
+    The connection methods are the actual points where Celery opens
+    AMQP/Redis connections, so overriding them is both sufficient
+    and safe.
+    """
+
+    _explicit_broker: str | None = None
+
+    def connection_for_write(self, url=None, *args, **kwargs):
+        return super().connection_for_write(
+            url=url or self._explicit_broker, *args, **kwargs
+        )
+
+    def connection_for_read(self, url=None, *args, **kwargs):
+        return super().connection_for_read(
+            url=url or self._explicit_broker, *args, **kwargs
+        )
+
+
+def get_worker_celery_app() -> Celery:
+    """Get or create a Celery app for dispatching to worker-v2 workers.
+
+    The app uses:
+    - Same broker as the workers (built from CELERY_BROKER_BASE_URL,
+      CELERY_BROKER_USER, CELERY_BROKER_PASS via Django settings)
+    - Same PostgreSQL result backend as the Django Celery app
+
+    Returns:
+        Celery app configured for worker-v2 dispatch.
+    """
+    global _worker_app
+    if _worker_app is not None:
+        return _worker_app
+
+    # Reuse the broker URL already built by Django settings (base.py)
+    # from CELERY_BROKER_BASE_URL + CELERY_BROKER_USER + CELERY_BROKER_PASS
+    broker_url = settings.CELERY_BROKER_URL
+
+    # Reuse the same PostgreSQL result backend as Django's Celery app
+    result_backend = (
+        f"db+postgresql://{settings.DB_USER}:"
+        f"{quote_plus(settings.DB_PASSWORD)}"
+        f"@{settings.DB_HOST}:{settings.DB_PORT}/"
+        f"{settings.CELERY_BACKEND_DB_NAME}"
+    )
+
+    app = _WorkerDispatchCelery(
+        "worker-dispatch",
+        set_as_current=False,
+        fixups=[],
+    )
+    # Store the explicit broker URL for use in connection overrides
+    app._explicit_broker = broker_url
+
+    app.conf.update(
+        result_backend=result_backend,
+        task_queues=[Queue("executor")],
+        task_serializer="json",
+        accept_content=["json"],
+        result_serializer="json",
+        result_extended=True,
+    )
+
+    _worker_app = app
+    # Log broker host only (mask credentials)
+    safe_broker = broker_url.split("@")[-1] if "@" in broker_url else broker_url
+    safe_backend = (
+        result_backend.split("@")[-1] if "@" in result_backend else result_backend
+    )
+    logger.info(
+        "Created worker dispatch Celery app (broker=%s, result_backend=%s)",
+        safe_broker,
+        safe_backend,
+    )
+    return _worker_app

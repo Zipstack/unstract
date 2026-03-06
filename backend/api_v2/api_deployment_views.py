@@ -231,7 +231,9 @@ class DeploymentExecution(views.APIView):
             if not enable_highlight:
                 response.remove_result_metadata_keys(["highlight_data"])
                 response.remove_result_metadata_keys(["extracted_text"])
-            if not include_metadata:
+            if include_metadata:
+                DeploymentHelper._enrich_result_with_usage_metadata(response)
+            else:
                 response.remove_result_metadata_keys()
             if not include_metrics:
                 response.remove_result_metrics()

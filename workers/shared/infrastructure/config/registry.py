@@ -64,6 +64,9 @@ class WorkerRegistry:
         WorkerType.SCHEDULER: WorkerQueueConfig(
             primary_queue=QueueName.SCHEDULER, additional_queues=[QueueName.GENERAL]
         ),
+        WorkerType.EXECUTOR: WorkerQueueConfig(
+            primary_queue=QueueName.EXECUTOR,
+        ),
     }
 
     # Pluggable worker configurations loaded dynamically
@@ -134,6 +137,13 @@ class WorkerRegistry:
                 TaskRoute("scheduler.tasks.*", QueueName.SCHEDULER),
             ],
         ),
+        WorkerType.EXECUTOR: WorkerTaskRouting(
+            worker_type=WorkerType.EXECUTOR,
+            routes=[
+                TaskRoute("execute_extraction", QueueName.EXECUTOR),
+                TaskRoute("executor.tasks.*", QueueName.EXECUTOR),
+            ],
+        ),
     }
 
     # Pluggable worker task routes loaded dynamically
@@ -169,6 +179,9 @@ class WorkerRegistry:
             "log_level": "INFO",
         },
         WorkerType.SCHEDULER: {
+            "log_level": "INFO",
+        },
+        WorkerType.EXECUTOR: {
             "log_level": "INFO",
         },
     }
