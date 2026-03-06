@@ -630,9 +630,7 @@ class WorkerDestinationConnector:
         )
 
         # Enrich metadata with usage and pages processed data
-        api_metadata = self.get_combined_metadata(
-            exec_ctx.api_client, result.metadata
-        )
+        api_metadata = self.get_combined_metadata(exec_ctx.api_client, result.metadata)
         # Add HITL info only if plugin is available (cloud feature)
         if has_manual_review_plugin():
             api_metadata["hitl"] = {
@@ -911,8 +909,8 @@ class WorkerDestinationConnector:
         if usage_metadata:
             metadata["usage"] = usage_metadata.to_dict()
         if file_execution_id:
-            metadata["total_pages_processed"] = (
-                api_client.get_aggregated_pages_processed(file_execution_id)
+            metadata["total_pages_processed"] = api_client.get_aggregated_pages_processed(
+                file_execution_id
             )
         return metadata
 
