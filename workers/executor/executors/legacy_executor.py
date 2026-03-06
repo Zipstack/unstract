@@ -229,9 +229,7 @@ class LegacyExecutor(BaseExecutor):
                 "HIGHLIGHT_DEBUG extraction result: has_line_metadata=%s "
                 "whisper_hash=%s run_id=%s",
                 has_metadata,
-                getattr(
-                    process_response.extraction_metadata, "whisper_hash", None
-                )
+                getattr(process_response.extraction_metadata, "whisper_hash", None)
                 if process_response.extraction_metadata
                 else None,
                 context.run_id,

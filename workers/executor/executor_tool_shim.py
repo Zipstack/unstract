@@ -134,7 +134,13 @@ class ExecutorToolShim(StreamMixin):
         # Respect log level threshold for frontend publishing (matches
         # StreamMixin.stream_log behaviour).  Python logging above still
         # captures everything for debugging.
-        _levels = [LogLevel.DEBUG, LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.FATAL]
+        _levels = [
+            LogLevel.DEBUG,
+            LogLevel.INFO,
+            LogLevel.WARN,
+            LogLevel.ERROR,
+            LogLevel.FATAL,
+        ]
         if _levels.index(level) < _levels.index(self.log_level):
             return
 
