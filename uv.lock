@@ -1546,7 +1546,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.79.3"
+version = "1.80.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1562,9 +1562,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c3/0a/587c3f895f5d6c842d6cd630204c8bf7de677fc69ce2bd26e812c02b6e0b/litellm-1.79.3.tar.gz", hash = "sha256:4da4716f8da3e1b77838262c36d3016146860933e0489171658a9d4a3fd59b1b", size = 11319885 }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/8c/48d533affdbc6d485b7ad4221cd3b40b8c12f9f5568edfe0be0b11e7b945/litellm-1.80.0.tar.gz", hash = "sha256:eeac733eb6b226f9e5fb020f72fe13a32b3354b001dc62bcf1bc4d9b526d6231", size = 11591976 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/41/ad/3e030c925c99b9a2f1573bf376259338b502ed1aa25ae768bf1f79d8b1bf/litellm-1.79.3-py3-none-any.whl", hash = "sha256:16314049d109e5cadb2abdccaf2e07ea03d2caa3a9b3f54f34b5b825092b4eeb", size = 10412553 },
+    { url = "https://files.pythonhosted.org/packages/ea/53/aa31e4d057b3746b3c323ca993003d6cf15ef987e7fe7ceb53681695ae87/litellm-1.80.0-py3-none-any.whl", hash = "sha256:fd0009758f4772257048d74bf79bb64318859adb4ea49a8b66fdbc718cd80b6e", size = 10492975 },
 ]
 
 [[package]]
@@ -2077,6 +2077,21 @@ wheels = [
 ]
 
 [[package]]
+name = "office365-rest-python-client"
+version = "2.6.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "msal" },
+    { name = "pytz" },
+    { name = "requests" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/bc/04/6dce2d581c54a8e55a3b128cf79a93821a68a62bb9a956e65476c5bb247e/office365_rest_python_client-2.6.2.tar.gz", hash = "sha256:ce27f5a1c0cc3ff97041ccd9b386145692be4c64739f243f7d6ac3edbe0a3c46", size = 659460 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/a4/611155711f8af347875c15b8b83f5fd9e978bd4de45f90085b9a583b684d/Office365_REST_Python_Client-2.6.2-py3-none-any.whl", hash = "sha256:06fc6829c39b503897caa9d881db419d7f97a8e4f1c95c4c2d12db36ea6c955d", size = 1337139 },
+]
+
+[[package]]
 name = "openai"
 version = "1.109.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2447,7 +2462,7 @@ wheels = [
 
 [[package]]
 name = "pycln"
-version = "2.5.0"
+version = "2.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "libcst" },
@@ -2456,9 +2471,9 @@ dependencies = [
     { name = "tomlkit" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/60/e8/3b828cfc6be97bc5ce84d44ca946912eff6e6bc075e8aeddf7a977a90d7c/pycln-2.5.0.tar.gz", hash = "sha256:f3a64486f813cd29da07940c4c2bb412080a23b9b0df9b0b1576c8e39ac79c44", size = 34741 }
+sdist = { url = "https://files.pythonhosted.org/packages/a8/1b/be7329dcde1bf5126c7367ddc3b87945e3c9a208eb161b732bebad014eb9/pycln-2.6.0.tar.gz", hash = "sha256:758cfd07f0d9711f69989bd4cef7e451e3d7166073b0c0f77d4a712dbac8b3fe", size = 33427 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/15/20/ea99d5f0b3b4bc863ae892e2ff9a1a342e5ca709cb9b9927eeb705dd5984/pycln-2.5.0-py3-none-any.whl", hash = "sha256:6aec7a5b8df47e23399842b1f8470da4164956e26391f9b86c5edced5344da92", size = 38788 },
+    { url = "https://files.pythonhosted.org/packages/db/67/5aa8a63e1af76d29c67ff85d0c2f44dd294044fadacb19beb4bae7eafa01/pycln-2.6.0-py3-none-any.whl", hash = "sha256:32faabf77daf2a8995238f7522399d9e6f2dc40bcfe90e619299512cdb5bd8f2", size = 37745 },
 ]
 
 [[package]]
@@ -3523,7 +3538,7 @@ dev = [
     { name = "docutils", specifier = "~=0.20.1" },
     { name = "mypy", specifier = "~=1.9.0" },
     { name = "pre-commit", specifier = "~=3.6.2" },
-    { name = "pycln", specifier = ">=2.5.0" },
+    { name = "pycln", specifier = ">=2.6.0" },
     { name = "pytest", specifier = ">=8.0.1" },
     { name = "ruff", specifier = ">=0.2.2,<1.0.0" },
     { name = "types-pymysql", specifier = "~=1.1.0.1" },
@@ -3573,6 +3588,7 @@ dependencies = [
     { name = "google-cloud-secret-manager" },
     { name = "google-cloud-storage" },
     { name = "oauth2client" },
+    { name = "office365-rest-python-client" },
     { name = "oracledb" },
     { name = "psycopg2-binary" },
     { name = "pydrive2", extra = ["fsspec"] },
@@ -3595,6 +3611,7 @@ requires-dist = [
     { name = "google-cloud-secret-manager", specifier = "==2.16.1" },
     { name = "google-cloud-storage", specifier = "==2.9.0" },
     { name = "oauth2client", specifier = "==4.1.3" },
+    { name = "office365-rest-python-client", specifier = "~=2.6.0" },
     { name = "oracledb", specifier = "==2.4.0" },
     { name = "psycopg2-binary", specifier = "==2.9.9" },
     { name = "pydrive2", extras = ["fsspec"], specifier = "==1.15.4" },
@@ -3603,6 +3620,13 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], specifier = "==2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "~=3.14.0" },
+]
+
+[package.metadata.requires-dev]
+test = [
+    { name = "pytest", specifier = ">=8.0.1" },
+    { name = "python-dotenv", specifier = "~=1.0.0" },
+    { name = "unstract-filesystem", editable = "unstract/filesystem" },
 ]
 
 [[package]]
@@ -3698,7 +3722,7 @@ requires-dist = [
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = "~=2024.10.0" },
     { name = "httpx", specifier = ">=0.25.2" },
     { name = "jsonschema" },
-    { name = "litellm", specifier = "~=1.79.1" },
+    { name = "litellm", specifier = "==1.80.0" },
     { name = "llama-index", specifier = "==0.13.2" },
     { name = "llama-index-vector-stores-milvus", specifier = "==0.9.0" },
     { name = "llama-index-vector-stores-pinecone", specifier = "==0.7.0" },
