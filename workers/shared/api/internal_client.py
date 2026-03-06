@@ -1536,6 +1536,22 @@ class InternalAPIClient(CachedAPIClientMixin):
             )
             return None
 
+    def get_aggregated_pages_processed(
+        self, file_execution_id: str, organization_id: str | None = None
+    ) -> int | None:
+        """Get aggregated pages processed for a file execution.
+
+        Args:
+            file_execution_id: File execution ID to get pages data for
+            organization_id: Optional organization ID override
+
+        Returns:
+            Total pages processed count, or None if no data found
+        """
+        return self.usage_client.get_aggregated_pages_processed(
+            file_execution_id, organization_id
+        )
+
     # Export all classes and exceptions for backward compatibility
     # =============================
     # CACHE MANAGEMENT UTILITIES
