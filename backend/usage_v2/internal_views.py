@@ -6,7 +6,6 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.views import APIView
-
 from unstract.core.data_models import UsageResponseData
 
 from .helper import UsageHelper
@@ -67,6 +66,62 @@ class UsageInternalView(APIView):
         except Exception as e:
             logger.error(
                 f"Error getting usage data for file_execution_id {file_execution_id}: {e}",
+                exc_info=True,
+            )
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Internal server error",
+                    "file_execution_id": file_execution_id,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class PagesProcessedInternalView(APIView):
+    """Internal API view for workers to access aggregated pages processed.
+
+    This endpoint allows workers to get aggregated pages processed
+    for a specific file execution without direct database access.
+    """
+
+    def get(self, request: Request, file_execution_id: str) -> JsonResponse:
+        """Get aggregated pages processed for a file execution.
+
+        Args:
+            request: HTTP request
+            file_execution_id: File execution ID to get pages data for
+
+        Returns:
+            JSON response with aggregated pages processed count
+        """
+        try:
+            if not file_execution_id:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "file_execution_id parameter is required",
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            total_pages = UsageHelper.get_aggregated_pages_processed(
+                run_id=file_execution_id
+            )
+
+            return JsonResponse(
+                {
+                    "success": True,
+                    "data": {
+                        "file_execution_id": file_execution_id,
+                        "total_pages_processed": total_pages,
+                    },
+                }
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error getting pages processed for file_execution_id {file_execution_id}: {e}",
                 exc_info=True,
             )
             return JsonResponse(

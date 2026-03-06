@@ -905,6 +905,10 @@ class WorkerDestinationConnector:
 
         if metadata and usage_metadata:
             metadata["usage"] = usage_metadata.to_dict()
+        if metadata and file_execution_id:
+            metadata["total_pages_processed"] = (
+                api_client.get_aggregated_pages_processed(file_execution_id)
+            )
         return metadata
 
     def insert_into_db(
