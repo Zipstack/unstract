@@ -903,6 +903,8 @@ class WorkerDestinationConnector:
         """
         if metadata is None:
             metadata = {}
+        if not api_client:
+            return metadata
         file_execution_id = self.file_execution_id
         usage_metadata = api_client.get_aggregated_token_count(file_execution_id)
 
