@@ -629,8 +629,11 @@ class WorkerDestinationConnector:
             f"🔌 File '{file_ctx.file_name}' marked for API processing - preparing response",
         )
 
-        # Prepare metadata - add HITL info only if plugin is available (cloud feature)
-        api_metadata = result.metadata.copy() if result.metadata else {}
+        # Enrich metadata with usage and pages processed data
+        api_metadata = self.get_combined_metadata(
+            exec_ctx.api_client, result.metadata
+        )
+        # Add HITL info only if plugin is available (cloud feature)
         if has_manual_review_plugin():
             api_metadata["hitl"] = {
                 "file_sent_to_hitl": result.has_hitl,
@@ -900,12 +903,14 @@ class WorkerDestinationConnector:
         Returns:
             dict[str, Any]: Combined metadata including workflow and usage data.
         """
+        if metadata is None:
+            metadata = {}
         file_execution_id = self.file_execution_id
         usage_metadata = api_client.get_aggregated_token_count(file_execution_id)
 
-        if metadata and usage_metadata:
+        if usage_metadata:
             metadata["usage"] = usage_metadata.to_dict()
-        if metadata and file_execution_id:
+        if file_execution_id:
             metadata["total_pages_processed"] = (
                 api_client.get_aggregated_pages_processed(file_execution_id)
             )
