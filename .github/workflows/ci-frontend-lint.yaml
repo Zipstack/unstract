@@ -24,7 +24,7 @@ jobs:
       - name: Setup Biome
         uses: biomejs/setup-biome@v2
         with:
-          working-dir: frontend
+          version: "2.3.13"
 
       - name: Run Biome CI
         id: biome
