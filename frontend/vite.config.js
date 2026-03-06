@@ -112,7 +112,7 @@ export default defineConfig(({ mode }) => {
     // Server configuration for development
     server: {
       host: "0.0.0.0",
-      port: 3000,
+      port: Number(env.PORT) || 3000,
       // Docker-specific: Enable polling for file watching
       watch: {
         usePolling: true,
@@ -120,8 +120,10 @@ export default defineConfig(({ mode }) => {
       },
       // HMR configuration for Docker environments
       hmr: {
-        port: 3000,
-        clientPort: env.WDS_SOCKET_PORT ? Number(env.WDS_SOCKET_PORT) : 3000,
+        port: Number(env.PORT) || 3000,
+        clientPort: env.WDS_SOCKET_PORT
+          ? Number(env.WDS_SOCKET_PORT)
+          : (Number(env.PORT) || 3000),
       },
       // Proxy configuration (similar to setupProxy.js in CRA)
       proxy:
