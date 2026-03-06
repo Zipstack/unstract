@@ -14,7 +14,9 @@ class ContentSecurityPolicyMiddleware(MiddlewareMixin):
     def process_response(
         self, request: HttpRequest, response: HttpResponse
     ) -> HttpResponse:
-        response["Content-Security-Policy"] = (
+        response.setdefault(
+            "Content-Security-Policy",
+            (
             "default-src 'self'; "
             "script-src 'self'; "
             "style-src 'self'; "
@@ -24,5 +26,6 @@ class ContentSecurityPolicyMiddleware(MiddlewareMixin):
             "frame-ancestors 'none'; "
             "base-uri 'self'; "
             "form-action 'self'"
+            ),
         )
         return response
