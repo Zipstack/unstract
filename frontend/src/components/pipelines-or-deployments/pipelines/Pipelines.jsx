@@ -375,6 +375,7 @@ function Pipelines({ type }) {
         scrollToId={scrollRestoreId}
         enableSearch={true}
         onSearch={handleSearch}
+        searchTerm={searchTerm}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,
