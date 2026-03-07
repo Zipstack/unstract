@@ -7,6 +7,8 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
+from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
 
@@ -19,7 +21,7 @@ from .models import ConnectorInstance
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceSerializer(AuditSerializer):
+class ConnectorInstanceSerializer(CoOwnerRepresentationMixin, AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
@@ -87,4 +89,47 @@ class ConnectorInstanceSerializer(AuditSerializer):
         # Remove sensitive connector auth from the response
         rep.pop(CIKey.CONNECTOR_AUTH)
 
+        # Co-owner information
+        request = self.context.get("request")
+        self.add_co_owner_fields(instance, rep, request)
+
         return rep
+
+
+class SharedUserListSerializer(serializers.ModelSerializer):
+    """Used for listing connector users."""
+
+    shared_users = SerializerMethodField()
+    co_owners = SerializerMethodField()
+    created_by = SerializerMethodField()
+    created_by_email = SerializerMethodField()
+
+    class Meta:
+        model = ConnectorInstance
+        fields = (
+            "id",
+            "connector_name",
+            "created_by",
+            "created_by_email",
+            "co_owners",
+            "shared_users",
+            "shared_to_org",
+        )
+
+    def get_shared_users(self, obj):
+        """Get list of shared users with id and email."""
+        return [{"id": u.id, "email": u.email} for u in obj.shared_users.all()]
+
+    def get_co_owners(self, obj):
+        """Get list of co-owners with id and email."""
+        return [{"id": u.id, "email": u.email} for u in obj.co_owners.all()]
+
+    def get_created_by(self, obj):
+        """Get creator details."""
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None
+
+    def get_created_by_email(self, obj):
+        """Get the creator's email."""
+        return obj.created_by.email if obj.created_by else None

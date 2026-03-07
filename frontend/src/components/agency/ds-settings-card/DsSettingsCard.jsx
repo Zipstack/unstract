@@ -206,7 +206,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update"));
-        throw err;
+        return null;
       });
   };
 

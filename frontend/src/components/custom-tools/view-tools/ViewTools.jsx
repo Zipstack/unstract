@@ -20,6 +20,7 @@ function ViewTools({
   centered,
   isClickable = true,
   handleShare,
+  handleCoOwner,
   showOwner,
   type,
 }) {
@@ -65,6 +66,7 @@ function ViewTools({
       centered={centered}
       isClickable={isClickable}
       handleShare={handleShare}
+      handleCoOwner={handleCoOwner}
       showOwner={showOwner}
       type={type}
     />
@@ -79,6 +81,7 @@ ViewTools.propTypes = {
   handleEdit: PropTypes.func.isRequired,
   handleDelete: PropTypes.func.isRequired,
   handleShare: PropTypes.func,
+  handleCoOwner: PropTypes.func,
   titleProp: PropTypes.string.isRequired,
   descriptionProp: PropTypes.string,
   iconProp: PropTypes.string,

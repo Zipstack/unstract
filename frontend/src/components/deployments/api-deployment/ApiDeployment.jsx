@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 
 import { deploymentApiTypes, displayURL } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
 import { usePaginatedList } from "../../../hooks/usePaginatedList";
@@ -20,6 +21,7 @@ import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { workflowService } from "../../workflows/workflow/workflow-service.js";
 import { CreateApiDeploymentModal } from "../create-api-deployment-modal/CreateApiDeploymentModal";
@@ -49,6 +51,21 @@ function ApiDeployment() {
   const axiosPrivate = useAxiosPrivate();
   const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: apiDeploymentsApiService,
+    setAlertDetails,
+    onListRefresh: () => getApiDeploymentList(),
+  });
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
@@ -245,6 +262,11 @@ function ApiDeployment() {
     downloadPostmanCollection(apiDeploymentsApiService, deployment.id);
   };
 
+  const handleManageCoOwners = (deployment) => {
+    if (!deployment?.id) return;
+    handleCoOwnerAction(deployment.id);
+  };
+
   // Card view configuration
   const apiDeploymentCardConfig = useMemo(
     () =>
@@ -261,6 +283,7 @@ function ApiDeployment() {
         onSetupNotifications: handleSetupNotificationsDeployment,
         onCodeSnippets: handleCodeSnippetsDeployment,
         onDownloadPostman: handleDownloadPostmanDeployment,
+        onManageCoOwners: handleManageCoOwners,
         listContext: {
           page: pagination.current,
           pageSize: pagination.pageSize,
@@ -350,12 +373,24 @@ function ApiDeployment() {
       <SharePermission
         open={openShareModal}
         setOpen={setOpenShareModal}
-        adapter={selectedRow}
+        sharedItem={selectedRow}
         permissionEdit={true}
         loading={isLoadingShare}
         allUsers={allUsers}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="API Deployment"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );

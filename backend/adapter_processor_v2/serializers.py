@@ -4,6 +4,7 @@ from typing import Any
 from account_v2.serializer import UserSerializer
 from cryptography.fernet import Fernet
 from django.conf import settings
+from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
 
@@ -126,7 +127,7 @@ class AdapterInfoSerializer(BaseAdapterSerializer):
         return obj.get_context_window_size()
 
 
-class AdapterListSerializer(BaseAdapterSerializer):
+class AdapterListSerializer(CoOwnerRepresentationMixin, BaseAdapterSerializer):
     """Inherits BaseAdapterSerializer.
 
     Used for listing adapters
@@ -175,10 +176,10 @@ class AdapterListSerializer(BaseAdapterSerializer):
         if model:
             rep["model"] = model
 
+        request = self.context.get("request")
+        self.add_co_owner_fields(instance, rep, request)
         if instance.is_friction_less:
             rep["created_by_email"] = "Unstract"
-        else:
-            rep["created_by_email"] = instance.created_by.email
 
         return rep
 
@@ -190,6 +191,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     """
 
     shared_users = UserSerializer(many=True)
+    co_owners = UserSerializer(many=True, read_only=True)
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -200,6 +202,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "adapter_name",
             "adapter_type",
             "created_by",
+            "co_owners",
             "shared_users",
             "shared_to_org",
         )  # type: ignore

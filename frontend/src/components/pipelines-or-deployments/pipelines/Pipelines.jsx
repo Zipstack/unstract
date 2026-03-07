@@ -7,14 +7,8 @@ import {
   deploymentsStaticContent,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
-import { useAlertStore } from "../../../store/alert-store.js";
-import { useSessionStore } from "../../../store/session-store.js";
-import { Layout } from "../../deployments/layout/Layout.jsx";
-import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
-import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
-import { LogsModal } from "../log-modal/LogsModal.jsx";
-import "./Pipelines.css";
 import useClearFileHistory from "../../../hooks/useClearFileHistory";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
 import { usePaginatedList } from "../../../hooks/usePaginatedList";
@@ -25,14 +19,22 @@ import {
 } from "../../../hooks/usePromptStudioFetchCount";
 import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
 import { useShareModal } from "../../../hooks/useShareModal";
+import { useAlertStore } from "../../../store/alert-store.js";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { useSessionStore } from "../../../store/session-store.js";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { Layout } from "../../deployments/layout/Layout.jsx";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
+import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
 import { pipelineService } from "../pipeline-service.js";
 import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
+import "./Pipelines.css";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
@@ -53,6 +55,21 @@ function Pipelines({ type }) {
   const pipelineApiService = pipelineService();
   const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: pipelineApiService,
+    setAlertDetails,
+    onListRefresh: () => getPipelineList(),
+  });
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
 
@@ -311,6 +328,11 @@ function Pipelines({ type }) {
     downloadPostmanCollection(pipelineApiService, pipeline.id);
   };
 
+  const handleManageCoOwners = (pipeline) => {
+    if (!pipeline?.id) return;
+    handleCoOwnerAction(pipeline.id);
+  };
+
   // Card view configuration - no actionItems needed, all handlers passed directly
   const pipelineCardConfig = useMemo(
     () =>
@@ -331,6 +353,7 @@ function Pipelines({ type }) {
         onManageKeys: handleManageKeysPipeline,
         onSetupNotifications: handleSetupNotificationsPipeline,
         onDownloadPostman: handleDownloadPostmanPipeline,
+        onManageCoOwners: handleManageCoOwners,
         // Loading states
         isClearingFileHistory,
         // Pipeline type for status pill navigation
@@ -428,12 +451,26 @@ function Pipelines({ type }) {
         <SharePermission
           open={openShareModal}
           setOpen={setOpenShareModal}
-          adapter={selectedPorD}
+          sharedItem={selectedPorD}
           permissionEdit={true}
           loading={isLoadingShare}
           allUsers={Array.isArray(allUsers) ? allUsers : []}
           onApply={onShare}
           isSharableToOrg={true}
+        />
+      )}
+      {coOwnerOpen && (
+        <CoOwnerManagement
+          open={coOwnerOpen}
+          setOpen={setCoOwnerOpen}
+          resourceId={coOwnerResourceId}
+          resourceType="Pipeline"
+          allUsers={coOwnerAllUsers}
+          coOwners={coOwnerData.coOwners}
+          createdBy={coOwnerData.createdBy}
+          loading={coOwnerLoading}
+          onAddCoOwner={onAddCoOwner}
+          onRemoveCoOwner={onRemoveCoOwner}
         />
       )}
     </div>
