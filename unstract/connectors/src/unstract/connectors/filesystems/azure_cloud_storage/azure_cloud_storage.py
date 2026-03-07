@@ -39,8 +39,14 @@ class AzureCloudStorageFS(UnstractFileSystem):
         account_name = settings.get("account_name", "")
         access_key = settings.get("access_key", "")
         self.bucket = settings.get("bucket", "")
+        # adlfs._ls_containers() unconditionally returns from DirCache after
+        # populating it — use_listings_cache=False makes the write a no-op,
+        # causing a KeyError. Use a 1-second TTL instead for the same effect.
+        # Check https://github.com/fsspec/adlfs/issues/230 for more context.
         self.azure_fs = AzureBlobFileSystem(
-            account_name=account_name, credential=access_key
+            account_name=account_name,
+            credential=access_key,
+            listings_expiry_time=1,
         )
 
     @staticmethod

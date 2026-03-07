@@ -3,6 +3,7 @@ import logging
 import os
 import shutil
 import uuid
+from collections.abc import Collection
 from hashlib import sha256
 from io import BytesIO
 from itertools import islice
@@ -486,14 +487,10 @@ class SourceConnector(BaseConnector):
         max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
 
         fs_fsspec = source_fs.get_fsspec_fs()
-        for root, dirs, _ in fs_fsspec.walk(input_directory, maxdepth=max_depth):
-            try:
-                fs_metadata_list: list[dict[str, Any]] = fs_fsspec.listdir(
-                    root
-                )  # Single call for file system metadata
-            except Exception as e:
-                logger.warning(f"Failed to list directory from path: {root}, error: {e}")
-                continue
+        for root, dirs, files in fs_fsspec.walk(
+            input_directory, maxdepth=max_depth, detail=True
+        ):
+            fs_metadata_list: list[dict[str, Any]] = list(files.values())
 
             count = self._process_file_fs_directory(
                 fs_metadata_list=fs_metadata_list,
@@ -517,7 +514,7 @@ class SourceConnector(BaseConnector):
         matched_files: dict[str, FileHash],
         patterns: list[str],
         source_fs: UnstractFileSystem,
-        dirs: list[str],
+        dirs: Collection[str],
     ) -> int:
         for fs_metadata in fs_metadata_list:
             if count >= limit:
@@ -708,7 +705,7 @@ class SourceConnector(BaseConnector):
         source_fs: UnstractFileSystem,
         file_path: str,
         metadata: dict[str, Any],
-        dirs: list[str],
+        dirs: Collection[str],
     ) -> bool:
         """Check if the given path is a directory.
 
@@ -717,7 +714,7 @@ class SourceConnector(BaseConnector):
                 reading the file.
             file_path (str): The path of the file.
             metadata (dict[str, Any]): The metadata of the file.
-            dirs (list[str]): The list of directories.
+            dirs (Collection[str]): The collection of directory names.
 
         Returns:
             bool: True if the file is a directory, False otherwise.

@@ -5,6 +5,7 @@ to avoid circular imports and provide clean separation of concerns.
 """
 
 import time
+from collections.abc import Collection
 from typing import Any
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
@@ -116,21 +117,16 @@ class StreamingFileDiscovery:
                 logger.info(f"[StreamingDiscovery] Processing directory: {directory}")
 
                 # Walk directory with max depth control
-                for root, dirs, _ in self.fs_fsspec.walk(directory, maxdepth=max_depth):
+                for root, dirs, files in self.fs_fsspec.walk(
+                    directory, maxdepth=max_depth, detail=True
+                ):
                     metrics["directories_walked"] += 1
 
                     # Check limit before processing directory
                     if len(matched_files) >= file_hard_limit:
                         break
 
-                    try:
-                        # Get all items in directory with metadata
-                        fs_metadata_list: list[dict[str, Any]] = self.fs_fsspec.listdir(
-                            root
-                        )
-                    except Exception as e:
-                        logger.warning(f"Failed to list directory {root}: {e}")
-                        continue
+                    fs_metadata_list: list[dict[str, Any]] = list(files.values())
 
                     # Process files in this directory
                     for fs_metadata in fs_metadata_list:
@@ -395,14 +391,14 @@ class StreamingFileDiscovery:
             )
 
     def _is_directory(
-        self, file_path: str, metadata: dict[str, Any], dirs: list[str]
+        self, file_path: str, metadata: dict[str, Any], dirs: Collection[str]
     ) -> bool:
         """Check if path is a directory using multiple detection methods.
 
         Args:
             file_path: Path to check
             metadata: File metadata from fsspec
-            dirs: List of directories from walk
+            dirs: Collection of directory names from walk
 
         Returns:
             True if path is a directory
