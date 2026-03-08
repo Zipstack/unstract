@@ -306,8 +306,11 @@ def _aggregate_single_metric(
 
     # === HOURLY (last 24h) ===
     for row in query_method(
-        org_id, hourly_start, end_date,
-        granularity=Granularity.HOUR, **extra_kwargs,
+        org_id,
+        hourly_start,
+        end_date,
+        granularity=Granularity.HOUR,
+        **extra_kwargs,
     ):
         value = row["value"] or 0
         hour_ts = _truncate_to_hour(row["period"])
@@ -323,8 +326,11 @@ def _aggregate_single_metric(
     # and always bucketed into monthly_agg for the month rollup.
     monthly_buckets: dict[str, dict] = {}
     for row in query_method(
-        org_id, monthly_start, end_date,
-        granularity=Granularity.DAY, **extra_kwargs,
+        org_id,
+        monthly_start,
+        end_date,
+        granularity=Granularity.DAY,
+        **extra_kwargs,
     ):
         value = row["value"] or 0
         day_ts = _truncate_to_day(row["period"])
@@ -373,7 +379,10 @@ def _aggregate_llm_combined(
     """
     # === HOURLY (last 24h) ===
     hourly_results = MetricsQueryService.get_llm_metrics_combined(
-        org_id, hourly_start, end_date, granularity=Granularity.HOUR,
+        org_id,
+        hourly_start,
+        end_date,
+        granularity=Granularity.HOUR,
     )
     for row in hourly_results:
         ts = _truncate_to_hour(row["period"])
@@ -388,7 +397,10 @@ def _aggregate_llm_combined(
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
     daily_monthly_results = MetricsQueryService.get_llm_metrics_combined(
-        org_id, monthly_start, end_date, granularity=Granularity.DAY,
+        org_id,
+        monthly_start,
+        end_date,
+        granularity=Granularity.DAY,
     )
     monthly_buckets: dict[tuple[str, str], dict] = {}
     for row in daily_monthly_results:
@@ -412,7 +424,9 @@ def _aggregate_llm_combined(
             bkey = (month_key_str, metric_name)
             if bkey not in monthly_buckets:
                 monthly_buckets[bkey] = {
-                    "metric_type": metric_type, "value": 0, "count": 0,
+                    "metric_type": metric_type,
+                    "value": 0,
+                    "count": 0,
                 }
             monthly_buckets[bkey]["value"] += value
             monthly_buckets[bkey]["count"] += 1
@@ -544,9 +558,17 @@ def _run_aggregation() -> dict[str, Any]:
 
                 try:
                     _aggregate_single_metric(
-                        query_method, metric_name, metric_type,
-                        org_id, hourly_start, daily_start, monthly_start, end_date,
-                        hourly_agg, daily_agg, monthly_agg,
+                        query_method,
+                        metric_name,
+                        metric_type,
+                        org_id,
+                        hourly_start,
+                        daily_start,
+                        monthly_start,
+                        end_date,
+                        hourly_agg,
+                        daily_agg,
+                        monthly_agg,
                         extra_kwargs,
                     )
                 except Exception:
@@ -556,8 +578,14 @@ def _run_aggregation() -> dict[str, Any]:
             # Combined LLM metrics: 1 query per granularity instead of 4
             try:
                 _aggregate_llm_combined(
-                    org_id, hourly_start, daily_start, monthly_start, end_date,
-                    hourly_agg, daily_agg, monthly_agg,
+                    org_id,
+                    hourly_start,
+                    daily_start,
+                    monthly_start,
+                    end_date,
+                    hourly_agg,
+                    daily_agg,
+                    monthly_agg,
                     llm_combined_fields,
                 )
             except Exception:

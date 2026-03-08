@@ -154,12 +154,16 @@ class Command(BaseCommand):
 
             try:
                 # Resolve org string identifier for PageUsage queries
-                org_id_key = int(current_org_id) if current_org_id.isdigit() else current_org_id
+                org_id_key = (
+                    int(current_org_id) if current_org_id.isdigit() else current_org_id
+                )
                 org_identifier = org_identifiers.get(org_id_key)
 
                 # Collect all metric data for this org
                 hourly_data, daily_data, monthly_data = self._collect_metrics(
-                    current_org_id, start_date, end_date,
+                    current_org_id,
+                    start_date,
+                    end_date,
                     org_identifier=org_identifier,
                 )
 
@@ -281,8 +285,11 @@ class Command(BaseCommand):
             try:
                 # Query hourly data
                 hourly_results = query_method(
-                    org_id, start_date, end_date,
-                    granularity=Granularity.HOUR, **extra_kwargs,
+                    org_id,
+                    start_date,
+                    end_date,
+                    granularity=Granularity.HOUR,
+                    **extra_kwargs,
                 )
                 for row in hourly_results:
                     period = row["period"]
@@ -301,8 +308,11 @@ class Command(BaseCommand):
 
                 # Query daily data
                 daily_results = query_method(
-                    org_id, start_date, end_date,
-                    granularity=Granularity.DAY, **extra_kwargs,
+                    org_id,
+                    start_date,
+                    end_date,
+                    granularity=Granularity.DAY,
+                    **extra_kwargs,
                 )
                 for row in daily_results:
                     period = row["period"]

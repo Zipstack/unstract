@@ -115,7 +115,9 @@ class MetricsQueryService:
         )
 
     @staticmethod
-    def _resolve_org_identifier(organization_id: str, org_identifier: str | None = None) -> str | None:
+    def _resolve_org_identifier(
+        organization_id: str, org_identifier: str | None = None
+    ) -> str | None:
         """Resolve PageUsage's string org identifier from UUID PK.
 
         PageUsage.organization_id stores Organization.organization_id (a string
@@ -223,9 +225,7 @@ class MetricsQueryService:
             .annotate(
                 llm_calls=Count("id"),
                 challenges=Count("id", filter=Q(llm_usage_reason="challenge")),
-                summarization_calls=Count(
-                    "id", filter=Q(llm_usage_reason="summarize")
-                ),
+                summarization_calls=Count("id", filter=Q(llm_usage_reason="summarize")),
                 llm_usage=Sum("cost_in_dollars"),
             )
             .order_by("period")
@@ -587,9 +587,7 @@ class MetricsQueryService:
         org_identifier = cls._resolve_org_identifier(organization_id)
 
         # Combined LLM metrics (1 query instead of 4)
-        llm_combined = cls.get_llm_metrics_combined(
-            organization_id, start_date, end_date
-        )
+        llm_combined = cls.get_llm_metrics_combined(organization_id, start_date, end_date)
         llm_calls_total = sum(r["llm_calls"] for r in llm_combined)
         challenges_total = sum(r["challenges"] for r in llm_combined)
         summarization_total = sum(r["summarization_calls"] for r in llm_combined)
@@ -605,7 +603,9 @@ class MetricsQueryService:
             "pages_processed": sum(
                 r["value"] or 0
                 for r in cls.get_pages_processed(
-                    organization_id, start_date, end_date,
+                    organization_id,
+                    start_date,
+                    end_date,
                     org_identifier=org_identifier,
                 )
             ),
@@ -627,15 +627,11 @@ class MetricsQueryService:
             "llm_usage": llm_usage_total,
             "prompt_executions": sum(
                 r["value"]
-                for r in cls.get_prompt_executions(
-                    organization_id, start_date, end_date
-                )
+                for r in cls.get_prompt_executions(organization_id, start_date, end_date)
             ),
             "failed_pages": sum(
                 r["value"] or 0
-                for r in cls.get_failed_pages(
-                    organization_id, start_date, end_date
-                )
+                for r in cls.get_failed_pages(organization_id, start_date, end_date)
             ),
             "hitl_reviews": sum(
                 r["value"]
@@ -643,9 +639,7 @@ class MetricsQueryService:
             ),
             "hitl_completions": sum(
                 r["value"]
-                for r in cls.get_hitl_completions(
-                    organization_id, start_date, end_date
-                )
+                for r in cls.get_hitl_completions(organization_id, start_date, end_date)
             ),
         }
 
