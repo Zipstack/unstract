@@ -7,6 +7,7 @@ Tasks:
 """
 
 import logging
+import time
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -199,6 +200,49 @@ AGGREGATION_LOCK_KEY = "dashboard_metrics:aggregation_lock"
 AGGREGATION_LOCK_TIMEOUT = 900  # 15 minutes (matches task schedule)
 
 
+def _acquire_aggregation_lock() -> bool:
+    """Acquire the distributed aggregation lock with self-healing.
+
+    Stores a Unix timestamp as the lock value. If a previous run crashed
+    (OOM kill, SIGKILL) without releasing the lock, the next run detects
+    that the lock is older than AGGREGATION_LOCK_TIMEOUT and reclaims it.
+
+    Returns:
+        True if lock was acquired, False if another run is legitimately active.
+    """
+    now = time.time()
+
+    # Fast path: lock is free
+    if cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT):
+        return True
+
+    # Lock exists — check if it's stale (previous run died without releasing)
+    lock_value = cache.get(AGGREGATION_LOCK_KEY)
+    if lock_value is None:
+        # Expired between our check and get — race is fine, next run will pick up
+        return False
+
+    try:
+        lock_time = float(lock_value)
+    except (TypeError, ValueError):
+        # Corrupted value (e.g. old "running" string) — reclaim it
+        logger.warning("Reclaiming aggregation lock with invalid value: %s", lock_value)
+        cache.delete(AGGREGATION_LOCK_KEY)
+        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+
+    age = now - lock_time
+    if age > AGGREGATION_LOCK_TIMEOUT:
+        logger.warning(
+            "Reclaiming stale aggregation lock (age=%.0fs, timeout=%ds)",
+            age,
+            AGGREGATION_LOCK_TIMEOUT,
+        )
+        cache.delete(AGGREGATION_LOCK_KEY)
+        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
+
+    return False
+
+
 @shared_task(
     name="dashboard_metrics.aggregate_from_sources",
     soft_time_limit=600,
@@ -216,19 +260,19 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
     them into EventMetricsHourly, EventMetricsDaily, and EventMetricsMonthly
     tables for fast dashboard queries at different granularities.
 
-    Uses a Redis distributed lock to prevent overlapping runs when a task
-    takes longer than the 15-minute schedule interval.
+    Uses a Redis distributed lock with self-healing to prevent overlapping
+    runs. If a previous run was killed without releasing the lock, the next
+    run detects the stale lock and reclaims it automatically.
 
     Aggregation windows:
     - Hourly: Last 24 hours (rolling window)
-    - Daily: Last 2 days (to catch day boundaries)
-    - Monthly: Current month (updates running total)
+    - Daily: Last 7 days (ensures we capture late-arriving data)
+    - Monthly: Last 2 months (current + previous month)
 
     Returns:
         Dict with aggregation summary for all three tiers
     """
-    # Acquire distributed lock to prevent overlapping runs
-    if not cache.add(AGGREGATION_LOCK_KEY, "running", AGGREGATION_LOCK_TIMEOUT):
+    if not _acquire_aggregation_lock():
         logger.info("Skipping aggregation — another run is in progress")
         return {"success": True, "skipped": True, "reason": "lock_held"}
 
@@ -236,6 +280,150 @@ def aggregate_metrics_from_sources() -> dict[str, Any]:
         return _run_aggregation()
     finally:
         cache.delete(AGGREGATION_LOCK_KEY)
+
+
+def _aggregate_single_metric(
+    query_method,
+    metric_name: str,
+    metric_type: str,
+    org_id: str,
+    hourly_start: datetime,
+    daily_start: datetime,
+    monthly_start: datetime,
+    end_date: datetime,
+    hourly_agg: dict,
+    daily_agg: dict,
+    monthly_agg: dict,
+    extra_kwargs: dict | None = None,
+) -> None:
+    """Run a single metric query at all 3 granularities and populate agg dicts.
+
+    Uses 2 queries instead of 3: the daily query is widened to monthly_start
+    and its results are split into both daily_agg and monthly_agg in Python.
+    This is the same pattern proven in the backfill management command.
+    """
+    extra_kwargs = extra_kwargs or {}
+
+    # === HOURLY (last 24h) ===
+    for row in query_method(
+        org_id, hourly_start, end_date,
+        granularity=Granularity.HOUR, **extra_kwargs,
+    ):
+        value = row["value"] or 0
+        hour_ts = _truncate_to_hour(row["period"])
+        key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
+        if key not in hourly_agg:
+            hourly_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
+        hourly_agg[key]["value"] += value
+        hourly_agg[key]["count"] += 1
+
+    # === DAILY + MONTHLY (single query from monthly_start) ===
+    # Query with DAY granularity from monthly_start (2 months back).
+    # Each row is bucketed into daily_agg if within daily window,
+    # and always bucketed into monthly_agg for the month rollup.
+    monthly_buckets: dict[str, dict] = {}
+    for row in query_method(
+        org_id, monthly_start, end_date,
+        granularity=Granularity.DAY, **extra_kwargs,
+    ):
+        value = row["value"] or 0
+        day_ts = _truncate_to_day(row["period"])
+
+        # Daily: only include rows within the daily window
+        if day_ts >= daily_start:
+            key = (org_id, day_ts.date().isoformat(), metric_name, "default", "")
+            if key not in daily_agg:
+                daily_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
+            daily_agg[key]["value"] += value
+            daily_agg[key]["count"] += 1
+
+        # Monthly: bucket all rows by month
+        month_key_str = _truncate_to_month(row["period"]).date().isoformat()
+        if month_key_str not in monthly_buckets:
+            monthly_buckets[month_key_str] = {"value": 0, "count": 0}
+        monthly_buckets[month_key_str]["value"] += value
+        monthly_buckets[month_key_str]["count"] += 1
+
+    for month_key_str, bucket in monthly_buckets.items():
+        key = (org_id, month_key_str, metric_name, "default", "")
+        monthly_agg[key] = {
+            "metric_type": metric_type,
+            "value": bucket["value"],
+            "count": bucket["count"] or 1,
+        }
+
+
+def _aggregate_llm_combined(
+    org_id: str,
+    hourly_start: datetime,
+    daily_start: datetime,
+    monthly_start: datetime,
+    end_date: datetime,
+    hourly_agg: dict,
+    daily_agg: dict,
+    monthly_agg: dict,
+    llm_combined_fields: dict,
+) -> None:
+    """Run the combined LLM metrics query at all granularities.
+
+    Issues 2 queries total (hourly + daily/monthly) instead of 3.
+    The DAY-granularity query is widened to monthly_start and results are
+    split into daily_agg (recent rows) and monthly_agg (all rows bucketed
+    by month) in Python. Same pattern as _aggregate_single_metric.
+    """
+    # === HOURLY (last 24h) ===
+    hourly_results = MetricsQueryService.get_llm_metrics_combined(
+        org_id, hourly_start, end_date, granularity=Granularity.HOUR,
+    )
+    for row in hourly_results:
+        ts = _truncate_to_hour(row["period"])
+        ts_str = ts.isoformat()
+        for field, (metric_name, metric_type) in llm_combined_fields.items():
+            value = row[field] or 0
+            key = (org_id, ts_str, metric_name, "default", "")
+            if key not in hourly_agg:
+                hourly_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
+            hourly_agg[key]["value"] += value
+            hourly_agg[key]["count"] += 1
+
+    # === DAILY + MONTHLY (single query from monthly_start) ===
+    daily_monthly_results = MetricsQueryService.get_llm_metrics_combined(
+        org_id, monthly_start, end_date, granularity=Granularity.DAY,
+    )
+    monthly_buckets: dict[tuple[str, str], dict] = {}
+    for row in daily_monthly_results:
+        day_ts = _truncate_to_day(row["period"])
+
+        # Daily: only include rows within the daily window
+        if day_ts >= daily_start:
+            ts_str = day_ts.date().isoformat()
+            for field, (metric_name, metric_type) in llm_combined_fields.items():
+                value = row[field] or 0
+                key = (org_id, ts_str, metric_name, "default", "")
+                if key not in daily_agg:
+                    daily_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
+                daily_agg[key]["value"] += value
+                daily_agg[key]["count"] += 1
+
+        # Monthly: bucket all rows by month
+        month_key_str = _truncate_to_month(row["period"]).date().isoformat()
+        for field, (metric_name, metric_type) in llm_combined_fields.items():
+            value = row[field] or 0
+            bkey = (month_key_str, metric_name)
+            if bkey not in monthly_buckets:
+                monthly_buckets[bkey] = {
+                    "metric_type": metric_type, "value": 0, "count": 0,
+                }
+            monthly_buckets[bkey]["value"] += value
+            monthly_buckets[bkey]["count"] += 1
+
+    for (month_key_str, metric_name), bucket in monthly_buckets.items():
+        key = (org_id, month_key_str, metric_name, "default", "")
+        monthly_agg[key] = {
+            "metric_type": bucket["metric_type"],
+            "value": bucket["value"],
+            "count": bucket["count"] or 1,
+        }
 
 
 def _run_aggregation() -> dict[str, Any]:
@@ -268,24 +456,31 @@ def _run_aggregation() -> dict[str, Any]:
         )
 
     # Metric definitions: (name, query_method, is_histogram)
+    # Note: llm_calls, challenges, summarization_calls, and llm_usage are
+    # handled separately via get_llm_metrics_combined (1 query instead of 4).
     metric_configs = [
         ("documents_processed", MetricsQueryService.get_documents_processed, False),
         ("pages_processed", MetricsQueryService.get_pages_processed, True),
-        ("llm_calls", MetricsQueryService.get_llm_calls, False),
-        ("challenges", MetricsQueryService.get_challenges, False),
-        ("summarization_calls", MetricsQueryService.get_summarization_calls, False),
         ("deployed_api_requests", MetricsQueryService.get_deployed_api_requests, False),
         (
             "etl_pipeline_executions",
             MetricsQueryService.get_etl_pipeline_executions,
             False,
         ),
-        ("llm_usage", MetricsQueryService.get_llm_usage_cost, True),
         ("prompt_executions", MetricsQueryService.get_prompt_executions, False),
         ("failed_pages", MetricsQueryService.get_failed_pages, True),
         ("hitl_reviews", MetricsQueryService.get_hitl_reviews, False),
         ("hitl_completions", MetricsQueryService.get_hitl_completions, False),
     ]
+
+    # LLM metrics combined via conditional aggregation (4 metrics in 1 query).
+    # Maps combined query field -> (metric_name, metric_type)
+    llm_combined_fields = {
+        "llm_calls": ("llm_calls", MetricType.COUNTER),
+        "challenges": ("challenges", MetricType.COUNTER),
+        "summarization_calls": ("summarization_calls", MetricType.COUNTER),
+        "llm_usage": ("llm_usage", MetricType.HISTOGRAM),
+    }
 
     stats = {
         "hourly": {"upserted": 0},
@@ -296,10 +491,14 @@ def _run_aggregation() -> dict[str, Any]:
     }
 
     # Pre-filter to orgs with recent activity to reduce DB load.
-    # One lightweight query avoids running 36 queries per dormant org.
+    # Uses daily_start (7 days) instead of monthly_start (2 months) because:
+    # - Hourly/daily queries only need recent data (24h / 7d windows)
+    # - Monthly totals for dormant orgs were already written by previous
+    #   runs when the org was active — re-running just overwrites same values
+    # - This avoids 28 queries per dormant org that had activity 2-8 weeks ago
     active_org_ids = set(
         WorkflowExecution.objects.filter(
-            created_at__gte=monthly_start,
+            created_at__gte=daily_start,
         )
         .values_list("workflow__organization_id", flat=True)
         .distinct()
@@ -322,10 +521,13 @@ def _run_aggregation() -> dict[str, Any]:
             "skipped_reason": "no_active_orgs",
         }
 
-    organizations = Organization.objects.filter(id__in=active_org_ids).only("id")
+    organizations = Organization.objects.filter(id__in=active_org_ids).only(
+        "id", "organization_id"
+    )
 
     for org in organizations:
         org_id = str(org.id)
+        org_identifier = org.organization_id  # Pre-resolved for PageUsage queries
         hourly_agg: dict[tuple, dict] = {}
         daily_agg: dict[tuple, dict] = {}
         monthly_agg: dict[tuple, dict] = {}
@@ -334,86 +536,33 @@ def _run_aggregation() -> dict[str, Any]:
             for metric_name, query_method, is_histogram in metric_configs:
                 metric_type = MetricType.HISTOGRAM if is_histogram else MetricType.COUNTER
 
+                # Pass org_identifier to PageUsage-based metrics to
+                # avoid redundant Organization lookups per call.
+                extra_kwargs = {}
+                if metric_name == "pages_processed":
+                    extra_kwargs["org_identifier"] = org_identifier
+
                 try:
-                    # === HOURLY AGGREGATION (last 24 hours) ===
-                    hourly_results = query_method(
-                        org_id, hourly_start, end_date, granularity=Granularity.HOUR
+                    _aggregate_single_metric(
+                        query_method, metric_name, metric_type,
+                        org_id, hourly_start, daily_start, monthly_start, end_date,
+                        hourly_agg, daily_agg, monthly_agg,
+                        extra_kwargs,
                     )
-                    for row in hourly_results:
-                        period = row["period"]
-                        value = row["value"] or 0
-                        hour_ts = _truncate_to_hour(period)
-                        key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
-
-                        if key not in hourly_agg:
-                            hourly_agg[key] = {
-                                "metric_type": metric_type,
-                                "value": 0,
-                                "count": 0,
-                            }
-                        hourly_agg[key]["value"] += value
-                        hourly_agg[key]["count"] += 1
-
-                    # === DAILY AGGREGATION (last 7 days) ===
-                    daily_results = query_method(
-                        org_id, daily_start, end_date, granularity=Granularity.DAY
-                    )
-                    for row in daily_results:
-                        period = row["period"]
-                        value = row["value"] or 0
-                        day_ts = _truncate_to_day(period)
-                        key = (
-                            org_id,
-                            day_ts.date().isoformat(),
-                            metric_name,
-                            "default",
-                            "",
-                        )
-
-                        if key not in daily_agg:
-                            daily_agg[key] = {
-                                "metric_type": metric_type,
-                                "value": 0,
-                                "count": 0,
-                            }
-                        daily_agg[key]["value"] += value
-                        daily_agg[key]["count"] += 1
-
-                    # === MONTHLY AGGREGATION (last 2 months) ===
-                    monthly_results = query_method(
-                        org_id, monthly_start, end_date, granularity=Granularity.DAY
-                    )
-                    # Group results by month and create separate records
-                    monthly_buckets: dict[str, dict] = {}
-                    for row in monthly_results:
-                        period = row["period"]
-                        value = row["value"] or 0
-                        month_ts = _truncate_to_month(period)
-                        month_key_str = month_ts.date().isoformat()
-
-                        if month_key_str not in monthly_buckets:
-                            monthly_buckets[month_key_str] = {"value": 0, "count": 0}
-                        monthly_buckets[month_key_str]["value"] += value
-                        monthly_buckets[month_key_str]["count"] += 1
-
-                    # Create aggregation entries for each month
-                    for month_key_str, bucket in monthly_buckets.items():
-                        month_key = (
-                            org_id,
-                            month_key_str,
-                            metric_name,
-                            "default",
-                            "",
-                        )
-                        monthly_agg[month_key] = {
-                            "metric_type": metric_type,
-                            "value": bucket["value"],
-                            "count": bucket["count"] or 1,
-                        }
-
                 except Exception:
                     logger.exception("Error querying %s for org %s", metric_name, org_id)
                     stats["errors"] += 1
+
+            # Combined LLM metrics: 1 query per granularity instead of 4
+            try:
+                _aggregate_llm_combined(
+                    org_id, hourly_start, daily_start, monthly_start, end_date,
+                    hourly_agg, daily_agg, monthly_agg,
+                    llm_combined_fields,
+                )
+            except Exception:
+                logger.exception("Error querying combined LLM metrics for org %s", org_id)
+                stats["errors"] += 1
 
             # Bulk upsert all three tiers (single INSERT...ON CONFLICT each)
             if hourly_agg:

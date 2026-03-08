@@ -139,15 +139,28 @@ class Command(BaseCommand):
             "errors": 0,
         }
 
+        # Pre-resolve org identifiers for PageUsage queries (avoids
+        # redundant Organization lookups inside the metric query loop).
+        org_identifiers = dict(
+            Organization.objects.filter(
+                id__in=[int(oid) if oid.isdigit() else oid for oid in org_ids]
+            ).values_list("id", "organization_id")
+        )
+
         for i, current_org_id in enumerate(org_ids):
             self.stdout.write(
                 f"\n[{i + 1}/{len(org_ids)}] Processing org: {current_org_id}"
             )
 
             try:
+                # Resolve org string identifier for PageUsage queries
+                org_id_key = int(current_org_id) if current_org_id.isdigit() else current_org_id
+                org_identifier = org_identifiers.get(org_id_key)
+
                 # Collect all metric data for this org
                 hourly_data, daily_data, monthly_data = self._collect_metrics(
-                    current_org_id, start_date, end_date
+                    current_org_id, start_date, end_date,
+                    org_identifier=org_identifier,
                 )
 
                 self.stdout.write(
@@ -245,7 +258,11 @@ class Command(BaseCommand):
         return sorted(str(oid) for oid in all_org_ids)
 
     def _collect_metrics(
-        self, org_id: str, start_date: datetime, end_date: datetime
+        self,
+        org_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        org_identifier: str | None = None,
     ) -> tuple[dict, dict, dict]:
         """Collect metrics from source tables for all granularities."""
         hourly_agg = {}
@@ -255,10 +272,17 @@ class Command(BaseCommand):
         for metric_name, query_method, is_histogram in self.METRIC_CONFIGS:
             metric_type = MetricType.HISTOGRAM if is_histogram else MetricType.COUNTER
 
+            # Pass org_identifier to PageUsage-based metrics to
+            # avoid redundant Organization lookups per call.
+            extra_kwargs = {}
+            if metric_name == "pages_processed":
+                extra_kwargs["org_identifier"] = org_identifier
+
             try:
                 # Query hourly data
                 hourly_results = query_method(
-                    org_id, start_date, end_date, granularity=Granularity.HOUR
+                    org_id, start_date, end_date,
+                    granularity=Granularity.HOUR, **extra_kwargs,
                 )
                 for row in hourly_results:
                     period = row["period"]
@@ -277,7 +301,8 @@ class Command(BaseCommand):
 
                 # Query daily data
                 daily_results = query_method(
-                    org_id, start_date, end_date, granularity=Granularity.DAY
+                    org_id, start_date, end_date,
+                    granularity=Granularity.DAY, **extra_kwargs,
                 )
                 for row in daily_results:
                     period = row["period"]

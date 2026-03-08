@@ -14,7 +14,7 @@ from typing import Any
 from account_usage.models import PageUsage
 from account_v2.models import Organization
 from api_v2.models import APIDeployment
-from django.db.models import CharField, Count, OuterRef, Subquery, Sum
+from django.db.models import CharField, Count, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Cast, Coalesce, TruncDay, TruncHour, TruncWeek
 from pipeline_v2.models import Pipeline
 from usage_v2.models import Usage
@@ -115,11 +115,36 @@ class MetricsQueryService:
         )
 
     @staticmethod
+    def _resolve_org_identifier(organization_id: str, org_identifier: str | None = None) -> str | None:
+        """Resolve PageUsage's string org identifier from UUID PK.
+
+        PageUsage.organization_id stores Organization.organization_id (a string
+        like "org_abc123"), not the UUID PK used everywhere else. This helper
+        resolves the string identifier, accepting a pre-resolved value to avoid
+        redundant DB lookups when called in a loop.
+
+        Args:
+            organization_id: Organization UUID string (PK)
+            org_identifier: Pre-resolved string identifier (skips DB lookup)
+
+        Returns:
+            Organization string identifier, or None if org not found
+        """
+        if org_identifier:
+            return org_identifier
+        try:
+            org = Organization.objects.get(id=organization_id)
+            return org.organization_id
+        except Organization.DoesNotExist:
+            return None
+
+    @staticmethod
     def get_pages_processed(
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
         granularity: str = Granularity.DAY,
+        org_identifier: str | None = None,
     ) -> list[dict[str, Any]]:
         """Query pages processed from page_usage.
 
@@ -127,7 +152,51 @@ class MetricsQueryService:
 
         Note: PageUsage.organization_id stores the Organization's string
         identifier (organization.organization_id), NOT the UUID PK.
-        We look up the string identifier from the UUID passed by callers.
+        Pass org_identifier to avoid a DB lookup per call.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of date range
+            end_date: End of date range
+            granularity: Time granularity (hour, day, week)
+            org_identifier: Pre-resolved Organization.organization_id string.
+                If None, will be looked up from organization_id.
+
+        Returns:
+            List of dicts with 'period' and 'value' keys
+        """
+        resolved = MetricsQueryService._resolve_org_identifier(
+            organization_id, org_identifier
+        )
+        if not resolved:
+            return []
+
+        trunc_func = MetricsQueryService._get_trunc_func(granularity)
+
+        return list(
+            PageUsage.objects.filter(
+                organization_id=resolved,
+                created_at__gte=start_date,
+                created_at__lte=end_date,
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values("period")
+            .annotate(value=Sum("pages_processed"))
+            .order_by("period")
+        )
+
+    @staticmethod
+    def get_llm_metrics_combined(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = Granularity.DAY,
+    ) -> list[dict[str, Any]]:
+        """Query all LLM metrics from usage table in a single query.
+
+        Uses conditional aggregation to compute llm_calls, challenges,
+        summarization_calls, and llm_usage (cost) in one DB round-trip
+        instead of four separate queries.
 
         Args:
             organization_id: Organization UUID string
@@ -136,25 +205,29 @@ class MetricsQueryService:
             granularity: Time granularity (hour, day, week)
 
         Returns:
-            List of dicts with 'period' and 'value' keys
+            List of dicts with 'period', 'llm_calls', 'challenges',
+            'summarization_calls', and 'llm_usage' keys
         """
-        try:
-            org = Organization.objects.get(id=organization_id)
-            org_identifier = org.organization_id
-        except Organization.DoesNotExist:
-            return []
-
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
-            PageUsage.objects.filter(
-                organization_id=org_identifier,
+            _get_usage_queryset()
+            .filter(
+                organization_id=organization_id,
+                usage_type="llm",
                 created_at__gte=start_date,
                 created_at__lte=end_date,
             )
             .annotate(period=trunc_func("created_at"))
             .values("period")
-            .annotate(value=Sum("pages_processed"))
+            .annotate(
+                llm_calls=Count("id"),
+                challenges=Count("id", filter=Q(llm_usage_reason="challenge")),
+                summarization_calls=Count(
+                    "id", filter=Q(llm_usage_reason="summarize")
+                ),
+                llm_usage=Sum("cost_in_dollars"),
+            )
             .order_by("period")
         )
 
@@ -167,32 +240,15 @@ class MetricsQueryService:
     ) -> list[dict[str, Any]]:
         """Query LLM calls from usage table.
 
-        Counts usage records where usage_type='llm' grouped by time period.
-
-        Args:
-            organization_id: Organization UUID string
-            start_date: Start of date range
-            end_date: End of date range
-            granularity: Time granularity (hour, day, week)
-
-        Returns:
-            List of dicts with 'period' and 'value' keys
+        Thin wrapper for views/backfill that need a single metric.
+        For batch aggregation, use get_llm_metrics_combined() instead.
         """
-        trunc_func = MetricsQueryService._get_trunc_func(granularity)
-
-        return list(
-            _get_usage_queryset()
-            .filter(
-                organization_id=organization_id,
-                usage_type="llm",
-                created_at__gte=start_date,
-                created_at__lte=end_date,
+        return [
+            {"period": r["period"], "value": r["llm_calls"]}
+            for r in MetricsQueryService.get_llm_metrics_combined(
+                organization_id, start_date, end_date, granularity
             )
-            .annotate(period=trunc_func("created_at"))
-            .values("period")
-            .annotate(value=Count("id"))
-            .order_by("period")
-        )
+        ]
 
     @staticmethod
     def get_challenges(
@@ -203,33 +259,15 @@ class MetricsQueryService:
     ) -> list[dict[str, Any]]:
         """Query challenge calls from usage table.
 
-        Counts usage records where llm_usage_reason='challenge' grouped by time period.
-
-        Args:
-            organization_id: Organization UUID string
-            start_date: Start of date range
-            end_date: End of date range
-            granularity: Time granularity (hour, day, week)
-
-        Returns:
-            List of dicts with 'period' and 'value' keys
+        Thin wrapper for views/backfill that need a single metric.
+        For batch aggregation, use get_llm_metrics_combined() instead.
         """
-        trunc_func = MetricsQueryService._get_trunc_func(granularity)
-
-        return list(
-            _get_usage_queryset()
-            .filter(
-                organization_id=organization_id,
-                usage_type="llm",
-                llm_usage_reason="challenge",
-                created_at__gte=start_date,
-                created_at__lte=end_date,
+        return [
+            {"period": r["period"], "value": r["challenges"]}
+            for r in MetricsQueryService.get_llm_metrics_combined(
+                organization_id, start_date, end_date, granularity
             )
-            .annotate(period=trunc_func("created_at"))
-            .values("period")
-            .annotate(value=Count("id"))
-            .order_by("period")
-        )
+        ]
 
     @staticmethod
     def get_summarization_calls(
@@ -240,33 +278,34 @@ class MetricsQueryService:
     ) -> list[dict[str, Any]]:
         """Query summarization calls from usage table.
 
-        Counts usage records where llm_usage_reason='summarize' grouped by time period.
-
-        Args:
-            organization_id: Organization UUID string
-            start_date: Start of date range
-            end_date: End of date range
-            granularity: Time granularity (hour, day, week)
-
-        Returns:
-            List of dicts with 'period' and 'value' keys
+        Thin wrapper for views/backfill that need a single metric.
+        For batch aggregation, use get_llm_metrics_combined() instead.
         """
-        trunc_func = MetricsQueryService._get_trunc_func(granularity)
-
-        return list(
-            _get_usage_queryset()
-            .filter(
-                organization_id=organization_id,
-                usage_type="llm",
-                llm_usage_reason="summarize",
-                created_at__gte=start_date,
-                created_at__lte=end_date,
+        return [
+            {"period": r["period"], "value": r["summarization_calls"]}
+            for r in MetricsQueryService.get_llm_metrics_combined(
+                organization_id, start_date, end_date, granularity
             )
-            .annotate(period=trunc_func("created_at"))
-            .values("period")
-            .annotate(value=Count("id"))
-            .order_by("period")
-        )
+        ]
+
+    @staticmethod
+    def get_llm_usage_cost(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        granularity: str = Granularity.DAY,
+    ) -> list[dict[str, Any]]:
+        """Query LLM usage cost from usage table.
+
+        Thin wrapper for views/backfill that need a single metric.
+        For batch aggregation, use get_llm_metrics_combined() instead.
+        """
+        return [
+            {"period": r["period"], "value": r["llm_usage"]}
+            for r in MetricsQueryService.get_llm_metrics_combined(
+                organization_id, start_date, end_date, granularity
+            )
+        ]
 
     @staticmethod
     def get_deployed_api_requests(
@@ -356,42 +395,6 @@ class MetricsQueryService:
         )
 
     @staticmethod
-    def get_llm_usage_cost(
-        organization_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        granularity: str = Granularity.DAY,
-    ) -> list[dict[str, Any]]:
-        """Query LLM usage cost from usage table.
-
-        Sums cost_in_dollars for LLM usage records grouped by time period.
-
-        Args:
-            organization_id: Organization UUID string
-            start_date: Start of date range
-            end_date: End of date range
-            granularity: Time granularity (hour, day, week)
-
-        Returns:
-            List of dicts with 'period' and 'value' keys
-        """
-        trunc_func = MetricsQueryService._get_trunc_func(granularity)
-
-        return list(
-            _get_usage_queryset()
-            .filter(
-                organization_id=organization_id,
-                usage_type="llm",
-                created_at__gte=start_date,
-                created_at__lte=end_date,
-            )
-            .annotate(period=trunc_func("created_at"))
-            .values("period")
-            .annotate(value=Sum("cost_in_dollars"))
-            .order_by("period")
-        )
-
-    @staticmethod
     def get_prompt_executions(
         organization_id: str,
         start_date: datetime,
@@ -436,6 +439,10 @@ class MetricsQueryService:
 
         Sums pages_processed for file executions with status='ERROR',
         grouped by time period based on when the failure occurred.
+
+        Note: Unlike get_pages_processed, this does NOT need org_identifier
+        because it joins through WorkflowFileExecution -> WorkflowExecution ->
+        Workflow -> Organization (UUID FK), not through PageUsage.organization_id.
 
         Args:
             organization_id: Organization UUID string
@@ -576,6 +583,18 @@ class MetricsQueryService:
         Returns:
             Dict mapping metric name to total value
         """
+        # Resolve org identifier once for PageUsage queries
+        org_identifier = cls._resolve_org_identifier(organization_id)
+
+        # Combined LLM metrics (1 query instead of 4)
+        llm_combined = cls.get_llm_metrics_combined(
+            organization_id, start_date, end_date
+        )
+        llm_calls_total = sum(r["llm_calls"] for r in llm_combined)
+        challenges_total = sum(r["challenges"] for r in llm_combined)
+        summarization_total = sum(r["summarization_calls"] for r in llm_combined)
+        llm_usage_total = sum(r["llm_usage"] or 0 for r in llm_combined)
+
         return {
             "documents_processed": sum(
                 r["value"]
@@ -585,22 +604,14 @@ class MetricsQueryService:
             ),
             "pages_processed": sum(
                 r["value"] or 0
-                for r in cls.get_pages_processed(organization_id, start_date, end_date)
-            ),
-            "llm_calls": sum(
-                r["value"]
-                for r in cls.get_llm_calls(organization_id, start_date, end_date)
-            ),
-            "challenges": sum(
-                r["value"]
-                for r in cls.get_challenges(organization_id, start_date, end_date)
-            ),
-            "summarization_calls": sum(
-                r["value"]
-                for r in cls.get_summarization_calls(
-                    organization_id, start_date, end_date
+                for r in cls.get_pages_processed(
+                    organization_id, start_date, end_date,
+                    org_identifier=org_identifier,
                 )
             ),
+            "llm_calls": llm_calls_total,
+            "challenges": challenges_total,
+            "summarization_calls": summarization_total,
             "deployed_api_requests": sum(
                 r["value"]
                 for r in cls.get_deployed_api_requests(
@@ -613,17 +624,18 @@ class MetricsQueryService:
                     organization_id, start_date, end_date
                 )
             ),
-            "llm_usage": sum(
-                r["value"] or 0
-                for r in cls.get_llm_usage_cost(organization_id, start_date, end_date)
-            ),
+            "llm_usage": llm_usage_total,
             "prompt_executions": sum(
                 r["value"]
-                for r in cls.get_prompt_executions(organization_id, start_date, end_date)
+                for r in cls.get_prompt_executions(
+                    organization_id, start_date, end_date
+                )
             ),
             "failed_pages": sum(
                 r["value"] or 0
-                for r in cls.get_failed_pages(organization_id, start_date, end_date)
+                for r in cls.get_failed_pages(
+                    organization_id, start_date, end_date
+                )
             ),
             "hitl_reviews": sum(
                 r["value"]
@@ -631,7 +643,9 @@ class MetricsQueryService:
             ),
             "hitl_completions": sum(
                 r["value"]
-                for r in cls.get_hitl_completions(organization_id, start_date, end_date)
+                for r in cls.get_hitl_completions(
+                    organization_id, start_date, end_date
+                )
             ),
         }
 
