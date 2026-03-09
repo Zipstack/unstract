@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
+from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -293,12 +294,23 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     def create(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        # Check deployment count before create for HubSpot notification
+        deployment_count_before = APIDeployment.objects.count()
+
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
+        )
+
+        # Notify HubSpot about first API deployment
+        notify_hubspot_event(
+            user=request.user,
+            event_name="API_DEPLOY",
+            is_first_for_org=deployment_count_before == 0,
+            action_label="API deployment",
         )
 
         headers = self.get_success_headers(serializer.data)
