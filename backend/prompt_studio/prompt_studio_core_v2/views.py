@@ -22,6 +22,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.hubspot_notify import notify_hubspot_event
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -123,38 +124,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
         # Notify HubSpot if this is the first Prompt Studio project for the org
-        self._notify_hubspot_first_project(request.user)
+        # (count == 1 means the one we just created is the first)
+        notify_hubspot_event(
+            user=request.user,
+            event_name="PROMPT_STUDIO_PROJECT_CREATE",
+            is_first_for_org=CustomTool.objects.count() == 1,
+            action_label="project creation",
+        )
 
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-    def _notify_hubspot_first_project(self, user) -> None:
-        """Notify HubSpot when a Prompt Studio project is created.
-
-        Checks if HubSpot plugin is available and notifies it about
-        the project creation. The plugin decides whether to act based
-        on the is_first_for_org flag.
-        """
-        hubspot_plugin = get_plugin("hubspot")
-        if not hubspot_plugin:
-            return
-
-        try:
-            # Check if this is the first CustomTool for the organization
-            # (count == 1 means the one we just created is the first)
-            org_project_count = CustomTool.objects.count()
-            is_first_for_org = org_project_count == 1
-
-            from plugins.integrations.hubspot import HubSpotEvent
-
-            service = hubspot_plugin["service_class"]()
-            service.update_contact(
-                user=user,
-                events=[HubSpotEvent.PROMPT_STUDIO_PROJECT_CREATE],
-                is_first_for_org=is_first_for_org,
-            )
-        except Exception as e:
-            # Log but don't fail the request
-            logger.warning(f"Failed to notify HubSpot for project creation: {e}")
 
     def perform_destroy(self, instance: CustomTool) -> None:
         organization_id = UserSessionUtils.get_organization_id(self.request)
@@ -462,37 +440,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             profile_manager_id=profile_manager,
         )
 
-        # Notify HubSpot about prompt run
-        self._notify_hubspot_first_prompt_run(request.user, output_count_before)
+        # Notify HubSpot about first prompt run
+        notify_hubspot_event(
+            user=request.user,
+            event_name="PROMPT_RUN",
+            is_first_for_org=output_count_before == 0,
+            action_label="prompt run",
+        )
 
         return Response(response, status=status.HTTP_200_OK)
-
-    def _notify_hubspot_first_prompt_run(self, user, output_count_before: int) -> None:
-        """Notify HubSpot when a prompt is run.
-
-        Checks if HubSpot plugin is available and notifies it about
-        the prompt run. The plugin decides whether to act based
-        on the is_first_for_org flag.
-        """
-        hubspot_plugin = get_plugin("hubspot")
-        if not hubspot_plugin:
-            return
-
-        try:
-            # First prompt run if count was 0 before run
-            is_first_for_org = output_count_before == 0
-
-            from plugins.integrations.hubspot import HubSpotEvent
-
-            service = hubspot_plugin["service_class"]()
-            service.update_contact(
-                user=user,
-                events=[HubSpotEvent.PROMPT_RUN],
-                is_first_for_org=is_first_for_org,
-            )
-        except Exception as e:
-            # Log but don't fail the request
-            logger.warning(f"Failed to notify HubSpot for prompt run: {e}")
 
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
@@ -706,37 +662,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             }
             documents.append(doc)
 
-        # Notify HubSpot about document upload
-        self._notify_hubspot_first_document(request.user, doc_count_before)
+        # Notify HubSpot about first document upload
+        notify_hubspot_event(
+            user=request.user,
+            event_name="DOCUMENT_UPLOAD",
+            is_first_for_org=doc_count_before == 0,
+            action_label="document upload",
+        )
 
         return Response({"data": documents})
-
-    def _notify_hubspot_first_document(self, user, doc_count_before: int) -> None:
-        """Notify HubSpot when a document is uploaded.
-
-        Checks if HubSpot plugin is available and notifies it about
-        the document upload. The plugin decides whether to act based
-        on the is_first_for_org flag.
-        """
-        hubspot_plugin = get_plugin("hubspot")
-        if not hubspot_plugin:
-            return
-
-        try:
-            # First document upload if count was 0 before upload
-            is_first_for_org = doc_count_before == 0
-
-            from plugins.integrations.hubspot import HubSpotEvent
-
-            service = hubspot_plugin["service_class"]()
-            service.update_contact(
-                user=user,
-                events=[HubSpotEvent.DOCUMENT_UPLOAD],
-                is_first_for_org=is_first_for_org,
-            )
-        except Exception as e:
-            # Log but don't fail the request
-            logger.warning(f"Failed to notify HubSpot for document upload: {e}")
 
     @action(detail=True, methods=["delete"])
     def delete_for_ide(self, request: HttpRequest, pk: uuid) -> Response:
@@ -797,40 +731,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             force_export=force_export,
         )
 
-        # Notify HubSpot about tool export
-        self._notify_hubspot_first_tool_export(request.user, registry_count_before)
+        # Notify HubSpot about first tool export
+        notify_hubspot_event(
+            user=request.user,
+            event_name="TOOL_EXPORT",
+            is_first_for_org=registry_count_before == 0,
+            action_label="tool export",
+        )
 
         return Response(
             {"message": "Custom tool exported sucessfully."},
             status=status.HTTP_200_OK,
         )
-
-    def _notify_hubspot_first_tool_export(self, user, registry_count_before: int) -> None:
-        """Notify HubSpot when a tool is exported.
-
-        Checks if HubSpot plugin is available and notifies it about
-        the tool export. The plugin decides whether to act based
-        on the is_first_for_org flag.
-        """
-        hubspot_plugin = get_plugin("hubspot")
-        if not hubspot_plugin:
-            return
-
-        try:
-            # First tool export if count was 0 before export
-            is_first_for_org = registry_count_before == 0
-
-            from plugins.integrations.hubspot import HubSpotEvent
-
-            service = hubspot_plugin["service_class"]()
-            service.update_contact(
-                user=user,
-                events=[HubSpotEvent.TOOL_EXPORT],
-                is_first_for_org=is_first_for_org,
-            )
-        except Exception as e:
-            # Log but don't fail the request
-            logger.warning(f"Failed to notify HubSpot for tool export: {e}")
 
     @action(detail=True, methods=["get"])
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:

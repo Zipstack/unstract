@@ -16,6 +16,7 @@ from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
+from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -304,8 +305,13 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             {"api_key": api_key.api_key, **serializer.data}
         )
 
-        # Notify HubSpot about API deployment
-        self._notify_hubspot_first_api_deploy(request.user, deployment_count_before)
+        # Notify HubSpot about first API deployment
+        notify_hubspot_event(
+            user=request.user,
+            event_name="API_DEPLOY",
+            is_first_for_org=deployment_count_before == 0,
+            action_label="API deployment",
+        )
 
         headers = self.get_success_headers(serializer.data)
         return Response(
@@ -313,35 +319,6 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
-
-    def _notify_hubspot_first_api_deploy(
-        self, user, deployment_count_before: int
-    ) -> None:
-        """Notify HubSpot when an API is deployed.
-
-        Checks if HubSpot plugin is available and notifies it about
-        the API deployment. The plugin decides whether to act based
-        on the is_first_for_org flag.
-        """
-        hubspot_plugin = get_plugin("hubspot")
-        if not hubspot_plugin:
-            return
-
-        try:
-            # First API deploy if count was 0 before deploy
-            is_first_for_org = deployment_count_before == 0
-
-            from plugins.integrations.hubspot import HubSpotEvent
-
-            service = hubspot_plugin["service_class"]()
-            service.update_contact(
-                user=user,
-                events=[HubSpotEvent.API_DEPLOY],
-                is_first_for_org=is_first_for_org,
-            )
-        except Exception as e:
-            # Log but don't fail the request
-            logger.warning(f"Failed to notify HubSpot for API deployment: {e}")
 
     @action(detail=False, methods=["get"])
     def by_prompt_studio_tool(self, request: Request) -> Response:
