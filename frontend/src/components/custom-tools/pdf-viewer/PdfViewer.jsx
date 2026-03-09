@@ -19,6 +19,31 @@ try {
   // Do nothing, no plugin will be loaded.
 }
 
+function PdfLoadError({ error, onRetry, reportError }) {
+  useEffect(() => {
+    reportError(error);
+  }, [error, reportError]);
+
+  const errorMessage =
+    error?.message ||
+    "Failed to load PDF document. The file may be corrupted or inaccessible.";
+
+  return (
+    <div className="pdf-viewer-error">
+      <Result
+        icon={<FileExclamationOutlined style={{ color: "#ff4d4f" }} />}
+        title="Failed to Load PDF"
+        subTitle={errorMessage}
+        extra={
+          <Button type="primary" icon={<ReloadOutlined />} onClick={onRetry}>
+            Retry
+          </Button>
+        }
+      />
+    </div>
+  );
+}
+
 function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
   const newPlugin = defaultLayoutPlugin();
   const pageNavigationPluginInstance = pageNavigationPlugin();
@@ -46,35 +71,15 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
     }
   }, [loadError, onError]);
 
-  // Render error fallback for PDF load failures
+  // Render error fallback for PDF load failures — pure render, no side effects
   const renderError = useCallback(
-    (error) => {
-      const errorMessage =
-        error?.message ||
-        "Failed to load PDF document. The file may be corrupted or inaccessible.";
-
-      // Store error in state so useEffect can safely notify parent
-      setLoadError(error);
-
-      return (
-        <div className="pdf-viewer-error">
-          <Result
-            icon={<FileExclamationOutlined style={{ color: "#ff4d4f" }} />}
-            title="Failed to Load PDF"
-            subTitle={errorMessage}
-            extra={
-              <Button
-                type="primary"
-                icon={<ReloadOutlined />}
-                onClick={handleRetry}
-              >
-                Retry
-              </Button>
-            }
-          />
-        </div>
-      );
-    },
+    (error) => (
+      <PdfLoadError
+        error={error}
+        onRetry={handleRetry}
+        reportError={setLoadError}
+      />
+    ),
     [handleRetry],
   );
 
