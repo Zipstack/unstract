@@ -11,6 +11,7 @@ Uses Microsoft Graph API via Office365-REST-Python-Client library.
 import logging
 import os
 import threading
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, NoReturn
 
@@ -415,7 +416,7 @@ class SharePointFileSystem(AbstractFileSystem):
         self,
         path: str = "",
         maxdepth: int | None = None,
-        on_error: str | callable = "omit",
+        on_error: str | Callable[[Exception], Any] = "omit",
         **kwargs: Any,
     ):
         """Walk directory tree."""
