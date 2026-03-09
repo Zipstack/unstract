@@ -415,6 +415,7 @@ class SharePointFileSystem(AbstractFileSystem):
         self,
         path: str = "",
         maxdepth: int | None = None,
+        on_error: str | callable = "omit",
         **kwargs: Any,
     ):
         """Walk directory tree."""
@@ -424,7 +425,11 @@ class SharePointFileSystem(AbstractFileSystem):
         path = self._normalize_path(path)
         try:
             items = self.ls(path, detail=True)
-        except Exception:
+        except Exception as e:
+            if callable(on_error):
+                on_error(e)
+            elif on_error == "raise":
+                raise
             return
 
         dirs = []
@@ -441,7 +446,7 @@ class SharePointFileSystem(AbstractFileSystem):
         for d in dirs:
             subpath = f"{path}/{d}" if path != "root" else d
             new_depth = maxdepth - 1 if maxdepth is not None else None
-            yield from self.walk(subpath, maxdepth=new_depth, **kwargs)
+            yield from self.walk(subpath, maxdepth=new_depth, on_error=on_error, **kwargs)
 
 
 class SharePointFS(UnstractFileSystem):
