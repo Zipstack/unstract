@@ -273,7 +273,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
                 result.remove_result_metadata_keys(["extracted_text"])
-            if include_metadata:
+            if include_metadata or include_metrics:
                 cls._enrich_result_with_usage_metadata(result)
             if not include_metadata and not include_metrics:
                 result.remove_result_metadata_keys()
