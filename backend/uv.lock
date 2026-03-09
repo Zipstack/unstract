@@ -3574,7 +3574,7 @@ dependencies = [
     { name = "stripe" },
     { name = "unstract-connectors" },
     { name = "unstract-core" },
-deact    { name = "unstract-filesystem" },
+    { name = "unstract-filesystem" },
     { name = "unstract-flags" },
     { name = "unstract-sdk1", extra = ["aws", "azure", "gcs"] },
     { name = "unstract-tool-registry" },
