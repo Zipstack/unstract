@@ -57,7 +57,6 @@ try {
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
-let dashboardSideMenuItem;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
   unstractSubscriptionPlanStore = await import(
@@ -66,7 +65,6 @@ try {
   const unstractSubscriptionConstants = await import(
     "../../../plugins/unstract-subscription/helper/constants"
   );
-  dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
   UNSTRACT_SUBSCRIPTION_PLANS =
     unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
 } catch {
@@ -452,19 +450,14 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     },
   ];
 
-  if (dashboardSideMenuItem) {
-    unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
-  }
-
-  // Add metrics dashboard menu item (available for both OSS and cloud)
+  // Dashboard menu item (available for both OSS and cloud)
   unstractMenuItems[1].subMenu.unshift({
     id: 2.0,
     title: "Dashboard",
-    tag: "New",
     description: "View platform usage metrics and analytics",
     image: DashboardIcon,
-    path: `/${orgName}/metrics`,
-    active: globalThis.location.pathname.startsWith(`/${orgName}/metrics`),
+    path: `/${orgName}/dashboard`,
+    active: globalThis.location.pathname.startsWith(`/${orgName}/dashboard`),
   });
 
   // If selectedProduct is verticals and menu is null, don't show any sidebar items

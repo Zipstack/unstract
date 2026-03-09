@@ -103,6 +103,7 @@ function ExecutionLogs() {
   ];
   const onChange = (key) => {
     navigate(`/${sessionDetails?.orgName}/logs`);
+    setPagination((prev) => ({ ...prev, current: 1 }));
     setActiveTab(key);
   };
   const onOk = (value) => {
