@@ -5,41 +5,30 @@ from typing import Any
 import redis
 from peewee import PostgresqlDatabase
 
+from unstract.core.cache.redis_client import create_redis_client
+
 db = PostgresqlDatabase(None)
 
-# Redis connection pool (initialized lazily)
-_redis_pool: redis.ConnectionPool | None = None
-
-
-def get_redis_pool() -> redis.ConnectionPool:
-    """Get or create the Redis connection pool.
-
-    Returns:
-        redis.ConnectionPool: Shared connection pool for Redis operations.
-    """
-    global _redis_pool
-    if _redis_pool is None:
-        # Import here to avoid circular imports
-        from unstract.platform_service.env import Env
-
-        _redis_pool = redis.ConnectionPool(
-            host=Env.REDIS_HOST,
-            port=Env.REDIS_PORT,
-            username=Env.REDIS_USERNAME,
-            password=Env.REDIS_PASSWORD,
-            max_connections=10,
-            decode_responses=False,
-        )
-    return _redis_pool
+# Redis client (initialized lazily)
+_redis_client: redis.Redis | None = None
 
 
 def get_redis_client() -> redis.Redis:
-    """Get a Redis client using the shared connection pool.
+    """Get a Redis client, with Sentinel support and connection pooling.
+
+    In standalone mode, uses a ConnectionPool with max_connections=10.
+    In Sentinel mode, master_for() manages its own pooling.
 
     Returns:
         redis.Redis: Redis client instance.
     """
-    return redis.Redis(connection_pool=get_redis_pool())
+    global _redis_client
+    if _redis_client is None:
+        _redis_client = create_redis_client(
+            decode_responses=False,
+            max_connections=10,
+        )
+    return _redis_client
 
 
 @contextmanager

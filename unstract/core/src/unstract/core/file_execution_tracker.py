@@ -5,8 +5,7 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any
 
-import redis
-
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.exceptions import (
     FileExecutionStageException,
     FileExecutionTrackerNotFound,
@@ -157,13 +156,7 @@ class FileExecutionStatusTracker:
     )
 
     def __init__(self):
-        self.redis_client = redis.Redis(
-            host=os.environ.get("REDIS_HOST"),
-            port=int(os.environ.get("REDIS_PORT", 6379)),
-            username=os.environ.get("REDIS_USER"),
-            password=os.environ.get("REDIS_PASSWORD"),
-            decode_responses=True,  # ensures hgetall returns str instead of bytes
-        )
+        self.redis_client = create_redis_client(decode_responses=True)
 
     def _resolve_field(
         self,

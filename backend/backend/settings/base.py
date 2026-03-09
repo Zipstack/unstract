@@ -441,23 +441,56 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-# SocketIO connection manager
-SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+# Redis Sentinel HA Configuration (LLMW pattern)
+# Single boolean flag; in Sentinel mode REDIS_HOST/PORT point to the Sentinel service
+REDIS_SENTINEL_MODE = (
+    os.environ.get("REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
+)
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-            "DB": REDIS_DB,
-            "USERNAME": REDIS_USER,
-            "PASSWORD": REDIS_PASSWORD,
-        },
-        "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+if REDIS_SENTINEL_MODE:
+    _sentinel_kwargs = {}
+    if REDIS_PASSWORD:
+        _sentinel_kwargs["password"] = REDIS_PASSWORD
+
+    # SocketIO connection manager (Sentinel URL format)
+    _password_prefix = f":{REDIS_PASSWORD}@" if REDIS_PASSWORD else ""
+    SOCKET_IO_MANAGER_URL = (
+        f"redis+sentinel://{_password_prefix}{REDIS_HOST}:{REDIS_PORT}" f"/mymaster/0"
+    )
+
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": "redis://mymaster/0",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.SentinelClient",
+                "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
+                "SENTINEL_KWARGS": _sentinel_kwargs,
+                "PASSWORD": REDIS_PASSWORD,
+                "USERNAME": REDIS_USER,
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+            },
+            "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+        }
     }
-}
+else:
+    # SocketIO connection manager (standalone)
+    SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+                "DB": REDIS_DB,
+                "USERNAME": REDIS_USER,
+                "PASSWORD": REDIS_PASSWORD,
+            },
+            "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+        }
+    }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 

@@ -3,11 +3,11 @@ import logging
 import os
 from typing import Any
 
-import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
 
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
 from utils.constants import ExecutionLogConstants
@@ -24,12 +24,7 @@ sio = socketio.Server(
     client_manager=socketio.KombuManager(url=settings.SOCKET_IO_MANAGER_URL),
 )
 
-redis_conn = redis.Redis(
-    host=settings.REDIS_HOST,
-    port=int(settings.REDIS_PORT),
-    username=settings.REDIS_USER,
-    password=settings.REDIS_PASSWORD,
-)
+redis_conn = create_redis_client(decode_responses=False)
 
 
 @sio.event

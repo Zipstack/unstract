@@ -29,9 +29,17 @@ log_queue_name = os.getenv("LOG_HISTORY_QUEUE_NAME", "log_history_queue")
 log_storage_enabled = os.getenv("ENABLE_LOG_HISTORY", "true").lower() == "true"
 
 # Socket.IO client for emitting events (uses same KombuManager as backend)
-redis_host = os.getenv("REDIS_HOST", "localhost")
-redis_port = os.getenv("REDIS_PORT", "6379")
-socket_io_manager_url = f"redis://{redis_host}:{redis_port}"
+_sentinel_mode = os.getenv("REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
+_redis_host = os.getenv("REDIS_HOST", "localhost")
+_redis_port = os.getenv("REDIS_PORT", "6379")
+if _sentinel_mode:
+    _redis_password = os.getenv("REDIS_PASSWORD", "")
+    _password_prefix = f":{_redis_password}@" if _redis_password else ""
+    socket_io_manager_url = (
+        f"redis+sentinel://{_password_prefix}{_redis_host}:{_redis_port}" f"/mymaster/0"
+    )
+else:
+    socket_io_manager_url = f"redis://{_redis_host}:{_redis_port}"
 
 sio = socketio.Server(
     async_mode="threading",

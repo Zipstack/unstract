@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-import redis
 from kombu import Connection
 
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
@@ -21,12 +21,7 @@ class LogPublisher:
         )
     )
     kombu_conn = Connection(broker_url)
-    r = redis.Redis(
-        host=os.environ.get("REDIS_HOST"),
-        port=os.environ.get("REDIS_PORT", 6379),
-        username=os.environ.get("REDIS_USER"),
-        password=os.environ.get("REDIS_PASSWORD"),
-    )
+    r = create_redis_client(decode_responses=False)
 
     @staticmethod
     def log_usage(
