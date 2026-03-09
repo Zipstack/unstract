@@ -153,7 +153,13 @@ class AuthenticationController:
         )
         if Cookie.CSRFTOKEN not in request.COOKIES:
             csrf_token = csrf.get_token(request)
-            response.set_cookie(Cookie.CSRFTOKEN, csrf_token)
+            response.set_cookie(
+                Cookie.CSRFTOKEN,
+                csrf_token,
+                secure=settings.CSRF_COOKIE_SECURE,
+                httponly=False,  # CSRF token needs to be readable by JS
+                samesite="Lax",
+            )
 
         return response
 

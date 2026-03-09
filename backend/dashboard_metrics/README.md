@@ -588,23 +588,26 @@ Users toggle metrics via Filter dropdown.
 | Token count | `SUM(usage.total_tokens)` per execution |
 | Time ago | Relative time from `workflow_file_execution.created_at` |
 
-### LLM Usage Tab
+### Usage by Deployment Tab
 
-#### LLM Usage by Workflow (table)
+#### Usage by Deployment (table with sub-tabs)
 
-- **Component**: `LLMUsageTable` → `frontend/src/components/metrics-dashboard/LLMUsageTable.jsx`
-- **Hook**: `useWorkflowTokenUsage(startDate, endDate)`
-- **API**: `GET /metrics/workflow-token-usage/?start_date=...&end_date=...`
-- **DB**: `usage` table (live query, `usage_type='llm'`, grouped by `workflow_id`)
+- **Component**: `DeploymentUsageTable` → `frontend/src/components/metrics-dashboard/LLMUsageTable.jsx`
+- **Hook**: `useDeploymentUsage(deploymentType, startDate, endDate)`
+- **API**: `GET /metrics/workflow-token-usage/?start_date=...&end_date=...&deployment_type=API`
+- **DB**: `workflow_execution` → deployment table → `usage` (3-table join per type)
+
+Sub-tabs: API, ETL, TASK, WF (each fetched independently with per-tab caching)
 
 | Column | Source |
 |---|---|
-| Workflow | `workflow.workflow_name` (resolved via `usage.workflow_id` FK) |
+| Deployment | Name from `api_deployment.display_name`, `pipeline.pipeline_name`, or `workflow.workflow_name` |
 | Tokens | `SUM(usage.total_tokens)` |
 | LLM Calls | `COUNT(usage.id)` |
+| Executions | `COUNT(DISTINCT workflow_execution.id)` |
 | Cost | `SUM(usage.cost_in_dollars)` |
 
-Sorted by tokens descending. Only rows with non-empty `workflow_id` appear.
+Sorted by tokens descending.
 
 ### Data Hooks
 

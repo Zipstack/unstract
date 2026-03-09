@@ -248,6 +248,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        # Capture user-provided model name before deployment_name overwrites it
+        original_model = adapter_metadata.get("model", "")
+
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
             adapter_metadata
         )
@@ -296,6 +299,14 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
                 "reasoning_effort", "medium"
             )
 
+        # Preserve actual model name for cost tracking (deployment_name is used
+        # for LiteLLM routing but doesn't match pricing table entries)
+        if original_model:
+            cost_model = original_model
+            if not cost_model.startswith("azure/"):
+                cost_model = f"azure/{cost_model}"
+            validated["cost_model"] = cost_model
+
         return validated
 
     @staticmethod
@@ -319,7 +330,19 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     safety_settings: list[dict[str, str]]
+
+    @staticmethod
+    def _map_vertex_fields(metadata: dict[str, "Any"]) -> None:
+        """Map user-facing field names to litellm's vertex_* parameter names."""
+        if "json_credentials" in metadata and not metadata.get("vertex_credentials"):
+            metadata["vertex_credentials"] = metadata["json_credentials"]
+        if "project" in metadata and not metadata.get("vertex_project"):
+            metadata["vertex_project"] = metadata["project"]
+        loc = metadata.get("location")
+        if loc and loc.strip() and not metadata.get("vertex_location"):
+            metadata["vertex_location"] = loc.strip()
 
     @staticmethod
     def _get_thinking_config(
@@ -354,13 +377,8 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAILLMParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         # Handle Vertex AI thinking configuration (for Gemini models)
         enable_thinking = metadata_copy.get("enable_thinking", False)
@@ -802,6 +820,9 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        # Capture user-provided model name before deployment_name overwrites it
+        original_model = adapter_metadata.get("model", "")
+
         adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -815,7 +836,17 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
         if "num_retries" in adapter_metadata and not adapter_metadata.get("max_retries"):
             adapter_metadata["max_retries"] = adapter_metadata["num_retries"]
 
-        return AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+        result = AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+        # Preserve actual model name for cost tracking (deployment_name is used
+        # for LiteLLM routing but doesn't match pricing table entries)
+        if original_model:
+            cost_model = original_model
+            if not cost_model.startswith("azure/"):
+                cost_model = f"azure/{cost_model}"
+            result["cost_model"] = cost_model
+
+        return result
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -836,6 +867,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     embed_batch_size: int | None = 10
     embed_mode: str | None = "default"
 
@@ -847,13 +879,8 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAIEmbeddingParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         return VertexAIEmbeddingParameters(**metadata_copy).model_dump()
 
