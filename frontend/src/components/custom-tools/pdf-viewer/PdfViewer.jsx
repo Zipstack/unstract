@@ -29,6 +29,11 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
   const [retryKey, setRetryKey] = useState(0);
   const [loadError, setLoadError] = useState(null);
 
+  // Clear error state when fileUrl changes to prevent stale notifications
+  useEffect(() => {
+    setLoadError(null);
+  }, [fileUrl]);
+
   const handleRetry = useCallback(() => {
     setRetryKey((prev) => prev + 1);
     setLoadError(null);
