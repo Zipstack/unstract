@@ -234,7 +234,7 @@ class DeploymentExecution(views.APIView):
             if include_metadata or include_metrics:
                 DeploymentHelper._enrich_result_with_usage_metadata(response)
             if not include_metadata and not include_metrics:
-                response.remove_result_metadata_keys()
+                response.remove_inner_result_metadata()
             if not include_metrics:
                 response.remove_result_metrics()
         return Response(

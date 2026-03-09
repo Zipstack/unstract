@@ -276,7 +276,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if include_metadata or include_metrics:
                 cls._enrich_result_with_usage_metadata(result)
             if not include_metadata and not include_metrics:
-                result.remove_result_metadata_keys()
+                result.remove_inner_result_metadata()
             if not include_metrics:
                 result.remove_result_metrics()
         except Exception as error:
@@ -297,11 +297,13 @@ class DeploymentHelper(BaseAPIKeyValidator):
 
     @staticmethod
     def _enrich_result_with_usage_metadata(result: ExecutionResponse) -> None:
-        """Enrich each file result's metadata with per-model usage breakdown.
+        """Enrich each file result's metadata with usage data.
 
-        Queries the Usage table for each file_execution_id and injects
-        cost arrays (extraction_llm, challenge_llm, embedding) into the
-        result metadata, matching the legacy prompt-service response format.
+        For each file_execution_id:
+        1. Injects per-model cost arrays (extraction_llm, challenge_llm,
+           embedding) into item["result"]["metadata"].
+        2. Injects aggregated usage totals into item["metadata"]["usage"],
+           matching the legacy response format.
         """
         if not isinstance(result.result, list):
             return
@@ -314,15 +316,23 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_exec_id = item.get("file_execution_id")
             if not file_exec_id:
                 continue
+
+            # Enrich inner result metadata with per-model breakdown
             inner_result = item.get("result")
-            if not isinstance(inner_result, dict):
-                continue
-            metadata = inner_result.get("metadata")
-            if not isinstance(metadata, dict):
-                continue
-            usage_by_model = UsageHelper.get_usage_by_model(file_exec_id)
-            if usage_by_model:
-                metadata.update(usage_by_model)
+            if isinstance(inner_result, dict):
+                metadata = inner_result.get("metadata")
+                if isinstance(metadata, dict):
+                    usage_by_model = UsageHelper.get_usage_by_model(file_exec_id)
+                    if usage_by_model:
+                        metadata.update(usage_by_model)
+
+            # Enrich top-level item metadata with aggregated usage
+            item_metadata = item.get("metadata")
+            if isinstance(item_metadata, dict):
+                aggregated = UsageHelper.get_aggregated_token_count(file_exec_id)
+                if aggregated:
+                    aggregated["file_execution_id"] = file_exec_id
+                    item_metadata["usage"] = aggregated
 
     @staticmethod
     def get_execution_status(execution_id: str) -> ExecutionResponse:

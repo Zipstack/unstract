@@ -78,6 +78,25 @@ class ExecutionResponse:
                 else:
                     item.pop("metadata", None)
 
+    def remove_inner_result_metadata(self) -> None:
+        """Removes only the inner item["result"]["metadata"] dict (extraction
+        metadata like highlight_data, per-model costs, etc.) while preserving
+        the outer item["metadata"] dict which contains workflow identification
+        keys (source_name, source_hash, workflow_id, etc.).
+
+        Use this instead of remove_result_metadata_keys() when you want to
+        strip extraction metadata but keep workflow identification metadata.
+        """
+        if not isinstance(self.result, list):
+            return
+
+        for item in self.result:
+            if not isinstance(item, dict):
+                continue
+            result = item.get("result")
+            if isinstance(result, dict):
+                result.pop("metadata", None)
+
     def remove_result_metrics(self) -> None:
         """Removes the 'metrics' key from the 'result' dictionary within each
         'result' dictionary in the 'result' list attribute of the instance.
