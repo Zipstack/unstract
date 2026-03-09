@@ -117,7 +117,7 @@ class StreamingFileDiscovery:
                 logger.info(f"[StreamingDiscovery] Processing directory: {directory}")
 
                 # Walk directory with max depth control
-                for root, dirs, files in self.fs_fsspec.walk(
+                for _root, dirs, files in self.fs_fsspec.walk(
                     directory, maxdepth=max_depth, detail=True
                 ):
                     metrics["directories_walked"] += 1

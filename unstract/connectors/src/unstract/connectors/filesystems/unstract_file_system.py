@@ -195,7 +195,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
             logger.warning(f"Failed to list directory: {error}")
             self._store_user_error(f"Could not access directory: {error}")
 
-        for root, dirs, files in fs_fsspec.walk(
+        for _root, dirs, files in fs_fsspec.walk(
             directory, maxdepth=max_depth, detail=True, on_error=_on_walk_error
         ):
             if include_dirs:
