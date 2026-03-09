@@ -8,12 +8,12 @@ import {
   Typography,
 } from "antd";
 import "./SharePermission.css";
-import PropTypes from "prop-types";
 import {
   DeleteOutlined,
   QuestionCircleOutlined,
   UserOutlined,
 } from "@ant-design/icons";
+import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
@@ -63,14 +63,14 @@ function SharePermission({
           } else {
             return user?.toString();
           }
-        })
+        }),
       );
     }
   }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
     setSelectedUsers((prevSelectedUsers) =>
-      prevSelectedUsers.filter((user) => user !== userId)
+      prevSelectedUsers.filter((user) => user !== userId),
     );
   };
   const filterOption = (input, option) =>

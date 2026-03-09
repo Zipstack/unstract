@@ -1,6 +1,6 @@
+import { TableOutlined, UnorderedListOutlined } from "@ant-design/icons";
 import { Tabs, Tooltip } from "antd";
 import { useEffect, useState } from "react";
-import { TableOutlined, UnorderedListOutlined } from "@ant-design/icons";
 
 import { getSequenceNumber, promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -13,8 +13,8 @@ import { DocumentParser } from "../document-parser/DocumentParser";
 import { Footer } from "../footer/Footer";
 import "./ToolsMain.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import { ToolsMainActionBtns } from "./ToolsMainActionBtns";
 import usePromptOutput from "../../../hooks/usePromptOutput";
+import { ToolsMainActionBtns } from "./ToolsMainActionBtns";
 
 function ToolsMain() {
   const [activeKey, setActiveKey] = useState("1");
@@ -66,7 +66,7 @@ function ToolsMain() {
       selectedDoc?.document_id,
       null,
       null,
-      singlePassExtractMode
+      singlePassExtractMode,
     )
       .then((res) => {
         const data = res?.data || [];
@@ -81,7 +81,7 @@ function ToolsMain() {
     const promptKey = `${details?.tool_name}_${len}`;
 
     const index = [...prompts].findIndex(
-      (item) => item?.prompt_key === promptKey
+      (item) => item?.prompt_key === promptKey,
     );
 
     if (index === -1) {

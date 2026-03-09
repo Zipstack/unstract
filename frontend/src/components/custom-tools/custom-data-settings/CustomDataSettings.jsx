@@ -1,20 +1,19 @@
-import { useEffect, useState, useMemo } from "react";
-import { Typography, Space, Alert, Tag } from "antd";
 import {
   CheckCircleOutlined,
-  WarningOutlined,
   InfoCircleOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import Editor from "@monaco-editor/react";
-
+import { Alert, Space, Tag, Typography } from "antd";
+import { useEffect, useMemo, useState } from "react";
+import { promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
-import { promptType } from "../../../helpers/GetStaticData";
 import "./CustomDataSettings.css";
 
 // Regex to match {{custom_data.xyz}} variables in prompts

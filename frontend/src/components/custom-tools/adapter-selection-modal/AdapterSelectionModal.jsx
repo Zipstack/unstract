@@ -1,13 +1,13 @@
-import { Modal, Form, Select, Typography, Space, Divider } from "antd";
+import { Divider, Form, Modal, Select, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import "./AdapterSelectionModal.css";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
-import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
 
 const { Text, Title } = Typography;
 const { Option } = Select;
@@ -54,7 +54,7 @@ function AdapterSelectionModal({
           params: {
             adapter_type: type,
           },
-        })
+        }),
       );
 
       const responses = await Promise.all(requests);
@@ -67,7 +67,7 @@ function AdapterSelectionModal({
       });
     } catch (err) {
       setAlertDetails(
-        handleException(err, "Failed to fetch available adapters")
+        handleException(err, "Failed to fetch available adapters"),
       );
     } finally {
       setLoadingAdapters(false);

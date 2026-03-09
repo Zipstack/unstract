@@ -1,0 +1,10 @@
+/* Prevent modal from shifting when switching between auth methods */
+.add-source-modal .ant-modal-content {
+  height: 750px;
+}
+
+.add-source-modal .ant-modal-body {
+  height: calc(750px - 55px); /* Subtract header height */
+  overflow-y: auto;
+  overflow-x: hidden;
+}

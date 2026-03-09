@@ -1,11 +1,10 @@
-import { Table, Modal, Button } from "antd";
+import { Button, Modal, Table } from "antd";
 import PropTypes from "prop-types";
 import { useState } from "react";
-
-import { useSessionStore } from "../../../store/session-store.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
-import { useAlertStore } from "../../../store/alert-store.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useAlertStore } from "../../../store/alert-store.js";
+import { useSessionStore } from "../../../store/session-store.js";
 import "./LogsModel.css";
 import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown.jsx";
 
@@ -15,6 +14,7 @@ const LogsModal = ({
   logRecord,
   totalLogs,
   fetchExecutionLogs,
+  loading = false,
 }) => {
   const [selectedLogId, setSelectedLogId] = useState(null);
   const [logDescModalOpen, setLogDescModalOpen] = useState(false);
@@ -129,6 +129,7 @@ const LogsModal = ({
           dataSource={logRecord}
           rowKey="id"
           align="left"
+          loading={loading}
           pagination={{
             total: totalLogs,
             onChange: (page, pageSize) => {
@@ -171,6 +172,7 @@ LogsModal.propTypes = {
   logRecord: PropTypes.array.isRequired,
   totalLogs: PropTypes.number.isRequired,
   fetchExecutionLogs: PropTypes.func.isRequired,
+  loading: PropTypes.bool,
 };
 
 export { LogsModal };
