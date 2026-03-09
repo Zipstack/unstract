@@ -116,9 +116,14 @@ class StreamingFileDiscovery:
 
                 logger.info(f"[StreamingDiscovery] Processing directory: {directory}")
 
+                def _on_walk_error(error: Exception) -> None:
+                    logger.warning(
+                        f"[StreamingDiscovery] Failed to list directory: {error}"
+                    )
+
                 # Walk directory with max depth control
                 for _root, dirs, files in self.fs_fsspec.walk(
-                    directory, maxdepth=max_depth, detail=True
+                    directory, maxdepth=max_depth, detail=True, on_error=_on_walk_error
                 ):
                     metrics["directories_walked"] += 1
 

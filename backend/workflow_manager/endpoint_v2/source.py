@@ -487,8 +487,12 @@ class SourceConnector(BaseConnector):
         max_depth = int(SourceConstant.MAX_RECURSIVE_DEPTH) if recursive else 1
 
         fs_fsspec = source_fs.get_fsspec_fs()
+
+        def _on_walk_error(error: Exception) -> None:
+            logger.warning(f"Failed to list directory: {error}")
+
         for _root, dirs, files in fs_fsspec.walk(
-            input_directory, maxdepth=max_depth, detail=True
+            input_directory, maxdepth=max_depth, detail=True, on_error=_on_walk_error
         ):
             fs_metadata_list: list[dict[str, Any]] = list(files.values())
 
