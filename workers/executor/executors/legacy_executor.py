@@ -189,9 +189,7 @@ class LegacyExecutor(BaseExecutor):
             context.run_id,
         )
         shim.stream_log("Initializing text extractor...")
-        shim.stream_log(
-            f"Using text extractor: {type(x2text.x2text_instance).__name__}"
-        )
+        shim.stream_log(f"Using text extractor: {type(x2text.x2text_instance).__name__}")
 
         try:
             shim.stream_log("Extracting text from document...")
@@ -442,9 +440,7 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Step 1: Extract ----
         if not skip_extraction:
-            shim.stream_log(
-                f"Pipeline step {step}: Extracting text from document..."
-            )
+            shim.stream_log(f"Pipeline step {step}: Extracting text from document...")
             step += 1
             extract_ctx = ExecutionContext(
                 executor_name=context.executor_name,
@@ -463,9 +459,7 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Step 2: Summarize (if enabled) ----
         if is_summarization:
-            shim.stream_log(
-                f"Pipeline step {step}: Summarizing extracted text..."
-            )
+            shim.stream_log(f"Pipeline step {step}: Summarizing extracted text...")
             step += 1
             summarize_result = self._run_pipeline_summarize(
                 context=context,
@@ -509,9 +503,7 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Step 5: Answer prompt / Single pass ----
         mode_label = "single pass" if is_single_pass else "prompt"
-        shim.stream_log(
-            f"Pipeline step {step}: Running {mode_label} execution..."
-        )
+        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
         operation = (
             Operation.SINGLE_PASS_EXTRACTION.value
             if is_single_pass
@@ -1138,9 +1130,7 @@ class LegacyExecutor(BaseExecutor):
                     custom_data=custom_data,
                     is_ide=is_ide,
                 )
-                shim.stream_log(
-                    f"Resolved template variables for: {prompt_name}"
-                )
+                shim.stream_log(f"Resolved template variables for: {prompt_name}")
 
             logger.info(
                 "Executing prompt: tool_id=%s name=%s run_id=%s",
@@ -1215,9 +1205,7 @@ class LegacyExecutor(BaseExecutor):
                     metrics.setdefault(prompt_name, {}).update(
                         {"table_extraction": table_metrics}
                     )
-                    shim.stream_log(
-                        f"Table extraction completed for: {prompt_name}"
-                    )
+                    shim.stream_log(f"Table extraction completed for: {prompt_name}")
                     logger.info("TABLE extraction completed: prompt=%s", prompt_name)
                 else:
                     structured_output[prompt_name] = ""
@@ -1347,9 +1335,7 @@ class LegacyExecutor(BaseExecutor):
                     tool_id=tool_id,
                     doc_name=doc_name,
                 )
-                shim.stream_log(
-                    f"Applied type conversion for: {prompt_name}"
-                )
+                shim.stream_log(f"Applied type conversion for: {prompt_name}")
 
                 # ---- Challenge (quality verification) ----------------------
                 if tool_settings.get(PSKeys.ENABLE_CHALLENGE):
@@ -1384,8 +1370,7 @@ class LegacyExecutor(BaseExecutor):
                             )
                             challenger.run()
                             shim.stream_log(
-                                f"Challenge verification completed"
-                                f" for: {prompt_name}"
+                                f"Challenge verification completed" f" for: {prompt_name}"
                             )
                             logger.info(
                                 "Challenge completed: prompt=%s",
@@ -1437,9 +1422,7 @@ class LegacyExecutor(BaseExecutor):
                 if vector_db:
                     vector_db.close()
 
-        pipeline_shim.stream_log(
-            f"All {len(prompts)} prompts processed successfully"
-        )
+        pipeline_shim.stream_log(f"All {len(prompts)} prompts processed successfully")
         logger.info(
             "All prompts processed: tool_id=%s prompt_count=%d file=%s",
             tool_id,

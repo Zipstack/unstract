@@ -66,9 +66,7 @@ class ExecutionResponse:
             # Handle metadata nested inside item["result"]["metadata"]
             result = item.get("result")
             if isinstance(result, dict):
-                self._remove_specific_keys(
-                    result=result, keys_to_remove=keys_to_remove
-                )
+                self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
 
             # Handle top-level item["metadata"] (workers cache path)
             if "metadata" in item:
