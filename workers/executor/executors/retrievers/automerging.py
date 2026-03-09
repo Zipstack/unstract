@@ -55,8 +55,14 @@ class AutomergingRetriever(BaseRetriever):
                 nodes = auto_merging_retriever.retrieve(self.prompt)
 
             except Exception as e:
-                logger.error(f"AutoMergingRetriever failed : {e}")
-                raise RetrievalError(f"AutoMergingRetriever failed: {str(e)}") from e
+                logger.error(
+                    "AutoMergingRetriever failed: %s: %s",
+                    type(e).__name__, e,
+                    exc_info=True,
+                )
+                raise RetrievalError(
+                    f"AutoMergingRetriever failed: {type(e).__name__}: {e}"
+                ) from e
 
             # Extract unique text chunks
             chunks: set[str] = set()
@@ -75,10 +81,18 @@ class AutomergingRetriever(BaseRetriever):
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
-            logger.error(f"Error during auto-merging retrieval for {self.doc_id}: {e}")
-            raise RetrievalError(str(e)) from e
+            logger.error(
+                "Error during auto-merging retrieval for %s: %s: %s",
+                self.doc_id, type(e).__name__, e,
+                exc_info=True,
+            )
+            raise RetrievalError(f"{type(e).__name__}: {e}") from e
         except Exception as e:
             logger.error(
-                f"Unexpected error during auto-merging retrieval for {self.doc_id}: {e}"
+                "Unexpected error during auto-merging retrieval for %s: %s: %s",
+                self.doc_id, type(e).__name__, e,
+                exc_info=True,
             )
-            raise RetrievalError(f"Unexpected error: {str(e)}") from e
+            raise RetrievalError(
+                f"Unexpected error: {type(e).__name__}: {e}"
+            ) from e

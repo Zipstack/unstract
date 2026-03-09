@@ -51,8 +51,18 @@ class SubquestionRetriever(BaseRetriever):
             return chunks
 
         except (ValueError, AttributeError, KeyError, ImportError) as e:
-            logger.error(f"Error during retrieving chunks {self.doc_id}: {e}")
-            raise RetrievalError(str(e)) from e
+            logger.error(
+                "Error during retrieving chunks %s: %s: %s",
+                self.doc_id, type(e).__name__, e,
+                exc_info=True,
+            )
+            raise RetrievalError(f"{type(e).__name__}: {e}") from e
         except Exception as e:
-            logger.error(f"Unexpected error during retrieving chunks {self.doc_id}: {e}")
-            raise RetrievalError(f"Unexpected error: {str(e)}") from e
+            logger.error(
+                "Unexpected error during retrieving chunks %s: %s: %s",
+                self.doc_id, type(e).__name__, e,
+                exc_info=True,
+            )
+            raise RetrievalError(
+                f"Unexpected error: {type(e).__name__}: {e}"
+            ) from e

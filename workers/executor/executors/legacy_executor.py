@@ -25,6 +25,7 @@ from executor.executors.exceptions import ExtractionError, LegacyExecutorError
 from executor.executors.file_utils import FileUtils
 
 from unstract.sdk1.adapters.exceptions import AdapterError
+from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
@@ -119,7 +120,21 @@ class LegacyExecutor(BaseExecutor):
                 elapsed,
                 type(exc).__name__,
                 exc.message,
+                exc_info=True,
             )
+            # Stream error to FE so the user sees the failure in real-time
+            if self._log_events_id:
+                try:
+                    shim = ExecutorToolShim(
+                        log_events_id=self._log_events_id,
+                        component=self._log_component,
+                    )
+                    shim.stream_log(
+                        f"Error: {exc.message or type(exc).__name__}",
+                        level=LogLevel.ERROR,
+                    )
+                except Exception:
+                    pass  # Best-effort — don't mask the original error
             return ExecutionResult.failure(error=exc.message)
 
     # ------------------------------------------------------------------
