@@ -1,0 +1,68 @@
+{
+  "title": "{display_name}",
+  "type": "object",
+  "allOf": [
+    {
+      "required": ["connectorName"],
+      "properties": {
+        "connectorName": {
+          "type": "string",
+          "title": "Name of the connector",
+          "description": "A unique name to identify this connector instance"
+        }
+      }
+    },
+    {
+      "oneOf": [
+        {
+          "title": "Connection URL",
+          "required": ["connection_url"],
+          "properties": {
+            "connection_url": {
+              "type": "string",
+              "title": "Connection URL",
+              "description": "{protocol}://username:password@host:port/database",
+              "format": "password"
+            }
+          }
+        },
+        {
+          "title": "Connection Parameters",
+          "required": ["host", "port", "database", "user", "password"],
+          "properties": {
+            "host": {
+              "type": "string",
+              "title": "Host",
+              "description": "Server hostname or IP address"
+            },
+            "port": {
+              "type": "string",
+              "title": "Port",
+              "default": "{default_port}"
+            },
+            "database": {
+              "type": "string",
+              "title": "Database",
+              "description": "Database name"
+            },
+            "user": {
+              "type": "string",
+              "title": "User",
+              "description": "Username for authentication"
+            },
+            "password": {
+              "type": "string",
+              "title": "Password",
+              "format": "password"
+            },
+            "sslEnabled": {
+              "type": "boolean",
+              "title": "Enable SSL",
+              "default": false
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

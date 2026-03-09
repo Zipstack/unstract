@@ -694,6 +694,9 @@ class DestinationConnector(BaseConnector):
 
         # Combine both metadata
         workflow_metadata["usage"] = usage_metadata
+        workflow_metadata["total_pages_processed"] = (
+            UsageHelper.get_aggregated_pages_processed(run_id=file_execution_id)
+        )
 
         return workflow_metadata
 
@@ -1041,6 +1044,7 @@ class DestinationConnector(BaseConnector):
             input_file_path, file_name
         )
         q_name = self._get_review_queue_name()
+        ttl_seconds = WorkflowUtil.get_hitl_ttl_seconds(self.workflow)
 
         queue_result = self._create_queue_result(
             file_name=file_name,
@@ -1048,11 +1052,12 @@ class DestinationConnector(BaseConnector):
             file_content_base64=file_content_base64,
             file_execution_id=file_execution_id,
             meta_data=meta_data,
+            ttl_seconds=ttl_seconds,
         )
 
         queue_result_json = json.dumps(queue_result)
         self._enqueue_to_packet_or_regular_queue(
-            file_name, queue_result, queue_result_json, q_name
+            file_name, queue_result, queue_result_json, q_name, ttl_seconds
         )
 
     def _push_to_queue_for_connector(

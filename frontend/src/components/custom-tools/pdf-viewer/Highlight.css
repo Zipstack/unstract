@@ -1,11 +1,11 @@
 .pdf-container {
-    position: relative;
+  position: relative;
 }
 
 .highlight {
-    position: absolute;
-    background-color: yellow;
-    opacity: 0.5;
+  position: absolute;
+  background-color: yellow;
+  opacity: 0.5;
 }
 
 .pdf-viewer-error {

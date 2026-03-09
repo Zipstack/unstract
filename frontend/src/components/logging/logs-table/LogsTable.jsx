@@ -1,17 +1,16 @@
 import { Input, Table, Tooltip, Typography } from "antd";
 import "./LogsTable.css";
-import { useNavigate } from "react-router-dom";
-import PropTypes from "prop-types";
 import {
   CloseCircleFilled,
   HourglassOutlined,
   InfoCircleFilled,
   SearchOutlined,
 } from "@ant-design/icons";
-
-import { EmptyState } from "../../widgets/empty-state/EmptyState";
+import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 import { logsStaticContent } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+import { EmptyState } from "../../widgets/empty-state/EmptyState";
 
 // Search filter dropdown component for execution ID column
 const SearchFilterDropdown = ({ value, onChange }) => (
@@ -193,7 +192,7 @@ const LogsTable = ({
             btnText={`Add ${logsStaticContent[activeTab].addBtn}`}
             handleClick={() =>
               navigate(
-                `/${sessionDetails?.orgName}/${logsStaticContent[activeTab].route}`
+                `/${sessionDetails?.orgName}/${logsStaticContent[activeTab].route}`,
               )
             }
           />

@@ -33,6 +33,7 @@ dependencies = [
     "boxfs==0.2.1",             # For Box
     "gcsfs==2024.10.0",         # For GoogleCloudStorage
     "adlfs~=2024.7.0",          # For AzureCloudStorage
+    "Office365-REST-Python-Client~=2.6.0",  # For SharePoint/OneDrive
     # Database connectors
     "psycopg2-binary==2.9.9",                     # For Postgres, Redshift
     "snowflake-connector-python[pandas]~=3.14.0", # For Snowflake
@@ -49,3 +50,16 @@ dependencies = [
 
 # [tool.hatch.build.targets.wheel]
 # packages = ["src"]
+
+[dependency-groups]
+test = [
+    "pytest>=8.0.1",
+    "python-dotenv~=1.0.0",
+    "unstract-filesystem",
+]
+
+[tool.uv.sources]
+unstract-filesystem = { path = "../filesystem", editable = true }
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

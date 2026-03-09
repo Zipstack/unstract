@@ -1,11 +1,11 @@
-import { useEffect, useRef, useMemo, useState, useCallback } from "react";
+import { FileExclamationOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Viewer, Worker } from "@react-pdf-viewer/core";
 import { defaultLayoutPlugin } from "@react-pdf-viewer/default-layout";
-import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
-import PropTypes from "prop-types";
 import { highlightPlugin } from "@react-pdf-viewer/highlight";
-import { Result, Button } from "antd";
-import { FileExclamationOutlined, ReloadOutlined } from "@ant-design/icons";
+import { pageNavigationPlugin } from "@react-pdf-viewer/page-navigation";
+import { Button, Result } from "antd";
+import PropTypes from "prop-types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
@@ -13,9 +13,9 @@ import { PDF_WORKER_URL } from "../../../helpers/pdfWorkerConfig";
 
 let RenderHighlights;
 try {
-  RenderHighlights =
-    require("../../../plugins/pdf-highlight/RenderHighlights").RenderHighlights;
-} catch (err) {
+  const mod = await import("../../../plugins/pdf-highlight/RenderHighlights");
+  RenderHighlights = mod.RenderHighlights;
+} catch {
   // Do nothing, no plugin will be loaded.
 }
 
@@ -70,14 +70,16 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
         </div>
       );
     },
-    [handleRetry]
+    [handleRetry],
   );
 
   function removeZerosAndDeleteIfAllZero(highlightData) {
-    if (Array.isArray(highlightData))
+    if (Array.isArray(highlightData)) {
       return highlightData
         ?.filter((innerArray) => {
-          if (!Array.isArray(innerArray)) return false;
+          if (!Array.isArray(innerArray)) {
+            return false;
+          }
           // Strip 5th element (confidence) if present, keep only first 4 elements
           const coordsOnly =
             innerArray.length >= 5 ? innerArray.slice(0, 4) : innerArray;
@@ -87,6 +89,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
           // Return only the first 4 elements (strip confidence)
           return innerArray.length >= 5 ? innerArray.slice(0, 4) : innerArray;
         });
+    }
   }
 
   const processHighlightData = highlightData

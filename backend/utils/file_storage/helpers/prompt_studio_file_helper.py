@@ -38,6 +38,7 @@ class PromptStudioFileHelper:
         file_path = str(Path(base_path) / org_id / user_id / tool_id)
         extract_file_path = str(Path(file_path) / "extract")
         summarize_file_path = str(Path(file_path) / "summarize")
+        converted_file_path = str(Path(file_path) / "converted")
         if is_create:
             fs_instance = EnvHelper.get_storage(
                 storage_type=StorageType.PERMANENT,
@@ -46,6 +47,7 @@ class PromptStudioFileHelper:
             fs_instance.mkdir(file_path, create_parents=True)
             fs_instance.mkdir(extract_file_path, create_parents=True)
             fs_instance.mkdir(summarize_file_path, create_parents=True)
+            fs_instance.mkdir(converted_file_path, create_parents=True)
         return str(file_path)
 
     @staticmethod
@@ -77,6 +79,38 @@ class PromptStudioFileHelper:
         file_path = str(Path(file_system_path) / file_name)
         fs_instance.write(
             path=file_path,
+            mode="wb",
+            data=file_data if isinstance(file_data, bytes) else file_data.read(),
+        )
+
+    @staticmethod
+    def upload_converted_for_ide(
+        org_id: str, user_id: str, tool_id: str, file_data: Any, file_name: str
+    ) -> None:
+        """Stores converted PDF in the converted/ subdirectory for preview.
+
+        Args:
+            org_id (str): Organization ID
+            user_id (str): User ID
+            tool_id (str): ID of the prompt studio tool
+            file_data (Any): File data (bytes or file-like object)
+            file_name (str): Name of the converted file
+        """
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+        file_system_path = (
+            PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id=org_id,
+                is_create=True,
+                user_id=user_id,
+                tool_id=str(tool_id),
+            )
+        )
+        converted_path = str(Path(file_system_path) / "converted" / file_name)
+        fs_instance.write(
+            path=converted_path,
             mode="wb",
             data=file_data if isinstance(file_data, bytes) else file_data.read(),
         )
@@ -141,12 +175,21 @@ class PromptStudioFileHelper:
             encoded_string = base64.b64encode(bytes(text_content_bytes))
             return {"data": encoded_string, "mime_type": file_content_type}
 
-        elif file_content_type == "text/plain":
+        elif file_content_type in ("text/plain", "text/csv"):
             text_content_string: str = fs_instance.read(
                 path=file_path,
                 mode="r",
                 legacy_storage_path=legacy_file_path,
                 encoding="utf-8",
+            )
+        elif file_content_type in (
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel.sheet.macroenabled.12",
+        ):
+            text_content_string = (
+                "Preview not available for Excel files. "
+                "Please index the document and view content in the Raw View tab."
             )
         # Check if the file type is in the allowed list
         elif file_content_type not in allowed_content_types:
@@ -178,7 +221,7 @@ class PromptStudioFileHelper:
         # Delete the source file
         fs_instance.rm(str(Path(file_system_path) / file_name))
         # Delete all related files for cascade delete
-        directories = ["extract/", "extract/metadata/", "summarize/"]
+        directories = ["extract/", "extract/metadata/", "summarize/", "converted/"]
         base_file_name, _ = os.path.splitext(file_name)
         # Delete related files
         file_paths = PromptStudioFileHelper._find_files(

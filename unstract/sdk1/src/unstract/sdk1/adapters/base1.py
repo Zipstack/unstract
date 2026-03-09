@@ -248,6 +248,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        # Capture user-provided model name before deployment_name overwrites it
+        original_model = adapter_metadata.get("model", "")
+
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
             adapter_metadata
         )
@@ -296,6 +299,14 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
                 "reasoning_effort", "medium"
             )
 
+        # Preserve actual model name for cost tracking (deployment_name is used
+        # for LiteLLM routing but doesn't match pricing table entries)
+        if original_model:
+            cost_model = original_model
+            if not cost_model.startswith("azure/"):
+                cost_model = f"azure/{cost_model}"
+            validated["cost_model"] = cost_model
+
         return validated
 
     @staticmethod
@@ -319,7 +330,44 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     safety_settings: list[dict[str, str]]
+
+    @staticmethod
+    def _map_vertex_fields(metadata: dict[str, "Any"]) -> None:
+        """Map user-facing field names to litellm's vertex_* parameter names."""
+        if "json_credentials" in metadata and not metadata.get("vertex_credentials"):
+            metadata["vertex_credentials"] = metadata["json_credentials"]
+        if "project" in metadata and not metadata.get("vertex_project"):
+            metadata["vertex_project"] = metadata["project"]
+        loc = metadata.get("location")
+        if loc and loc.strip() and not metadata.get("vertex_location"):
+            metadata["vertex_location"] = loc.strip()
+
+    @staticmethod
+    def _get_thinking_config(
+        metadata: dict[str, "Any"], enable_thinking: bool, has_existing: bool
+    ) -> dict[str, "Any"] | None:
+        """Build thinking configuration for Vertex AI models.
+
+        Returns None if thinking should not be sent (pro models with disabled).
+        """
+        if enable_thinking:
+            if has_existing:
+                return metadata["thinking"]
+            config = {"type": "enabled"}
+            budget = metadata.get("budget_tokens")
+            if budget is not None:
+                config["budget_tokens"] = budget
+            return config
+
+        # Pro models don't allow disabling thinking with budget_tokens=0
+        model_name = metadata.get("model", "").lower()
+        if "pro" in model_name:
+            return None
+
+        # Non-pro models support disabling thinking with budget_tokens=0
+        return {"type": "disabled", "budget_tokens": 0}
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -329,19 +377,13 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAILLMParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         # Handle Vertex AI thinking configuration (for Gemini models)
         enable_thinking = metadata_copy.get("enable_thinking", False)
 
-        # If enable_thinking is not explicitly provided but thinking config is present,
-        # assume thinking was enabled in a previous validation
+        # If enable_thinking is not explicitly provided but thinking config exists
         has_thinking_config = (
             "thinking" in metadata_copy and metadata_copy.get("thinking") is not None
         )
@@ -351,21 +393,14 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Create a copy to avoid mutating the original metadata
         result_metadata = metadata_copy.copy()
 
-        if enable_thinking:
-            if has_thinking_config:
-                # Preserve existing thinking config
-                result_metadata["thinking"] = metadata_copy["thinking"]
-            else:
-                # Create new thinking config for enabled state
-                thinking_config = {"type": "enabled"}
-                budget_tokens = metadata_copy.get("budget_tokens")
-                if budget_tokens is not None:
-                    thinking_config["budget_tokens"] = budget_tokens
-                result_metadata["thinking"] = thinking_config
+        # Get thinking config (may be None for pro models with thinking disabled)
+        thinking_config = VertexAILLMParameters._get_thinking_config(
+            metadata_copy, enable_thinking, has_thinking_config
+        )
+        if thinking_config is not None:
+            result_metadata["thinking"] = thinking_config
+            if enable_thinking and not has_thinking_config:
                 result_metadata["temperature"] = 1
-        else:
-            # Vertex AI requires explicit disabled state with budget 0
-            result_metadata["thinking"] = {"type": "disabled", "budget_tokens": 0}
 
         # Handle safety settings
         ss_dict = result_metadata.get("safety_settings", {})
@@ -423,8 +458,9 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
             if field in result_metadata and field not in validated_data:
                 validated_data[field] = result_metadata[field]
 
-        # Always add thinking config to final result (either enabled or disabled)
-        validated_data["thinking"] = result_metadata["thinking"]
+        # Add thinking config only when present (not set for pro models with disabled)
+        if "thinking" in result_metadata:
+            validated_data["thinking"] = result_metadata["thinking"]
 
         return validated_data
 
@@ -702,6 +738,9 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        # Capture user-provided model name before deployment_name overwrites it
+        original_model = adapter_metadata.get("model", "")
+
         adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -715,7 +754,17 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
         if "num_retries" in adapter_metadata and not adapter_metadata.get("max_retries"):
             adapter_metadata["max_retries"] = adapter_metadata["num_retries"]
 
-        return AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+        result = AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+        # Preserve actual model name for cost tracking (deployment_name is used
+        # for LiteLLM routing but doesn't match pricing table entries)
+        if original_model:
+            cost_model = original_model
+            if not cost_model.startswith("azure/"):
+                cost_model = f"azure/{cost_model}"
+            result["cost_model"] = cost_model
+
+        return result
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -736,6 +785,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     embed_batch_size: int | None = 10
     embed_mode: str | None = "default"
 
@@ -747,13 +797,8 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAIEmbeddingParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         return VertexAIEmbeddingParameters(**metadata_copy).model_dump()
 
