@@ -27,9 +27,19 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
 
   // Retry key to force re-render when retrying
   const [retryKey, setRetryKey] = useState(0);
+  const [loadError, setLoadError] = useState(null);
+
   const handleRetry = useCallback(() => {
     setRetryKey((prev) => prev + 1);
+    setLoadError(null);
   }, []);
+
+  // Notify parent of load errors via useEffect to avoid side effects during render
+  useEffect(() => {
+    if (loadError && onError) {
+      onError(loadError);
+    }
+  }, [loadError, onError]);
 
   // Render error fallback for PDF load failures
   const renderError = useCallback(
@@ -38,10 +48,8 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
         error?.message ||
         "Failed to load PDF document. The file may be corrupted or inaccessible.";
 
-      // Notify parent component of error if callback provided
-      if (onError) {
-        onError(error);
-      }
+      // Store error in state so useEffect can safely notify parent
+      setLoadError(error);
 
       return (
         <div className="pdf-viewer-error">
@@ -62,7 +70,7 @@ function PdfViewer({ fileUrl, highlightData, currentHighlightIndex, onError }) {
         </div>
       );
     },
-    [onError, handleRetry]
+    [handleRetry]
   );
 
   function removeZerosAndDeleteIfAllZero(highlightData) {
