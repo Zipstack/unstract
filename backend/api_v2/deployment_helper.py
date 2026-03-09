@@ -258,8 +258,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
             result.status_api = DeploymentHelper.construct_status_endpoint(
                 api_endpoint=api.api_endpoint, execution_id=execution_id
             )
-            # Check if highlight data should be removed using configuration registry
+            # Ensure workflow identification keys are always in item metadata
             organization = api.organization if api else None
+            org_id = str(organization.organization_id) if organization else ""
+            cls._enrich_result_with_workflow_metadata(result, organization_id=org_id)
+            # Check if highlight data should be removed using configuration registry
             enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
             from configuration.config_registry import ConfigurationRegistry
 
@@ -333,6 +336,81 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 if aggregated:
                     aggregated["file_execution_id"] = file_exec_id
                     item_metadata["usage"] = aggregated
+
+    @staticmethod
+    def _enrich_result_with_workflow_metadata(
+        result: ExecutionResponse,
+        organization_id: str,
+    ) -> None:
+        """Ensure workflow identification keys are always present in item metadata.
+
+        Uses setdefault() — fills in MISSING keys only, never overwrites
+        values already present from the workers cache.
+        """
+        if not isinstance(result.result, list):
+            return
+
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+
+        # 1. Collect file_execution_ids
+        file_exec_ids = [
+            item.get("file_execution_id")
+            for item in result.result
+            if isinstance(item, dict) and item.get("file_execution_id")
+        ]
+        if not file_exec_ids:
+            return
+
+        # 2. Batch query (single JOIN query for all file executions)
+        fe_lookup = {
+            str(fe.id): fe
+            for fe in WorkflowFileExecution.objects.filter(
+                id__in=file_exec_ids
+            ).select_related("workflow_execution")
+        }
+
+        # 3. Get execution-level data (tags) — one M2M query
+        workflow_execution = None
+        tag_names: list[str] = []
+        if fe_lookup:
+            first_fe = next(iter(fe_lookup.values()))
+            workflow_execution = first_fe.workflow_execution
+            tag_names = list(
+                workflow_execution.tags.values_list("name", flat=True)
+            )
+
+        # 4. Enrich each item
+        for item in result.result:
+            if not isinstance(item, dict):
+                continue
+            file_exec_id = item.get("file_execution_id")
+            if not file_exec_id:
+                continue
+
+            # Ensure metadata dict exists
+            if not isinstance(item.get("metadata"), dict):
+                item["metadata"] = {}
+            metadata = item["metadata"]
+
+            fe = fe_lookup.get(str(file_exec_id))
+            we = fe.workflow_execution if fe else workflow_execution
+
+            # Fill MISSING keys only (setdefault won't overwrite)
+            if fe:
+                metadata.setdefault("source_name", fe.file_name)
+                metadata.setdefault("source_hash", fe.file_hash or "")
+                metadata.setdefault("file_execution_id", str(fe.id))
+                metadata.setdefault("total_elapsed_time", fe.execution_time)
+            if we:
+                metadata.setdefault("workflow_id", str(we.workflow_id))
+                metadata.setdefault("execution_id", str(we.id))
+                metadata.setdefault(
+                    "workflow_start_time",
+                    we.created_at.timestamp() if we.created_at else None,
+                )
+
+            metadata.setdefault("organization_id", organization_id)
+            metadata.setdefault("tags", tag_names)
 
     @staticmethod
     def get_execution_status(execution_id: str) -> ExecutionResponse:
