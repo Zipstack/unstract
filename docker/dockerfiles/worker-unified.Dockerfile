@@ -83,6 +83,20 @@ RUN uv sync --group deploy --locked && \
     touch requirements.txt && \
     { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
 
+# Install executor plugins from workers/plugins/ (cloud-only, no-op for OSS).
+# Plugins register via setuptools entry points in two groups:
+#   - unstract.executor.executors  (executor classes, e.g. table_extractor)
+#   - unstract.executor.plugins    (utility plugins, e.g. highlight-data, challenge)
+# Editable installs (-e) ensure Path(__file__) resolves to the source directory,
+# giving plugins access to non-Python assets (.md prompts, .txt templates, etc.).
+RUN for plugin_dir in /app/plugins/*/; do \
+      if [ -f "$plugin_dir/pyproject.toml" ] && \
+         grep -qE 'unstract\.executor\.(executors|plugins)' "$plugin_dir/pyproject.toml" 2>/dev/null; then \
+        echo "Installing executor plugin: $(basename $plugin_dir)" && \
+        uv pip install -e "$plugin_dir" || true; \
+      fi; \
+    done
+
 # Switch to worker user
 USER worker
 

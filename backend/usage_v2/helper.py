@@ -103,6 +103,64 @@ class UsageHelper:
             raise APIException("Error while aggregating token counts")
 
     @staticmethod
+    def get_usage_by_model(run_id: str) -> dict[str, list[dict[str, Any]]]:
+        """Get per-model usage breakdown matching prompt-service format.
+
+        Groups usage data by (usage_type, llm_usage_reason, model_name) and
+        returns cost arrays keyed as 'extraction_llm', 'challenge_llm',
+        'embedding', etc. — matching the legacy prompt-service response.
+
+        Args:
+            run_id: The file_execution_id / run_id to query.
+
+        Returns:
+            Dict with keys like 'extraction_llm', 'embedding' mapping to
+            lists of per-model cost entries. Empty dict on error.
+        """
+        try:
+            rows = (
+                Usage.objects.filter(run_id=run_id)
+                .values("usage_type", "llm_usage_reason", "model_name")
+                .annotate(
+                    sum_input_tokens=Sum("prompt_tokens"),
+                    sum_output_tokens=Sum("completion_tokens"),
+                    sum_total_tokens=Sum("total_tokens"),
+                    sum_embedding_tokens=Sum("embedding_tokens"),
+                    sum_cost=Sum("cost_in_dollars"),
+                )
+            )
+            result: dict[str, list[dict[str, Any]]] = {}
+            for row in rows:
+                usage_type = row["usage_type"]
+                llm_reason = row["llm_usage_reason"]
+                cost_str = UsageHelper._format_float_positional(row["sum_cost"] or 0.0)
+
+                key = usage_type
+                item: dict[str, Any] = {
+                    "model_name": row["model_name"],
+                    "cost_in_dollars": cost_str,
+                }
+                if llm_reason:
+                    key = f"{llm_reason}_{usage_type}"
+                    item["input_tokens"] = row["sum_input_tokens"] or 0
+                    item["output_tokens"] = row["sum_output_tokens"] or 0
+                    item["total_tokens"] = row["sum_total_tokens"] or 0
+                else:
+                    item["embedding_tokens"] = row["sum_embedding_tokens"] or 0
+
+                result.setdefault(key, []).append(item)
+            return result
+        except Exception as e:
+            logger.error("Error querying per-model usage for run_id %s: %s", run_id, e)
+            return {}
+
+    @staticmethod
+    def _format_float_positional(value: float, precision: int = 10) -> str:
+        """Format float without scientific notation, stripping trailing zeros."""
+        formatted: str = f"{value:.{precision}f}"
+        return formatted.rstrip("0").rstrip(".") if "." in formatted else formatted
+
+    @staticmethod
     def aggregate_usage_metrics(queryset: QuerySet) -> dict[str, Any]:
         """Aggregate usage metrics from a queryset of Usage objects.
 

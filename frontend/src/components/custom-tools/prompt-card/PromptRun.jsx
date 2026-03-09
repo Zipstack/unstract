@@ -1,8 +1,9 @@
 import Cookies from "js-cookie";
 import { useEffect } from "react";
-import usePromptRun from "../../../hooks/usePromptRun";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptRunQueueStore } from "../../../store/prompt-run-queue-store";
+import usePromptRun from "../../../hooks/usePromptRun";
+import usePromptStudioSocket from "../../../hooks/usePromptStudioSocket";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
 
 const MAX_ACTIVE_APIS = 5;
@@ -20,6 +21,7 @@ function PromptRun() {
     (state) => state.setPromptRunQueue,
   );
   const { runPrompt, syncPromptRunApisAndStatus } = usePromptRun();
+  usePromptStudioSocket();
   const promptRunStatus = usePromptRunStatusStore(
     (state) => state.promptRunStatus,
   );

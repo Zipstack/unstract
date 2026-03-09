@@ -319,6 +319,23 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
+  #########################################################################################################
+  # Prompt Studio callback worker (Django backend, processes prompt_studio_callback queue)
+  worker-prompt-studio-callback:
+    build:
+      dockerfile: docker/dockerfiles/backend.Dockerfile
+      context: ..
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../backend/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+
   # V1 workers disabled by default (use workers-v2 profile instead)
   worker:
     profiles:

@@ -31,3 +31,8 @@ class CeleryConfig:
     beat_scheduler = "django_celery_beat.schedulers:DatabaseScheduler"
 
     task_acks_late = True
+
+    # Prompt Studio IDE callback tasks (ide_index_complete, ide_prompt_complete, etc.)
+    # run on the "prompt_studio_callback" queue, processed by a dedicated Django
+    # backend Celery worker (worker-prompt-studio-callback in docker-compose).
+    # These are sub-second ORM writes + Socket.IO emits after executor completion.
