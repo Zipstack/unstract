@@ -19,7 +19,8 @@ const PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result";
  */
 const usePromptStudioSocket = () => {
   const socket = useContext(SocketContext);
-  const { removePromptStatus } = usePromptRunStatusStore();
+  const { removePromptStatus, clearPromptStatusById } =
+    usePromptRunStatusStore();
   const { updateCustomTool, deleteIndexDoc } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
@@ -47,11 +48,19 @@ const usePromptStudioSocket = () => {
         const data = Array.isArray(result) ? result : [];
         updatePromptOutputState(data, false);
         clearResultStatuses(data);
+        setAlertDetails({
+          type: "success",
+          content: "Prompt execution completed successfully.",
+        });
       } else if (operation === "single_pass_extraction") {
         const data = Array.isArray(result) ? result : [];
         updatePromptOutputState(data, false);
         updateCustomTool({ isSinglePassExtractLoading: false });
         clearResultStatuses(data);
+        setAlertDetails({
+          type: "success",
+          content: "Single pass extraction completed successfully.",
+        });
       } else if (operation === "index_document") {
         const docId = result?.document_id;
         if (docId) deleteIndexDoc(docId);
@@ -82,8 +91,36 @@ const usePromptStudioSocket = () => {
         const docId = extra?.document_id;
         if (docId) deleteIndexDoc(docId);
       }
+
+      // Clear spinner for prompt operations so buttons re-enable
+      if (
+        operation === "fetch_response" ||
+        operation === "single_pass_extraction"
+      ) {
+        const promptIds = extra?.prompt_ids || [];
+        const docId = extra?.document_id;
+        const profileId = extra?.profile_manager_id;
+        if (docId && profileId) {
+          // Specific clearing (ideal path)
+          const statusKey = generateApiRunStatusId(docId, profileId);
+          promptIds.forEach((promptId) => {
+            removePromptStatus(promptId, statusKey);
+          });
+        } else {
+          // Fallback: clear ALL statuses for these prompts
+          promptIds.forEach((promptId) => {
+            clearPromptStatusById(promptId);
+          });
+        }
+      }
     },
-    [setAlertDetails, updateCustomTool, deleteIndexDoc]
+    [
+      setAlertDetails,
+      updateCustomTool,
+      deleteIndexDoc,
+      removePromptStatus,
+      clearPromptStatusById,
+    ]
   );
 
   const onResult = useCallback(

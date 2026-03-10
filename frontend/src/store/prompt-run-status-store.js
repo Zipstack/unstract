@@ -26,6 +26,13 @@ const usePromptRunStatusStore = create((setState, getState) => ({
       return { promptRunStatus: newStatus };
     });
   },
+  clearPromptStatusById: (promptId) => {
+    setState((state) => {
+      const newStatus = { ...state.promptRunStatus };
+      delete newStatus[promptId];
+      return { promptRunStatus: newStatus };
+    });
+  },
   removePromptStatus: (promptId, key) => {
     setState((state) => {
       const currentStatus = state.promptRunStatus || {};
