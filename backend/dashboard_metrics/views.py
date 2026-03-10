@@ -47,7 +47,8 @@ BUCKET_CACHE_ENABLED = settings.DASHBOARD_BUCKET_CACHE_ENABLED
 
 
 def _build_series_entry(
-    metric_name: str, data: list[dict],
+    metric_name: str,
+    data: list[dict],
 ) -> dict:
     """Build a single series entry dict from metric query results."""
     return {
@@ -56,8 +57,7 @@ def _build_series_entry(
         if metric_name == "llm_usage"
         else MetricType.COUNTER,
         "data": [
-            {"timestamp": r["period"].isoformat(), "value": r["value"] or 0}
-            for r in data
+            {"timestamp": r["period"].isoformat(), "value": r["value"] or 0} for r in data
         ],
         "total_value": sum(r["value"] or 0 for r in data),
     }
@@ -94,7 +94,10 @@ def _fetch_live_series(
     if not requested_metric or requested_metric in llm_metric_keys:
         try:
             llm_split = MetricsQueryService.get_llm_metrics_split(
-                org_id, start_date, end_date, granularity,
+                org_id,
+                start_date,
+                end_date,
+                granularity,
             )
             for name, data in llm_split.items():
                 if not requested_metric or name == requested_metric:
@@ -122,6 +125,7 @@ def _fetch_live_series(
             series.append(_build_error_entry(name))
 
     return series, errors
+
 
 # Thresholds for automatic source selection (in days)
 HOURLY_MAX_DAYS = 7  # Use hourly for ≤7 days

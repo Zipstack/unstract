@@ -314,8 +314,11 @@ def _aggregate_single_metric(
 
     # === HOURLY (last 24h) ===
     for row in query_method(
-        org_id, hourly_start, end_date,
-        granularity=Granularity.HOUR, **extra_kwargs,
+        org_id,
+        hourly_start,
+        end_date,
+        granularity=Granularity.HOUR,
+        **extra_kwargs,
     ):
         hour_ts = _truncate_to_hour(row["period"])
         key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
@@ -323,8 +326,11 @@ def _aggregate_single_metric(
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
     for row in query_method(
-        org_id, monthly_start, end_date,
-        granularity=Granularity.DAY, **extra_kwargs,
+        org_id,
+        monthly_start,
+        end_date,
+        granularity=Granularity.DAY,
+        **extra_kwargs,
     ):
         value = row["value"] or 0
         day_ts = _truncate_to_day(row["period"])
@@ -358,7 +364,10 @@ def _aggregate_llm_combined(
     """
     # === HOURLY (last 24h) ===
     for row in MetricsQueryService.get_llm_metrics_combined(
-        org_id, hourly_start, end_date, granularity=Granularity.HOUR,
+        org_id,
+        hourly_start,
+        end_date,
+        granularity=Granularity.HOUR,
     ):
         ts_str = _truncate_to_hour(row["period"]).isoformat()
         for field, (metric_name, metric_type) in llm_combined_fields.items():
@@ -367,7 +376,10 @@ def _aggregate_llm_combined(
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
     for row in MetricsQueryService.get_llm_metrics_combined(
-        org_id, monthly_start, end_date, granularity=Granularity.DAY,
+        org_id,
+        monthly_start,
+        end_date,
+        granularity=Granularity.DAY,
     ):
         day_ts = _truncate_to_day(row["period"])
         month_key = _truncate_to_month(row["period"]).date().isoformat()
