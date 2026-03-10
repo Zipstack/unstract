@@ -257,8 +257,7 @@ class MetricsQueryService:
         )
         return {
             metric_name: [
-                {"period": r["period"], "value": r[combined_key]}
-                for r in combined
+                {"period": r["period"], "value": r[combined_key]} for r in combined
             ]
             for metric_name, combined_key in cls.LLM_METRIC_KEYS.items()
         }

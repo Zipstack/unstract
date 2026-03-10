@@ -353,9 +353,7 @@ class Command(BaseCommand):
                     else:
                         _ingest_daily_results(data, metric_name, metric_type)
         except Exception as e:
-            logger.warning(
-                "Error querying LLM metrics for org %s: %s", org_id, e
-            )
+            logger.warning("Error querying LLM metrics for org %s: %s", org_id, e)
 
         # Fetch remaining (non-LLM) metrics individually
         for metric_name, query_method, is_histogram in self.METRIC_CONFIGS:
