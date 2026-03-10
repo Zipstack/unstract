@@ -18,6 +18,7 @@ function Layout({
   onSearch,
   setSearchList,
   pagination = null,
+  searchTerm = "",
 }) {
   return (
     <div className="deploy-layout">
@@ -42,6 +43,7 @@ function Layout({
           forceExpandedId={forceExpandedId}
           scrollToId={scrollToId}
           pagination={pagination}
+          searchTerm={searchTerm}
         />
       </div>
     </div>
@@ -67,6 +69,7 @@ Layout.propTypes = {
     total: PropTypes.number,
     onChange: PropTypes.func,
   }),
+  searchTerm: PropTypes.string,
 };
 
 export { Layout };
