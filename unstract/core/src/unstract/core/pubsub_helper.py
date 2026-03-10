@@ -21,7 +21,13 @@ class LogPublisher:
         )
     )
     kombu_conn = Connection(broker_url)
-    r = create_redis_client(decode_responses=False)
+    _redis_client: Any = None
+
+    @classmethod
+    def _get_redis_client(cls) -> Any:
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=False)
+        return cls._redis_client
 
     @staticmethod
     def log_usage(
@@ -178,7 +184,7 @@ class LogPublisher:
             timestamp = payload.get("timestamp", round(time.time(), 6))
             redis_key = f"{event}:{timestamp}"
             log_data = json.dumps(payload)
-            cls.r.setex(redis_key, logs_expiration, log_data)
+            cls._get_redis_client().setex(redis_key, logs_expiration, log_data)
         except Exception as e:
             logging.error(
                 f"Failed to store unified notification log for '{event}' "

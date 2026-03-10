@@ -68,6 +68,7 @@ def create_redis_client(
         return _create_sentinel_client(
             env_prefix=env_prefix,
             decode_responses=decode_responses,
+            socket_connect_timeout=socket_connect_timeout,
             socket_timeout=socket_timeout,
             db_override=db,
         )
@@ -126,6 +127,7 @@ def _create_standalone_client(
 def _create_sentinel_client(
     env_prefix: str,
     decode_responses: bool,
+    socket_connect_timeout: int,
     socket_timeout: int,
     db_override: int | None = None,
 ) -> redis.Redis:
@@ -154,16 +156,20 @@ def _create_sentinel_client(
     sentinel_kwargs: dict[str, Any] = {}
     if password:
         sentinel_kwargs["password"] = password
+    if username:
+        sentinel_kwargs["username"] = username
 
     last_error: Exception | None = None
     for attempt in range(_SENTINEL_MAX_RETRIES):
         try:
             sentinel = Sentinel(
                 [(host, port)],
+                socket_connect_timeout=socket_connect_timeout,
                 socket_timeout=socket_timeout,
                 sentinel_kwargs=sentinel_kwargs,
             )
             master_kwargs: dict[str, Any] = {
+                "socket_connect_timeout": socket_connect_timeout,
                 "socket_timeout": socket_timeout,
                 "decode_responses": decode_responses,
                 "db": db,
@@ -178,6 +184,8 @@ def _create_sentinel_client(
             return client
         except Exception as e:
             last_error = e
+            if attempt >= _SENTINEL_MAX_RETRIES - 1:
+                break
             delay = (
                 _SENTINEL_INITIAL_DELAY
                 * (_SENTINEL_BACKOFF_MULTIPLIER**attempt)

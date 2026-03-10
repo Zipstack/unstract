@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 from dotenv import find_dotenv, load_dotenv
@@ -451,23 +451,33 @@ if REDIS_SENTINEL_MODE:
     _sentinel_kwargs = {}
     if REDIS_PASSWORD:
         _sentinel_kwargs["password"] = REDIS_PASSWORD
+    if REDIS_USER:
+        _sentinel_kwargs["username"] = REDIS_USER
 
-    # SocketIO connection manager (Sentinel URL format)
-    _password_prefix = f":{REDIS_PASSWORD}@" if REDIS_PASSWORD else ""
+    _redis_db = REDIS_DB or "0"
+
+    # SocketIO connection manager (Kombu Sentinel URL format)
+    _cred_prefix = ""
+    if REDIS_USER and REDIS_PASSWORD:
+        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    elif REDIS_PASSWORD:
+        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
     SOCKET_IO_MANAGER_URL = (
-        f"redis+sentinel://{_password_prefix}{REDIS_HOST}:{REDIS_PORT}" f"/mymaster/0"
+        f"sentinel://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}/{_redis_db}"
     )
+    SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": "mymaster"}
 
+    # django-redis expects username in the LOCATION URL for ACL auth
+    _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": "redis://mymaster/0",
+            "LOCATION": f"redis://{_user_prefix}mymaster/{_redis_db}",
             "OPTIONS": {
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
                 "PASSWORD": REDIS_PASSWORD,
-                "USERNAME": REDIS_USER,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
             },
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
@@ -476,6 +486,7 @@ if REDIS_SENTINEL_MODE:
 else:
     # SocketIO connection manager (standalone)
     SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+    SOCKET_IO_TRANSPORT_OPTIONS = {}
 
     CACHES = {
         "default": {

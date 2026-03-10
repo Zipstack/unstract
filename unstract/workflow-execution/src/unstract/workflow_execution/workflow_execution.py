@@ -27,8 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowExecutionService:
-    # Bug fix: previous code had username/password reversed
-    redis_con = create_redis_client(decode_responses=False)
+    _redis_client = None
+
+    @classmethod
+    def _get_redis_client(cls):
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=False)
+        return cls._redis_client
 
     def __init__(
         self,
@@ -42,6 +47,7 @@ class WorkflowExecutionService:
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
+        self.redis_con = self._get_redis_client()
 
         self.tool_instances = tool_instances
         self.tool_utils = ToolsUtils(
