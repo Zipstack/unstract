@@ -1,0 +1,211 @@
+# Debug layer - adds debugpy to services
+#
+# Usage:
+#   VERSION=test docker compose -f docker-compose.yaml -f compose.override.yaml -f compose.debug.yaml watch
+#
+# Debug Port Map:
+#   5678 - backend
+#   5679 - runner
+#   5680 - platform-service
+#   5681 - prompt-service
+#   5682 - worker-file-processing-v2
+#   5683 - worker-callback-v2
+#   5684 - worker-api-deployment-v2
+#   5685 - worker-general-v2
+#   5686 - worker-notification-v2
+#   5687 - worker-log-consumer-v2
+#   5688 - worker-scheduler-v2
+
+services:
+  #########################################################################################################
+  # Python Services with debugpy
+
+  backend:
+    ports:
+      - "5678:5678"
+    command: [
+      "uv run python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 .venv/bin/gunicorn
+        --bind 0.0.0.0:8000
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --graceful-timeout 5 backend.wsgi:application"
+    ]
+
+  runner:
+    ports:
+      - "5679:5679"
+    command: [
+      "uv run python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5679 .venv/bin/gunicorn
+        --bind 0.0.0.0:5002
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 unstract.runner:app"
+    ]
+
+  platform-service:
+    ports:
+      - "3001:3001"
+      - "5680:5680"
+    command: [
+      "uv run python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5680 .venv/bin/gunicorn
+        --bind 0.0.0.0:3001
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 unstract.platform_service.run:app"
+    ]
+
+  prompt-service:
+    ports:
+      - "5681:5681"
+    command: [
+      "uv run python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5681 .venv/bin/gunicorn
+        --bind 0.0.0.0:3003
+        --workers 1
+        --threads 2
+        --worker-class gthread
+        --log-level debug
+        --timeout 900
+        --access-logfile -
+        --graceful-timeout 5 unstract.prompt_service.run:app"
+    ]
+
+  #########################################################################################################
+  # V2 Workers with debugpy
+  # Using --pool=threads for debugpy compatibility (prefork doesn't work well with debugpy)
+
+  worker-file-processing-v2:
+    user: root
+    ports:
+      - "5682:5682"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5682 -m celery
+        -A worker worker
+        --queues=file_processing,api_file_processing,file_processing_priority
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]
+
+  worker-callback-v2:
+    user: root
+    ports:
+      - "5683:5683"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5683 -m celery
+        -A worker worker
+        --queues=file_processing_callback,api_file_processing_callback
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]
+
+  worker-api-deployment-v2:
+    user: root
+    ports:
+      - "5684:5684"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5684 -m celery
+        -A worker worker
+        --queues=celery_api_deployments
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]
+
+  worker-general-v2:
+    user: root
+    ports:
+      - "5685:5685"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5685 -m celery
+        -A worker worker
+        --queues=celery
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]
+
+  worker-notification-v2:
+    user: root
+    ports:
+      - "5686:5686"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5686 -m celery
+        -A worker worker
+        --queues=notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]
+
+  worker-log-consumer-v2:
+    user: root
+    ports:
+      - "5687:5687"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5687 -m celery
+        -A worker worker
+        --queues=celery_log_task_queue,celery_periodic_logs
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]
+
+  worker-scheduler-v2:
+    user: root
+    ports:
+      - "5688:5688"
+    entrypoint: ["bash", "-c"]
+    command: [
+      "uv run python -m debugpy --listen 0.0.0.0:5688 -m celery
+        -A worker worker
+        --queues=scheduler
+        --loglevel=INFO
+        --pool=threads
+        --concurrency=2
+        --prefetch-multiplier=1
+        --without-gossip
+        --without-mingle
+        --without-heartbeat"
+    ]

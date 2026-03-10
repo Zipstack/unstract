@@ -1,32 +1,32 @@
 /* Styles for ManageLlmProfiles */
 
 .manage-llm-pro-icon {
-    font-size: 10px;
+  font-size: 10px;
 }
 
 .action-buttons-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .profile-id-container {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .profile-id-text {
-    font-size: 12px;
+  font-size: 12px;
 }
 
 .profile-copy-button {
-    padding: 0;
-    min-width: auto;
-    height: auto;
+  padding: 0;
+  min-width: auto;
+  height: auto;
 }
 
 .profile-copy-icon {
-    font-size: 12px;
+  font-size: 12px;
 }

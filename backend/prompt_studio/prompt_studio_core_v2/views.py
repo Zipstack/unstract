@@ -4,6 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
 from django.db import IntegrityError
@@ -21,6 +22,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tool_instance_v2.models import ToolInstance
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
+from utils.hubspot_notify import notify_hubspot_event
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -56,6 +58,8 @@ from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_help
     PromptStudioDocumentHelper,
 )
 from prompt_studio.prompt_studio_index_manager_v2.models import IndexManager
+from prompt_studio.prompt_studio_output_manager_v2.models import PromptStudioOutputManager
+from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
@@ -118,6 +122,16 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
+
+        # Notify HubSpot if this is the first Prompt Studio project for the org
+        # (count == 1 means the one we just created is the first)
+        notify_hubspot_event(
+            user=request.user,
+            event_name="PROMPT_STUDIO_PROJECT_CREATE",
+            is_first_for_org=CustomTool.objects.count() == 1,
+            action_label="project creation",
+        )
+
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: CustomTool) -> None:
@@ -408,6 +422,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             # Generate a run_id
             run_id = CommonUtils.generate_uuid()
+
+        # Check output count before prompt run for HubSpot notification
+        # Filter through tool FK to scope by organization (PromptStudioOutputManager
+        # lacks DefaultOrganizationManagerMixin)
+        output_count_before = PromptStudioOutputManager.objects.filter(
+            tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
+        ).count()
+
         response: dict[str, Any] = PromptStudioHelper.prompt_responder(
             id=id,
             tool_id=tool_id,
@@ -417,6 +439,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             run_id=run_id,
             profile_manager_id=profile_manager,
         )
+
+        # Notify HubSpot about first prompt run
+        notify_hubspot_event(
+            user=request.user,
+            event_name="PROMPT_RUN",
+            is_first_for_org=output_count_before == 0,
+            action_label="prompt run",
+        )
+
         return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
@@ -531,6 +562,28 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             file_name = (
                 f"{FileViewTypes.SUMMARIZE.lower()}/{filename_without_extension}.txt"
             )
+
+        # For ORIGINAL view, check if a converted PDF exists for preview
+        if (
+            view_type != FileViewTypes.EXTRACT
+            and view_type != FileViewTypes.SUMMARIZE
+            and file_converter_plugin
+        ):
+            converted_name = f"converted/{filename_without_extension}.pdf"
+            try:
+                contents = PromptStudioFileHelper.fetch_file_contents(
+                    file_name=converted_name,
+                    org_id=UserSessionUtils.get_organization_id(request),
+                    user_id=custom_tool.created_by.user_id,
+                    tool_id=str(custom_tool.tool_id),
+                    allowed_content_types=allowed_content_types,
+                )
+                return Response(contents, status=status.HTTP_200_OK)
+            except (FileNotFoundError, FileNotFound):
+                pass  # No converted file — fall through to return original
+            except Exception:
+                logger.exception(f"Error fetching converted file: {converted_name}")
+
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
                 file_name=file_name,
@@ -541,7 +594,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         except FileNotFoundError:
             raise FileNotFound()
-        return Response({"data": contents}, status=status.HTTP_200_OK)
+        return Response(contents, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
@@ -551,21 +604,44 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         uploaded_files: Any = serializer.validated_data.get("file")
         file_converter_plugin = get_plugin("file_converter")
 
+        # Check document count before upload for HubSpot notification
+        # Filter through tool FK to scope by organization (DocumentManager
+        # lacks DefaultOrganizationManagerMixin)
+        doc_count_before = DocumentManager.objects.filter(
+            tool__in=CustomTool.objects.all()
+        ).count()
+
         documents = []
         for uploaded_file in uploaded_files:
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            file_type = uploaded_file.content_type
-            # Convert non-PDF files
+            # Detect MIME from file content (not browser-supplied header)
+            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
+            uploaded_file.seek(0)
+
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()
-                file_data, file_name = file_converter_service.process_file(
-                    uploaded_file, file_name
-                )
+                if file_converter_service.should_convert_to_pdf(file_type):
+                    # Convert and store in converted/ subdir for preview
+                    converted_data, converted_name = file_converter_service.process_file(
+                        uploaded_file, file_name
+                    )
+                    PromptStudioFileHelper.upload_converted_for_ide(
+                        org_id=UserSessionUtils.get_organization_id(request),
+                        user_id=custom_tool.created_by.user_id,
+                        tool_id=str(custom_tool.tool_id),
+                        file_name=converted_name,
+                        file_data=converted_data,
+                    )
+                    # Reset uploaded_file for storing original in main dir
+                    uploaded_file.seek(0)
+                    file_data = uploaded_file
+                # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
             logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
 
+            # Store original file in main dir (always the original)
             PromptStudioFileHelper.upload_for_ide(
                 org_id=UserSessionUtils.get_organization_id(request),
                 user_id=custom_tool.created_by.user_id,
@@ -574,7 +650,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 file_data=file_data,
             )
 
-            # Create a record in the db for the file
+            # Create a record in the db for the file (document_name = original filename)
             document = PromptStudioDocumentHelper.create(
                 tool_id=str(custom_tool.tool_id), document_name=file_name
             )
@@ -585,6 +661,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 "tool": document.tool.tool_id,
             }
             documents.append(doc)
+
+        # Notify HubSpot about first document upload
+        notify_hubspot_event(
+            user=request.user,
+            event_name="DOCUMENT_UPLOAD",
+            is_first_for_org=doc_count_before == 0,
+            action_label="document upload",
+        )
+
         return Response({"data": documents})
 
     @action(detail=True, methods=["delete"])
@@ -636,11 +721,22 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         user_ids = set(serializer.validated_data.get("user_id"))
         force_export = serializer.validated_data.get("force_export")
 
+        # Check registry count before export for HubSpot notification
+        registry_count_before = PromptStudioRegistry.objects.count()
+
         PromptStudioRegistryHelper.update_or_create_psr_tool(
             custom_tool=custom_tool,
             shared_with_org=is_shared_with_org,
             user_ids=user_ids,
             force_export=force_export,
+        )
+
+        # Notify HubSpot about first tool export
+        notify_hubspot_event(
+            user=request.user,
+            event_name="TOOL_EXPORT",
+            is_first_for_org=registry_count_before == 0,
+            action_label="tool export",
         )
 
         return Response(

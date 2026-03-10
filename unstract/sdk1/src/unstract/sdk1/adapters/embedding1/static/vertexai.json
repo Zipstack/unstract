@@ -32,6 +32,12 @@
         "default": "",
         "description": "Provide the name of the deployment or project you defined for Vertex AI"
       },
+      "location": {
+        "type": "string",
+        "title": "Location",
+        "default": "global",
+        "description": "The Google Cloud region for the Vertex AI endpoint (e.g., us-central1, global). If left empty, defaults to us-central1."
+      },
       "embed_batch_size": {
       "type": "number",
       "minimum": 0,

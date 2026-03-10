@@ -155,7 +155,6 @@ class TestRetryWithExponentialBackoff:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=1.0,
             multiplier=2.0,
             jitter=False,
@@ -180,7 +179,6 @@ class TestRetryWithExponentialBackoff:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=0.1,  # Short delay for testing
             multiplier=2.0,
             jitter=False,
@@ -206,7 +204,6 @@ class TestRetryWithExponentialBackoff:
 
         decorator = retry_with_exponential_backoff(
             max_retries=2,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,
@@ -224,30 +221,6 @@ class TestRetryWithExponentialBackoff:
         # Should log giving up
         mock_logger.exception.assert_called()
 
-    def test_max_time_exceeded(self, mock_logger: MagicMock) -> None:
-        """Test that max time causes failure."""
-        mock_func = Mock(
-            side_effect=ConnectionError("Always fails"), __name__="test_func"
-        )
-
-        decorator = retry_with_exponential_backoff(
-            max_retries=10,
-            max_time=0.5,  # Very short max time
-            base_delay=0.2,
-            multiplier=2.0,
-            jitter=False,
-            exceptions=(ConnectionError,),
-            logger_instance=mock_logger,
-            prefix="TEST",
-        )
-        decorated_func = decorator(mock_func)
-
-        with pytest.raises(ConnectionError):
-            decorated_func()
-
-        # Should fail before reaching max retries due to time limit
-        assert mock_func.call_count < 10
-
     def test_retry_with_custom_predicate(self, mock_logger: MagicMock) -> None:
         """Test retry with custom predicate."""
 
@@ -261,7 +234,6 @@ class TestRetryWithExponentialBackoff:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,
@@ -287,7 +259,6 @@ class TestRetryWithExponentialBackoff:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,
@@ -310,7 +281,6 @@ class TestRetryWithExponentialBackoff:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,
@@ -325,32 +295,6 @@ class TestRetryWithExponentialBackoff:
 
         # Should not retry
         assert mock_func.call_count == 1
-
-    def test_delay_would_exceed_max_time(self, mock_logger: MagicMock) -> None:
-        """Test that delay exceeding max time causes immediate failure."""
-        mock_func = Mock(
-            __name__="test_func", side_effect=ConnectionError("Always fails")
-        )
-
-        decorator = retry_with_exponential_backoff(
-            max_retries=10,
-            max_time=0.3,  # Very short max time
-            base_delay=1.0,  # Large delay
-            multiplier=2.0,
-            jitter=False,
-            exceptions=(ConnectionError,),
-            logger_instance=mock_logger,
-            prefix="TEST",
-        )
-        decorated_func = decorator(mock_func)
-
-        with pytest.raises(ConnectionError):
-            decorated_func()
-
-        # Should fail quickly due to delay exceeding remaining time
-        mock_logger.exception.assert_called()
-        exception_calls = [str(c) for c in mock_logger.exception.call_args_list]
-        assert any("would exceed max time" in c for c in exception_calls)
 
 
 class TestCreateRetryDecorator:
@@ -376,7 +320,6 @@ class TestCreateRetryDecorator:
         set_env(
             "TEST_SERVICE",
             max_retries=5,
-            max_time=120,
             base_delay=2.0,
             multiplier=3.0,
             jitter="false",
@@ -401,15 +344,6 @@ class TestCreateRetryDecorator:
         set_env("TEST_SERVICE", max_retries=-1)
 
         with pytest.raises(ValueError, match="MAX_RETRIES must be >= 0"):
-            create_retry_decorator("TEST_SERVICE")
-
-    def test_invalid_max_time(
-        self, clean_env: MonkeyPatch, set_env: Callable[..., None]
-    ) -> None:
-        """Test that non-positive max_time raises error."""
-        set_env("TEST_SERVICE", max_time=0)
-
-        with pytest.raises(ValueError, match="MAX_TIME must be > 0"):
             create_retry_decorator("TEST_SERVICE")
 
     def test_invalid_base_delay(
@@ -597,7 +531,6 @@ class TestRetryLogging:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,
@@ -623,7 +556,6 @@ class TestRetryLogging:
 
         decorator = retry_with_exponential_backoff(
             max_retries=3,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,
@@ -648,7 +580,6 @@ class TestRetryLogging:
 
         decorator = retry_with_exponential_backoff(
             max_retries=1,
-            max_time=60.0,
             base_delay=0.1,
             multiplier=2.0,
             jitter=False,

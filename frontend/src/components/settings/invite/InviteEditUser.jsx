@@ -10,9 +10,9 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { TopBar } from "../../widgets/top-bar/TopBar.jsx";
 import "./InviteEditUser.css";
+import { homePagePath } from "../../../helpers/GetStaticData.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import { homePagePath } from "../../../helpers/GetStaticData.js";
 
 function InviteEditUser() {
   const axiosPrivate = useAxiosPrivate();
@@ -54,7 +54,7 @@ function InviteEditUser() {
         setInitialRole(
           isInvite
             ? members.find((role) => role.name === USER_ROLE)
-            : members.find((role) => role.name === location.state.role)
+            : members.find((role) => role.name === location.state.role),
         );
       })
       .catch((err) => {

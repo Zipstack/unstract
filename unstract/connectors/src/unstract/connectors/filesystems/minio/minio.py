@@ -26,6 +26,7 @@ class MinioFS(UnstractFileSystem):
             anon=False,
             key=key,
             secret=secret,
+            use_listings_cache=False,
             default_fill_cache=False,
             default_cache_type="none",
             skip_instance_cache=True,
@@ -48,6 +49,10 @@ class MinioFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         return "/icons/connector-icons/S3.png"
+
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/s3_minio_filesystem/"
 
     @staticmethod
     def get_json_schema() -> str:

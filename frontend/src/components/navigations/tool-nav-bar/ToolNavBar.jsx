@@ -1,10 +1,10 @@
 import { Button, Col, Row, Segmented, Typography } from "antd";
 import "./ToolNavBar.css";
-import Search from "antd/es/input/Search";
 import { ArrowLeftOutlined } from "@ant-design/icons";
-import { useNavigate } from "react-router-dom";
+import Search from "antd/es/input/Search";
 import { debounce } from "lodash";
 import PropTypes from "prop-types";
+import { useNavigate } from "react-router-dom";
 
 function ToolNavBar({
   title,
@@ -12,6 +12,7 @@ function ToolNavBar({
   CustomButtons,
   setSearchList,
   previousRoute,
+  previousRouteState,
   segmentFilter,
   segmentOptions,
   onSearch,
@@ -30,7 +31,9 @@ function ToolNavBar({
             type="text"
             shape="circle"
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(previousRoute)}
+            onClick={() =>
+              navigate(previousRoute, { state: previousRouteState })
+            }
           />
         )}
         {title && (
@@ -75,6 +78,7 @@ ToolNavBar.propTypes = {
   CustomButtons: PropTypes.func,
   setSearchList: PropTypes.func,
   previousRoute: PropTypes.string,
+  previousRouteState: PropTypes.object,
   segmentOptions: PropTypes.array,
   segmentFilter: PropTypes.func,
   onSearch: PropTypes.func,
