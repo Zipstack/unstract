@@ -1,3 +1,5 @@
+import os
+
 from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.utils import EnvManager
 
