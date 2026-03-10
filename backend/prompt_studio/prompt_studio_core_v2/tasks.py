@@ -278,7 +278,17 @@ def ide_prompt_complete(
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", "Unknown executor error")
             logger.error("ide_prompt executor reported failure: %s", error_msg)
-            _emit_error(log_events_id, executor_task_id, operation, error_msg)
+            _emit_error(
+                log_events_id,
+                executor_task_id,
+                operation,
+                error_msg,
+                extra={
+                    "prompt_ids": prompt_ids,
+                    "document_id": document_id,
+                    "profile_manager_id": profile_manager_id,
+                },
+            )
             return {"status": "failed", "error": error_msg}
 
         data = result_dict.get("data", {})
@@ -313,7 +323,17 @@ def ide_prompt_complete(
         return {"status": "completed", "operation": operation}
     except Exception as e:
         logger.exception("ide_prompt_complete callback failed")
-        _emit_error(log_events_id, executor_task_id, operation, str(e))
+        _emit_error(
+            log_events_id,
+            executor_task_id,
+            operation,
+            str(e),
+            extra={
+                "prompt_ids": prompt_ids,
+                "document_id": document_id,
+                "profile_manager_id": profile_manager_id,
+            },
+        )
         raise
     finally:
         _clear_state_store()
@@ -351,7 +371,17 @@ def ide_prompt_error(
         except Exception:
             pass
 
-        _emit_error(log_events_id, executor_task_id, operation, error_msg)
+        _emit_error(
+            log_events_id,
+            executor_task_id,
+            operation,
+            error_msg,
+            extra={
+                "prompt_ids": cb.get("prompt_ids", []),
+                "document_id": cb.get("document_id", ""),
+                "profile_manager_id": cb.get("profile_manager_id"),
+            },
+        )
     except Exception:
         logger.exception("ide_prompt_error callback failed")
     finally:
