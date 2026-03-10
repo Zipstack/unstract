@@ -423,6 +423,7 @@ class SharePointFileSystem(AbstractFileSystem):
         if maxdepth is not None and maxdepth < 1:
             return
 
+        detail = kwargs.pop("detail", False)
         path = self._normalize_path(path)
         try:
             items = self.ls(path, detail=True)
@@ -433,21 +434,35 @@ class SharePointFileSystem(AbstractFileSystem):
                 raise
             return
 
-        dirs = []
-        files = []
+        dirs: dict[str, Any] | list[str] = {} if detail else []
+        files: dict[str, Any] | list[str] = {} if detail else []
 
         for item in items:
+            name = item["name"].split("/")[-1]
             if item["type"] == "directory":
-                dirs.append(item["name"].split("/")[-1])
+                if detail:
+                    dirs[name] = item
+                else:
+                    dirs.append(name)
             else:
-                files.append(item["name"].split("/")[-1])
+                if detail:
+                    files[name] = item
+                else:
+                    files.append(name)
 
         yield path if path != "root" else "", dirs, files
 
-        for d in dirs:
+        full_dirs = {
+            (item["name"].split("/")[-1]): item["name"]
+            for item in items
+            if item["type"] == "directory"
+        }
+        for d in full_dirs:
             subpath = f"{path}/{d}" if path != "root" else d
             new_depth = maxdepth - 1 if maxdepth is not None else None
-            yield from self.walk(subpath, maxdepth=new_depth, on_error=on_error, **kwargs)
+            yield from self.walk(
+                subpath, maxdepth=new_depth, on_error=on_error, detail=detail, **kwargs
+            )
 
 
 class SharePointFS(UnstractFileSystem):
