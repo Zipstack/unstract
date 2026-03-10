@@ -238,7 +238,7 @@ setup_env() {
     fi
   done
 
-  copy_or_merge_envs "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
+  copy_or_merge_envs "$script_dir/docker/sample.common.env" "$script_dir/docker/.env" "common services"
   copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
 
 
