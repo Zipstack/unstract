@@ -34,6 +34,14 @@ DASHBOARD_HOURLY_METRICS_RETENTION_DAYS = 30
 DASHBOARD_DAILY_METRICS_RETENTION_DAYS = 365
 
 
+def _upsert_agg(agg: dict, key: tuple, metric_type: str, value: float) -> None:
+    """Add a value to an aggregation dict, creating the entry if needed."""
+    if key not in agg:
+        agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
+    agg[key]["value"] += value
+    agg[key]["count"] += 1
+
+
 def _truncate_to_hour(ts: float | datetime) -> datetime:
     """Truncate a timestamp to the hour.
 
@@ -306,57 +314,28 @@ def _aggregate_single_metric(
 
     # === HOURLY (last 24h) ===
     for row in query_method(
-        org_id,
-        hourly_start,
-        end_date,
-        granularity=Granularity.HOUR,
-        **extra_kwargs,
+        org_id, hourly_start, end_date,
+        granularity=Granularity.HOUR, **extra_kwargs,
     ):
-        value = row["value"] or 0
         hour_ts = _truncate_to_hour(row["period"])
         key = (org_id, hour_ts.isoformat(), metric_name, "default", "")
-        if key not in hourly_agg:
-            hourly_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
-        hourly_agg[key]["value"] += value
-        hourly_agg[key]["count"] += 1
+        _upsert_agg(hourly_agg, key, metric_type, row["value"] or 0)
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
-    # Query with DAY granularity from monthly_start (2 months back).
-    # Each row is bucketed into daily_agg if within daily window,
-    # and always bucketed into monthly_agg for the month rollup.
-    monthly_buckets: dict[str, dict] = {}
     for row in query_method(
-        org_id,
-        monthly_start,
-        end_date,
-        granularity=Granularity.DAY,
-        **extra_kwargs,
+        org_id, monthly_start, end_date,
+        granularity=Granularity.DAY, **extra_kwargs,
     ):
         value = row["value"] or 0
         day_ts = _truncate_to_day(row["period"])
 
-        # Daily: only include rows within the daily window
         if day_ts >= daily_start:
             key = (org_id, day_ts.date().isoformat(), metric_name, "default", "")
-            if key not in daily_agg:
-                daily_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
-            daily_agg[key]["value"] += value
-            daily_agg[key]["count"] += 1
+            _upsert_agg(daily_agg, key, metric_type, value)
 
-        # Monthly: bucket all rows by month
-        month_key_str = _truncate_to_month(row["period"]).date().isoformat()
-        if month_key_str not in monthly_buckets:
-            monthly_buckets[month_key_str] = {"value": 0, "count": 0}
-        monthly_buckets[month_key_str]["value"] += value
-        monthly_buckets[month_key_str]["count"] += 1
-
-    for month_key_str, bucket in monthly_buckets.items():
-        key = (org_id, month_key_str, metric_name, "default", "")
-        monthly_agg[key] = {
-            "metric_type": metric_type,
-            "value": bucket["value"],
-            "count": bucket["count"] or 1,
-        }
+        month_key = _truncate_to_month(row["period"]).date().isoformat()
+        key = (org_id, month_key, metric_name, "default", "")
+        _upsert_agg(monthly_agg, key, metric_type, value)
 
 
 def _aggregate_llm_combined(
@@ -378,66 +357,30 @@ def _aggregate_llm_combined(
     by month) in Python. Same pattern as _aggregate_single_metric.
     """
     # === HOURLY (last 24h) ===
-    hourly_results = MetricsQueryService.get_llm_metrics_combined(
-        org_id,
-        hourly_start,
-        end_date,
-        granularity=Granularity.HOUR,
-    )
-    for row in hourly_results:
-        ts = _truncate_to_hour(row["period"])
-        ts_str = ts.isoformat()
+    for row in MetricsQueryService.get_llm_metrics_combined(
+        org_id, hourly_start, end_date, granularity=Granularity.HOUR,
+    ):
+        ts_str = _truncate_to_hour(row["period"]).isoformat()
         for field, (metric_name, metric_type) in llm_combined_fields.items():
-            value = row[field] or 0
             key = (org_id, ts_str, metric_name, "default", "")
-            if key not in hourly_agg:
-                hourly_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
-            hourly_agg[key]["value"] += value
-            hourly_agg[key]["count"] += 1
+            _upsert_agg(hourly_agg, key, metric_type, row[field] or 0)
 
     # === DAILY + MONTHLY (single query from monthly_start) ===
-    daily_monthly_results = MetricsQueryService.get_llm_metrics_combined(
-        org_id,
-        monthly_start,
-        end_date,
-        granularity=Granularity.DAY,
-    )
-    monthly_buckets: dict[tuple[str, str], dict] = {}
-    for row in daily_monthly_results:
+    for row in MetricsQueryService.get_llm_metrics_combined(
+        org_id, monthly_start, end_date, granularity=Granularity.DAY,
+    ):
         day_ts = _truncate_to_day(row["period"])
+        month_key = _truncate_to_month(row["period"]).date().isoformat()
 
-        # Daily: only include rows within the daily window
-        if day_ts >= daily_start:
-            ts_str = day_ts.date().isoformat()
-            for field, (metric_name, metric_type) in llm_combined_fields.items():
-                value = row[field] or 0
-                key = (org_id, ts_str, metric_name, "default", "")
-                if key not in daily_agg:
-                    daily_agg[key] = {"metric_type": metric_type, "value": 0, "count": 0}
-                daily_agg[key]["value"] += value
-                daily_agg[key]["count"] += 1
-
-        # Monthly: bucket all rows by month
-        month_key_str = _truncate_to_month(row["period"]).date().isoformat()
         for field, (metric_name, metric_type) in llm_combined_fields.items():
             value = row[field] or 0
-            bkey = (month_key_str, metric_name)
-            if bkey not in monthly_buckets:
-                monthly_buckets[bkey] = {
-                    "metric_type": metric_type,
-                    "value": 0,
-                    "count": 0,
-                }
-            monthly_buckets[bkey]["value"] += value
-            monthly_buckets[bkey]["count"] += 1
 
-    for (month_key_str, metric_name), bucket in monthly_buckets.items():
-        key = (org_id, month_key_str, metric_name, "default", "")
-        monthly_agg[key] = {
-            "metric_type": bucket["metric_type"],
-            "value": bucket["value"],
-            "count": bucket["count"] or 1,
-        }
+            if day_ts >= daily_start:
+                key = (org_id, day_ts.date().isoformat(), metric_name, "default", "")
+                _upsert_agg(daily_agg, key, metric_type, value)
+
+            key = (org_id, month_key, metric_name, "default", "")
+            _upsert_agg(monthly_agg, key, metric_type, value)
 
 
 def _run_aggregation() -> dict[str, Any]:

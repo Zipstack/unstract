@@ -45,6 +45,33 @@ logger = logging.getLogger(__name__)
 # Bucket caching for better cache reuse across overlapping queries
 BUCKET_CACHE_ENABLED = settings.DASHBOARD_BUCKET_CACHE_ENABLED
 
+
+def _build_series_entry(
+    metric_name: str, data: list[dict],
+) -> dict:
+    """Build a single series entry dict from metric query results."""
+    return {
+        "metric_name": metric_name,
+        "metric_type": MetricType.HISTOGRAM
+        if metric_name == "llm_usage"
+        else MetricType.COUNTER,
+        "data": [
+            {"timestamp": r["period"].isoformat(), "value": r["value"] or 0}
+            for r in data
+        ],
+        "total_value": sum(r["value"] or 0 for r in data),
+    }
+
+
+def _build_error_entry(metric_name: str) -> dict:
+    """Build an error series entry for a failed metric."""
+    return {
+        "metric_name": metric_name,
+        "error": "unavailable",
+        "data": [],
+        "total_value": 0,
+    }
+
 # Thresholds for automatic source selection (in days)
 HOURLY_MAX_DAYS = 7  # Use hourly for ≤7 days
 DAILY_MAX_DAYS = 90  # Use daily for ≤90 days, monthly for >90 days
@@ -783,43 +810,17 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         if not requested_metric or requested_metric in llm_metric_keys:
             try:
                 llm_split = MetricsQueryService.get_llm_metrics_split(
-                    org_id,
-                    params["start_date"],
-                    params["end_date"],
-                    granularity,
+                    org_id, params["start_date"], params["end_date"], granularity,
                 )
                 for metric_name, data in llm_split.items():
-                    if requested_metric and metric_name != requested_metric:
-                        continue
-                    series.append(
-                        {
-                            "metric_name": metric_name,
-                            "metric_type": MetricType.HISTOGRAM
-                            if metric_name == "llm_usage"
-                            else MetricType.COUNTER,
-                            "data": [
-                                {
-                                    "timestamp": r["period"].isoformat(),
-                                    "value": r["value"] or 0,
-                                }
-                                for r in data
-                            ],
-                            "total_value": sum(r["value"] or 0 for r in data),
-                        }
-                    )
+                    if not requested_metric or metric_name == requested_metric:
+                        series.append(_build_series_entry(metric_name, data))
             except Exception:
                 logger.exception("Failed to fetch LLM metrics")
                 for name in llm_metric_keys:
                     if not requested_metric or name == requested_metric:
                         errors.append(name)
-                        series.append(
-                            {
-                                "metric_name": name,
-                                "error": "unavailable",
-                                "data": [],
-                                "total_value": 0,
-                            }
-                        )
+                        series.append(_build_error_entry(name))
 
         # Filter non-LLM metrics if a specific metric was requested
         if requested_metric:
@@ -830,38 +831,13 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         for metric_name, query_fn in metric_queries.items():
             try:
                 data = query_fn(
-                    org_id,
-                    params["start_date"],
-                    params["end_date"],
-                    granularity,
+                    org_id, params["start_date"], params["end_date"], granularity,
                 )
-                series.append(
-                    {
-                        "metric_name": metric_name,
-                        "metric_type": MetricType.HISTOGRAM
-                        if metric_name == "llm_usage"
-                        else MetricType.COUNTER,
-                        "data": [
-                            {
-                                "timestamp": r["period"].isoformat(),
-                                "value": r["value"] or 0,
-                            }
-                            for r in data
-                        ],
-                        "total_value": sum(r["value"] or 0 for r in data),
-                    }
-                )
+                series.append(_build_series_entry(metric_name, data))
             except Exception:
                 logger.exception("Failed to fetch metric %s", metric_name)
                 errors.append(metric_name)
-                series.append(
-                    {
-                        "metric_name": metric_name,
-                        "error": "unavailable",
-                        "data": [],
-                        "total_value": 0,
-                    }
-                )
+                series.append(_build_error_entry(metric_name))
 
         response_data = {
             "start_date": params["start_date"].isoformat(),
