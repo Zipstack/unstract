@@ -72,6 +72,57 @@ def _build_error_entry(metric_name: str) -> dict:
         "total_value": 0,
     }
 
+
+def _fetch_live_series(
+    org_id: str,
+    start_date: datetime,
+    end_date: datetime,
+    granularity: str,
+    metric_queries: dict,
+    requested_metric: str | None,
+) -> tuple[list[dict], list[str]]:
+    """Fetch all metric series (LLM combined + individual).
+
+    Returns:
+        Tuple of (series list, error names list).
+    """
+    series: list[dict] = []
+    errors: list[str] = []
+    llm_metric_keys = MetricsQueryService.LLM_METRIC_KEYS
+
+    # Fetch all 4 LLM metrics in a single query
+    if not requested_metric or requested_metric in llm_metric_keys:
+        try:
+            llm_split = MetricsQueryService.get_llm_metrics_split(
+                org_id, start_date, end_date, granularity,
+            )
+            for name, data in llm_split.items():
+                if not requested_metric or name == requested_metric:
+                    series.append(_build_series_entry(name, data))
+        except Exception:
+            logger.exception("Failed to fetch LLM metrics")
+            for name in llm_metric_keys:
+                if not requested_metric or name == requested_metric:
+                    errors.append(name)
+                    series.append(_build_error_entry(name))
+
+    # Filter non-LLM metrics if a specific metric was requested
+    if requested_metric:
+        metric_queries = {
+            k: v for k, v in metric_queries.items() if k == requested_metric
+        }
+
+    for name, query_fn in metric_queries.items():
+        try:
+            data = query_fn(org_id, start_date, end_date, granularity)
+            series.append(_build_series_entry(name, data))
+        except Exception:
+            logger.exception("Failed to fetch metric %s", name)
+            errors.append(name)
+            series.append(_build_error_entry(name))
+
+    return series, errors
+
 # Thresholds for automatic source selection (in days)
 HOURLY_MAX_DAYS = 7  # Use hourly for ≤7 days
 DAILY_MAX_DAYS = 90  # Use daily for ≤90 days, monthly for >90 days
@@ -800,44 +851,14 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             "hitl_completions": MetricsQueryService.get_hitl_completions,
         }
 
-        requested_metric = params.get("metric_name")
-        llm_metric_keys = MetricsQueryService.LLM_METRIC_KEYS
-
-        series = []
-        errors = []
-
-        # Fetch all 4 LLM metrics in a single query
-        if not requested_metric or requested_metric in llm_metric_keys:
-            try:
-                llm_split = MetricsQueryService.get_llm_metrics_split(
-                    org_id, params["start_date"], params["end_date"], granularity,
-                )
-                for metric_name, data in llm_split.items():
-                    if not requested_metric or metric_name == requested_metric:
-                        series.append(_build_series_entry(metric_name, data))
-            except Exception:
-                logger.exception("Failed to fetch LLM metrics")
-                for name in llm_metric_keys:
-                    if not requested_metric or name == requested_metric:
-                        errors.append(name)
-                        series.append(_build_error_entry(name))
-
-        # Filter non-LLM metrics if a specific metric was requested
-        if requested_metric:
-            metric_queries = {
-                k: v for k, v in metric_queries.items() if k == requested_metric
-            }
-
-        for metric_name, query_fn in metric_queries.items():
-            try:
-                data = query_fn(
-                    org_id, params["start_date"], params["end_date"], granularity,
-                )
-                series.append(_build_series_entry(metric_name, data))
-            except Exception:
-                logger.exception("Failed to fetch metric %s", metric_name)
-                errors.append(metric_name)
-                series.append(_build_error_entry(metric_name))
+        series, errors = _fetch_live_series(
+            org_id,
+            params["start_date"],
+            params["end_date"],
+            granularity,
+            metric_queries,
+            params.get("metric_name"),
+        )
 
         response_data = {
             "start_date": params["start_date"].isoformat(),
