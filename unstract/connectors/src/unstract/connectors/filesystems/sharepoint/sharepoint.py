@@ -49,8 +49,9 @@ class SharePointFile(AbstractBufferedFile):
         return self._file_content[start:end]
 
     def _upload_chunk(self, final: bool = False) -> bool:
-        """Upload is handled by pipe_file."""
-        return True
+        raise NotImplementedError(
+            "Buffered writes not supported; use pipe_file()/write_bytes()."
+        )
 
 
 class SharePointFileSystem(AbstractFileSystem):
@@ -349,7 +350,12 @@ class SharePointFileSystem(AbstractFileSystem):
         mode: str = "rb",
         **kwargs: Any,
     ) -> SharePointFile:
-        """Open a file."""
+        """Open a file for reading. Write modes are not supported."""
+        if any(flag in mode for flag in ("w", "a", "+")):
+            raise NotImplementedError(
+                "SharePoint open() write mode is not supported; "
+                "use pipe_file()/write_bytes()."
+            )
         return SharePointFile(self, path, mode, **kwargs)
 
     def cat_file(self, path: str, **kwargs: Any) -> bytes:
@@ -358,6 +364,10 @@ class SharePointFileSystem(AbstractFileSystem):
 
     def pipe_file(self, path: str, value: bytes, **kwargs: Any) -> None:
         """Write bytes to file via Graph API direct upload."""
+        if not path or path.endswith("/"):
+            raise ValueError(
+                "pipe_file() requires a file path, not root or a directory path"
+            )
         path = self._normalize_path(path)
         parts = path.split("/")
         name = parts[-1]
