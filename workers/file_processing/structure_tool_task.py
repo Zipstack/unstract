@@ -544,9 +544,45 @@ def _run_agentic_extraction(
 ) -> dict:
     """Execute agentic extraction pipeline via dispatcher.
 
-    Routes to AgenticPromptStudioExecutor (cloud plugin) which handles
-    the full multi-agent extraction pipeline using AutoGen.
+    Unpacks metadata, extracts document text via X2Text, then dispatches
+    with flat executor_params matching what AgenticPromptStudioExecutor
+    expects (adapter_instance_id, document_text, etc.).
     """
+    from unstract.sdk1.x2txt import X2Text
+
+    # 1. Unpack agentic project metadata (matches registry_helper export format)
+    adapter_config = tool_metadata.get("adapter_config", {})
+    prompt_text = tool_metadata.get("prompt_text", "")
+    json_schema = tool_metadata.get("json_schema", {})
+    enable_highlight = tool_instance_metadata.get(
+        "enable_highlight",
+        tool_metadata.get("enable_highlight", False),
+    )
+
+    # 2. Get adapter IDs: workflow UI overrides → exported defaults
+    #    (mirrors tools/structure/src/main.py)
+    extractor_llm = tool_instance_metadata.get(
+        "extractor_llm_adapter_id", adapter_config.get("extractor_llm", "")
+    )
+    llmwhisperer = tool_instance_metadata.get(
+        "llmwhisperer_adapter_id", adapter_config.get("llmwhisperer", "")
+    )
+    platform_service_api_key = shim.platform_api_key
+
+    # 3. Extract text from document using X2Text/LLMWhisperer
+    x2text = X2Text(tool=shim, adapter_instance_id=llmwhisperer)
+    extraction_result = x2text.process(
+        input_file_path=input_file_path,
+        enable_highlight=enable_highlight,
+        fs=fs,
+    )
+    document_text = extraction_result.extracted_text
+
+    # Parse json_schema if stored as string
+    if isinstance(json_schema, str):
+        json_schema = json.loads(json_schema)
+
+    # 4. Dispatch with flat executor_params matching executor expectations
     agentic_ctx = ExecutionContext(
         executor_name="agentic",
         operation="agentic_extract",
@@ -555,9 +591,13 @@ def _run_agentic_extraction(
         organization_id=organization_id,
         request_id=file_execution_id,
         executor_params={
-            "tool_metadata": tool_metadata,
-            "input_file_path": input_file_path,
-            "tool_instance_metadata": tool_instance_metadata,
+            "document_id": file_execution_id,
+            "document_text": document_text,
+            "prompt_text": prompt_text,
+            "schema": json_schema,
+            "adapter_instance_id": extractor_llm,
+            "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
+            "include_source_refs": enable_highlight,
         },
     )
     agentic_result = dispatcher.dispatch(agentic_ctx, timeout=EXECUTOR_TIMEOUT)
