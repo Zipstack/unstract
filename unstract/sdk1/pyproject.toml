@@ -27,15 +27,15 @@ dependencies = [
     "python-dotenv==1.0.1",
     # # Adapter changes
     "tiktoken~=0.9.0",
-    "litellm==1.80.0",  # Fix for bedrock embedding aws_region_name (PR #16547)
-    "llama-index==0.13.2",
-    "llama-index-vector-stores-postgres==0.6.3",
-    "llama-index-vector-stores-milvus==0.9.0",
-    "llama-index-vector-stores-weaviate==1.4.0",
-    "llama-index-vector-stores-pinecone==0.7.0",
-    "llama-index-vector-stores-qdrant==0.7.1",
+    "litellm==1.81.7",
+    "llama-index>=0.14.13",
+    "llama-index-vector-stores-postgres>=0.7.3",
+    "llama-index-vector-stores-milvus>=0.9.6",
+    "llama-index-vector-stores-weaviate>=1.4.1",
+    "llama-index-vector-stores-pinecone>=0.7.1",
+    "llama-index-vector-stores-qdrant>=0.9.1",
     # # For Llama Parse X2Text
-    "llama-parse==0.5.19",
+    "llama-parse>=0.6.0",
     # # OCR
     "filetype~=1.2.0",
     # # Others
