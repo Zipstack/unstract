@@ -1,5 +1,3 @@
-import os
-
 from unstract.platform_service.constants import LogLevel
 from unstract.platform_service.utils import EnvManager
 
@@ -12,11 +10,11 @@ class Env:
     REDIS_PORT = int(EnvManager.get_required_setting("REDIS_PORT", 6379))
     REDIS_USER = os.environ.get("REDIS_USER")
     REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD")
-    DB_HOST = os.environ.get("DB_HOST")
-    DB_PORT = int(os.environ.get("DB_PORT", 5432))
-    DB_USER = os.environ.get("DB_USER")
-    DB_PASSWORD = os.environ.get("DB_PASSWORD")
-    DB_NAME = os.environ.get("DB_NAME")
+    DB_HOST = EnvManager.get_required_setting("DB_HOST")
+    DB_PORT = int(EnvManager.get_required_setting("DB_PORT", 5432))
+    DB_USER = EnvManager.get_required_setting("DB_USER")
+    DB_PASSWORD = EnvManager.get_required_setting("DB_PASSWORD")
+    DB_NAME = EnvManager.get_required_setting("DB_NAME")
     ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
     MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
     MODEL_PRICES_TTL_IN_DAYS = int(

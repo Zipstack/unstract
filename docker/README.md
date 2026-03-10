@@ -18,17 +18,19 @@ VERSION=dev docker compose -f docker-compose.build.yaml --profile optional build
 **NOTE**: Before running, set up your env files:
 
 ```bash
+# Run from the docker/ directory:
+
 # 1. Common env vars shared across all services and infrastructure
 #    (DB, Redis, RabbitMQ, Flipt, MinIO, service URLs, timeouts)
-cp docker/sample.common.env docker/.env
+cp sample.common.env .env
 
 # 2. Per-service env files (service-specific settings only)
-cp backend/sample.env backend/.env
-cp platform-service/sample.env platform-service/.env
-cp prompt-service/sample.env prompt-service/.env
-cp x2text-service/sample.env x2text-service/.env
-cp runner/sample.env runner/.env
-cp workers/sample.env workers/.env
+cp ../backend/sample.env ../backend/.env
+cp ../platform-service/sample.env ../platform-service/.env
+cp ../prompt-service/sample.env ../prompt-service/.env
+cp ../x2text-service/sample.env ../x2text-service/.env
+cp ../runner/sample.env ../runner/.env
+cp ../workers/sample.env ../workers/.env
 ```
 
 ```bash
