@@ -11,7 +11,6 @@ Uses Microsoft Graph API via Office365-REST-Python-Client library.
 import logging
 import os
 import threading
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, NoReturn
 
@@ -371,59 +370,6 @@ class SharePointFileSystem(AbstractFileSystem):
         """Remove file or directory."""
         item = self._get_item_by_path(path)
         item.delete_object().execute_query()
-
-    def walk(
-        self,
-        path: str = "",
-        maxdepth: int | None = None,
-        on_error: str | Callable[[Exception], Any] = "omit",
-        **kwargs: Any,
-    ):
-        """Walk directory tree.
-
-        Custom override required because:
-        - _normalize_path converts "" to "root" for the Graph API
-        - Graph API errors are not FileNotFoundError/OSError (which is all
-          the base walk catches), so we need broad exception handling
-        """
-        if maxdepth is not None and maxdepth < 1:
-            return
-
-        detail = kwargs.pop("detail", False)
-        path = self._normalize_path(path)
-        try:
-            items = self.ls(path, detail=True)
-        except Exception as e:
-            if callable(on_error):
-                on_error(e)
-            elif on_error == "raise":
-                raise
-            return
-
-        dirs: dict[str, Any] | list[str] = {} if detail else []
-        files: dict[str, Any] | list[str] = {} if detail else []
-
-        for item in items:
-            name = item["name"].split("/")[-1]
-            if item["type"] == "directory":
-                if detail:
-                    dirs[name] = item
-                else:
-                    dirs.append(name)
-            else:
-                if detail:
-                    files[name] = item
-                else:
-                    files.append(name)
-
-        yield path if path != "root" else "", dirs, files
-
-        for d in dirs if isinstance(dirs, list) else dirs.keys():
-            subpath = f"{path}/{d}" if path != "root" else d
-            new_depth = maxdepth - 1 if maxdepth is not None else None
-            yield from self.walk(
-                subpath, maxdepth=new_depth, on_error=on_error, detail=detail, **kwargs
-            )
 
 
 class SharePointFS(UnstractFileSystem):
