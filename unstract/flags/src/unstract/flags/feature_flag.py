@@ -2,8 +2,6 @@
 
 import logging
 
-from .client.flipt import FliptClient
-
 logger = logging.getLogger(__name__)
 
 
@@ -30,7 +28,8 @@ def check_feature_flag_status(
         True if the feature flag is enabled for the entity, False otherwise.
     """
     try:
-        # Initialize Flipt client
+        from .client.flipt import FliptClient
+
         client = FliptClient()
 
         logger.info(f"Client has been Initialised {client.list_feature_flags()}")
