@@ -167,17 +167,17 @@ class MetricsQueryService:
         Returns:
             List of dicts with 'period' and 'value' keys
         """
-        resolved = MetricsQueryService._resolve_org_identifier(
+        page_usage_org_id = MetricsQueryService._resolve_org_identifier(
             organization_id, org_identifier
         )
-        if not resolved:
+        if not page_usage_org_id:
             return []
 
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
         return list(
             PageUsage.objects.filter(
-                organization_id=resolved,
+                organization_id=page_usage_org_id,
                 created_at__gte=start_date,
                 created_at__lte=end_date,
             )
@@ -231,81 +231,37 @@ class MetricsQueryService:
             .order_by("period")
         )
 
-    @staticmethod
-    def get_llm_calls(
+    # Mapping from metric name to the key in get_llm_metrics_combined() results.
+    LLM_METRIC_KEYS: dict[str, str] = {
+        "llm_calls": "llm_calls",
+        "challenges": "challenges",
+        "summarization_calls": "summarization_calls",
+        "llm_usage": "llm_usage",
+    }
+
+    @classmethod
+    def get_llm_metrics_split(
+        cls,
         organization_id: str,
         start_date: datetime,
         end_date: datetime,
         granularity: str = Granularity.DAY,
-    ) -> list[dict[str, Any]]:
-        """Query LLM calls from usage table.
+    ) -> dict[str, list[dict[str, Any]]]:
+        """Fetch combined LLM metrics once and split into per-metric series.
 
-        Thin wrapper for views/backfill that need a single metric.
-        For batch aggregation, use get_llm_metrics_combined() instead.
+        Returns:
+            Dict mapping metric name to list of {period, value} dicts.
         """
-        return [
-            {"period": r["period"], "value": r["llm_calls"]}
-            for r in MetricsQueryService.get_llm_metrics_combined(
-                organization_id, start_date, end_date, granularity
-            )
-        ]
-
-    @staticmethod
-    def get_challenges(
-        organization_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        granularity: str = Granularity.DAY,
-    ) -> list[dict[str, Any]]:
-        """Query challenge calls from usage table.
-
-        Thin wrapper for views/backfill that need a single metric.
-        For batch aggregation, use get_llm_metrics_combined() instead.
-        """
-        return [
-            {"period": r["period"], "value": r["challenges"]}
-            for r in MetricsQueryService.get_llm_metrics_combined(
-                organization_id, start_date, end_date, granularity
-            )
-        ]
-
-    @staticmethod
-    def get_summarization_calls(
-        organization_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        granularity: str = Granularity.DAY,
-    ) -> list[dict[str, Any]]:
-        """Query summarization calls from usage table.
-
-        Thin wrapper for views/backfill that need a single metric.
-        For batch aggregation, use get_llm_metrics_combined() instead.
-        """
-        return [
-            {"period": r["period"], "value": r["summarization_calls"]}
-            for r in MetricsQueryService.get_llm_metrics_combined(
-                organization_id, start_date, end_date, granularity
-            )
-        ]
-
-    @staticmethod
-    def get_llm_usage_cost(
-        organization_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        granularity: str = Granularity.DAY,
-    ) -> list[dict[str, Any]]:
-        """Query LLM usage cost from usage table.
-
-        Thin wrapper for views/backfill that need a single metric.
-        For batch aggregation, use get_llm_metrics_combined() instead.
-        """
-        return [
-            {"period": r["period"], "value": r["llm_usage"]}
-            for r in MetricsQueryService.get_llm_metrics_combined(
-                organization_id, start_date, end_date, granularity
-            )
-        ]
+        combined = cls.get_llm_metrics_combined(
+            organization_id, start_date, end_date, granularity
+        )
+        return {
+            metric_name: [
+                {"period": r["period"], "value": r[combined_key]}
+                for r in combined
+            ]
+            for metric_name, combined_key in cls.LLM_METRIC_KEYS.items()
+        }
 
     @staticmethod
     def get_deployed_api_requests(

@@ -452,7 +452,7 @@ def _run_aggregation() -> dict[str, Any]:
     # - Daily: Last 7 days (ensures we capture late-arriving data)
     # - Monthly: Last 2 months (current + previous, ensures month transitions are captured)
     hourly_start = end_date - timedelta(hours=24)
-    daily_start = end_date - timedelta(days=7)
+    daily_start = _truncate_to_day(end_date - timedelta(days=7))
     # Include previous month to handle month boundaries
     if end_date.month == 1:
         monthly_start = end_date.replace(

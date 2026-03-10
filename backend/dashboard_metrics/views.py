@@ -762,29 +762,71 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         org_id = str(organization.id)
         granularity = params.get("granularity", Granularity.DAY)
 
-        # Define metric query mapping
+        # Define metric query mapping (excludes LLM metrics handled below)
         metric_queries = {
             "documents_processed": MetricsQueryService.get_documents_processed,
             "pages_processed": MetricsQueryService.get_pages_processed,
-            "llm_calls": MetricsQueryService.get_llm_calls,
-            "challenges": MetricsQueryService.get_challenges,
-            "summarization_calls": MetricsQueryService.get_summarization_calls,
             "deployed_api_requests": MetricsQueryService.get_deployed_api_requests,
             "etl_pipeline_executions": MetricsQueryService.get_etl_pipeline_executions,
-            "llm_usage": MetricsQueryService.get_llm_usage_cost,
             "prompt_executions": MetricsQueryService.get_prompt_executions,
             "hitl_reviews": MetricsQueryService.get_hitl_reviews,
             "hitl_completions": MetricsQueryService.get_hitl_completions,
         }
 
-        # Filter by specific metric if requested
-        if params.get("metric_name"):
-            metric_queries = {
-                k: v for k, v in metric_queries.items() if k == params["metric_name"]
-            }
+        requested_metric = params.get("metric_name")
+        llm_metric_keys = MetricsQueryService.LLM_METRIC_KEYS
 
         series = []
         errors = []
+
+        # Fetch all 4 LLM metrics in a single query
+        if not requested_metric or requested_metric in llm_metric_keys:
+            try:
+                llm_split = MetricsQueryService.get_llm_metrics_split(
+                    org_id,
+                    params["start_date"],
+                    params["end_date"],
+                    granularity,
+                )
+                for metric_name, data in llm_split.items():
+                    if requested_metric and metric_name != requested_metric:
+                        continue
+                    series.append(
+                        {
+                            "metric_name": metric_name,
+                            "metric_type": MetricType.HISTOGRAM
+                            if metric_name == "llm_usage"
+                            else MetricType.COUNTER,
+                            "data": [
+                                {
+                                    "timestamp": r["period"].isoformat(),
+                                    "value": r["value"] or 0,
+                                }
+                                for r in data
+                            ],
+                            "total_value": sum(r["value"] or 0 for r in data),
+                        }
+                    )
+            except Exception:
+                logger.exception("Failed to fetch LLM metrics")
+                for name in llm_metric_keys:
+                    if not requested_metric or name == requested_metric:
+                        errors.append(name)
+                        series.append(
+                            {
+                                "metric_name": name,
+                                "error": "unavailable",
+                                "data": [],
+                                "total_value": 0,
+                            }
+                        )
+
+        # Filter non-LLM metrics if a specific metric was requested
+        if requested_metric:
+            metric_queries = {
+                k: v for k, v in metric_queries.items() if k == requested_metric
+            }
+
         for metric_name, query_fn in metric_queries.items():
             try:
                 data = query_fn(
