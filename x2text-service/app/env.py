@@ -48,7 +48,7 @@ class Env:
     DB_SCHEMA = EnvManager.get_required_setting("DB_SCHEMA")
     DB_HOST = EnvManager.get_required_setting("DB_HOST")
     DB_PORT = int(EnvManager.get_required_setting("DB_PORT", 5432))
-    DB_USERNAME = EnvManager.get_required_setting("DB_USERNAME")
+    DB_USER = EnvManager.get_required_setting("DB_USER")
     DB_PASSWORD = EnvManager.get_required_setting("DB_PASSWORD")
     DB_NAME = EnvManager.get_required_setting("DB_NAME")
 

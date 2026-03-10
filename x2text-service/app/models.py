@@ -7,7 +7,7 @@ from app.env import Env
 
 be_db = peewee.PostgresqlDatabase(
     Env.DB_NAME,
-    user=Env.DB_USERNAME,
+    user=Env.DB_USER,
     password=Env.DB_PASSWORD,
     host=Env.DB_HOST,
     port=Env.DB_PORT,

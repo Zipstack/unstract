@@ -11,7 +11,13 @@ services:
       - postgres_data:/var/lib/postgresql/data/
       - ./scripts/db-setup/db_setup.sh:/docker-entrypoint-initdb.d/db_setup.sh
     env_file:
-      - ./essentials.env
+      - ./.env
+    environment:
+      # Map app DB_* vars to Postgres container's expected POSTGRES_* vars
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_SCHEMA: ${DB_SCHEMA}
     labels:
       - traefik.enable=false
 
@@ -39,7 +45,7 @@ services:
     volumes:
       - minio_data:/data
     env_file:
-      - ./essentials.env
+      - ./.env
     command: server /data --console-address ":9001"
     labels:
       - traefik.enable=true
@@ -100,6 +106,14 @@ services:
       - "9005:9000" # gRPC port
     volumes:
       - flipt_data:/var/opt/flipt
+    # https://www.flipt.io/docs/configuration/overview#environment-variables)
+    # https://www.flipt.io/docs/configuration/overview#configuration-parameters
+    env_file:
+      - ./.env
+    environment:
+      FLIPT_CACHE_ENABLED: true
+      # Flipt DB connection derived from app DB_* vars
+      FLIPT_DB_URL: "postgres://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}?sslmode=disable"
     labels:
       - traefik.enable=true
       - traefik.http.routers.feature-flag.rule=Host(`feature-flag.unstract.localhost`)
@@ -128,7 +142,7 @@ services:
     labels:
       - traefik.enable=false
     env_file:
-      - ./essentials.env
+      - ./.env
 
   rabbitmq:
     image: rabbitmq:4.1.0-management
@@ -136,7 +150,11 @@ services:
     hostname: unstract-rabbit
     restart: unless-stopped
     env_file:
-      - ./essentials.env
+      - ./.env
+    environment:
+      # Map app CELERY_BROKER_* vars to RabbitMQ container's expected vars
+      RABBITMQ_DEFAULT_USER: ${CELERY_BROKER_USER}
+      RABBITMQ_DEFAULT_PASS: ${CELERY_BROKER_PASS}
     ports:
       - "5672:5672" # AMQP port
       - "15672:15672" # Management UI port
