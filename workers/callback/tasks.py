@@ -1509,7 +1509,7 @@ def _process_batch_callback_core(
             try:
                 context.api_client.close()
             except Exception as e:
-                logger.debug("api_client.close() failed during cleanup: %s", e)
+                logger.warning("api_client.close() failed during cleanup: %s", e)
 
 
 @app.task(
@@ -1781,7 +1781,7 @@ def process_batch_callback_api(
         try:
             api_client.close()
         except Exception as e:
-            logger.debug("api_client.close() failed during cleanup: %s", e)
+            logger.warning("api_client.close() failed during cleanup: %s", e)
 
 
 def _publish_final_workflow_ui_logs(

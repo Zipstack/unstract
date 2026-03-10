@@ -11,6 +11,7 @@ unified interface.
 
 import logging
 import threading
+import time
 import uuid
 from typing import Any
 from uuid import UUID
@@ -90,6 +91,7 @@ class InternalAPIClient(CachedAPIClientMixin):
     _task_counter: int = 0
     _task_counter_lock: threading.Lock = threading.Lock()
     _last_reset_time: float | None = None
+    _cached_reset_threshold: int | None = None
 
     def __init__(self, config: WorkerConfig | None = None):
         """Initialize the facade with all specialized clients and caching.
@@ -273,6 +275,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             cls._shared_base_client = None
             cls._initialization_count = 0
             cls._task_counter = 0
+            cls._cached_reset_threshold = None
             logger.info("Reset InternalAPIClient singleton state")
 
     @classmethod
@@ -283,18 +286,22 @@ class InternalAPIClient(CachedAPIClientMixin):
         Uses a lock for thread safety in case threads/gevent/eventlet pools are used.
         When singleton disabled (default), reset_singleton() is a no-op.
         """
-        from shared.infrastructure.config.worker_config import WorkerConfig
+        if cls._cached_reset_threshold is None:
+            # Lazy import to avoid circular dependency
+            from shared.infrastructure.config.worker_config import WorkerConfig
 
-        threshold = WorkerConfig().singleton_reset_task_threshold
+            cls._cached_reset_threshold = WorkerConfig().singleton_reset_task_threshold
+
         with cls._task_counter_lock:
             cls._task_counter += 1
-            if threshold > 0 and cls._task_counter >= threshold:
-                import time
-
+            if (
+                cls._cached_reset_threshold > 0
+                and cls._task_counter >= cls._cached_reset_threshold
+            ):
                 logger.info(
                     "Task counter reached threshold (%d/%d), resetting singleton session",
                     cls._task_counter,
-                    threshold,
+                    cls._cached_reset_threshold,
                 )
                 cls.reset_singleton()
                 cls._last_reset_time = time.time()

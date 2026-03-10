@@ -28,12 +28,14 @@ def _reset_singleton_state():
     InternalAPIClient._initialization_count = 0
     InternalAPIClient._task_counter = 0
     InternalAPIClient._last_reset_time = None
+    InternalAPIClient._cached_reset_threshold = None
     yield
     InternalAPIClient._shared_session = None
     InternalAPIClient._shared_base_client = None
     InternalAPIClient._initialization_count = 0
     InternalAPIClient._task_counter = 0
     InternalAPIClient._last_reset_time = None
+    InternalAPIClient._cached_reset_threshold = None
 
 
 @pytest.fixture
@@ -296,6 +298,7 @@ class TestResetSingleton:
         assert InternalAPIClient._shared_base_client is None
         assert InternalAPIClient._initialization_count == 0
         assert InternalAPIClient._task_counter == 0
+        assert InternalAPIClient._cached_reset_threshold is None
 
     def test_reset_handles_close_exception(self):
         """reset_singleton() should handle session.close() failure gracefully."""

@@ -266,7 +266,7 @@ def _unified_api_execution(
             try:
                 api_client.close()
             except Exception as e:
-                logger.debug("api_client.close() failed during cleanup: %s", e)
+                logger.warning("api_client.close() failed during cleanup: %s", e)
 
         # Clean up StateStore to prevent data leaks between tasks
         try:
