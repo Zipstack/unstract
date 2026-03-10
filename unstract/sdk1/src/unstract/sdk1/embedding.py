@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING
 import litellm
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
+
+import unstract.sdk1.patches.litellm_cohere_timeout  # noqa: F401
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import ToolEnv
