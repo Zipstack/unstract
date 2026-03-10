@@ -45,6 +45,14 @@ logger = logging.getLogger(__name__)
 # Bucket caching for better cache reuse across overlapping queries
 BUCKET_CACHE_ENABLED = settings.DASHBOARD_BUCKET_CACHE_ENABLED
 
+# Metrics that use histogram type; everything else is a counter.
+_HISTOGRAM_METRICS = frozenset({"llm_usage", "pages_processed", "failed_pages"})
+
+
+def _metric_type(name: str) -> str:
+    """Return the MetricType for a given metric name."""
+    return MetricType.HISTOGRAM if name in _HISTOGRAM_METRICS else MetricType.COUNTER
+
 
 def _build_series_entry(
     metric_name: str,
@@ -53,9 +61,7 @@ def _build_series_entry(
     """Build a single series entry dict from metric query results."""
     return {
         "metric_name": metric_name,
-        "metric_type": MetricType.HISTOGRAM
-        if metric_name == "llm_usage"
-        else MetricType.COUNTER,
+        "metric_type": _metric_type(metric_name),
         "data": [
             {"timestamp": r["period"].isoformat(), "value": r["value"] or 0} for r in data
         ],
@@ -797,9 +803,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         summary_list = [
             {
                 "metric_name": name,
-                "metric_type": MetricType.HISTOGRAM
-                if name == "llm_usage"
-                else MetricType.COUNTER,
+                "metric_type": _metric_type(name),
                 "total_value": value,
                 "total_count": 1,  # Not available from live queries
                 "average_value": value,  # Same as total for live data
