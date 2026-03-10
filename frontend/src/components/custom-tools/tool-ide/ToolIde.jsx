@@ -265,14 +265,25 @@ function ToolIde() {
     };
 
     pushIndexDoc(docId);
-    return axiosPrivate(requestOptions).catch((err) => {
-      // Only clear spinner on POST network failure (not 2xx).
-      // On success the spinner stays until a socket event arrives.
-      deleteIndexDoc(docId);
-      setAlertDetails(
-        handleException(err, `${doc?.document_name} - Failed to index`),
-      );
-    });
+    return axiosPrivate(requestOptions)
+      .then((res) => {
+        if (res?.status === 202) {
+          // Async path — 202 means accepted, spinner stays until socket event
+          return;
+        }
+        // Sync path — 200 means done
+        deleteIndexDoc(docId);
+        setAlertDetails({
+          type: "success",
+          content: `${doc?.document_name} - Indexed successfully`,
+        });
+      })
+      .catch((err) => {
+        deleteIndexDoc(docId);
+        setAlertDetails(
+          handleException(err, `${doc?.document_name} - Failed to index`),
+        );
+      });
   };
 
   const handleUpdateTool = async (body) => {

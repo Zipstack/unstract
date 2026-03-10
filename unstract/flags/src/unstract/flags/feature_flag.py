@@ -42,6 +42,6 @@ def check_feature_flag_status(
             context=context or {},
         )
 
-        return bool(result.enabled)
+        return bool(result)
     except Exception:
         return False

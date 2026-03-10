@@ -10,7 +10,7 @@ Verifies:
 7. Structure tool routes to agentic executor (not legacy)
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -198,8 +198,13 @@ class TestLegacyExcludesAgentic:
 # ---------------------------------------------------------------------------
 
 class TestStructureToolAgenticRouting:
-    def test_structure_tool_dispatches_agentic_extract(self):
+    @patch("unstract.sdk1.x2txt.X2Text")
+    def test_structure_tool_dispatches_agentic_extract(self, mock_x2text_cls):
         """Verify _run_agentic_extraction sends executor_name='agentic'."""
+        # Mock X2Text so it doesn't try to call real adapters
+        mock_x2text = MagicMock()
+        mock_x2text.process.return_value = MagicMock(extracted_text="hello world")
+        mock_x2text_cls.return_value = mock_x2text
 
         from file_processing.structure_tool_task import _run_agentic_extraction
 
@@ -208,13 +213,16 @@ class TestStructureToolAgenticRouting:
             success=True, data={"output": {"field": "value"}}
         )
 
+        mock_shim = MagicMock()
+        mock_shim.platform_api_key = "test-key"
+
         result = _run_agentic_extraction(
             tool_metadata={"name": "test"},
             input_file_path="/tmp/test.pdf",
             output_dir_path="/tmp/output",
             tool_instance_metadata={},
             dispatcher=mock_dispatcher,
-            shim=MagicMock(),
+            shim=mock_shim,
             platform_helper=MagicMock(),
             file_execution_id="exec-001",
             organization_id="org-001",

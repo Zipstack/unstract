@@ -45,11 +45,16 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     DeploymentUsageCheckError,
+    IndexingAPIError,
     MaxProfilesReachedError,
     ToolDeleteError,
 )
+from feature_flag.helper import FeatureFlagHelper
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
-from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
+from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
+    ASYNC_EXECUTION_FLAG,
+    PromptStudioHelper,
+)
 from prompt_studio.prompt_studio_core_v2.retrieval_strategies import (
     get_retrieval_strategy_metadata,
 )
@@ -352,10 +357,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
 
-        Builds the full execution payload (ORM work), then fires a
-        single executor task with Celery link/link_error callbacks.
-        The backend worker slot is freed immediately.
-
         Args:
             request (HttpRequest)
 
@@ -374,48 +375,63 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         file_name: str = document.document_name
         run_id = CommonUtils.generate_uuid()
 
-        context, cb_kwargs = PromptStudioHelper.build_index_payload(
-            tool_id=str(tool.tool_id),
-            file_name=file_name,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=tool.created_by.user_id,
-            document_id=document_id,
-            run_id=run_id,
-        )
+        if FeatureFlagHelper.check_flag_status(ASYNC_EXECUTION_FLAG):
+            # ── NEW ASYNC PATH ──
+            context, cb_kwargs = PromptStudioHelper.build_index_payload(
+                tool_id=str(tool.tool_id),
+                file_name=file_name,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=tool.created_by.user_id,
+                document_id=document_id,
+                run_id=run_id,
+            )
 
-        dispatcher = PromptStudioHelper._get_dispatcher()
+            dispatcher = PromptStudioHelper._get_dispatcher()
 
-        # Pre-generate task ID so callbacks can reference it
-        import uuid as _uuid
+            import uuid as _uuid
 
-        executor_task_id = str(_uuid.uuid4())
-        cb_kwargs["executor_task_id"] = executor_task_id
+            executor_task_id = str(_uuid.uuid4())
+            cb_kwargs["executor_task_id"] = executor_task_id
 
-        task = dispatcher.dispatch_with_callback(
-            context,
-            on_success=signature(
-                "ide_index_complete",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            on_error=signature(
-                "ide_index_error",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            task_id=executor_task_id,
-        )
-        return Response(
-            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
-            status=status.HTTP_202_ACCEPTED,
-        )
+            task = dispatcher.dispatch_with_callback(
+                context,
+                on_success=signature(
+                    "ide_index_complete",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                on_error=signature(
+                    "ide_index_error",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                task_id=executor_task_id,
+            )
+            return Response(
+                {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+                status=status.HTTP_202_ACCEPTED,
+            )
+        else:
+            # ── OLD SYNC PATH ──
+            unique_id = PromptStudioHelper.index_document(
+                tool_id=str(tool.tool_id),
+                file_name=file_name,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=tool.created_by.user_id,
+                document_id=document_id,
+                run_id=run_id,
+            )
+            if unique_id:
+                return Response(
+                    {"message": "Document indexed successfully."},
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                raise IndexingAPIError()
 
     @action(detail=True, methods=["post"])
     def fetch_response(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to fetch response to prompt.
-
-        Builds the full execution payload (ORM work), then fires a
-        single executor task with Celery link/link_error callbacks.
 
         Args:
             request (HttpRequest)
@@ -433,70 +449,80 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             run_id = CommonUtils.generate_uuid()
 
-        org_id = UserSessionUtils.get_organization_id(request)
-        user_id = custom_tool.created_by.user_id
+        if FeatureFlagHelper.check_flag_status(ASYNC_EXECUTION_FLAG):
+            # ── NEW ASYNC PATH ──
+            org_id = UserSessionUtils.get_organization_id(request)
+            user_id = custom_tool.created_by.user_id
 
-        # Resolve prompt
-        prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
+            prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
 
-        # Build file path
-        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id,
-            is_create=False,
-            user_id=user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        doc_path = str(Path(doc_path) / document.document_name)
+            doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=str(custom_tool.tool_id),
+            )
+            document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+            doc_path = str(Path(doc_path) / document.document_name)
 
-        context, cb_kwargs = PromptStudioHelper.build_fetch_response_payload(
-            tool=custom_tool,
-            doc_path=doc_path,
-            doc_name=document.document_name,
-            prompt=prompt,
-            org_id=org_id,
-            user_id=user_id,
-            document_id=document_id,
-            run_id=run_id,
-            profile_manager_id=profile_manager_id,
-        )
+            context, cb_kwargs = PromptStudioHelper.build_fetch_response_payload(
+                tool=custom_tool,
+                doc_path=doc_path,
+                doc_name=document.document_name,
+                prompt=prompt,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+            )
 
-        # If document is being indexed, return pending status
-        if context is None:
-            return Response(cb_kwargs, status=status.HTTP_200_OK)
+            # If document is being indexed, return pending status
+            if context is None:
+                return Response(cb_kwargs, status=status.HTTP_200_OK)
 
-        dispatcher = PromptStudioHelper._get_dispatcher()
+            dispatcher = PromptStudioHelper._get_dispatcher()
 
-        import uuid as _uuid
+            import uuid as _uuid
 
-        executor_task_id = str(_uuid.uuid4())
-        cb_kwargs["executor_task_id"] = executor_task_id
+            executor_task_id = str(_uuid.uuid4())
+            cb_kwargs["executor_task_id"] = executor_task_id
 
-        task = dispatcher.dispatch_with_callback(
-            context,
-            on_success=signature(
-                "ide_prompt_complete",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            on_error=signature(
-                "ide_prompt_error",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            task_id=executor_task_id,
-        )
-        return Response(
-            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
-            status=status.HTTP_202_ACCEPTED,
-        )
+            task = dispatcher.dispatch_with_callback(
+                context,
+                on_success=signature(
+                    "ide_prompt_complete",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                on_error=signature(
+                    "ide_prompt_error",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                task_id=executor_task_id,
+            )
+            return Response(
+                {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+                status=status.HTTP_202_ACCEPTED,
+            )
+        else:
+            # ── OLD SYNC PATH ──
+            tool_id: str = str(custom_tool.tool_id)
+            response: dict[str, Any] = PromptStudioHelper.prompt_responder(
+                id=prompt_id,
+                tool_id=tool_id,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=custom_tool.created_by.user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+            )
+            return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
         """API Entry point method for single pass extraction.
-
-        Builds the full execution payload (ORM work), then fires a
-        single executor task with Celery link/link_error callbacks.
 
         Args:
             request (HttpRequest)
@@ -511,76 +537,85 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not run_id:
             run_id = CommonUtils.generate_uuid()
 
-        org_id = UserSessionUtils.get_organization_id(request)
-        user_id = custom_tool.created_by.user_id
+        if FeatureFlagHelper.check_flag_status(ASYNC_EXECUTION_FLAG):
+            # ── NEW ASYNC PATH ──
+            org_id = UserSessionUtils.get_organization_id(request)
+            user_id = custom_tool.created_by.user_id
 
-        # Build file path
-        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
-            org_id,
-            is_create=False,
-            user_id=user_id,
-            tool_id=str(custom_tool.tool_id),
-        )
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
-        doc_path = str(Path(doc_path) / document.document_name)
-
-        # Fetch prompts eligible for single-pass extraction.
-        # Mirrors the filtering in _execute_prompts_in_single_pass:
-        # only active, non-NOTES, non-TABLE/RECORD prompts.
-        prompts = list(
-            ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
-                "sequence_number"
+            doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+                org_id,
+                is_create=False,
+                user_id=user_id,
+                tool_id=str(custom_tool.tool_id),
             )
-        )
-        prompts = [
-            p
-            for p in prompts
-            if p.prompt_type != ToolStudioPromptKeys.NOTES
-            and p.active
-            and p.enforce_type != ToolStudioPromptKeys.TABLE
-            and p.enforce_type != ToolStudioPromptKeys.RECORD
-        ]
-        if not prompts:
+            document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+            doc_path = str(Path(doc_path) / document.document_name)
+
+            prompts = list(
+                ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
+                    "sequence_number"
+                )
+            )
+            prompts = [
+                p
+                for p in prompts
+                if p.prompt_type != ToolStudioPromptKeys.NOTES
+                and p.active
+                and p.enforce_type != ToolStudioPromptKeys.TABLE
+                and p.enforce_type != ToolStudioPromptKeys.RECORD
+            ]
+            if not prompts:
+                return Response(
+                    {"error": "No active prompts found for single pass extraction."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
+                tool=custom_tool,
+                doc_path=doc_path,
+                doc_name=document.document_name,
+                prompts=prompts,
+                org_id=org_id,
+                document_id=document_id,
+                run_id=run_id,
+            )
+
+            dispatcher = PromptStudioHelper._get_dispatcher()
+
+            import uuid as _uuid
+
+            executor_task_id = str(_uuid.uuid4())
+            cb_kwargs["executor_task_id"] = executor_task_id
+
+            task = dispatcher.dispatch_with_callback(
+                context,
+                on_success=signature(
+                    "ide_prompt_complete",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                on_error=signature(
+                    "ide_prompt_error",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                task_id=executor_task_id,
+            )
             return Response(
-                {"error": "No active prompts found for single pass extraction."},
-                status=status.HTTP_400_BAD_REQUEST,
+                {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+                status=status.HTTP_202_ACCEPTED,
             )
-
-        context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
-            tool=custom_tool,
-            doc_path=doc_path,
-            doc_name=document.document_name,
-            prompts=prompts,
-            org_id=org_id,
-            document_id=document_id,
-            run_id=run_id,
-        )
-
-        dispatcher = PromptStudioHelper._get_dispatcher()
-
-        import uuid as _uuid
-
-        executor_task_id = str(_uuid.uuid4())
-        cb_kwargs["executor_task_id"] = executor_task_id
-
-        task = dispatcher.dispatch_with_callback(
-            context,
-            on_success=signature(
-                "ide_prompt_complete",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            on_error=signature(
-                "ide_prompt_error",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            task_id=executor_task_id,
-        )
-        return Response(
-            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
-            status=status.HTTP_202_ACCEPTED,
-        )
+        else:
+            # ── OLD SYNC PATH ──
+            tool_id: str = str(custom_tool.tool_id)
+            response: dict[str, Any] = PromptStudioHelper.prompt_responder(
+                tool_id=tool_id,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=custom_tool.created_by.user_id,
+                document_id=document_id,
+                run_id=run_id,
+            )
+            return Response(response, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
     def task_status(

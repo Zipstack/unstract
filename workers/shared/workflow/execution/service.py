@@ -973,13 +973,23 @@ class WorkerWorkflowExecutionService:
     ) -> None:
         """Build and execute the workflow.
 
-        Detects structure tool workflows and routes them to the Celery-based
-        execute_structure_tool task instead of the Docker container flow.
+        When the async_prompt_execution flag is ON, detects structure tool
+        workflows and routes them to the Celery-based execute_structure_tool
+        task instead of the Docker container flow. When the flag is OFF (or
+        unreachable), all workflows use the original Docker flow.
         """
-        if self._is_structure_tool_workflow(execution_service):
+        from unstract.flags.feature_flag import check_feature_flag_status
+
+        use_async = False
+        try:
+            use_async = check_feature_flag_status("async_prompt_execution")
+        except Exception:
+            logger.warning("Feature flag check failed, using Docker flow")
+
+        if use_async and self._is_structure_tool_workflow(execution_service):
             self._execute_structure_tool_workflow(execution_service, file_name)
         else:
-            # Original Docker-based flow (unchanged)
+            # Original Docker-based flow (for non-structure tools or flag OFF)
             execution_service.build_workflow()
             logger.info(f"Workflow built successfully for file {file_name}")
 

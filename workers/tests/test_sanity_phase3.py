@@ -427,6 +427,7 @@ class TestStructureToolSmartTable:
 class TestStructureToolAgentic:
     """Agentic project routes to AgenticPromptStudioExecutor."""
 
+    @patch("unstract.sdk1.x2txt.X2Text")
     @patch(_PATCH_SHIM)
     @patch(_PATCH_FILE_STORAGE)
     @patch(_PATCH_PLATFORM_HELPER)
@@ -437,6 +438,7 @@ class TestStructureToolAgentic:
         mock_create_ph,
         mock_get_fs,
         MockShim,
+        MockX2Text,
         base_params,
         mock_fs,
         mock_platform_helper,
@@ -448,6 +450,13 @@ class TestStructureToolAgentic:
         mock_get_fs.return_value = mock_fs
         mock_create_ph.return_value = mock_platform_helper
 
+        # Mock X2Text to return extracted text
+        mock_x2text_instance = MagicMock()
+        mock_extraction_result = MagicMock()
+        mock_extraction_result.extracted_text = "Extracted document text"
+        mock_x2text_instance.process.return_value = mock_extraction_result
+        MockX2Text.return_value = mock_x2text_instance
+
         # Prompt studio lookup fails, agentic succeeds
         mock_platform_helper.get_prompt_studio_tool.return_value = None
 
@@ -455,6 +464,11 @@ class TestStructureToolAgentic:
             "name": "Agentic Project",
             "project_id": "ap-001",
             "json_schema": {"field": "string"},
+            "prompt_text": "Extract the field",
+            "adapter_config": {
+                "extractor_llm": "llm-adapter-1",
+                "llmwhisperer": "whisper-adapter-1",
+            },
         }
         mock_platform_helper.get_agentic_studio_tool.return_value = {
             "tool_metadata": agentic_metadata,
@@ -475,8 +489,16 @@ class TestStructureToolAgentic:
         # Should dispatch to agentic executor with agentic_extract operation
         calls = dispatcher_instance.dispatch.call_args_list
         assert len(calls) == 1
-        assert calls[0][0][0].executor_name == "agentic"
-        assert calls[0][0][0].operation == "agentic_extract"
+        ctx = calls[0][0][0]
+        assert ctx.executor_name == "agentic"
+        assert ctx.operation == "agentic_extract"
+        # Verify flat params are passed (not nested dicts)
+        params = ctx.executor_params
+        assert params["adapter_instance_id"] == "llm-adapter-1"
+        assert params["document_text"] == "Extracted document text"
+        assert params["prompt_text"] == "Extract the field"
+        assert params["schema"] == {"field": "string"}
+        assert "PLATFORM_SERVICE_API_KEY" in params
 
 
 class TestStructureToolProfileOverrides:

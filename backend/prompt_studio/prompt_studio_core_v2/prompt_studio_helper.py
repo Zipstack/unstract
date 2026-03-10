@@ -66,12 +66,14 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from unstract.core.pubsub_helper import LogPublisher
+from feature_flag.helper import FeatureFlagHelper
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.prompt import PromptTool
 from unstract.sdk1.utils.indexing import IndexingUtils
 from unstract.sdk1.utils.tool import ToolUtils
 
@@ -79,6 +81,7 @@ logger = logging.getLogger(__name__)
 
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
+ASYNC_EXECUTION_FLAG = "async_prompt_execution"
 
 logger = logging.getLogger(__name__)
 
@@ -270,6 +273,15 @@ class PromptStudioHelper:
             channel_id=StateStore.get(Common.LOG_EVENTS_ID),
             payload=LogPublisher.log_progress(component, level, state, message),
         )
+
+    @staticmethod
+    def _is_async_execution_enabled() -> bool:
+        """Check if the async execution feature flag is enabled."""
+        try:
+            return FeatureFlagHelper.check_flag_status(ASYNC_EXECUTION_FLAG)
+        except Exception:
+            logger.warning("Feature flag check failed, falling back to sync flow")
+            return False
 
     @staticmethod
     def _get_dispatcher() -> ExecutionDispatcher:
@@ -851,6 +863,7 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(p.prompt_id) for p in prompts],
+            "profile_manager_id": str(default_profile.profile_id),
             "is_single_pass": True,
         }
 
@@ -1577,29 +1590,50 @@ class PromptStudioHelper:
             TSPKeys.CUSTOM_DATA: tool.custom_data,
         }
 
-        # Add platform API key and metadata flag for executor
-        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
-        payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
-        payload[TSPKeys.INCLUDE_METADATA] = True
+        if PromptStudioHelper._is_async_execution_enabled():
+            # === NEW: ExecutionDispatcher → Celery executor worker ===
+            platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+            payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
+            payload[TSPKeys.INCLUDE_METADATA] = True
 
-        dispatcher = PromptStudioHelper._get_dispatcher()
-        context = ExecutionContext(
-            executor_name="legacy",
-            operation="answer_prompt",
-            run_id=run_id,
-            execution_source="ide",
-            organization_id=org_id,
-            executor_params=payload,
-            request_id=StateStore.get(Common.REQUEST_ID),
-            log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
-        )
-        result = dispatcher.dispatch(context)
-        if not result.success:
-            raise AnswerFetchError(
-                "Error while fetching response for "
-                f"'{prompt.prompt_key}' with '{doc_name}'. {result.error}",
+            dispatcher = PromptStudioHelper._get_dispatcher()
+            context = ExecutionContext(
+                executor_name="legacy",
+                operation="answer_prompt",
+                run_id=run_id,
+                execution_source="ide",
+                organization_id=org_id,
+                executor_params=payload,
+                request_id=StateStore.get(Common.REQUEST_ID),
+                log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
             )
-        return result.data
+            result = dispatcher.dispatch(context)
+            if not result.success:
+                raise AnswerFetchError(
+                    "Error while fetching response for "
+                    f"'{prompt.prompt_key}' with '{doc_name}'. {result.error}",
+                )
+            return result.data
+        else:
+            # === OLD: PromptTool HTTP → prompt-service ===
+            try:
+                responder = PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                )
+                params = {TSPKeys.INCLUDE_METADATA: True}
+                return responder.answer_prompt(payload=payload, params=params)
+            except SdkError as e:
+                msg = str(e)
+                if e.actual_err and hasattr(e.actual_err, "response"):
+                    msg = e.actual_err.response.json().get("error", str(e))
+                raise AnswerFetchError(
+                    "Error while fetching response for "
+                    f"'{prompt.prompt_key}' with '{doc_name}'. {msg}",
+                    status_code=int(e.status_code or 500),
+                )
 
     @staticmethod
     def fetch_table_settings_if_enabled(
@@ -1728,27 +1762,38 @@ class PromptStudioHelper:
                 TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             }
 
-            # Add platform API key for executor
-            platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
-            payload["platform_api_key"] = platform_api_key
+            if PromptStudioHelper._is_async_execution_enabled():
+                # === NEW: ExecutionDispatcher → Celery executor worker ===
+                platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+                payload["platform_api_key"] = platform_api_key
 
-            dispatcher = PromptStudioHelper._get_dispatcher()
-            index_context = ExecutionContext(
-                executor_name="legacy",
-                operation="index",
-                run_id=run_id or str(uuid.uuid4()),
-                execution_source="ide",
-                organization_id=org_id,
-                executor_params=payload,
-                request_id=StateStore.get(Common.REQUEST_ID),
-                log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
-            )
-            result = dispatcher.dispatch(index_context)
-            if not result.success:
-                raise IndexingAPIError(
-                    f"Failed to index '{filename}'. {result.error}",
+                dispatcher = PromptStudioHelper._get_dispatcher()
+                index_context = ExecutionContext(
+                    executor_name="legacy",
+                    operation="index",
+                    run_id=run_id or str(uuid.uuid4()),
+                    execution_source="ide",
+                    organization_id=org_id,
+                    executor_params=payload,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                    log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
                 )
-            doc_id = result.data.get("doc_id")
+                result = dispatcher.dispatch(index_context)
+                if not result.success:
+                    raise IndexingAPIError(
+                        f"Failed to index '{filename}'. {result.error}",
+                    )
+                doc_id = result.data.get("doc_id")
+            else:
+                # === OLD: PromptTool HTTP → prompt-service ===
+                util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+                responder = PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                )
+                doc_id = responder.index(payload=payload)
 
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
@@ -1889,28 +1934,40 @@ class PromptStudioHelper:
             TSPKeys.CUSTOM_DATA: tool.custom_data,
         }
 
-        # Add platform API key and metadata flag for executor
-        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
-        payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
-        payload[TSPKeys.INCLUDE_METADATA] = True
+        if PromptStudioHelper._is_async_execution_enabled():
+            # === NEW: ExecutionDispatcher → Celery executor worker ===
+            platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+            payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
+            payload[TSPKeys.INCLUDE_METADATA] = True
 
-        dispatcher = PromptStudioHelper._get_dispatcher()
-        context = ExecutionContext(
-            executor_name="legacy",
-            operation="single_pass_extraction",
-            run_id=run_id or str(uuid.uuid4()),
-            execution_source="ide",
-            organization_id=org_id,
-            executor_params=payload,
-            request_id=StateStore.get(Common.REQUEST_ID),
-            log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
-        )
-        result = dispatcher.dispatch(context)
-        if not result.success:
-            raise AnswerFetchError(
-                f"Error fetching single pass response. {result.error}",
+            dispatcher = PromptStudioHelper._get_dispatcher()
+            context = ExecutionContext(
+                executor_name="legacy",
+                operation="single_pass_extraction",
+                run_id=run_id or str(uuid.uuid4()),
+                execution_source="ide",
+                organization_id=org_id,
+                executor_params=payload,
+                request_id=StateStore.get(Common.REQUEST_ID),
+                log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
             )
-        return result.data
+            result = dispatcher.dispatch(context)
+            if not result.success:
+                raise AnswerFetchError(
+                    f"Error fetching single pass response. {result.error}",
+                )
+            return result.data
+        else:
+            # === OLD: PromptTool HTTP → prompt-service ===
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+            responder = PromptTool(
+                tool=util,
+                prompt_host=settings.PROMPT_HOST,
+                prompt_port=settings.PROMPT_PORT,
+                request_id=StateStore.get(Common.REQUEST_ID),
+            )
+            params = {TSPKeys.INCLUDE_METADATA: True}
+            return responder.single_pass_extraction(payload=payload, params=params)
 
     @staticmethod
     def get_tool_from_tool_id(tool_id: str) -> CustomTool | None:
@@ -1976,42 +2033,65 @@ class PromptStudioHelper:
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
         }
 
-        # Add platform API key for executor
-        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
-        payload["platform_api_key"] = platform_api_key
+        if PromptStudioHelper._is_async_execution_enabled():
+            # === NEW: ExecutionDispatcher → Celery executor worker ===
+            platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+            payload["platform_api_key"] = platform_api_key
 
-        dispatcher = PromptStudioHelper._get_dispatcher()
-        extract_context = ExecutionContext(
-            executor_name="legacy",
-            operation="extract",
-            run_id=run_id or str(uuid.uuid4()),
-            execution_source="ide",
-            organization_id=org_id,
-            executor_params=payload,
-            request_id=StateStore.get(Common.REQUEST_ID),
-            log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
-        )
-        result = dispatcher.dispatch(extract_context)
-        if not result.success:
-            msg = result.error or "Unknown extraction error"
-            success = PromptStudioIndexHelper.mark_extraction_status(
-                document_id=document_id,
-                profile_manager=profile_manager,
-                x2text_config_hash=x2text_config_hash,
-                enable_highlight=enable_highlight,
-                extracted=False,
-                error_message=msg,
+            dispatcher = PromptStudioHelper._get_dispatcher()
+            extract_context = ExecutionContext(
+                executor_name="legacy",
+                operation="extract",
+                run_id=run_id or str(uuid.uuid4()),
+                execution_source="ide",
+                organization_id=org_id,
+                executor_params=payload,
+                request_id=StateStore.get(Common.REQUEST_ID),
+                log_events_id=StateStore.get(Common.LOG_EVENTS_ID),
             )
-            if not success:
-                logger.warning(
-                    f"Failed to mark extraction failure for document {document_id}. "
-                    f"Extraction failed but status not saved."
+            result = dispatcher.dispatch(extract_context)
+            if not result.success:
+                msg = result.error or "Unknown extraction error"
+                PromptStudioIndexHelper.mark_extraction_status(
+                    document_id=document_id,
+                    profile_manager=profile_manager,
+                    x2text_config_hash=x2text_config_hash,
+                    enable_highlight=enable_highlight,
+                    extracted=False,
+                    error_message=msg,
                 )
-            raise ExtractionAPIError(
-                f"Failed to extract '{filename}'. {msg}",
-            )
+                raise ExtractionAPIError(
+                    f"Failed to extract '{filename}'. {msg}",
+                )
+            extracted_text = result.data.get("extracted_text", "")
+        else:
+            # === OLD: PromptTool HTTP → prompt-service ===
+            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+            try:
+                responder = PromptTool(
+                    tool=util,
+                    prompt_host=settings.PROMPT_HOST,
+                    prompt_port=settings.PROMPT_PORT,
+                    request_id=StateStore.get(Common.REQUEST_ID),
+                )
+                extracted_text = responder.extract(payload=payload)
+            except SdkError as e:
+                msg = str(e)
+                if e.actual_err and hasattr(e.actual_err, "response"):
+                    msg = e.actual_err.response.json().get("error", str(e))
+                PromptStudioIndexHelper.mark_extraction_status(
+                    document_id=document_id,
+                    profile_manager=profile_manager,
+                    x2text_config_hash=x2text_config_hash,
+                    enable_highlight=enable_highlight,
+                    extracted=False,
+                    error_message=msg,
+                )
+                raise ExtractionAPIError(
+                    f"Failed to extract '{filename}'. {msg}",
+                    status_code=int(e.status_code or 500),
+                )
 
-        extracted_text = result.data.get("extracted_text", "")
         success = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
@@ -2020,8 +2100,7 @@ class PromptStudioHelper:
         )
         if not success:
             logger.warning(
-                f"Failed to mark extraction success for document {document_id}. "
-                f"Extraction completed but status not saved."
+                f"Failed to mark extraction success for document {document_id}."
             )
 
         return extracted_text
