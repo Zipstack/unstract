@@ -70,12 +70,14 @@ class CeleryConfig:
 # and override QoS semantics for quorum queue compatibility.
 # This block runs at import time (same pattern as LLM Whisperer's celeryconfig.py).
 if is_rabbitmq_ha_enabled():
-    # All queues consumed by the main backend Celery app (worker + worker-logging)
+    # All queues consumed by the main backend Celery app
+    # (worker, worker-logging, worker-metrics)
     _BACKEND_QUEUES = [
         "celery",
         "celery_api_deployments",
         "celery_periodic_logs",
         "celery_log_task_queue",
+        "dashboard_metric_events",
     ]
     CeleryConfig.task_queues = [make_queue(q) for q in _BACKEND_QUEUES]
 
