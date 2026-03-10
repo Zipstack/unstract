@@ -325,15 +325,14 @@ services:
     build:
       dockerfile: docker/dockerfiles/backend.Dockerfile
       context: ..
-    environment:
-      - WORKER_METRICS_AUTOSCALE=2,1
+    command: "-A backend worker --loglevel=info -Q dashboard_metric_events --autoscale=2,1"
     develop:
       watch:
-        - action: sync
+        - action: sync+restart
           path: ../backend/
           target: /app
           ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
-        - action: sync
+        - action: sync+restart
           path: ../unstract/
           target: /unstract
           ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
