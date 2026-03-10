@@ -77,6 +77,10 @@ class CoOwnerManagementMixin:
                 added_users=[user],
                 resource_instance=resource,
             )
+        except ImportError:
+            logger.debug(
+                "Notification plugin not available, skipping co-owner notification"
+            )
         except Exception:
             logger.exception(
                 "Failed to send co-owner added notification for %s %s",
@@ -111,6 +115,10 @@ class CoOwnerManagementMixin:
                 removed_by=request.user,
                 removed_users=[user],
                 resource_instance=resource,
+            )
+        except ImportError:
+            logger.debug(
+                "Notification plugin not available, skipping co-owner notification"
             )
         except Exception:
             logger.exception(

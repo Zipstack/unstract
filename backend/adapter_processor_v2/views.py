@@ -141,7 +141,13 @@ class AdapterInstanceViewSet(CoOwnerManagementMixin, ModelViewSet):
     notification_resource_name_field = "adapter_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
-        from plugins.notification.constants import ResourceType
+        try:
+            from plugins.notification.constants import ResourceType
+        except ImportError:
+            logger.debug(
+                "Notification plugin not available, skipping resource type lookup"
+            )
+            return None
 
         adapter_type_to_resource = {
             "LLM": ResourceType.LLM.value,
