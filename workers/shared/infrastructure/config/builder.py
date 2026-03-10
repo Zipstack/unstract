@@ -103,9 +103,7 @@ class WorkerBuilder:
         if os.environ.get("RABBITMQ_HA_ENABLED", "").lower() == "true":
             from kombu.transport import pyamqp
 
-            pyamqp.Transport.qos_semantics_matches_spec = (
-                lambda self, conn: True
-            )
+            pyamqp.Transport.qos_semantics_matches_spec = lambda self, conn: True
 
         logger.info(
             f"Built {worker_type} worker with queues: "
