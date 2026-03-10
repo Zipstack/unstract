@@ -23,10 +23,12 @@ from celery import bootsteps, signals  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the WorkerBuilder and WorkerType
+from shared.api.internal_client import InternalAPIClient  # noqa: E402
 from shared.enums.worker_enums import WorkerType  # noqa: E402
 from shared.infrastructure import initialize_worker_infrastructure  # noqa: E402
 from shared.infrastructure.config.builder import WorkerBuilder  # noqa: E402
 from shared.models.worker_models import get_celery_setting  # noqa: E402
+from shared.patterns.factory.client_factory import ClientFactory  # noqa: E402
 
 # Determine worker type from environment FIRST
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
@@ -372,14 +374,10 @@ def on_worker_process_shutdown(**kwargs):
     """Clean up HTTP sessions during worker shutdown."""
     logger.info("Cleaning up API client resources (PID: %s)", os.getpid())
     try:
-        from shared.api.internal_client import InternalAPIClient
-
         InternalAPIClient.reset_singleton()
     except Exception as e:
         logger.warning(f"Failed to reset InternalAPIClient singleton: {e}")
     try:
-        from shared.patterns.factory.client_factory import ClientFactory
-
         ClientFactory.reset_shared_state()
     except Exception as e:
         logger.warning(f"Failed to reset ClientFactory: {e}")
@@ -400,8 +398,6 @@ def on_task_postrun(sender=None, task_id=None, **kwargs):
     if not config.enable_api_client_singleton:
         return
     try:
-        from shared.api.internal_client import InternalAPIClient
-
         InternalAPIClient.increment_task_counter()
     except Exception as e:
         logger.warning(f"Failed to increment task counter: {e}")

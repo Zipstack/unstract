@@ -287,9 +287,6 @@ class InternalAPIClient(CachedAPIClientMixin):
         When singleton disabled (default), reset_singleton() is a no-op.
         """
         if cls._cached_reset_threshold is None:
-            # Lazy import to avoid circular dependency
-            from shared.infrastructure.config.worker_config import WorkerConfig
-
             cls._cached_reset_threshold = WorkerConfig().singleton_reset_task_threshold
 
         with cls._task_counter_lock:
