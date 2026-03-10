@@ -322,6 +322,7 @@ function ApiDeployment() {
         enableSearch={true}
         onSearch={handleSearch}
         setSearchList={setFilteredData}
+        searchTerm={searchTerm}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,

@@ -2,6 +2,7 @@ import logging
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
+from account_usage.models import PageUsage
 from django.db.models import Count, QuerySet, Sum
 from django.utils import timezone
 from rest_framework.exceptions import APIException, ValidationError
@@ -23,6 +24,33 @@ logger = logging.getLogger(__name__)
 
 
 class UsageHelper:
+    @staticmethod
+    def get_aggregated_pages_processed(
+        run_id: str | None = None,
+        run_ids: list[str] | None = None,
+    ) -> int | None:
+        """Retrieve aggregated pages processed for given run_id(s).
+
+        Provide either a single run_id or a list of run_ids.
+
+        Args:
+            run_id: Single file execution ID.
+            run_ids: List of file execution IDs.
+
+        Returns:
+            int | None: Total pages processed, or None if no records found.
+        """
+        if run_id:
+            queryset = PageUsage.objects.filter(run_id=run_id)
+        elif run_ids:
+            queryset = PageUsage.objects.filter(run_id__in=run_ids)
+        else:
+            return None
+        if not queryset.exists():
+            return None
+        result = queryset.aggregate(total_pages=Sum("pages_processed"))
+        return result.get("total_pages")
+
     @staticmethod
     def get_aggregated_token_count(run_id: str) -> dict:
         """Retrieve aggregated token counts for the given run_id.

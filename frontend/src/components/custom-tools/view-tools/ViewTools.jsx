@@ -1,4 +1,3 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 
 import { ListView } from "../../widgets/list-view/ListView";
@@ -45,13 +44,7 @@ function ViewTools({
   }
 
   if (!listOfTools?.length) {
-    return (
-      <div className="center">
-        <Typography.Title level={5}>
-          No results found for this search
-        </Typography.Title>
-      </div>
-    );
+    return <EmptyState text="No results found for this search" />;
   }
 
   return (
