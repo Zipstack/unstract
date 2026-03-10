@@ -455,6 +455,7 @@ class WorkerCeleryConfig:
         self._add_pool_configuration(config)
         self._add_worker_scaling_configuration(config)
         self._add_chord_configuration(config)
+        self._add_quorum_queue_configuration(config)
 
         # Add task annotations if present
         if self.task_annotations:
@@ -500,6 +501,28 @@ class WorkerCeleryConfig:
             config["result_chord_retry_interval"] = get_celery_setting(
                 "RESULT_CHORD_RETRY_INTERVAL", self.worker_type, 1, float
             )
+
+    def _add_quorum_queue_configuration(self, config: dict[str, Any]) -> None:
+        """Declare application queues as quorum type when RabbitMQ HA is enabled.
+
+        When RABBITMQ_HA_ENABLED=true, explicitly declares all worker queues
+        with x-queue-type: quorum. This is necessary because Celery/kombu sends
+        x-queue-type: classic by default, overriding the server-side
+        default_queue_type setting.
+
+        Internal Celery queues (pidbox, reply queues) are not affected since
+        they are managed by Celery internals and not listed here.
+        """
+        if os.environ.get("RABBITMQ_HA_ENABLED", "").lower() != "true":
+            return
+
+        from kombu import Queue
+
+        quorum_args = {"x-queue-type": "quorum"}
+        config["task_queues"] = [
+            Queue(q, queue_arguments=quorum_args)
+            for q in self.queue_config.all_queues()
+        ]
 
     def to_cli_args(self) -> list[str]:
         """Generate Celery worker CLI arguments.

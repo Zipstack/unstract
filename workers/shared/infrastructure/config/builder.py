@@ -96,6 +96,17 @@ class WorkerBuilder:
         # Apply configuration to Celery app
         app.conf.update(celery_config)
 
+        # When RabbitMQ HA is enabled with quorum queues, override QoS
+        # semantics. Quorum queues do not support global (channel-level) QoS.
+        # Celery detects RabbitMQ >= 3.3 and sends basic.qos with global=True,
+        # which quorum queues reject with NOT_IMPLEMENTED.
+        if os.environ.get("RABBITMQ_HA_ENABLED", "").lower() == "true":
+            from kombu.transport import pyamqp
+
+            pyamqp.Transport.qos_semantics_matches_spec = (
+                lambda self, conn: True
+            )
+
         logger.info(
             f"Built {worker_type} worker with queues: "
             f"{worker_celery_config.queue_config.all_queues()}"
