@@ -148,7 +148,9 @@ Create a custom `AbstractFileSystem` subclass with ONLY these core methods:
 - `rm(path)` — Delete a file
 - `mkdir(path)` — Create directory
 
-**CRITICAL: NEVER override** `walk()`, `listdir()`, `stat()`, `exists()`, `isdir()`, `isfile()`, `delete()`, `read_bytes()`, or `write_bytes()`. These are provided by `AbstractFileSystem` and delegate to `ls()`/`info()`/`pipe_file()`. Overriding them creates maintenance burden and risks bugs (e.g., `walk()` not supporting `detail=True`).
+**CRITICAL: NEVER override** `listdir()`, `stat()`, `exists()`, `isdir()`, `isfile()`, `delete()`, `read_bytes()`, or `write_bytes()`. These are provided by `AbstractFileSystem` and delegate to `ls()`/`info()`/`pipe_file()`.
+
+**`walk()` exception**: Override `walk()` ONLY if the filesystem has path normalization that differs from `_strip_protocol` (e.g., SharePoint maps `""` to `"root"`), or if the service raises exceptions that aren't `FileNotFoundError`/`OSError` (the only types the base catches). If you override `walk()`, you MUST support the `detail` kwarg (return dicts when `True`, lists when `False`) and the `on_error` callback.
 - See `sharepoint.py` for reference.
 
 **For Queue Connectors:**

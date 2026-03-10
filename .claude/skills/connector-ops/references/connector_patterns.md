@@ -272,9 +272,12 @@ class MyFileSystem(AbstractFileSystem):
 **Key insight**: `write_bytes` is an alias for `pipe_file` in fsspec. Override
 `pipe_file`, not `write_bytes`, so the delegation chain works correctly.
 
-**Why this matters**: The base `walk()` handles `detail=True` (returning dicts vs
-lists), `topdown`, `on_error` callbacks, and proper recursion. A custom override
-must reimplement ALL of this correctly or risk subtle bugs.
+**Exception: `walk()` may need a custom override** when the custom filesystem has
+path normalization that differs from `_strip_protocol` (e.g., SharePoint maps `""`
+to `"root"` for the Graph API), or when the service raises exceptions that aren't
+`FileNotFoundError`/`OSError` (the only types the base `walk()` catches). If you
+override `walk()`, you MUST support the `detail` kwarg (return dicts when True,
+lists when False) and the `on_error` callback.
 
 **Applies to**: Any custom `AbstractFileSystem` subclass (SharePoint, OneDrive, etc.)
 

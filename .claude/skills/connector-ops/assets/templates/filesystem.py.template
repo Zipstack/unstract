@@ -22,7 +22,10 @@ AbstractFileSystem subclass implementing ONLY these core methods:
 
 NEVER override these methods — AbstractFileSystem already provides them by delegating
 to ls()/info():
-  - walk()      — delegates to ls(), handles detail=True, on_error, topdown
+  - walk()      — delegates to ls(), handles detail=True, on_error, topdown.
+                   EXCEPTION: override walk() if the filesystem has custom path
+                   normalization (e.g., "" → "root") or raises exceptions that aren't
+                   FileNotFoundError/OSError. If overriding, MUST support detail kwarg.
   - listdir()   — alias for ls()
   - stat()      — alias for info()
   - exists()    — calls info(), catches exceptions
