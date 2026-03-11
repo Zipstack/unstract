@@ -1066,7 +1066,7 @@ class WorkerWorkflowExecutionService:
         result = _execute_structure_tool(params)
 
         if not result.get("success"):
-            raise Exception(
+            raise RuntimeError(
                 f"Structure tool failed: {result.get('error', 'Unknown error')}"
             )
 

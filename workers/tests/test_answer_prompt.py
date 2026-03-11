@@ -109,34 +109,34 @@ def _mock_deps(llm=None):
         llm = _mock_llm()
 
     # AnswerPromptService — use the real class
-    from executor.executors.answer_prompt import AnswerPromptService
+    from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc_cls
 
-    RetrievalService = MagicMock(name="RetrievalService")
-    RetrievalService.run_retrieval.return_value = ["chunk1", "chunk2"]
-    RetrievalService.retrieve_complete_context.return_value = ["full content"]
+    retrieval_svc = MagicMock(name="RetrievalService")
+    retrieval_svc.run_retrieval.return_value = ["chunk1", "chunk2"]
+    retrieval_svc.retrieve_complete_context.return_value = ["full content"]
 
-    VariableReplacementService = MagicMock(name="VariableReplacementService")
-    VariableReplacementService.is_variables_present.return_value = False
+    variable_replacement_svc = MagicMock(name="VariableReplacementService")
+    variable_replacement_svc.is_variables_present.return_value = False
 
-    Index = MagicMock(name="Index")
+    index_cls = MagicMock(name="Index")
     index_instance = MagicMock()
     index_instance.generate_index_key.return_value = "doc-id-1"
-    Index.return_value = index_instance
+    index_cls.return_value = index_instance
 
-    LLM_cls = MagicMock(name="LLM")
-    LLM_cls.return_value = llm
+    llm_cls = MagicMock(name="LLM")
+    llm_cls.return_value = llm
 
-    EmbeddingCompat = MagicMock(name="EmbeddingCompat")
-    VectorDB = MagicMock(name="VectorDB")
+    embedding_compat_cls = MagicMock(name="EmbeddingCompat")
+    vector_db_cls = MagicMock(name="VectorDB")
 
     return (
-        AnswerPromptService,
-        RetrievalService,
-        VariableReplacementService,
-        Index,
-        LLM_cls,
-        EmbeddingCompat,
-        VectorDB,
+        answer_prompt_svc_cls,
+        retrieval_svc,
+        variable_replacement_svc,
+        index_cls,
+        llm_cls,
+        embedding_compat_cls,
+        vector_db_cls,
     )
 
 

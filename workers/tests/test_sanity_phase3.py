@@ -470,7 +470,7 @@ class TestStructureToolAgentic:
         )
         dispatcher_instance.dispatch.return_value = agentic_result
 
-        result = execute_structure_tool(base_params)
+        execute_structure_tool(base_params)
 
         # Should dispatch to agentic executor with agentic_extract operation
         calls = dispatcher_instance.dispatch.call_args_list

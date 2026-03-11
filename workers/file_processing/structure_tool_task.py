@@ -176,7 +176,7 @@ def _should_skip_extraction_for_smart_table(
                     schema_data = json.loads(prompt)
                     if schema_data and isinstance(schema_data, dict):
                         return True
-                except (json.JSONDecodeError, ValueError) as e:
+                except ValueError as e:
                     logger.warning(
                         "Failed to parse prompt as JSON for smart table: %s", e
                     )

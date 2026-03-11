@@ -22,6 +22,9 @@ WORKERS_DIR="/app"
 # Default environment file
 ENV_FILE="/app/.env"
 
+# Worker type constant for the executor worker
+readonly EXECUTOR_WORKER_TYPE="executor"
+
 # Available core workers (OSS)
 declare -A WORKERS=(
     ["api"]="api_deployment"
@@ -35,7 +38,7 @@ declare -A WORKERS=(
     ["log-consumer"]="log_consumer"
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
-    ["executor"]="executor"
+    ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["all"]="all"
 )
 
@@ -52,7 +55,7 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["log_consumer"]="celery_log_task_queue"
     ["scheduler"]="scheduler"
-    ["executor"]="celery_executor_legacy"
+    ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
 )
 
 # Worker health ports
@@ -64,7 +67,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["log_consumer"]="8084"
     ["notification"]="8085"
     ["scheduler"]="8087"
-    ["executor"]="8088"
+    ["${EXECUTOR_WORKER_TYPE}"]="8088"
 )
 
 # Function to print colored output
@@ -199,7 +202,7 @@ detect_worker_type_from_args() {
         *"notifications"*) echo "notification" ;;
         *"celery_log_task_queue"*) echo "log_consumer" ;;
         *"scheduler"*) echo "scheduler" ;;
-        *"executor"*) echo "executor" ;;
+        *"${EXECUTOR_WORKER_TYPE}"*) echo "${EXECUTOR_WORKER_TYPE}" ;;
         *"celery"*) echo "general" ;;
         *) echo "general" ;; # fallback
     esac
@@ -263,7 +266,7 @@ run_worker() {
         "scheduler")
             queues="${CELERY_QUEUES_SCHEDULER:-$queues}"
             ;;
-        "executor")
+        "${EXECUTOR_WORKER_TYPE}")
             queues="${CELERY_QUEUES_EXECUTOR:-$queues}"
             ;;
     esac
@@ -301,7 +304,7 @@ run_worker() {
             export SCHEDULER_HEALTH_PORT="${health_port}"
             export SCHEDULER_METRICS_PORT="${health_port}"
             ;;
-        "executor")
+        "${EXECUTOR_WORKER_TYPE}")
             export EXECUTOR_HEALTH_PORT="${health_port}"
             export EXECUTOR_METRICS_PORT="${health_port}"
             ;;
@@ -337,7 +340,7 @@ run_worker() {
         "scheduler")
             concurrency="${WORKER_SCHEDULER_CONCURRENCY:-2}"
             ;;
-        "executor")
+        "${EXECUTOR_WORKER_TYPE}")
             concurrency="${WORKER_EXECUTOR_CONCURRENCY:-2}"
             ;;
         *)
@@ -548,7 +551,7 @@ if [[ "$1" == *"celery"* ]] || [[ "$1" == *".venv"* ]]; then
             export SCHEDULER_HEALTH_PORT="8087"
             export SCHEDULER_METRICS_PORT="8087"
             ;;
-        "executor")
+        "${EXECUTOR_WORKER_TYPE}")
             export EXECUTOR_HEALTH_PORT="8088"
             export EXECUTOR_METRICS_PORT="8088"
             ;;
