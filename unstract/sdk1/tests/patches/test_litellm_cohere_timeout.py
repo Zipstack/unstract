@@ -1,6 +1,6 @@
 """Tests for the litellm cohere embed timeout monkey-patch."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -39,7 +39,7 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
         mock_logging_obj: MagicMock,
         mock_http_handler: MagicMock,
     ) -> None:
-        timeout_value = 600.0
+        timeout_value = 600
 
         with patch(
             "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
@@ -64,10 +64,7 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
 
         mock_http_handler.post.assert_called_once()
         call_kwargs = mock_http_handler.post.call_args
-        assert call_kwargs.kwargs.get("timeout") == timeout_value, (
-            f"Expected timeout={timeout_value} in client.post() kwargs, "
-            f"got timeout={call_kwargs.kwargs.get('timeout')}"
-        )
+        assert call_kwargs.kwargs.get("timeout") is timeout_value
 
     def test_none_timeout_passed_to_client_post(
         self,
@@ -150,12 +147,8 @@ class TestPatchedEmbeddingAsyncTimeoutForwarding:
 
         mock_client = MagicMock(spec=AsyncHTTPHandler)
         mock_response = MagicMock()
-
-        async def mock_post(*args: object, **kwargs: object) -> MagicMock:
-            return mock_response
-
-        mock_client.post = MagicMock(side_effect=mock_post)
-        timeout_value = 600.0
+        mock_client.post = AsyncMock(return_value=mock_response)
+        timeout_value = 600
 
         async def run() -> None:
             with patch(
@@ -185,7 +178,7 @@ class TestPatchedEmbeddingAsyncTimeoutForwarding:
 
         mock_client.post.assert_called_once()
         call_kwargs = mock_client.post.call_args
-        assert call_kwargs.kwargs.get("timeout") == timeout_value
+        assert call_kwargs.kwargs.get("timeout") is timeout_value
 
 
 class TestMonkeyPatchApplied:

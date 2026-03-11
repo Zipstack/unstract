@@ -154,7 +154,6 @@ def _patched_embedding(  # type: ignore[return]  # noqa: ANN202
 ):
     headers = validate_environment(api_key, headers=headers)
     embed_url = complete_api_base or "https://api.cohere.ai/v1/embed"
-    model = model
 
     data = data or CohereEmbeddingConfig()._transform_request(
         model=model, input=input, inference_params=optional_params
