@@ -499,19 +499,12 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Step 4: Table settings injection ----
         if not is_single_pass:
-            outputs = answer_params.get("outputs", [])
-            extracted_file_path = index_template.get("extracted_file_path", "")
-            for output in outputs:
-                if "table_settings" in output:
-                    table_settings = output["table_settings"]
-                    is_dir = table_settings.get("is_directory_mode", False)
-                    if skip_extraction:
-                        table_settings["input_file"] = input_file_path
-                        answer_params["file_path"] = input_file_path
-                    else:
-                        table_settings["input_file"] = extracted_file_path
-                    table_settings["is_directory_mode"] = is_dir
-                    output["table_settings"] = table_settings
+            self._inject_table_settings(
+                answer_params=answer_params,
+                index_template=index_template,
+                skip_extraction=skip_extraction,
+                input_file_path=input_file_path,
+            )
 
         # ---- Step 5: Answer prompt / Single pass ----
         mode_label = "single pass" if is_single_pass else "prompt"
@@ -537,24 +530,57 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Step 6: Merge results ----
         structured_output = answer_result.data
-
-        # Ensure metadata section
-        if "metadata" not in structured_output:
-            structured_output["metadata"] = {}
-        structured_output["metadata"]["file_name"] = source_file_name
-
-        # Add extracted text for HITL raw view
-        if extracted_text:
-            structured_output["metadata"]["extracted_text"] = extracted_text
-
-        # Merge index metrics
-        if index_metrics:
-            existing_metrics = structured_output.get("metrics", {})
-            merged = self._merge_pipeline_metrics(existing_metrics, index_metrics)
-            structured_output["metrics"] = merged
+        self._finalize_pipeline_result(
+            structured_output=structured_output,
+            source_file_name=source_file_name,
+            extracted_text=extracted_text,
+            index_metrics=index_metrics,
+        )
 
         shim.stream_log("Pipeline completed successfully")
         return ExecutionResult(success=True, data=structured_output)
+
+    @staticmethod
+    def _inject_table_settings(
+        answer_params: dict,
+        index_template: dict,
+        skip_extraction: bool,
+        input_file_path: str,
+    ) -> None:
+        """Inject table settings file paths into each output that has them."""
+        outputs = answer_params.get("outputs", [])
+        extracted_file_path = index_template.get("extracted_file_path", "")
+        for output in outputs:
+            if "table_settings" not in output:
+                continue
+            table_settings = output["table_settings"]
+            is_dir = table_settings.get("is_directory_mode", False)
+            if skip_extraction:
+                table_settings["input_file"] = input_file_path
+                answer_params["file_path"] = input_file_path
+            else:
+                table_settings["input_file"] = extracted_file_path
+            table_settings["is_directory_mode"] = is_dir
+            output["table_settings"] = table_settings
+
+    def _finalize_pipeline_result(
+        self,
+        structured_output: dict,
+        source_file_name: str,
+        extracted_text: str,
+        index_metrics: dict,
+    ) -> None:
+        """Populate metadata/metrics in structured_output after pipeline completion."""
+        if "metadata" not in structured_output:
+            structured_output["metadata"] = {}
+        structured_output["metadata"]["file_name"] = source_file_name
+        if extracted_text:
+            structured_output["metadata"]["extracted_text"] = extracted_text
+        if index_metrics:
+            existing_metrics = structured_output.get("metrics", {})
+            structured_output["metrics"] = self._merge_pipeline_metrics(
+                existing_metrics, index_metrics
+            )
 
     def _run_pipeline_summarize(
         self,
@@ -951,6 +977,13 @@ class LegacyExecutor(BaseExecutor):
         )
 
     @staticmethod
+    @staticmethod
+    def _sanitize_dict_values(d: dict[str, Any]) -> None:
+        """Replace 'NA' string values with None inside a dict in-place."""
+        for k, v in d.items():
+            if isinstance(v, str) and v.lower() == "na":
+                d[k] = None
+
     def _sanitize_null_values(
         structured_output: dict[str, Any],
     ) -> dict[str, Any]:
@@ -959,17 +992,13 @@ class LegacyExecutor(BaseExecutor):
             if isinstance(v, str) and v.lower() == "na":
                 structured_output[k] = None
             elif isinstance(v, list):
-                for i in range(len(v)):
-                    if isinstance(v[i], str) and v[i].lower() == "na":
+                for i, item in enumerate(v):
+                    if isinstance(item, str) and item.lower() == "na":
                         v[i] = None
-                    elif isinstance(v[i], dict):
-                        for k1, v1 in v[i].items():
-                            if isinstance(v1, str) and v1.lower() == "na":
-                                v[i][k1] = None
+                    elif isinstance(item, dict):
+                        LegacyExecutor._sanitize_dict_values(item)
             elif isinstance(v, dict):
-                for k1, v1 in v.items():
-                    if isinstance(v1, str) and v1.lower() == "na":
-                        v[k1] = None
+                LegacyExecutor._sanitize_dict_values(v)
         return structured_output
 
     def _handle_answer_prompt(self, context: ExecutionContext) -> ExecutionResult:
@@ -1106,333 +1135,33 @@ class LegacyExecutor(BaseExecutor):
 
         # ---- Process each prompt -------------------------------------------
         for output in prompts:
-            prompt_name = output[PSKeys.NAME]
-            prompt_text = output[PSKeys.PROMPT]
-            chunk_size = output[PSKeys.CHUNK_SIZE]
-
-            logger.debug(
-                "Prompt config: name=%s chunk_size=%d type=%s",
-                prompt_name,
-                chunk_size,
-                output.get(PSKeys.TYPE, "TEXT"),
-            )
-
-            # Enrich component with current prompt_key for log correlation.
-            prompt_component = {
-                **self._log_component,
-                "prompt_key": prompt_name,
-            }
-            shim = ExecutorToolShim(
-                platform_api_key=platform_api_key,
-                log_events_id=self._log_events_id,
-                component=prompt_component,
-            )
-            shim.stream_log(f"Processing prompt: {prompt_name}")
-
-            # {{variable}} template replacement
-            if variable_replacement_svc.is_variables_present(prompt_text=prompt_text):
-                is_ide = execution_source == "ide"
-                prompt_text = variable_replacement_svc.replace_variables_in_prompt(
-                    prompt=output,
-                    structured_output=structured_output,
-                    log_events_id=log_events_id,
-                    tool_id=tool_id,
-                    prompt_name=prompt_name,
-                    doc_name=doc_name,
-                    custom_data=custom_data,
-                    is_ide=is_ide,
-                )
-                shim.stream_log(f"Resolved template variables for: {prompt_name}")
-
-            logger.info(
-                "Executing prompt: tool_id=%s name=%s run_id=%s",
-                tool_id,
-                prompt_name,
-                run_id,
-            )
-
-            # %variable% replacement
-            output[PSKeys.PROMPTX] = answer_prompt_svc.extract_variable(
-                structured_output, variable_names, output, prompt_text
-            )
-
-            # Generate doc_id (standalone util — no Index DTOs needed)
-            from unstract.sdk1.utils.indexing import IndexingUtils
-
-            doc_id = IndexingUtils.generate_index_key(
-                vector_db=output[PSKeys.VECTOR_DB],
-                embedding=output[PSKeys.EMBEDDING],
-                x2text=output[PSKeys.X2TEXT_ADAPTER],
-                chunk_size=str(output[PSKeys.CHUNK_SIZE]),
-                chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
-                tool=shim,
+            self._execute_single_prompt(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metadata=metadata,
+                metrics=metrics,
+                variable_names=variable_names,
+                context_retrieval_metrics=context_retrieval_metrics,
+                answer_prompt_svc=answer_prompt_svc,
+                retrieval_svc=retrieval_svc,
+                variable_replacement_svc=variable_replacement_svc,
+                llm_cls=llm_cls,
+                embedding_compat_cls=embedding_compat_cls,
+                vector_db_cls=vector_db_cls,
+                tool_settings=tool_settings,
+                process_text_fn=process_text_fn,
+                run_id=run_id,
+                execution_id=execution_id,
                 file_hash=file_hash,
                 file_path=file_path,
+                doc_name=doc_name,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                custom_data=custom_data,
+                execution_source=execution_source,
+                platform_api_key=platform_api_key,
             )
-
-            # TABLE/RECORD: delegate to TableExtractorExecutor in-process.
-            # The table executor plugin handles PDF table detection,
-            # header extraction, and CSV-to-JSON post-processing.
-            if output.get(PSKeys.TYPE) in (PSKeys.TABLE, PSKeys.RECORD):
-                from unstract.sdk1.execution.registry import ExecutorRegistry
-
-                try:
-                    table_executor = ExecutorRegistry.get("table")
-                except KeyError:
-                    raise LegacyExecutorError(
-                        message=(
-                            "TABLE extraction requires the table executor "
-                            "plugin. Install the table_extractor plugin."
-                        )
-                    )
-
-                table_ctx = ExecutionContext(
-                    executor_name="table",
-                    operation="table_extract",
-                    run_id=run_id,
-                    execution_source=execution_source,
-                    organization_id=context.organization_id,
-                    request_id=context.request_id,
-                    executor_params={
-                        "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
-                        "table_settings": output.get(PSKeys.TABLE_SETTINGS, {}),
-                        "prompt": output.get(PSKeys.PROMPT, ""),
-                        "PLATFORM_SERVICE_API_KEY": platform_api_key,
-                        "execution_id": execution_id,
-                        "tool_id": tool_id,
-                        "file_name": doc_name,
-                    },
-                )
-                table_ctx._log_component = self._log_component
-                table_ctx.log_events_id = self._log_events_id
-
-                shim.stream_log(f"Running table extraction for: {prompt_name}")
-                table_result = table_executor.execute(table_ctx)
-
-                if table_result.success:
-                    structured_output[prompt_name] = table_result.data.get("output", "")
-                    table_metrics = table_result.data.get("metadata", {}).get(
-                        "metrics", {}
-                    )
-                    metrics.setdefault(prompt_name, {}).update(
-                        {"table_extraction": table_metrics}
-                    )
-                    shim.stream_log(f"Table extraction completed for: {prompt_name}")
-                    logger.info("TABLE extraction completed: prompt=%s", prompt_name)
-                else:
-                    structured_output[prompt_name] = ""
-                    logger.error(
-                        "TABLE extraction failed for prompt=%s: %s",
-                        prompt_name,
-                        table_result.error,
-                    )
-                shim.stream_log(f"Completed prompt: {prompt_name}")
-                continue
-
-            if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
-                raise LegacyExecutorError(
-                    message="LINE_ITEM extraction is not supported."
-                )
-
-            # Create adapters
-            try:
-                usage_kwargs = {
-                    "run_id": run_id,
-                    "execution_id": execution_id,
-                }
-                llm = llm_cls(
-                    adapter_instance_id=output[PSKeys.LLM],
-                    tool=shim,
-                    usage_kwargs={
-                        **usage_kwargs,
-                        PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
-                    },
-                    capture_metrics=True,
-                )
-                embedding = None
-                vector_db = None
-                if chunk_size > 0:
-                    embedding = embedding_compat_cls(
-                        adapter_instance_id=output[PSKeys.EMBEDDING],
-                        tool=shim,
-                        kwargs={**usage_kwargs},
-                    )
-                    vector_db = vector_db_cls(
-                        tool=shim,
-                        adapter_instance_id=output[PSKeys.VECTOR_DB],
-                        embedding=embedding,
-                    )
-                shim.stream_log(
-                    f"Initialized LLM and retrieval adapters for: {prompt_name}"
-                )
-            except Exception as e:
-                msg = f"Couldn't fetch adapter. {e}"
-                logger.error(msg)
-                status_code = getattr(e, "status_code", None) or 500
-                raise LegacyExecutorError(message=msg, code=status_code) from e
-
-            # ---- Retrieval + Answer ----------------------------------------
-            context_list: list[str] = []
-            try:
-                answer = "NA"
-                retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
-                valid_strategies = {s.value for s in RetrievalStrategy}
-
-                if retrieval_strategy in valid_strategies:
-                    shim.stream_log(f"Retrieving context for: {prompt_name}")
-                    logger.info(
-                        "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
-                        prompt_name,
-                        retrieval_strategy,
-                        chunk_size,
-                    )
-                    if chunk_size == 0:
-                        context_list = retrieval_svc.retrieve_complete_context(
-                            execution_source=execution_source,
-                            file_path=file_path,
-                            context_retrieval_metrics=context_retrieval_metrics,
-                            prompt_key=prompt_name,
-                        )
-                    else:
-                        context_list = retrieval_svc.run_retrieval(
-                            output=output,
-                            doc_id=doc_id,
-                            llm=llm,
-                            vector_db=vector_db,
-                            retrieval_type=retrieval_strategy,
-                            context_retrieval_metrics=context_retrieval_metrics,
-                        )
-                    metadata[PSKeys.CONTEXT][prompt_name] = context_list
-                    shim.stream_log(
-                        f"Retrieved {len(context_list)} context chunks"
-                        f" for: {prompt_name}"
-                    )
-                    logger.debug(
-                        "Retrieved %d context chunks for prompt: %s",
-                        len(context_list),
-                        prompt_name,
-                    )
-
-                    # Run prompt with retrieved context
-                    shim.stream_log(f"Running LLM completion for: {prompt_name}")
-                    answer = answer_prompt_svc.construct_and_run_prompt(
-                        tool_settings=tool_settings,
-                        output=output,
-                        llm=llm,
-                        context="\n".join(context_list),
-                        prompt=PSKeys.PROMPTX,
-                        metadata=metadata,
-                        execution_source=execution_source,
-                        file_path=file_path,
-                        process_text=process_text_fn,
-                    )
-                else:
-                    logger.warning(
-                        "Skipping retrieval: invalid strategy=%s for prompt=%s",
-                        retrieval_strategy,
-                        prompt_name,
-                    )
-
-                # ---- Type-specific post-processing -------------------------
-                self._apply_type_conversion(
-                    output=output,
-                    answer=answer,
-                    structured_output=structured_output,
-                    llm=llm,
-                    tool_settings=tool_settings,
-                    metadata=metadata,
-                    execution_source=execution_source,
-                    file_path=file_path,
-                    log_events_id=log_events_id,
-                    tool_id=tool_id,
-                    doc_name=doc_name,
-                )
-                shim.stream_log(f"Applied type conversion for: {prompt_name}")
-
-                # ---- Challenge (quality verification) ----------------------
-                if tool_settings.get(PSKeys.ENABLE_CHALLENGE):
-                    from executor.executors.plugins import (
-                        ExecutorPluginLoader,
-                    )
-
-                    challenge_cls = ExecutorPluginLoader.get("challenge")
-                    if challenge_cls:
-                        challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
-                        if challenge_llm_id:
-                            shim.stream_log(f"Running challenge for: {prompt_name}")
-                            challenge_llm = llm_cls(
-                                adapter_instance_id=challenge_llm_id,
-                                tool=shim,
-                                usage_kwargs={
-                                    **usage_kwargs,
-                                    PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
-                                },
-                                capture_metrics=True,
-                            )
-                            challenger = challenge_cls(
-                                llm=llm,
-                                challenge_llm=challenge_llm,
-                                context="\n".join(context_list),
-                                tool_settings=tool_settings,
-                                output=output,
-                                structured_output=structured_output,
-                                run_id=run_id,
-                                platform_key=platform_api_key,
-                                metadata=metadata,
-                            )
-                            challenger.run()
-                            shim.stream_log(
-                                f"Challenge verification completed for: {prompt_name}"
-                            )
-                            logger.info(
-                                "Challenge completed: prompt=%s",
-                                prompt_name,
-                            )
-
-                # ---- Evaluation (prompt evaluation) ------------------------
-                eval_settings = output.get(PSKeys.EVAL_SETTINGS, {})
-                if eval_settings.get(PSKeys.EVAL_SETTINGS_EVALUATE):
-                    from executor.executors.plugins import (
-                        ExecutorPluginLoader,
-                    )
-
-                    evaluator_cls = ExecutorPluginLoader.get("evaluation")
-                    if evaluator_cls:
-                        shim.stream_log(f"Running evaluation for: {prompt_name}")
-                        evaluator = evaluator_cls(
-                            query=output.get(PSKeys.COMBINED_PROMPT, ""),
-                            context="\n".join(context_list),
-                            response=structured_output.get(prompt_name),
-                            reference_answer=output.get("reference_answer", ""),
-                            prompt=output,
-                            structured_output=structured_output,
-                            platform_key=platform_api_key,
-                        )
-                        evaluator.run()
-                        logger.info(
-                            "Evaluation completed: prompt=%s",
-                            prompt_name,
-                        )
-
-                shim.stream_log(f"Completed prompt: {prompt_name}")
-
-                # Strip trailing newline
-                val = structured_output.get(prompt_name)
-                if isinstance(val, str):
-                    structured_output[prompt_name] = val.rstrip("\n")
-
-            finally:
-                # Collect metrics
-                metrics.setdefault(prompt_name, {}).update(
-                    {
-                        "context_retrieval": context_retrieval_metrics.get(
-                            prompt_name, {}
-                        ),
-                        f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
-                    }
-                )
-                if vector_db:
-                    vector_db.close()
 
         pipeline_shim.stream_log(f"All {len(prompts)} prompts processed successfully")
         logger.info(
@@ -1453,6 +1182,424 @@ class LegacyExecutor(BaseExecutor):
                 PSKeys.METRICS: metrics,
             },
         )
+
+    @staticmethod
+    def _convert_number_answer(answer: str, llm: Any, answer_prompt_svc: Any) -> Any:
+        """Run LLM number extraction and return float or None."""
+        if answer.lower() == "na":
+            return None
+        prompt = (
+            f"Extract the number from the following "
+            f"text:\n{answer}\n\nOutput just the number. "
+            f"If the number is expressed in millions "
+            f"or thousands, expand the number to its numeric value "
+            f"The number should be directly assignable "
+            f"to a numeric variable. "
+            f"It should not have any commas, "
+            f"percentages or other grouping "
+            f"characters. No explanation is required. "
+            f"If you cannot extract the number, output 0."
+        )
+        raw = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _convert_scalar_answer(
+        answer: str, llm: Any, answer_prompt_svc: Any, prompt: str
+    ) -> str | None:
+        """Run LLM extraction for a scalar (email/date) and return result or None."""
+        if answer.lower() == "na":
+            return None
+        return answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+
+    def _run_challenge_if_enabled(
+        self,
+        tool_settings: dict[str, Any],
+        output: dict[str, Any],
+        structured_output: dict[str, Any],
+        context_list: list[str],
+        llm: Any,
+        llm_cls: Any,
+        usage_kwargs: dict[str, Any],
+        run_id: str,
+        platform_api_key: str,
+        metadata: dict[str, Any],
+        shim: Any,
+        prompt_name: str,
+    ) -> None:
+        """Run challenge verification plugin if enabled and available."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.plugins import ExecutorPluginLoader
+
+        if not tool_settings.get(PSKeys.ENABLE_CHALLENGE):
+            return
+        challenge_cls = ExecutorPluginLoader.get("challenge")
+        if not challenge_cls:
+            return
+        challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
+        if not challenge_llm_id:
+            return
+        shim.stream_log(f"Running challenge for: {prompt_name}")
+        challenge_llm = llm_cls(
+            adapter_instance_id=challenge_llm_id,
+            tool=shim,
+            usage_kwargs={**usage_kwargs, PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE},
+            capture_metrics=True,
+        )
+        challenger = challenge_cls(
+            llm=llm,
+            challenge_llm=challenge_llm,
+            context="\n".join(context_list),
+            tool_settings=tool_settings,
+            output=output,
+            structured_output=structured_output,
+            run_id=run_id,
+            platform_key=platform_api_key,
+            metadata=metadata,
+        )
+        challenger.run()
+        shim.stream_log(f"Challenge verification completed for: {prompt_name}")
+        logger.info("Challenge completed: prompt=%s", prompt_name)
+
+    @staticmethod
+    def _run_evaluation_if_enabled(
+        output: dict[str, Any],
+        context_list: list[str],
+        structured_output: dict[str, Any],
+        platform_api_key: str,
+        shim: Any,
+        prompt_name: str,
+    ) -> None:
+        """Run evaluation plugin if enabled and available."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.plugins import ExecutorPluginLoader
+
+        eval_settings = output.get(PSKeys.EVAL_SETTINGS, {})
+        if not eval_settings.get(PSKeys.EVAL_SETTINGS_EVALUATE):
+            return
+        evaluator_cls = ExecutorPluginLoader.get("evaluation")
+        if not evaluator_cls:
+            return
+        shim.stream_log(f"Running evaluation for: {prompt_name}")
+        evaluator = evaluator_cls(
+            query=output.get(PSKeys.COMBINED_PROMPT, ""),
+            context="\n".join(context_list),
+            response=structured_output.get(prompt_name),
+            reference_answer=output.get("reference_answer", ""),
+            prompt=output,
+            structured_output=structured_output,
+            platform_key=platform_api_key,
+        )
+        evaluator.run()
+        logger.info("Evaluation completed: prompt=%s", prompt_name)
+
+    def _execute_single_prompt(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metadata: dict[str, Any],
+        metrics: dict[str, Any],
+        variable_names: list[str],
+        context_retrieval_metrics: dict[str, Any],
+        answer_prompt_svc: Any,
+        retrieval_svc: Any,
+        variable_replacement_svc: Any,
+        llm_cls: Any,
+        embedding_compat_cls: Any,
+        vector_db_cls: Any,
+        tool_settings: dict[str, Any],
+        process_text_fn: Any,
+        run_id: str,
+        execution_id: str,
+        file_hash: Any,
+        file_path: str,
+        doc_name: str,
+        log_events_id: str,
+        tool_id: str,
+        custom_data: dict[str, Any],
+        execution_source: str,
+        platform_api_key: str,
+    ) -> None:
+        """Execute one prompt: variable replacement, retrieval, LLM, post-process."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.constants import RetrievalStrategy
+        from unstract.sdk1.utils.indexing import IndexingUtils
+
+        prompt_name = output[PSKeys.NAME]
+        prompt_text = output[PSKeys.PROMPT]
+        chunk_size = output[PSKeys.CHUNK_SIZE]
+
+        logger.debug(
+            "Prompt config: name=%s chunk_size=%d type=%s",
+            prompt_name,
+            chunk_size,
+            output.get(PSKeys.TYPE, "TEXT"),
+        )
+
+        shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component={**self._log_component, "prompt_key": prompt_name},
+        )
+        shim.stream_log(f"Processing prompt: {prompt_name}")
+
+        if variable_replacement_svc.is_variables_present(prompt_text=prompt_text):
+            prompt_text = variable_replacement_svc.replace_variables_in_prompt(
+                prompt=output,
+                structured_output=structured_output,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                prompt_name=prompt_name,
+                doc_name=doc_name,
+                custom_data=custom_data,
+                is_ide=execution_source == "ide",
+            )
+            shim.stream_log(f"Resolved template variables for: {prompt_name}")
+
+        logger.info(
+            "Executing prompt: tool_id=%s name=%s run_id=%s", tool_id, prompt_name, run_id
+        )
+
+        output[PSKeys.PROMPTX] = answer_prompt_svc.extract_variable(
+            structured_output, variable_names, output, prompt_text
+        )
+
+        doc_id = IndexingUtils.generate_index_key(
+            vector_db=output[PSKeys.VECTOR_DB],
+            embedding=output[PSKeys.EMBEDDING],
+            x2text=output[PSKeys.X2TEXT_ADAPTER],
+            chunk_size=str(output[PSKeys.CHUNK_SIZE]),
+            chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
+            tool=shim,
+            file_hash=file_hash,
+            file_path=file_path,
+        )
+
+        if output.get(PSKeys.TYPE) in (PSKeys.TABLE, PSKeys.RECORD):
+            self._run_table_extraction(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metrics=metrics,
+                run_id=run_id,
+                execution_id=execution_id,
+                execution_source=execution_source,
+                platform_api_key=platform_api_key,
+                tool_id=tool_id,
+                doc_name=doc_name,
+                prompt_name=prompt_name,
+                shim=shim,
+            )
+            return
+
+        if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
+            raise LegacyExecutorError(message="LINE_ITEM extraction is not supported.")
+
+        usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
+        try:
+            llm = llm_cls(
+                adapter_instance_id=output[PSKeys.LLM],
+                tool=shim,
+                usage_kwargs={**usage_kwargs, PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION},
+                capture_metrics=True,
+            )
+            vector_db = None
+            if chunk_size > 0:
+                embedding = embedding_compat_cls(
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=shim,
+                    kwargs={**usage_kwargs},
+                )
+                vector_db = vector_db_cls(
+                    tool=shim,
+                    adapter_instance_id=output[PSKeys.VECTOR_DB],
+                    embedding=embedding,
+                )
+            shim.stream_log(f"Initialized LLM and retrieval adapters for: {prompt_name}")
+        except Exception as e:
+            msg = f"Couldn't fetch adapter. {e}"
+            logger.error(msg)
+            raise LegacyExecutorError(
+                message=msg, code=getattr(e, "status_code", None) or 500
+            ) from e
+
+        context_list: list[str] = []
+        try:
+            answer = "NA"
+            retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
+            valid_strategies = {s.value for s in RetrievalStrategy}
+            if retrieval_strategy in valid_strategies:
+                shim.stream_log(f"Retrieving context for: {prompt_name}")
+                logger.info(
+                    "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
+                    prompt_name,
+                    retrieval_strategy,
+                    chunk_size,
+                )
+                if chunk_size == 0:
+                    context_list = retrieval_svc.retrieve_complete_context(
+                        execution_source=execution_source,
+                        file_path=file_path,
+                        context_retrieval_metrics=context_retrieval_metrics,
+                        prompt_key=prompt_name,
+                    )
+                else:
+                    context_list = retrieval_svc.run_retrieval(
+                        output=output,
+                        doc_id=doc_id,
+                        llm=llm,
+                        vector_db=vector_db,
+                        retrieval_type=retrieval_strategy,
+                        context_retrieval_metrics=context_retrieval_metrics,
+                    )
+                metadata[PSKeys.CONTEXT][prompt_name] = context_list
+                shim.stream_log(
+                    f"Retrieved {len(context_list)} context chunks for: {prompt_name}"
+                )
+                logger.debug(
+                    "Retrieved %d context chunks for prompt: %s",
+                    len(context_list),
+                    prompt_name,
+                )
+                shim.stream_log(f"Running LLM completion for: {prompt_name}")
+                answer = answer_prompt_svc.construct_and_run_prompt(
+                    tool_settings=tool_settings,
+                    output=output,
+                    llm=llm,
+                    context="\n".join(context_list),
+                    prompt=PSKeys.PROMPTX,
+                    metadata=metadata,
+                    execution_source=execution_source,
+                    file_path=file_path,
+                    process_text=process_text_fn,
+                )
+            else:
+                logger.warning(
+                    "Skipping retrieval: invalid strategy=%s for prompt=%s",
+                    retrieval_strategy,
+                    prompt_name,
+                )
+
+            self._apply_type_conversion(
+                output=output,
+                answer=answer,
+                structured_output=structured_output,
+                llm=llm,
+                tool_settings=tool_settings,
+                metadata=metadata,
+                execution_source=execution_source,
+                file_path=file_path,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                doc_name=doc_name,
+            )
+            shim.stream_log(f"Applied type conversion for: {prompt_name}")
+
+            self._run_challenge_if_enabled(
+                tool_settings=tool_settings,
+                output=output,
+                structured_output=structured_output,
+                context_list=context_list,
+                llm=llm,
+                llm_cls=llm_cls,
+                usage_kwargs=usage_kwargs,
+                run_id=run_id,
+                platform_api_key=platform_api_key,
+                metadata=metadata,
+                shim=shim,
+                prompt_name=prompt_name,
+            )
+            self._run_evaluation_if_enabled(
+                output=output,
+                context_list=context_list,
+                structured_output=structured_output,
+                platform_api_key=platform_api_key,
+                shim=shim,
+                prompt_name=prompt_name,
+            )
+            shim.stream_log(f"Completed prompt: {prompt_name}")
+
+            val = structured_output.get(prompt_name)
+            if isinstance(val, str):
+                structured_output[prompt_name] = val.rstrip("\n")
+        finally:
+            metrics.setdefault(prompt_name, {}).update(
+                {
+                    "context_retrieval": context_retrieval_metrics.get(prompt_name, {}),
+                    f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
+                }
+            )
+            if vector_db:
+                vector_db.close()
+
+    def _run_table_extraction(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metrics: dict[str, Any],
+        run_id: str,
+        execution_id: str,
+        execution_source: str,
+        platform_api_key: str,
+        tool_id: str,
+        doc_name: str,
+        prompt_name: str,
+        shim: Any,
+    ) -> None:
+        """Delegate TABLE/RECORD prompt to the table executor plugin."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        try:
+            table_executor = ExecutorRegistry.get("table")
+        except KeyError:
+            raise LegacyExecutorError(
+                message=(
+                    "TABLE extraction requires the table executor "
+                    "plugin. Install the table_extractor plugin."
+                )
+            )
+        table_ctx = ExecutionContext(
+            executor_name="table",
+            operation="table_extract",
+            run_id=run_id,
+            execution_source=execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            executor_params={
+                "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
+                "table_settings": output.get(PSKeys.TABLE_SETTINGS, {}),
+                "prompt": output.get(PSKeys.PROMPT, ""),
+                "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                "execution_id": execution_id,
+                "tool_id": tool_id,
+                "file_name": doc_name,
+            },
+        )
+        table_ctx._log_component = self._log_component
+        table_ctx.log_events_id = self._log_events_id
+
+        shim.stream_log(f"Running table extraction for: {prompt_name}")
+        table_result = table_executor.execute(table_ctx)
+
+        if table_result.success:
+            structured_output[prompt_name] = table_result.data.get("output", "")
+            table_metrics = table_result.data.get("metadata", {}).get("metrics", {})
+            metrics.setdefault(prompt_name, {}).update({"table_extraction": table_metrics})
+            shim.stream_log(f"Table extraction completed for: {prompt_name}")
+            logger.info("TABLE extraction completed: prompt=%s", prompt_name)
+        else:
+            structured_output[prompt_name] = ""
+            logger.error(
+                "TABLE extraction failed for prompt=%s: %s",
+                prompt_name,
+                table_result.error,
+            )
+        shim.stream_log(f"Completed prompt: {prompt_name}")
 
     @staticmethod
     def _apply_type_conversion(
@@ -1481,69 +1628,48 @@ class LegacyExecutor(BaseExecutor):
         output_type = output[PSKeys.TYPE]
 
         if output_type == PSKeys.NUMBER:
-            if answer.lower() == "na":
-                structured_output[prompt_name] = None
-            else:
-                prompt = (
-                    f"Extract the number from the following "
-                    f"text:\n{answer}\n\nOutput just the number. "
-                    f"If the number is expressed in millions "
-                    f"or thousands, expand the number to its numeric value "
-                    f"The number should be directly assignable "
-                    f"to a numeric variable. "
-                    f"It should not have any commas, "
-                    f"percentages or other grouping "
-                    f"characters. No explanation is required. "
-                    f"If you cannot extract the number, output 0."
-                )
-                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
-                try:
-                    structured_output[prompt_name] = float(answer)
-                except Exception:
-                    structured_output[prompt_name] = None
+            structured_output[prompt_name] = LegacyExecutor._convert_number_answer(
+                answer, llm, answer_prompt_svc
+            )
 
         elif output_type == PSKeys.EMAIL:
-            if answer.lower() == "na":
-                structured_output[prompt_name] = None
-            else:
-                prompt = (
-                    f"Extract the email from the following text:\n{answer}"
-                    f"\n\nOutput just the email. "
-                    f"The email should be directly assignable to a string "
-                    f"variable. No explanation is required. If you cannot "
-                    f'extract the email, output "NA".'
-                )
-                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
-                structured_output[prompt_name] = answer
+            email_prompt = (
+                f"Extract the email from the following text:\n{answer}"
+                f"\n\nOutput just the email. "
+                f"The email should be directly assignable to a string "
+                f"variable. No explanation is required. If you cannot "
+                f'extract the email, output "NA".'
+            )
+            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
+                answer, llm, answer_prompt_svc, email_prompt
+            )
 
         elif output_type == PSKeys.DATE:
-            if answer.lower() == "na":
-                structured_output[prompt_name] = None
-            else:
-                prompt = (
-                    f"Extract the date from the following text:\n{answer}"
-                    f"\n\nOutput just the date. "
-                    f"The date should be in ISO date time format. "
-                    f"No explanation is required. The date should be "
-                    f"directly assignable to a date variable. "
-                    f"If you cannot convert the string into a date, "
-                    f'output "NA".'
-                )
-                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
-                structured_output[prompt_name] = answer
+            date_prompt = (
+                f"Extract the date from the following text:\n{answer}"
+                f"\n\nOutput just the date. "
+                f"The date should be in ISO date time format. "
+                f"No explanation is required. The date should be "
+                f"directly assignable to a date variable. "
+                f"If you cannot convert the string into a date, "
+                f'output "NA".'
+            )
+            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
+                answer, llm, answer_prompt_svc, date_prompt
+            )
 
         elif output_type == PSKeys.BOOLEAN:
             if answer.lower() == "na":
                 structured_output[prompt_name] = None
             else:
-                prompt = (
+                bool_prompt = (
                     f"Extract yes/no from the following text:\n{answer}\n\n"
                     f"Output in single word. "
                     f"If the context is trying to convey that the answer "
                     f'is true, then return "yes", else return "no".'
                 )
-                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
-                structured_output[prompt_name] = answer.lower() == "yes"
+                raw = answer_prompt_svc.run_completion(llm=llm, prompt=bool_prompt)
+                structured_output[prompt_name] = raw.lower() == "yes"
 
         elif output_type == PSKeys.JSON:
             answer_prompt_svc.handle_json(

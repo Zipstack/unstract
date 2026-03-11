@@ -299,6 +299,30 @@ class DeploymentHelper(BaseAPIKeyValidator):
         return APIExecutionResponseSerializer(result).data
 
     @staticmethod
+    def _enrich_item_inner_metadata(item: dict, file_exec_id: str, UsageHelper: Any) -> None:
+        """Inject per-model usage breakdown into item['result']['metadata']."""
+        inner_result = item.get("result")
+        if not isinstance(inner_result, dict):
+            return
+        metadata = inner_result.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        usage_by_model = UsageHelper.get_usage_by_model(file_exec_id)
+        if usage_by_model:
+            metadata.update(usage_by_model)
+
+    @staticmethod
+    def _enrich_item_top_metadata(item: dict, file_exec_id: str, UsageHelper: Any) -> None:
+        """Inject aggregated usage totals into item['metadata']['usage']."""
+        item_metadata = item.get("metadata")
+        if not isinstance(item_metadata, dict):
+            return
+        aggregated = UsageHelper.get_aggregated_token_count(file_exec_id)
+        if aggregated:
+            aggregated["file_execution_id"] = file_exec_id
+            item_metadata["usage"] = aggregated
+
+    @staticmethod
     def _enrich_result_with_usage_metadata(result: ExecutionResponse) -> None:
         """Enrich each file result's metadata with usage data.
 
@@ -319,23 +343,38 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_exec_id = item.get("file_execution_id")
             if not file_exec_id:
                 continue
+            DeploymentHelper._enrich_item_inner_metadata(item, file_exec_id, UsageHelper)
+            DeploymentHelper._enrich_item_top_metadata(item, file_exec_id, UsageHelper)
 
-            # Enrich inner result metadata with per-model breakdown
-            inner_result = item.get("result")
-            if isinstance(inner_result, dict):
-                metadata = inner_result.get("metadata")
-                if isinstance(metadata, dict):
-                    usage_by_model = UsageHelper.get_usage_by_model(file_exec_id)
-                    if usage_by_model:
-                        metadata.update(usage_by_model)
-
-            # Enrich top-level item metadata with aggregated usage
-            item_metadata = item.get("metadata")
-            if isinstance(item_metadata, dict):
-                aggregated = UsageHelper.get_aggregated_token_count(file_exec_id)
-                if aggregated:
-                    aggregated["file_execution_id"] = file_exec_id
-                    item_metadata["usage"] = aggregated
+    @staticmethod
+    def _enrich_item_workflow_metadata(
+        item: dict,
+        file_exec_id: str,
+        fe_lookup: dict,
+        workflow_execution: Any,
+        organization_id: str,
+        tag_names: list[str],
+    ) -> None:
+        """Populate workflow identification keys into item['metadata']."""
+        if not isinstance(item.get("metadata"), dict):
+            item["metadata"] = {}
+        metadata = item["metadata"]
+        fe = fe_lookup.get(str(file_exec_id))
+        we = fe.workflow_execution if fe else workflow_execution
+        if fe:
+            metadata.setdefault("source_name", fe.file_name)
+            metadata.setdefault("source_hash", fe.file_hash or "")
+            metadata.setdefault("file_execution_id", str(fe.id))
+            metadata.setdefault("total_elapsed_time", fe.execution_time)
+        if we:
+            metadata.setdefault("workflow_id", str(we.workflow_id))
+            metadata.setdefault("execution_id", str(we.id))
+            metadata.setdefault(
+                "workflow_start_time",
+                we.created_at.timestamp() if we.created_at else None,
+            )
+        metadata.setdefault("organization_id", organization_id)
+        metadata.setdefault("tags", tag_names)
 
     @staticmethod
     def _enrich_result_with_workflow_metadata(
@@ -384,31 +423,14 @@ class DeploymentHelper(BaseAPIKeyValidator):
             file_exec_id = item.get("file_execution_id")
             if not file_exec_id:
                 continue
-
-            # Ensure metadata dict exists
-            if not isinstance(item.get("metadata"), dict):
-                item["metadata"] = {}
-            metadata = item["metadata"]
-
-            fe = fe_lookup.get(str(file_exec_id))
-            we = fe.workflow_execution if fe else workflow_execution
-
-            # Fill MISSING keys only (setdefault won't overwrite)
-            if fe:
-                metadata.setdefault("source_name", fe.file_name)
-                metadata.setdefault("source_hash", fe.file_hash or "")
-                metadata.setdefault("file_execution_id", str(fe.id))
-                metadata.setdefault("total_elapsed_time", fe.execution_time)
-            if we:
-                metadata.setdefault("workflow_id", str(we.workflow_id))
-                metadata.setdefault("execution_id", str(we.id))
-                metadata.setdefault(
-                    "workflow_start_time",
-                    we.created_at.timestamp() if we.created_at else None,
-                )
-
-            metadata.setdefault("organization_id", organization_id)
-            metadata.setdefault("tags", tag_names)
+            DeploymentHelper._enrich_item_workflow_metadata(
+                item=item,
+                file_exec_id=file_exec_id,
+                fe_lookup=fe_lookup,
+                workflow_execution=workflow_execution,
+                organization_id=organization_id,
+                tag_names=tag_names,
+            )
 
     @staticmethod
     def get_execution_status(execution_id: str) -> ExecutionResponse:
@@ -424,6 +446,40 @@ class DeploymentHelper(BaseAPIKeyValidator):
             execution_id=execution_id
         )
         return execution_response
+
+    @staticmethod
+    def process_completed_execution(
+        response: ExecutionResponse,
+        deployment_execution_dto: Any,
+        include_metadata: bool,
+        include_metrics: bool,
+    ) -> None:
+        """Enrich and clean up the response for a completed execution."""
+        from configuration.config_registry import ConfigurationRegistry
+
+        api_deployment = deployment_execution_dto.api
+        organization = api_deployment.organization if api_deployment else None
+        org_id = str(organization.organization_id) if organization else ""
+        DeploymentHelper._enrich_result_with_workflow_metadata(
+            response, organization_id=org_id
+        )
+        enable_highlight = False
+        if ConfigurationRegistry.is_config_key_available("ENABLE_HIGHLIGHT_API_DEPLOYMENT"):
+            from configuration.models import Configuration
+
+            enable_highlight = Configuration.get_value_by_organization(
+                config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
+                organization=organization,
+            )
+        if not enable_highlight:
+            response.remove_result_metadata_keys(["highlight_data"])
+            response.remove_result_metadata_keys(["extracted_text"])
+        if include_metadata or include_metrics:
+            DeploymentHelper._enrich_result_with_usage_metadata(response)
+        if not include_metadata and not include_metrics:
+            response.remove_inner_result_metadata()
+        if not include_metrics:
+            response.remove_result_metrics()
 
     @staticmethod
     def fetch_presigned_file(url: str) -> InMemoryUploadedFile:

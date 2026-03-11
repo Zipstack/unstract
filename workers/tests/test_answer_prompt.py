@@ -486,7 +486,7 @@ class TestHandleAnswerPromptRetrieval:
 
         llm = _mock_llm()
         deps = _mock_deps(llm)
-        _, RetrievalService, *_ = deps
+        _, retrieval_svc, *_ = deps
         mock_deps.return_value = deps
         mock_shim_cls.return_value = MagicMock()
 
@@ -496,7 +496,7 @@ class TestHandleAnswerPromptRetrieval:
         )
         result = executor._handle_answer_prompt(ctx)
 
-        RetrievalService.run_retrieval.assert_called_once()
+        retrieval_svc.run_retrieval.assert_called_once()
         assert result.success is True
 
     @patch(
@@ -511,7 +511,7 @@ class TestHandleAnswerPromptRetrieval:
 
         llm = _mock_llm()
         deps = _mock_deps(llm)
-        _, RetrievalService, *_ = deps
+        _, retrieval_svc, *_ = deps
         mock_deps.return_value = deps
         mock_shim_cls.return_value = MagicMock()
 
@@ -521,7 +521,7 @@ class TestHandleAnswerPromptRetrieval:
         )
         result = executor._handle_answer_prompt(ctx)
 
-        RetrievalService.retrieve_complete_context.assert_called_once()
+        retrieval_svc.retrieve_complete_context.assert_called_once()
         assert result.success is True
 
     @patch(
@@ -673,9 +673,9 @@ class TestHandleAnswerPromptMetrics:
         llm = _mock_llm()
         deps = _mock_deps(llm)
         mock_deps.return_value = deps
-        _, _, _, _, _, _, VectorDB = deps
+        _, _, _, _, _, _, vector_db_cls = deps
         vdb_instance = MagicMock()
-        VectorDB.return_value = vdb_instance
+        vector_db_cls.return_value = vdb_instance
         mock_shim_cls.return_value = MagicMock()
 
         executor = LegacyExecutor()

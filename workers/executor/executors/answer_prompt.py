@@ -23,6 +23,24 @@ from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 logger = logging.getLogger(__name__)
 
 
+def _resolve_host_addresses(host: str) -> set[str]:
+    """Resolve a hostname or IP string to a set of IP address strings."""
+    try:
+        ipaddress.ip_address(host)
+        return {host}
+    except ValueError:
+        pass
+    try:
+        return {
+            sockaddr[0]
+            for _family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
+                host, None, type=socket.SOCK_STREAM
+            )
+        }
+    except Exception:
+        return set()
+
+
 def _is_safe_public_url(url: str) -> bool:
     """Validate webhook URL for SSRF protection.
 
@@ -36,19 +54,7 @@ def _is_safe_public_url(url: str) -> bool:
         if host in ("localhost",):
             return False
 
-        addrs: set[str] = set()
-        try:
-            ipaddress.ip_address(host)
-            addrs.add(host)
-        except ValueError:
-            try:
-                for _family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
-                    host, None, type=socket.SOCK_STREAM
-                ):
-                    addrs.add(sockaddr[0])
-            except Exception:
-                return False
-
+        addrs = _resolve_host_addresses(host)
         if not addrs:
             return False
 
@@ -167,6 +173,23 @@ class AnswerPromptService:
         )
 
     @staticmethod
+    def _build_grammar_notes(grammar_list: list[dict[str, Any]]) -> str:
+        """Build grammar synonym notes for prompt injection."""
+        if not grammar_list:
+            return ""
+        notes = "\n"
+        for grammar in grammar_list:
+            word = grammar.get(PSKeys.WORD, "")
+            synonyms = grammar.get(PSKeys.SYNONYMS, []) if word else []
+            if synonyms and word:
+                notes += (
+                    f"\nNote: You can consider that the word '{word}' "
+                    f"is the same as {', '.join(synonyms)} "
+                    f"in both the question and the context."
+                )
+        return notes
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -179,21 +202,7 @@ class AnswerPromptService:
     ) -> str:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
-        if grammar_list is not None and len(grammar_list) > 0:
-            prompt += "\n"
-            for grammar in grammar_list:
-                word = ""
-                synonyms = []
-                if PSKeys.WORD in grammar:
-                    word = grammar[PSKeys.WORD]
-                    if PSKeys.SYNONYMS in grammar:
-                        synonyms = grammar[PSKeys.SYNONYMS]
-                if len(synonyms) > 0 and word != "":
-                    prompt += (
-                        f"\nNote: You can consider that the word '{word}' "
-                        f"is the same as {', '.join(synonyms)} "
-                        f"in both the question and the context."
-                    )
+        prompt += AnswerPromptService._build_grammar_notes(grammar_list)
         if prompt_type == PSKeys.JSON:
             json_postamble = os.environ.get(
                 PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
@@ -231,11 +240,11 @@ class AnswerPromptService:
                 this callback, enabling source attribution.
         """
         try:
-            from unstract.sdk1.exceptions import RateLimitError as SdkRateLimitError
-            from unstract.sdk1.exceptions import SdkError
+            from unstract.sdk1.exceptions import RateLimitError as _sdk_rate_limit_error
+            from unstract.sdk1.exceptions import SdkError as _sdk_error
         except ImportError:
-            SdkRateLimitError = Exception
-            SdkError = Exception
+            _sdk_rate_limit_error = Exception
+            _sdk_error = Exception
 
         try:
             completion = llm.complete(
@@ -264,12 +273,41 @@ class AnswerPromptService:
                         word_confidence_data
                     )
             return answer
-        except SdkRateLimitError as e:
+        except _sdk_rate_limit_error as e:
             raise RateLimitError(f"Rate limit error. {str(e)}") from e
-        except SdkError as e:
+        except _sdk_error as e:
             logger.error("Error fetching response for prompt: %s", e)
             status_code = getattr(e, "status_code", None) or 500
             raise LegacyExecutorError(message=str(e), code=status_code) from e
+
+    @staticmethod
+    def _run_webhook_postprocess(
+        parsed_data: Any,
+        webhook_url: str | None,
+        highlight_data: Any,
+    ) -> tuple[Any, Any]:
+        """Run webhook-based postprocessing; return (processed_data, updated_highlight)."""
+        from executor.executors.postprocessor import postprocess_data
+
+        if not webhook_url:
+            logger.warning("Postprocessing webhook enabled but URL missing; skipping.")
+            return parsed_data, None
+        if not _is_safe_public_url(webhook_url):
+            logger.warning("Postprocessing webhook URL is not allowed; skipping.")
+            return parsed_data, None
+        try:
+            return postprocess_data(
+                parsed_data,
+                webhook_enabled=True,
+                webhook_url=webhook_url,
+                highlight_data=highlight_data,
+                timeout=60,
+            )
+        except Exception as e:
+            logger.warning(
+                "Postprocessing webhook failed: %s. Using unprocessed data.", e
+            )
+            return parsed_data, None
 
     @staticmethod
     def handle_json(
@@ -288,56 +326,39 @@ class AnswerPromptService:
     ) -> None:
         """Handle JSON responses from the LLM."""
         from executor.executors.json_repair_helper import repair_json_with_best_structure
-        from executor.executors.postprocessor import postprocess_data
 
         prompt_key = output[PSKeys.NAME]
         if answer.lower() == "na":
             structured_output[prompt_key] = None
-        else:
-            parsed_data = repair_json_with_best_structure(answer)
+            return
 
-            if isinstance(parsed_data, str):
-                logger.error("Error parsing response to JSON")
-                structured_output[prompt_key] = {}
-            else:
-                webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
-                webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
+        parsed_data = repair_json_with_best_structure(answer)
+        if isinstance(parsed_data, str):
+            logger.error("Error parsing response to JSON")
+            structured_output[prompt_key] = {}
+            return
 
-                highlight_data = None
-                if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
-                    highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
+        highlight_data = None
+        if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
+            highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
 
-                processed_data = parsed_data
-                updated_highlight_data = None
+        processed_data = parsed_data
+        updated_highlight_data = None
 
-                if webhook_enabled:
-                    if not webhook_url:
-                        logger.warning(
-                            "Postprocessing webhook enabled but URL missing; skipping."
-                        )
-                    elif not _is_safe_public_url(webhook_url):
-                        logger.warning(
-                            "Postprocessing webhook URL is not allowed; skipping."
-                        )
-                    else:
-                        try:
-                            processed_data, updated_highlight_data = postprocess_data(
-                                parsed_data,
-                                webhook_enabled=True,
-                                webhook_url=webhook_url,
-                                highlight_data=highlight_data,
-                                timeout=60,
-                            )
-                        except Exception as e:
-                            logger.warning(
-                                "Postprocessing webhook failed: %s. "
-                                "Using unprocessed data.",
-                                e,
-                            )
+        webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
+        if webhook_enabled:
+            webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
+            processed_data, updated_highlight_data = (
+                AnswerPromptService._run_webhook_postprocess(
+                    parsed_data=parsed_data,
+                    webhook_url=webhook_url,
+                    highlight_data=highlight_data,
+                )
+            )
 
-                structured_output[prompt_key] = processed_data
+        structured_output[prompt_key] = processed_data
 
-                if enable_highlight and metadata and updated_highlight_data is not None:
-                    metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
-                        updated_highlight_data
-                    )
+        if enable_highlight and metadata and updated_highlight_data is not None:
+            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
+                updated_highlight_data
+            )

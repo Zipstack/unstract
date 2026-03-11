@@ -162,25 +162,25 @@ def _override_section(
 
 
 def _should_skip_extraction_for_smart_table(
-    input_file: str, outputs: list[dict[str, Any]]
+    outputs: list[dict[str, Any]],
 ) -> bool:
     """Check if extraction and indexing should be skipped for smart table.
 
     Standalone version of StructureTool._should_skip_extraction_for_smart_table.
     """
     for output in outputs:
-        if _SK.TABLE_SETTINGS in output:
-            prompt = output.get(_SK.PROMPT, "")
-            if prompt and isinstance(prompt, str):
-                try:
-                    schema_data = json.loads(prompt)
-                    if schema_data and isinstance(schema_data, dict):
-                        return True
-                except ValueError as e:
-                    logger.warning(
-                        "Failed to parse prompt as JSON for smart table: %s", e
-                    )
-                    continue
+        if _SK.TABLE_SETTINGS not in output:
+            continue
+        prompt = output.get(_SK.PROMPT, "")
+        if not prompt or not isinstance(prompt, str):
+            continue
+        try:
+            schema_data = json.loads(prompt)
+        except ValueError as e:
+            logger.warning("Failed to parse prompt as JSON for smart table: %s", e)
+            continue
+        if isinstance(schema_data, dict) and schema_data:
+            return True
     return False
 
 
@@ -256,7 +256,6 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             tool_instance_metadata=tool_instance_metadata,
             dispatcher=dispatcher,
             shim=shim,
-            platform_helper=platform_helper,
             file_execution_id=file_execution_id,
             organization_id=organization_id,
             source_file_name=source_file_name,
@@ -303,9 +302,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     extracted_input_file = str(execution_run_data_folder / _SK.EXTRACT)
 
     # ---- Step 4: Smart table detection ----
-    skip_extraction_and_indexing = _should_skip_extraction_for_smart_table(
-        input_file_path, outputs
-    )
+    skip_extraction_and_indexing = _should_skip_extraction_for_smart_table(outputs)
     if skip_extraction_and_indexing:
         logger.info(
             "Skipping extraction and indexing for Excel table with valid JSON schema"
@@ -536,7 +533,6 @@ def _run_agentic_extraction(
     tool_instance_metadata: dict,
     dispatcher: ExecutionDispatcher,
     shim: Any,
-    platform_helper: Any,
     file_execution_id: str,
     organization_id: str,
     source_file_name: str,

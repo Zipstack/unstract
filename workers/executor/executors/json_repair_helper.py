@@ -23,7 +23,7 @@ def repair_json_with_best_structure(json_str: str) -> Any:
     # Fast path — try strict JSON first
     try:
         return json.loads(json_str)
-    except (json.JSONDecodeError, ValueError):
+    except ValueError:
         pass
 
     # Try to import json_repair for advanced repair

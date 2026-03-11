@@ -48,6 +48,19 @@ class ExecutionResponse:
         self.message = self.message or None
         self.status_api = self.status_api or None
 
+    @staticmethod
+    def _remove_item_top_metadata(item: dict, keys_to_remove: list[str]) -> None:
+        """Remove metadata keys from top-level item['metadata']."""
+        if "metadata" not in item:
+            return
+        if keys_to_remove:
+            item_metadata = item["metadata"]
+            if isinstance(item_metadata, dict):
+                for key in keys_to_remove:
+                    item_metadata.pop(key, None)
+        else:
+            item.pop("metadata", None)
+
     def remove_result_metadata_keys(self, keys_to_remove: list[str] = []) -> None:
         """Removes specified keys from the 'metadata' dictionary within each
         'result' dictionary in the 'result' list attribute of the instance. If
@@ -69,14 +82,7 @@ class ExecutionResponse:
                 self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
 
             # Handle top-level item["metadata"] (workers cache path)
-            if "metadata" in item:
-                if keys_to_remove:
-                    item_metadata = item["metadata"]
-                    if isinstance(item_metadata, dict):
-                        for key in keys_to_remove:
-                            item_metadata.pop(key, None)
-                else:
-                    item.pop("metadata", None)
+            self._remove_item_top_metadata(item, keys_to_remove)
 
     def remove_inner_result_metadata(self) -> None:
         """Removes only the inner item["result"]["metadata"] dict (extraction

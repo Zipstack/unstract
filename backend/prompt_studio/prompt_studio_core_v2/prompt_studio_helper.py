@@ -471,6 +471,33 @@ class PromptStudioHelper:
         return context, cb_kwargs
 
     @staticmethod
+    def _resolve_llm_ids(tool: Any) -> tuple[str, str]:
+        """Resolve monitor_llm and challenge_llm IDs for the tool."""
+        monitor_llm_instance = tool.monitor_llm
+        challenge_llm_instance = tool.challenge_llm
+        if monitor_llm_instance:
+            monitor_llm = str(monitor_llm_instance.id)
+        else:
+            dp = ProfileManager.get_default_llm_profile(tool)
+            monitor_llm = str(dp.llm.id)
+        if challenge_llm_instance:
+            challenge_llm = str(challenge_llm_instance.id)
+        else:
+            dp = ProfileManager.get_default_llm_profile(tool)
+            challenge_llm = str(dp.llm.id)
+        return monitor_llm, challenge_llm
+
+    @staticmethod
+    def _build_grammar_list(prompt_grammer: Any) -> list[dict[str, Any]]:
+        """Build the grammar synonym list from the tool's prompt_grammer dict."""
+        if not prompt_grammer:
+            return []
+        return [
+            {TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms}
+            for word, synonyms in prompt_grammer.items()
+        ]
+
+    @staticmethod
     def build_fetch_response_payload(
         tool: CustomTool,
         doc_path: str,
@@ -496,21 +523,7 @@ class PromptStudioHelper:
                 profile_manager_id=profile_manager_id
             )
 
-        monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
-        monitor_llm: str | None = None
-        challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
-        challenge_llm: str | None = None
-        if monitor_llm_instance:
-            monitor_llm = str(monitor_llm_instance.id)
-        else:
-            dp = ProfileManager.get_default_llm_profile(tool)
-            monitor_llm = str(dp.llm.id)
-
-        if challenge_llm_instance:
-            challenge_llm = str(challenge_llm_instance.id)
-        else:
-            dp = ProfileManager.get_default_llm_profile(tool)
-            challenge_llm = str(dp.llm.id)
+        monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
@@ -586,11 +599,7 @@ class PromptStudioHelper:
         tool_id = str(tool.tool_id)
         output: dict[str, Any] = {}
         outputs: list[dict[str, Any]] = []
-        grammar_list: list[dict[str, Any]] = []
-        prompt_grammer = tool.prompt_grammer
-        if prompt_grammer:
-            for word, synonyms in prompt_grammer.items():
-                grammar_list.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
+        grammar_list = PromptStudioHelper._build_grammar_list(tool.prompt_grammer)
 
         output[TSPKeys.PROMPT] = prompt.prompt
         output[TSPKeys.ACTIVE] = prompt.active

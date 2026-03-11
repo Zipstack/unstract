@@ -387,8 +387,7 @@ class TestExecutorRegistry:
 
         executor = ExecutorRegistry.get("decorated")
         assert executor.name == "decorated"
-        # Decorator returns the class unchanged
-        assert MyExecutor is not None
+        assert "decorated" in ExecutorRegistry.list_executors()
 
     def test_list_executors(self: Self) -> None:
         """list_executors() returns sorted names."""
@@ -465,7 +464,7 @@ class TestExecutorRegistry:
 
 def _make_failing_executor_class(
     executor_name: str,
-    exc: Exception,
+    exc: BaseException,
 ) -> type[BaseExecutor]:
     """Build an executor that always raises *exc*."""
 

@@ -3,7 +3,6 @@ import logging
 import uuid
 from typing import Any
 
-from configuration.models import Configuration
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -211,38 +210,15 @@ class DeploymentExecution(views.APIView):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
-        # Process completed execution
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if execution_status_value == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
-            # Ensure workflow identification keys are always in item metadata
-            api_deployment = deployment_execution_dto.api
-            organization = api_deployment.organization if api_deployment else None
-            org_id = str(organization.organization_id) if organization else ""
-            DeploymentHelper._enrich_result_with_workflow_metadata(
-                response, organization_id=org_id
+            DeploymentHelper.process_completed_execution(
+                response=response,
+                deployment_execution_dto=deployment_execution_dto,
+                include_metadata=include_metadata,
+                include_metrics=include_metrics,
             )
-            # Check if highlight data should be removed using configuration registry
-            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
-            # Check if the configuration key exists (Cloud deployment) or use settings (OSS)
-            from configuration.config_registry import ConfigurationRegistry
-
-            if ConfigurationRegistry.is_config_key_available(
-                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
-            ):
-                enable_highlight = Configuration.get_value_by_organization(
-                    config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
-                    organization=organization,
-                )
-            if not enable_highlight:
-                response.remove_result_metadata_keys(["highlight_data"])
-                response.remove_result_metadata_keys(["extracted_text"])
-            if include_metadata or include_metrics:
-                DeploymentHelper._enrich_result_with_usage_metadata(response)
-            if not include_metadata and not include_metrics:
-                response.remove_inner_result_metadata()
-            if not include_metrics:
-                response.remove_result_metrics()
         return Response(
             data={
                 "status": response.execution_status,

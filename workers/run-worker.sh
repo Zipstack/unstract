@@ -21,6 +21,9 @@ WORKERS_DIR="$SCRIPT_DIR"
 # Default environment file
 ENV_FILE="$WORKERS_DIR/.env"
 
+# Worker type constant for the executor worker
+readonly EXECUTOR_WORKER_TYPE="executor"
+
 # Available workers
 declare -A WORKERS=(
     ["api"]="api-deployment"
@@ -37,7 +40,7 @@ declare -A WORKERS=(
     ["notify"]="notification"
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
-    ["executor"]="executor"
+    ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["all"]="all"
 )
 
@@ -53,7 +56,7 @@ declare -A WORKER_QUEUES=(
     ["log_consumer"]="celery_log_task_queue"
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["scheduler"]="scheduler"
-    ["executor"]="celery_executor_legacy"
+    ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
 )
 
 # Worker health ports
@@ -65,7 +68,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["log_consumer"]="8084"
     ["notification"]="8085"
     ["scheduler"]="8087"
-    ["executor"]="8088"
+    ["${EXECUTOR_WORKER_TYPE}"]="8088"
 )
 
 # Function to display usage
@@ -410,7 +413,7 @@ run_worker() {
             "scheduler")
                 export SCHEDULER_HEALTH_PORT="$health_port"
                 ;;
-            "executor")
+            "${EXECUTOR_WORKER_TYPE}")
                 export EXECUTOR_HEALTH_PORT="$health_port"
                 ;;
             *)
@@ -486,7 +489,7 @@ run_worker() {
             "scheduler")
                 cmd_args+=("--concurrency=2")
                 ;;
-            "executor")
+            "${EXECUTOR_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
             *)
