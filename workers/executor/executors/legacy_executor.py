@@ -1324,6 +1324,7 @@ class LegacyExecutor(BaseExecutor):
         """Execute one prompt: variable replacement, retrieval, LLM, post-process."""
         from executor.executors.constants import PromptServiceConstants as PSKeys
         from executor.executors.constants import RetrievalStrategy
+
         from unstract.sdk1.utils.indexing import IndexingUtils
 
         prompt_name = output[PSKeys.NAME]
@@ -1586,7 +1587,9 @@ class LegacyExecutor(BaseExecutor):
         if table_result.success:
             structured_output[prompt_name] = table_result.data.get("output", "")
             table_metrics = table_result.data.get("metadata", {}).get("metrics", {})
-            metrics.setdefault(prompt_name, {}).update({"table_extraction": table_metrics})
+            metrics.setdefault(prompt_name, {}).update(
+                {"table_extraction": table_metrics}
+            )
             shim.stream_log(f"Table extraction completed for: {prompt_name}")
             logger.info("TABLE extraction completed: prompt=%s", prompt_name)
         else:

@@ -299,7 +299,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
         return APIExecutionResponseSerializer(result).data
 
     @staticmethod
-    def _enrich_item_inner_metadata(item: dict, file_exec_id: str, UsageHelper: Any) -> None:
+    def _enrich_item_inner_metadata(
+        item: dict, file_exec_id: str, UsageHelper: Any
+    ) -> None:
         """Inject per-model usage breakdown into item['result']['metadata']."""
         inner_result = item.get("result")
         if not isinstance(inner_result, dict):
@@ -312,7 +314,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             metadata.update(usage_by_model)
 
     @staticmethod
-    def _enrich_item_top_metadata(item: dict, file_exec_id: str, UsageHelper: Any) -> None:
+    def _enrich_item_top_metadata(
+        item: dict, file_exec_id: str, UsageHelper: Any
+    ) -> None:
         """Inject aggregated usage totals into item['metadata']['usage']."""
         item_metadata = item.get("metadata")
         if not isinstance(item_metadata, dict):
@@ -464,7 +468,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             response, organization_id=org_id
         )
         enable_highlight = False
-        if ConfigurationRegistry.is_config_key_available("ENABLE_HIGHLIGHT_API_DEPLOYMENT"):
+        if ConfigurationRegistry.is_config_key_available(
+            "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
+        ):
             from configuration.models import Configuration
 
             enable_highlight = Configuration.get_value_by_organization(
