@@ -10,7 +10,6 @@ import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
-import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
 import { LogsModal } from "../log-modal/LogsModal.jsx";
@@ -38,7 +37,6 @@ import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
   const [openEtlOrTaskModal, setOpenEtlOrTaskModal] = useState(false);
-  const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
   const { sessionDetails } = useSessionStore();
@@ -169,24 +167,16 @@ function Pipelines({ type }) {
   const handleSync = (params) => {
     const body = { ...params, pipeline_type: type.toUpperCase() };
     const pipelineId = params?.pipeline_id;
-    const fieldsToUpdate = {
-      last_run_status: "processing",
-    };
-    handleLoaderInTableData(fieldsToUpdate, pipelineId);
 
     handleSyncApiReq(body)
       .then((res) => {
-        const data = res?.data?.pipeline;
-        fieldsToUpdate.last_run_status = data?.last_run_status;
-        fieldsToUpdate.last_run_time = data?.last_run_time;
+        const pipelineData = res?.data?.pipeline;
+        if (pipelineData) {
+          handleLoaderInTableData(pipelineData, pipelineId);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to sync."));
-        fieldsToUpdate.last_run_status = "FAILURE";
-        fieldsToUpdate.last_run_time = new Date().toISOString();
-      })
-      .finally(() => {
-        handleLoaderInTableData(fieldsToUpdate, pipelineId);
       });
   };
 
@@ -240,18 +230,17 @@ function Pipelines({ type }) {
     });
   };
 
-  const deletePipeline = () => {
+  const deletePipeline = (item) => {
+    const id = item?.id || selectedPorD.id;
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
     axiosPrivate(requestOptions)
       .then(() => {
-        setOpenDeleteModal(false);
-        // Refresh with current pagination
         getPipelineList(pagination.current, pagination.pageSize, searchTerm);
         setAlertDetails({
           type: "success",
@@ -265,10 +254,7 @@ function Pipelines({ type }) {
 
   const clearFileMarkers = async (workflowId) => {
     const id = workflowId || selectedPorD?.workflow_id;
-    const success = await clearFileHistory(id);
-    if (success && openDeleteModal) {
-      setOpenDeleteModal(false);
-    }
+    await clearFileHistory(id);
   };
 
   // Handlers for icon actions (top-right)
@@ -276,8 +262,8 @@ function Pipelines({ type }) {
     openAddModal(true);
   };
 
-  const handleDeletePipeline = () => {
-    setOpenDeleteModal(true);
+  const handleDeletePipeline = (item) => {
+    deletePipeline(item);
   };
 
   // Handlers for expanded view actions
@@ -389,11 +375,13 @@ function Pipelines({ type }) {
         scrollToId={scrollRestoreId}
         enableSearch={true}
         onSearch={handleSearch}
+        searchTerm={searchTerm}
         pagination={{
           current: pagination.current,
           pageSize: pagination.pageSize,
           total: pagination.total,
           onChange: handlePaginationChange,
+          itemLabel: "pipelines",
         }}
       />
       {openEtlOrTaskModal && (
@@ -415,11 +403,6 @@ function Pipelines({ type }) {
         totalLogs={executionLogsTotalCount}
         fetchExecutionLogs={handleFetchLogs}
         loading={isFetchingLogs}
-      />
-      <DeleteModal
-        open={openDeleteModal}
-        setOpen={setOpenDeleteModal}
-        deleteRecord={deletePipeline}
       />
       <ManageKeys
         isDialogOpen={openManageKeysModal}

@@ -27,7 +27,7 @@ dependencies = [
     "django-redis==5.4.0",
     "django-tenants==3.5.0",
     "drf-standardized-errors>=0.12.6",
-    "drf-yasg==1.21.7", # For API docs
+    "drf-yasg>=1.21.8", # For API docs
     "psycopg2-binary==2.9.9",
     "python-dotenv==1.0.1",
     "python-magic==0.4.27", # For file upload/download

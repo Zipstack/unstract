@@ -248,6 +248,9 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        # Capture user-provided model name before deployment_name overwrites it
+        original_model = adapter_metadata.get("model", "")
+
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
             adapter_metadata
         )
@@ -296,6 +299,14 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
                 "reasoning_effort", "medium"
             )
 
+        # Preserve actual model name for cost tracking (deployment_name is used
+        # for LiteLLM routing but doesn't match pricing table entries)
+        if original_model:
+            cost_model = original_model
+            if not cost_model.startswith("azure/"):
+                cost_model = f"azure/{cost_model}"
+            validated["cost_model"] = cost_model
+
         return validated
 
     @staticmethod
@@ -319,7 +330,19 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     safety_settings: list[dict[str, str]]
+
+    @staticmethod
+    def _map_vertex_fields(metadata: dict[str, "Any"]) -> None:
+        """Map user-facing field names to litellm's vertex_* parameter names."""
+        if "json_credentials" in metadata and not metadata.get("vertex_credentials"):
+            metadata["vertex_credentials"] = metadata["json_credentials"]
+        if "project" in metadata and not metadata.get("vertex_project"):
+            metadata["vertex_project"] = metadata["project"]
+        loc = metadata.get("location")
+        if loc and loc.strip() and not metadata.get("vertex_location"):
+            metadata["vertex_location"] = loc.strip()
 
     @staticmethod
     def _get_thinking_config(
@@ -354,13 +377,8 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAILLMParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         # Handle Vertex AI thinking configuration (for Gemini models)
         enable_thinking = metadata_copy.get("enable_thinking", False)
@@ -459,9 +477,11 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
-    aws_access_key_id: str | None
-    aws_secret_access_key: str | None
-    aws_region_name: str | None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region_name: str | None = None
+    aws_profile_name: str | None = None  # For AWS SSO authentication
+    model_id: str | None = None  # For Application Inference Profile (cost tracking)
     max_retries: int | None = None
 
     @staticmethod
@@ -644,12 +664,51 @@ class MistralLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/mistral."""
 
     api_key: str
+    reasoning_effort: str | None = None  # For Magistral models: low, medium, high
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata["model"] = MistralLLMParameters.validate_model(adapter_metadata)
 
-        return MistralLLMParameters(**adapter_metadata).model_dump()
+        # Handle Mistral reasoning configuration (for Magistral models)
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+
+        # If enable_reasoning is not explicitly provided but reasoning_effort is present,
+        # assume reasoning was enabled in a previous validation
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
+        if not enable_reasoning and has_reasoning_effort:
+            enable_reasoning = True
+
+        # Create a copy to avoid mutating the original metadata
+        result_metadata = adapter_metadata.copy()
+
+        if enable_reasoning:
+            reasoning_effort = adapter_metadata.get("reasoning_effort", "medium")
+            result_metadata["reasoning_effort"] = reasoning_effort
+
+        # Create validation metadata excluding control fields
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
+
+        validated = MistralLLMParameters(**validation_metadata).model_dump()
+
+        # Clean up result based on reasoning state
+        if not enable_reasoning and "reasoning_effort" in validated:
+            validated.pop("reasoning_effort")
+        elif enable_reasoning:
+            validated["reasoning_effort"] = result_metadata.get(
+                "reasoning_effort", "medium"
+            )
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -665,6 +724,7 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/ollama."""
 
     api_base: str
+    json_mode: bool | None = False  # Enable JSON mode for structured output
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -673,7 +733,18 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
             "base_url", adapter_metadata.get("api_base", "")
         )
 
-        return OllamaLLMParameters(**adapter_metadata).model_dump()
+        # Handle JSON mode - convert to response_format
+        result_metadata = adapter_metadata.copy()
+        json_mode = result_metadata.pop("json_mode", False)
+
+        validated = OllamaLLMParameters(**result_metadata).model_dump()
+
+        # Re-insert response_format after model_dump() since
+        # OllamaLLMParameters doesn't declare the field and Pydantic drops it.
+        if json_mode:
+            validated["response_format"] = {"type": "json_object"}
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -685,6 +756,33 @@ class OllamaLLMParameters(BaseChatCompletionParameters):
             return f"ollama_chat/{model}"
 
 
+class AzureAIFoundryLLMParameters(BaseChatCompletionParameters):
+    """Azure AI Foundry LLM parameters.
+
+    See https://docs.litellm.ai/docs/providers/azure_ai
+    """
+
+    api_key: str
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = AzureAIFoundryLLMParameters.validate_model(
+            adapter_metadata
+        )
+
+        return AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = adapter_metadata.get("model", "")
+        # Only add azure_ai/ prefix if the model doesn't already have it
+        if model.startswith("azure_ai/"):
+            return model
+        else:
+            return f"azure_ai/{model}"
+
+
 # Embedding Parameter Classes
 
 
@@ -694,6 +792,7 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_key: str
     api_base: str | None = None
     embed_batch_size: int | None = 10
+    dimensions: int | None = None  # For text-embedding-3-* models
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -717,9 +816,13 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_version: str | None
     embed_batch_size: int | None = 5
     num_retries: int | None = 3
+    dimensions: int | None = None  # For text-embedding-3-* models
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        # Capture user-provided model name before deployment_name overwrites it
+        original_model = adapter_metadata.get("model", "")
+
         adapter_metadata["model"] = AzureOpenAIEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -733,7 +836,17 @@ class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
         if "num_retries" in adapter_metadata and not adapter_metadata.get("max_retries"):
             adapter_metadata["max_retries"] = adapter_metadata["num_retries"]
 
-        return AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+        result = AzureOpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+        # Preserve actual model name for cost tracking (deployment_name is used
+        # for LiteLLM routing but doesn't match pricing table entries)
+        if original_model:
+            cost_model = original_model
+            if not cost_model.startswith("azure/"):
+                cost_model = f"azure/{cost_model}"
+            result["cost_model"] = cost_model
+
+        return result
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -754,6 +867,7 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 
     vertex_credentials: str
     vertex_project: str
+    vertex_location: str | None = None
     embed_batch_size: int | None = 10
     embed_mode: str | None = "default"
 
@@ -765,13 +879,8 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
         # Set model with proper prefix
         metadata_copy["model"] = VertexAIEmbeddingParameters.validate_model(metadata_copy)
 
-        # Map credentials and project fields
-        if "json_credentials" in metadata_copy and not metadata_copy.get(
-            "vertex_credentials"
-        ):
-            metadata_copy["vertex_credentials"] = metadata_copy["json_credentials"]
-        if "project" in metadata_copy and not metadata_copy.get("vertex_project"):
-            metadata_copy["vertex_project"] = metadata_copy["project"]
+        # Map user-facing fields to litellm's vertex_* parameter names
+        VertexAILLMParameters._map_vertex_fields(metadata_copy)
 
         return VertexAIEmbeddingParameters(**metadata_copy).model_dump()
 
