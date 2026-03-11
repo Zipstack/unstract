@@ -1017,9 +1017,6 @@ class LegacyExecutor(BaseExecutor):
         from executor.executors.constants import (
             PromptServiceConstants as PSKeys,
         )
-        from executor.executors.constants import (
-            RetrievalStrategy,
-        )
 
         params: dict[str, Any] = context.executor_params
 
