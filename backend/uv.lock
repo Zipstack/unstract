@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.12.*"
 
 [manifest]
@@ -925,7 +925,7 @@ wheels = [
 
 [[package]]
 name = "drf-yasg"
-version = "1.21.7"
+version = "1.21.15"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
@@ -936,9 +936,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "uritemplate" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/e4/8f619b63bd8095f3797d41da186c707dd9add86b86341d1f350f1d15b2dd/drf-yasg-1.21.7.tar.gz", hash = "sha256:4c3b93068b3dfca6969ab111155e4dd6f7b2d680b98778de8fd460b7837bdb0d", size = 4512723, upload-time = "2023-07-20T13:47:34.308Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4a/88/345135459b9cbaff0e8ee3270819e89ca92064a35a0a94a1cfce41c084db/drf_yasg-1.21.15.tar.gz", hash = "sha256:ef86838c4ef10dcd3ac1ebf2be601cbe02978b999671caa43667f7c9db961468", size = 5153419, upload-time = "2026-02-24T18:09:21.072Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/26/a5/9fedcd955821ec3b4d26b8a723081eb0f400b7f0bc51f1f49136648423ff/drf_yasg-1.21.7-py3-none-any.whl", hash = "sha256:f85642072c35e684356475781b7ecf5d218fff2c6185c040664dd49f0a4be181", size = 4289125, upload-time = "2023-07-20T13:47:31.301Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/a4/400b0565cf25395f1d5e1a24e5d18dab8f4199e4212174341fea6f05747c/drf_yasg-1.21.15-py3-none-any.whl", hash = "sha256:7c7a7ab9feb0e13cdd6e25147d99adb0500a68bd96509ffd8f8cf7efd4bdc77e", size = 4856209, upload-time = "2026-02-24T18:09:18.982Z" },
 ]
 
 [[package]]
@@ -3763,7 +3763,7 @@ requires-dist = [
     { name = "django-tenants", specifier = "==3.5.0" },
     { name = "djangorestframework", specifier = "==3.14.0" },
     { name = "drf-standardized-errors", specifier = ">=0.12.6" },
-    { name = "drf-yasg", specifier = "==1.21.7" },
+    { name = "drf-yasg", specifier = ">=1.21.8" },
     { name = "google-cloud-recaptcha-enterprise", specifier = ">=1.28.2" },
     { name = "gunicorn", specifier = ">=23.0.0" },
     { name = "httpx", specifier = ">=0.27.0" },
