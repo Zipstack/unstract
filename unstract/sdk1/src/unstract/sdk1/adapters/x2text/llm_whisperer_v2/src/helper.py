@@ -11,6 +11,7 @@ from unstract.llmwhisperer.client_v2 import (
     LLMWhispererClientException,
     LLMWhispererClientV2,
 )
+
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -225,7 +226,9 @@ class LLMWhispererHelper:
                     WhispererConfig.WAIT_TIMEOUT,
                     WhispererDefaults.WAIT_TIMEOUT,
                 ),
-                WhispererConfig.WAIT_FOR_COMPLETION: WhispererDefaults.WAIT_FOR_COMPLETION,
+                WhispererConfig.WAIT_FOR_COMPLETION: (
+                    WhispererDefaults.WAIT_FOR_COMPLETION
+                ),
             }
         )
         if params[WhispererConfig.MODE] == Modes.LOW_COST.value:

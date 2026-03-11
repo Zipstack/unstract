@@ -42,12 +42,12 @@ class _WorkerDispatchCelery(Celery):
 
     def connection_for_write(self, url=None, *args, **kwargs):
         return super().connection_for_write(
-            url=url or self._explicit_broker, *args, **kwargs
+            url or self._explicit_broker, *args, **kwargs
         )
 
     def connection_for_read(self, url=None, *args, **kwargs):
         return super().connection_for_read(
-            url=url or self._explicit_broker, *args, **kwargs
+            url or self._explicit_broker, *args, **kwargs
         )
 
 

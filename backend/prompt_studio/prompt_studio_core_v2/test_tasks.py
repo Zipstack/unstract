@@ -359,7 +359,7 @@ class TestTaskStatusAction:
         assert "<str:task_id>" in str(url.pattern)
 
     @patch("prompt_studio.prompt_studio_core_v2.views.AsyncResult", create=True)
-    def test_task_status_processing(self, MockAsyncResult):
+    def test_task_status_processing(self, mock_async_result):
         """Verify processing response for unfinished task."""
         import inspect
 
@@ -370,7 +370,7 @@ class TestTaskStatusAction:
         assert '"processing"' in source
 
     @patch("prompt_studio.prompt_studio_core_v2.views.AsyncResult", create=True)
-    def test_task_status_completed(self, MockAsyncResult):
+    def test_task_status_completed(self, mock_async_result):
         """Verify completed response structure."""
         import inspect
 
@@ -382,7 +382,7 @@ class TestTaskStatusAction:
         assert "result.result" in source
 
     @patch("prompt_studio.prompt_studio_core_v2.views.AsyncResult", create=True)
-    def test_task_status_failed(self, MockAsyncResult):
+    def test_task_status_failed(self, mock_async_result):
         """Verify failed response structure."""
         import inspect
 

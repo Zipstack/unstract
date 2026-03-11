@@ -24,7 +24,6 @@ from typing import Any
 
 from file_processing.worker import app
 from shared.enums.task_enums import TaskName
-
 from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
@@ -221,7 +220,6 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     """
     # ---- Unpack params ----
     organization_id = params["organization_id"]
-    workflow_id = params.get("workflow_id", "")
     execution_id = params.get("execution_id", "")
     file_execution_id = params["file_execution_id"]
     tool_instance_metadata = params["tool_instance_metadata"]

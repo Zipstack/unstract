@@ -8,6 +8,7 @@ from typing import Any, Self
 from unittest.mock import MagicMock
 
 import pytest
+
 from unstract.sdk1.constants import LogLevel, ToolEnv
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.execution.context import (
@@ -21,14 +22,13 @@ from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 _TEST_FILE_PATH = os.path.join(tempfile.mkdtemp(), "test.pdf")
 
 
 class TestExecutionContext:
     """Tests for ExecutionContext serialization and validation."""
 
-    def _make_context(self, **overrides: Any) -> ExecutionContext:
+    def _make_context(self, **overrides: Any) -> ExecutionContext:  # noqa: ANN401
         """Create a default ExecutionContext with optional overrides."""
         defaults: dict[str, Any] = {
             "executor_name": "legacy",
@@ -491,7 +491,7 @@ class TestExecutionOrchestrator:
         """Ensure a clean registry for every test."""
         ExecutorRegistry.clear()
 
-    def _make_context(self, **overrides: Any) -> ExecutionContext:
+    def _make_context(self, **overrides: Any) -> ExecutionContext:  # noqa: ANN401
         defaults: dict[str, Any] = {
             "executor_name": "legacy",
             "operation": "extract",
@@ -587,7 +587,7 @@ class TestExecutionOrchestrator:
 class TestExecutionDispatcher:
     """Tests for ExecutionDispatcher (mocked Celery)."""
 
-    def _make_context(self, **overrides: Any) -> ExecutionContext:
+    def _make_context(self, **overrides: Any) -> ExecutionContext:  # noqa: ANN401
         defaults: dict[str, Any] = {
             "executor_name": "legacy",
             "operation": "extract",
@@ -918,7 +918,7 @@ class TestExecutionDispatcher:
         dispatcher = ExecutionDispatcher(celery_app=mock_app)
         ctx = self._make_context()
 
-        result = dispatcher.dispatch_with_callback(ctx, task_id="pre-gen-id-123")
+        dispatcher.dispatch_with_callback(ctx, task_id="pre-gen-id-123")
 
         call_kwargs = mock_app.send_task.call_args
         assert call_kwargs[1]["task_id"] == "pre-gen-id-123"
@@ -975,7 +975,7 @@ class _MockExecutorToolShim:
         log: str,
         level: LogLevel = LogLevel.INFO,
         stage: str = "TOOL_RUN",
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401
     ) -> None:
         _level_map = {
             LogLevel.DEBUG: logging.DEBUG,
