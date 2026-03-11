@@ -984,6 +984,7 @@ class LegacyExecutor(BaseExecutor):
             if isinstance(v, str) and v.lower() == "na":
                 d[k] = None
 
+    @staticmethod
     def _sanitize_null_values(
         structured_output: dict[str, Any],
     ) -> dict[str, Any]:
@@ -1131,6 +1132,14 @@ class LegacyExecutor(BaseExecutor):
             )
 
         # ---- Process each prompt -------------------------------------------
+        _deps = (
+            answer_prompt_svc,
+            retrieval_svc,
+            variable_replacement_svc,
+            llm_cls,
+            embedding_compat_cls,
+            vector_db_cls,
+        )
         for output in prompts:
             self._execute_single_prompt(
                 output=output,
@@ -1140,24 +1149,9 @@ class LegacyExecutor(BaseExecutor):
                 metrics=metrics,
                 variable_names=variable_names,
                 context_retrieval_metrics=context_retrieval_metrics,
-                answer_prompt_svc=answer_prompt_svc,
-                retrieval_svc=retrieval_svc,
-                variable_replacement_svc=variable_replacement_svc,
-                llm_cls=llm_cls,
-                embedding_compat_cls=embedding_compat_cls,
-                vector_db_cls=vector_db_cls,
+                deps=_deps,
                 tool_settings=tool_settings,
                 process_text_fn=process_text_fn,
-                run_id=run_id,
-                execution_id=execution_id,
-                file_hash=file_hash,
-                file_path=file_path,
-                doc_name=doc_name,
-                log_events_id=log_events_id,
-                tool_id=tool_id,
-                custom_data=custom_data,
-                execution_source=execution_source,
-                platform_api_key=platform_api_key,
             )
 
         pipeline_shim.stream_log(f"All {len(prompts)} prompts processed successfully")
@@ -1302,30 +1296,35 @@ class LegacyExecutor(BaseExecutor):
         metrics: dict[str, Any],
         variable_names: list[str],
         context_retrieval_metrics: dict[str, Any],
-        answer_prompt_svc: Any,
-        retrieval_svc: Any,
-        variable_replacement_svc: Any,
-        llm_cls: Any,
-        embedding_compat_cls: Any,
-        vector_db_cls: Any,
+        deps: tuple,
         tool_settings: dict[str, Any],
         process_text_fn: Any,
-        run_id: str,
-        execution_id: str,
-        file_hash: Any,
-        file_path: str,
-        doc_name: str,
-        log_events_id: str,
-        tool_id: str,
-        custom_data: dict[str, Any],
-        execution_source: str,
-        platform_api_key: str,
     ) -> None:
         """Execute one prompt: variable replacement, retrieval, LLM, post-process."""
         from executor.executors.constants import PromptServiceConstants as PSKeys
         from executor.executors.constants import RetrievalStrategy
-
         from unstract.sdk1.utils.indexing import IndexingUtils
+
+        (
+            answer_prompt_svc,
+            retrieval_svc,
+            variable_replacement_svc,
+            llm_cls,
+            embedding_compat_cls,
+            vector_db_cls,
+        ) = deps
+
+        params = context.executor_params
+        run_id = context.run_id
+        execution_id = params.get(PSKeys.EXECUTION_ID, "")
+        file_hash = params.get(PSKeys.FILE_HASH)
+        file_path = params.get(PSKeys.FILE_PATH)
+        doc_name = str(params.get(PSKeys.FILE_NAME, ""))
+        log_events_id = params.get(PSKeys.LOG_EVENTS_ID, "")
+        tool_id = params.get(PSKeys.TOOL_ID, "")
+        custom_data = params.get(PSKeys.CUSTOM_DATA, {})
+        execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
+        platform_api_key = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
 
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]

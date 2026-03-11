@@ -474,7 +474,7 @@ def _make_failing_executor_class(
             return executor_name
 
         def execute(self, context: ExecutionContext) -> ExecutionResult:
-            raise exc
+            raise exc  # NOSONAR
 
     _FailExecutor.__name__ = f"{executor_name.title()}FailExecutor"
     _FailExecutor.__qualname__ = _FailExecutor.__name__
