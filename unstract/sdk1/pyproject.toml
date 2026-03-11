@@ -34,6 +34,7 @@ dependencies = [
     "llama-index-vector-stores-weaviate>=1.4.1",
     "llama-index-vector-stores-pinecone>=0.7.1",
     "llama-index-vector-stores-qdrant>=0.9.1",
+    # 1.17.0 has a bug: grpc.UpdateMode | None fails with protobuf's EnumTypeWrapper
     "qdrant-client>=1.16.0,<1.17.0",
     # # For Llama Parse X2Text
     "llama-parse>=0.6.0",
