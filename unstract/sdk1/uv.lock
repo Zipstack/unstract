@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.12.*"
 
 [[package]]
@@ -2677,6 +2677,7 @@ dependencies = [
     { name = "pdfplumber" },
     { name = "python-dotenv" },
     { name = "python-magic" },
+    { name = "qdrant-client" },
     { name = "redis" },
     { name = "singleton-decorator" },
     { name = "tiktoken" },
@@ -2735,6 +2736,7 @@ requires-dist = [
     { name = "pdfplumber", specifier = ">=0.11.2" },
     { name = "python-dotenv", specifier = "==1.0.1" },
     { name = "python-magic", specifier = "~=0.4.27" },
+    { name = "qdrant-client", specifier = ">=1.16.0,<1.17.0" },
     { name = "redis", specifier = ">=5.2.1" },
     { name = "s3fs", extras = ["boto3"], marker = "extra == 'aws'", specifier = "~=2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
