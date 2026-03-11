@@ -262,6 +262,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             organization_id=organization_id,
             source_file_name=source_file_name,
             fs=fs,
+            execution_data_dir=execution_data_dir,
         )
 
     # ---- Step 3: Profile overrides ----
@@ -541,6 +542,7 @@ def _run_agentic_extraction(
     organization_id: str,
     source_file_name: str,
     fs: Any,
+    execution_data_dir: str = "",
 ) -> dict:
     """Execute agentic extraction pipeline via dispatcher.
 
@@ -583,6 +585,7 @@ def _run_agentic_extraction(
         json_schema = json.loads(json_schema)
 
     # 4. Dispatch with flat executor_params matching executor expectations
+    start_time = time.monotonic()
     agentic_ctx = ExecutionContext(
         executor_name="agentic",
         operation="agentic_extract",
@@ -601,7 +604,31 @@ def _run_agentic_extraction(
         },
     )
     agentic_result = dispatcher.dispatch(agentic_ctx, timeout=EXECUTOR_TIMEOUT)
-    return agentic_result.to_dict()
+
+    if not agentic_result.success:
+        return agentic_result.to_dict()
+
+    structured_output = agentic_result.data
+    elapsed = time.monotonic() - start_time
+
+    # Write output files (matches regular pipeline path)
+    try:
+        output_path = Path(output_dir_path) / f"{Path(source_file_name).stem}.json"
+        logger.info("Writing agentic output to %s", output_path)
+        fs.json_dump(path=output_path, data=structured_output)
+
+        # Overwrite INFILE with JSON output so destination connector reads JSON, not PDF
+        logger.info("Overwriting INFILE with agentic output: %s", input_file_path)
+        fs.json_dump(path=input_file_path, data=structured_output)
+    except Exception as e:
+        return ExecutionResult.failure(
+            error=f"Error writing agentic output: {e}"
+        ).to_dict()
+
+    # Write tool result + tool_metadata to METADATA.json
+    _write_tool_result(fs, execution_data_dir, structured_output, elapsed)
+
+    return ExecutionResult(success=True, data=structured_output).to_dict()
 
 
 def _write_tool_result(
