@@ -1026,12 +1026,8 @@ class LegacyExecutor(BaseExecutor):
         prompts = params.get(PSKeys.OUTPUTS, [])
         tool_id: str = params.get(PSKeys.TOOL_ID, "")
         run_id: str = context.run_id
-        execution_id: str = params.get(PSKeys.EXECUTION_ID, "")
-        file_hash = params.get(PSKeys.FILE_HASH)
         file_path = params.get(PSKeys.FILE_PATH)
         doc_name = str(params.get(PSKeys.FILE_NAME, ""))
-        log_events_id: str = params.get(PSKeys.LOG_EVENTS_ID, "")
-        custom_data: dict[str, Any] = params.get(PSKeys.CUSTOM_DATA, {})
         execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
         platform_api_key: str = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
 
