@@ -1472,7 +1472,9 @@ class LegacyExecutor(BaseExecutor):
 
         Handles NUMBER, EMAIL, DATE, BOOLEAN, JSON, and TEXT types.
         """
-        from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc
+        from executor.executors.answer_prompt import (
+            AnswerPromptService as answer_prompt_svc,
+        )
         from executor.executors.constants import PromptServiceConstants as PSKeys
 
         prompt_name = output[PSKeys.NAME]
@@ -1654,7 +1656,9 @@ class LegacyExecutor(BaseExecutor):
                 tool=shim,
                 usage_kwargs={**usage_kwargs},
             )
-            from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc
+            from executor.executors.answer_prompt import (
+                AnswerPromptService as answer_prompt_svc,
+            )
 
             shim.stream_log("Running document summarization...")
             summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
