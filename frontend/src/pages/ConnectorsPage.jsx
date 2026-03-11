@@ -29,7 +29,7 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
-  const { displayList, setDisplayList, setMasterList, onSearch } =
+  const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
     useListSearch("connector_name");
 
   useEffect(() => {
@@ -177,7 +177,7 @@ function ConnectorsPage() {
             iconProp="icon"
             showOwner={true}
             type="Connector"
-            isEmpty={!displayList.length}
+            isEmpty={!listRef.current.length}
             centered
             isClickable={false}
           />

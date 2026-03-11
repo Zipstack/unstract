@@ -157,6 +157,39 @@
   padding: 40px;
 }
 
+/* Dashboard Empty State */
+.metrics-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 24px;
+  text-align: center;
+}
+
+.metrics-empty-state-icon {
+  width: 120px;
+  height: 120px;
+  margin-bottom: 24px;
+  opacity: 0.6;
+}
+
+.metrics-empty-state-title {
+  margin-bottom: 8px !important;
+  color: #262626;
+}
+
+.metrics-empty-state-text {
+  font-size: 14px;
+  line-height: 22px;
+  max-width: 360px;
+  margin-bottom: 24px;
+}
+
+.metrics-empty-state-actions {
+  margin-top: 8px;
+}
+
 /* Chart Components */
 .metrics-chart-card {
   height: 100%;
@@ -228,8 +261,17 @@
 }
 
 .recent-activity-item {
-  padding: 10px 0 !important;
+  padding: 10px 24px !important;
   border-bottom: 1px solid #f0f0f0;
+}
+
+.recent-activity-clickable {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.recent-activity-clickable:hover {
+  background-color: #f5f5f5;
 }
 
 .recent-activity-item:last-child {
@@ -278,6 +320,43 @@
   font-size: 12px;
 }
 
+/* Subscription Usage Tab */
+.subscription-usage-tab {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.subscription-plan-card {
+  text-align: center;
+  padding: 20px;
+  background: #e6f4ff;
+  border: 1px solid #91caff;
+  border-radius: 8px;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.subscription-plan-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 4px;
+}
+
+.subscription-plan-pages {
+  font-size: 14px;
+  color: #595959;
+}
+
+.subscription-overdue-tag {
+  margin-bottom: 12px;
+}
+
+/* Deployment Type Tabs */
+.deployment-type-tabs {
+  padding-left: 24px;
+}
+
 /* LLM Usage Table */
 .llm-usage-card .ant-card-body {
   padding: 0;
@@ -294,6 +373,10 @@
 .llm-usage-title {
   font-size: 16px;
   color: #262626;
+}
+
+.llm-usage-table {
+  padding: 0 24px;
 }
 
 .llm-usage-table .ant-table-thead > tr > th {
@@ -315,4 +398,22 @@
 
 .llm-usage-table .ant-table-tbody > tr > td:not(:first-child) {
   font-variant-numeric: tabular-nums;
+}
+
+.llm-usage-tag-compact {
+  margin-inline-end: 2px;
+}
+
+.llm-usage-error-alert {
+  margin: 16px 24px;
+}
+
+.llm-usage-subtitle {
+  font-size: 12px;
+  padding: 0 24px;
+}
+
+.llm-usage-info-icon {
+  color: #8c8c8c;
+  font-size: 12px;
 }

@@ -25,7 +25,7 @@ const CreateApiDeploymentModal = ({
   openCodeModal,
   setSelectedRow,
   workflowId,
-  workflowEndpointList,
+  workflowEndpointList = [],
   setDeploymentName,
   onDeploymentCreated,
 }) => {
@@ -83,7 +83,7 @@ const CreateApiDeploymentModal = ({
   };
 
   const createApiDeployment = () => {
-    const wf = workflowEndpointList.find(
+    const wf = workflowEndpointList?.find(
       (item) => item?.workflow === formDetails?.workflow,
     );
     setPostHogCustomEvent("intent_success_api_deployment", {
@@ -262,7 +262,7 @@ const CreateApiDeploymentModal = ({
             help={getBackendErrorDetail("workflow", backendErrors)}
           >
             <Select>
-              {workflowEndpointList.map((endpoint) => {
+              {workflowEndpointList?.map((endpoint) => {
                 return (
                   <Option
                     value={endpoint.workflow}
