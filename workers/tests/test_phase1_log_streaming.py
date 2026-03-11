@@ -313,7 +313,7 @@ class TestLegacyExecutorLogPassthrough:
     @patch("executor.executors.legacy_executor.X2Text")
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     def test_extract_passes_log_info_to_shim(
-        self, mock_shim_cls, mock_x2text, mock_fs
+        self, mock_shim_cls, mock_x2text, mock_fs, tmp_path
     ):
         from executor.executors.legacy_executor import LegacyExecutor
         from unstract.sdk1.execution.registry import ExecutorRegistry
@@ -337,7 +337,7 @@ class TestLegacyExecutorLogPassthrough:
             log_events_id="session-abc",
             executor_params={
                 "x2text_instance_id": "x2t-1",
-                "file_path": "/tmp/test.pdf",
+                "file_path": str(tmp_path / "test.pdf"),
                 "platform_api_key": "sk-test",
             },
         )
@@ -357,7 +357,7 @@ class TestLegacyExecutorLogPassthrough:
     @patch("executor.executors.legacy_executor.X2Text")
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     def test_extract_no_log_info_when_absent(
-        self, mock_shim_cls, mock_x2text, mock_fs
+        self, mock_shim_cls, mock_x2text, mock_fs, tmp_path
     ):
         from executor.executors.legacy_executor import LegacyExecutor
         from unstract.sdk1.execution.registry import ExecutorRegistry
@@ -380,7 +380,7 @@ class TestLegacyExecutorLogPassthrough:
             execution_source="tool",
             executor_params={
                 "x2text_instance_id": "x2t-1",
-                "file_path": "/tmp/test.pdf",
+                "file_path": str(tmp_path / "test.pdf"),
                 "platform_api_key": "sk-test",
             },
         )

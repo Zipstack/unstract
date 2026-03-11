@@ -154,7 +154,7 @@ class TestSPSQueueRouting:
         call_kwargs = mock_app.send_task.call_args
         assert call_kwargs.kwargs.get("queue") == "celery_executor_simple_prompt_studio"
 
-    def test_dispatch_sps_index_to_correct_queue(self):
+    def test_dispatch_sps_index_to_correct_queue(self, tmp_path):
         mock_app = MagicMock()
         mock_result = MagicMock()
         mock_result.get.return_value = ExecutionResult(
@@ -168,7 +168,7 @@ class TestSPSQueueRouting:
             operation="sps_index",
             run_id="run-1",
             execution_source="tool",
-            executor_params={"output": {}, "file_path": "/tmp/test.pdf"},
+            executor_params={"output": {}, "file_path": str(tmp_path / "test.pdf")},
         )
         result = dispatcher.dispatch(ctx)
 

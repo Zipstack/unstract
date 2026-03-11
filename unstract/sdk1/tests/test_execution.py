@@ -2,6 +2,8 @@
 
 import json
 import logging
+import os
+import tempfile
 from typing import Any, Self
 from unittest.mock import MagicMock
 
@@ -19,6 +21,8 @@ from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
+_TEST_FILE_PATH = os.path.join(tempfile.mkdtemp(), "test.pdf")
+
 
 class TestExecutionContext:
     """Tests for ExecutionContext serialization and validation."""
@@ -31,7 +35,7 @@ class TestExecutionContext:
             "run_id": "run-001",
             "execution_source": "tool",
             "organization_id": "org-123",
-            "executor_params": {"file_path": "/tmp/test.pdf"},
+            "executor_params": {"file_path": _TEST_FILE_PATH},
             "request_id": "req-abc",
         }
         defaults.update(overrides)

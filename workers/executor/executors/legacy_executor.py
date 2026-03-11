@@ -25,10 +25,10 @@ from executor.executors.exceptions import ExtractionError, LegacyExecutorError
 from executor.executors.file_utils import FileUtils
 
 from unstract.sdk1.adapters.exceptions import AdapterError
-from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry

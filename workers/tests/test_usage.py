@@ -223,7 +223,7 @@ class TestMetricsInResult:
     )
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     def test_answer_prompt_returns_metrics(
-        self, mock_shim_cls, mock_get_deps, _mock_idx
+        self, mock_shim_cls, mock_get_deps, _mock_idx, tmp_path
     ):
         """answer_prompt result includes metrics dict."""
         from unstract.sdk1.execution.context import ExecutionContext
@@ -298,7 +298,7 @@ class TestMetricsInResult:
                     ],
                     "tool_id": "tool-1",
                     "file_hash": "hash123",
-                    "file_path": "/tmp/test.txt",
+                    "file_path": str(tmp_path / "test.txt"),
                     "file_name": "test.txt",
                     "PLATFORM_SERVICE_API_KEY": "test-key",
                 },
