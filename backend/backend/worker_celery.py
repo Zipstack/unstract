@@ -41,14 +41,10 @@ class _WorkerDispatchCelery(Celery):
     _explicit_broker: str | None = None
 
     def connection_for_write(self, url=None, *args, **kwargs):
-        return super().connection_for_write(
-            url=url or self._explicit_broker, *args, **kwargs
-        )
+        return super().connection_for_write(url or self._explicit_broker, *args, **kwargs)
 
     def connection_for_read(self, url=None, *args, **kwargs):
-        return super().connection_for_read(
-            url=url or self._explicit_broker, *args, **kwargs
-        )
+        return super().connection_for_read(url or self._explicit_broker, *args, **kwargs)
 
 
 def get_worker_celery_app() -> Celery:

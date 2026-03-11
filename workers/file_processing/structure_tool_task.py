@@ -221,7 +221,6 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     """
     # ---- Unpack params ----
     organization_id = params["organization_id"]
-    workflow_id = params.get("workflow_id", "")
     execution_id = params.get("execution_id", "")
     file_execution_id = params["file_execution_id"]
     tool_instance_metadata = params["tool_instance_metadata"]

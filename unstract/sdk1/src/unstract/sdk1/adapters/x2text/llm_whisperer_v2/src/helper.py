@@ -225,7 +225,9 @@ class LLMWhispererHelper:
                     WhispererConfig.WAIT_TIMEOUT,
                     WhispererDefaults.WAIT_TIMEOUT,
                 ),
-                WhispererConfig.WAIT_FOR_COMPLETION: WhispererDefaults.WAIT_FOR_COMPLETION,
+                WhispererConfig.WAIT_FOR_COMPLETION: (
+                    WhispererDefaults.WAIT_FOR_COMPLETION
+                ),
             }
         )
         if params[WhispererConfig.MODE] == Modes.LOW_COST.value:

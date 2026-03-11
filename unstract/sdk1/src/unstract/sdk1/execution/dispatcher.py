@@ -72,7 +72,7 @@ class ExecutionDispatcher:
         )
     """
 
-    def __init__(self, celery_app: Any = None) -> None:
+    def __init__(self, celery_app: object | None = None) -> None:
         """Initialize the dispatcher.
 
         Args:
@@ -201,10 +201,10 @@ class ExecutionDispatcher:
     def dispatch_with_callback(
         self,
         context: ExecutionContext,
-        on_success: Any = None,
-        on_error: Any = None,
+        on_success: object | None = None,
+        on_error: object | None = None,
         task_id: str | None = None,
-    ) -> Any:
+    ) -> object:
         """Fire-and-forget dispatch with Celery link callbacks.
 
         Sends the task to the executor queue and returns immediately.
