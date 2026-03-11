@@ -59,7 +59,6 @@ from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_help
     PromptStudioDocumentHelper,
 )
 from prompt_studio.prompt_studio_index_manager_v2.models import IndexManager
-from prompt_studio.prompt_studio_output_manager_v2.models import PromptStudioOutputManager
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
