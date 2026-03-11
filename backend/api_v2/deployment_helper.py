@@ -300,7 +300,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
 
     @staticmethod
     def _enrich_item_inner_metadata(
-        item: dict, file_exec_id: str, UsageHelper: Any
+        item: dict, file_exec_id: str, usage_helper: Any
     ) -> None:
         """Inject per-model usage breakdown into item['result']['metadata']."""
         inner_result = item.get("result")
@@ -309,19 +309,19 @@ class DeploymentHelper(BaseAPIKeyValidator):
         metadata = inner_result.get("metadata")
         if not isinstance(metadata, dict):
             return
-        usage_by_model = UsageHelper.get_usage_by_model(file_exec_id)
+        usage_by_model = usage_helper.get_usage_by_model(file_exec_id)
         if usage_by_model:
             metadata.update(usage_by_model)
 
     @staticmethod
     def _enrich_item_top_metadata(
-        item: dict, file_exec_id: str, UsageHelper: Any
+        item: dict, file_exec_id: str, usage_helper: Any
     ) -> None:
         """Inject aggregated usage totals into item['metadata']['usage']."""
         item_metadata = item.get("metadata")
         if not isinstance(item_metadata, dict):
             return
-        aggregated = UsageHelper.get_aggregated_token_count(file_exec_id)
+        aggregated = usage_helper.get_aggregated_token_count(file_exec_id)
         if aggregated:
             aggregated["file_execution_id"] = file_exec_id
             item_metadata["usage"] = aggregated
