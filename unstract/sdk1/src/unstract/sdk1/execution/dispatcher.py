@@ -120,7 +120,8 @@ class ExecutionDispatcher:
 
         queue = self._get_queue(context.executor_name)
         logger.info(
-            "Dispatching execution: executor=%s operation=%s run_id=%s request_id=%s timeout=%ss queue=%s",
+            "Dispatching execution: executor=%s operation=%s"
+            " run_id=%s request_id=%s timeout=%ss queue=%s",
             context.executor_name,
             context.operation,
             context.run_id,
