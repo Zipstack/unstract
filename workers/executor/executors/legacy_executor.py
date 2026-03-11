@@ -85,9 +85,7 @@ class LegacyExecutor(BaseExecutor):
         handler_name = self._OPERATION_MAP.get(context.operation)
         if handler_name is None:
             return ExecutionResult.failure(
-                error=(
-                    f"LegacyExecutor does not support operation '{context.operation}'"
-                )
+                error=(f"LegacyExecutor does not support operation '{context.operation}'")
             )
 
         handler = getattr(self, handler_name)
