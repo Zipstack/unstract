@@ -198,7 +198,7 @@ class TestLegacyExcludesAgentic:
 # ---------------------------------------------------------------------------
 
 class TestStructureToolAgenticRouting:
-    def test_structure_tool_dispatches_agentic_extract(self):
+    def test_structure_tool_dispatches_agentic_extract(self, tmp_path):
         """Verify _run_agentic_extraction sends executor_name='agentic'."""
 
         from file_processing.structure_tool_task import _run_agentic_extraction
@@ -210,8 +210,8 @@ class TestStructureToolAgenticRouting:
 
         result = _run_agentic_extraction(
             tool_metadata={"name": "test"},
-            input_file_path="/tmp/test.pdf",
-            output_dir_path="/tmp/output",
+            input_file_path=str(tmp_path / "test.pdf"),
+            output_dir_path=str(tmp_path / "output"),
             tool_instance_metadata={},
             dispatcher=mock_dispatcher,
             shim=MagicMock(),

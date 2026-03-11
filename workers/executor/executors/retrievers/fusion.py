@@ -86,16 +86,18 @@ class FusionRetriever(BaseRetriever):
         except (ValueError, AttributeError, KeyError, ImportError) as e:
             logger.error(
                 "Error during fusion retrieval for %s: %s: %s",
-                self.doc_id, type(e).__name__, e,
+                self.doc_id,
+                type(e).__name__,
+                e,
                 exc_info=True,
             )
             raise RetrievalError(f"{type(e).__name__}: {e}") from e
         except Exception as e:
             logger.error(
                 "Unexpected error during fusion retrieval for %s: %s: %s",
-                self.doc_id, type(e).__name__, e,
+                self.doc_id,
+                type(e).__name__,
+                e,
                 exc_info=True,
             )
-            raise RetrievalError(
-                f"Unexpected error: {type(e).__name__}: {e}"
-            ) from e
+            raise RetrievalError(f"Unexpected error: {type(e).__name__}: {e}") from e

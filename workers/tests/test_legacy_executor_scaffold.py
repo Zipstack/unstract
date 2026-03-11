@@ -203,11 +203,12 @@ class TestDTOs:
         with pytest.raises(ValueError, match="zero chunks"):
             ChunkingConfig(chunk_size=0, chunk_overlap=0)
 
-    def test_file_info(self):
+    def test_file_info(self, tmp_path):
         from executor.executors.dto import FileInfo
 
-        fi = FileInfo(file_path="/tmp/test.pdf", file_hash="abc123")
-        assert fi.file_path == "/tmp/test.pdf"
+        test_path = str(tmp_path / "test.pdf")
+        fi = FileInfo(file_path=test_path, file_hash="abc123")
+        assert fi.file_path == test_path
 
     def test_instance_identifiers(self):
         from executor.executors.dto import InstanceIdentifiers

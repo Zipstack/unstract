@@ -325,6 +325,12 @@ services:
     build:
       dockerfile: docker/dockerfiles/backend.Dockerfile
       context: ..
+  # Celery worker for dashboard metrics (memory optimized: reduced autoscale)
+  worker-metrics:
+    build:
+      dockerfile: docker/dockerfiles/backend.Dockerfile
+      context: ..
+    command: "-A backend worker --loglevel=info -Q dashboard_metric_events --autoscale=2,1"
     develop:
       watch:
         - action: sync+restart

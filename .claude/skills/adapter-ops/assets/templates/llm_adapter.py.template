@@ -1,0 +1,59 @@
+"""LLM Adapter Template for ${PROVIDER_NAME}.
+
+Replace placeholders:
+- ${PROVIDER_NAME} -> Display name (e.g., "New Provider")
+- ${PROVIDER_ID} -> Lowercase identifier (e.g., "newprovider")
+- ${CLASS_NAME} -> PascalCase name (e.g., "NewProvider")
+- ${UUID} -> Generate with: python -c "import uuid; print(uuid.uuid4())"
+- ${PARAM_CLASS} -> Parameter class name (e.g., "NewProviderLLMParameters")
+"""
+
+from typing import Any
+
+from unstract.sdk1.adapters.base1 import BaseAdapter, ${PARAM_CLASS}
+from unstract.sdk1.adapters.enums import AdapterTypes
+
+
+class ${CLASS_NAME}LLMAdapter(${PARAM_CLASS}, BaseAdapter):
+    """LLM adapter for ${PROVIDER_NAME}."""
+
+    @staticmethod
+    def get_id() -> str:
+        """Return unique adapter ID."""
+        return "${PROVIDER_ID}|${UUID}"
+
+    @staticmethod
+    def get_metadata() -> dict[str, Any]:
+        """Return adapter metadata for registration."""
+        return {
+            "name": "${PROVIDER_NAME}",
+            "version": "1.0.0",
+            "adapter": ${CLASS_NAME}LLMAdapter,
+            "description": "${PROVIDER_NAME} LLM adapter",
+            "is_active": True,
+        }
+
+    @staticmethod
+    def get_name() -> str:
+        """Return display name."""
+        return "${PROVIDER_NAME}"
+
+    @staticmethod
+    def get_description() -> str:
+        """Return description."""
+        return "${PROVIDER_NAME} LLM adapter"
+
+    @staticmethod
+    def get_provider() -> str:
+        """Return lowercase provider identifier."""
+        return "${PROVIDER_ID}"
+
+    @staticmethod
+    def get_icon() -> str:
+        """Return icon path."""
+        return "/icons/adapter-icons/${PROVIDER_NAME}.png"
+
+    @staticmethod
+    def get_adapter_type() -> AdapterTypes:
+        """Return adapter type."""
+        return AdapterTypes.LLM

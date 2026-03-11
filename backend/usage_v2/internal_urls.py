@@ -12,4 +12,9 @@ urlpatterns = [
         internal_views.UsageInternalView.as_view(),
         name="aggregated-token-count",
     ),
+    path(
+        "aggregated-pages-processed/<str:file_execution_id>/",
+        internal_views.PagesProcessedInternalView.as_view(),
+        name="aggregated-pages-processed",
+    ),
 ]

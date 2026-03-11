@@ -92,18 +92,14 @@ services:
       - "host.docker.internal:host-gateway"
 
   feature-flag:
-    image: flipt/flipt:v1.34.0 # Dated(05/01/2024) Latest stable version. Ref:https://github.com/flipt-io/flipt/releases
+    image: docker.flipt.io/flipt/flipt:v2.3.1
     container_name: unstract-flipt
     restart: unless-stopped
     ports: # Forwarded to available host ports
       - "8082:8080" # REST API port
       - "9005:9000" # gRPC port
-    # https://www.flipt.io/docs/configuration/overview#environment-variables)
-    # https://www.flipt.io/docs/configuration/overview#configuration-parameters
-    env_file:
-      - ./essentials.env
-    environment:
-      FLIPT_CACHE_ENABLED: true
+    volumes:
+      - flipt_data:/var/opt/flipt
     labels:
       - traefik.enable=true
       - traefik.http.routers.feature-flag.rule=Host(`feature-flag.unstract.localhost`)

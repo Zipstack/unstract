@@ -382,7 +382,7 @@ class TestCrossCuttingHighlight:
         assert ExecutorPluginLoader.get("highlight-data") is None
         # No error — graceful degradation
 
-    def test_mock_highlight_plugin_shared_across_executors(self):
+    def test_mock_highlight_plugin_shared_across_executors(self, tmp_path):
         """Multiple executors can use the same highlight plugin instance."""
         from executor.executors.plugins.loader import ExecutorPluginLoader
 
@@ -412,8 +412,8 @@ class TestCrossCuttingHighlight:
             assert cls is FakeHighlight
 
             # Both legacy and agentic contexts can create instances
-            legacy_hl = cls(file_path="/tmp/doc.txt", execution_source="ide")
-            agentic_hl = cls(file_path="/tmp/other.txt", execution_source="tool")
+            legacy_hl = cls(file_path=str(tmp_path / "doc.txt"), execution_source="ide")
+            agentic_hl = cls(file_path=str(tmp_path / "other.txt"), execution_source="tool")
 
             assert legacy_hl.get_highlight_data() == {"lines": [1, 2, 3]}
             assert agentic_hl.get_confidence_data() == {"confidence": 0.95}

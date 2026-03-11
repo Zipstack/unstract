@@ -375,9 +375,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         if fe_lookup:
             first_fe = next(iter(fe_lookup.values()))
             workflow_execution = first_fe.workflow_execution
-            tag_names = list(
-                workflow_execution.tags.values_list("name", flat=True)
-            )
+            tag_names = list(workflow_execution.tags.values_list("name", flat=True))
 
         # 4. Enrich each item
         for item in result.result:
