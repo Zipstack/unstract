@@ -9,7 +9,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests as real_requests
-
 from executor.executors.constants import VariableType
 from executor.executors.exceptions import CustomDataError, LegacyExecutorError
 from executor.executors.postprocessor import (
@@ -20,7 +19,6 @@ from executor.executors.variable_replacement import (
     VariableReplacementHelper,
     VariableReplacementService,
 )
-
 
 # ============================================================================
 # 1. VariableReplacementHelper (15 tests)
@@ -473,7 +471,7 @@ class TestPostprocessor:
             timeout=5.0,
         )
         _, kwargs = mock_post.call_args
-        assert kwargs["timeout"] == 5.0
+        assert kwargs["timeout"] == pytest.approx(5.0)
 
     # --- _validate_structured_output ---
 

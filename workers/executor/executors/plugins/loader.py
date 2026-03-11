@@ -26,6 +26,8 @@ class ExecutorPluginLoader:
         """Get a plugin class by name.  Returns None if not installed."""
         if cls._plugins is None:
             cls._discover_plugins()
+        if cls._plugins is None:
+            return None
         return cls._plugins.get(name)
 
     @classmethod

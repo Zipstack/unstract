@@ -8,12 +8,11 @@ All heavy dependencies (LLM, VectorDB, etc.) are mocked.
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
-from unstract.sdk1.execution.context import ExecutionContext, Operation
 
+from unstract.sdk1.execution.context import ExecutionContext, Operation
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -269,7 +268,7 @@ class TestHandleAnswerPromptTypes:
         ctx = _make_context(prompts=[_make_prompt(output_type="number")])
         result = executor._handle_answer_prompt(ctx)
 
-        assert result.data[PSKeys.OUTPUT]["field_a"] == 42500000.0
+        assert result.data[PSKeys.OUTPUT]["field_a"] == pytest.approx(42500000.0)
 
     @patch(
         "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
