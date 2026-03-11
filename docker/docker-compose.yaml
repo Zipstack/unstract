@@ -540,8 +540,7 @@ services:
     volumes:
       - ./workflow_data:/data
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
-    profiles:
-      - workers-v2
+      - prompt_studio_data:/app/prompt-studio-data
 
 volumes:
   prompt_studio_data:
