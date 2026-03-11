@@ -163,10 +163,10 @@ class TestStructureToolPipeline:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_single_dispatch(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -184,7 +184,7 @@ class TestStructureToolPipeline:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
 
         pipeline_result = _make_pipeline_result(
             output={"field_a": "$1M"},
@@ -277,10 +277,10 @@ class TestStructureToolSinglePass:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_single_pass(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -299,7 +299,7 @@ class TestStructureToolSinglePass:
         base_params["tool_instance_metadata"]["single_pass_extraction_mode"] = True
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
         )
@@ -324,10 +324,10 @@ class TestStructureToolSummarize:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_summarize_flow(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -349,7 +349,7 @@ class TestStructureToolSummarize:
         base_params["tool_instance_metadata"]["summarize_as_source"] = True
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
         )
@@ -382,10 +382,10 @@ class TestStructureToolSmartTable:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_skip_extraction_smart_table(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -408,7 +408,7 @@ class TestStructureToolSmartTable:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "table_answer"},
         )
@@ -433,10 +433,10 @@ class TestStructureToolAgentic:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_agentic_routing(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         mock_fs,
         mock_platform_helper,
@@ -461,7 +461,7 @@ class TestStructureToolAgentic:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
 
         # Simulate successful agentic extraction
         agentic_result = ExecutionResult(
@@ -488,10 +488,10 @@ class TestStructureToolProfileOverrides:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_profile_overrides(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -514,7 +514,7 @@ class TestStructureToolProfileOverrides:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
         )
@@ -535,10 +535,10 @@ class TestStructureToolPipelineFailure:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_pipeline_failure(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -555,7 +555,7 @@ class TestStructureToolPipelineFailure:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
 
         pipeline_failure = ExecutionResult.failure(
             error="X2Text adapter error: connection refused"
@@ -578,10 +578,10 @@ class TestStructureToolMultipleOutputs:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_multiple_outputs(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -604,7 +604,7 @@ class TestStructureToolMultipleOutputs:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "a", "field_b": "b"},
         )
@@ -630,10 +630,10 @@ class TestStructureToolOutputWritten:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_output_written(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -650,7 +650,7 @@ class TestStructureToolOutputWritten:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
         )
@@ -690,10 +690,10 @@ class TestStructureToolMetadataFileName:
     @patch(_PATCH_DISPATCHER)
     def test_structure_tool_metadata_file_name(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -710,7 +710,7 @@ class TestStructureToolMetadataFileName:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result(
             output={"field_a": "answer"},
             metadata={"run_id": "123", "file_name": "test.pdf"},
@@ -731,10 +731,10 @@ class TestStructureToolNoSummarize:
     @patch(_PATCH_DISPATCHER)
     def test_no_summarize_params_when_disabled(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -751,7 +751,7 @@ class TestStructureToolNoSummarize:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result()
 
         execute_structure_tool(base_params)

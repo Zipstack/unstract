@@ -853,11 +853,11 @@ class LegacyExecutor(BaseExecutor):
             f"Configured chunking: size={chunk_size}, overlap={chunk_overlap}"
         )
 
-        Index, EmbeddingCompat, VectorDB = self._get_indexing_deps()
+        index_cls, embedding_compat, vector_db_cls = self._get_indexing_deps()
 
         vector_db = None
         try:
-            index = Index(
+            index = index_cls(
                 tool=shim,
                 run_id=context.run_id,
                 capture_metrics=True,
@@ -869,12 +869,12 @@ class LegacyExecutor(BaseExecutor):
             logger.debug("Generated index key: doc_id=%s", doc_id)
             shim.stream_log("Checking document index status...")
 
-            embedding = EmbeddingCompat(
+            embedding = embedding_compat(
                 adapter_instance_id=embedding_instance_id,
                 tool=shim,
                 kwargs={**usage_kwargs},
             )
-            vector_db = VectorDB(
+            vector_db = vector_db_cls(
                 tool=shim,
                 adapter_instance_id=vector_db_instance_id,
                 embedding=embedding,
@@ -1029,13 +1029,13 @@ class LegacyExecutor(BaseExecutor):
 
         # Lazy imports
         (
-            AnswerPromptService,
-            RetrievalService,
-            VariableReplacementService,
-            _Index,  # unused — doc_id via IndexingUtils
-            LLM,
-            EmbeddingCompat,
-            VectorDB,
+            answer_prompt_svc,
+            retrieval_svc,
+            variable_replacement_svc,
+            _index_cls,  # unused — doc_id via IndexingUtils
+            llm_cls,
+            embedding_compat_cls,
+            vector_db_cls,
         ) = self._get_prompt_deps()
 
         # ---- Initialize highlight plugin (if enabled + installed) ----------
@@ -1130,9 +1130,9 @@ class LegacyExecutor(BaseExecutor):
             shim.stream_log(f"Processing prompt: {prompt_name}")
 
             # {{variable}} template replacement
-            if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
+            if variable_replacement_svc.is_variables_present(prompt_text=prompt_text):
                 is_ide = execution_source == "ide"
-                prompt_text = VariableReplacementService.replace_variables_in_prompt(
+                prompt_text = variable_replacement_svc.replace_variables_in_prompt(
                     prompt=output,
                     structured_output=structured_output,
                     log_events_id=log_events_id,
@@ -1152,7 +1152,7 @@ class LegacyExecutor(BaseExecutor):
             )
 
             # %variable% replacement
-            output[PSKeys.PROMPTX] = AnswerPromptService.extract_variable(
+            output[PSKeys.PROMPTX] = answer_prompt_svc.extract_variable(
                 structured_output, variable_names, output, prompt_text
             )
 
@@ -1240,7 +1240,7 @@ class LegacyExecutor(BaseExecutor):
                     "run_id": run_id,
                     "execution_id": execution_id,
                 }
-                llm = LLM(
+                llm = llm_cls(
                     adapter_instance_id=output[PSKeys.LLM],
                     tool=shim,
                     usage_kwargs={
@@ -1252,12 +1252,12 @@ class LegacyExecutor(BaseExecutor):
                 embedding = None
                 vector_db = None
                 if chunk_size > 0:
-                    embedding = EmbeddingCompat(
+                    embedding = embedding_compat_cls(
                         adapter_instance_id=output[PSKeys.EMBEDDING],
                         tool=shim,
                         kwargs={**usage_kwargs},
                     )
-                    vector_db = VectorDB(
+                    vector_db = vector_db_cls(
                         tool=shim,
                         adapter_instance_id=output[PSKeys.VECTOR_DB],
                         embedding=embedding,
@@ -1287,14 +1287,14 @@ class LegacyExecutor(BaseExecutor):
                         chunk_size,
                     )
                     if chunk_size == 0:
-                        context_list = RetrievalService.retrieve_complete_context(
+                        context_list = retrieval_svc.retrieve_complete_context(
                             execution_source=execution_source,
                             file_path=file_path,
                             context_retrieval_metrics=context_retrieval_metrics,
                             prompt_key=prompt_name,
                         )
                     else:
-                        context_list = RetrievalService.run_retrieval(
+                        context_list = retrieval_svc.run_retrieval(
                             output=output,
                             doc_id=doc_id,
                             llm=llm,
@@ -1315,7 +1315,7 @@ class LegacyExecutor(BaseExecutor):
 
                     # Run prompt with retrieved context
                     shim.stream_log(f"Running LLM completion for: {prompt_name}")
-                    answer = AnswerPromptService.construct_and_run_prompt(
+                    answer = answer_prompt_svc.construct_and_run_prompt(
                         tool_settings=tool_settings,
                         output=output,
                         llm=llm,
@@ -1360,7 +1360,7 @@ class LegacyExecutor(BaseExecutor):
                         challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
                         if challenge_llm_id:
                             shim.stream_log(f"Running challenge for: {prompt_name}")
-                            challenge_llm = LLM(
+                            challenge_llm = llm_cls(
                                 adapter_instance_id=challenge_llm_id,
                                 tool=shim,
                                 usage_kwargs={
@@ -1472,7 +1472,7 @@ class LegacyExecutor(BaseExecutor):
 
         Handles NUMBER, EMAIL, DATE, BOOLEAN, JSON, and TEXT types.
         """
-        from executor.executors.answer_prompt import AnswerPromptService
+        from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc
         from executor.executors.constants import PromptServiceConstants as PSKeys
 
         prompt_name = output[PSKeys.NAME]
@@ -1494,7 +1494,7 @@ class LegacyExecutor(BaseExecutor):
                     f"characters. No explanation is required. "
                     f"If you cannot extract the number, output 0."
                 )
-                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
+                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
                 try:
                     structured_output[prompt_name] = float(answer)
                 except Exception:
@@ -1511,7 +1511,7 @@ class LegacyExecutor(BaseExecutor):
                     f"variable. No explanation is required. If you cannot "
                     f'extract the email, output "NA".'
                 )
-                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
+                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
                 structured_output[prompt_name] = answer
 
         elif output_type == PSKeys.DATE:
@@ -1527,7 +1527,7 @@ class LegacyExecutor(BaseExecutor):
                     f"If you cannot convert the string into a date, "
                     f'output "NA".'
                 )
-                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
+                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
                 structured_output[prompt_name] = answer
 
         elif output_type == PSKeys.BOOLEAN:
@@ -1540,11 +1540,11 @@ class LegacyExecutor(BaseExecutor):
                     f"If the context is trying to convey that the answer "
                     f'is true, then return "yes", else return "no".'
                 )
-                answer = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
+                answer = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
                 structured_output[prompt_name] = answer.lower() == "yes"
 
         elif output_type == PSKeys.JSON:
-            AnswerPromptService.handle_json(
+            answer_prompt_svc.handle_json(
                 answer=answer,
                 structured_output=structured_output,
                 output=output,
@@ -1645,19 +1645,19 @@ class LegacyExecutor(BaseExecutor):
         )
         usage_kwargs = {"run_id": context.run_id}
 
-        _, _, _, _, LLM, _, _ = self._get_prompt_deps()
+        _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
 
         shim.stream_log("Initializing LLM for summarization...")
         try:
-            llm = LLM(
+            llm = llm_cls(
                 adapter_instance_id=llm_adapter_id,
                 tool=shim,
                 usage_kwargs={**usage_kwargs},
             )
-            from executor.executors.answer_prompt import AnswerPromptService
+            from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc
 
             shim.stream_log("Running document summarization...")
-            summary = AnswerPromptService.run_completion(llm=llm, prompt=prompt)
+            summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
             logger.info("Summarization completed: run_id=%s", context.run_id)
             shim.stream_log("Summarization completed")
             return ExecutionResult(

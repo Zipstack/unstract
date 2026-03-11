@@ -413,26 +413,26 @@ class TestLegacyExecutorLogPassthrough:
         mock_shim_cls.return_value = mock_shim
 
         # Mock prompt deps
-        MockAnswerPromptService = MagicMock()
-        MockAnswerPromptService.extract_variable.return_value = "prompt text"
-        MockRetrievalService = MagicMock()
-        MockVariableReplacementService = MagicMock()
-        MockVariableReplacementService.is_variables_present.return_value = (
+        mock_answer_prompt_service = MagicMock()
+        mock_answer_prompt_service.extract_variable.return_value = "prompt text"
+        mock_retrieval_service = MagicMock()
+        mock_variable_replacement_service = MagicMock()
+        mock_variable_replacement_service.is_variables_present.return_value = (
             False
         )
-        MockIndex = MagicMock()
-        MockLLM = MagicMock()
-        MockEmbeddingCompat = MagicMock()
-        MockVectorDB = MagicMock()
+        mock_index = MagicMock()
+        mock_llm = MagicMock()
+        mock_embedding_compat = MagicMock()
+        mock_vector_db = MagicMock()
 
         mock_prompt_deps.return_value = (
-            MockAnswerPromptService,
-            MockRetrievalService,
-            MockVariableReplacementService,
-            MockIndex,
-            MockLLM,
-            MockEmbeddingCompat,
-            MockVectorDB,
+            mock_answer_prompt_service,
+            mock_retrieval_service,
+            mock_variable_replacement_service,
+            mock_index,
+            mock_llm,
+            mock_embedding_compat,
+            mock_vector_db,
         )
 
         ctx = ExecutionContext(
@@ -474,10 +474,10 @@ class TestLegacyExecutorLogPassthrough:
         ):
             executor = LegacyExecutor()
             # The handler will try retrieval which we need to mock
-            MockRetrievalService.retrieve_complete_context.return_value = [
+            mock_retrieval_service.retrieve_complete_context.return_value = [
                 "context"
             ]
-            MockAnswerPromptService.construct_and_run_prompt.return_value = (
+            mock_answer_prompt_service.construct_and_run_prompt.return_value = (
                 "INV-001"
             )
 

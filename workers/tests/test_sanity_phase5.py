@@ -110,7 +110,7 @@ def _mock_prompt_deps(llm=None):
     if llm is None:
         llm = _mock_llm()
 
-    from executor.executors.answer_prompt import AnswerPromptService
+    from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc_cls
 
     retrieval_service = MagicMock(name="RetrievalService")
     retrieval_service.run_retrieval.return_value = ["chunk1"]
@@ -124,20 +124,20 @@ def _mock_prompt_deps(llm=None):
     index_instance.generate_index_key.return_value = "doc-key-1"
     index_cls.return_value = index_instance
 
-    LLM_cls = MagicMock(name="LLM")
-    LLM_cls.return_value = llm
+    llm_cls = MagicMock(name="LLM")
+    llm_cls.return_value = llm
 
-    EmbeddingCompat = MagicMock(name="EmbeddingCompat")
-    VectorDB = MagicMock(name="VectorDB")
+    embedding_compat_cls = MagicMock(name="EmbeddingCompat")
+    vector_db_cls = MagicMock(name="VectorDB")
 
     return (
-        AnswerPromptService,
+        answer_prompt_svc_cls,
         retrieval_service,
         variable_replacement_service,
         index_cls,
-        LLM_cls,
-        EmbeddingCompat,
-        VectorDB,
+        llm_cls,
+        embedding_compat_cls,
+        vector_db_cls,
     )
 
 
@@ -253,8 +253,8 @@ class TestIdeIndexEagerChain:
     @patch(_PATCH_SHIM)
     def test_ide_index_success(
         self,
-        MockShim,
-        MockX2Text,
+        mock_shim,
+        mock_x2text,
         mock_fs,
         mock_index_deps,
         eager_app,
@@ -265,7 +265,7 @@ class TestIdeIndexEagerChain:
         x2t_instance.process.return_value = _mock_process_response(
             "IDE extracted text"
         )
-        MockX2Text.return_value = x2t_instance
+        mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
         fs.exists.return_value = False
@@ -326,15 +326,15 @@ class TestIdeIndexEagerChain:
     @patch(_PATCH_SHIM)
     def test_ide_index_extract_failure(
         self,
-        MockShim,
-        MockX2Text,
+        mock_shim,
+        mock_x2text,
         mock_fs,
         eager_app,
     ):
         """ide_index returns failure if extract fails."""
         x2t_instance = MagicMock()
         x2t_instance.process.side_effect = Exception("X2Text unavailable")
-        MockX2Text.return_value = x2t_instance
+        mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
         fs.exists.return_value = False
@@ -394,8 +394,8 @@ class TestStructurePipelineEagerChain:
     @patch(_PATCH_SHIM)
     def test_structure_pipeline_normal(
         self,
-        MockShim,
-        MockX2Text,
+        mock_shim,
+        mock_x2text,
         mock_fs,
         mock_index_deps,
         mock_prompt_deps,
@@ -406,7 +406,7 @@ class TestStructurePipelineEagerChain:
         # Mock extract
         x2t_instance = MagicMock()
         x2t_instance.process.return_value = _mock_process_response("Revenue is $1M")
-        MockX2Text.return_value = x2t_instance
+        mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
         fs.exists.return_value = False
@@ -496,8 +496,8 @@ class TestStructurePipelineEagerChain:
     @patch(_PATCH_SHIM)
     def test_structure_pipeline_single_pass(
         self,
-        MockShim,
-        MockX2Text,
+        mock_shim,
+        mock_x2text,
         mock_fs,
         mock_prompt_deps,
         _mock_idx_utils,
@@ -506,7 +506,7 @@ class TestStructurePipelineEagerChain:
         """Single pass: extract → single_pass_extraction (no index)."""
         x2t_instance = MagicMock()
         x2t_instance.process.return_value = _mock_process_response("Revenue data")
-        MockX2Text.return_value = x2t_instance
+        mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
         fs.exists.return_value = False
@@ -574,8 +574,8 @@ class TestStructurePipelineEagerChain:
     @patch(_PATCH_SHIM)
     def test_structure_pipeline_skip_extraction(
         self,
-        MockShim,
-        MockX2Text,
+        mock_shim,
+        mock_x2text,
         mock_fs,
         mock_prompt_deps,
         _mock_idx_utils,
@@ -633,22 +633,22 @@ class TestStructurePipelineEagerChain:
         result = ExecutionResult.from_dict(result_dict)
         assert result.success
         # No extract was called (X2Text not mocked beyond fixture)
-        MockX2Text.assert_not_called()
+        mock_x2text.assert_not_called()
 
     @patch(_PATCH_FS)
     @patch(_PATCH_X2TEXT)
     @patch(_PATCH_SHIM)
     def test_structure_pipeline_extract_failure(
         self,
-        MockShim,
-        MockX2Text,
+        mock_shim,
+        mock_x2text,
         mock_fs,
         eager_app,
     ):
         """Pipeline extract failure propagated as result failure."""
         x2t_instance = MagicMock()
         x2t_instance.process.side_effect = Exception("X2Text timeout")
-        MockX2Text.return_value = x2t_instance
+        mock_x2text.return_value = x2t_instance
 
         fs = MagicMock()
         fs.exists.return_value = False
@@ -709,10 +709,10 @@ class TestStructureToolSingleDispatch:
     )
     def test_single_dispatch_normal(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim,
     ):
         """Normal path sends single structure_pipeline dispatch."""
         from file_processing.structure_tool_task import (
@@ -754,7 +754,7 @@ class TestStructureToolSingleDispatch:
         mock_create_ph.return_value = ph
 
         dispatcher = MagicMock()
-        MockDispatcher.return_value = dispatcher
+        mock_dispatcher_cls.return_value = dispatcher
         dispatcher.dispatch.return_value = ExecutionResult(
             success=True,
             data={"output": {"f1": "ans"}, "metadata": {}, "metrics": {}},
