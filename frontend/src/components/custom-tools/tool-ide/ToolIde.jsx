@@ -223,8 +223,8 @@ function ToolIde() {
           info: "Exported from reminder bar",
           tool_name: details?.tool_name,
         });
-      } catch (_err) {
-        // Ignore posthog errors
+      } catch (err) {
+        console.debug("PostHog event error", err);
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to export"));
@@ -278,8 +278,8 @@ function ToolIde() {
           setPostHogCustomEvent("intent_success_ps_indexed_file", {
             info: "Indexing completed",
           });
-        } catch (_err) {
-          // If an error occurs while setting custom posthog event, ignore it and continue
+        } catch (err) {
+          console.debug("PostHog event error", err);
         }
       })
       .catch((err) => {

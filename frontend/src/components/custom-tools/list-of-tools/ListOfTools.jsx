@@ -258,8 +258,8 @@ function ListOfTools() {
       setPostHogCustomEvent("intent_new_ps_project", {
         info: "Clicked on '+ New Project' button",
       });
-    } catch (_err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
+    } catch (err) {
+      console.debug("PostHog event error", err);
     }
   };
 
@@ -269,8 +269,8 @@ function ListOfTools() {
         info: "Importing project from projects list",
         file_name: file.name,
       });
-    } catch (_err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
+    } catch (err) {
+      console.debug("PostHog event error", err);
     }
 
     setIsImportLoading(true);

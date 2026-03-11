@@ -32,7 +32,7 @@ class CoOwnerManagementMixin:
 
     notification_resource_name_field: str | None = None
 
-    def get_notification_resource_type(self, resource: Any) -> str | None:
+    def get_notification_resource_type(self, _resource: Any) -> str | None:
         """Return the ResourceType value for notifications, or None to skip."""
         return None
 
@@ -129,6 +129,7 @@ class CoOwnerManagementMixin:
 
     def add_co_owner(self, request: Request, pk: Any = None) -> Response:
         """Add a co-owner to the resource."""
+        _ = pk  # Used by DRF router; object is fetched via get_object()
         resource = self.get_object()  # type: ignore[attr-defined]
 
         serializer = AddCoOwnerSerializer(
@@ -159,6 +160,7 @@ class CoOwnerManagementMixin:
         self, request: Request, pk: Any = None, user_id: Any = None
     ) -> Response:
         """Remove a co-owner from the resource."""
+        _ = pk  # Used by DRF router; object is fetched via get_object()
         resource = self.get_object()  # type: ignore[attr-defined]
         user_to_remove = get_object_or_404(User, id=user_id)
 
