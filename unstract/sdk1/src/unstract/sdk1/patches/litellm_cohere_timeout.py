@@ -7,11 +7,18 @@ causing "Connection timed out after None seconds" errors.
 Affected litellm version: 1.80.0 (also present on latest main as of
 2026-03-10).
 
+Activation: This patch is imported as a side-effect from
+unstract.sdk1.embedding. Any code path that invokes Bedrock Cohere
+embeddings without going through unstract.sdk1.embedding will NOT
+have this patch active.
+
 Remove this patch when litellm ships a fix upstream.
 """
 
+import importlib.metadata
 import json
 import logging
+import warnings
 from collections.abc import Callable
 
 import httpx
@@ -34,12 +41,32 @@ from litellm.llms.custom_httpx.http_handler import (
 )
 from litellm.types.llms.bedrock import CohereEmbeddingRequest
 from litellm.types.utils import EmbeddingResponse
+from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT = httpx.Timeout(None)
 
+# --- Version guard ---
+# Warn if litellm has been upgraded past the known-affected version so
+# engineers know to verify whether the upstream bug is fixed and this
+# patch can be removed.
+_PATCHED_LITELLM_VERSION = "1.80.0"
+_litellm_version = importlib.metadata.version("litellm")
+if Version(_litellm_version) > Version(_PATCHED_LITELLM_VERSION):
+    warnings.warn(
+        "litellm_cohere_timeout patch may be obsolete. "
+        f"Current litellm version: {_litellm_version}. "
+        f"Patch was written for: {_PATCHED_LITELLM_VERSION}. "
+        "Please verify and remove the patch.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
 
+
+# Copied from litellm 1.80.0 cohere/embed/handler.py async_embedding().
+# ONLY CHANGE: Added timeout=timeout to the client.post() call.
+# Source: litellm/llms/cohere/embed/handler.py::async_embedding
 async def _patched_async_embedding(  # type: ignore[return]  # noqa: ANN202
     model: str,
     data: dict | CohereEmbeddingRequest,
@@ -106,6 +133,9 @@ async def _patched_async_embedding(  # type: ignore[return]  # noqa: ANN202
     )
 
 
+# Copied from litellm 1.80.0 cohere/embed/handler.py embedding().
+# ONLY CHANGE: Added timeout=timeout to the client.post() call.
+# Source: litellm/llms/cohere/embed/handler.py::embedding
 def _patched_embedding(  # type: ignore[return]  # noqa: ANN202
     model: str,
     input: list,
@@ -185,7 +215,4 @@ _cohere_handler.async_embedding = _patched_async_embedding
 _cohere_handler.embedding = _patched_embedding
 _bedrock_embed.cohere_embedding = _patched_embedding
 
-logger.info(
-    "Applied litellm cohere embed timeout patch (litellm==%s)",
-    litellm.__version__,
-)
+logger.info("Applied litellm cohere embed timeout patch")
