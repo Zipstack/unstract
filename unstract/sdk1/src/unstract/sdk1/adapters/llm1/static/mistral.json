@@ -16,8 +16,8 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "mistral-medium",
-      "description": "Provide the model name to be used. Example: mistral-tiny, mistral-small, mistral-medium"
+      "default": "mistral-large-latest",
+      "description": "Provide the model name. Examples: mistral-large-latest, mistral-small-latest, magistral-medium-2506, magistral-small-2506"
     },
     "api_key": {
       "type": "string",
@@ -48,6 +48,53 @@
       "title": "Timeout",
       "default": 900,
       "description": "Timeout in seconds"
+    },
+    "enable_reasoning": {
+      "type": "boolean",
+      "title": "Enable Reasoning",
+      "default": false,
+      "description": "Enable reasoning capabilities for Magistral models (magistral-medium-2506, magistral-small-2506). Provides step-by-step reasoning for complex tasks."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "medium",
+            "title": "Reasoning Effort",
+            "description": "Controls the depth of reasoning. Higher values provide more thorough analysis but may increase latency and cost."
+          }
+        },
+        "required": [
+          "reasoning_effort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": false
+          }
+        }
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
 }
