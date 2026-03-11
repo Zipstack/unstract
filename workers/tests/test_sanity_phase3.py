@@ -214,10 +214,10 @@ class TestStructureToolPipeline:
     @patch(_PATCH_DISPATCHER)
     def test_pipeline_params_structure(
         self,
-        MockDispatcher,
+        mock_dispatcher_cls,
         mock_create_ph,
         mock_get_fs,
-        MockShim,
+        mock_shim_cls,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -235,7 +235,7 @@ class TestStructureToolPipeline:
         }
 
         dispatcher_instance = MagicMock()
-        MockDispatcher.return_value = dispatcher_instance
+        mock_dispatcher_cls.return_value = dispatcher_instance
         dispatcher_instance.dispatch.return_value = _make_pipeline_result()
 
         execute_structure_tool(base_params)

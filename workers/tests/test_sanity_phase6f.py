@@ -155,7 +155,7 @@ class TestSmartTableQueueRouting:
             execution_source="tool",
             executor_params={"table_settings": {}},
         )
-        result = dispatcher.dispatch(ctx)
+        dispatcher.dispatch(ctx)
 
         mock_app.send_task.assert_called_once()
         call_kwargs = mock_app.send_task.call_args

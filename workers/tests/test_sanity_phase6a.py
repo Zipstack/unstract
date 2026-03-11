@@ -292,7 +292,7 @@ class TestProtocols:
 
         class FakeChallenge:
             def run(self):
-                pass
+                pass  # Minimal stub to satisfy ChallengeProtocol for isinstance check
 
         assert isinstance(FakeChallenge(), ChallengeProtocol)
 

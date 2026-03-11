@@ -119,16 +119,16 @@ class TestSummarizeResultShape:
     @patch(_PATCH_GET_PROMPT_DEPS)
     def test_summarize_returns_data_key(self, mock_deps):
         """_handle_summarize returns ExecutionResult with data.data = str."""
-        mock_LLM = MagicMock()
+        mock_llm = MagicMock()
         mock_llm_instance = MagicMock()
-        mock_LLM.return_value = mock_llm_instance
+        mock_llm.return_value = mock_llm_instance
 
         mock_deps.return_value = (
             MagicMock(),  # RetrievalService
             MagicMock(),  # PostProcessor
             MagicMock(),  # VariableReplacement
             MagicMock(),  # JsonRepair
-            mock_LLM,     # LLM
+            mock_llm,     # LLM
             MagicMock(),  # Embedding
             MagicMock(),  # VectorDB
         )
@@ -234,13 +234,13 @@ class TestSummarizeCeleryChain:
     @patch(_PATCH_GET_PROMPT_DEPS)
     def test_summarize_full_celery_chain(self, mock_deps, eager_app):
         """Summarize through full Celery task chain."""
-        mock_LLM = MagicMock()
+        mock_llm = MagicMock()
         mock_llm_instance = MagicMock()
-        mock_LLM.return_value = mock_llm_instance
+        mock_llm.return_value = mock_llm_instance
 
         mock_deps.return_value = (
             MagicMock(), MagicMock(), MagicMock(), MagicMock(),
-            mock_LLM, MagicMock(), MagicMock(),
+            mock_llm, MagicMock(), MagicMock(),
         )
 
         with patch(

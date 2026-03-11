@@ -82,13 +82,6 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
                 "doc_name": str(pipeline_opts.get("source_file_name", "")),
                 "operation": context.operation,
             }
-        elif context.operation in ("table_extract", "smart_table_extract"):
-            context._log_component = {
-                "tool_id": params.get("tool_id", ""),
-                "run_id": context.run_id,
-                "doc_name": str(params.get("file_name", "")),
-                "operation": context.operation,
-            }
         else:
             context._log_component = {
                 "tool_id": params.get("tool_id", ""),
@@ -103,7 +96,7 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
     result = orchestrator.execute(context)
 
     logger.info(
-        "execute_extraction complete: " "celery_task_id=%s request_id=%s success=%s",
+        "execute_extraction complete: celery_task_id=%s request_id=%s success=%s",
         self.request.id,
         context.request_id,
         result.success,

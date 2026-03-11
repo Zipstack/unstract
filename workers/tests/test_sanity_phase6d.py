@@ -525,7 +525,6 @@ class TestChallengeMutation:
 
         def challenge_run_side_effect():
             # Simulate challenge replacing the answer with improved version
-            challenger_instance = mock_challenge_cls.return_value
             # Access the structured_output passed to constructor
             so = mock_challenge_cls.call_args.kwargs["structured_output"]
             so["field1"] = "improved_42"

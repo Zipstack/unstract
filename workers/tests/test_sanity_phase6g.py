@@ -148,7 +148,7 @@ class TestSPSQueueRouting:
             execution_source="tool",
             executor_params={"tool_settings": {}, "output": {}},
         )
-        result = dispatcher.dispatch(ctx)
+        dispatcher.dispatch(ctx)
 
         mock_app.send_task.assert_called_once()
         call_kwargs = mock_app.send_task.call_args
@@ -170,7 +170,7 @@ class TestSPSQueueRouting:
             execution_source="tool",
             executor_params={"output": {}, "file_path": str(tmp_path / "test.pdf")},
         )
-        result = dispatcher.dispatch(ctx)
+        dispatcher.dispatch(ctx)
 
         mock_app.send_task.assert_called_once()
         call_kwargs = mock_app.send_task.call_args

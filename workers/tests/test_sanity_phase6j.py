@@ -502,21 +502,7 @@ class TestGracefulDegradation:
         # Only legacy should be in registry
         assert ExecutorRegistry.list_executors() == ["legacy"]
 
-        # Legacy operations still work
-        ctx = ExecutionContext(
-            executor_name="legacy",
-            operation="extract",
-            run_id="run-degrade",
-            execution_source="tool",
-            executor_params={
-                "tool_id": "t-1",
-                "file_name": "test.pdf",
-                "file_hash": "abc",
-                "PLATFORM_SERVICE_API_KEY": "key",
-            },
-        )
-        # This will fail at the handler level (no mocks), but it should
-        # route correctly and NOT fail at registry/dispatch level
+        # Legacy executor can be retrieved from the registry
         executor = ExecutorRegistry.get("legacy")
         assert executor is not None
         assert executor.name == "legacy"
@@ -593,13 +579,6 @@ class TestLogComponentAllOperations:
                 "tool_id": answer_params.get("tool_id", ""),
                 "run_id": ctx.run_id,
                 "doc_name": str(pipeline_opts.get("source_file_name", "")),
-                "operation": ctx.operation,
-            }
-        elif ctx.operation in ("table_extract", "smart_table_extract"):
-            return {
-                "tool_id": params.get("tool_id", ""),
-                "run_id": ctx.run_id,
-                "doc_name": str(params.get("file_name", "")),
                 "operation": ctx.operation,
             }
         else:

@@ -208,7 +208,7 @@ class TestStructureToolAgenticRouting:
             success=True, data={"output": {"field": "value"}}
         )
 
-        result = _run_agentic_extraction(
+        _run_agentic_extraction(
             tool_metadata={"name": "test"},
             input_file_path=str(tmp_path / "test.pdf"),
             output_dir_path=str(tmp_path / "output"),

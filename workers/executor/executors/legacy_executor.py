@@ -86,7 +86,7 @@ class LegacyExecutor(BaseExecutor):
         if handler_name is None:
             return ExecutionResult.failure(
                 error=(
-                    f"LegacyExecutor does not support operation " f"'{context.operation}'"
+                    f"LegacyExecutor does not support operation '{context.operation}'"
                 )
             )
 
@@ -105,7 +105,7 @@ class LegacyExecutor(BaseExecutor):
             result = handler(context)
             elapsed = time.monotonic() - start
             logger.info(
-                "Handler %s completed in %.2fs " "(run_id=%s success=%s)",
+                "Handler %s completed in %.2fs (run_id=%s success=%s)",
                 handler_name,
                 elapsed,
                 context.run_id,
@@ -190,14 +190,13 @@ class LegacyExecutor(BaseExecutor):
         fs = FileUtils.get_fs_instance(execution_source=execution_source)
 
         logger.info(
-            "Starting text extraction: x2text_adapter=%s file=%s " "run_id=%s",
+            "Starting text extraction: x2text_adapter=%s file=%s run_id=%s",
             x2text_instance_id,
             Path(file_path).name,
             context.run_id,
         )
         logger.info(
-            "HIGHLIGHT_DEBUG _handle_extract: enable_highlight=%s "
-            "x2text_type=%s file=%s run_id=%s",
+            "HIGHLIGHT_DEBUG _handle_extract: enable_highlight=%s x2text_type=%s file=%s run_id=%s",
             enable_highlight,
             type(x2text.x2text_instance).__name__,
             Path(file_path).name,
@@ -351,7 +350,7 @@ class LegacyExecutor(BaseExecutor):
             if not index_params:
                 missing.append("index_params")
             return ExecutionResult.failure(
-                error=f"ide_index missing required params: " f"{', '.join(missing)}"
+                error=f"ide_index missing required params: {', '.join(missing)}"
             )
 
         # Step 1: Extract
@@ -685,7 +684,7 @@ class LegacyExecutor(BaseExecutor):
 
                 indexing_start = datetime.datetime.now()
                 logger.info(
-                    "Pipeline indexing: chunk_size=%s " "chunk_overlap=%s vector_db=%s",
+                    "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
                     chunk_size,
                     chunk_overlap,
                     vector_db,
@@ -1023,7 +1022,7 @@ class LegacyExecutor(BaseExecutor):
         context_retrieval_metrics: dict[str, Any] = {}
 
         logger.info(
-            "Starting answer_prompt: tool_id=%s prompt_count=%d " "file=%s run_id=%s",
+            "Starting answer_prompt: tool_id=%s prompt_count=%d file=%s run_id=%s",
             tool_id,
             len(prompts),
             doc_name,
@@ -1284,7 +1283,7 @@ class LegacyExecutor(BaseExecutor):
                 if retrieval_strategy in valid_strategies:
                     shim.stream_log(f"Retrieving context for: {prompt_name}")
                     logger.info(
-                        "Performing retrieval: prompt=%s strategy=%s " "chunk_size=%d",
+                        "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
                         prompt_name,
                         retrieval_strategy,
                         chunk_size,
@@ -1331,7 +1330,7 @@ class LegacyExecutor(BaseExecutor):
                     )
                 else:
                     logger.warning(
-                        "Skipping retrieval: invalid strategy=%s " "for prompt=%s",
+                        "Skipping retrieval: invalid strategy=%s for prompt=%s",
                         retrieval_strategy,
                         prompt_name,
                     )
@@ -1385,7 +1384,7 @@ class LegacyExecutor(BaseExecutor):
                             )
                             challenger.run()
                             shim.stream_log(
-                                f"Challenge verification completed" f" for: {prompt_name}"
+                                f"Challenge verification completed for: {prompt_name}"
                             )
                             logger.info(
                                 "Challenge completed: prompt=%s",
@@ -1585,7 +1584,7 @@ class LegacyExecutor(BaseExecutor):
                 {"output": dict, "metadata": dict, "metrics": dict}
         """
         logger.info(
-            "single_pass_extraction delegating to answer_prompt " "(run_id=%s)",
+            "single_pass_extraction delegating to answer_prompt (run_id=%s)",
             context.run_id,
         )
         return self._handle_answer_prompt(context)
@@ -1638,7 +1637,7 @@ class LegacyExecutor(BaseExecutor):
         if prompt_keys:
             prompt += f"Focus on these fields: {', '.join(prompt_keys)}\n\n"
         prompt += (
-            f"Context:\n---------------\n{doc_context}\n" f"-----------------\n\nSummary:"
+            f"Context:\n---------------\n{doc_context}\n-----------------\n\nSummary:"
         )
 
         shim = ExecutorToolShim(

@@ -97,7 +97,7 @@ class ExecutorRegistry:
         if executor_cls is None:
             available = ", ".join(sorted(cls._registry)) or "(none)"
             raise KeyError(
-                f"No executor registered with name {name!r}. " f"Available: {available}"
+                f"No executor registered with name {name!r}. Available: {available}"
             )
         return executor_cls()
 

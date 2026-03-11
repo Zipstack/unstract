@@ -16,6 +16,7 @@ from unstract.sdk1.constants import (
 )
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.tool.stream import StreamMixin
 from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.retry_utils import retry_platform_service_call
 
@@ -99,7 +100,7 @@ class PlatformHelper:
     @retry_platform_service_call
     def _get_adapter_configuration(
         cls: type[Self],
-        tool: BaseTool,
+        tool: BaseTool | StreamMixin,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
         """Get Adapter.
@@ -163,7 +164,7 @@ class PlatformHelper:
 
     @classmethod
     def get_adapter_config(
-        cls: type[Self], tool: BaseTool, adapter_instance_id: str
+        cls: type[Self], tool: BaseTool | StreamMixin, adapter_instance_id: str
     ) -> dict[str, Any] | None:
         """Get adapter spec by the help of unstract DB tool.
 

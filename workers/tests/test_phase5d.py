@@ -670,7 +670,6 @@ class TestIndexDedup:
             )
         )
         index_call_count = 0
-        original_index = executor._handle_index
 
         def counting_index(ctx):
             nonlocal index_call_count

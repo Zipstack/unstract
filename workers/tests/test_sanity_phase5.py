@@ -112,17 +112,17 @@ def _mock_prompt_deps(llm=None):
 
     from executor.executors.answer_prompt import AnswerPromptService
 
-    RetrievalService = MagicMock(name="RetrievalService")
-    RetrievalService.run_retrieval.return_value = ["chunk1"]
-    RetrievalService.retrieve_complete_context.return_value = ["full doc"]
+    retrieval_service = MagicMock(name="RetrievalService")
+    retrieval_service.run_retrieval.return_value = ["chunk1"]
+    retrieval_service.retrieve_complete_context.return_value = ["full doc"]
 
-    VariableReplacementService = MagicMock(name="VariableReplacementService")
-    VariableReplacementService.is_variables_present.return_value = False
+    variable_replacement_service = MagicMock(name="VariableReplacementService")
+    variable_replacement_service.is_variables_present.return_value = False
 
-    Index = MagicMock(name="Index")
+    index_cls = MagicMock(name="Index")
     index_instance = MagicMock()
     index_instance.generate_index_key.return_value = "doc-key-1"
-    Index.return_value = index_instance
+    index_cls.return_value = index_instance
 
     LLM_cls = MagicMock(name="LLM")
     LLM_cls.return_value = llm
@@ -132,9 +132,9 @@ def _mock_prompt_deps(llm=None):
 
     return (
         AnswerPromptService,
-        RetrievalService,
-        VariableReplacementService,
-        Index,
+        retrieval_service,
+        variable_replacement_service,
+        index_cls,
         LLM_cls,
         EmbeddingCompat,
         VectorDB,

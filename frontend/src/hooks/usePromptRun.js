@@ -3,7 +3,6 @@ import {
   generateUUID,
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
-  pollForCompletion,
 } from "../helpers/GetStaticData";
 import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";

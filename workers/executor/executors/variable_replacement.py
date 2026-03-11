@@ -48,7 +48,7 @@ class VariableReplacementHelper:
             output = structure_output[variable]
         except KeyError:
             logger.warning(
-                "Prompt with %s is not executed yet. " "Unable to replace the variable",
+                "Prompt with %s is not executed yet. Unable to replace the variable",
                 variable,
             )
         return output

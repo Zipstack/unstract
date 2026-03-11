@@ -308,7 +308,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     )
     if skip_extraction_and_indexing:
         logger.info(
-            "Skipping extraction and indexing for Excel table " "with valid JSON schema"
+            "Skipping extraction and indexing for Excel table with valid JSON schema"
         )
 
     # ---- Step 5: Build pipeline params ----
