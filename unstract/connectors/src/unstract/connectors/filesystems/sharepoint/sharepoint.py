@@ -11,7 +11,6 @@ Uses Microsoft Graph API via Office365-REST-Python-Client library.
 import logging
 import os
 import threading
-from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, NoReturn
 
@@ -50,8 +49,9 @@ class SharePointFile(AbstractBufferedFile):
         return self._file_content[start:end]
 
     def _upload_chunk(self, final: bool = False) -> bool:
-        """Upload is handled by write_bytes."""
-        return True
+        raise NotImplementedError(
+            "Buffered writes not supported; use pipe_file()/write_bytes()."
+        )
 
 
 class SharePointFileSystem(AbstractFileSystem):
@@ -243,10 +243,6 @@ class SharePointFileSystem(AbstractFileSystem):
             logger.error(f"Error listing path {path}: {e}")
             raise
 
-    def listdir(self, path: str = "", detail: bool = True, **kwargs: Any) -> list[Any]:
-        """List directory contents (alias for ls)."""
-        return self.ls(path, detail=detail, **kwargs)
-
     def _item_to_info(self, item: Any, parent_path: str = "") -> dict[str, Any]:
         """Convert SharePoint item to fsspec info dict."""
         name = item.name
@@ -308,34 +304,6 @@ class SharePointFileSystem(AbstractFileSystem):
         parent = "/".join(path.strip("/").split("/")[:-1])
         return self._item_to_info(item, parent)
 
-    def stat(self, path: str, **kwargs: Any) -> dict[str, Any]:
-        """Get file/directory stats (alias for info)."""
-        return self.info(path, **kwargs)
-
-    def exists(self, path: str, **kwargs: Any) -> bool:
-        """Check if path exists."""
-        try:
-            self.info(path)
-            return True
-        except Exception:
-            return False
-
-    def isdir(self, path: str) -> bool:
-        """Check if path is a directory."""
-        try:
-            info = self.info(path)
-            return info.get("type") == "directory"
-        except Exception:
-            return False
-
-    def isfile(self, path: str) -> bool:
-        """Check if path is a file."""
-        try:
-            info = self.info(path)
-            return info.get("type") == "file"
-        except Exception:
-            return False
-
     def mkdir(self, path: str, create_parents: bool = True, **kwargs: Any) -> None:
         """Create directory."""
         path = self._normalize_path(path)
@@ -382,72 +350,36 @@ class SharePointFileSystem(AbstractFileSystem):
         mode: str = "rb",
         **kwargs: Any,
     ) -> SharePointFile:
-        """Open a file."""
+        """Open a file for reading. Write modes are not supported."""
+        if any(flag in mode for flag in ("w", "a", "+")):
+            raise NotImplementedError(
+                "SharePoint open() write mode is not supported; "
+                "use pipe_file()/write_bytes()."
+            )
         return SharePointFile(self, path, mode, **kwargs)
 
     def cat_file(self, path: str, **kwargs: Any) -> bytes:
         """Read file contents."""
         return self._download_file(path)
 
-    def read_bytes(self, path: str) -> bytes:
-        """Read file as bytes."""
-        return self._download_file(path)
-
-    def write_bytes(self, path: str, data: bytes, **kwargs: Any) -> None:
-        """Write bytes to file."""
+    def pipe_file(self, path: str, value: bytes, **kwargs: Any) -> None:
+        """Write bytes to file via Graph API direct upload."""
+        if not path or path.endswith("/"):
+            raise ValueError(
+                "pipe_file() requires a file path, not root or a directory path"
+            )
         path = self._normalize_path(path)
         parts = path.split("/")
         name = parts[-1]
         parent_path = "/".join(parts[:-1]) if len(parts) > 1 else ""
 
         parent = self._get_item_by_path(parent_path)
-        parent.upload(name, data).execute_query()
+        parent.upload(name, value).execute_query()
 
     def rm(self, path: str, recursive: bool = False, **kwargs: Any) -> None:
         """Remove file or directory."""
         item = self._get_item_by_path(path)
         item.delete_object().execute_query()
-
-    def delete(self, path: str, **kwargs: Any) -> None:
-        """Delete file (alias for rm)."""
-        self.rm(path, **kwargs)
-
-    def walk(
-        self,
-        path: str = "",
-        maxdepth: int | None = None,
-        on_error: str | Callable[[Exception], Any] = "omit",
-        **kwargs: Any,
-    ):
-        """Walk directory tree."""
-        if maxdepth is not None and maxdepth < 1:
-            return
-
-        path = self._normalize_path(path)
-        try:
-            items = self.ls(path, detail=True)
-        except Exception as e:
-            if callable(on_error):
-                on_error(e)
-            elif on_error == "raise":
-                raise
-            return
-
-        dirs = []
-        files = []
-
-        for item in items:
-            if item["type"] == "directory":
-                dirs.append(item["name"].split("/")[-1])
-            else:
-                files.append(item["name"].split("/")[-1])
-
-        yield path if path != "root" else "", dirs, files
-
-        for d in dirs:
-            subpath = f"{path}/{d}" if path != "root" else d
-            new_depth = maxdepth - 1 if maxdepth is not None else None
-            yield from self.walk(subpath, maxdepth=new_depth, on_error=on_error, **kwargs)
 
 
 class SharePointFS(UnstractFileSystem):
