@@ -65,11 +65,9 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
 
         mock_http_handler.post.assert_called_once()
         call_kwargs = mock_http_handler.post.call_args
-        assert call_kwargs.kwargs.get("timeout") == timeout_value or (
-            len(call_kwargs.args) > 3 and call_kwargs.args[3] == timeout_value
-        ), (
-            f"timeout={timeout_value} was not forwarded to client.post(). "
-            f"Got call args: {call_kwargs}"
+        assert call_kwargs.kwargs.get("timeout") == timeout_value, (
+            f"Expected timeout={timeout_value} in client.post() kwargs, "
+            f"got timeout={call_kwargs.kwargs.get('timeout')}"
         )
 
     def test_none_timeout_passed_to_client_post(
@@ -100,7 +98,10 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
 
         call_kwargs = mock_http_handler.post.call_args
         assert "timeout" in call_kwargs.kwargs, (
-            "timeout kwarg must always be passed to client.post(), even when None"
+            "timeout kwarg must always be passed to client.post()"
+        )
+        assert call_kwargs.kwargs["timeout"] is None, (
+            f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
         )
 
     def test_httpx_timeout_object_forwarded(

@@ -48,17 +48,18 @@ logger = logging.getLogger(__name__)
 _DEFAULT_TIMEOUT = httpx.Timeout(None)
 
 # --- Version guard ---
-# Warn if litellm has been upgraded past the known-affected version so
-# engineers know to verify whether the upstream bug is fixed and this
-# patch can be removed.
+# Skip the patch entirely if litellm has been upgraded past the
+# known-affected version. A warning is emitted so engineers know
+# to verify whether the upstream bug is fixed and remove this module.
 _PATCHED_LITELLM_VERSION = "1.80.0"
 _litellm_version = importlib.metadata.version("litellm")
-if Version(_litellm_version) > Version(_PATCHED_LITELLM_VERSION):
+_SKIP_PATCH = Version(_litellm_version) > Version(_PATCHED_LITELLM_VERSION)
+if _SKIP_PATCH:
     warnings.warn(
-        "litellm_cohere_timeout patch may be obsolete. "
+        "litellm_cohere_timeout patch was SKIPPED — not applied. "
         f"Current litellm version: {_litellm_version}. "
         f"Patch was written for: {_PATCHED_LITELLM_VERSION}. "
-        "Please verify and remove the patch.",
+        "Please verify the upstream fix and remove this module.",
         DeprecationWarning,
         stacklevel=2,
     )
@@ -102,7 +103,7 @@ async def _patched_async_embedding(  # type: ignore[return]  # noqa: ANN202
             api_base,
             headers=headers,
             data=json.dumps(data),
-            timeout=timeout,  # FIX: forward timeout
+            timeout=timeout,  # ONLY CHANGE: forward timeout to client
         )
     except httpx.HTTPStatusError as e:
         logging_obj.post_call(
@@ -211,8 +212,8 @@ def _patched_embedding(  # type: ignore[return]  # noqa: ANN202
 # direct bindings (e.g. bedrock's `from ... import embedding as
 # cohere_embedding`), since direct imports capture a reference at
 # import time and won't see module-level replacements.
-_cohere_handler.async_embedding = _patched_async_embedding
-_cohere_handler.embedding = _patched_embedding
-_bedrock_embed.cohere_embedding = _patched_embedding
-
-logger.info("Applied litellm cohere embed timeout patch")
+if not _SKIP_PATCH:
+    _cohere_handler.async_embedding = _patched_async_embedding
+    _cohere_handler.embedding = _patched_embedding
+    _bedrock_embed.cohere_embedding = _patched_embedding
+    logger.info("Applied litellm cohere embed timeout patch")
