@@ -21,8 +21,8 @@ VERSION=dev docker compose -f docker-compose.build.yaml --profile optional build
 # Run from the docker/ directory:
 
 # 1. Common env vars shared across all services and infrastructure
-#    (DB, Redis, RabbitMQ, Flipt, MinIO, service URLs, timeouts)
-cp sample.common.env .env
+#    (DB, Redis, RabbitMQ, Flipt, MinIO, service URLs, worker config)
+cp sample.env .env
 
 # 2. Per-service env files (service-specific settings only)
 cp ../backend/sample.env ../backend/.env
