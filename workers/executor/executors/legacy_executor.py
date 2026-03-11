@@ -1303,6 +1303,7 @@ class LegacyExecutor(BaseExecutor):
         """Execute one prompt: variable replacement, retrieval, LLM, post-process."""
         from executor.executors.constants import PromptServiceConstants as PSKeys
         from executor.executors.constants import RetrievalStrategy
+
         from unstract.sdk1.utils.indexing import IndexingUtils
 
         (
