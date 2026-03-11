@@ -21,7 +21,6 @@ from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
 
-
 _TEST_FILE_PATH = os.path.join(tempfile.mkdtemp(), "test.pdf")
 
 
