@@ -503,16 +503,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             status=status.HTTP_202_ACCEPTED,
         )
 
-        # Notify HubSpot about first prompt run
-        notify_hubspot_event(
-            user=request.user,
-            event_name="PROMPT_RUN",
-            is_first_for_org=output_count_before == 0,
-            action_label="prompt run",
-        )
-
-        return Response(response, status=status.HTTP_200_OK)
-
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
         """API Entry point method for single pass extraction.
