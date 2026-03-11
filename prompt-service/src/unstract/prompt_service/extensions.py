@@ -8,11 +8,12 @@ from playhouse.postgres_ext import PostgresqlExtDatabase
 from unstract.prompt_service.utils.env_loader import get_env_or_die
 
 # Load required environment variables
-db_host = get_env_or_die("PG_BE_HOST")
-db_port = get_env_or_die("PG_BE_PORT")
-db_user = get_env_or_die("PG_BE_USERNAME")
-db_pass = get_env_or_die("PG_BE_PASSWORD")
-db_name = get_env_or_die("PG_BE_DATABASE")
+# New names with fallback to legacy PG_BE_* names for rolling deploys
+db_host = get_env_or_die("DB_HOST", env.get("PG_BE_HOST"))
+db_port = get_env_or_die("DB_PORT", env.get("PG_BE_PORT"))
+db_user = get_env_or_die("DB_USER", env.get("PG_BE_USERNAME"))
+db_pass = get_env_or_die("DB_PASSWORD", env.get("PG_BE_PASSWORD"))
+db_name = get_env_or_die("DB_NAME", env.get("PG_BE_DATABASE"))
 application_name = env.get("APPLICATION_NAME", "unstract-prompt-service")
 
 # Initialize and connect to the database

@@ -12,6 +12,7 @@ services:
     ports:
       - "8000:8000"
     env_file:
+      - ./.env
       - ../backend/.env
     depends_on:
       - db
@@ -26,7 +27,7 @@ services:
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-backend
@@ -46,6 +47,7 @@ services:
     entrypoint: .venv/bin/celery
     command: "-A backend worker --loglevel=info -Q dashboard_metric_events --autoscale=${WORKER_METRICS_AUTOSCALE:-4,1}"
     env_file:
+      - ./.env
       - ../backend/.env
     depends_on:
       - rabbitmq
@@ -65,6 +67,7 @@ services:
     entrypoint: .venv/bin/celery
     command: "-A backend flower --port=5555 --purge_offline_workers=5"
     env_file:
+      - ./.env
       - ../backend/.env
     depends_on:
       - rabbitmq
@@ -88,8 +91,8 @@ services:
     entrypoint: .venv/bin/celery
     command: "-A backend beat --scheduler django_celery_beat.schedulers:DatabaseScheduler -l INFO"
     env_file:
+      - ./.env
       - ../backend/.env
-      - ./essentials.env
     depends_on:
       - db
       - rabbitmq
@@ -121,6 +124,7 @@ services:
     ports:
       - "3001:3001"
     env_file:
+      - ./.env
       - ../platform-service/.env
     depends_on:
       - redis
@@ -140,6 +144,7 @@ services:
     ports:
       - "3003:3003"
     env_file:
+      - ./.env
       - ../prompt-service/.env
     labels:
       - traefik.enable=false
@@ -154,6 +159,7 @@ services:
     ports:
       - "3004:3004"
     env_file:
+      - ./.env
       - ../x2text-service/.env
     depends_on:
       - db
@@ -167,6 +173,7 @@ services:
     ports:
       - 5002:5002
     env_file:
+      - ./.env
       - ../runner/.env
     volumes:
       - ./workflow_data:/data
@@ -190,8 +197,8 @@ services:
     ports:
       - "8085:8090"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -212,7 +219,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
   worker-callback-v2:
     image: unstract/worker-unified:${VERSION}
@@ -222,8 +229,8 @@ services:
     ports:
       - "8086:8083"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -238,7 +245,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
   worker-file-processing-v2:
     image: unstract/worker-unified:${VERSION}
@@ -263,8 +270,8 @@ services:
     ports:
       - "8087:8082"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -290,7 +297,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
   worker-general-v2:
     image: unstract/worker-unified:${VERSION}
@@ -300,8 +307,8 @@ services:
     ports:
       - "8088:8082"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -317,7 +324,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
   worker-notification-v2:
     image: unstract/worker-unified:${VERSION}
@@ -327,8 +334,8 @@ services:
     ports:
       - "8089:8085"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -365,7 +372,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
   worker-log-consumer-v2:
     image: unstract/worker-unified:${VERSION}
@@ -375,8 +382,8 @@ services:
     ports:
       - "8090:8084"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -414,7 +421,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
   worker-log-history-scheduler-v2:
     image: unstract/worker-unified:${VERSION}
@@ -423,8 +430,8 @@ services:
     entrypoint: ["/bin/bash"]
     command: ["/app/log_consumer/scheduler.sh"]
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -447,8 +454,8 @@ services:
     ports:
       - "8091:8087"
     env_file:
+      - ./.env
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -481,7 +488,7 @@ services:
       - traefik.enable=false
     volumes:
       - ./workflow_data:/data
-      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH:-../unstract/tool-registry/tool_registry_config}:/data/tool_registry_config
 
 volumes:
   prompt_studio_data:

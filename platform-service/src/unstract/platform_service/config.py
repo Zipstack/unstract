@@ -38,11 +38,11 @@ def create_app() -> Flask:
 
     # Initialize and connect to the database
     db.init(
-        database=Env.PG_BE_DATABASE,
-        user=Env.PG_BE_USERNAME,
-        password=Env.PG_BE_PASSWORD,
-        host=Env.PG_BE_HOST,
-        port=Env.PG_BE_PORT,
+        database=Env.DB_NAME,
+        user=Env.DB_USER,
+        password=Env.DB_PASSWORD,
+        host=Env.DB_HOST,
+        port=Env.DB_PORT,
         options=f"-c application_name={Env.APPLICATION_NAME}",
     )
 

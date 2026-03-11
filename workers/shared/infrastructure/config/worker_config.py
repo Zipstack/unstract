@@ -372,7 +372,8 @@ class WorkerConfig:
                 f"Worker configuration validation failed (worker will continue with defaults): {e}"
             )
             logging.info(
-                "To fix this, ensure all required environment variables are set. See workers/sample.env"
+                "To fix this, ensure all required environment variables are set. "
+                "See docker/sample.env for shared vars and workers/sample.env for worker-specific vars"
             )
 
     def _build_cache_redis_url(self):
@@ -427,7 +428,7 @@ class WorkerConfig:
                 "CELERY_BROKER_URL could not be built. Please set the following environment variables: "
                 "CELERY_BROKER_BASE_URL (e.g., 'amqp://unstract-rabbitmq:5672//'), "
                 "CELERY_BROKER_USER, and CELERY_BROKER_PASS. "
-                "See workers/sample.env for examples."
+                "See docker/sample.env for these shared vars."
             )
 
         if not self.celery_result_backend:
@@ -435,7 +436,7 @@ class WorkerConfig:
                 "CELERY_RESULT_BACKEND could not be built. Please set the following environment variables: "
                 "DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, and DB_PORT. "
                 "These are required for Celery to store task results. "
-                "See workers/sample.env for examples."
+                "See docker/sample.env for these shared vars."
             )
 
         # Cache Redis validation

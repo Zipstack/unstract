@@ -175,7 +175,7 @@ copy_or_merge_envs() {
   if [ ! -e "$dest_file" ]; then
     cp "$src_file" "$dest_file"
     echo -e "Created env for ""$blue_text""$displayed_reason""$default_text"" at ""$blue_text""$dest_file""$default_text""."
-  elif [ "$opt_only_env" = true ] || [ "$opt_update" = true ]; then
+  else
     python3 "$script_dir/docker/scripts/merge_env.py" "$src_file" "$dest_file"
     if [ $? -ne 0 ]; then
       exit 1
@@ -238,8 +238,7 @@ setup_env() {
     fi
   done
 
-  copy_or_merge_envs "$script_dir/docker/sample.essentials.env" "$script_dir/docker/essentials.env" "essential services"
-  copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker compose"
+  copy_or_merge_envs "$script_dir/docker/sample.env" "$script_dir/docker/.env" "docker services"
 
 
   if [ "$opt_only_env" = true ]; then

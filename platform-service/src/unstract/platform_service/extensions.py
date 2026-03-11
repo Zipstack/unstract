@@ -25,7 +25,7 @@ def get_redis_pool() -> redis.ConnectionPool:
         _redis_pool = redis.ConnectionPool(
             host=Env.REDIS_HOST,
             port=Env.REDIS_PORT,
-            username=Env.REDIS_USERNAME,
+            username=Env.REDIS_USER,
             password=Env.REDIS_PASSWORD,
             max_connections=10,
             decode_responses=False,
