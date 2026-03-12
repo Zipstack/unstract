@@ -13,9 +13,7 @@ if TYPE_CHECKING:
     from ...models.worker_models import WorkerCeleryConfig
 
 
-def apply_rabbitmq_ha(
-    app: "Celery", worker_celery_config: "WorkerCeleryConfig"
-) -> None:
+def apply_rabbitmq_ha(app: "Celery", worker_celery_config: "WorkerCeleryConfig") -> None:
     """Declare quorum queues and patch QoS when RabbitMQ HA is enabled.
 
     Must be called *after* all config overrides have been merged into
