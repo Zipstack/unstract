@@ -405,8 +405,9 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
+            adapter_info = self._adapter_name or self.adapter.get_provider()
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{adapter_info}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
