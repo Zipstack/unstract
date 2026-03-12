@@ -60,7 +60,9 @@ function ConfigureDs({
 
   // Determine if OAuth authentication method is selected
   const isOAuthMethodSelected = () => {
-    if (!oAuthProvider?.length) return false;
+    if (!oAuthProvider?.length) {
+      return false;
+    }
     // Check if auth_type is set to a non-OAuth value
     const data = formData || {};
     // If auth_type exists and is not "oauth", then OAuth is not selected
@@ -116,7 +118,9 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (!metadata) return;
+    if (!metadata) {
+      return;
+    }
     setFormData(metadata);
   }, [selectedSourceId, metadata, setFormData]);
 
@@ -203,7 +207,7 @@ function ConfigureDs({
         setPostHogCustomEvent(posthogTcEventText[type], {
           info: `Test connection was triggered: ${selectedSourceName}`,
         });
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
     }
@@ -286,7 +290,7 @@ function ConfigureDs({
             connector_name: selectedSourceName,
           });
         }
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
     } else {
@@ -306,7 +310,7 @@ function ConfigureDs({
           info: "Clicked on 'Submit' button",
           adpater_name: selectedSourceName,
         });
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
     }

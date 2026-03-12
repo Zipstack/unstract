@@ -95,7 +95,9 @@ function DisplayPromptResult({
 
   // Extract confidence from 5th element of highlight data coordinate arrays
   const extractConfidenceFromHighlightData = (data) => {
-    if (!data) return null;
+    if (!data) {
+      return null;
+    }
 
     const confidenceValues = [];
 
@@ -147,11 +149,15 @@ function DisplayPromptResult({
         details?.enable_highlight && details?.enable_word_confidence;
 
       const getNestedValue = (obj, path) => {
-        if (!obj || !path) return undefined;
+        if (!obj || !path) {
+          return undefined;
+        }
         const normalized = path.replace(/\[(\d+)\]/g, ".$1");
         const parts = normalized.split(".").filter((p) => p !== "");
         return parts.reduce((acc, part) => {
-          if (acc === undefined || acc === null) return undefined;
+          if (acc === undefined || acc === null) {
+            return undefined;
+          }
           const maybeIndex = /^\d+$/.test(part) ? Number(part) : part;
           return acc[maybeIndex];
         }, obj);

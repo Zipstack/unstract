@@ -38,8 +38,9 @@ function NotesCard({
     if (
       isPromptDetailsStateUpdated ||
       !Object.keys(promptDetails || {})?.length
-    )
+    ) {
       return;
+    }
     setPromptDetailsState(promptDetails);
     setIsPromptDetailsStateUpdated(true);
   }, [promptDetails]);

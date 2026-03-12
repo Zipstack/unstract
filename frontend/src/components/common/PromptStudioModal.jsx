@@ -10,7 +10,9 @@ export function PromptStudioModal({ onClose, showModal }) {
   const { sessionDetails } = useSessionStore();
 
   const handleClose = () => {
-    if (onClose) onClose();
+    if (onClose) {
+      onClose();
+    }
   };
 
   const handleCreateClick = () => {

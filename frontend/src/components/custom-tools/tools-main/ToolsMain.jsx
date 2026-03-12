@@ -121,7 +121,7 @@ function ToolsMain() {
       setPostHogCustomEvent("ps_prompt_added", {
         info: `Clicked on + ${type} button`,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 

@@ -368,7 +368,7 @@ function Agency() {
       if (!signal?.aborted) {
         setDeploymentInfo(deploymentInfo);
       }
-    } catch (err) {
+    } catch (_err) {
       // Don't show alert for this as it's not critical
       // Also check if error is due to abort
       if (signal?.aborted) {
@@ -433,7 +433,7 @@ function Agency() {
         info: `Clicked on 'Deploy as ${deployType}' button`,
         workflow_name: projectName,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -869,7 +869,7 @@ function Agency() {
           info: "Clicked on 'Run Workflow' button (Normal Execution)",
         });
       }
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
     const workflowId = details?.id;

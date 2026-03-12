@@ -79,7 +79,9 @@ const usePromptRun = () => {
   };
 
   const runPrompt = (listOfApis) => {
-    if (!listOfApis?.length) return;
+    if (!listOfApis?.length) {
+      return;
+    }
     listOfApis.forEach(runPromptApi);
   };
 
@@ -190,14 +192,18 @@ const usePromptRun = () => {
     };
 
     const params = paramsMap[promptRunType];
-    if (!params) return;
+    if (!params) {
+      return;
+    }
 
     const paramValues = { promptId, profileId, docId };
     const missingParams = params.requiredParams.filter(
       (param) => !paramValues[param],
     );
 
-    if (missingParams.length > 0) return;
+    if (missingParams.length > 0) {
+      return;
+    }
 
     ({ apiRequestsToQueue, promptRunApiStatus } = prepareApiRequests(
       params.prompts,

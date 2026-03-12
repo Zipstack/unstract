@@ -83,14 +83,18 @@ function OutputForIndex({ chunkData, setIsIndexOpen, isIndexOpen }) {
   };
 
   const renderHighlightedLine = (line, lineIndex, chunkIndex) => {
-    if (!searchTerm) return line;
+    if (!searchTerm) {
+      return line;
+    }
 
     const matchesInLine = highlightedChunks.filter(
       (chunk) =>
         chunk.lineIndex === lineIndex && chunk.chunkIndex === chunkIndex,
     );
 
-    if (!matchesInLine?.length) return line;
+    if (!matchesInLine?.length) {
+      return line;
+    }
 
     const parts = [];
     let lastIndex = 0;

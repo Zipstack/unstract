@@ -1,7 +1,6 @@
-import { useContext, useEffect, useCallback } from "react";
-
-import { SocketContext } from "../helpers/SocketContext";
+import { useCallback, useContext, useEffect } from "react";
 import { generateApiRunStatusId } from "../helpers/GetStaticData";
+import { SocketContext } from "../helpers/SocketContext";
 import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../store/prompt-run-status-store";
@@ -28,7 +27,9 @@ const usePromptStudioSocket = () => {
 
   const clearResultStatuses = useCallback(
     (data) => {
-      if (!Array.isArray(data)) return;
+      if (!Array.isArray(data)) {
+        return;
+      }
       data.forEach((item) => {
         const promptId = item?.prompt_id;
         const docId = item?.document_manager;
@@ -39,7 +40,7 @@ const usePromptStudioSocket = () => {
         }
       });
     },
-    [removePromptStatus]
+    [removePromptStatus],
   );
 
   const handleCompleted = useCallback(
@@ -63,7 +64,9 @@ const usePromptStudioSocket = () => {
         });
       } else if (operation === "index_document") {
         const docId = result?.document_id;
-        if (docId) deleteIndexDoc(docId);
+        if (docId) {
+          deleteIndexDoc(docId);
+        }
         setAlertDetails({
           type: "success",
           content: result?.message || "Document indexed successfully.",
@@ -76,7 +79,7 @@ const usePromptStudioSocket = () => {
       updateCustomTool,
       setAlertDetails,
       deleteIndexDoc,
-    ]
+    ],
   );
 
   const handleFailed = useCallback(
@@ -89,7 +92,9 @@ const usePromptStudioSocket = () => {
         updateCustomTool({ isSinglePassExtractLoading: false });
       } else if (operation === "index_document") {
         const docId = extra?.document_id;
-        if (docId) deleteIndexDoc(docId);
+        if (docId) {
+          deleteIndexDoc(docId);
+        }
       }
 
       // Clear spinner for prompt operations so buttons re-enable
@@ -120,7 +125,7 @@ const usePromptStudioSocket = () => {
       deleteIndexDoc,
       removePromptStatus,
       clearPromptStatusById,
-    ]
+    ],
   );
 
   const onResult = useCallback(
@@ -136,15 +141,17 @@ const usePromptStudioSocket = () => {
         }
       } catch (err) {
         setAlertDetails(
-          handleException(err, "Failed to process prompt studio result")
+          handleException(err, "Failed to process prompt studio result"),
         );
       }
     },
-    [handleCompleted, handleFailed, setAlertDetails, handleException]
+    [handleCompleted, handleFailed, setAlertDetails, handleException],
   );
 
   useEffect(() => {
-    if (!socket) return;
+    if (!socket) {
+      return;
+    }
 
     socket.on(PROMPT_STUDIO_RESULT_EVENT, onResult);
     return () => {

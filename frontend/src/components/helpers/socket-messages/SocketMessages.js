@@ -47,7 +47,9 @@ function SocketMessages() {
   const logMessagesThrottledUpdate = useMemo(
     () =>
       throttle((logsBatch) => {
-        if (!logsBatch.length) return;
+        if (!logsBatch.length) {
+          return;
+        }
         pushLogMessages(logsBatch);
         logBufferRef.current = [];
       }, THROTTLE_DELAY),
@@ -111,7 +113,9 @@ function SocketMessages() {
 
   // Subscribe/unsubscribe to the socket channel
   useEffect(() => {
-    if (!logId) return;
+    if (!logId) {
+      return;
+    }
 
     const channel = `logs:${logId}`;
     socket.on(channel, onMessage);
@@ -122,7 +126,9 @@ function SocketMessages() {
 
   // Process staged messages sequentially
   useEffect(() => {
-    if (pointer > stagedMessages?.length - 1) return;
+    if (pointer > stagedMessages?.length - 1) {
+      return;
+    }
 
     const stagedMsg = stagedMessages[pointer];
     const timer = setTimeout(() => {

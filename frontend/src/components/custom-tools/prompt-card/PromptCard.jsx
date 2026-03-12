@@ -61,8 +61,9 @@ const PromptCard = memo(
       if (
         isPromptDetailsStateUpdated ||
         !Object.keys(promptDetails || {})?.length
-      )
+      ) {
         return;
+      }
       setPromptDetailsState(promptDetails);
       setIsPromptDetailsStateUpdated(true);
     }, [promptDetails]);
@@ -203,7 +204,9 @@ const PromptCard = memo(
     };
 
     const flattenHighlightData = (data) => {
-      if (!data || typeof data !== "object") return data;
+      if (!data || typeof data !== "object") {
+        return data;
+      }
 
       const flattened = [];
       Object.values(data).forEach((value) => {
@@ -256,7 +259,7 @@ const PromptCard = memo(
         setPostHogCustomEvent("ps_prompt_run", {
           info: "Click on 'Run Prompt' button (Multi Pass)",
         });
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
 

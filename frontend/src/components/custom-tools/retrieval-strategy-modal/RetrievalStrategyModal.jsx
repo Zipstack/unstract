@@ -87,26 +87,34 @@ const RetrievalStrategyModal = ({
   };
 
   const getTokenUsageClassName = (usage) => {
-    if (usage.includes("Low"))
+    if (usage.includes("Low")) {
       return "retrieval-strategy-modal__token-usage-low";
-    if (usage.includes("Medium"))
+    }
+    if (usage.includes("Medium")) {
       return "retrieval-strategy-modal__token-usage-medium";
-    if (usage.includes("Very High"))
+    }
+    if (usage.includes("Very High")) {
       return "retrieval-strategy-modal__token-usage-high";
-    if (usage.includes("High"))
+    }
+    if (usage.includes("High")) {
       return "retrieval-strategy-modal__token-usage-high";
+    }
     return "";
   };
 
   const getCostImpactClassName = (impact) => {
-    if (impact.includes("Low"))
+    if (impact.includes("Low")) {
       return "retrieval-strategy-modal__cost-impact-low";
-    if (impact.includes("Medium"))
+    }
+    if (impact.includes("Medium")) {
       return "retrieval-strategy-modal__cost-impact-medium";
-    if (impact.includes("Very High"))
+    }
+    if (impact.includes("Very High")) {
       return "retrieval-strategy-modal__cost-impact-high";
-    if (impact.includes("High"))
+    }
+    if (impact.includes("High")) {
       return "retrieval-strategy-modal__cost-impact-high";
+    }
     return "";
   };
 

@@ -95,7 +95,9 @@ const CreateApiDeploymentFromPromptStudio = ({
   }, [open, toolDetails, form]);
 
   const fetchToolFunctionName = async () => {
-    if (!toolDetails?.tool_id) return;
+    if (!toolDetails?.tool_id) {
+      return;
+    }
 
     try {
       // Fetch tool list to find the function name for this tool_id
@@ -318,7 +320,7 @@ const CreateApiDeploymentFromPromptStudio = ({
         tool_name: toolDetails?.tool_name,
         deployment_name: deploymentDetails.api_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 

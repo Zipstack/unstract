@@ -221,7 +221,7 @@ function ToolIde() {
           info: "Exported from reminder bar",
           tool_name: details?.tool_name,
         });
-      } catch (err) {
+      } catch (_err) {
         // Ignore posthog errors
       }
     } catch (err) {

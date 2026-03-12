@@ -113,7 +113,9 @@ function PromptCardItems({
       if (adapter) {
         result.conf[key.label] =
           adapter?.model || adapter?.adapter_id?.split("|")[0];
-        if (adapter?.adapter_type === "LLM") result.icon = adapter?.icon;
+        if (adapter?.adapter_type === "LLM") {
+          result.icon = adapter?.icon;
+        }
         result.conf["Profile Name"] = profile?.profile_name;
       }
     });
@@ -163,8 +165,12 @@ function PromptCardItems({
           isDefault: profile?.profile_id === selectedLlmProfileId,
         }))
         .sort((a, b) => {
-          if (a?.isDefault) return -1; // Default profile comes first
-          if (b?.isDefault) return 1;
+          if (a?.isDefault) {
+            return -1; // Default profile comes first
+          }
+          if (b?.isDefault) {
+            return 1;
+          }
           return 0;
         }),
     );

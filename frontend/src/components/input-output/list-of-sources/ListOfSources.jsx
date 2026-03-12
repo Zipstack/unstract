@@ -47,7 +47,9 @@ function ListOfSources({
   }, 300);
 
   const renderModeFilters = () => {
-    if (!isConnector || connectorMode) return null;
+    if (!isConnector || connectorMode) {
+      return null;
+    }
 
     return (
       <Segmented
