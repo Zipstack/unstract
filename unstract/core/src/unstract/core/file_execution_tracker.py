@@ -155,8 +155,17 @@ class FileExecutionStatusTracker:
         os.environ.get("FILE_EXECUTION_TRACKER_TTL_IN_SECOND", 60 * 60 * 24)
     )
 
+    # Lazy singleton — avoids per-instance Sentinel discovery + retry overhead
+    _redis_client = None
+
+    @classmethod
+    def _get_redis_client(cls):
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=True)
+        return cls._redis_client
+
     def __init__(self):
-        self.redis_client = create_redis_client(decode_responses=True)
+        self.redis_client = self._get_redis_client()
 
     def _resolve_field(
         self,

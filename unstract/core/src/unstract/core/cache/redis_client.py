@@ -183,7 +183,11 @@ def _create_sentinel_client(
             client = sentinel.master_for(_SENTINEL_MASTER_NAME, **master_kwargs)
             client.ping()
             return client
-        except Exception as e:
+        except (
+            redis.exceptions.ConnectionError,
+            redis.exceptions.TimeoutError,
+            OSError,
+        ) as e:
             last_error = e
             if attempt >= _SENTINEL_MAX_RETRIES - 1:
                 break
@@ -200,6 +204,11 @@ def _create_sentinel_client(
                 e,
             )
             time.sleep(delay)
+        except Exception as e:
+            # Non-retriable errors (auth, config) — fail fast
+            raise RedisSentinelConnectionError(
+                f"Non-retriable error connecting to Redis Sentinel: {e}"
+            ) from e
 
     raise RedisSentinelConnectionError(
         f"Failed to connect to Redis Sentinel after {_SENTINEL_MAX_RETRIES} retries "

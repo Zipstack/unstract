@@ -479,6 +479,7 @@ if REDIS_SENTINEL_MODE:
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
+                "DB": int(_redis_db),
                 "PASSWORD": REDIS_PASSWORD,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
             },
