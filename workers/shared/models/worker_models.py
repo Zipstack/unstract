@@ -520,7 +520,8 @@ class WorkerCeleryConfig:
 
         quorum_args = {"x-queue-type": "quorum"}
         config["task_queues"] = [
-            Queue(q, queue_arguments=quorum_args) for q in self.queue_config.all_queues()
+            Queue(q, queue_arguments=quorum_args)
+            for q in sorted(self.queue_config.all_queues())
         ]
 
     def to_cli_args(self) -> list[str]:
