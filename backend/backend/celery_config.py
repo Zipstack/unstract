@@ -27,9 +27,7 @@ def make_queue(name: str) -> Queue:
     Returns:
         Configured kombu Queue instance.
     """
-    kwargs: dict = {"name": name}
-    if is_rabbitmq_ha_enabled():
-        kwargs["queue_arguments"] = {"x-queue-type": "quorum"}
+    kwargs: dict = {"name": name, "queue_arguments": {"x-queue-type": "quorum"}}
     return Queue(**kwargs)
 
 
