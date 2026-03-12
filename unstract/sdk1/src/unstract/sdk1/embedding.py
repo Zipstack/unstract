@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 import litellm
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
@@ -98,11 +99,7 @@ class Embedding:
         try:
             self._length = len(self.get_embedding(self._TEST_SNIPPET))
         except Exception as e:
-            adapter_info = (
-                f"{self._adapter_name} ({self.adapter.get_name()})"
-                if self._adapter_name
-                else self.adapter.get_name()
-            )
+            adapter_info = self._adapter_name or self.adapter.get_name()
             raise parse_litellm_err(e, adapter_info) from e
 
     def get_embedding(self, text: str) -> list[float]:
@@ -117,11 +114,7 @@ class Embedding:
 
             return resp["data"][0]["embedding"]
         except Exception as e:
-            adapter_info = (
-                f"{self._adapter_name} ({self.adapter.get_name()})"
-                if self._adapter_name
-                else self.adapter.get_name()
-            )
+            adapter_info = self._adapter_name or self.adapter.get_name()
             raise parse_litellm_err(e, adapter_info) from e
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
@@ -134,11 +127,7 @@ class Embedding:
 
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
-            adapter_info = (
-                f"{self._adapter_name} ({self.adapter.get_name()})"
-                if self._adapter_name
-                else self.adapter.get_name()
-            )
+            adapter_info = self._adapter_name or self.adapter.get_name()
             raise parse_litellm_err(e, adapter_info) from e
 
     async def get_aembedding(self, text: str) -> list[float]:
