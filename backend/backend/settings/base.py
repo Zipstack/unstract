@@ -488,7 +488,12 @@ if REDIS_SENTINEL_MODE:
     }
 else:
     # SocketIO connection manager (standalone)
-    SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+    _cred_prefix = ""
+    if REDIS_USER and REDIS_PASSWORD:
+        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    elif REDIS_PASSWORD:
+        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
+    SOCKET_IO_MANAGER_URL = f"redis://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}"
     SOCKET_IO_TRANSPORT_OPTIONS = {}
 
     CACHES = {
@@ -498,7 +503,7 @@ else:
             "OPTIONS": {
                 "CLIENT_CLASS": "django_redis.client.DefaultClient",
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-                "DB": REDIS_DB,
+                "DB": int(REDIS_DB) if REDIS_DB else 0,
                 "USERNAME": REDIS_USER,
                 "PASSWORD": REDIS_PASSWORD,
             },

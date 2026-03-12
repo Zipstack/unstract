@@ -30,7 +30,7 @@ _SENTINEL_INITIAL_DELAY = 5  # seconds
 _SENTINEL_BACKOFF_MULTIPLIER = 1.5
 _SENTINEL_JITTER_MIN = 0.8
 _SENTINEL_JITTER_MAX = 1.2
-_SENTINEL_MASTER_NAME = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+_DEFAULT_SENTINEL_MASTER_NAME = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
 
 def _is_sentinel_mode(env_prefix: str) -> bool:
@@ -43,13 +43,15 @@ def create_redis_client(
     socket_connect_timeout: int = 5,
     socket_timeout: int = 5,
     max_connections: int | None = None,
+    health_check_interval: int = 0,
     db: int | None = None,
 ) -> redis.Redis:
     """Factory to create a Redis client in Standalone or Sentinel mode.
 
     Mode is detected from {env_prefix}SENTINEL_MODE env var.
     In Sentinel mode, {env_prefix}HOST and {env_prefix}PORT point to the
-    Sentinel service endpoint (K8s DNS). Master name from REDIS_SENTINEL_MASTER_NAME env.
+    Sentinel service endpoint (K8s DNS). Master name from
+    {env_prefix}SENTINEL_MASTER_NAME env (falls back to REDIS_SENTINEL_MASTER_NAME).
 
     Args:
         env_prefix: Env var prefix (e.g. "REDIS_" or "CACHE_REDIS_").
@@ -57,6 +59,7 @@ def create_redis_client(
         socket_connect_timeout: Connection timeout in seconds.
         socket_timeout: Socket timeout in seconds.
         max_connections: Optional max connections for standalone ConnectionPool.
+        health_check_interval: Proactive health check interval in seconds (0=disabled).
         db: Optional DB index override.
 
     Returns:
@@ -71,6 +74,7 @@ def create_redis_client(
             decode_responses=decode_responses,
             socket_connect_timeout=socket_connect_timeout,
             socket_timeout=socket_timeout,
+            health_check_interval=health_check_interval,
             db_override=db,
         )
     else:
@@ -80,6 +84,7 @@ def create_redis_client(
             socket_connect_timeout=socket_connect_timeout,
             socket_timeout=socket_timeout,
             max_connections=max_connections,
+            health_check_interval=health_check_interval,
             db_override=db,
         )
 
@@ -90,6 +95,7 @@ def _create_standalone_client(
     socket_connect_timeout: int,
     socket_timeout: int,
     max_connections: int | None,
+    health_check_interval: int = 0,
     db_override: int | None = None,
 ) -> redis.Redis:
     host = os.getenv(f"{env_prefix}HOST", os.getenv("REDIS_HOST", "localhost"))
@@ -117,6 +123,8 @@ def _create_standalone_client(
         "socket_connect_timeout": socket_connect_timeout,
         "socket_timeout": socket_timeout,
     }
+    if health_check_interval:
+        kwargs["health_check_interval"] = health_check_interval
 
     if max_connections is not None:
         pool = redis.ConnectionPool(max_connections=max_connections, **kwargs)
@@ -130,6 +138,7 @@ def _create_sentinel_client(
     decode_responses: bool,
     socket_connect_timeout: int,
     socket_timeout: int,
+    health_check_interval: int = 0,
     db_override: int | None = None,
 ) -> redis.Redis:
     # Reuse HOST/PORT — in Sentinel mode these point to the Sentinel service
@@ -145,12 +154,16 @@ def _create_sentinel_client(
         if db_override is not None
         else int(os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "0")))
     )
+    # Resolve master name per prefix, falling back to global default
+    master_name = os.getenv(
+        f"{env_prefix}SENTINEL_MASTER_NAME", _DEFAULT_SENTINEL_MASTER_NAME
+    )
 
     logger.info(
         "Redis Sentinel mode enabled. Connecting to sentinel at %s:%s, master: %s",
         host,
         port,
-        _SENTINEL_MASTER_NAME,
+        master_name,
     )
 
     # Sentinel auth reuses the same password
@@ -175,12 +188,14 @@ def _create_sentinel_client(
                 "decode_responses": decode_responses,
                 "db": db,
             }
+            if health_check_interval:
+                master_kwargs["health_check_interval"] = health_check_interval
             if password:
                 master_kwargs["password"] = password
             if username:
                 master_kwargs["username"] = username
 
-            client = sentinel.master_for(_SENTINEL_MASTER_NAME, **master_kwargs)
+            client = sentinel.master_for(master_name, **master_kwargs)
             client.ping()
             return client
         except (
@@ -214,7 +229,7 @@ def _create_sentinel_client(
         f"Failed to connect to Redis Sentinel after {_SENTINEL_MAX_RETRIES} retries "
         f"(~5 minutes).\n"
         f"Sentinel endpoint: {host}:{port}\n"
-        f"Service: {_SENTINEL_MASTER_NAME}\n"
+        f"Service: {master_name}\n"
         f"Check Sentinel availability, REDIS_HOST, REDIS_PORT, and "
         f"REDIS_SENTINEL_MODE configuration.\n"
         f"Last error: {last_error}"
