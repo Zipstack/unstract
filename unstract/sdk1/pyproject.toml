@@ -46,6 +46,7 @@ dependencies = [
     "httpx>=0.25.2",
     "pdfplumber>=0.11.2",
     "redis>=5.2.1",
+    # # LLMWhisperer client
     "llmwhisperer-client>=2.6.2",
 ]
 
