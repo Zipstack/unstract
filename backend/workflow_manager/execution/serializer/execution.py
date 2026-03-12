@@ -10,6 +10,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     pipeline_name = serializers.SerializerMethodField()
     successful_files = serializers.SerializerMethodField()
     failed_files = serializers.SerializerMethodField()
+    aggregated_total_pages_processed = serializers.SerializerMethodField()
     execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
 
     class Meta:
@@ -31,3 +32,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     def get_failed_files(self, obj: WorkflowExecution) -> int:
         """Return the count of failed executed files"""
         return obj.file_executions.filter(status=ExecutionStatus.ERROR.value).count()
+
+    def get_aggregated_total_pages_processed(self, obj: WorkflowExecution) -> int | None:
+        """Return the total pages processed across all file executions."""
+        return obj.aggregated_total_pages_processed

@@ -168,6 +168,7 @@ class LLM:
                 self.platform_kwargs["adapter_instance_id"] = self._adapter_instance_id
 
             self.kwargs = self.adapter.validate(self._adapter_metadata)
+            self._cost_model = self.kwargs.pop("cost_model", None)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"],
@@ -264,6 +265,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
             #     completion_kwargs["temperature"] = 0.003
@@ -278,7 +280,10 @@ class LLM:
             response_text = response["choices"][0]["message"]["content"]
 
             self._record_usage(
-                self.kwargs["model"], messages, response.get("usage"), "complete"
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "complete",
             )
 
             # NOTE:
@@ -348,6 +353,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
 
             for chunk in litellm.completion(
                 messages=messages,
@@ -359,7 +365,7 @@ class LLM:
             ):
                 if chunk.get("usage"):
                     self._record_usage(
-                        self.kwargs["model"],
+                        self._cost_model or self.kwargs["model"],
                         messages,
                         chunk.get("usage"),
                         "stream_complete",
@@ -415,6 +421,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
 
             response = await litellm.acompletion(
                 messages=messages,
@@ -423,7 +430,10 @@ class LLM:
             response_text = response["choices"][0]["message"]["content"]
 
             self._record_usage(
-                self.kwargs["model"], messages, response.get("usage"), "acomplete"
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "acomplete",
             )
 
             response_object = LLMResponseCompat(response_text)

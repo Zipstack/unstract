@@ -319,6 +319,24 @@ services:
         - action: rebuild
           path: ../workers/uv.lock
 
+  #########################################################################################################
+  # Celery worker for dashboard metrics (memory optimized: reduced autoscale)
+  worker-metrics:
+    build:
+      dockerfile: docker/dockerfiles/backend.Dockerfile
+      context: ..
+    command: "-A backend worker --loglevel=info -Q dashboard_metric_events --autoscale=2,1"
+    develop:
+      watch:
+        - action: sync+restart
+          path: ../backend/
+          target: /app
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+        - action: sync+restart
+          path: ../unstract/
+          target: /unstract
+          ignore: [.venv/, __pycache__/, "*.pyc", .pytest_cache/, .mypy_cache/]
+
   # V1 workers disabled by default (use workers-v2 profile instead)
   worker:
     profiles:
