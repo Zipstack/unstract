@@ -313,16 +313,12 @@ const CreateApiDeploymentFromPromptStudio = ({
       return;
     }
 
-    try {
-      setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
-        info: "Creating API deployment from prompt studio",
-        tool_id: toolDetails?.tool_id,
-        tool_name: toolDetails?.tool_name,
-        deployment_name: deploymentDetails.api_name,
-      });
-    } catch (_err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
+    setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
+      info: "Creating API deployment from prompt studio",
+      tool_id: toolDetails?.tool_id,
+      tool_name: toolDetails?.tool_name,
+      deployment_name: deploymentDetails.api_name,
+    });
 
     setIsLoading(true);
     setBackendErrors(null); // Clear any previous errors

@@ -95,9 +95,7 @@ function PromptOutput({
   );
 
   const handleTable = (profileId, promptOutputData) => {
-    if (tableSettings?.document_type !== "rent_rolls") {
-      return <TableOutput output={promptOutputData?.output} />;
-    } else {
+    if (tableSettings?.document_type === "rent_rolls") {
       return (
         <>
           <DisplayPromptResult
@@ -126,6 +124,7 @@ function PromptOutput({
         </>
       );
     }
+    return <TableOutput output={promptOutputData?.output} />;
   };
 
   const getColSpan = () => (componentWidth < 1200 ? 24 : 6);

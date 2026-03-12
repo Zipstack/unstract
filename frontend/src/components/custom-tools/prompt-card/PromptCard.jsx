@@ -255,13 +255,9 @@ const PromptCard = memo(
 
     // Generate the result for the currently selected document
     const handleRun = (promptRunType, promptId, profileId, documentId) => {
-      try {
-        setPostHogCustomEvent("ps_prompt_run", {
-          info: "Click on 'Run Prompt' button (Multi Pass)",
-        });
-      } catch (_err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
-      }
+      setPostHogCustomEvent("ps_prompt_run", {
+        info: "Click on 'Run Prompt' button (Multi Pass)",
+      });
 
       const validateInputs = () => {
         if (!selectedDoc) {
