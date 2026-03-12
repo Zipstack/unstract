@@ -111,6 +111,7 @@ class RedisCacheBackend(BaseCacheBackend):
                     decode_responses=True,
                     socket_timeout=5,
                     socket_connect_timeout=5,
+                    health_check_interval=30,
                 )
                 # Wrap in RedisClient for interface compatibility
                 self.redis_client = RedisClient.__new__(RedisClient)
