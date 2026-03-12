@@ -30,8 +30,7 @@ class OrganizationMember(DefaultOrganizationMixin):
 
     def __str__(self):  # type: ignore
         return (
-            f"OrganizationMember("
-            f"{self.member_id}, role: {self.role}, user: {self.user})"
+            f"OrganizationMember({self.member_id}, role: {self.role}, user: {self.user})"
         )
 
     objects = OrganizationMemberModelManager()
