@@ -12,6 +12,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./Workflows.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -384,11 +385,7 @@ function Workflows() {
             />
           )}
           {shareOpen && selectedWorkflow && (
-            <LazyLoader
-              component={() =>
-                import("../../widgets/share-permission/SharePermission.jsx")
-              }
-              componentName={"SharePermission"}
+            <SharePermission
               open={shareOpen}
               setOpen={setShareOpen}
               adapter={selectedWorkflow}
