@@ -1,7 +1,7 @@
 from account_v2.models import User
 
 
-def batch_resolve_user_ids(user_ids: Iterable[str]) -> dict[str, dict[str, str]]:
+def batch_resolve_user_ids(user_ids):
     """Batch resolve user IDs to display info in a single query.
 
     Accepts stringified integer PKs (as stored in CharField fields like
