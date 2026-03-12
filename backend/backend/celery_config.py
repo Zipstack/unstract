@@ -11,12 +11,14 @@ def is_rabbitmq_ha_enabled() -> bool:
 
 
 def make_queue(name: str) -> Queue:
-    """Create a kombu Queue, using quorum type when HA is enabled.
+    """Create a kombu Queue with x-queue-type: quorum.
 
-    When RABBITMQ_HA_ENABLED=true, declares the queue with
-    x-queue-type: quorum. This is necessary because Celery/kombu
-    sends x-queue-type: classic by default, overriding the server-side
-    default_queue_type setting.
+    Always declares the queue as quorum type.  Callers are responsible
+    for only invoking this helper when HA mode is enabled (i.e. inside
+    an ``if is_rabbitmq_ha_enabled():`` guard).
+
+    This is necessary because Celery/kombu sends x-queue-type: classic
+    by default, overriding the server-side default_queue_type setting.
 
     Internal Celery queues (pidbox, reply queues) are not affected
     since they are managed by Celery internals and not listed here.
@@ -25,7 +27,7 @@ def make_queue(name: str) -> Queue:
         name: Queue name.
 
     Returns:
-        Configured kombu Queue instance.
+        kombu Queue instance with quorum queue arguments.
     """
     kwargs: dict = {"name": name, "queue_arguments": {"x-queue-type": "quorum"}}
     return Queue(**kwargs)
