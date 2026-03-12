@@ -90,17 +90,12 @@ def create_redis_client(
         )
 
 
-def _create_standalone_client(
-    env_prefix: str,
-    decode_responses: bool,
-    socket_connect_timeout: int,
-    socket_timeout: int,
-    max_connections: int | None,
-    health_check_interval: int = 0,
-    db_override: int | None = None,
-) -> redis.Redis:
+def _resolve_redis_env(
+    env_prefix: str, default_port: str = "6379", db_override: int | None = None
+) -> dict[str, Any]:
+    """Read common Redis env vars into a dict."""
     host = os.getenv(f"{env_prefix}HOST", os.getenv("REDIS_HOST", "localhost"))
-    port = int(os.getenv(f"{env_prefix}PORT", os.getenv("REDIS_PORT", "6379")))
+    port = int(os.getenv(f"{env_prefix}PORT", os.getenv("REDIS_PORT", default_port)))
     password = os.getenv(f"{env_prefix}PASSWORD", os.getenv("REDIS_PASSWORD"))
     username = os.getenv(
         f"{env_prefix}USER",
@@ -111,15 +106,78 @@ def _create_standalone_client(
         if db_override is not None
         else int(os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "0")))
     )
-
-    logger.info("Redis standalone mode enabled. Connecting to %s:%s", host, port)
-
-    kwargs: dict[str, Any] = {
+    return {
         "host": host,
         "port": port,
         "password": password,
         "username": username,
         "db": db,
+    }
+
+
+def _build_connection_kwargs(
+    env: dict[str, Any],
+    decode_responses: bool,
+    socket_connect_timeout: int,
+    socket_timeout: int,
+    health_check_interval: int = 0,
+    max_connections: int | None = None,
+    include_auth_only: bool = False,
+) -> dict[str, Any]:
+    """Build kwargs dict for Redis/Sentinel connections.
+
+    Args:
+        include_auth_only: If True, only include password/username (for sentinel_kwargs).
+    """
+    if include_auth_only:
+        kwargs: dict[str, Any] = {
+            "socket_connect_timeout": socket_connect_timeout,
+            "socket_timeout": socket_timeout,
+        }
+        if env.get("password"):
+            kwargs["password"] = env["password"]
+        if env.get("username"):
+            kwargs["username"] = env["username"]
+        return kwargs
+
+    kwargs = {
+        "socket_connect_timeout": socket_connect_timeout,
+        "socket_timeout": socket_timeout,
+        "decode_responses": decode_responses,
+        "db": env["db"],
+    }
+    if health_check_interval:
+        kwargs["health_check_interval"] = health_check_interval
+    if max_connections is not None:
+        kwargs["max_connections"] = max_connections
+    if env.get("password"):
+        kwargs["password"] = env["password"]
+    if env.get("username"):
+        kwargs["username"] = env["username"]
+    return kwargs
+
+
+def _create_standalone_client(
+    env_prefix: str,
+    decode_responses: bool,
+    socket_connect_timeout: int,
+    socket_timeout: int,
+    max_connections: int | None,
+    health_check_interval: int = 0,
+    db_override: int | None = None,
+) -> redis.Redis:
+    env = _resolve_redis_env(env_prefix, default_port="6379", db_override=db_override)
+
+    logger.info(
+        "Redis standalone mode enabled. Connecting to %s:%s", env["host"], env["port"]
+    )
+
+    kwargs: dict[str, Any] = {
+        "host": env["host"],
+        "port": env["port"],
+        "password": env["password"],
+        "username": env["username"],
+        "db": env["db"],
         "decode_responses": decode_responses,
         "socket_connect_timeout": socket_connect_timeout,
         "socket_timeout": socket_timeout,
@@ -143,66 +201,57 @@ def _create_sentinel_client(
     max_connections: int | None = None,
     db_override: int | None = None,
 ) -> redis.Redis:
-    # Reuse HOST/PORT — in Sentinel mode these point to the Sentinel service
-    host = os.getenv(f"{env_prefix}HOST", os.getenv("REDIS_HOST", "localhost"))
-    port = int(os.getenv(f"{env_prefix}PORT", os.getenv("REDIS_PORT", "26379")))
-    password = os.getenv(f"{env_prefix}PASSWORD", os.getenv("REDIS_PASSWORD"))
-    username = os.getenv(
-        f"{env_prefix}USER",
-        os.getenv(f"{env_prefix}USERNAME", os.getenv("REDIS_USER")),
-    )
-    db = (
-        db_override
-        if db_override is not None
-        else int(os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "0")))
-    )
-    # Resolve master name per prefix, falling back to global default
+    env = _resolve_redis_env(env_prefix, default_port="26379", db_override=db_override)
     master_name = os.getenv(
         f"{env_prefix}SENTINEL_MASTER_NAME", _DEFAULT_SENTINEL_MASTER_NAME
     )
 
     logger.info(
         "Redis Sentinel mode enabled. Connecting to sentinel at %s:%s, master: %s",
-        host,
-        port,
+        env["host"],
+        env["port"],
         master_name,
     )
 
     # When sentinel_kwargs is provided, redis-py does NOT inherit socket
     # timeouts from connection_kwargs, so we must include them explicitly
-    sentinel_kwargs: dict[str, Any] = {
-        "socket_connect_timeout": socket_connect_timeout,
-        "socket_timeout": socket_timeout,
-    }
-    if password:
-        sentinel_kwargs["password"] = password
-    if username:
-        sentinel_kwargs["username"] = username
+    sentinel_kwargs = _build_connection_kwargs(
+        env,
+        decode_responses,
+        socket_connect_timeout,
+        socket_timeout,
+        include_auth_only=True,
+    )
+    master_kwargs = _build_connection_kwargs(
+        env,
+        decode_responses,
+        socket_connect_timeout,
+        socket_timeout,
+        health_check_interval=health_check_interval,
+        max_connections=max_connections,
+    )
 
+    return _connect_with_retry(env, master_name, sentinel_kwargs, master_kwargs)
+
+
+def _connect_with_retry(
+    env: dict[str, Any],
+    master_name: str,
+    sentinel_kwargs: dict[str, Any],
+    master_kwargs: dict[str, Any],
+) -> redis.Redis:
+    """Attempt Sentinel connection with exponential backoff retry."""
+    host, port = env["host"], env["port"]
     last_error: Exception | None = None
+
     for attempt in range(_SENTINEL_MAX_RETRIES):
         try:
             sentinel = Sentinel(
                 [(host, port)],
-                socket_connect_timeout=socket_connect_timeout,
-                socket_timeout=socket_timeout,
+                socket_connect_timeout=sentinel_kwargs["socket_connect_timeout"],
+                socket_timeout=sentinel_kwargs["socket_timeout"],
                 sentinel_kwargs=sentinel_kwargs,
             )
-            master_kwargs: dict[str, Any] = {
-                "socket_connect_timeout": socket_connect_timeout,
-                "socket_timeout": socket_timeout,
-                "decode_responses": decode_responses,
-                "db": db,
-            }
-            if health_check_interval:
-                master_kwargs["health_check_interval"] = health_check_interval
-            if max_connections is not None:
-                master_kwargs["max_connections"] = max_connections
-            if password:
-                master_kwargs["password"] = password
-            if username:
-                master_kwargs["username"] = username
-
             client = sentinel.master_for(master_name, **master_kwargs)
             client.ping()
             return client
@@ -228,7 +277,6 @@ def _create_sentinel_client(
             )
             time.sleep(delay)
         except Exception as e:
-            # Non-retriable errors (auth, config) — fail fast
             raise RedisSentinelConnectionError(
                 f"Non-retriable error connecting to Redis Sentinel: {e}"
             ) from e
