@@ -47,6 +47,8 @@ else:
 
     import httpx
     import litellm
+    import litellm.llms.bedrock.embed.embedding as _bedrock_embed  # noqa: F811
+    import litellm.llms.cohere.embed.handler as _cohere_handler  # noqa: F811
     from litellm.litellm_core_utils.litellm_logging import (
         Logging as LiteLLMLoggingObj,
     )

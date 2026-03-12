@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
 from unstract.sdk1.patches.litellm_cohere_timeout import (
     _patched_async_embedding,
     _patched_embedding,
@@ -93,12 +94,12 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
             )
 
         call_kwargs = mock_http_handler.post.call_args
-        assert (
-            "timeout" in call_kwargs.kwargs
-        ), "timeout kwarg must always be passed to client.post()"
-        assert (
-            call_kwargs.kwargs["timeout"] is None
-        ), f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
+        assert "timeout" in call_kwargs.kwargs, (
+            "timeout kwarg must always be passed to client.post()"
+        )
+        assert call_kwargs.kwargs["timeout"] is None, (
+            f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
+        )
 
     def test_httpx_timeout_object_forwarded(
         self,
@@ -193,4 +194,18 @@ class TestMonkeyPatchApplied:
     def test_bedrock_handler_patched(self) -> None:
         import litellm.llms.bedrock.embed.embedding as bedrock
 
+        assert bedrock.cohere_embedding is _patched_embedding
+
+    def test_patch_applied_via_production_import(self) -> None:
+        """Verify side-effect import in unstract.sdk1.embedding applies the patch."""
+        import importlib
+
+        import litellm.llms.bedrock.embed.embedding as bedrock
+        import litellm.llms.cohere.embed.handler as handler
+
+        # Re-import to ensure the side-effect runs
+        importlib.import_module("unstract.sdk1.embedding")
+
+        assert handler.embedding is _patched_embedding
+        assert handler.async_embedding is _patched_async_embedding
         assert bedrock.cohere_embedding is _patched_embedding
