@@ -9,6 +9,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -268,13 +269,9 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            adapter_info = (
-                f"'{self._adapter_name}' ({self.adapter.get_provider()})"
-                if self._adapter_name
-                else f"'{self.adapter.get_provider()}'"
-            )
+            adapter_info = self._adapter_name or self.adapter.get_provider()
             error_msg = (
-                f"Error from LLM adapter {adapter_info}: "
+                f"Error from LLM adapter '{adapter_info}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -349,13 +346,9 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            adapter_info = (
-                f"'{self._adapter_name}' ({self.adapter.get_provider()})"
-                if self._adapter_name
-                else f"'{self.adapter.get_provider()}'"
-            )
+            adapter_info = self._adapter_name or self.adapter.get_provider()
             error_msg = (
-                f"Error from LLM adapter {adapter_info}: "
+                f"Error from LLM adapter '{adapter_info}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
