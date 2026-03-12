@@ -10,7 +10,7 @@ def is_rabbitmq_ha_enabled() -> bool:
     return os.environ.get("RABBITMQ_HA_ENABLED", "").lower() == "true"
 
 
-def make_queue(name: str, routing_key: str | None = None) -> Queue:
+def make_queue(name: str) -> Queue:
     """Create a kombu Queue, using quorum type when HA is enabled.
 
     When RABBITMQ_HA_ENABLED=true, declares the queue with
@@ -23,14 +23,11 @@ def make_queue(name: str, routing_key: str | None = None) -> Queue:
 
     Args:
         name: Queue name.
-        routing_key: Optional routing key (defaults to queue name).
 
     Returns:
         Configured kombu Queue instance.
     """
     kwargs: dict = {"name": name}
-    if routing_key:
-        kwargs["routing_key"] = routing_key
     if is_rabbitmq_ha_enabled():
         kwargs["queue_arguments"] = {"x-queue-type": "quorum"}
     return Queue(**kwargs)
