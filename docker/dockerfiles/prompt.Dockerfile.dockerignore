@@ -46,7 +46,7 @@
 !LICENSE
 *.md
 !README.md
-# But include the agent prompt markdown files 
+# But include the agent prompt markdown files
 !*_system_prompt.md
 .jshintrc
 .pre-commit-config.yaml
