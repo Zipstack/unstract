@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-import redis
 from kombu import Connection
 
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
@@ -21,12 +21,13 @@ class LogPublisher:
         )
     )
     kombu_conn = Connection(broker_url)
-    r = redis.Redis(
-        host=os.environ.get("REDIS_HOST"),
-        port=os.environ.get("REDIS_PORT", 6379),
-        username=os.environ.get("REDIS_USER") or None,
-        password=os.environ.get("REDIS_PASSWORD") or None,
-    )
+    _redis_client: Any = None
+
+    @classmethod
+    def _get_redis_client(cls) -> Any:
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=False)
+        return cls._redis_client
 
     @staticmethod
     def log_usage(
@@ -206,7 +207,7 @@ class LogPublisher:
             timestamp = payload.get("timestamp", round(time.time(), 6))
             redis_key = f"{event}:{timestamp}"
             log_data = json.dumps(payload)
-            cls.r.setex(redis_key, logs_expiration, log_data)
+            cls._get_redis_client().setex(redis_key, logs_expiration, log_data)
         except Exception as e:
             logging.error(
                 f"Failed to store unified notification log for '{event}' "
