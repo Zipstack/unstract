@@ -97,7 +97,7 @@ def _create_standalone_client(
     password = os.getenv(f"{env_prefix}PASSWORD", os.getenv("REDIS_PASSWORD"))
     username = os.getenv(
         f"{env_prefix}USER",
-        os.getenv(f"{env_prefix}USERNAME", os.getenv("REDIS_USER", "default")),
+        os.getenv(f"{env_prefix}USERNAME", os.getenv("REDIS_USER")),
     )
     db = (
         db_override
