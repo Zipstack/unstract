@@ -35,6 +35,10 @@ const useClearFileHistory = () => {
 
     try {
       await workflowServiceInstance.clearFileMarkers(workflowId);
+      setAlertDetails({
+        type: "success",
+        content: "File history cleared successfully",
+      });
       return true;
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to clear file history"));
