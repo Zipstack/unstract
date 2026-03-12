@@ -13,6 +13,8 @@ def batch_resolve_user_ids(user_ids: Iterable[str]) -> dict[str, dict[str, str]]
 
     Returns:
         dict mapping each string PK to {'name': str, 'email': str}.
+        PKs that cannot be resolved (non-existent users or invalid IDs)
+        are omitted from the result; callers should use `.get()` for safe access.
     """
     if not user_ids:
         return {}
