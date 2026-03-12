@@ -46,7 +46,8 @@ if _sentinel_mode:
     socket_io_manager_url = (
         f"sentinel://{_cred_prefix}{_redis_host}:{_redis_port}/{_redis_db}"
     )
-    _transport_options = {"master_name": "mymaster"}
+    _sentinel_master_name = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+    _transport_options = {"master_name": _sentinel_master_name}
 else:
     socket_io_manager_url = f"redis://{_redis_host}:{_redis_port}"
 

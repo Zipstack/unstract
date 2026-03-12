@@ -447,6 +447,8 @@ REDIS_SENTINEL_MODE = (
     os.environ.get("REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
 )
 
+REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+
 if REDIS_SENTINEL_MODE:
     _sentinel_kwargs = {}
     if REDIS_PASSWORD:
@@ -465,14 +467,14 @@ if REDIS_SENTINEL_MODE:
     SOCKET_IO_MANAGER_URL = (
         f"sentinel://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}/{_redis_db}"
     )
-    SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": "mymaster"}
+    SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": REDIS_SENTINEL_MASTER_NAME}
 
     # django-redis expects username in the LOCATION URL for ACL auth
     _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"redis://{_user_prefix}mymaster/{_redis_db}",
+            "LOCATION": f"redis://{_user_prefix}{REDIS_SENTINEL_MASTER_NAME}/{_redis_db}",
             "OPTIONS": {
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],

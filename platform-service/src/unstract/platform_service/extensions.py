@@ -9,7 +9,7 @@ from unstract.core.cache.redis_client import create_redis_client
 
 db = PostgresqlDatabase(None)
 
-# Redis client (initialized lazily)
+# Lazy singleton — avoids import-time Redis connection that blocks startup
 _redis_client: redis.Redis | None = None
 
 

@@ -6,7 +6,8 @@ Dual-mode Redis configuration:
 
 Mode is detected from {prefix}SENTINEL_MODE env var (LLMW pattern).
 In Sentinel mode, REDIS_HOST/REDIS_PORT point to the K8s Sentinel service endpoint.
-Master name is hardcoded as "mymaster". REDIS_PASSWORD is reused for Sentinel auth.
+Master name defaults to "mymaster" (configurable via REDIS_SENTINEL_MASTER_NAME env var).
+REDIS_PASSWORD is reused for Sentinel auth.
 
 Retry: 10 attempts, 5s initial, 1.5x backoff, ±20% jitter.
 """
@@ -29,7 +30,7 @@ _SENTINEL_INITIAL_DELAY = 5  # seconds
 _SENTINEL_BACKOFF_MULTIPLIER = 1.5
 _SENTINEL_JITTER_MIN = 0.8
 _SENTINEL_JITTER_MAX = 1.2
-_SENTINEL_MASTER_NAME = "mymaster"
+_SENTINEL_MASTER_NAME = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
 
 def _is_sentinel_mode(env_prefix: str) -> bool:
@@ -48,7 +49,7 @@ def create_redis_client(
 
     Mode is detected from {env_prefix}SENTINEL_MODE env var.
     In Sentinel mode, {env_prefix}HOST and {env_prefix}PORT point to the
-    Sentinel service endpoint (K8s DNS). Master name is hardcoded as "mymaster".
+    Sentinel service endpoint (K8s DNS). Master name from REDIS_SENTINEL_MASTER_NAME env.
 
     Args:
         env_prefix: Env var prefix (e.g. "REDIS_" or "CACHE_REDIS_").

@@ -11,7 +11,6 @@ from typing import Any
 
 import redis
 
-from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogFieldName
 from unstract.core.data_models import LogDataDTO
 from unstract.workflow_execution.enums import LogType
@@ -117,12 +116,3 @@ def store_execution_log(
 
     except Exception as e:
         logger.error(f"Error storing execution log: {e}")
-
-
-def create_log_redis_client() -> redis.Redis:
-    """Create Redis client for log storage using the shared factory.
-
-    Returns:
-        Configured Redis client (bytes mode for log consistency).
-    """
-    return create_redis_client(decode_responses=False)
