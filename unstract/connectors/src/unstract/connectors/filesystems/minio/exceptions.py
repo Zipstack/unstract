@@ -14,11 +14,32 @@ _AMBIENT_AUTH_MSG = (
     "or IRSA service account annotation."
 )
 
+_IRSA_NO_CREDS_MSG = (
+    "No AWS credentials found. Ensure the pod's ServiceAccount is annotated "
+    "with an IAM role ARN for IRSA, or provide static access key/secret."
+)
+
+_IRSA_ASSUME_ROLE_MSG = (
+    "Failed to assume IAM role via IRSA. Verify the IAM role exists, has the "
+    "correct trust policy for the EKS OIDC provider, and the ServiceAccount "
+    "is annotated correctly."
+)
+
+_IRSA_ACCESS_DENIED_MSG = (
+    "Access denied — the IAM role does not have sufficient S3 permissions. "
+    "Ensure the role policy grants s3:GetObject, s3:PutObject, s3:ListBucket, "
+    "and s3:DeleteObject on the target bucket."
+)
+
 S3FS_EXC_TO_UNSTRACT_EXC_AMBIENT = {
     "The AWS Access Key Id you provided does not exist in our records": _AMBIENT_AUTH_MSG,
     "The request signature we calculated does not match the signature you provided": (
         _AMBIENT_AUTH_MSG
     ),
+    "Unable to locate credentials": _IRSA_NO_CREDS_MSG,
+    "AssumeRoleWithWebIdentity": _IRSA_ASSUME_ROLE_MSG,
+    "InvalidIdentityToken": _IRSA_ASSUME_ROLE_MSG,
+    "Access Denied": _IRSA_ACCESS_DENIED_MSG,
 }
 
 S3FS_EXC_TO_UNSTRACT_EXC_COMMON = {

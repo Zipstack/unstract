@@ -286,6 +286,45 @@ class TestHandleS3fsException(unittest.TestCase):
         result = handle_s3fs_exception(exc, using_static_creds=True)
         self.assertIs(result, exc)
 
+    def test_ambient_no_credentials(self) -> None:
+        """Ambient mode: missing credentials gives IRSA guidance."""
+        exc = Exception("Unable to locate credentials")
+        result = handle_s3fs_exception(exc, using_static_creds=False)
+        self.assertIsInstance(result, ConnectorError)
+        msg = str(result)
+        self.assertIn("No AWS credentials found", msg)
+        self.assertIn("ServiceAccount", msg)
+
+    def test_ambient_assume_role_failure(self) -> None:
+        """Ambient mode: AssumeRoleWithWebIdentity error gives trust policy guidance."""
+        exc = Exception(
+            "An error occurred (AccessDenied) when calling the "
+            "AssumeRoleWithWebIdentity operation"
+        )
+        result = handle_s3fs_exception(exc, using_static_creds=False)
+        self.assertIsInstance(result, ConnectorError)
+        msg = str(result)
+        self.assertIn("Failed to assume IAM role via IRSA", msg)
+        self.assertIn("trust policy", msg)
+
+    def test_ambient_invalid_identity_token(self) -> None:
+        """Ambient mode: InvalidIdentityToken gives same trust policy guidance."""
+        exc = Exception("InvalidIdentityToken: Token is expired or invalid")
+        result = handle_s3fs_exception(exc, using_static_creds=False)
+        self.assertIsInstance(result, ConnectorError)
+        msg = str(result)
+        self.assertIn("Failed to assume IAM role via IRSA", msg)
+        self.assertIn("trust policy", msg)
+
+    def test_ambient_access_denied(self) -> None:
+        """Ambient mode: Access Denied gives S3 permissions guidance."""
+        exc = Exception("Access Denied")
+        result = handle_s3fs_exception(exc, using_static_creds=False)
+        self.assertIsInstance(result, ConnectorError)
+        msg = str(result)
+        self.assertIn("Access denied", msg)
+        self.assertIn("s3:GetObject", msg)
+
     def test_default_using_static_creds_is_true(self) -> None:
         """Default value for using_static_creds should be True."""
         exc = Exception(
