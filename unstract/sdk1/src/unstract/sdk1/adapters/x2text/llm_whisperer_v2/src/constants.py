@@ -44,6 +44,9 @@ class WhispererEnv:
     """
 
     WAIT_TIMEOUT = "ADAPTER_LLMW_WAIT_TIMEOUT"
+    MAX_RETRIES = "ADAPTER_LLMW_MAX_RETRIES"
+    RETRY_MIN_WAIT = "ADAPTER_LLMW_RETRY_MIN_WAIT"
+    RETRY_MAX_WAIT = "ADAPTER_LLMW_RETRY_MAX_WAIT"
     LOG_LEVEL = "LOG_LEVEL"
 
 
@@ -108,3 +111,6 @@ class WhispererDefaults:
     WAIT_TIMEOUT = int(os.getenv(WhispererEnv.WAIT_TIMEOUT, 900))
     WAIT_FOR_COMPLETION = True
     LOGGING_LEVEL = os.getenv(WhispererEnv.LOG_LEVEL, "INFO")
+    MAX_RETRIES = int(os.getenv(WhispererEnv.MAX_RETRIES, 3))
+    RETRY_MIN_WAIT = float(os.getenv(WhispererEnv.RETRY_MIN_WAIT, 1.0))
+    RETRY_MAX_WAIT = float(os.getenv(WhispererEnv.RETRY_MAX_WAIT, 60.0))
