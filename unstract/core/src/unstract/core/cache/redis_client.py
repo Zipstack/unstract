@@ -166,8 +166,12 @@ def _create_sentinel_client(
         master_name,
     )
 
-    # Sentinel auth reuses the same password
-    sentinel_kwargs: dict[str, Any] = {}
+    # When sentinel_kwargs is provided, redis-py does NOT inherit socket
+    # timeouts from connection_kwargs, so we must include them explicitly
+    sentinel_kwargs: dict[str, Any] = {
+        "socket_connect_timeout": socket_connect_timeout,
+        "socket_timeout": socket_timeout,
+    }
     if password:
         sentinel_kwargs["password"] = password
     if username:
