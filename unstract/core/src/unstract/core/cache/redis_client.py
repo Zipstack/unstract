@@ -58,7 +58,7 @@ def create_redis_client(
         decode_responses: Whether to decode responses to strings.
         socket_connect_timeout: Connection timeout in seconds.
         socket_timeout: Socket timeout in seconds.
-        max_connections: Optional max connections for standalone ConnectionPool.
+        max_connections: Optional max connections for ConnectionPool.
         health_check_interval: Proactive health check interval in seconds (0=disabled).
         db: Optional DB index override.
 
@@ -75,6 +75,7 @@ def create_redis_client(
             socket_connect_timeout=socket_connect_timeout,
             socket_timeout=socket_timeout,
             health_check_interval=health_check_interval,
+            max_connections=max_connections,
             db_override=db,
         )
     else:
@@ -139,6 +140,7 @@ def _create_sentinel_client(
     socket_connect_timeout: int,
     socket_timeout: int,
     health_check_interval: int = 0,
+    max_connections: int | None = None,
     db_override: int | None = None,
 ) -> redis.Redis:
     # Reuse HOST/PORT — in Sentinel mode these point to the Sentinel service
@@ -194,6 +196,8 @@ def _create_sentinel_client(
             }
             if health_check_interval:
                 master_kwargs["health_check_interval"] = health_check_interval
+            if max_connections is not None:
+                master_kwargs["max_connections"] = max_connections
             if password:
                 master_kwargs["password"] = password
             if username:
