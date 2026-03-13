@@ -24,17 +24,22 @@ class BaseRetriever:
         self.prompt = prompt
         self.doc_id = doc_id
         self.top_k = top_k
-        self.llm: RetrieverLLM | None = self._get_llm(llm)
+        self._llm: LLM | None = llm
+        self._retriever_llm: RetrieverLLM | None = None
 
-    @staticmethod
-    def _get_llm(llm: LLM | None) -> RetrieverLLM | None:
-        """Convert SDK1 LLM to a llama-index compatible RetrieverLLM.
+    @property
+    def llm(self) -> RetrieverLLM | None:
+        """Return a llama-index compatible LLM, lazily created on first access.
 
-        Llama-index components (KeywordTableIndex, SubQuestionQueryEngine,
-        etc.) expect an instance of ``llama_index.core.llms.llm.LLM``.
-        SDK1's ``LLM`` wraps litellm directly and is *not* compatible.
+        Avoids the cost of RetrieverLLM construction (adapter init,
+        CallbackManager setup) for retrievers that never use the LLM
+        (Simple, Automerging, Recursive).
         """
-        return RetrieverLLM(llm=llm) if llm else None
+        if self._llm is None:
+            return None
+        if self._retriever_llm is None:
+            self._retriever_llm = RetrieverLLM(llm=self._llm)
+        return self._retriever_llm
 
     @staticmethod
     def retrieve() -> set[str]:
