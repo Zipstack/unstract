@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
 from unstract.sdk1.patches.litellm_cohere_timeout import (
     _patched_async_embedding,
     _patched_embedding,
@@ -41,9 +42,15 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
     ) -> None:
         timeout_value = 600
 
-        with patch(
-            "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
-        ) as mock_config:
+        with (
+            patch(
+                "unstract.sdk1.patches.litellm_cohere_timeout.validate_environment",
+                side_effect=lambda api_key, headers: headers,
+            ),
+            patch(
+                "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
+            ) as mock_config,
+        ):
             mock_config.return_value._transform_response.return_value = MagicMock()
             mock_config.return_value._transform_request.return_value = {
                 "texts": ["hello"],
@@ -71,9 +78,15 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
         mock_logging_obj: MagicMock,
         mock_http_handler: MagicMock,
     ) -> None:
-        with patch(
-            "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
-        ) as mock_config:
+        with (
+            patch(
+                "unstract.sdk1.patches.litellm_cohere_timeout.validate_environment",
+                side_effect=lambda api_key, headers: headers,
+            ),
+            patch(
+                "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
+            ) as mock_config,
+        ):
             mock_config.return_value._transform_response.return_value = MagicMock()
             mock_config.return_value._transform_request.return_value = {
                 "texts": ["hello"],
@@ -93,12 +106,12 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
             )
 
         call_kwargs = mock_http_handler.post.call_args
-        assert (
-            "timeout" in call_kwargs.kwargs
-        ), "timeout kwarg must always be passed to client.post()"
-        assert (
-            call_kwargs.kwargs["timeout"] is None
-        ), f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
+        assert "timeout" in call_kwargs.kwargs, (
+            "timeout kwarg must always be passed to client.post()"
+        )
+        assert call_kwargs.kwargs["timeout"] is None, (
+            f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
+        )
 
     def test_httpx_timeout_object_forwarded(
         self,
@@ -107,9 +120,15 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
     ) -> None:
         timeout_obj = httpx.Timeout(30.0)
 
-        with patch(
-            "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
-        ) as mock_config:
+        with (
+            patch(
+                "unstract.sdk1.patches.litellm_cohere_timeout.validate_environment",
+                side_effect=lambda api_key, headers: headers,
+            ),
+            patch(
+                "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
+            ) as mock_config,
+        ):
             mock_config.return_value._transform_response.return_value = MagicMock()
             mock_config.return_value._transform_request.return_value = {
                 "texts": ["hello"],
