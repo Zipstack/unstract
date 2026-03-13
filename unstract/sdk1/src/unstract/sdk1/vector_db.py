@@ -11,7 +11,6 @@ from llama_index.core.vector_stores.types import (
     VectorStore,
     VectorStoreQueryResult,
 )
-
 from unstract.sdk1.adapters.vectordb import adapters
 from unstract.sdk1.adapters.vectordb.constants import VectorDbConstants
 from unstract.sdk1.adapters.vectordb.exceptions import parse_vector_db_err
@@ -111,9 +110,7 @@ class VectorDB:
             self.vector_db_adapter_class = vector_db_adapter(vector_db_metadata)
             return self.vector_db_adapter_class.get_vector_db_instance()
         except Exception as e:
-            adapter_info = (
-                getattr(self, "_adapter_name", "") or self._adapter_instance_id
-            )
+            adapter_info = getattr(self, "_adapter_name", "") or self._adapter_instance_id
             self._tool.stream_log(
                 log=f"Unable to get vector_db '{adapter_info}': {e}",
                 level=LogLevel.ERROR,

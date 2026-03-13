@@ -2,7 +2,6 @@ import io
 from typing import Any
 
 import pdfplumber
-
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.x2text import adapters
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -87,9 +86,7 @@ class X2Text:
                 return self._x2text_instance
 
         except Exception as e:
-            adapter_info = (
-                getattr(self, "_adapter_name", "") or self._adapter_instance_id
-            )
+            adapter_info = getattr(self, "_adapter_name", "") or self._adapter_instance_id
             self._tool.stream_log(
                 log=f"Unable to get x2text adapter '{adapter_info}': {e}",
                 level=LogLevel.ERROR,
