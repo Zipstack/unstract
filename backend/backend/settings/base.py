@@ -418,6 +418,7 @@ MIDDLEWARE = [
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
     "middleware.cache_control.CacheControlMiddleware",
+    "middleware.content_security_policy.ContentSecurityPolicyMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"

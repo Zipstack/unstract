@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
@@ -50,6 +51,12 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             ),
         }
     }
+
+    def validate_tool_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Tool name")
+
+    def validate_description(self, value: str) -> str:
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""

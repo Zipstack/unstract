@@ -9,6 +9,7 @@ from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
+from utils.input_sanitizer import validate_name_field
 
 from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -27,6 +28,9 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+
+    def validate_connector_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Connector name")
 
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None
