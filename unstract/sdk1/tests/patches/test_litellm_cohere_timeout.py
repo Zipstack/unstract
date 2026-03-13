@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
+
 from unstract.sdk1.patches.litellm_cohere_timeout import (
     _patched_async_embedding,
     _patched_embedding,
@@ -93,12 +94,12 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
             )
 
         call_kwargs = mock_http_handler.post.call_args
-        assert (
-            "timeout" in call_kwargs.kwargs
-        ), "timeout kwarg must always be passed to client.post()"
-        assert (
-            call_kwargs.kwargs["timeout"] is None
-        ), f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
+        assert "timeout" in call_kwargs.kwargs, (
+            "timeout kwarg must always be passed to client.post()"
+        )
+        assert call_kwargs.kwargs["timeout"] is None, (
+            f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
+        )
 
     def test_httpx_timeout_object_forwarded(
         self,
@@ -195,16 +196,17 @@ class TestMonkeyPatchApplied:
 
         assert bedrock.cohere_embedding is _patched_embedding
 
-    def test_patch_applied_via_production_import(self) -> None:
-        """Verify side-effect import in unstract.sdk1.embedding applies the patch."""
-        import importlib
+    def test_patch_module_loaded_via_embedding_import(self) -> None:
+        """Verify unstract.sdk1.embedding causes the patch module to load.
 
-        import litellm.llms.bedrock.embed.embedding as bedrock
-        import litellm.llms.cohere.embed.handler as handler
+        The binding assertions (handler.embedding is _patched_embedding)
+        are covered by the other tests in this class. This test only
+        verifies that the side-effect import line in embedding.py
+        exists and results in the patch module being present in
+        sys.modules.
+        """
+        import sys
 
-        # Re-import to ensure the side-effect runs
-        importlib.import_module("unstract.sdk1.embedding")
+        import unstract.sdk1.embedding  # noqa: F401
 
-        assert handler.embedding is _patched_embedding
-        assert handler.async_embedding is _patched_async_embedding
-        assert bedrock.cohere_embedding is _patched_embedding
+        assert "unstract.sdk1.patches.litellm_cohere_timeout" in sys.modules
