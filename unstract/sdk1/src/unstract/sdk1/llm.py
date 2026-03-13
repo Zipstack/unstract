@@ -11,6 +11,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -664,46 +665,12 @@ class LLMCompat:
             model_name=self._llm_instance.get_model_name(),
         )
 
-    # ── Predict methods (llama-index interface) ────────────────────────────────
-
-    def predict(
-        self,
-        prompt: Any,  # noqa: ANN401
-        **prompt_args: Any,  # noqa: ANN401
-    ) -> str:
-        """Predict for a given prompt template (llama-index interface).
-
-        Emulates ``llama_index.core.llms.llm.LLM.predict`` which formats
-        the prompt template and delegates to ``chat()`` or ``complete()``.
-        """
-        if self.metadata.is_chat_model:
-            messages = prompt.format_messages(llm=self, **prompt_args)
-            chat_response = self.chat(messages)
-            return chat_response.message.content or ""
-        else:
-            formatted_prompt = prompt.format(llm=self, **prompt_args)
-            response = self.complete(formatted_prompt, formatted=True)
-            return response.text
-
-    async def apredict(
-        self,
-        prompt: Any,  # noqa: ANN401
-        **prompt_args: Any,  # noqa: ANN401
-    ) -> str:
-        """Async predict for a given prompt template (llama-index interface).
-
-        Emulates ``llama_index.core.llms.llm.LLM.apredict``.
-        """
-        if self.metadata.is_chat_model:
-            messages = prompt.format_messages(llm=self, **prompt_args)
-            chat_response = await self.achat(messages)
-            return chat_response.message.content or ""
-        else:
-            formatted_prompt = prompt.format(llm=self, **prompt_args)
-            response = await self.acomplete(formatted_prompt, formatted=True)
-            return response.text
-
     # ── Sync methods (llama-index interface) ─────────────────────────────────
+    # NOTE: These methods call litellm.completion() directly and do NOT
+    # invoke LLM._record_usage(). Platform-level usage auditing for
+    # retriever LLM calls is not yet wired. The CallbackManager set in
+    # __init__ only registers handlers for BaseEmbedding, not LLMs.
+    # TODO: Add usage recording once the audit pipeline supports it.
 
     def chat(
         self,
@@ -714,7 +681,7 @@ class LLMCompat:
         litellm.drop_params = True
         response = litellm.completion(
             messages=self._to_litellm_messages(messages),
-            **self._get_completion_kwargs(),
+            **self._get_completion_kwargs(**kwargs),
         )
         content = response["choices"][0]["message"]["content"]
         return ChatResponse(
@@ -732,7 +699,7 @@ class LLMCompat:
         litellm.drop_params = True
         response = litellm.completion(
             messages=[{"role": "user", "content": prompt}],
-            **self._get_completion_kwargs(),
+            **self._get_completion_kwargs(**kwargs),
         )
         content = response["choices"][0]["message"]["content"]
         return CompletionResponse(text=content, raw=response)
@@ -765,7 +732,7 @@ class LLMCompat:
         litellm.drop_params = True
         response = await litellm.acompletion(
             messages=self._to_litellm_messages(messages),
-            **self._get_completion_kwargs(),
+            **self._get_completion_kwargs(**kwargs),
         )
         content = response["choices"][0]["message"]["content"]
         return ChatResponse(
@@ -783,7 +750,7 @@ class LLMCompat:
         litellm.drop_params = True
         response = await litellm.acompletion(
             messages=[{"role": "user", "content": prompt}],
-            **self._get_completion_kwargs(),
+            **self._get_completion_kwargs(**kwargs),
         )
         content = response["choices"][0]["message"]["content"]
         return CompletionResponse(text=content, raw=response)
@@ -807,9 +774,19 @@ class LLMCompat:
 
     # ── Helper methods ───────────────────────────────────────────────────────
 
-    def _get_completion_kwargs(self) -> dict[str, Any]:
-        """Get validated completion kwargs."""
-        return self._llm_instance.adapter.validate({**self._llm_instance.kwargs})
+    def _get_completion_kwargs(
+        self, **kwargs: Any  # noqa: ANN401
+    ) -> dict[str, Any]:
+        """Get validated completion kwargs.
+
+        Merges any runtime overrides with the stored kwargs, validates
+        through the adapter, and removes ``cost_model`` (which is used
+        for internal billing but not accepted by litellm).
+        """
+        merged = {**self._llm_instance.kwargs, **kwargs}
+        completion_kwargs = self._llm_instance.adapter.validate(merged)
+        completion_kwargs.pop("cost_model", None)
+        return completion_kwargs
 
     @staticmethod
     def _to_litellm_messages(
@@ -846,6 +823,7 @@ class LLMCompat:
             adapter_instance_id=llm._adapter_instance_id,
             tool=llm._tool,
             usage_kwargs=llm._usage_kwargs,
+            system_prompt=llm._system_prompt,
             capture_metrics=llm._capture_metrics,
         )
 

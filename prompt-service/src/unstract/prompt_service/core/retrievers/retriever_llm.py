@@ -13,7 +13,7 @@ from llama_index.core.base.llms.types import (
     MessageRole,
 )
 from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
-
+from pydantic import PrivateAttr
 from unstract.sdk1.llm import LLM, LLMCompat
 
 
@@ -29,6 +29,8 @@ class RetrieverLLM(LlamaIndexBaseLLM):
     (passing the isinstance check) and delegates all LLM calls to an
     internal ``LLMCompat`` instance.
     """
+
+    _compat: LLMCompat = PrivateAttr()
 
     def __init__(self, llm: LLM, **kwargs: Any) -> None:  # noqa: ANN401
         """Initialize with an SDK1 LLM instance."""
