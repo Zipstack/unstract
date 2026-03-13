@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
-
 from unstract.sdk1.patches.litellm_cohere_timeout import (
     _patched_async_embedding,
     _patched_embedding,
@@ -106,12 +105,12 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
             )
 
         call_kwargs = mock_http_handler.post.call_args
-        assert "timeout" in call_kwargs.kwargs, (
-            "timeout kwarg must always be passed to client.post()"
-        )
-        assert call_kwargs.kwargs["timeout"] is None, (
-            f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
-        )
+        assert (
+            "timeout" in call_kwargs.kwargs
+        ), "timeout kwarg must always be passed to client.post()"
+        assert (
+            call_kwargs.kwargs["timeout"] is None
+        ), f"Expected timeout=None, got timeout={call_kwargs.kwargs['timeout']}"
 
     def test_httpx_timeout_object_forwarded(
         self,
