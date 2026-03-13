@@ -4,7 +4,6 @@ from typing import Self
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.llm import (
     LLM,
     ChatMessage,
@@ -85,9 +84,7 @@ class TestEmulatedTypes:
     def test_chat_response_message_access(self: Self) -> None:
         """ChatResponse.message.content should be accessible."""
         resp = ChatResponse(
-            message=ChatMessage(
-                role=MessageRole.ASSISTANT, content="test"
-            )
+            message=ChatMessage(role=MessageRole.ASSISTANT, content="test")
         )
         assert resp.message.content == "test"
         assert resp.message.role == MessageRole.ASSISTANT
