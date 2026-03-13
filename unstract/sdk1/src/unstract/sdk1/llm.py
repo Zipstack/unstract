@@ -9,6 +9,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -141,6 +142,13 @@ class LLM:
             self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
 
+    def _get_adapter_info(self) -> str:
+        """Build a display string identifying this adapter for errors."""
+        provider = self.adapter.get_provider()
+        if self._adapter_name:
+            return f"{self._adapter_name} ({provider})"
+        return provider
+
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""
         try:
@@ -268,9 +276,8 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            adapter_info = self._adapter_name or self.adapter.get_provider()
             error_msg = (
-                f"Error from LLM adapter '{adapter_info}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -345,9 +352,8 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            adapter_info = self._adapter_name or self.adapter.get_provider()
             error_msg = (
-                f"Error from LLM adapter '{adapter_info}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -405,9 +411,8 @@ class LLM:
             elif hasattr(e, "http_status"):
                 status_code = e.http_status
 
-            adapter_info = self._adapter_name or self.adapter.get_provider()
             error_msg = (
-                f"Error from LLM adapter '{adapter_info}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
