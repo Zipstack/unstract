@@ -4,7 +4,7 @@ Bug: litellm.llms.cohere.embed.handler.embedding() and async_embedding()
 receive a `timeout` parameter but don't forward it to client.post(),
 causing "Connection timed out after None seconds" errors.
 
-Affected litellm version: 1.80.0 (also present on latest main as of
+Affected litellm version: 1.81.7 (also present on latest main as of
 2026-03-10).
 
 Activation: This patch is imported as a side-effect from
@@ -12,7 +12,7 @@ unstract.sdk1.embedding. Any code path that invokes Bedrock Cohere
 embeddings without going through unstract.sdk1.embedding will NOT
 have this patch active.
 
-Remove this patch when litellm ships a fix upstream.
+#TODO Remove this patch when litellm ships a fix upstream.
 """
 
 import importlib.metadata
@@ -68,7 +68,7 @@ else:
 
     _DEFAULT_TIMEOUT = httpx.Timeout(None)
 
-    # Copied from litellm 1.80.0 cohere/embed/handler.py async_embedding().
+    # Copied from litellm 1.81.7 cohere/embed/handler.py async_embedding().
     # ONLY CHANGE: Added timeout=timeout to the client.post() call.
     # Source: litellm/llms/cohere/embed/handler.py::async_embedding
     async def _patched_async_embedding(  # type: ignore[return]  # noqa: ANN202
@@ -136,7 +136,7 @@ else:
             input=input,
         )
 
-    # Copied from litellm 1.80.0 cohere/embed/handler.py embedding().
+    # Copied from litellm 1.81.7 cohere/embed/handler.py embedding().
     # ONLY CHANGE: Added timeout=timeout to the client.post() call.
     # Source: litellm/llms/cohere/embed/handler.py::embedding
     def _patched_embedding(  # type: ignore[return]  # noqa: ANN202
