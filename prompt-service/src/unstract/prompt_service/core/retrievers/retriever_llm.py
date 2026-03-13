@@ -13,7 +13,6 @@ from llama_index.core.base.llms.types import (
     MessageRole,
 )
 from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
-
 from unstract.sdk1.llm import LLM, LLMCompat
 
 
@@ -33,14 +32,7 @@ class RetrieverLLM(LlamaIndexBaseLLM):
     def __init__(self, llm: LLM, **kwargs: Any) -> None:  # noqa: ANN401
         """Initialize with an SDK1 LLM instance."""
         super().__init__(**kwargs)
-        self._compat = LLMCompat(
-            adapter_id=llm._adapter_id,
-            adapter_metadata=llm._adapter_metadata,
-            adapter_instance_id=llm._adapter_instance_id,
-            tool=llm._tool,
-            usage_kwargs=llm._usage_kwargs,
-            capture_metrics=llm._capture_metrics,
-        )
+        self._compat = LLMCompat.from_llm(llm)
 
     @property
     def metadata(self) -> LLMMetadata:

@@ -11,6 +11,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -823,6 +824,31 @@ class LLMCompat:
             }
             for m in messages
         ]
+
+    # ── Factory methods ────────────────────────────────────────────────────
+
+    @classmethod
+    def from_llm(cls, llm: "LLM") -> "LLMCompat":
+        """Create an LLMCompat instance from an existing SDK1 LLM.
+
+        This factory method encapsulates access to LLM's internal
+        attributes, keeping that knowledge within SDK1 and avoiding
+        cross-package coupling.
+
+        Args:
+            llm: An SDK1 LLM instance.
+
+        Returns:
+            A new LLMCompat wrapping the same adapter configuration.
+        """
+        return cls(
+            adapter_id=llm._adapter_id,
+            adapter_metadata=llm._adapter_metadata,
+            adapter_instance_id=llm._adapter_instance_id,
+            tool=llm._tool,
+            usage_kwargs=llm._usage_kwargs,
+            capture_metrics=llm._capture_metrics,
+        )
 
     # ── SDK1 compatibility methods ───────────────────────────────────────────
 
