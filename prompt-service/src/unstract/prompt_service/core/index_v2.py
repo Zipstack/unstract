@@ -11,7 +11,6 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
-
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,
@@ -21,14 +20,14 @@ from unstract.prompt_service.dto import (
 from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
 )
-from unstract.sdk1.constants import Common, LogLevel
+from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.embedding import Embedding
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.file_storage.impl import FileStorage
 from unstract.sdk1.file_storage.provider import FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper as ToolAdapter
 from unstract.sdk1.tool.stream import StreamMixin
-from unstract.sdk1.utils.common import capture_metrics
+from unstract.sdk1.utils.common import Utils, capture_metrics
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.vector_db import VectorDB
 
@@ -92,11 +91,9 @@ class Index:
         x2text_config = ToolAdapter.get_adapter_config(
             self.tool, self.instance_identifiers.x2text_instance_id
         )
-        # Strip adapter name metadata before hashing to maintain
-        # backward compatibility with existing index keys.
-        for config in (vector_db_config, embedding_config, x2text_config):
-            if config:
-                config.pop(Common.ADAPTER_NAME, None)
+        Utils.strip_adapter_name(
+            vector_db_config, embedding_config, x2text_config
+        )
         index_key = {
             "file_hash": file_hash,
             "vector_db_config": vector_db_config,

@@ -13,18 +13,19 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
 )
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
-from unstract.sdk1.constants import Common, LogLevel
+from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import IndexingError, SdkError, VectorDBError, X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
-from unstract.sdk1.utils.common import capture_metrics, log_elapsed
+from unstract.sdk1.utils.common import Utils, capture_metrics, log_elapsed
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.vector_db import VectorDB
 from unstract.sdk1.x2txt import X2Text
@@ -501,11 +502,9 @@ class Index:
         vector_db_config = PlatformHelper.get_adapter_config(self.tool, vector_db)
         embedding_config = PlatformHelper.get_adapter_config(self.tool, embedding)
         x2text_config = PlatformHelper.get_adapter_config(self.tool, x2text)
-        # Strip adapter name metadata before hashing to maintain
-        # backward compatibility with existing index keys.
-        for config in (vector_db_config, embedding_config, x2text_config):
-            if config:
-                config.pop(Common.ADAPTER_NAME, None)
+        Utils.strip_adapter_name(
+            vector_db_config, embedding_config, x2text_config
+        )
         index_key = {
             "file_hash": file_hash,
             "vector_db_config": vector_db_config,

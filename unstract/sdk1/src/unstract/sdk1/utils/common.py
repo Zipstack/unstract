@@ -37,6 +37,17 @@ class Utils:
         return string.lower() == "true"
 
     @staticmethod
+    def strip_adapter_name(*configs: dict | None) -> None:
+        """Strip the private ``_adapter_name`` key from adapter configs.
+
+        Call this before hashing configs for index key generation so the
+        adapter name (added for error reporting) does not affect the hash.
+        """
+        for config in configs:
+            if config:
+                config.pop(Common.ADAPTER_NAME, None)
+
+    @staticmethod
     def pretty_file_size(num: float, suffix: str = "B") -> str:
         """Gets the human readable size for a file.
 

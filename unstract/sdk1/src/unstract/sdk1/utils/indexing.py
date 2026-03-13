@@ -1,9 +1,9 @@
 import json
 
-from unstract.sdk1.constants import Common
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.tool import ToolUtils
 
 
@@ -45,11 +45,9 @@ class IndexingUtils:
         vector_db_config = PlatformHelper.get_adapter_config(tool, vector_db)
         embedding_config = PlatformHelper.get_adapter_config(tool, embedding)
         x2text_config = PlatformHelper.get_adapter_config(tool, x2text)
-        # Strip adapter name metadata before hashing to maintain
-        # backward compatibility with existing index keys.
-        for config in (vector_db_config, embedding_config, x2text_config):
-            if config:
-                config.pop(Common.ADAPTER_NAME, None)
+        Utils.strip_adapter_name(
+            vector_db_config, embedding_config, x2text_config
+        )
         index_key = {
             "file_hash": file_hash,
             "vector_db_config": vector_db_config,
