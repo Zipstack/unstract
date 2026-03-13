@@ -36,7 +36,7 @@ if _SKIP_PATCH:
         f"Current litellm version: {_litellm_version}. "
         f"Patch was written for: {_PATCHED_LITELLM_VERSION}. "
         "Please verify the upstream fix and remove this module.",
-        RuntimeWarning,
+        DeprecationWarning,
         stacklevel=2,
     )
 else:
