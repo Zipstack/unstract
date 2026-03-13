@@ -5,6 +5,7 @@ This module contains Celery tasks for processing execution logs.
 
 import os
 from typing import Any
+from urllib.parse import quote
 
 import socketio
 from celery import shared_task
@@ -29,15 +30,37 @@ log_queue_name = os.getenv("LOG_HISTORY_QUEUE_NAME", "log_history_queue")
 log_storage_enabled = os.getenv("ENABLE_LOG_HISTORY", "true").lower() == "true"
 
 # Socket.IO client for emitting events (uses same KombuManager as backend)
-redis_host = os.getenv("REDIS_HOST", "localhost")
-redis_port = os.getenv("REDIS_PORT", "6379")
-socket_io_manager_url = f"redis://{redis_host}:{redis_port}"
+_sentinel_mode = os.getenv("REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
+_redis_host = os.getenv("REDIS_HOST", "localhost")
+_redis_port = os.getenv("REDIS_PORT", "6379")
+_redis_password = os.getenv("REDIS_PASSWORD", "")
+_redis_user = os.getenv("REDIS_USER", "")
+_cred_prefix = ""
+if _redis_user and _redis_password:
+    _cred_prefix = f"{quote(_redis_user, safe='')}:{quote(_redis_password, safe='')}@"
+elif _redis_password:
+    _cred_prefix = f":{quote(_redis_password, safe='')}@"
+
+_transport_options: dict[str, Any] = {}
+if _sentinel_mode:
+    _redis_db = os.getenv("REDIS_DB", "0") or "0"
+    socket_io_manager_url = (
+        f"sentinel://{_cred_prefix}{_redis_host}:{_redis_port}/{_redis_db}"
+    )
+    _sentinel_master_name = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+    _transport_options = {"master_name": _sentinel_master_name}
+else:
+    socket_io_manager_url = f"redis://{_cred_prefix}{_redis_host}:{_redis_port}"
 
 sio = socketio.Server(
     async_mode="threading",
     logger=False,
     engineio_logger=False,
-    client_manager=socketio.KombuManager(url=socket_io_manager_url, write_only=True),
+    client_manager=socketio.KombuManager(
+        url=socket_io_manager_url,
+        write_only=True,
+        **({"transport_options": _transport_options} if _transport_options else {}),
+    ),
 )
 
 
