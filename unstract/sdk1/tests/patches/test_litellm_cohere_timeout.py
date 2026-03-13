@@ -153,50 +153,44 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
 class TestPatchedEmbeddingAsyncTimeoutForwarding:
     """Verify async embedding forwards timeout to client.post()."""
 
-    def test_timeout_passed_to_async_client_post(
+    @pytest.mark.asyncio
+    async def test_timeout_passed_to_async_client_post(
         self,
         mock_logging_obj: MagicMock,
     ) -> None:
-        import asyncio
-
         from litellm.llms.custom_httpx.http_handler import (
             AsyncHTTPHandler,
         )
 
         mock_client = MagicMock(spec=AsyncHTTPHandler)
-        mock_response = MagicMock()
-        mock_client.post = AsyncMock(return_value=mock_response)
+        mock_client.post = AsyncMock(return_value=MagicMock())
         timeout_value = 600
 
-        async def run() -> None:
-            with patch(
-                "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
-            ) as mock_config:
-                mock_config.return_value._transform_response.return_value = MagicMock()
+        with patch(
+            "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
+        ) as mock_config:
+            mock_config.return_value._transform_response.return_value = MagicMock()
 
-                await _patched_async_embedding(
-                    model="cohere.embed-multilingual-v3",
-                    data={
-                        "texts": ["hello"],
-                        "input_type": "search_document",
-                    },
-                    input=["hello"],
-                    model_response=MagicMock(),
-                    timeout=timeout_value,
-                    logging_obj=mock_logging_obj,
-                    optional_params={},
-                    api_base="https://bedrock.example.com",
-                    api_key=None,
-                    headers={},
-                    encoding=MagicMock(),
-                    client=mock_client,
-                )
-
-        asyncio.run(run())
+            await _patched_async_embedding(
+                model="cohere.embed-multilingual-v3",
+                data={
+                    "texts": ["hello"],
+                    "input_type": "search_document",
+                },
+                input=["hello"],
+                model_response=MagicMock(),
+                timeout=timeout_value,
+                logging_obj=mock_logging_obj,
+                optional_params={},
+                api_base="https://bedrock.example.com",
+                api_key=None,
+                headers={},
+                encoding=MagicMock(),
+                client=mock_client,
+            )
 
         mock_client.post.assert_called_once()
-        call_kwargs = mock_client.post.call_args
-        assert call_kwargs.kwargs.get("timeout") is timeout_value
+        assert mock_client.post.call_args.kwargs.get("timeout") is timeout_value
 
 
 class TestMonkeyPatchApplied:
