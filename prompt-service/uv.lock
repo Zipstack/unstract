@@ -1431,14 +1431,15 @@ wheels = [
 
 [[package]]
 name = "llmwhisperer-client"
-version = "2.5.0"
+version = "2.6.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
+    { name = "tenacity" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ac/2d/3657ff470c491c3778ae519e51756b2aee8b8ba25bf4d0fd0a77662146f5/llmwhisperer_client-2.5.0.tar.gz", hash = "sha256:8d08df695ca74513ca904ddb42620ecf70a1eb8b432872ba15fbf238529245ac", size = 3261186 }
+sdist = { url = "https://files.pythonhosted.org/packages/38/44/18d4158618ebbd76ceb8e43b8deb77f4983e6f1ccff2dffd73d6f3fb1628/llmwhisperer_client-2.6.2.tar.gz", hash = "sha256:ce846af62e7e7337dfcfe2960ec72de2989457b717ab7b9dd4110ee82c002ed0", size = 3268197 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/dc/f99fb0903d244066ef1207b7b465e3acfd68df575b129e45e397f05bc1f4/llmwhisperer_client-2.5.0-py3-none-any.whl", hash = "sha256:b637aa914875a25b76de60cb0e92be9237d554967380d2aeeab70ecadcff9bab", size = 9733 },
+    { url = "https://files.pythonhosted.org/packages/27/eb/0f9edd21302eddc6020a1b43a78e27f361e8b6b8af7611134a58487f7d8a/llmwhisperer_client-2.6.2-py3-none-any.whl", hash = "sha256:7226344506bc85a663e4d4f8feb763f853ec9bcb6cea9bd9cf170ba135c50cdd", size = 10857 },
 ]
 
 [[package]]
@@ -2865,7 +2866,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-qdrant", specifier = ">=0.9.1" },
     { name = "llama-index-vector-stores-weaviate", specifier = ">=1.4.1" },
     { name = "llama-parse", specifier = ">=0.6.0" },
-    { name = "llmwhisperer-client", specifier = ">=2.2.1" },
+    { name = "llmwhisperer-client", specifier = ">=2.6.2" },
     { name = "pdfplumber", specifier = ">=0.11.2" },
     { name = "python-dotenv", specifier = "==1.0.1" },
     { name = "python-magic", specifier = "~=0.4.27" },

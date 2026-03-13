@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 from dotenv import find_dotenv, load_dotenv
@@ -441,23 +441,76 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-# SocketIO connection manager
-SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+# Redis Sentinel HA Configuration (LLMW pattern)
+# Single boolean flag; in Sentinel mode REDIS_HOST/PORT point to the Sentinel service
+REDIS_SENTINEL_MODE = (
+    os.environ.get("REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
+)
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-            "DB": REDIS_DB,
-            "USERNAME": REDIS_USER,
-            "PASSWORD": REDIS_PASSWORD,
-        },
-        "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+
+if REDIS_SENTINEL_MODE:
+    _sentinel_kwargs = {}
+    if REDIS_PASSWORD:
+        _sentinel_kwargs["password"] = REDIS_PASSWORD
+    if REDIS_USER:
+        _sentinel_kwargs["username"] = REDIS_USER
+
+    _redis_db = REDIS_DB or "0"
+
+    # SocketIO connection manager (Kombu Sentinel URL format)
+    _cred_prefix = ""
+    if REDIS_USER and REDIS_PASSWORD:
+        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    elif REDIS_PASSWORD:
+        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
+    SOCKET_IO_MANAGER_URL = (
+        f"sentinel://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}/{_redis_db}"
+    )
+    SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": REDIS_SENTINEL_MASTER_NAME}
+
+    # django-redis expects username in the LOCATION URL for ACL auth
+    _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"redis://{_user_prefix}{REDIS_SENTINEL_MASTER_NAME}/{_redis_db}",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.SentinelClient",
+                "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
+                "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
+                "SENTINEL_KWARGS": _sentinel_kwargs,
+                "DB": int(_redis_db),
+                "PASSWORD": REDIS_PASSWORD,
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+            },
+            "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+        }
     }
-}
+else:
+    # SocketIO connection manager (standalone)
+    _cred_prefix = ""
+    if REDIS_USER and REDIS_PASSWORD:
+        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    elif REDIS_PASSWORD:
+        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
+    SOCKET_IO_MANAGER_URL = f"redis://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}"
+    SOCKET_IO_TRANSPORT_OPTIONS = {}
+
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+                "DB": int(REDIS_DB) if REDIS_DB else 0,
+                "USERNAME": REDIS_USER,
+                "PASSWORD": REDIS_PASSWORD,
+            },
+            "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+        }
+    }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 

@@ -7,11 +7,12 @@ This module provides abstract and concrete cache backend implementations:
 
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
 
-from unstract.core.cache.redis_client import RedisClient
+from unstract.core.cache.redis_client import RedisClient, create_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -99,17 +100,34 @@ class RedisCacheBackend(BaseCacheBackend):
                 self.available = False
                 return
 
-            # Initialize RedisClient with cache configuration
-            self.redis_client = RedisClient(
-                host=cache_config["host"],
-                port=cache_config["port"],
-                username=cache_config.get("username"),
-                password=cache_config.get("password"),
-                db=cache_config["db"],
-                decode_responses=True,
-                socket_timeout=5,
-                socket_connect_timeout=5,
+            # Check for Sentinel mode via CACHE_REDIS_SENTINEL_MODE
+            sentinel_mode = (
+                os.getenv("CACHE_REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
             )
+            if sentinel_mode:
+                # Sentinel mode: use factory with CACHE_REDIS_ prefix
+                raw_client = create_redis_client(
+                    env_prefix="CACHE_REDIS_",
+                    decode_responses=True,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
+                    health_check_interval=30,
+                )
+                # Wrap in RedisClient for interface compatibility
+                self.redis_client = RedisClient.__new__(RedisClient)
+                self.redis_client.redis_client = raw_client
+            else:
+                # Standalone mode: use RedisClient directly
+                self.redis_client = RedisClient(
+                    host=cache_config["host"],
+                    port=cache_config["port"],
+                    username=cache_config.get("username"),
+                    password=cache_config.get("password"),
+                    db=cache_config["db"],
+                    decode_responses=True,
+                    socket_timeout=5,
+                    socket_connect_timeout=5,
+                )
 
             # Test connection
             if not self.redis_client.ping():
@@ -117,7 +135,8 @@ class RedisCacheBackend(BaseCacheBackend):
 
             self.available = True
             logger.info(
-                f"RedisCacheBackend initialized successfully: {cache_config['host']}:{cache_config['port']}/{cache_config['db']}"
+                f"RedisCacheBackend initialized successfully: "
+                f"{cache_config['host']}:{cache_config['port']}/{cache_config['db']}"
             )
 
         except ImportError:

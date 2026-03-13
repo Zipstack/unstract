@@ -3,16 +3,22 @@ import logging
 import os
 from typing import Any
 
-import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
 
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
 from utils.constants import ExecutionLogConstants
 
 logger = logging.getLogger(__name__)
+
+_kombu_kwargs: dict[str, Any] = {"url": settings.SOCKET_IO_MANAGER_URL}
+if getattr(settings, "SOCKET_IO_TRANSPORT_OPTIONS", None):
+    _kombu_kwargs["connection_options"] = {
+        "transport_options": settings.SOCKET_IO_TRANSPORT_OPTIONS
+    }
 
 sio = socketio.Server(
     # Allowed values: {threading, eventlet, gevent, gevent_uwsgi}
@@ -21,15 +27,17 @@ sio = socketio.Server(
     logger=False,
     engineio_logger=False,
     always_connect=True,
-    client_manager=socketio.KombuManager(url=settings.SOCKET_IO_MANAGER_URL),
+    client_manager=socketio.KombuManager(**_kombu_kwargs),
 )
 
-redis_conn = redis.Redis(
-    host=settings.REDIS_HOST,
-    port=int(settings.REDIS_PORT),
-    username=settings.REDIS_USER,
-    password=settings.REDIS_PASSWORD,
-)
+_redis_conn = None
+
+
+def _get_redis_conn():
+    global _redis_conn
+    if _redis_conn is None:
+        _redis_conn = create_redis_client(decode_responses=False)
+    return _redis_conn
 
 
 @sio.event
@@ -90,7 +98,7 @@ def _store_execution_log(data: dict[str, Any]) -> None:
     """Store execution log in database (backward compatibility wrapper)."""
     store_execution_log(
         data=data,
-        redis_client=redis_conn,
+        redis_client=_get_redis_conn(),
         log_queue_name=ExecutionLogConstants.LOG_QUEUE_NAME,
         is_enabled=ExecutionLogConstants.IS_ENABLED,
     )
