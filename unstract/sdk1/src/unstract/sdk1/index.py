@@ -13,7 +13,6 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.vectordb.no_op.src.no_op_custom_vectordb import (
     NoOpCustomVectorDB,
@@ -200,10 +199,7 @@ class Index:
             extracted_text = process_response.extracted_text
         # TODO: Handle prepend of context where error is raised and remove this
         except AdapterError as e:
-            adapter_info = (
-                getattr(x2text, "_adapter_name", "")
-                or x2text_instance_id
-            )
+            adapter_info = getattr(x2text, "_adapter_name", "") or x2text_instance_id
             msg = f"Error from text extractor '{adapter_info}'. {e}"
             raise X2TextError(msg) from e
         if process_text:
