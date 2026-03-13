@@ -26,6 +26,11 @@ from unstract.sdk1.utils.common import (
 
 logger = logging.getLogger(__name__)
 
+# Drop unsupported params rather than raising errors.
+# Set once at module level instead of per-call to avoid repeated
+# global mutation in concurrent environments.
+litellm.drop_params = True
+
 
 # ── Emulated llama-index types ───────────────────────────────────────────────
 # These types emulate the llama-index interface without requiring the dependency.
@@ -677,7 +682,6 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
         """Synchronous chat completion."""
-        litellm.drop_params = True
         response = litellm.completion(
             messages=self._to_litellm_messages(messages),
             **self._get_completion_kwargs(**kwargs),
@@ -695,7 +699,6 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
         """Synchronous completion."""
-        litellm.drop_params = True
         response = litellm.completion(
             messages=[{"role": "user", "content": prompt}],
             **self._get_completion_kwargs(**kwargs),
@@ -728,7 +731,6 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
         """Asynchronous chat completion."""
-        litellm.drop_params = True
         response = await litellm.acompletion(
             messages=self._to_litellm_messages(messages),
             **self._get_completion_kwargs(**kwargs),
@@ -746,7 +748,6 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
         """Asynchronous completion."""
-        litellm.drop_params = True
         response = await litellm.acompletion(
             messages=[{"role": "user", "content": prompt}],
             **self._get_completion_kwargs(**kwargs),

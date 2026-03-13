@@ -26,6 +26,7 @@ def mock_sdk1_llm() -> MagicMock:
     llm._adapter_instance_id = "inst-123"
     llm._tool = MagicMock()
     llm._usage_kwargs = {"run_id": "test-run"}
+    llm._system_prompt = ""
     llm._capture_metrics = False
     return llm
 
@@ -49,6 +50,7 @@ class TestLLMCompatFromLlm:
             adapter_instance_id="inst-123",
             tool=mock_sdk1_llm._tool,
             usage_kwargs={"run_id": "test-run"},
+            system_prompt="",
             capture_metrics=False,
         )
 
