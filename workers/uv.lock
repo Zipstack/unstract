@@ -4730,7 +4730,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-qdrant", specifier = ">=0.9.1" },
     { name = "llama-index-vector-stores-weaviate", specifier = ">=1.4.1" },
     { name = "llama-parse", specifier = ">=0.6.0" },
-    { name = "llmwhisperer-client", specifier = ">=2.2.1" },
+    { name = "llmwhisperer-client", specifier = ">=2.6.2" },
     { name = "pdfplumber", specifier = ">=0.11.2" },
     { name = "python-dotenv", specifier = "==1.0.1" },
     { name = "python-magic", specifier = "~=0.4.27" },
