@@ -1,4 +1,4 @@
-"""Unit tests for RetrieverLLM and LLMCompat bridge classes."""
+"""Unit tests for RetrieverLLM bridge class."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -44,35 +44,6 @@ def mock_compat():
         is_chat_model=True, model_name="gpt-4"
     )
     return compat
-
-
-# ── LLMCompat.from_llm tests ────────────────────────────────────────────────
-
-
-class TestLLMCompatFromLlm:
-    """Tests for the LLMCompat.from_llm factory method."""
-
-    @patch.object(LLMCompat, "__init__", return_value=None)
-    def test_from_llm_passes_adapter_params(self, mock_init, mock_sdk1_llm):
-        """Verify from_llm extracts and forwards all adapter params."""
-        LLMCompat.from_llm(mock_sdk1_llm)
-
-        mock_init.assert_called_once_with(
-            adapter_id="openai",
-            adapter_metadata={"api_key": "test-key"},
-            adapter_instance_id="inst-123",
-            tool=mock_sdk1_llm._tool,
-            usage_kwargs={"run_id": "test-run"},
-            capture_metrics=False,
-        )
-
-    @patch.object(LLMCompat, "__init__", return_value=None)
-    def test_from_llm_returns_llmcompat_instance(
-        self, mock_init, mock_sdk1_llm
-    ):
-        """Verify from_llm returns an LLMCompat instance."""
-        result = LLMCompat.from_llm(mock_sdk1_llm)
-        assert isinstance(result, LLMCompat)
 
 
 # ── RetrieverLLM tests ───────────────────────────────────────────────────────
@@ -199,95 +170,3 @@ class TestRetrieverLLM:
             retriever_llm = RetrieverLLM(llm=mock_sdk1_llm)
             with pytest.raises(NotImplementedError):
                 retriever_llm.stream_complete("prompt")
-
-
-# ── LLMCompat emulated types tests ──────────────────────────────────────────
-
-
-class TestEmulatedTypes:
-    """Tests for the emulated llama-index types in SDK1."""
-
-    def test_message_role_values(self):
-        """Emulated MessageRole should have correct string values."""
-        assert EmulatedMessageRole.USER.value == "user"
-        assert EmulatedMessageRole.ASSISTANT.value == "assistant"
-        assert EmulatedMessageRole.SYSTEM.value == "system"
-
-    def test_chat_message_defaults(self):
-        """ChatMessage should default to USER role with None content."""
-        msg = EmulatedChatMessage()
-        assert msg.role == EmulatedMessageRole.USER
-        assert msg.content is None
-
-    def test_chat_response_message_access(self):
-        """ChatResponse.message.content should be accessible."""
-        resp = EmulatedChatResponse(
-            message=EmulatedChatMessage(
-                role=EmulatedMessageRole.ASSISTANT, content="test"
-            )
-        )
-        assert resp.message.content == "test"
-        assert resp.message.role == EmulatedMessageRole.ASSISTANT
-
-    def test_completion_response_text(self):
-        """CompletionResponse.text should be accessible."""
-        resp = EmulatedCompletionResponse(text="completed")
-        assert resp.text == "completed"
-
-    def test_llm_metadata_defaults(self):
-        """LLMMetadata should default to chat model."""
-        meta = EmulatedLLMMetadata()
-        assert meta.is_chat_model is True
-        assert meta.model_name == ""
-
-
-# ── _to_litellm_messages tests ──────────────────────────────────────────────
-
-
-class TestToLitellmMessages:
-    """Tests for LLMCompat._to_litellm_messages role conversion."""
-
-    def test_emulated_message_role(self):
-        """Should handle emulated MessageRole enum."""
-        messages = [
-            EmulatedChatMessage(
-                role=EmulatedMessageRole.USER, content="hello"
-            )
-        ]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert result == [{"role": "user", "content": "hello"}]
-
-    def test_llama_index_message_role(self):
-        """Should handle llama-index's real MessageRole enum."""
-        messages = [ChatMessage(role=MessageRole.USER, content="hello")]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert result == [{"role": "user", "content": "hello"}]
-
-    def test_none_content_becomes_empty_string(self):
-        """None content should be converted to empty string."""
-        messages = [
-            EmulatedChatMessage(
-                role=EmulatedMessageRole.USER, content=None
-            )
-        ]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert result == [{"role": "user", "content": ""}]
-
-    def test_multiple_messages(self):
-        """Should handle multiple messages in sequence."""
-        messages = [
-            EmulatedChatMessage(
-                role=EmulatedMessageRole.SYSTEM, content="You are helpful"
-            ),
-            EmulatedChatMessage(
-                role=EmulatedMessageRole.USER, content="Hi"
-            ),
-            EmulatedChatMessage(
-                role=EmulatedMessageRole.ASSISTANT, content="Hello"
-            ),
-        ]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert len(result) == 3
-        assert result[0]["role"] == "system"
-        assert result[1]["role"] == "user"
-        assert result[2]["role"] == "assistant"
