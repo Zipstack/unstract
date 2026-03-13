@@ -478,6 +478,7 @@ if REDIS_SENTINEL_MODE:
             "OPTIONS": {
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
+                "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
                 "DB": int(_redis_db),
