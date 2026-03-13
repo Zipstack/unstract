@@ -45,9 +45,7 @@ class IndexingUtils:
         vector_db_config = PlatformHelper.get_adapter_config(tool, vector_db)
         embedding_config = PlatformHelper.get_adapter_config(tool, embedding)
         x2text_config = PlatformHelper.get_adapter_config(tool, x2text)
-        Utils.strip_adapter_name(
-            vector_db_config, embedding_config, x2text_config
-        )
+        Utils.strip_adapter_name(vector_db_config, embedding_config, x2text_config)
         index_key = {
             "file_hash": file_hash,
             "vector_db_config": vector_db_config,

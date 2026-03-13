@@ -11,6 +11,7 @@ from llama_index.core.vector_stores import (
     VectorStoreQuery,
     VectorStoreQueryResult,
 )
+
 from unstract.prompt_service.dto import (
     ChunkingConfig,
     FileInfo,
@@ -91,9 +92,7 @@ class Index:
         x2text_config = ToolAdapter.get_adapter_config(
             self.tool, self.instance_identifiers.x2text_instance_id
         )
-        Utils.strip_adapter_name(
-            vector_db_config, embedding_config, x2text_config
-        )
+        Utils.strip_adapter_name(vector_db_config, embedding_config, x2text_config)
         index_key = {
             "file_hash": file_hash,
             "vector_db_config": vector_db_config,
