@@ -257,7 +257,14 @@ class WorkerConfig:
         == "true"
     )
     api_client_pool_size: int = field(
-        default_factory=lambda: int(os.getenv("API_CLIENT_POOL_SIZE", "3"))
+        default_factory=lambda: int(os.getenv("API_CLIENT_POOL_SIZE", "10"))
+    )
+
+    # Session Lifecycle Safety Valve (FR-3.2)
+    # Reset singleton session after N task completions to prevent FD accumulation.
+    # Only effective when enable_api_client_singleton=true. Set to 0 to disable.
+    singleton_reset_task_threshold: int = field(
+        default_factory=lambda: int(os.getenv("WORKER_SINGLETON_RESET_THRESHOLD", "1000"))
     )
 
     # Configuration Caching

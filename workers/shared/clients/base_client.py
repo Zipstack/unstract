@@ -103,8 +103,12 @@ class BaseAPIClient:
         # It comes from task context, not from configuration
         self.organization_id = None
 
+        # Track whether this client owns its session (for singleton-aware close)
+        self._owns_session = True
+
         # Initialize requests session with retry strategy
         self.session = requests.Session()
+        self._closed = False  # Track session state for idempotent close
         self._setup_session()
 
         # Always log initialization
@@ -152,10 +156,13 @@ class BaseAPIClient:
         )
 
         # HTTP adapter with connection pooling
+        # pool_connections: number of connection pools to cache (one per host:port)
+        # pool_maxsize: max connections per pool (concurrent requests per host)
+        pool_size = self.config.api_client_pool_size
         adapter = HTTPAdapter(
             max_retries=retry_strategy,
-            pool_connections=10,  # Number of connection pools
-            pool_maxsize=20,  # Maximum number of connections per pool
+            pool_connections=pool_size,
+            pool_maxsize=pool_size * 2,
             pool_block=False,  # Don't block when pool is full
         )
         self.session.mount("http://", adapter)
@@ -551,8 +558,19 @@ class BaseAPIClient:
 
     # Session management
     def close(self):
-        """Close the HTTP session."""
+        """Close the HTTP session (idempotent).
+
+        When _owns_session is False (singleton mode), this is a no-op to avoid
+        closing the shared session that other clients depend on.
+        """
+        if self._closed:
+            return
+        if not self._owns_session:
+            logger.debug("Skipping session close (shared singleton session)")
+            self._closed = True
+            return
         self.session.close()
+        self._closed = True
         logger.debug("Closed API client session")
 
     def __enter__(self):
@@ -562,3 +580,17 @@ class BaseAPIClient:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
         self.close()
+
+    def __del__(self):
+        """Safety net: close session on garbage collection.
+
+        Only closes if this client owns its session (not shared singleton).
+        """
+        try:
+            if hasattr(self, "_closed") and not self._closed:
+                if hasattr(self, "_owns_session") and not self._owns_session:
+                    return  # Don't close shared singleton session
+                if hasattr(self, "session") and self.session is not None:
+                    self.session.close()
+        except Exception:
+            pass  # Never raise in __del__

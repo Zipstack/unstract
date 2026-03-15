@@ -23,10 +23,12 @@ from celery import bootsteps, signals  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the WorkerBuilder and WorkerType
+from shared.api.internal_client import InternalAPIClient  # noqa: E402
 from shared.enums.worker_enums import WorkerType  # noqa: E402
 from shared.infrastructure import initialize_worker_infrastructure  # noqa: E402
 from shared.infrastructure.config.builder import WorkerBuilder  # noqa: E402
 from shared.models.worker_models import get_celery_setting  # noqa: E402
+from shared.patterns.factory.client_factory import ClientFactory  # noqa: E402
 
 # Determine worker type from environment FIRST
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
@@ -364,6 +366,44 @@ def on_worker_process_init(**kwargs):
 
 
 # ============= END OF WORKER PROCESS INIT HOOK =============
+
+
+# ============= WORKER PROCESS SHUTDOWN HOOK =============
+@signals.worker_process_shutdown.connect
+def on_worker_process_shutdown(**kwargs):
+    """Clean up HTTP sessions during worker shutdown."""
+    logger.info("Cleaning up API client resources (PID: %s)", os.getpid())
+    try:
+        InternalAPIClient.reset_singleton()
+    except Exception as e:
+        logger.warning(f"Failed to reset InternalAPIClient singleton: {e}")
+    try:
+        ClientFactory.reset_shared_state()
+    except Exception as e:
+        logger.warning(f"Failed to reset ClientFactory: {e}")
+
+
+# ============= END OF WORKER PROCESS SHUTDOWN HOOK =============
+
+
+# ============= TASK COMPLETION HOOK (SESSION LIFECYCLE SAFETY VALVE) =============
+@signals.task_postrun.connect
+def on_task_postrun(sender=None, task_id=None, **kwargs):
+    """Increment task counter for periodic singleton session reset (FR-3.2).
+
+    After WORKER_SINGLETON_RESET_THRESHOLD tasks (default: 1000), the singleton
+    session is closed and recreated. Skipped when singleton is disabled (default)
+    since the counter and reset would be no-ops.
+    """
+    if not config.enable_api_client_singleton:
+        return
+    try:
+        InternalAPIClient.increment_task_counter()
+    except Exception as e:
+        logger.warning(f"Failed to increment task counter: {e}")
+
+
+# ============= END OF TASK COMPLETION HOOK =============
 
 
 # ============= REGISTER HEARTBEATKEEPER HERE =============
