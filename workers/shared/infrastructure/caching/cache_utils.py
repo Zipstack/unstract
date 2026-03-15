@@ -6,10 +6,8 @@ Specifically optimized for callback pattern performance optimizations.
 
 import json
 import logging
-import os
 import time
 
-import redis
 from shared.infrastructure.config import WorkerConfig
 
 from unstract.core.cache.redis_client import create_redis_client
@@ -35,53 +33,25 @@ class WorkerCacheManager:
     def _initialize_redis_client(self):
         """Initialize Redis client from cache-specific configuration."""
         try:
-            # Get cache-specific Redis configuration
             cache_config = self.config.get_cache_redis_config()
 
             if not cache_config.get("enabled"):
                 logger.info("Redis cache disabled via configuration")
                 return
 
-            # Check for Sentinel mode
-            sentinel_mode = (
-                os.getenv("CACHE_REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
+            self._redis_client = create_redis_client(
+                env_prefix="CACHE_REDIS_",
+                decode_responses=True,
+                socket_timeout=5,
+                socket_connect_timeout=5,
+                health_check_interval=30,
             )
-            if sentinel_mode:
-                # Sentinel mode: use factory with CACHE_REDIS_ prefix
-                self._redis_client = create_redis_client(
-                    env_prefix="CACHE_REDIS_",
-                    decode_responses=True,
-                    socket_timeout=5,
-                    socket_connect_timeout=5,
-                    health_check_interval=30,
-                )
-            else:
-                # Standalone mode
-                redis_kwargs = {
-                    "host": cache_config["host"],
-                    "port": cache_config["port"],
-                    "db": cache_config["db"],
-                    "decode_responses": True,
-                    "socket_connect_timeout": 5,
-                    "socket_timeout": 5,
-                    "health_check_interval": 30,
-                }
-                if cache_config.get("password"):
-                    redis_kwargs["password"] = cache_config["password"]
-                if cache_config.get("username"):
-                    redis_kwargs["username"] = cache_config["username"]
-                if cache_config.get("ssl"):
-                    redis_kwargs["ssl"] = True
-                    redis_kwargs["ssl_cert_reqs"] = self.config.cache_redis_ssl_cert_reqs
-                self._redis_client = redis.Redis(**redis_kwargs)
 
             # Test connection
             self._redis_client.ping()
             self._last_connection_time = time.time()
             self._connection_id = f"cache_conn_{int(self._last_connection_time)}"
-            logger.info(
-                f"Redis cache initialized: {cache_config['host']}:{cache_config['port']}/{cache_config['db']}"
-            )
+            logger.info("Redis cache initialized")
 
         except Exception as e:
             logger.warning(f"Failed to initialize Redis cache: {e}. Cache disabled.")
