@@ -106,13 +106,18 @@ def _resolve_redis_env(
         if db_override is not None
         else int(os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "0")))
     )
-    return {
+    ssl = os.getenv(f"{env_prefix}SSL", "false").strip().lower() == "true"
+    result: dict[str, Any] = {
         "host": host,
         "port": port,
         "password": password,
         "username": username,
         "db": db,
+        "ssl": ssl,
     }
+    if ssl:
+        result["ssl_cert_reqs"] = os.getenv(f"{env_prefix}SSL_CERT_REQS", "required")
+    return result
 
 
 def _build_connection_kwargs(
@@ -154,6 +159,9 @@ def _build_connection_kwargs(
         kwargs["password"] = env["password"]
     if env.get("username"):
         kwargs["username"] = env["username"]
+    if env.get("ssl"):
+        kwargs["ssl"] = True
+        kwargs["ssl_cert_reqs"] = env.get("ssl_cert_reqs", "required")
     return kwargs
 
 
@@ -172,18 +180,15 @@ def _create_standalone_client(
         "Redis standalone mode enabled. Connecting to %s:%s", env["host"], env["port"]
     )
 
-    kwargs: dict[str, Any] = {
-        "host": env["host"],
-        "port": env["port"],
-        "password": env["password"],
-        "username": env["username"],
-        "db": env["db"],
-        "decode_responses": decode_responses,
-        "socket_connect_timeout": socket_connect_timeout,
-        "socket_timeout": socket_timeout,
-    }
-    if health_check_interval:
-        kwargs["health_check_interval"] = health_check_interval
+    kwargs = _build_connection_kwargs(
+        env,
+        decode_responses,
+        socket_connect_timeout,
+        socket_timeout,
+        health_check_interval=health_check_interval,
+    )
+    kwargs["host"] = env["host"]
+    kwargs["port"] = env["port"]
 
     if max_connections is not None:
         pool = redis.ConnectionPool(max_connections=max_connections, **kwargs)
@@ -293,29 +298,13 @@ def _connect_with_retry(
 
 
 class RedisClient:
-    """Base Redis client with comprehensive operations."""
+    """Wrapper around redis.Redis providing a consistent interface.
 
-    def __init__(
-        self,
-        host: str = "localhost",
-        port: int = 6379,
-        username: str | None = None,
-        password: str | None = None,
-        db: int = 0,
-        decode_responses: bool = True,
-        socket_connect_timeout: int = 5,
-        socket_timeout: int = 5,
-    ):
-        self.redis_client = redis.Redis(
-            host=host,
-            port=port,
-            username=username,
-            password=password,
-            db=db,
-            decode_responses=decode_responses,
-            socket_connect_timeout=socket_connect_timeout,
-            socket_timeout=socket_timeout,
-        )
+    Always instantiate via RedisClient.from_env(), which delegates to
+    create_redis_client() and handles both Sentinel and standalone modes.
+    """
+
+    redis_client: redis.Redis
 
     # Basic key-value operations
     def get(self, key: str) -> Any:
@@ -388,31 +377,13 @@ class RedisClient:
 
     @classmethod
     def from_env(cls, env_prefix: str = "REDIS_") -> "RedisClient":
-        """Create client from environment variables, with Sentinel support.
+        """Create client from environment variables.
 
-        When {env_prefix}SENTINEL_MODE is True, returns a RedisClient backed
-        by a Sentinel-managed connection. Otherwise uses standalone mode.
+        Delegates to create_redis_client() which handles both
+        Sentinel and standalone modes transparently.
         """
-        if _is_sentinel_mode(env_prefix):
-            instance = cls.__new__(cls)
-            instance.redis_client = create_redis_client(
-                env_prefix=env_prefix, decode_responses=True
-            )
-            return instance
-        else:
-            host = os.getenv(f"{env_prefix}HOST", os.getenv("REDIS_HOST", "localhost"))
-            port = int(os.getenv(f"{env_prefix}PORT", os.getenv("REDIS_PORT", "6379")))
-            username = os.getenv(
-                f"{env_prefix}USER",
-                os.getenv(f"{env_prefix}USERNAME", os.getenv("REDIS_USER")),
-            )
-            password = os.getenv(f"{env_prefix}PASSWORD", os.getenv("REDIS_PASSWORD"))
-            db = int(os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "0")))
-
-            return cls(
-                host=host,
-                port=port,
-                username=username,
-                password=password,
-                db=db,
-            )
+        instance = cls.__new__(cls)
+        instance.redis_client = create_redis_client(
+            env_prefix=env_prefix, decode_responses=True
+        )
+        return instance
