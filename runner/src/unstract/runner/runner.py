@@ -232,6 +232,10 @@ class UnstractRunner:
             "REDIS_PORT": os.getenv(Env.REDIS_PORT),
             "REDIS_USER": os.getenv(Env.REDIS_USER),
             "REDIS_PASSWORD": os.getenv(Env.REDIS_PASSWORD),
+            "REDIS_SENTINEL_MODE": os.getenv(Env.REDIS_SENTINEL_MODE, "False"),
+            "REDIS_SENTINEL_MASTER_NAME": os.getenv(
+                Env.REDIS_SENTINEL_MASTER_NAME, "mymaster"
+            ),
             "TOOL_INSTANCE_ID": tool_instance_id,
             "EXECUTION_ID": execution_id,
             "ORGANIZATION_ID": organization_id,
