@@ -72,8 +72,12 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 # Set shell with pipefail for proper error handling in pipes
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-# Install project and OpenTelemetry instrumentation (as root to avoid permission issues)
-# No symlinks needed - PYTHONPATH handles the paths correctly
+# Install project, OpenTelemetry instrumentation, and executor plugins.
+# No symlinks needed - PYTHONPATH handles the paths correctly.
+# Executor plugins (cloud-only, no-op for OSS) register via setuptools entry points:
+#   - unstract.executor.executors  (executor classes, e.g. table_extractor)
+#   - unstract.executor.plugins    (utility plugins, e.g. highlight-data, challenge)
+# Editable installs (-e) ensure Path(__file__) resolves to the source directory.
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
@@ -81,7 +85,14 @@ RUN uv sync --group deploy --locked && \
     uv pip install opentelemetry-instrumentation-openai && \
     { chmod +x ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
     touch requirements.txt && \
-    { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; }
+    { chown -R worker:worker ./run-worker.sh ./run-worker-docker.sh 2>/dev/null || true; } && \
+    for plugin_dir in /app/plugins/*/; do \
+      if [ -f "$plugin_dir/pyproject.toml" ] && \
+         grep -qE 'unstract\.executor\.(executors|plugins)' "$plugin_dir/pyproject.toml" 2>/dev/null; then \
+        echo "Installing executor plugin: $(basename $plugin_dir)" && \
+        uv pip install -e "$plugin_dir" || true; \
+      fi; \
+    done
 
 # Switch to worker user
 USER worker

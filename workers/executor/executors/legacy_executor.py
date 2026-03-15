@@ -1,0 +1,1799 @@
+"""Legacy executor — migrates the prompt-service pipeline.
+
+Phase 2A scaffolds the class with operation routing.
+Phase 2B implements ``_handle_extract`` (text extraction via x2text).
+Phase 2C implements ``_handle_index`` (vector DB indexing).
+Remaining handler methods raise ``NotImplementedError`` and are filled
+in by phases 2D–2H.
+"""
+
+import logging
+import time
+from pathlib import Path
+from typing import Any
+
+from executor.executor_tool_shim import ExecutorToolShim
+from executor.executors.constants import ExecutionSource
+from executor.executors.constants import IndexingConstants as IKeys
+from executor.executors.dto import (
+    ChunkingConfig,
+    FileInfo,
+    InstanceIdentifiers,
+    ProcessingOptions,
+)
+from executor.executors.exceptions import ExtractionError, LegacyExecutorError
+from executor.executors.file_utils import FileUtils
+
+from unstract.sdk1.adapters.exceptions import AdapterError
+from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.execution.context import ExecutionContext, Operation
+from unstract.sdk1.execution.executor import BaseExecutor
+from unstract.sdk1.execution.registry import ExecutorRegistry
+from unstract.sdk1.execution.result import ExecutionResult
+from unstract.sdk1.utils.tool import ToolUtils
+from unstract.sdk1.x2txt import TextExtractionResult, X2Text
+
+logger = logging.getLogger(__name__)
+
+
+@ExecutorRegistry.register
+class LegacyExecutor(BaseExecutor):
+    """Executor that wraps the full prompt-service extraction pipeline.
+
+    Routes incoming ``ExecutionContext`` requests to the appropriate
+    handler method based on the ``Operation`` enum.  Each handler
+    corresponds to one of the original prompt-service HTTP endpoints.
+    """
+
+    # Maps Operation enum values to handler method names.
+    _OPERATION_MAP: dict[str, str] = {
+        Operation.EXTRACT.value: "_handle_extract",
+        Operation.INDEX.value: "_handle_index",
+        Operation.ANSWER_PROMPT.value: "_handle_answer_prompt",
+        Operation.SINGLE_PASS_EXTRACTION.value: "_handle_single_pass_extraction",
+        Operation.SUMMARIZE.value: "_handle_summarize",
+        Operation.IDE_INDEX.value: "_handle_ide_index",
+        Operation.STRUCTURE_PIPELINE.value: "_handle_structure_pipeline",
+    }
+
+    # Defaults for log streaming (overridden by execute()).
+    _log_events_id: str = ""
+    _log_component: dict[str, str] = {}
+
+    @property
+    def name(self) -> str:
+        return "legacy"
+
+    def execute(self, context: ExecutionContext) -> ExecutionResult:
+        """Route to the handler for ``context.operation``.
+
+        Returns:
+            ``ExecutionResult`` on success or for unsupported operations.
+            ``LegacyExecutorError`` subclasses are caught and mapped to
+            ``ExecutionResult.failure()`` so callers always get a result.
+
+        Raises:
+            NotImplementedError: From stub handlers (until 2D–2H).
+        """
+        # Extract log streaming info (set by tasks.py for IDE sessions).
+        self._log_events_id: str = context.log_events_id or ""
+        self._log_component: dict[str, str] = getattr(context, "_log_component", {})
+
+        handler_name = self._OPERATION_MAP.get(context.operation)
+        if handler_name is None:
+            return ExecutionResult.failure(
+                error=(f"LegacyExecutor does not support operation '{context.operation}'")
+            )
+
+        handler = getattr(self, handler_name)
+        logger.info(
+            "LegacyExecutor routing operation=%s to %s "
+            "(run_id=%s request_id=%s execution_source=%s)",
+            context.operation,
+            handler_name,
+            context.run_id,
+            context.request_id,
+            context.execution_source,
+        )
+        start = time.monotonic()
+        try:
+            result = handler(context)
+            elapsed = time.monotonic() - start
+            logger.info(
+                "Handler %s completed in %.2fs (run_id=%s success=%s)",
+                handler_name,
+                elapsed,
+                context.run_id,
+                result.success,
+            )
+            return result
+        except LegacyExecutorError as exc:
+            elapsed = time.monotonic() - start
+            logger.warning(
+                "Handler %s failed after %.2fs: %s: %s",
+                handler_name,
+                elapsed,
+                type(exc).__name__,
+                exc.message,
+                exc_info=True,
+            )
+            # Stream error to FE so the user sees the failure in real-time
+            if self._log_events_id:
+                try:
+                    shim = ExecutorToolShim(
+                        log_events_id=self._log_events_id,
+                        component=self._log_component,
+                    )
+                    shim.stream_log(
+                        f"Error: {exc.message or type(exc).__name__}",
+                        level=LogLevel.ERROR,
+                    )
+                except Exception:
+                    pass  # Best-effort — don't mask the original error
+            return ExecutionResult.failure(error=exc.message)
+
+    # ------------------------------------------------------------------
+    # Phase 2B — Extract handler
+    # ------------------------------------------------------------------
+
+    def _handle_extract(self, context: ExecutionContext) -> ExecutionResult:
+        """Handle ``Operation.EXTRACT`` — text extraction via x2text.
+
+        Migrated from ``ExtractionService.perform_extraction()`` in
+        ``prompt-service/.../services/extraction.py``.
+
+        Returns:
+            ExecutionResult with ``data`` containing ``extracted_text``.
+        """
+        params: dict[str, Any] = context.executor_params
+
+        # Required params
+        x2text_instance_id: str = params.get(IKeys.X2TEXT_INSTANCE_ID, "")
+        file_path: str = params.get(IKeys.FILE_PATH, "")
+        platform_api_key: str = params.get("platform_api_key", "")
+
+        if not x2text_instance_id or not file_path:
+            missing = []
+            if not x2text_instance_id:
+                missing.append(IKeys.X2TEXT_INSTANCE_ID)
+            if not file_path:
+                missing.append(IKeys.FILE_PATH)
+            return ExecutionResult.failure(
+                error=f"Missing required params: {', '.join(missing)}"
+            )
+
+        # Optional params
+        output_file_path: str | None = params.get(IKeys.OUTPUT_FILE_PATH)
+        enable_highlight: bool = params.get(IKeys.ENABLE_HIGHLIGHT, False)
+        usage_kwargs: dict[Any, Any] = params.get(IKeys.USAGE_KWARGS, {})
+        tags: list[str] | None = params.get(IKeys.TAGS)
+        execution_source: str = context.execution_source
+        tool_exec_metadata: dict[str, Any] = params.get(IKeys.TOOL_EXECUTION_METATADA, {})
+        execution_data_dir: str | None = params.get(IKeys.EXECUTION_DATA_DIR)
+
+        # Build adapter shim and X2Text
+        shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
+        x2text = X2Text(
+            tool=shim,
+            adapter_instance_id=x2text_instance_id,
+            usage_kwargs=usage_kwargs,
+        )
+        fs = FileUtils.get_fs_instance(execution_source=execution_source)
+
+        logger.info(
+            "Starting text extraction: x2text_adapter=%s file=%s run_id=%s",
+            x2text_instance_id,
+            Path(file_path).name,
+            context.run_id,
+        )
+        logger.info(
+            "HIGHLIGHT_DEBUG _handle_extract: enable_highlight=%s x2text_type=%s file=%s run_id=%s",
+            enable_highlight,
+            type(x2text.x2text_instance).__name__,
+            Path(file_path).name,
+            context.run_id,
+        )
+        shim.stream_log("Initializing text extractor...")
+        shim.stream_log(f"Using text extractor: {type(x2text.x2text_instance).__name__}")
+
+        try:
+            shim.stream_log("Extracting text from document...")
+            if enable_highlight and isinstance(
+                x2text.x2text_instance, (LLMWhisperer, LLMWhispererV2)
+            ):
+                shim.stream_log("Extracting text with highlight support enabled...")
+                process_response: TextExtractionResult = x2text.process(
+                    input_file_path=file_path,
+                    output_file_path=output_file_path,
+                    enable_highlight=enable_highlight,
+                    tags=tags,
+                    fs=fs,
+                )
+                self._update_exec_metadata(
+                    fs=fs,
+                    execution_source=execution_source,
+                    tool_exec_metadata=tool_exec_metadata,
+                    execution_data_dir=execution_data_dir,
+                    process_response=process_response,
+                )
+            else:
+                process_response = x2text.process(
+                    input_file_path=file_path,
+                    output_file_path=output_file_path,
+                    tags=tags,
+                    fs=fs,
+                )
+
+            has_metadata = bool(
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.line_metadata
+            )
+            logger.info(
+                "HIGHLIGHT_DEBUG extraction result: has_line_metadata=%s "
+                "whisper_hash=%s run_id=%s",
+                has_metadata,
+                getattr(process_response.extraction_metadata, "whisper_hash", None)
+                if process_response.extraction_metadata
+                else None,
+                context.run_id,
+            )
+            logger.info(
+                "Text extraction completed: file=%s run_id=%s",
+                Path(file_path).name,
+                context.run_id,
+            )
+            shim.stream_log("Text extraction completed")
+            result_data: dict[str, Any] = {
+                IKeys.EXTRACTED_TEXT: process_response.extracted_text,
+            }
+            # Include highlight metadata when available
+            # (used by agentic extraction for PDF source referencing)
+            if (
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.line_metadata
+            ):
+                shim.stream_log("Saving extraction metadata...")
+                result_data["highlight_metadata"] = (
+                    process_response.extraction_metadata.line_metadata
+                )
+            return ExecutionResult(
+                success=True,
+                data=result_data,
+            )
+        except AdapterError as e:
+            name = x2text.x2text_instance.get_name()
+            logger.error(
+                "Text extraction failed: adapter=%s file=%s error=%s",
+                name,
+                Path(file_path).name,
+                str(e),
+            )
+            msg = f"Error from text extractor '{name}'. {e}"
+            raise ExtractionError(message=msg) from e
+
+    @staticmethod
+    def _update_exec_metadata(
+        fs: Any,
+        execution_source: str,
+        tool_exec_metadata: dict[str, Any] | None,
+        execution_data_dir: str | None,
+        process_response: TextExtractionResult,
+    ) -> None:
+        """Write whisper_hash metadata for tool-sourced executions."""
+        if execution_source != ExecutionSource.TOOL.value:
+            return
+        whisper_hash = process_response.extraction_metadata.whisper_hash
+        metadata = {X2TextConstants.WHISPER_HASH: whisper_hash}
+        if tool_exec_metadata is not None:
+            for key, value in metadata.items():
+                tool_exec_metadata[key] = value
+        metadata_path = str(Path(execution_data_dir) / IKeys.METADATA_FILE)
+        ToolUtils.dump_json(
+            file_to_dump=metadata_path,
+            json_to_dump=metadata,
+            fs=fs,
+        )
+
+    @staticmethod
+    def _get_indexing_deps():
+        """Lazy-import heavy indexing dependencies.
+
+        These imports trigger llama_index/qdrant/protobuf loading,
+        so they must not happen at module-collection time (tests).
+        Wrapped in a method so tests can mock it cleanly.
+        """
+        from executor.executors.index import Index
+
+        from unstract.sdk1.embedding import EmbeddingCompat
+        from unstract.sdk1.vector_db import VectorDB
+
+        return Index, EmbeddingCompat, VectorDB
+
+    # ------------------------------------------------------------------
+    # Phase 5C — Compound IDE index handler (extract + index)
+    # ------------------------------------------------------------------
+
+    def _handle_ide_index(self, context: ExecutionContext) -> ExecutionResult:
+        """Handle ``Operation.IDE_INDEX`` — compound extract then index.
+
+        This compound operation combines ``_handle_extract`` and
+        ``_handle_index`` in a single executor invocation, eliminating
+        the need for the backend Celery worker to block between steps.
+
+        The ``executor_params`` must contain:
+          - ``extract_params``: Parameters for ``_handle_extract``.
+          - ``index_params``: Parameters for ``_handle_index``.  The
+            executor injects ``extracted_text`` from the extract step
+            before calling index.
+
+        Returns:
+            ExecutionResult with ``data`` containing ``doc_id`` from
+            the index step.
+        """
+        params = context.executor_params
+        extract_params = params.get("extract_params")
+        index_params = params.get("index_params")
+
+        if not extract_params or not index_params:
+            missing = []
+            if not extract_params:
+                missing.append("extract_params")
+            if not index_params:
+                missing.append("index_params")
+            return ExecutionResult.failure(
+                error=f"ide_index missing required params: {', '.join(missing)}"
+            )
+
+        # Step 1: Extract
+        extract_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.EXTRACT.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=extract_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        extract_result = self._handle_extract(extract_ctx)
+        if not extract_result.success:
+            return extract_result
+
+        # Step 2: Index — inject extracted text
+        extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+        index_params[IKeys.EXTRACTED_TEXT] = extracted_text
+
+        index_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.INDEX.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=index_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        index_result = self._handle_index(index_ctx)
+        if not index_result.success:
+            return index_result
+
+        return ExecutionResult(
+            success=True,
+            data={
+                IKeys.DOC_ID: index_result.data.get(IKeys.DOC_ID, ""),
+            },
+        )
+
+    # ------------------------------------------------------------------
+    # Phase 5D — Compound structure pipeline handler
+    # ------------------------------------------------------------------
+
+    def _handle_structure_pipeline(self, context: ExecutionContext) -> ExecutionResult:
+        """Handle ``Operation.STRUCTURE_PIPELINE``.
+
+        Runs the full structure-tool pipeline in a single executor
+        invocation: extract → summarize → index → answer_prompt.
+
+        This eliminates three sequential ``dispatcher.dispatch()`` calls
+        that would otherwise block a file_processing worker slot.
+
+        Expected ``executor_params`` keys:
+
+            ``extract_params``
+                Parameters for ``_handle_extract``.
+            ``index_template``
+                Common indexing params (``tool_id``, ``file_hash``,
+                ``is_highlight_enabled``, ``platform_api_key``,
+                ``extracted_file_path``).
+            ``answer_params``
+                Full payload for ``_handle_answer_prompt`` /
+                ``_handle_single_pass_extraction``.
+            ``pipeline_options``
+                Control flags: ``skip_extraction_and_indexing``,
+                ``is_summarization_enabled``, ``is_single_pass_enabled``,
+                ``input_file_path``, ``source_file_name``.
+            ``summarize_params``
+                (Optional) Parameters for ``_handle_summarize`` plus
+                filesystem paths for caching.
+
+        Returns:
+            ExecutionResult with ``data`` containing the structured
+            output dict (``output``, ``metadata``, ``metrics``).
+        """
+        params = context.executor_params
+        extract_params = params.get("extract_params", {})
+        index_template = params.get("index_template", {})
+        answer_params = params.get("answer_params", {})
+        pipeline_options = params.get("pipeline_options", {})
+        summarize_params = params.get("summarize_params")
+
+        skip_extraction = pipeline_options.get("skip_extraction_and_indexing", False)
+        is_summarization = pipeline_options.get("is_summarization_enabled", False)
+        is_single_pass = pipeline_options.get("is_single_pass_enabled", False)
+        input_file_path = pipeline_options.get("input_file_path", "")
+        source_file_name = pipeline_options.get("source_file_name", "")
+
+        extracted_text = ""
+        index_metrics: dict = {}
+
+        shim = ExecutorToolShim(
+            platform_api_key=extract_params.get("platform_api_key", ""),
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
+        step = 1
+
+        # ---- Step 1: Extract ----
+        if not skip_extraction:
+            shim.stream_log(f"Pipeline step {step}: Extracting text from document...")
+            step += 1
+            extract_ctx = ExecutionContext(
+                executor_name=context.executor_name,
+                operation=Operation.EXTRACT.value,
+                run_id=context.run_id,
+                execution_source=context.execution_source,
+                organization_id=context.organization_id,
+                executor_params=extract_params,
+                request_id=context.request_id,
+                log_events_id=context.log_events_id,
+            )
+            extract_result = self._handle_extract(extract_ctx)
+            if not extract_result.success:
+                return extract_result
+            extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+
+        # ---- Step 2: Summarize (if enabled) ----
+        if is_summarization:
+            shim.stream_log(f"Pipeline step {step}: Summarizing extracted text...")
+            step += 1
+            summarize_result = self._run_pipeline_summarize(
+                context=context,
+                summarize_params=summarize_params or {},
+                answer_params=answer_params,
+            )
+            if not summarize_result.success:
+                return summarize_result
+            # answer_params file_path/hash updated in-place by helper
+        elif skip_extraction:
+            # Smart table: use original source file
+            answer_params["file_path"] = input_file_path
+        elif not is_single_pass:
+            # ---- Step 3: Index per output with dedup ----
+            shim.stream_log(
+                f"Pipeline step {step}: Indexing document into vector store..."
+            )
+            step += 1
+            index_metrics = self._run_pipeline_index(
+                context=context,
+                index_template=index_template,
+                answer_params=answer_params,
+                extracted_text=extracted_text,
+            )
+
+        # ---- Step 4: Table settings injection ----
+        if not is_single_pass:
+            self._inject_table_settings(
+                answer_params=answer_params,
+                index_template=index_template,
+                skip_extraction=skip_extraction,
+                input_file_path=input_file_path,
+            )
+
+        # ---- Step 5: Answer prompt / Single pass ----
+        mode_label = "single pass" if is_single_pass else "prompt"
+        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
+        operation = (
+            Operation.SINGLE_PASS_EXTRACTION.value
+            if is_single_pass
+            else Operation.ANSWER_PROMPT.value
+        )
+        answer_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=operation,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=answer_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        answer_result = self._handle_answer_prompt(answer_ctx)
+        if not answer_result.success:
+            return answer_result
+
+        # ---- Step 6: Merge results ----
+        structured_output = answer_result.data
+        self._finalize_pipeline_result(
+            structured_output=structured_output,
+            source_file_name=source_file_name,
+            extracted_text=extracted_text,
+            index_metrics=index_metrics,
+        )
+
+        shim.stream_log("Pipeline completed successfully")
+        return ExecutionResult(success=True, data=structured_output)
+
+    @staticmethod
+    def _inject_table_settings(
+        answer_params: dict,
+        index_template: dict,
+        skip_extraction: bool,
+        input_file_path: str,
+    ) -> None:
+        """Inject table settings file paths into each output that has them."""
+        outputs = answer_params.get("outputs", [])
+        extracted_file_path = index_template.get("extracted_file_path", "")
+        for output in outputs:
+            if "table_settings" not in output:
+                continue
+            table_settings = output["table_settings"]
+            is_dir = table_settings.get("is_directory_mode", False)
+            if skip_extraction:
+                table_settings["input_file"] = input_file_path
+                answer_params["file_path"] = input_file_path
+            else:
+                table_settings["input_file"] = extracted_file_path
+            table_settings["is_directory_mode"] = is_dir
+            output["table_settings"] = table_settings
+
+    def _finalize_pipeline_result(
+        self,
+        structured_output: dict,
+        source_file_name: str,
+        extracted_text: str,
+        index_metrics: dict,
+    ) -> None:
+        """Populate metadata/metrics in structured_output after pipeline completion."""
+        if "metadata" not in structured_output:
+            structured_output["metadata"] = {}
+        structured_output["metadata"]["file_name"] = source_file_name
+        if extracted_text:
+            structured_output["metadata"]["extracted_text"] = extracted_text
+        if index_metrics:
+            existing_metrics = structured_output.get("metrics", {})
+            structured_output["metrics"] = self._merge_pipeline_metrics(
+                existing_metrics, index_metrics
+            )
+
+    def _run_pipeline_summarize(
+        self,
+        context: ExecutionContext,
+        summarize_params: dict,
+        answer_params: dict,
+    ) -> ExecutionResult:
+        """Run the summarize step of the structure pipeline.
+
+        Handles filesystem caching: if a cached summary exists, uses it.
+        Otherwise calls ``_handle_summarize`` and writes the result.
+        Updates ``answer_params`` in-place with new file_path and
+        file_hash.
+        """
+        extract_file_path = summarize_params.get("extract_file_path", "")
+        summarize_file_path = summarize_params.get("summarize_file_path", "")
+        platform_api_key = summarize_params.get("platform_api_key", "")
+        llm_adapter_id = summarize_params.get("llm_adapter_instance_id", "")
+        summarize_prompt = summarize_params.get("summarize_prompt", "")
+        prompt_keys = summarize_params.get("prompt_keys", [])
+        outputs = answer_params.get("outputs", [])
+
+        fs = FileUtils.get_fs_instance(execution_source=context.execution_source)
+
+        # Set chunk_size=0 for all outputs when summarizing
+        embedding = answer_params.get("tool_settings", {}).get("embedding", "")
+        vector_db = answer_params.get("tool_settings", {}).get("vector-db", "")
+        x2text = answer_params.get("tool_settings", {}).get("x2text_adapter", "")
+        for output in outputs:
+            output["embedding"] = embedding
+            output["vector-db"] = vector_db
+            output["x2text_adapter"] = x2text
+            output["chunk-size"] = 0
+            output["chunk-overlap"] = 0
+
+        # Check cache
+        summarized_context = ""
+        if fs.exists(summarize_file_path):
+            summarized_context = fs.read(path=summarize_file_path, mode="r")
+
+        if not summarized_context:
+            # Read extracted text
+            doc_context = fs.read(path=extract_file_path, mode="r")
+            if not doc_context:
+                return ExecutionResult.failure(
+                    error="No extracted text found for summarization"
+                )
+
+            summarize_ctx = ExecutionContext(
+                executor_name=context.executor_name,
+                operation=Operation.SUMMARIZE.value,
+                run_id=context.run_id,
+                execution_source=context.execution_source,
+                organization_id=context.organization_id,
+                request_id=context.request_id,
+                log_events_id=context.log_events_id,
+                executor_params={
+                    "llm_adapter_instance_id": llm_adapter_id,
+                    "summarize_prompt": summarize_prompt,
+                    "context": doc_context,
+                    "prompt_keys": prompt_keys,
+                    "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                },
+            )
+            summarize_result = self._handle_summarize(summarize_ctx)
+            if not summarize_result.success:
+                return summarize_result
+
+            summarized_context = summarize_result.data.get("data", "")
+            fs.write(
+                path=summarize_file_path,
+                mode="w",
+                data=summarized_context,
+            )
+
+        # Update answer_params
+        summarize_file_hash = fs.get_hash_from_file(path=summarize_file_path)
+        answer_params["file_hash"] = summarize_file_hash
+        answer_params["file_path"] = str(summarize_file_path)
+
+        return ExecutionResult(success=True, data={})
+
+    def _run_pipeline_index(
+        self,
+        context: ExecutionContext,
+        index_template: dict,
+        answer_params: dict,
+        extracted_text: str,
+    ) -> dict:
+        """Run per-output indexing with dedup for the structure pipeline.
+
+        Returns:
+            Dict of index metrics keyed by output name.
+        """
+        import datetime
+
+        tool_settings = answer_params.get("tool_settings", {})
+        outputs = answer_params.get("outputs", [])
+        tool_id = index_template.get("tool_id", "")
+        file_hash = index_template.get("file_hash", "")
+        is_highlight = index_template.get("is_highlight_enabled", False)
+        platform_api_key = index_template.get("platform_api_key", "")
+        extracted_file_path = index_template.get("extracted_file_path", "")
+
+        index_metrics: dict = {}
+        seen_params: set = set()
+
+        for output in outputs:
+            chunk_size = output.get("chunk-size", 0)
+            chunk_overlap = output.get("chunk-overlap", 0)
+            vector_db = tool_settings.get("vector-db", "")
+            embedding = tool_settings.get("embedding", "")
+            x2text = tool_settings.get("x2text_adapter", "")
+
+            param_key = (
+                f"chunk_size={chunk_size}_"
+                f"chunk_overlap={chunk_overlap}_"
+                f"vector_db={vector_db}_"
+                f"embedding={embedding}_"
+                f"x2text={x2text}"
+            )
+
+            if chunk_size != 0 and param_key not in seen_params:
+                seen_params.add(param_key)
+
+                indexing_start = datetime.datetime.now()
+                logger.info(
+                    "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
+                    chunk_size,
+                    chunk_overlap,
+                    vector_db,
+                )
+
+                index_ctx = ExecutionContext(
+                    executor_name=context.executor_name,
+                    operation=Operation.INDEX.value,
+                    run_id=context.run_id,
+                    execution_source=context.execution_source,
+                    organization_id=context.organization_id,
+                    request_id=context.request_id,
+                    log_events_id=context.log_events_id,
+                    executor_params={
+                        "embedding_instance_id": embedding,
+                        "vector_db_instance_id": vector_db,
+                        "x2text_instance_id": x2text,
+                        "chunk_size": chunk_size,
+                        "chunk_overlap": chunk_overlap,
+                        "file_path": extracted_file_path,
+                        "reindex": True,
+                        "tool_id": tool_id,
+                        "file_hash": file_hash,
+                        "enable_highlight": is_highlight,
+                        "extracted_text": extracted_text,
+                        "platform_api_key": platform_api_key,
+                    },
+                )
+                index_result = self._handle_index(index_ctx)
+                if not index_result.success:
+                    logger.warning(
+                        "Pipeline indexing failed for %s: %s",
+                        param_key,
+                        index_result.error,
+                    )
+
+                elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
+                output_name = output.get("name", "")
+                index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
+
+        return index_metrics
+
+    @staticmethod
+    def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:
+        """Merge two metrics dicts, combining sub-dicts for shared keys."""
+        merged: dict = {}
+        all_keys = set(metrics1) | set(metrics2)
+        for key in all_keys:
+            if (
+                key in metrics1
+                and key in metrics2
+                and isinstance(metrics1[key], dict)
+                and isinstance(metrics2[key], dict)
+            ):
+                merged[key] = {**metrics1[key], **metrics2[key]}
+            elif key in metrics1:
+                merged[key] = metrics1[key]
+            else:
+                merged[key] = metrics2[key]
+        return merged
+
+    # ------------------------------------------------------------------
+    # Phase 2C — Index handler
+    # ------------------------------------------------------------------
+
+    def _handle_index(self, context: ExecutionContext) -> ExecutionResult:
+        """Handle ``Operation.INDEX`` — vector DB indexing.
+
+        Migrated from ``IndexingService.index()`` in
+        ``prompt-service/.../services/indexing.py``.
+
+        Returns:
+            ExecutionResult with ``data`` containing ``doc_id``.
+        """
+        params: dict[str, Any] = context.executor_params
+
+        # Required params
+        embedding_instance_id: str = params.get(IKeys.EMBEDDING_INSTANCE_ID, "")
+        vector_db_instance_id: str = params.get(IKeys.VECTOR_DB_INSTANCE_ID, "")
+        x2text_instance_id: str = params.get(IKeys.X2TEXT_INSTANCE_ID, "")
+        file_path: str = params.get(IKeys.FILE_PATH, "")
+        extracted_text: str = params.get(IKeys.EXTRACTED_TEXT, "")
+        platform_api_key: str = params.get("platform_api_key", "")
+
+        missing = []
+        if not embedding_instance_id:
+            missing.append(IKeys.EMBEDDING_INSTANCE_ID)
+        if not vector_db_instance_id:
+            missing.append(IKeys.VECTOR_DB_INSTANCE_ID)
+        if not x2text_instance_id:
+            missing.append(IKeys.X2TEXT_INSTANCE_ID)
+        if not file_path:
+            missing.append(IKeys.FILE_PATH)
+        if missing:
+            return ExecutionResult.failure(
+                error=f"Missing required params: {', '.join(missing)}"
+            )
+
+        # Optional params
+        tool_id: str = params.get(IKeys.TOOL_ID, "")
+        file_hash: str | None = params.get(IKeys.FILE_HASH)
+        chunk_size: int = params.get(IKeys.CHUNK_SIZE, 512)
+        chunk_overlap: int = params.get(IKeys.CHUNK_OVERLAP, 128)
+        reindex: bool = params.get(IKeys.REINDEX, False)
+        enable_highlight: bool = params.get(IKeys.ENABLE_HIGHLIGHT, False)
+        enable_word_confidence: bool = params.get(IKeys.ENABLE_WORD_CONFIDENCE, False)
+        usage_kwargs: dict[Any, Any] = params.get(IKeys.USAGE_KWARGS, {})
+        tags: list[str] | None = params.get(IKeys.TAGS)
+        execution_source: str = context.execution_source
+
+        instance_ids = InstanceIdentifiers(
+            embedding_instance_id=embedding_instance_id,
+            vector_db_instance_id=vector_db_instance_id,
+            x2text_instance_id=x2text_instance_id,
+            tool_id=tool_id,
+            tags=tags,
+            llm_instance_id=None,
+        )
+        file_info = FileInfo(file_path=file_path, file_hash=file_hash)
+        processing_options = ProcessingOptions(
+            reindex=reindex,
+            enable_highlight=enable_highlight,
+            enable_word_confidence=enable_word_confidence,
+            usage_kwargs=usage_kwargs,
+        )
+
+        shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
+        fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
+
+        logger.info(
+            "Starting indexing: chunk_size=%d chunk_overlap=%d "
+            "reindex=%s file=%s run_id=%s",
+            chunk_size,
+            chunk_overlap,
+            reindex,
+            Path(file_path).name,
+            context.run_id,
+        )
+        shim.stream_log("Initializing indexing pipeline...")
+
+        # Skip indexing when chunk_size is 0 — no vector operations needed.
+        # ChunkingConfig raises ValueError for 0, so handle before DTO.
+        if chunk_size == 0:
+            from unstract.sdk1.utils.indexing import IndexingUtils
+
+            doc_id = IndexingUtils.generate_index_key(
+                vector_db=vector_db_instance_id,
+                embedding=embedding_instance_id,
+                x2text=x2text_instance_id,
+                chunk_size=str(chunk_size),
+                chunk_overlap=str(chunk_overlap),
+                tool=shim,
+                file_path=file_path,
+                file_hash=file_hash,
+                fs=fs_instance,
+            )
+            logger.info("Skipping indexing for chunk_size=0. Doc ID: %s", doc_id)
+            return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+
+        chunking_config = ChunkingConfig(
+            chunk_size=chunk_size, chunk_overlap=chunk_overlap
+        )
+        shim.stream_log(
+            f"Configured chunking: size={chunk_size}, overlap={chunk_overlap}"
+        )
+
+        index_cls, embedding_compat, vector_db_cls = self._get_indexing_deps()
+
+        vector_db = None
+        try:
+            index = index_cls(
+                tool=shim,
+                run_id=context.run_id,
+                capture_metrics=True,
+                instance_identifiers=instance_ids,
+                chunking_config=chunking_config,
+                processing_options=processing_options,
+            )
+            doc_id = index.generate_index_key(file_info=file_info, fs=fs_instance)
+            logger.debug("Generated index key: doc_id=%s", doc_id)
+            shim.stream_log("Checking document index status...")
+
+            embedding = embedding_compat(
+                adapter_instance_id=embedding_instance_id,
+                tool=shim,
+                kwargs={**usage_kwargs},
+            )
+            vector_db = vector_db_cls(
+                tool=shim,
+                adapter_instance_id=vector_db_instance_id,
+                embedding=embedding,
+            )
+            shim.stream_log("Initialized embedding and vector DB adapters")
+
+            doc_id_found = index.is_document_indexed(
+                doc_id=doc_id, embedding=embedding, vector_db=vector_db
+            )
+            logger.info(
+                "Index status: doc_id=%s found=%s reindex=%s",
+                doc_id,
+                doc_id_found,
+                reindex,
+            )
+            if doc_id_found and reindex:
+                shim.stream_log("Document already indexed, re-indexing...")
+            elif not doc_id_found:
+                shim.stream_log("Indexing document for the first time...")
+            shim.stream_log("Indexing document into vector store...")
+            index.perform_indexing(
+                vector_db=vector_db,
+                doc_id=doc_id,
+                extracted_text=extracted_text,
+                doc_id_found=doc_id_found,
+            )
+            logger.info(
+                "Indexing completed: doc_id=%s file=%s",
+                doc_id,
+                Path(file_path).name,
+            )
+            shim.stream_log("Document indexing completed")
+            return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+        except Exception as e:
+            logger.error(
+                "Indexing failed: file=%s error=%s",
+                Path(file_path).name,
+                str(e),
+            )
+            status_code = getattr(e, "status_code", 500)
+            raise LegacyExecutorError(
+                message=f"Error while indexing: {e}", code=status_code
+            ) from e
+        finally:
+            if vector_db is not None:
+                vector_db.close()
+
+    @staticmethod
+    def _get_prompt_deps():
+        """Lazy-import heavy dependencies for answer_prompt processing.
+
+        These imports trigger llama_index/protobuf loading so they must
+        not happen at module-collection time (tests).
+        """
+        from executor.executors.answer_prompt import AnswerPromptService
+        from executor.executors.index import Index
+        from executor.executors.retrieval import RetrievalService
+        from executor.executors.variable_replacement import (
+            VariableReplacementService,
+        )
+
+        from unstract.sdk1.embedding import EmbeddingCompat
+        from unstract.sdk1.llm import LLM
+        from unstract.sdk1.vector_db import VectorDB
+
+        return (
+            AnswerPromptService,
+            RetrievalService,
+            VariableReplacementService,
+            Index,
+            LLM,
+            EmbeddingCompat,
+            VectorDB,
+        )
+
+    @staticmethod
+    @staticmethod
+    def _sanitize_dict_values(d: dict[str, Any]) -> None:
+        """Replace 'NA' string values with None inside a dict in-place."""
+        for k, v in d.items():
+            if isinstance(v, str) and v.lower() == "na":
+                d[k] = None
+
+    @staticmethod
+    def _sanitize_null_values(
+        structured_output: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Replace 'NA' strings with None in structured output."""
+        for k, v in structured_output.items():
+            if isinstance(v, str) and v.lower() == "na":
+                structured_output[k] = None
+            elif isinstance(v, list):
+                for i, item in enumerate(v):
+                    if isinstance(item, str) and item.lower() == "na":
+                        v[i] = None
+                    elif isinstance(item, dict):
+                        LegacyExecutor._sanitize_dict_values(item)
+            elif isinstance(v, dict):
+                LegacyExecutor._sanitize_dict_values(v)
+        return structured_output
+
+    def _handle_answer_prompt(self, context: ExecutionContext) -> ExecutionResult:
+        """Handle ``Operation.ANSWER_PROMPT`` — multi-prompt extraction.
+
+        Migrated from ``prompt_processor()`` in the prompt-service
+        ``answer_prompt`` controller.  Processes all prompts in the
+        payload: variable replacement, context retrieval, LLM
+        completion, and type-specific post-processing.
+
+        Returns:
+            ExecutionResult with ``data`` containing::
+
+                {"output": dict, "metadata": dict, "metrics": dict}
+        """
+        from executor.executors.constants import (
+            PromptServiceConstants as PSKeys,
+        )
+
+        params: dict[str, Any] = context.executor_params
+
+        # ---- Unpack payload ------------------------------------------------
+        tool_settings = params.get(PSKeys.TOOL_SETTINGS, {})
+        prompts = params.get(PSKeys.OUTPUTS, [])
+        tool_id: str = params.get(PSKeys.TOOL_ID, "")
+        run_id: str = context.run_id
+        file_path = params.get(PSKeys.FILE_PATH)
+        doc_name = str(params.get(PSKeys.FILE_NAME, ""))
+        execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
+        platform_api_key: str = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
+
+        structured_output: dict[str, Any] = {}
+        metadata: dict[str, Any] = {
+            PSKeys.RUN_ID: run_id,
+            PSKeys.FILE_NAME: doc_name,
+            PSKeys.CONTEXT: {},
+            PSKeys.REQUIRED_FIELDS: {},
+        }
+        metrics: dict[str, Any] = {}
+        variable_names: list[str] = []
+        context_retrieval_metrics: dict[str, Any] = {}
+
+        logger.info(
+            "Starting answer_prompt: tool_id=%s prompt_count=%d file=%s run_id=%s",
+            tool_id,
+            len(prompts),
+            doc_name,
+            run_id,
+        )
+
+        # Lazy imports
+        (
+            answer_prompt_svc,
+            retrieval_svc,
+            variable_replacement_svc,
+            _index_cls,  # unused — doc_id via IndexingUtils
+            llm_cls,
+            embedding_compat_cls,
+            vector_db_cls,
+        ) = self._get_prompt_deps()
+
+        # ---- Initialize highlight plugin (if enabled + installed) ----------
+        process_text_fn = None
+        enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
+        enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
+        pipeline_shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
+        if enable_highlight:
+            from executor.executors.plugins import ExecutorPluginLoader
+
+            highlight_cls = ExecutorPluginLoader.get("highlight-data")
+            if highlight_cls:
+                from executor.executors.file_utils import FileUtils
+
+                fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
+                highlight_instance = highlight_cls(
+                    file_path=file_path,
+                    fs_instance=fs_instance,
+                    enable_word_confidence=enable_word_confidence,
+                )
+                process_text_fn = highlight_instance.run
+                logger.info(
+                    "Highlight plugin initialized for file=%s",
+                    doc_name,
+                )
+                pipeline_shim.stream_log("Highlight data plugin ready")
+            else:
+                logger.warning(
+                    "Highlight is enabled but highlight-data plugin is not "
+                    "installed.  Coordinates will not be produced.  Install "
+                    "the plugin via: pip install -e <path-to-highlight-data>"
+                )
+                pipeline_shim.stream_log("Highlight data plugin not available")
+
+        # ---- Merge tool_settings as defaults into each prompt output --------
+        # Single-pass payloads carry adapter IDs and chunk config in
+        # tool_settings only (not per-prompt), while answer_prompt payloads
+        # carry them per-prompt.  Merging tool_settings as a base ensures
+        # both paths work.
+        _ts_defaults = {
+            k: v
+            for k, v in tool_settings.items()
+            if k
+            in {
+                PSKeys.CHUNK_SIZE,
+                PSKeys.CHUNK_OVERLAP,
+                PSKeys.LLM,
+                PSKeys.VECTOR_DB,
+                PSKeys.EMBEDDING,
+                PSKeys.X2TEXT_ADAPTER,
+                PSKeys.RETRIEVAL_STRATEGY,
+                PSKeys.SIMILARITY_TOP_K,
+            }
+        }
+        if _ts_defaults:
+            prompts = [{**_ts_defaults, **p} for p in prompts]
+
+        # ---- First pass: collect variable names + required fields ----------
+        for output in prompts:
+            variable_names.append(output[PSKeys.NAME])
+            metadata[PSKeys.REQUIRED_FIELDS][output[PSKeys.NAME]] = output.get(
+                PSKeys.REQUIRED, None
+            )
+
+        # ---- Process each prompt -------------------------------------------
+        _deps = (
+            answer_prompt_svc,
+            retrieval_svc,
+            variable_replacement_svc,
+            llm_cls,
+            embedding_compat_cls,
+            vector_db_cls,
+        )
+        for output in prompts:
+            self._execute_single_prompt(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metadata=metadata,
+                metrics=metrics,
+                variable_names=variable_names,
+                context_retrieval_metrics=context_retrieval_metrics,
+                deps=_deps,
+                tool_settings=tool_settings,
+                process_text_fn=process_text_fn,
+            )
+
+        pipeline_shim.stream_log(f"All {len(prompts)} prompts processed successfully")
+        logger.info(
+            "All prompts processed: tool_id=%s prompt_count=%d file=%s",
+            tool_id,
+            len(prompts),
+            doc_name,
+        )
+
+        # ---- Sanitize null values ------------------------------------------
+        structured_output = self._sanitize_null_values(structured_output)
+
+        return ExecutionResult(
+            success=True,
+            data={
+                PSKeys.OUTPUT: structured_output,
+                PSKeys.METADATA: metadata,
+                PSKeys.METRICS: metrics,
+            },
+        )
+
+    @staticmethod
+    def _convert_number_answer(answer: str, llm: Any, answer_prompt_svc: Any) -> Any:
+        """Run LLM number extraction and return float or None."""
+        if answer.lower() == "na":
+            return None
+        prompt = (
+            f"Extract the number from the following "
+            f"text:\n{answer}\n\nOutput just the number. "
+            f"If the number is expressed in millions "
+            f"or thousands, expand the number to its numeric value "
+            f"The number should be directly assignable "
+            f"to a numeric variable. "
+            f"It should not have any commas, "
+            f"percentages or other grouping "
+            f"characters. No explanation is required. "
+            f"If you cannot extract the number, output 0."
+        )
+        raw = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        try:
+            return float(raw)
+        except Exception:
+            return None
+
+    @staticmethod
+    def _convert_scalar_answer(
+        answer: str, llm: Any, answer_prompt_svc: Any, prompt: str
+    ) -> str | None:
+        """Run LLM extraction for a scalar (email/date) and return result or None."""
+        if answer.lower() == "na":
+            return None
+        return answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+
+    def _run_challenge_if_enabled(
+        self,
+        tool_settings: dict[str, Any],
+        output: dict[str, Any],
+        structured_output: dict[str, Any],
+        context_list: list[str],
+        llm: Any,
+        llm_cls: Any,
+        usage_kwargs: dict[str, Any],
+        run_id: str,
+        platform_api_key: str,
+        metadata: dict[str, Any],
+        shim: Any,
+        prompt_name: str,
+    ) -> None:
+        """Run challenge verification plugin if enabled and available."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.plugins import ExecutorPluginLoader
+
+        if not tool_settings.get(PSKeys.ENABLE_CHALLENGE):
+            return
+        challenge_cls = ExecutorPluginLoader.get("challenge")
+        if not challenge_cls:
+            return
+        challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
+        if not challenge_llm_id:
+            return
+        shim.stream_log(f"Running challenge for: {prompt_name}")
+        challenge_llm = llm_cls(
+            adapter_instance_id=challenge_llm_id,
+            tool=shim,
+            usage_kwargs={**usage_kwargs, PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE},
+            capture_metrics=True,
+        )
+        challenger = challenge_cls(
+            llm=llm,
+            challenge_llm=challenge_llm,
+            context="\n".join(context_list),
+            tool_settings=tool_settings,
+            output=output,
+            structured_output=structured_output,
+            run_id=run_id,
+            platform_key=platform_api_key,
+            metadata=metadata,
+        )
+        challenger.run()
+        shim.stream_log(f"Challenge verification completed for: {prompt_name}")
+        logger.info("Challenge completed: prompt=%s", prompt_name)
+
+    @staticmethod
+    def _run_evaluation_if_enabled(
+        output: dict[str, Any],
+        context_list: list[str],
+        structured_output: dict[str, Any],
+        platform_api_key: str,
+        shim: Any,
+        prompt_name: str,
+    ) -> None:
+        """Run evaluation plugin if enabled and available."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.plugins import ExecutorPluginLoader
+
+        eval_settings = output.get(PSKeys.EVAL_SETTINGS, {})
+        if not eval_settings.get(PSKeys.EVAL_SETTINGS_EVALUATE):
+            return
+        evaluator_cls = ExecutorPluginLoader.get("evaluation")
+        if not evaluator_cls:
+            return
+        shim.stream_log(f"Running evaluation for: {prompt_name}")
+        evaluator = evaluator_cls(
+            query=output.get(PSKeys.COMBINED_PROMPT, ""),
+            context="\n".join(context_list),
+            response=structured_output.get(prompt_name),
+            reference_answer=output.get("reference_answer", ""),
+            prompt=output,
+            structured_output=structured_output,
+            platform_key=platform_api_key,
+        )
+        evaluator.run()
+        logger.info("Evaluation completed: prompt=%s", prompt_name)
+
+    def _execute_single_prompt(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metadata: dict[str, Any],
+        metrics: dict[str, Any],
+        variable_names: list[str],
+        context_retrieval_metrics: dict[str, Any],
+        deps: tuple,
+        tool_settings: dict[str, Any],
+        process_text_fn: Any,
+    ) -> None:
+        """Execute one prompt: variable replacement, retrieval, LLM, post-process."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+        from executor.executors.constants import RetrievalStrategy
+
+        from unstract.sdk1.utils.indexing import IndexingUtils
+
+        (
+            answer_prompt_svc,
+            retrieval_svc,
+            variable_replacement_svc,
+            llm_cls,
+            embedding_compat_cls,
+            vector_db_cls,
+        ) = deps
+
+        params = context.executor_params
+        run_id = context.run_id
+        execution_id = params.get(PSKeys.EXECUTION_ID, "")
+        file_hash = params.get(PSKeys.FILE_HASH)
+        file_path = params.get(PSKeys.FILE_PATH)
+        doc_name = str(params.get(PSKeys.FILE_NAME, ""))
+        log_events_id = params.get(PSKeys.LOG_EVENTS_ID, "")
+        tool_id = params.get(PSKeys.TOOL_ID, "")
+        custom_data = params.get(PSKeys.CUSTOM_DATA, {})
+        execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
+        platform_api_key = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
+
+        prompt_name = output[PSKeys.NAME]
+        prompt_text = output[PSKeys.PROMPT]
+        chunk_size = output[PSKeys.CHUNK_SIZE]
+
+        logger.debug(
+            "Prompt config: name=%s chunk_size=%d type=%s",
+            prompt_name,
+            chunk_size,
+            output.get(PSKeys.TYPE, "TEXT"),
+        )
+
+        shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component={**self._log_component, "prompt_key": prompt_name},
+        )
+        shim.stream_log(f"Processing prompt: {prompt_name}")
+
+        if variable_replacement_svc.is_variables_present(prompt_text=prompt_text):
+            prompt_text = variable_replacement_svc.replace_variables_in_prompt(
+                prompt=output,
+                structured_output=structured_output,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                prompt_name=prompt_name,
+                doc_name=doc_name,
+                custom_data=custom_data,
+                is_ide=execution_source == "ide",
+            )
+            shim.stream_log(f"Resolved template variables for: {prompt_name}")
+
+        logger.info(
+            "Executing prompt: tool_id=%s name=%s run_id=%s", tool_id, prompt_name, run_id
+        )
+
+        output[PSKeys.PROMPTX] = answer_prompt_svc.extract_variable(
+            structured_output, variable_names, output, prompt_text
+        )
+
+        doc_id = IndexingUtils.generate_index_key(
+            vector_db=output[PSKeys.VECTOR_DB],
+            embedding=output[PSKeys.EMBEDDING],
+            x2text=output[PSKeys.X2TEXT_ADAPTER],
+            chunk_size=str(output[PSKeys.CHUNK_SIZE]),
+            chunk_overlap=str(output[PSKeys.CHUNK_OVERLAP]),
+            tool=shim,
+            file_hash=file_hash,
+            file_path=file_path,
+        )
+
+        if output.get(PSKeys.TYPE) in (PSKeys.TABLE, PSKeys.RECORD):
+            self._run_table_extraction(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metrics=metrics,
+                run_id=run_id,
+                execution_id=execution_id,
+                execution_source=execution_source,
+                platform_api_key=platform_api_key,
+                tool_id=tool_id,
+                doc_name=doc_name,
+                prompt_name=prompt_name,
+                shim=shim,
+            )
+            return
+
+        if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
+            raise LegacyExecutorError(message="LINE_ITEM extraction is not supported.")
+
+        usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
+        try:
+            llm = llm_cls(
+                adapter_instance_id=output[PSKeys.LLM],
+                tool=shim,
+                usage_kwargs={**usage_kwargs, PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION},
+                capture_metrics=True,
+            )
+            vector_db = None
+            if chunk_size > 0:
+                embedding = embedding_compat_cls(
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=shim,
+                    kwargs={**usage_kwargs},
+                )
+                vector_db = vector_db_cls(
+                    tool=shim,
+                    adapter_instance_id=output[PSKeys.VECTOR_DB],
+                    embedding=embedding,
+                )
+            shim.stream_log(f"Initialized LLM and retrieval adapters for: {prompt_name}")
+        except Exception as e:
+            msg = f"Couldn't fetch adapter. {e}"
+            logger.error(msg)
+            raise LegacyExecutorError(
+                message=msg, code=getattr(e, "status_code", None) or 500
+            ) from e
+
+        context_list: list[str] = []
+        try:
+            answer = "NA"
+            retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
+            valid_strategies = {s.value for s in RetrievalStrategy}
+            if retrieval_strategy in valid_strategies:
+                shim.stream_log(f"Retrieving context for: {prompt_name}")
+                logger.info(
+                    "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
+                    prompt_name,
+                    retrieval_strategy,
+                    chunk_size,
+                )
+                if chunk_size == 0:
+                    context_list = retrieval_svc.retrieve_complete_context(
+                        execution_source=execution_source,
+                        file_path=file_path,
+                        context_retrieval_metrics=context_retrieval_metrics,
+                        prompt_key=prompt_name,
+                    )
+                else:
+                    context_list = retrieval_svc.run_retrieval(
+                        output=output,
+                        doc_id=doc_id,
+                        llm=llm,
+                        vector_db=vector_db,
+                        retrieval_type=retrieval_strategy,
+                        context_retrieval_metrics=context_retrieval_metrics,
+                    )
+                metadata[PSKeys.CONTEXT][prompt_name] = context_list
+                shim.stream_log(
+                    f"Retrieved {len(context_list)} context chunks for: {prompt_name}"
+                )
+                logger.debug(
+                    "Retrieved %d context chunks for prompt: %s",
+                    len(context_list),
+                    prompt_name,
+                )
+                shim.stream_log(f"Running LLM completion for: {prompt_name}")
+                answer = answer_prompt_svc.construct_and_run_prompt(
+                    tool_settings=tool_settings,
+                    output=output,
+                    llm=llm,
+                    context="\n".join(context_list),
+                    prompt=PSKeys.PROMPTX,
+                    metadata=metadata,
+                    execution_source=execution_source,
+                    file_path=file_path,
+                    process_text=process_text_fn,
+                )
+            else:
+                logger.warning(
+                    "Skipping retrieval: invalid strategy=%s for prompt=%s",
+                    retrieval_strategy,
+                    prompt_name,
+                )
+
+            self._apply_type_conversion(
+                output=output,
+                answer=answer,
+                structured_output=structured_output,
+                llm=llm,
+                tool_settings=tool_settings,
+                metadata=metadata,
+                execution_source=execution_source,
+                file_path=file_path,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                doc_name=doc_name,
+            )
+            shim.stream_log(f"Applied type conversion for: {prompt_name}")
+
+            self._run_challenge_if_enabled(
+                tool_settings=tool_settings,
+                output=output,
+                structured_output=structured_output,
+                context_list=context_list,
+                llm=llm,
+                llm_cls=llm_cls,
+                usage_kwargs=usage_kwargs,
+                run_id=run_id,
+                platform_api_key=platform_api_key,
+                metadata=metadata,
+                shim=shim,
+                prompt_name=prompt_name,
+            )
+            self._run_evaluation_if_enabled(
+                output=output,
+                context_list=context_list,
+                structured_output=structured_output,
+                platform_api_key=platform_api_key,
+                shim=shim,
+                prompt_name=prompt_name,
+            )
+            shim.stream_log(f"Completed prompt: {prompt_name}")
+
+            val = structured_output.get(prompt_name)
+            if isinstance(val, str):
+                structured_output[prompt_name] = val.rstrip("\n")
+        finally:
+            metrics.setdefault(prompt_name, {}).update(
+                {
+                    "context_retrieval": context_retrieval_metrics.get(prompt_name, {}),
+                    f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
+                }
+            )
+            if vector_db:
+                vector_db.close()
+
+    def _run_table_extraction(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metrics: dict[str, Any],
+        run_id: str,
+        execution_id: str,
+        execution_source: str,
+        platform_api_key: str,
+        tool_id: str,
+        doc_name: str,
+        prompt_name: str,
+        shim: Any,
+    ) -> None:
+        """Delegate TABLE/RECORD prompt to the table executor plugin."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        try:
+            table_executor = ExecutorRegistry.get("table")
+        except KeyError:
+            raise LegacyExecutorError(
+                message=(
+                    "TABLE extraction requires the table executor "
+                    "plugin. Install the table_extractor plugin."
+                )
+            )
+        table_ctx = ExecutionContext(
+            executor_name="table",
+            operation="table_extract",
+            run_id=run_id,
+            execution_source=execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            executor_params={
+                "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
+                "table_settings": output.get(PSKeys.TABLE_SETTINGS, {}),
+                "prompt": output.get(PSKeys.PROMPT, ""),
+                "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                "execution_id": execution_id,
+                "tool_id": tool_id,
+                "file_name": doc_name,
+            },
+        )
+        table_ctx._log_component = self._log_component
+        table_ctx.log_events_id = self._log_events_id
+
+        shim.stream_log(f"Running table extraction for: {prompt_name}")
+        table_result = table_executor.execute(table_ctx)
+
+        if table_result.success:
+            structured_output[prompt_name] = table_result.data.get("output", "")
+            table_metrics = table_result.data.get("metadata", {}).get("metrics", {})
+            metrics.setdefault(prompt_name, {}).update(
+                {"table_extraction": table_metrics}
+            )
+            shim.stream_log(f"Table extraction completed for: {prompt_name}")
+            logger.info("TABLE extraction completed: prompt=%s", prompt_name)
+        else:
+            structured_output[prompt_name] = ""
+            logger.error(
+                "TABLE extraction failed for prompt=%s: %s",
+                prompt_name,
+                table_result.error,
+            )
+        shim.stream_log(f"Completed prompt: {prompt_name}")
+
+    @staticmethod
+    def _apply_type_conversion(
+        output: dict[str, Any],
+        answer: str,
+        structured_output: dict[str, Any],
+        llm: Any,
+        tool_settings: dict[str, Any],
+        metadata: dict[str, Any],
+        execution_source: str,
+        file_path: str,
+        log_events_id: str = "",
+        tool_id: str = "",
+        doc_name: str = "",
+    ) -> None:
+        """Apply type-specific conversion to the LLM answer.
+
+        Handles NUMBER, EMAIL, DATE, BOOLEAN, JSON, and TEXT types.
+        """
+        from executor.executors.answer_prompt import (
+            AnswerPromptService as answer_prompt_svc,
+        )
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        prompt_name = output[PSKeys.NAME]
+        output_type = output[PSKeys.TYPE]
+
+        if output_type == PSKeys.NUMBER:
+            structured_output[prompt_name] = LegacyExecutor._convert_number_answer(
+                answer, llm, answer_prompt_svc
+            )
+
+        elif output_type == PSKeys.EMAIL:
+            email_prompt = (
+                f"Extract the email from the following text:\n{answer}"
+                f"\n\nOutput just the email. "
+                f"The email should be directly assignable to a string "
+                f"variable. No explanation is required. If you cannot "
+                f'extract the email, output "NA".'
+            )
+            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
+                answer, llm, answer_prompt_svc, email_prompt
+            )
+
+        elif output_type == PSKeys.DATE:
+            date_prompt = (
+                f"Extract the date from the following text:\n{answer}"
+                f"\n\nOutput just the date. "
+                f"The date should be in ISO date time format. "
+                f"No explanation is required. The date should be "
+                f"directly assignable to a date variable. "
+                f"If you cannot convert the string into a date, "
+                f'output "NA".'
+            )
+            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
+                answer, llm, answer_prompt_svc, date_prompt
+            )
+
+        elif output_type == PSKeys.BOOLEAN:
+            if answer.lower() == "na":
+                structured_output[prompt_name] = None
+            else:
+                bool_prompt = (
+                    f"Extract yes/no from the following text:\n{answer}\n\n"
+                    f"Output in single word. "
+                    f"If the context is trying to convey that the answer "
+                    f'is true, then return "yes", else return "no".'
+                )
+                raw = answer_prompt_svc.run_completion(llm=llm, prompt=bool_prompt)
+                structured_output[prompt_name] = raw.lower() == "yes"
+
+        elif output_type == PSKeys.JSON:
+            answer_prompt_svc.handle_json(
+                answer=answer,
+                structured_output=structured_output,
+                output=output,
+                llm=llm,
+                enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
+                enable_word_confidence=tool_settings.get(
+                    PSKeys.ENABLE_WORD_CONFIDENCE, False
+                ),
+                execution_source=execution_source,
+                metadata=metadata,
+                file_path=file_path,
+                log_events_id=log_events_id,
+                tool_id=tool_id,
+                doc_name=doc_name,
+            )
+
+        else:
+            # TEXT or any other type — store raw answer
+            structured_output[prompt_name] = answer
+
+    def _handle_single_pass_extraction(
+        self, context: ExecutionContext
+    ) -> ExecutionResult:
+        """Handle ``Operation.SINGLE_PASS_EXTRACTION``.
+
+        Functionally identical to ``_handle_answer_prompt``.  The "single
+        pass" vs "multi pass" distinction is at the *caller* level (the
+        structure tool batches all prompts into one request vs iterating).
+        The prompt-service processes both with the same ``prompt_processor``
+        handler.
+
+        Returns:
+            ExecutionResult with ``data`` containing::
+
+                {"output": dict, "metadata": dict, "metrics": dict}
+        """
+        logger.info(
+            "single_pass_extraction delegating to answer_prompt (run_id=%s)",
+            context.run_id,
+        )
+        return self._handle_answer_prompt(context)
+
+    def _handle_summarize(self, context: ExecutionContext) -> ExecutionResult:
+        """Handle ``Operation.SUMMARIZE`` — document summarization.
+
+        Called by the structure tool when ``summarize_as_source`` is
+        enabled.  Takes the full extracted document text and a
+        user-provided summarize prompt, runs LLM completion, and
+        returns the summarized text.
+
+        Expected ``executor_params`` keys:
+            - ``llm_adapter_instance_id`` — LLM adapter to use
+            - ``summarize_prompt`` — user's summarize instruction
+            - ``context`` — full document text to summarize
+            - ``prompt_keys`` — list of field names to focus on
+            - ``PLATFORM_SERVICE_API_KEY`` — auth key for adapters
+
+        Returns:
+            ExecutionResult with ``data`` containing::
+
+                {"data": str}  # summarized text
+        """
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        params: dict[str, Any] = context.executor_params
+
+        llm_adapter_id: str = params.get("llm_adapter_instance_id", "")
+        summarize_prompt: str = params.get("summarize_prompt", "")
+        doc_context: str = params.get(PSKeys.CONTEXT, "")
+        prompt_keys: list[str] = params.get("prompt_keys", [])
+        platform_api_key: str = params.get(PSKeys.PLATFORM_SERVICE_API_KEY, "")
+
+        if not llm_adapter_id:
+            return ExecutionResult.failure(
+                error="Missing required param: llm_adapter_instance_id"
+            )
+        if not doc_context:
+            return ExecutionResult.failure(error="Missing required param: context")
+
+        logger.info(
+            "Starting summarization: prompt_keys=%s run_id=%s",
+            prompt_keys,
+            context.run_id,
+        )
+
+        # Build the summarize prompt
+        prompt = f"{summarize_prompt}\n\n"
+        if prompt_keys:
+            prompt += f"Focus on these fields: {', '.join(prompt_keys)}\n\n"
+        prompt += (
+            f"Context:\n---------------\n{doc_context}\n-----------------\n\nSummary:"
+        )
+
+        shim = ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component=self._log_component,
+        )
+        usage_kwargs = {"run_id": context.run_id}
+
+        _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
+
+        shim.stream_log("Initializing LLM for summarization...")
+        try:
+            llm = llm_cls(
+                adapter_instance_id=llm_adapter_id,
+                tool=shim,
+                usage_kwargs={**usage_kwargs},
+            )
+            from executor.executors.answer_prompt import (
+                AnswerPromptService as answer_prompt_svc,
+            )
+
+            shim.stream_log("Running document summarization...")
+            summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+            logger.info("Summarization completed: run_id=%s", context.run_id)
+            shim.stream_log("Summarization completed")
+            return ExecutionResult(
+                success=True,
+                data={"data": summary},
+            )
+        except Exception as e:
+            logger.error("Summarization failed: error=%s", str(e))
+            status_code = getattr(e, "status_code", None) or 500
+            raise LegacyExecutorError(
+                message=f"Error during summarization: {e}",
+                code=status_code,
+            ) from e

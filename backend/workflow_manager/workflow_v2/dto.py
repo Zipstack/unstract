@@ -48,6 +48,19 @@ class ExecutionResponse:
         self.message = self.message or None
         self.status_api = self.status_api or None
 
+    @staticmethod
+    def _remove_item_top_metadata(item: dict, keys_to_remove: list[str]) -> None:
+        """Remove metadata keys from top-level item['metadata']."""
+        if "metadata" not in item:
+            return
+        if keys_to_remove:
+            item_metadata = item["metadata"]
+            if isinstance(item_metadata, dict):
+                for key in keys_to_remove:
+                    item_metadata.pop(key, None)
+        else:
+            item.pop("metadata", None)
+
     def remove_result_metadata_keys(self, keys_to_remove: list[str] = []) -> None:
         """Removes specified keys from the 'metadata' dictionary within each
         'result' dictionary in the 'result' list attribute of the instance. If
@@ -61,13 +74,34 @@ class ExecutionResponse:
 
         for item in self.result:
             if not isinstance(item, dict):
-                break
+                continue
 
+            # Handle metadata nested inside item["result"]["metadata"]
             result = item.get("result")
-            if not isinstance(result, dict):
-                break
+            if isinstance(result, dict):
+                self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
 
-            self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
+            # Handle top-level item["metadata"] (workers cache path)
+            self._remove_item_top_metadata(item, keys_to_remove)
+
+    def remove_inner_result_metadata(self) -> None:
+        """Removes only the inner item["result"]["metadata"] dict (extraction
+        metadata like highlight_data, per-model costs, etc.) while preserving
+        the outer item["metadata"] dict which contains workflow identification
+        keys (source_name, source_hash, workflow_id, etc.).
+
+        Use this instead of remove_result_metadata_keys() when you want to
+        strip extraction metadata but keep workflow identification metadata.
+        """
+        if not isinstance(self.result, list):
+            return
+
+        for item in self.result:
+            if not isinstance(item, dict):
+                continue
+            result = item.get("result")
+            if isinstance(result, dict):
+                result.pop("metadata", None)
 
     def remove_result_metrics(self) -> None:
         """Removes the 'metrics' key from the 'result' dictionary within each

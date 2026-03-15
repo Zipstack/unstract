@@ -211,7 +211,7 @@ function ToolSettings({ type }) {
       setPostHogCustomEvent(posthogEventText[type], {
         info: `Clicked on '+ ${btnText[type]}' button`,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };

@@ -320,6 +320,11 @@ services:
           path: ../workers/uv.lock
 
   #########################################################################################################
+  # Prompt Studio callback worker (Django backend, processes prompt_studio_callback queue)
+  worker-prompt-studio-callback:
+    build:
+      dockerfile: docker/dockerfiles/backend.Dockerfile
+      context: ..
   # Celery worker for dashboard metrics (memory optimized: reduced autoscale)
   worker-metrics:
     build:

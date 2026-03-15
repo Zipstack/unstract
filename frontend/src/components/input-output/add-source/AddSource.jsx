@@ -87,7 +87,9 @@ function AddSource({
   ]);
 
   useEffect(() => {
-    if (!isLLMWPaidSchema || !transformLlmWhispererFormData) return;
+    if (!isLLMWPaidSchema || !transformLlmWhispererFormData) {
+      return;
+    }
 
     const modifiedFormData = transformLlmWhispererFormData(formData);
 

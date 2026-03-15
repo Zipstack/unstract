@@ -24,7 +24,9 @@ const usePromptRunQueueStore = create((setState, getState) => ({
     const existingState = { ...getState() };
     const newActiveApis = existingState?.activeApis - numOfApis;
 
-    if (newActiveApis < 0) return;
+    if (newActiveApis < 0) {
+      return;
+    }
 
     setState({ ...existingState, ...{ activeApis: newActiveApis } });
   },

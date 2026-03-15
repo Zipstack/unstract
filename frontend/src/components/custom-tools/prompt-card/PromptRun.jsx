@@ -1,6 +1,7 @@
 import Cookies from "js-cookie";
 import { useEffect } from "react";
 import usePromptRun from "../../../hooks/usePromptRun";
+import usePromptStudioSocket from "../../../hooks/usePromptStudioSocket";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { usePromptRunQueueStore } from "../../../store/prompt-run-queue-store";
 import { usePromptRunStatusStore } from "../../../store/prompt-run-status-store";
@@ -20,6 +21,7 @@ function PromptRun() {
     (state) => state.setPromptRunQueue,
   );
   const { runPrompt, syncPromptRunApisAndStatus } = usePromptRun();
+  usePromptStudioSocket();
   const promptRunStatus = usePromptRunStatusStore(
     (state) => state.promptRunStatus,
   );
@@ -37,7 +39,9 @@ function PromptRun() {
 
     // Setup the beforeunload event handler to store queue in cookies
     const handleBeforeUnload = () => {
-      if (!PROMPT_RUN_STATE_PERSISTENCE) return;
+      if (!PROMPT_RUN_STATE_PERSISTENCE) {
+        return;
+      }
       const { queue } = usePromptRunQueueStore.getState(); // Get the latest state dynamically
       if (queue?.length) {
         Cookies.set("promptRunQueue", JSON.stringify(queue), {
@@ -54,7 +58,9 @@ function PromptRun() {
   }, [syncPromptRunApisAndStatus]);
 
   useEffect(() => {
-    if (!queue?.length || activeApis >= MAX_ACTIVE_APIS) return;
+    if (!queue?.length || activeApis >= MAX_ACTIVE_APIS) {
+      return;
+    }
 
     const canRunApis = MAX_ACTIVE_APIS - activeApis;
     const apisToRun = queue.slice(0, canRunApis);

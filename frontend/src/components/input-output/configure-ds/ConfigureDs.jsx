@@ -60,7 +60,9 @@ function ConfigureDs({
 
   // Determine if OAuth authentication method is selected
   const isOAuthMethodSelected = () => {
-    if (!oAuthProvider?.length) return false;
+    if (!oAuthProvider?.length) {
+      return false;
+    }
     // Check if auth_type is set to a non-OAuth value
     const data = formData || {};
     // If auth_type exists and is not "oauth", then OAuth is not selected
@@ -116,7 +118,9 @@ function ConfigureDs({
   }, [formData]);
 
   useEffect(() => {
-    if (!metadata) return;
+    if (!metadata) {
+      return;
+    }
     setFormData(metadata);
   }, [selectedSourceId, metadata, setFormData]);
 
@@ -199,13 +203,9 @@ function ConfigureDs({
       };
       url = getUrl("test_adapters/");
 
-      try {
-        setPostHogCustomEvent(posthogTcEventText[type], {
-          info: `Test connection was triggered: ${selectedSourceName}`,
-        });
-      } catch (err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
-      }
+      setPostHogCustomEvent(posthogTcEventText[type], {
+        info: `Test connection was triggered: ${selectedSourceName}`,
+      });
     }
 
     if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
@@ -278,16 +278,12 @@ function ConfigureDs({
 
       url = getUrl("connector/");
 
-      try {
-        const eventKey = `${type.toUpperCase()}`;
-        if (posthogConnectorAddedEventText[eventKey]) {
-          setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
-            info: `Clicked on 'Submit' button`,
-            connector_name: selectedSourceName,
-          });
-        }
-      } catch (err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
+      const eventKey = `${type.toUpperCase()}`;
+      if (posthogConnectorAddedEventText[eventKey]) {
+        setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
+          info: `Clicked on 'Submit' button`,
+          connector_name: selectedSourceName,
+        });
       }
     } else {
       const adapterMetadata = { ...formData };
@@ -301,14 +297,10 @@ function ConfigureDs({
       };
       url = getUrl("adapter/");
 
-      try {
-        setPostHogCustomEvent(posthogSubmitEventText[type], {
-          info: "Clicked on 'Submit' button",
-          adpater_name: selectedSourceName,
-        });
-      } catch (err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
-      }
+      setPostHogCustomEvent(posthogSubmitEventText[type], {
+        info: "Clicked on 'Submit' button",
+        adpater_name: selectedSourceName,
+      });
     }
 
     let method = "POST";

@@ -211,7 +211,9 @@ function DocumentParser({
   const getPromptOutputs = (promptId) => {
     const keys = Object.keys(promptOutputs || {});
 
-    if (!keys?.length) return {};
+    if (!keys?.length) {
+      return {};
+    }
 
     const outputs = {};
     keys.forEach((key) => {

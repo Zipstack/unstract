@@ -25,6 +25,7 @@ function DisplayPromptResult({
   wordConfidenceData,
   isTable = false,
   setOpenExpandModal = () => {},
+  progressMsg,
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
@@ -66,7 +67,19 @@ function DisplayPromptResult({
   ]);
 
   if (isLoading) {
-    return <Spin indicator={<SpinnerLoader size="small" />} />;
+    return (
+      <div className="prompt-loading-container">
+        <Spin indicator={<SpinnerLoader size="small" />} />
+        {progressMsg?.message && (
+          <Typography.Text
+            className="prompt-progress-msg"
+            type={progressMsg?.level === "ERROR" ? "danger" : "secondary"}
+          >
+            {progressMsg.message}
+          </Typography.Text>
+        )}
+      </div>
+    );
   }
 
   if (output === undefined) {
@@ -82,7 +95,9 @@ function DisplayPromptResult({
 
   // Extract confidence from 5th element of highlight data coordinate arrays
   const extractConfidenceFromHighlightData = (data) => {
-    if (!data) return null;
+    if (!data) {
+      return null;
+    }
 
     const confidenceValues = [];
 
@@ -134,11 +149,15 @@ function DisplayPromptResult({
         details?.enable_highlight && details?.enable_word_confidence;
 
       const getNestedValue = (obj, path) => {
-        if (!obj || !path) return undefined;
+        if (!obj || !path) {
+          return undefined;
+        }
         const normalized = path.replace(/\[(\d+)\]/g, ".$1");
         const parts = normalized.split(".").filter((p) => p !== "");
         return parts.reduce((acc, part) => {
-          if (acc === undefined || acc === null) return undefined;
+          if (acc === undefined || acc === null) {
+            return undefined;
+          }
           const maybeIndex = /^\d+$/.test(part) ? Number(part) : part;
           return acc[maybeIndex];
         }, obj);
@@ -427,6 +446,7 @@ DisplayPromptResult.propTypes = {
   wordConfidenceData: PropTypes.object,
   isTable: PropTypes.bool,
   setOpenExpandModal: PropTypes.func,
+  progressMsg: PropTypes.object,
 };
 
 export { DisplayPromptResult };

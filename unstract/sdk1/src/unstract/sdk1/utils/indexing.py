@@ -2,7 +2,7 @@ import json
 
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
-from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.tool.stream import StreamMixin
 from unstract.sdk1.utils.tool import ToolUtils
 
 
@@ -14,7 +14,7 @@ class IndexingUtils:
         x2text: str,
         chunk_size: str,
         chunk_overlap: str,
-        tool: BaseTool,
+        tool: StreamMixin,
         file_path: str | None = None,
         file_hash: str | None = None,
         fs: FileStorage | None = None,

@@ -31,7 +31,9 @@ const useRetrievalStrategiesStore = create((set, get) => ({
   // Check if strategies need to be fetched (cache for 1 hour)
   shouldFetch: () => {
     const { strategies, lastFetched } = get();
-    if (!strategies) return true;
+    if (!strategies) {
+      return true;
+    }
 
     const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds
     const now = Date.now();

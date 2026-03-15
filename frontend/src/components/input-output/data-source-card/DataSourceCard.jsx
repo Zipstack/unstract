@@ -19,7 +19,7 @@ function DataSourceCard({ srcDetails, setSelectedSourceId, type }) {
         info: "Clicked on the adapters card",
         adapter_name: srcDetails?.name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };

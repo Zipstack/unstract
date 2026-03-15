@@ -219,9 +219,13 @@ function ManageDocsModal({
       newMessages = newMessages.slice(0, lastIndex);
     }
 
-    // Filter only INFO and ERROR logs
+    // Filter only INFO and ERROR logs that are NOT from answer_prompt.
+    // Answer prompt messages carry a prompt_key in their component;
+    // indexing messages do not.
     newMessages = newMessages.filter(
-      (item) => item?.level === "INFO" || item?.level === "ERROR",
+      (item) =>
+        (item?.level === "INFO" || item?.level === "ERROR") &&
+        !item?.component?.prompt_key,
     );
 
     // If there are no new INFO or ERROR messages, return early

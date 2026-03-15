@@ -49,7 +49,9 @@ function App() {
   );
 
   useEffect(() => {
-    if (!alertDetails?.content) return;
+    if (!alertDetails?.content) {
+      return;
+    }
 
     notificationAPI.open({
       message: alertDetails?.title,

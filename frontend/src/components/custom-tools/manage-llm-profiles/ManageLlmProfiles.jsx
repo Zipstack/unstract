@@ -77,7 +77,7 @@ function ManageLlmProfiles() {
       setPostHogCustomEvent("ps_profile_changed_per_prompt", {
         info: "Selected default LLM profile",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -178,7 +178,7 @@ function ManageLlmProfiles() {
       setPostHogCustomEvent("intent_ps_new_llm_profile", {
         info: "Clicked on 'Add New LLM Profile' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };

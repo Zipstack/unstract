@@ -126,8 +126,9 @@ const usePromptOutput = () => {
         wordConfidenceData: item?.word_confidence_data,
       };
 
-      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
+      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded) {
         return;
+      }
 
       if (item?.is_single_pass_extract) {
         const tokenUsageId = generatePromptOutputKeyForSinglePass(

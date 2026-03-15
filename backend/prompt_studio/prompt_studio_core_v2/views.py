@@ -2,11 +2,13 @@ import json
 import logging
 import uuid
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
+from celery import signature
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -44,7 +46,6 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     DeploymentUsageCheckError,
-    IndexingAPIError,
     MaxProfilesReachedError,
     ToolDeleteError,
 )
@@ -58,7 +59,6 @@ from prompt_studio.prompt_studio_document_manager_v2.prompt_studio_document_help
     PromptStudioDocumentHelper,
 )
 from prompt_studio.prompt_studio_index_manager_v2.models import IndexManager
-from prompt_studio.prompt_studio_output_manager_v2.models import PromptStudioOutputManager
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
@@ -364,6 +364,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
 
+        Builds the full execution payload (ORM work), then fires a
+        single executor task with Celery link/link_error callbacks.
+        The backend worker slot is freed immediately.
+
         Args:
             request (HttpRequest)
 
@@ -380,10 +384,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = serializer.validated_data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         file_name: str = document.document_name
-        # Generate a run_id
         run_id = CommonUtils.generate_uuid()
 
-        unique_id = PromptStudioHelper.index_document(
+        context, cb_kwargs = PromptStudioHelper.build_index_payload(
             tool_id=str(tool.tool_id),
             file_name=file_name,
             org_id=UserSessionUtils.get_organization_id(request),
@@ -391,93 +394,239 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             document_id=document_id,
             run_id=run_id,
         )
-        if unique_id:
-            return Response(
-                {"message": "Document indexed successfully."},
-                status=status.HTTP_200_OK,
-            )
-        else:
-            logger.error("Error occured while indexing. Unique ID is not valid.")
-            raise IndexingAPIError()
+
+        dispatcher = PromptStudioHelper._get_dispatcher()
+
+        # Pre-generate task ID so callbacks can reference it
+        import uuid as _uuid
+
+        executor_task_id = str(_uuid.uuid4())
+        cb_kwargs["executor_task_id"] = executor_task_id
+
+        task = dispatcher.dispatch_with_callback(
+            context,
+            on_success=signature(
+                "ide_index_complete",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            on_error=signature(
+                "ide_index_error",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            task_id=executor_task_id,
+        )
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=True, methods=["post"])
     def fetch_response(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to fetch response to prompt.
 
-        Args:
-            request (HttpRequest): _description_
+        Builds the full execution payload (ORM work), then fires a
+        single executor task with Celery link/link_error callbacks.
 
-        Raises:
-            FilenameMissingError: _description_
+        Args:
+            request (HttpRequest)
 
         Returns:
             Response
         """
         custom_tool = self.get_object()
-        tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
-        id: str = request.data.get(ToolStudioPromptKeys.ID)
+        prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
-        profile_manager: str = request.data.get(ToolStudioPromptKeys.PROFILE_MANAGER_ID)
+        profile_manager_id: str = request.data.get(
+            ToolStudioPromptKeys.PROFILE_MANAGER_ID
+        )
         if not run_id:
-            # Generate a run_id
             run_id = CommonUtils.generate_uuid()
 
-        # Check output count before prompt run for HubSpot notification
-        # Filter through tool FK to scope by organization (PromptStudioOutputManager
-        # lacks DefaultOrganizationManagerMixin)
-        output_count_before = PromptStudioOutputManager.objects.filter(
-            tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
-        ).count()
+        org_id = UserSessionUtils.get_organization_id(request)
+        user_id = custom_tool.created_by.user_id
 
-        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
-            id=id,
-            tool_id=tool_id,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=custom_tool.created_by.user_id,
+        # Resolve prompt
+        prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
+
+        # Build file path
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            org_id,
+            is_create=False,
+            user_id=user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        doc_path = str(Path(doc_path) / document.document_name)
+
+        context, cb_kwargs = PromptStudioHelper.build_fetch_response_payload(
+            tool=custom_tool,
+            doc_path=doc_path,
+            doc_name=document.document_name,
+            prompt=prompt,
+            org_id=org_id,
+            user_id=user_id,
             document_id=document_id,
             run_id=run_id,
-            profile_manager_id=profile_manager,
+            profile_manager_id=profile_manager_id,
         )
 
-        # Notify HubSpot about first prompt run
-        notify_hubspot_event(
-            user=request.user,
-            event_name="PROMPT_RUN",
-            is_first_for_org=output_count_before == 0,
-            action_label="prompt run",
-        )
+        # If document is being indexed, return pending status
+        if context is None:
+            return Response(cb_kwargs, status=status.HTTP_200_OK)
 
-        return Response(response, status=status.HTTP_200_OK)
+        dispatcher = PromptStudioHelper._get_dispatcher()
+
+        import uuid as _uuid
+
+        executor_task_id = str(_uuid.uuid4())
+        cb_kwargs["executor_task_id"] = executor_task_id
+
+        task = dispatcher.dispatch_with_callback(
+            context,
+            on_success=signature(
+                "ide_prompt_complete",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            on_error=signature(
+                "ide_prompt_error",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            task_id=executor_task_id,
+        )
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
 
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
-        """API Entry point method to fetch response to prompt.
+        """API Entry point method for single pass extraction.
+
+        Builds the full execution payload (ORM work), then fires a
+        single executor task with Celery link/link_error callbacks.
 
         Args:
-            request (HttpRequest): _description_
-            pk (Any): Primary key of the CustomTool
+            request (HttpRequest)
+            pk: Primary key of the CustomTool
 
         Returns:
             Response
         """
-        # TODO: Handle fetch_response and single_pass_
-        # extraction using common function
         custom_tool = self.get_object()
-        tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         if not run_id:
-            # Generate a run_id
             run_id = CommonUtils.generate_uuid()
-        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
-            tool_id=tool_id,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=custom_tool.created_by.user_id,
+
+        org_id = UserSessionUtils.get_organization_id(request)
+        user_id = custom_tool.created_by.user_id
+
+        # Build file path
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            org_id,
+            is_create=False,
+            user_id=user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        doc_path = str(Path(doc_path) / document.document_name)
+
+        # Fetch prompts eligible for single-pass extraction.
+        # Mirrors the filtering in _execute_prompts_in_single_pass:
+        # only active, non-NOTES, non-TABLE/RECORD prompts.
+        prompts = list(
+            ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
+                "sequence_number"
+            )
+        )
+        prompts = [
+            p
+            for p in prompts
+            if p.prompt_type != ToolStudioPromptKeys.NOTES
+            and p.active
+            and p.enforce_type != ToolStudioPromptKeys.TABLE
+            and p.enforce_type != ToolStudioPromptKeys.RECORD
+        ]
+        if not prompts:
+            return Response(
+                {"error": "No active prompts found for single pass extraction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        context, cb_kwargs = PromptStudioHelper.build_single_pass_payload(
+            tool=custom_tool,
+            doc_path=doc_path,
+            doc_name=document.document_name,
+            prompts=prompts,
+            org_id=org_id,
             document_id=document_id,
             run_id=run_id,
         )
-        return Response(response, status=status.HTTP_200_OK)
+
+        dispatcher = PromptStudioHelper._get_dispatcher()
+
+        import uuid as _uuid
+
+        executor_task_id = str(_uuid.uuid4())
+        cb_kwargs["executor_task_id"] = executor_task_id
+
+        task = dispatcher.dispatch_with_callback(
+            context,
+            on_success=signature(
+                "ide_prompt_complete",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            on_error=signature(
+                "ide_prompt_error",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            task_id=executor_task_id,
+        )
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=True, methods=["get"])
+    def task_status(
+        self, request: HttpRequest, pk: Any = None, task_id: str = None
+    ) -> Response:
+        """Poll the status of an async Prompt Studio task.
+
+        Task IDs now point to executor worker tasks dispatched via the
+        worker-v2 Celery app.  Both apps share the same PostgreSQL
+        result backend, so we use the worker app to look up results.
+
+        Args:
+            request (HttpRequest)
+            pk: Primary key of the CustomTool (for permission check)
+            task_id: Celery task ID returned by the 202 response
+
+        Returns:
+            Response with {task_id, status} and optionally result or error
+        """
+        from celery.result import AsyncResult
+
+        from backend.worker_celery import get_worker_celery_app
+
+        result = AsyncResult(task_id, app=get_worker_celery_app())
+        if not result.ready():
+            return Response({"task_id": task_id, "status": "processing"})
+        if result.successful():
+            return Response(
+                {"task_id": task_id, "status": "completed", "result": result.result}
+            )
+        return Response(
+            {"task_id": task_id, "status": "failed", "error": str(result.result)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:

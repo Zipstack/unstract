@@ -3,7 +3,6 @@ import {
   generateUUID,
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
-  pollForCompletion,
 } from "../helpers/GetStaticData";
 import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";
@@ -16,17 +15,17 @@ import usePromptOutput from "./usePromptOutput";
 
 const usePromptRun = () => {
   const { pushPromptRunApi, freeActiveApi } = usePromptRunQueueStore();
-  const { generatePromptOutputKey, updatePromptOutputState } =
-    usePromptOutput();
+  const { generatePromptOutputKey } = usePromptOutput();
   const { addPromptStatus, removePromptStatus } = usePromptRunStatusStore();
-  const { details, llmProfiles, listOfDocs, selectedDoc } =
-    useCustomToolStore();
+  const { details, llmProfiles, listOfDocs } = useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
 
   const makeApiRequest = (requestOptions) => axiosPrivate(requestOptions);
+
+  const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   const runPromptApi = (api) => {
     const [promptId, docId, profileId] = api.split("__");
@@ -49,37 +48,40 @@ const usePromptRun = () => {
       data: body,
     };
 
-    const startTime = Date.now();
-    const maxWaitTime = 30 * 1000; // 30 seconds
-    const pollingInterval = 5000; // 5 seconds
-
-    pollForCompletion(
-      startTime,
-      requestOptions,
-      maxWaitTime,
-      pollingInterval,
-      makeApiRequest,
-    )
-      .then((res) => {
-        if (docId !== selectedDoc?.document_id) return;
-        const data = res?.data || [];
-        const timeTakenInSeconds = Math.floor((Date.now() - startTime) / 1000);
-        updatePromptOutputState(data, false, timeTakenInSeconds);
+    // Fire-and-forget: POST dispatches the Celery task, socket delivers result.
+    makeApiRequest(requestOptions)
+      .then(() => {
+        // Timeout safety net: clear stale status if socket event never arrives.
+        setTimeout(() => {
+          const statusKey = generateApiRunStatusId(docId, profileId);
+          const current = usePromptRunStatusStore.getState().promptRunStatus;
+          if (
+            current?.[promptId]?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING
+          ) {
+            removePromptStatus(promptId, statusKey);
+            setAlertDetails({
+              type: "warning",
+              content: "Prompt execution timed out. Please try again.",
+            });
+          }
+        }, SOCKET_TIMEOUT_MS);
       })
       .catch((err) => {
         setAlertDetails(
           handleException(err, "Failed to generate prompt output"),
         );
+        const statusKey = generateApiRunStatusId(docId, profileId);
+        removePromptStatus(promptId, statusKey);
       })
       .finally(() => {
         freeActiveApi();
-        const statusKey = generateApiRunStatusId(docId, profileId);
-        removePromptStatus(promptId, statusKey);
       });
   };
 
   const runPrompt = (listOfApis) => {
-    if (!listOfApis?.length) return;
+    if (!listOfApis?.length) {
+      return;
+    }
     listOfApis.forEach(runPromptApi);
   };
 
@@ -190,14 +192,18 @@ const usePromptRun = () => {
     };
 
     const params = paramsMap[promptRunType];
-    if (!params) return;
+    if (!params) {
+      return;
+    }
 
     const paramValues = { promptId, profileId, docId };
     const missingParams = params.requiredParams.filter(
       (param) => !paramValues[param],
     );
 
-    if (missingParams.length > 0) return;
+    if (missingParams.length > 0) {
+      return;
+    }
 
     ({ apiRequestsToQueue, promptRunApiStatus } = prepareApiRequests(
       params.prompts,

@@ -95,7 +95,9 @@ const CreateApiDeploymentFromPromptStudio = ({
   }, [open, toolDetails, form]);
 
   const fetchToolFunctionName = async () => {
-    if (!toolDetails?.tool_id) return;
+    if (!toolDetails?.tool_id) {
+      return;
+    }
 
     try {
       // Fetch tool list to find the function name for this tool_id
@@ -311,16 +313,12 @@ const CreateApiDeploymentFromPromptStudio = ({
       return;
     }
 
-    try {
-      setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
-        info: "Creating API deployment from prompt studio",
-        tool_id: toolDetails?.tool_id,
-        tool_name: toolDetails?.tool_name,
-        deployment_name: deploymentDetails.api_name,
-      });
-    } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
-    }
+    setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
+      info: "Creating API deployment from prompt studio",
+      tool_id: toolDetails?.tool_id,
+      tool_name: toolDetails?.tool_name,
+      deployment_name: deploymentDetails.api_name,
+    });
 
     setIsLoading(true);
     setBackendErrors(null); // Clear any previous errors

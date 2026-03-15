@@ -60,7 +60,7 @@ const useWorkflowStore = create((setState, getState) => ({
       setState(() => {
         return { ...getState(), ...{ existingState } };
       });
-    } catch (err) {
+    } catch (_err) {
       return;
     }
   },

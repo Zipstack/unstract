@@ -16,8 +16,8 @@ from unstract.core.constants import LogEventArgument, LogProcessingTask
 class LogPublisher:
     broker_url = str(
         httpx.URL(os.getenv("CELERY_BROKER_BASE_URL", "amqp://")).copy_with(
-            username=os.getenv("CELERY_BROKER_USER"),
-            password=os.getenv("CELERY_BROKER_PASS"),
+            username=os.getenv("CELERY_BROKER_USER") or None,
+            password=os.getenv("CELERY_BROKER_PASS") or None,
         )
     )
     kombu_conn = Connection(broker_url)
@@ -88,6 +88,29 @@ class LogPublisher:
             "timestamp": datetime.now(UTC).timestamp(),
             "type": "UPDATE",
             "component": component,
+            "state": state,
+            "message": message,
+        }
+
+    @staticmethod
+    def log_progress(
+        component: dict[str, str],
+        level: str,
+        state: str,
+        message: str,
+    ) -> dict[str, str]:
+        """Build a progress log message for streaming to the frontend.
+
+        Same structure as ``log_prompt()`` but uses ``type: "PROGRESS"``
+        so the frontend can distinguish executor progress from regular
+        log messages.
+        """
+        return {
+            "timestamp": datetime.now(UTC).timestamp(),
+            "type": "PROGRESS",
+            "service": "prompt",
+            "component": component,
+            "level": level,
             "state": state,
             "message": message,
         }

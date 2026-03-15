@@ -61,8 +61,9 @@ const PromptCard = memo(
       if (
         isPromptDetailsStateUpdated ||
         !Object.keys(promptDetails || {})?.length
-      )
+      ) {
         return;
+      }
       setPromptDetailsState(promptDetails);
       setIsPromptDetailsStateUpdated(true);
     }, [promptDetails]);
@@ -74,7 +75,8 @@ const PromptCard = memo(
         .find(
           (item) =>
             (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
-              item?.component?.prompt_key === promptKey) &&
+              item?.component?.prompt_key === promptKey ||
+              item?.component?.tool_id === details?.tool_id) &&
             (item?.level === "INFO" || item?.level === "ERROR"),
         );
 
@@ -202,7 +204,9 @@ const PromptCard = memo(
     };
 
     const flattenHighlightData = (data) => {
-      if (!data || typeof data !== "object") return data;
+      if (!data || typeof data !== "object") {
+        return data;
+      }
 
       const flattened = [];
       Object.values(data).forEach((value) => {
@@ -251,13 +255,9 @@ const PromptCard = memo(
 
     // Generate the result for the currently selected document
     const handleRun = (promptRunType, promptId, profileId, documentId) => {
-      try {
-        setPostHogCustomEvent("ps_prompt_run", {
-          info: "Click on 'Run Prompt' button (Multi Pass)",
-        });
-      } catch (err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
-      }
+      setPostHogCustomEvent("ps_prompt_run", {
+        info: "Click on 'Run Prompt' button (Multi Pass)",
+      });
 
       const validateInputs = () => {
         if (!selectedDoc) {
