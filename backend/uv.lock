@@ -3938,6 +3938,7 @@ dependencies = [
     { name = "redis" },
     { name = "singleton-decorator" },
     { name = "tiktoken" },
+    { name = "unstract-core" },
 ]
 
 [package.optional-dependencies]
@@ -3977,6 +3978,7 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], marker = "extra == 'aws'", specifier = "~=2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "tiktoken", specifier = "~=0.9.0" },
+    { name = "unstract-core", editable = "../unstract/core" },
 ]
 provides-extras = ["aws", "azure", "gcs"]
 
