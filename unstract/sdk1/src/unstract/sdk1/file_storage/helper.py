@@ -1,5 +1,4 @@
 import logging
-from typing import Any
 
 import fsspec
 from fsspec import AbstractFileSystem
@@ -12,7 +11,7 @@ logger = logging.getLogger(__name__)
 class FileStorageHelper:
     @staticmethod
     def file_storage_init(
-        provider: FileStorageProvider, **storage_config: dict[str, Any]
+        provider: FileStorageProvider, **storage_config: object
     ) -> AbstractFileSystem:
         """Initialises file storage based on provider.
 
@@ -28,24 +27,34 @@ class FileStorageHelper:
             protocol = provider.value
             if provider == FileStorageProvider.LOCAL:
                 # Hard set auto_mkdir to True as default
-                storage_config.update({"auto_mkdir": True})  # type: ignore
+                storage_config.update({"auto_mkdir": True})
             elif provider in [FileStorageProvider.MINIO]:
                 # Initialise using s3 for Minio
                 protocol = FileStorageProvider.S3.value
+
+            if provider in (FileStorageProvider.S3, FileStorageProvider.MINIO):
+                # Strip empty string values so boto3's credential chain
+                # can work (e.g., IRSA on EKS)
+                storage_config = {
+                    k: v
+                    for k, v in storage_config.items()
+                    if not (isinstance(v, str) and v.strip() == "")
+                }
 
             fs = fsspec.filesystem(
                 protocol=protocol,
                 **storage_config,
             )
-            logger.debug(f"Connected to {provider.value} file system")
+            logger.debug("Connected to %s file system", provider.value)
         except KeyError as e:
             logger.error(
-                f"Error in initialising {provider.value} "
-                f"file system because of missing config {e}"
+                "Error in initialising %s file system because of missing config %s",
+                provider.value,
+                e,
             )
             raise FileStorageError(str(e)) from e
         except Exception as e:
-            logger.error(f"Error in initialising {provider.value} file system {e}")
+            logger.error("Error in initialising %s file system %s", provider.value, e)
             raise FileStorageError(str(e)) from e
         return fs
 
@@ -58,11 +67,13 @@ class FileStorageHelper:
         """
         try:
             fs = fsspec.filesystem(protocol=FileStorageProvider.LOCAL.value)
-            logger.debug(f"Connected to {FileStorageProvider.LOCAL.value} file system")
+            logger.debug("Connected to %s file system", FileStorageProvider.LOCAL.value)
             return fs
         except Exception as e:
             logger.error(
-                f"Error in initialising {FileStorageProvider.GCS.value} file system {e}"
+                "Error in initialising %s file system %s",
+                FileStorageProvider.GCS.value,
+                e,
             )
             raise FileStorageError(str(e)) from e
 
