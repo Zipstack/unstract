@@ -45,6 +45,94 @@ logger = logging.getLogger(__name__)
 # Bucket caching for better cache reuse across overlapping queries
 BUCKET_CACHE_ENABLED = settings.DASHBOARD_BUCKET_CACHE_ENABLED
 
+# Metrics that use histogram type; everything else is a counter.
+_HISTOGRAM_METRICS = frozenset({"llm_usage", "pages_processed", "failed_pages"})
+
+
+def _metric_type(name: str) -> str:
+    """Return the MetricType for a given metric name."""
+    return MetricType.HISTOGRAM if name in _HISTOGRAM_METRICS else MetricType.COUNTER
+
+
+def _build_series_entry(
+    metric_name: str,
+    data: list[dict],
+) -> dict:
+    """Build a single series entry dict from metric query results."""
+    return {
+        "metric_name": metric_name,
+        "metric_type": _metric_type(metric_name),
+        "data": [
+            {"timestamp": r["period"].isoformat(), "value": r["value"] or 0} for r in data
+        ],
+        "total_value": sum(r["value"] or 0 for r in data),
+    }
+
+
+def _build_error_entry(metric_name: str) -> dict:
+    """Build an error series entry for a failed metric."""
+    return {
+        "metric_name": metric_name,
+        "error": "unavailable",
+        "data": [],
+        "total_value": 0,
+    }
+
+
+def _fetch_live_series(
+    org_id: str,
+    start_date: datetime,
+    end_date: datetime,
+    granularity: str,
+    metric_queries: dict,
+    requested_metric: str | None,
+) -> tuple[list[dict], list[str]]:
+    """Fetch all metric series (LLM combined + individual).
+
+    Returns:
+        Tuple of (series list, error names list).
+    """
+    series: list[dict] = []
+    errors: list[str] = []
+    llm_metric_keys = MetricsQueryService.LLM_METRIC_KEYS
+
+    # Fetch all 4 LLM metrics in a single query
+    if not requested_metric or requested_metric in llm_metric_keys:
+        try:
+            llm_split = MetricsQueryService.get_llm_metrics_split(
+                org_id,
+                start_date,
+                end_date,
+                granularity,
+            )
+            for name, data in llm_split.items():
+                if not requested_metric or name == requested_metric:
+                    series.append(_build_series_entry(name, data))
+        except Exception:
+            logger.exception("Failed to fetch LLM metrics")
+            for name in llm_metric_keys:
+                if not requested_metric or name == requested_metric:
+                    errors.append(name)
+                    series.append(_build_error_entry(name))
+
+    # Filter non-LLM metrics if a specific metric was requested
+    if requested_metric:
+        metric_queries = {
+            k: v for k, v in metric_queries.items() if k == requested_metric
+        }
+
+    for name, query_fn in metric_queries.items():
+        try:
+            data = query_fn(org_id, start_date, end_date, granularity)
+            series.append(_build_series_entry(name, data))
+        except Exception:
+            logger.exception("Failed to fetch metric %s", name)
+            errors.append(name)
+            series.append(_build_error_entry(name))
+
+    return series, errors
+
+
 # Thresholds for automatic source selection (in days)
 HOURLY_MAX_DAYS = 7  # Use hourly for ≤7 days
 DAILY_MAX_DAYS = 90  # Use daily for ≤90 days, monthly for >90 days
@@ -715,9 +803,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         summary_list = [
             {
                 "metric_name": name,
-                "metric_type": MetricType.HISTOGRAM
-                if name == "llm_usage"
-                else MetricType.COUNTER,
+                "metric_type": _metric_type(name),
                 "total_value": value,
                 "total_count": 1,  # Not available from live queries
                 "average_value": value,  # Same as total for live data
@@ -762,64 +848,25 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         org_id = str(organization.id)
         granularity = params.get("granularity", Granularity.DAY)
 
-        # Define metric query mapping
+        # Define metric query mapping (excludes LLM metrics handled below)
         metric_queries = {
             "documents_processed": MetricsQueryService.get_documents_processed,
             "pages_processed": MetricsQueryService.get_pages_processed,
-            "llm_calls": MetricsQueryService.get_llm_calls,
-            "challenges": MetricsQueryService.get_challenges,
-            "summarization_calls": MetricsQueryService.get_summarization_calls,
             "deployed_api_requests": MetricsQueryService.get_deployed_api_requests,
             "etl_pipeline_executions": MetricsQueryService.get_etl_pipeline_executions,
-            "llm_usage": MetricsQueryService.get_llm_usage_cost,
             "prompt_executions": MetricsQueryService.get_prompt_executions,
             "hitl_reviews": MetricsQueryService.get_hitl_reviews,
             "hitl_completions": MetricsQueryService.get_hitl_completions,
         }
 
-        # Filter by specific metric if requested
-        if params.get("metric_name"):
-            metric_queries = {
-                k: v for k, v in metric_queries.items() if k == params["metric_name"]
-            }
-
-        series = []
-        errors = []
-        for metric_name, query_fn in metric_queries.items():
-            try:
-                data = query_fn(
-                    org_id,
-                    params["start_date"],
-                    params["end_date"],
-                    granularity,
-                )
-                series.append(
-                    {
-                        "metric_name": metric_name,
-                        "metric_type": MetricType.HISTOGRAM
-                        if metric_name == "llm_usage"
-                        else MetricType.COUNTER,
-                        "data": [
-                            {
-                                "timestamp": r["period"].isoformat(),
-                                "value": r["value"] or 0,
-                            }
-                            for r in data
-                        ],
-                        "total_value": sum(r["value"] or 0 for r in data),
-                    }
-                )
-            except Exception:
-                logger.exception("Failed to fetch metric %s", metric_name)
-                errors.append(metric_name)
-                series.append(
-                    {
-                        "metric_name": metric_name,
-                        "error": "unavailable",
-                        "data": [],
-                        "total_value": 0,
-                    }
-                )
+        series, errors = _fetch_live_series(
+            org_id,
+            params["start_date"],
+            params["end_date"],
+            granularity,
+            metric_queries,
+            params.get("metric_name"),
+        )
 
         response_data = {
             "start_date": params["start_date"].isoformat(),
