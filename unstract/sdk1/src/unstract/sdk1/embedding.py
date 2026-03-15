@@ -4,6 +4,7 @@ import os
 from typing import TYPE_CHECKING
 
 import litellm
+import unstract.sdk1.patches.litellm_cohere_timeout  # noqa: F401
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
