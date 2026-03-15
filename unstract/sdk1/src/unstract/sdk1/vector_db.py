@@ -87,6 +87,7 @@ class VectorDB:
                 self._tool, self._adapter_instance_id
             )
 
+            self._adapter_name = vector_db_config.pop(Common.ADAPTER_NAME, "")
             vector_db_adapter_id = vector_db_config.get(Common.ADAPTER_ID)
             if vector_db_adapter_id not in self.vector_db_adapters:
                 raise SdkError(f"VectorDB adapter not supported : {vector_db_adapter_id}")
@@ -109,11 +110,14 @@ class VectorDB:
             self.vector_db_adapter_class = vector_db_adapter(vector_db_metadata)
             return self.vector_db_adapter_class.get_vector_db_instance()
         except Exception as e:
+            adapter_info = getattr(self, "_adapter_name", "") or self._adapter_instance_id
             self._tool.stream_log(
-                log=f"Unable to get vector_db {self._adapter_instance_id}: {e}",
+                log=f"Unable to get vector_db '{adapter_info}': {e}",
                 level=LogLevel.ERROR,
             )
-            raise VectorDBError(f"Error getting vectorDB instance: {e}") from e
+            raise VectorDBError(
+                f"Error getting vectorDB instance '{adapter_info}': {e}"
+            ) from e
 
     def index_document(
         self,

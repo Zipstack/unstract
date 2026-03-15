@@ -8,6 +8,7 @@ from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.dto import TextExtractionResult
 from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
 from unstract.sdk1.audit import Audit
+from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import LogLevel, MimeType, ToolEnv
 from unstract.sdk1.exceptions import X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -56,6 +57,7 @@ class X2Text:
                 self._tool, self._adapter_instance_id
             )
 
+            self._adapter_name = x2text_config.pop(SdkCommon.ADAPTER_NAME, "")
             x2text_adapter_id = x2text_config.get(Common.ADAPTER_ID)
             if x2text_adapter_id in self._x2text_adapters:
                 x2text_adapter = self._x2text_adapters[x2text_adapter_id][
@@ -84,11 +86,14 @@ class X2Text:
                 return self._x2text_instance
 
         except Exception as e:
+            adapter_info = getattr(self, "_adapter_name", "") or self._adapter_instance_id
             self._tool.stream_log(
-                log=f"Unable to get x2text adapter {self._adapter_instance_id}: {e}",
+                log=f"Unable to get x2text adapter '{adapter_info}': {e}",
                 level=LogLevel.ERROR,
             )
-            raise X2TextError(f"Error getting text extractor: {e}") from e
+            raise X2TextError(
+                f"Error getting text extractor '{adapter_info}': {e}"
+            ) from e
 
     def process(
         self,
