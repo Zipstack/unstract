@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import (
     IsFrictionLessAdapter,
     IsFrictionLessAdapterDelete,
@@ -135,8 +136,26 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
-class AdapterInstanceViewSet(ModelViewSet):
+class AdapterInstanceViewSet(CoOwnerManagementMixin, ModelViewSet):
     serializer_class = AdapterInstanceSerializer
+    notification_resource_name_field = "adapter_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        try:
+            from plugins.notification.constants import ResourceType
+        except ImportError:
+            logger.debug(
+                "Notification plugin not available, skipping resource type lookup"
+            )
+            return None
+
+        adapter_type_to_resource = {
+            "LLM": ResourceType.LLM.value,
+            "EMBEDDING": ResourceType.EMBEDDING.value,
+            "VECTOR_DB": ResourceType.VECTOR_DB.value,
+            "X2TEXT": ResourceType.X2TEXT.value,
+        }
+        return adapter_type_to_resource.get(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
         if self.action in ["update", "retrieve"]:
@@ -147,6 +166,9 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         elif self.action in ["list_of_shared_users", "adapter_info"]:
             return [IsOwnerOrSharedUserOrSharedToOrg()]
+
+        elif self.action in ["add_co_owner", "remove_co_owner"]:
+            return [IsOwner()]
 
         # Hack for friction-less onboarding
         # User cant view/update metadata but can delete/share etc
@@ -162,7 +184,7 @@ class AdapterInstanceViewSet(ModelViewSet):
             )
         else:
             queryset = AdapterInstance.objects.for_user(self.request.user)
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def get_serializer_class(
         self,

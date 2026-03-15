@@ -1,21 +1,23 @@
 import { PlusOutlined } from "@ant-design/icons";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
-import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
-import "../../input-output/data-source-card/DataSourceCard.css";
-import "./ToolSettings.css";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useListSearch } from "../../../hooks/useListSearch";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
+import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
+import "../../input-output/data-source-card/DataSourceCard.css";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import "./ToolSettings.css";
 
 const titles = {
   llm: "LLMs",
@@ -47,6 +49,55 @@ function ToolSettings({ type }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  const adapterCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+      getSharedUsers: (id) =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${id}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: { user_id: userId },
+        }),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "DELETE",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/${userId}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [sessionDetails?.orgId, sessionDetails?.csrfToken],
+  );
+
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: adapterCoOwnerService,
+    setAlertDetails,
+    onListRefresh: () => getAdapters(),
+  });
   const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
   const {
     listRef,
@@ -204,6 +255,18 @@ function ToolSettings({ type }) {
       });
   };
 
+  const handleCoOwner = (_event, adapter) => {
+    if (!adapter?.id) return;
+    if (adapter?.is_deprecated) {
+      setAlertDetails({
+        type: "error",
+        content: "This adapter has been deprecated and cannot be managed.",
+      });
+      return;
+    }
+    handleCoOwnerAction(adapter.id);
+  };
+
   const handleOpenAddSourceModal = () => {
     setOpenAddSourcesModal(true);
 
@@ -212,7 +275,7 @@ function ToolSettings({ type }) {
         info: `Clicked on '+ ${btnText[type]}' button`,
       });
     } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
+      console.debug("PostHog event error", err);
     }
   };
 
@@ -264,6 +327,7 @@ function ToolSettings({ type }) {
               centered
               isClickable={false}
               handleShare={handleShare}
+              handleCoOwner={handleCoOwner}
               showOwner={true}
               type="Adapter"
             />
@@ -281,12 +345,24 @@ function ToolSettings({ type }) {
       <SharePermission
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
-        adapter={adapterDetails}
+        sharedItem={adapterDetails}
         permissionEdit={isPermissonEdit}
         loading={isShareLoading}
         allUsers={userList}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Adapter"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </div>
   );

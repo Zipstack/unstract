@@ -1,20 +1,22 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
-import { ViewTools } from "../view-tools/ViewTools";
-import "./ListOfTools.css";
+import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ImportTool } from "../import-tool/ImportTool";
+import { ViewTools } from "../view-tools/ViewTools";
+import "./ListOfTools.css";
 
 const DefaultCustomButtons = ({
   setOpenImportTool,
@@ -69,6 +71,54 @@ function ListOfTools() {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
+  const promptStudioCoOwnerService = useMemo(
+    () => ({
+      getAllUsers: () =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
+        }),
+      getSharedUsers: (id) =>
+        axiosPrivate({
+          method: "GET",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${id}`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+      addCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "POST",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/`,
+          headers: {
+            "X-CSRFToken": sessionDetails?.csrfToken,
+            "Content-Type": "application/json",
+          },
+          data: { user_id: userId },
+        }),
+      removeCoOwner: (id, userId) =>
+        axiosPrivate({
+          method: "DELETE",
+          url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/${userId}/`,
+          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
+        }),
+    }),
+    [axiosPrivate, sessionDetails?.orgId, sessionDetails?.csrfToken],
+  );
+
+  const {
+    coOwnerOpen,
+    setCoOwnerOpen,
+    coOwnerData,
+    coOwnerLoading,
+    coOwnerAllUsers,
+    coOwnerResourceId,
+    handleCoOwner: handleCoOwnerAction,
+    onAddCoOwner,
+    onRemoveCoOwner,
+  } = useCoOwnerManagement({
+    service: promptStudioCoOwnerService,
+    setAlertDetails,
+    onListRefresh: () => getListOfTools(),
+  });
 
   useEffect(() => {
     getListOfTools();
@@ -81,7 +131,7 @@ function ListOfTools() {
   const getListOfTools = () => {
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/ `,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -209,7 +259,7 @@ function ListOfTools() {
         info: "Clicked on '+ New Project' button",
       });
     } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
+      console.debug("PostHog event error", err);
     }
   };
 
@@ -220,7 +270,7 @@ function ListOfTools() {
         file_name: file.name,
       });
     } catch (err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
+      console.debug("PostHog event error", err);
     }
 
     setIsImportLoading(true);
@@ -340,6 +390,10 @@ function ListOfTools() {
       });
   };
 
+  const handleCoOwner = (_event, tool) => {
+    handleCoOwnerAction(tool.tool_id);
+  };
+
   const defaultContent = (
     <div className="list-of-tools-body">
       <ViewTools
@@ -355,6 +409,7 @@ function ListOfTools() {
         idProp="tool_id"
         type="Prompt Project"
         handleShare={handleShare}
+        handleCoOwner={handleCoOwner}
       />
     </div>
   );
@@ -401,12 +456,24 @@ function ListOfTools() {
       <SharePermission
         open={openSharePermissionModal}
         setOpen={setOpenSharePermissionModal}
-        adapter={promptDetails}
+        sharedItem={promptDetails}
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         allUsers={allUserList}
         onApply={onShare}
         isSharableToOrg={true}
+      />
+      <CoOwnerManagement
+        open={coOwnerOpen}
+        setOpen={setCoOwnerOpen}
+        resourceId={coOwnerResourceId}
+        resourceType="Prompt Project"
+        allUsers={coOwnerAllUsers}
+        coOwners={coOwnerData.coOwners}
+        createdBy={coOwnerData.createdBy}
+        loading={coOwnerLoading}
+        onAddCoOwner={onAddCoOwner}
+        onRemoveCoOwner={onRemoveCoOwner}
       />
     </>
   );

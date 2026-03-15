@@ -8,9 +8,11 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -23,7 +25,7 @@ from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
-from .serializers import ConnectorInstanceSerializer
+from .serializers import ConnectorInstanceSerializer, SharedUserListSerializer
 
 notification_plugin = get_plugin("notification")
 if notification_plugin:
@@ -33,12 +35,21 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
+    notification_resource_name_field = "connector_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.CONNECTOR.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
         if self.action in ["update", "destroy", "partial_update"]:
+            return [IsOwner()]
+
+        if self.action in ["add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -73,7 +84,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 )
                 queryset = queryset.none()
 
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def _get_connector_metadata(self, connector_id: str) -> dict[str, str] | None:
         """Gets connector metadata for the ConnectorInstance.
@@ -236,3 +247,9 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 )
 
         return response
+
+    @action(detail=True, methods=["get"])
+    def list_of_shared_users(self, request: Request, pk: Any = None) -> Response:
+        connector = self.get_object()
+        serialized_instances = SharedUserListSerializer(connector).data
+        return Response(serialized_instances)

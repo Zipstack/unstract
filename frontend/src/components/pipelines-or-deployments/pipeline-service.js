@@ -120,6 +120,23 @@ function pipelineService() {
       };
       return axiosPrivate(requestOptions);
     },
+    addCoOwner: (id, userId) => {
+      const requestOptions = {
+        method: "POST",
+        url: `${path}/pipeline/${id}/owners/`,
+        headers: requestHeaders,
+        data: { user_id: userId },
+      };
+      return axiosPrivate(requestOptions);
+    },
+    removeCoOwner: (id, userId) => {
+      const requestOptions = {
+        method: "DELETE",
+        url: `${path}/pipeline/${id}/owners/${userId}/`,
+        headers: requestHeaders,
+      };
+      return axiosPrivate(requestOptions);
+    },
   };
 }
 

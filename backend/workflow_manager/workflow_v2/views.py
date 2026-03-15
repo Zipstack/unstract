@@ -8,6 +8,7 @@ from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -69,11 +70,23 @@ def make_execution_response(response: ExecutionResponse) -> Any:
     return ExecuteWorkflowResponseSerializer(response).data
 
 
-class WorkflowViewSet(viewsets.ModelViewSet):
+class WorkflowViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
+    notification_resource_name_field = "workflow_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.WORKFLOW.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
 
         return [IsOwnerOrSharedUserOrSharedToOrg()]
@@ -90,7 +103,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             Workflow.objects.for_user(self.request.user).filter(**filter_args)
             if filter_args
             else Workflow.objects.for_user(self.request.user)
-        )
+        ).prefetch_related("co_owners")
         order_by = self.request.query_params.get("order_by")
         if order_by == "desc":
             queryset = queryset.order_by("-modified_at")
@@ -314,7 +327,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
     def activate(self, request: Request, pk: str) -> Response:
         workflow = WorkflowHelper.active_project_workflow(pk)
-        serializer = WorkflowSerializer(workflow)
+        serializer = WorkflowSerializer(workflow, context={"request": request})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])

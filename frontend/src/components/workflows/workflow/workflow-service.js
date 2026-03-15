@@ -145,6 +145,28 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
+    addCoOwner: (id, userId) => {
+      options = {
+        url: `${path}/workflow/${id}/owners/`,
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: { user_id: userId },
+      };
+      return axiosPrivate(options);
+    },
+    removeCoOwner: (id, userId) => {
+      options = {
+        url: `${path}/workflow/${id}/owners/${userId}/`,
+        method: "DELETE",
+        headers: {
+          "X-CSRFToken": csrfToken,
+        },
+      };
+      return axiosPrivate(options);
+    },
   };
 }
 

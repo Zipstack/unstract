@@ -12,6 +12,7 @@ from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
@@ -84,21 +85,32 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
-class PromptStudioCoreView(viewsets.ModelViewSet):
+class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
+    notification_resource_name_field = "tool_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.TEXT_EXTRACTOR.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
             return [IsOwner()]
 
+        if self.action in ["add_co_owner", "remove_co_owner"]:
+            return [IsOwner()]
+
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        return CustomTool.objects.for_user(self.request.user)
+        return CustomTool.objects.for_user(self.request.user).prefetch_related(
+            "co_owners"
+        )
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""

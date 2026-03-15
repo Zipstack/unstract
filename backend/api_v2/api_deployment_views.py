@@ -6,6 +6,7 @@ from typing import Any
 from configuration.models import Configuration
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
+from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
@@ -17,7 +18,6 @@ from rest_framework.serializers import Serializer
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
-from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
@@ -245,11 +245,22 @@ class DeploymentExecution(views.APIView):
         )
 
 
-class APIDeploymentViewSet(viewsets.ModelViewSet):
-    pagination_class = CustomPagination
+class APIDeploymentViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
+    notification_resource_name_field = "display_name"
+
+    def get_notification_resource_type(self, resource: Any) -> str | None:
+        from plugins.notification.constants import ResourceType
+
+        return ResourceType.API_DEPLOYMENT.value  # type: ignore
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["destroy", "partial_update", "update"]:
+        if self.action in [
+            "destroy",
+            "partial_update",
+            "update",
+            "add_co_owner",
+            "remove_co_owner",
+        ]:
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
@@ -277,7 +288,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(display_name__icontains=search)
 
-        return queryset
+        return queryset.prefetch_related("co_owners")
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:
@@ -345,7 +356,9 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
                 workflow_id__in=workflow_ids, created_by=request.user
             )
 
-            serializer = APIDeploymentListSerializer(deployments, many=True)
+            serializer = APIDeploymentListSerializer(
+                deployments, many=True, context={"request": request}
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         except PromptStudioRegistry.DoesNotExist:

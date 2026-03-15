@@ -1,4 +1,9 @@
 import {
+  DeleteOutlined,
+  QuestionCircleOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import {
   Avatar,
   Checkbox,
   List,
@@ -7,21 +12,16 @@ import {
   Select,
   Typography,
 } from "antd";
-import "./SharePermission.css";
-import {
-  DeleteOutlined,
-  QuestionCircleOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import "./SharePermission.css";
 
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
 function SharePermission({
   open,
   setOpen,
-  adapter,
+  sharedItem,
   permissionEdit,
   loading,
   allUsers,
@@ -33,31 +33,31 @@ function SharePermission({
   const [shareWithEveryone, setShareWithEveryone] = useState(false);
 
   useEffect(() => {
-    if (permissionEdit && adapter && adapter?.shared_users) {
-      // If permissionEdit is true, and adapter is available,
+    if (permissionEdit && sharedItem && sharedItem?.shared_users) {
+      // If permissionEdit is true, and sharedItem is available,
       // set the selectedUsers to the IDs of shared users
       const users = allUsers.filter((user) => {
-        if (adapter?.created_by?.id !== undefined) {
+        if (sharedItem?.created_by?.id !== undefined) {
           return isSharableToOrg
             ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== adapter?.created_by?.id?.toString() &&
+            : user?.id !== sharedItem?.created_by?.id?.toString() &&
                 !selectedUsers.includes(user?.id?.toString());
         } else {
           return isSharableToOrg
             ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== adapter?.created_by?.toString() &&
+            : user?.id !== sharedItem?.created_by?.toString() &&
                 !selectedUsers.includes(user?.id?.toString());
         }
       });
       setFilteredUsers(users);
-      setShareWithEveryone(adapter?.shared_to_org || false);
+      setShareWithEveryone(sharedItem?.shared_to_org || false);
     }
-  }, [permissionEdit, adapter, allUsers, selectedUsers]);
+  }, [permissionEdit, sharedItem, allUsers, selectedUsers]);
 
   useEffect(() => {
-    if (adapter?.shared_users) {
+    if (sharedItem?.shared_users) {
       setSelectedUsers(
-        adapter.shared_users.map((user) => {
+        sharedItem.shared_users.map((user) => {
           if (user?.id !== undefined) {
             return user.id.toString();
           } else {
@@ -66,12 +66,14 @@ function SharePermission({
         }),
       );
     }
-  }, [adapter, allUsers]);
+  }, [sharedItem, allUsers]);
 
   const handleDeleteUser = (userId) => {
-    setSelectedUsers((prevSelectedUsers) =>
-      prevSelectedUsers.filter((user) => user !== userId),
+    const updatedUsers = selectedUsers.filter(
+      (user) => user.toString() !== userId.toString(),
     );
+    setSelectedUsers(updatedUsers);
+    onApply(updatedUsers, sharedItem, shareWithEveryone);
   };
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
@@ -143,7 +145,7 @@ function SharePermission({
   }
 
   return (
-    adapter && (
+    sharedItem && (
       <Modal
         title={"Share Users"}
         open={open}
@@ -152,7 +154,7 @@ function SharePermission({
         centered
         closable={true}
         okText={"Apply"}
-        onOk={() => onApply(selectedUsers, adapter, shareWithEveryone)}
+        onOk={() => onApply(selectedUsers, sharedItem, shareWithEveryone)}
         cancelButtonProps={!permissionEdit && { style: { display: "none" } }}
         okButtonProps={!permissionEdit && { style: { display: "none" } }}
         className="share-permission-modal"
@@ -212,7 +214,7 @@ function SharePermission({
 SharePermission.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
-  adapter: PropTypes.object,
+  sharedItem: PropTypes.object,
   permissionEdit: PropTypes.bool,
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
