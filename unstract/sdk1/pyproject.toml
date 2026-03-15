@@ -48,6 +48,8 @@ dependencies = [
     "redis>=5.2.1",
     # # LLMWhisperer client
     "llmwhisperer-client>=2.6.2",
+    # # Core utilities (Redis Sentinel-aware client factory, etc.)
+    "unstract-core",
 ]
 
 [project.optional-dependencies]
@@ -73,6 +75,9 @@ test = [
     "pytest-cov>=6.0.0",
     "pytest-md-report>=0.6.2",
 ]
+
+[tool.uv.sources]
+unstract-core = { path = "../core", editable = true }
 
 [build-system]
 requires = ["hatchling"]
