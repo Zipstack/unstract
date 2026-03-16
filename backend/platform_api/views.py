@@ -55,6 +55,11 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         response_serializer = PlatformApiKeyDetailSerializer(platform_api_key)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    def retrieve(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = PlatformApiKeyDetailSerializer(instance)
+        return Response(serializer.data)
+
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
 

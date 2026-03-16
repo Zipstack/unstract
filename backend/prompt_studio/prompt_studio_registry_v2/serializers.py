@@ -28,14 +28,10 @@ class PromptStudioRegistryInfoSerializer(AuditSerializer):
         )
 
     def get_shared_users(self, obj: PromptStudioRegistry) -> Any:
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        return UserSerializer(obj.shared_users.all(), many=True).data
 
     def get_prompt_studio_users(self, obj: PromptStudioRegistry) -> Any:
-        prompt_studio_users = obj.custom_tool.shared_users.filter(
-            is_service_account=False
-        )
+        prompt_studio_users = obj.custom_tool.shared_users.all()
         return UserSerializer(prompt_studio_users, many=True).data
 
 

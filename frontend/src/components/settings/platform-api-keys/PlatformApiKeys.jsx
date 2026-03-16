@@ -1,5 +1,6 @@
 import {
   ArrowLeftOutlined,
+  CopyOutlined,
   DeleteOutlined,
   EditOutlined,
   PlusOutlined,
@@ -19,6 +20,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -48,6 +50,7 @@ function PlatformApiKeys() {
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
+  const copyToClipboard = useCopyToClipboard();
 
   const basePath = `/api/v1/unstract/${sessionDetails?.orgId}/platform-api`;
 
@@ -72,20 +75,6 @@ function PlatformApiKeys() {
     fetchKeys();
   }, []);
 
-  const copyKeyToClipboard = (key, message) => {
-    navigator.clipboard
-      .writeText(key)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: message,
-        });
-      })
-      .catch(() => {
-        // Silent fail - clipboard access denied
-      });
-  };
-
   const handleCreate = () => {
     createForm.validateFields().then((values) => {
       setIsSaving(true);
@@ -102,10 +91,7 @@ function PlatformApiKeys() {
           setIsCreateModalOpen(false);
           createForm.resetFields();
           fetchKeys();
-          copyKeyToClipboard(
-            res?.data?.key,
-            "API key created and copied to clipboard",
-          );
+          copyToClipboard(res?.data?.key, "API key");
         })
         .catch((err) => {
           setAlertDetails(handleException(err, "Failed to create API key"));
@@ -175,10 +161,7 @@ function PlatformApiKeys() {
     })
       .then((res) => {
         fetchKeys();
-        copyKeyToClipboard(
-          res?.data?.key,
-          "API key rotated and copied to clipboard",
-        );
+        copyToClipboard(res?.data?.key, "API key");
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to rotate API key"));
@@ -214,8 +197,23 @@ function PlatformApiKeys() {
     setIsEditModalOpen(true);
   };
 
+  const handleCopyKey = (record) => {
+    axiosPrivate({
+      method: "GET",
+      url: `${basePath}/keys/${record?.id}/`,
+    })
+      .then((res) => {
+        copyToClipboard(res?.data?.key, "API key");
+      })
+      .catch((err) => {
+        setAlertDetails(handleException(err, "Failed to copy API key"));
+      });
+  };
+
   const formatDate = (dateStr) => {
-    if (!dateStr) return "";
+    if (!dateStr) {
+      return "";
+    }
     return new Date(dateStr).toLocaleString();
   };
 
@@ -224,32 +222,40 @@ function PlatformApiKeys() {
       title: "Name",
       dataIndex: "name",
       key: "name",
-      width: "15%",
+      width: "14%",
       ellipsis: true,
     },
     {
       title: "Description",
       dataIndex: "description",
       key: "description",
-      width: "20%",
+      width: "18%",
       ellipsis: true,
     },
     {
       title: "API Key",
       dataIndex: "key",
       key: "key",
-      width: "12%",
+      width: "14%",
       render: (_, record) => (
-        <Typography.Text className="platform-api-keys__key-text">
-          {record?.key}
-        </Typography.Text>
+        <Tooltip title="Click to copy">
+          <div
+            className="platform-api-keys__key-cell"
+            onClick={() => handleCopyKey(record)}
+          >
+            <Typography.Text className="platform-api-keys__key-text">
+              {record?.key}
+            </Typography.Text>
+            <CopyOutlined className="platform-api-keys__copy-icon" />
+          </div>
+        </Tooltip>
       ),
     },
     {
       title: "Active",
       dataIndex: "is_active",
       key: "is_active",
-      width: "8%",
+      width: "7%",
       render: (_, record) => (
         <Switch
           size="small"
@@ -262,7 +268,7 @@ function PlatformApiKeys() {
       title: "Created By",
       dataIndex: "created_by_email",
       key: "created_by_email",
-      width: "15%",
+      width: "17%",
       ellipsis: true,
     },
     {
@@ -275,7 +281,7 @@ function PlatformApiKeys() {
     {
       title: "Actions",
       key: "actions",
-      width: "25%",
+      width: "15%",
       render: (_, record) => (
         <div className="platform-api-keys__actions">
           <ConfirmModal

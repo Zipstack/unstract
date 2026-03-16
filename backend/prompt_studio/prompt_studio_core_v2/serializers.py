@@ -35,7 +35,7 @@ except ImportError:
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(is_service_account=False),
+        queryset=User.objects.all(),
         required=False,
         allow_null=True,
         many=True,
@@ -187,9 +187,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
         )
 
     def get_shared_users(self, obj):
-        return UserSerializer(
-            obj.shared_users.filter(is_service_account=False), many=True
-        ).data
+        return UserSerializer(obj.shared_users.all(), many=True).data
 
 
 class FileInfoIdeSerializer(serializers.Serializer):

@@ -10,7 +10,9 @@ urlpatterns = [
     ),
     path(
         "keys/<uuid:pk>/",
-        PlatformApiKeyViewSet.as_view({"patch": "partial_update", "delete": "destroy"}),
+        PlatformApiKeyViewSet.as_view(
+            {"get": "retrieve", "patch": "partial_update", "delete": "destroy"}
+        ),
         name="platform_api_key_detail",
     ),
     path(

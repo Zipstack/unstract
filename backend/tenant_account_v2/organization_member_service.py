@@ -29,7 +29,7 @@ class OrganizationMemberService:
 
     @staticmethod
     def get_members() -> list[OrganizationMember]:
-        return OrganizationMember.objects.filter(user__is_service_account=False)
+        return OrganizationMember.objects.all()
 
     @staticmethod
     def get_members_by_role(role: str) -> list[OrganizationMember]:
@@ -41,9 +41,7 @@ class OrganizationMemberService:
         Returns:
             list[OrganizationMember]: list of members
         """
-        return OrganizationMember.objects.filter(
-            role=role, user__is_service_account=False
-        ).order_by("member_id")
+        return OrganizationMember.objects.filter(role=role).order_by("member_id")
 
     @staticmethod
     def set_member_role(member_id: int, role: str) -> None:
