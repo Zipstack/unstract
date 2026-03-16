@@ -105,4 +105,6 @@
 .user-profile-menu > .ant-dropdown-menu-item > .ant-dropdown-menu-title-content {
   text-align: left;
   width: 100%;
+  display: flex;
+  justify-content: flex-start;
 }
