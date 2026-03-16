@@ -210,11 +210,11 @@ function useMainAppRoutes() {
           <Route path="users/invite" element={<InviteEditUserPage />} />
           <Route path="users/edit" element={<InviteEditUserPage />} />
           <Route path="settings/triad" element={<DefaultTriad />} />
-          <Route
-            path="settings/platform-api-keys"
-            element={<PlatformApiKeysPage />}
-          />
         </Route>
+        <Route
+          path="settings/platform-api-keys"
+          element={<PlatformApiKeysPage />}
+        />
         {RequirePlatformAdmin && PlatformAdminPage && (
           <Route element={<RequirePlatformAdmin />}>
             <Route path="settings/admin" element={<PlatformAdminPage />} />
