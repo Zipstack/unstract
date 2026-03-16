@@ -102,7 +102,9 @@
   padding: 0 !important;
 }
 
-.user-profile-menu > .ant-dropdown-menu-item > .ant-dropdown-menu-title-content {
+.user-profile-menu
+  > .ant-dropdown-menu-item
+  > .ant-dropdown-menu-title-content {
   text-align: left;
   width: 100%;
   display: flex;
