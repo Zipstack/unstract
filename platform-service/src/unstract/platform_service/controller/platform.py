@@ -159,26 +159,28 @@ def page_usage() -> Any:
             app.logger.info("Page usage recorded with id %s for %s", usage_id, org_id)
             result["status"] = "OK"
             result["unique_id"] = usage_id
-
-            # Cloud-only: Handle subscription usage via plugin
-            usage_plugin = PluginManager().get_plugin("subscription_usage")
-            if usage_plugin:
-                try:
-                    handler = usage_plugin["entrypoint_cls"]()
-                    handler.handle_subscription_usage(
-                        org_id=org_id,
-                        page_count=page_count,
-                        run_id=run_id,
-                        current_time=current_time,
-                    )
-                except Exception as e:
-                    app.logger.exception(f"Error from subscription usage plugin: {e}")
-
-            return make_response(result, 200)
     except Exception as e:
         app.logger.error(f"Error while creating page usage entry: {e}")
         result["error"] = "Internal Server Error"
         return make_response(result, 500)
+
+    # Cloud-only: Handle subscription usage via plugin
+    # Runs outside db.atomic() so a plugin SQL error (e.g. missing
+    # subscription table on on-prem) doesn't rollback the page_usage INSERT.
+    usage_plugin = PluginManager().get_plugin("subscription_usage")
+    if usage_plugin:
+        try:
+            handler = usage_plugin["entrypoint_cls"]()
+            handler.handle_subscription_usage(
+                org_id=org_id,
+                page_count=page_count,
+                run_id=run_id,
+                current_time=current_time,
+            )
+        except Exception as e:
+            app.logger.exception(f"Error from subscription usage plugin: {e}")
+
+    return make_response(result, 200)
 
 
 @platform_bp.route("/usage", methods=["POST"])
