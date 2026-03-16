@@ -1,0 +1,21 @@
+/* Styles for PlatformApiKeys */
+
+.platform-api-keys__content {
+  padding: 20px;
+}
+
+.platform-api-keys__header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.platform-api-keys__key-text {
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.platform-api-keys__actions {
+  display: flex;
+  gap: 8px;
+}

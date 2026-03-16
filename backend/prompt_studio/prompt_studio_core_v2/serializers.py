@@ -35,7 +35,10 @@ except ImportError:
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), required=False, allow_null=True, many=True
+        queryset=User.objects.filter(is_service_account=False),
+        required=False,
+        allow_null=True,
+        many=True,
     )
 
     class Meta:
@@ -171,7 +174,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     """Used for listing users of Custom tool."""
 
     created_by = UserSerializer()
-    shared_users = UserSerializer(many=True)
+    shared_users = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -182,6 +185,11 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "shared_to_org",
         )
+
+    def get_shared_users(self, obj):
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
