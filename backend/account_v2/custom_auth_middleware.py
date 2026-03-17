@@ -10,7 +10,7 @@ from utils.user_session import UserSessionUtils
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
-from backend.constants import RequestHeader
+from backend.constants import RequestHeader, RequestMethod
 from backend.internal_api_constants import INTERNAL_API_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -75,7 +75,7 @@ class CustomAuthMiddleware:
         Resolves the token to the owning user so all downstream code sees
         a fully authenticated request.
         """
-        from platform_api.models import PlatformApiKey
+        from platform_api.models import ApiKeyPermission, PlatformApiKey
 
         token_str = auth_header[len("Bearer ") :]
         try:
@@ -84,7 +84,7 @@ class CustomAuthMiddleware:
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
         # Block DELETE before any DB lookup — never allowed via API key
-        if request.method == "DELETE":
+        if request.method == RequestMethod.DELETE:
             return JsonResponse(
                 {"message": "DELETE operations are not allowed via API key"},
                 status=403,
@@ -117,10 +117,9 @@ class CustomAuthMiddleware:
             )
 
         # Block write operations for read-only keys
-        if key.permission == "read" and request.method not in (
-            "GET",
-            "HEAD",
-            "OPTIONS",
+        if (
+            key.permission == ApiKeyPermission.READ
+            and request.method not in RequestMethod.SAFE_METHODS
         ):
             return JsonResponse(
                 {"message": "API key has read-only permission"},

@@ -1,11 +1,19 @@
+from __future__ import annotations
+
 import re
 import uuid as _uuid
+from typing import TYPE_CHECKING
 
 from account_v2.enums import UserRole
 from account_v2.models import User
 from django.apps import apps
 from django.db import transaction
 from tenant_account_v2.models import OrganizationMember
+
+if TYPE_CHECKING:
+    from account_v2.models import Organization
+
+    from platform_api.models import PlatformApiKey
 
 # Business app labels whose models may have created_by / shared_users fields.
 # Restricts transfer_ownership to avoid scanning Django built-in and third-party models.
@@ -28,7 +36,9 @@ def _slugify_for_email(name: str) -> str:
     return slug[:20] or "key"
 
 
-def create_api_user_for_key(platform_api_key, organization):
+def create_api_user_for_key(
+    platform_api_key: PlatformApiKey, organization: Organization
+) -> User:
     """Create a dedicated service account for bearer auth sessions."""
     with transaction.atomic():
         uid = str(_uuid.uuid4())
@@ -53,7 +63,7 @@ def create_api_user_for_key(platform_api_key, organization):
     return user
 
 
-def _transfer_model_ownership(model, from_user, to_user):
+def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> None:
     """Transfer ownership for a single model from one user to another."""
     has_created_by = hasattr(model, "created_by")
     has_shared_users = hasattr(model, "shared_users")
@@ -78,7 +88,7 @@ def _transfer_model_ownership(model, from_user, to_user):
             instance.shared_users.remove(from_user)
 
 
-def transfer_ownership(from_user, to_user):
+def transfer_ownership(from_user: User, to_user: User | None) -> None:
     """Transfer all resource ownership from one user to another.
 
     Replaces from_user with to_user across business models:
@@ -98,7 +108,7 @@ def transfer_ownership(from_user, to_user):
         _transfer_model_ownership(model, from_user, to_user)
 
 
-def delete_api_user_for_key(platform_api_key):
+def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:
     """Transfer ownership to key creator, then delete the service account."""
     api_user = platform_api_key.api_user
     if not api_user:
