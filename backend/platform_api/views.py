@@ -1,5 +1,6 @@
 import uuid
 
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -40,16 +41,17 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
             data=request.data, context={"request": request}
         )
         serializer.is_valid(raise_exception=True)
-        platform_api_key = serializer.save()
 
-        create_api_user_for_key(platform_api_key, organization)
+        with transaction.atomic():
+            platform_api_key = serializer.save()
+            create_api_user_for_key(platform_api_key, organization)
 
         response_serializer = PlatformApiKeyDetailSerializer(platform_api_key)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = PlatformApiKeyDetailSerializer(instance)
+        serializer = PlatformApiKeyListSerializer(instance)
         return Response(serializer.data)
 
     def partial_update(self, request, *args, **kwargs):
@@ -74,7 +76,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
 
         instance.key = uuid.uuid4()
         instance.modified_by = request.user
-        instance.save()
+        instance.save(update_fields=["key", "modified_by"])
 
         response_serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(response_serializer.data)

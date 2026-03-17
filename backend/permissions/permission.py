@@ -7,11 +7,18 @@ from rest_framework.views import APIView
 from utils.user_context import UserContext
 
 
+def _is_service_account_safe_request(request: Request) -> bool:
+    """Allow service accounts through for safe (read-only) HTTP methods."""
+    return getattr(request.user, "is_service_account", False) and (
+        request.method in permissions.SAFE_METHODS
+    )
+
+
 class IsOwner(permissions.BasePermission):
     """Custom permission to only allow owners of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if getattr(request.user, "is_service_account", False):
+        if _is_service_account_safe_request(request):
             return True
         return True if obj.created_by == request.user else False
 
@@ -28,7 +35,7 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if getattr(request.user, "is_service_account", False):
+        if _is_service_account_safe_request(request):
             return True
         return (
             True
@@ -46,7 +53,7 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if getattr(request.user, "is_service_account", False):
+        if _is_service_account_safe_request(request):
             return True
         return (
             True

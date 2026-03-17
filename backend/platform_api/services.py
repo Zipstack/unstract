@@ -63,10 +63,15 @@ def create_api_user_for_key(
     return user
 
 
+def _has_field(model: type, field_name: str) -> bool:
+    """Check if a Django model has a specific field using _meta API."""
+    return any(f.name == field_name for f in model._meta.get_fields())
+
+
 def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> None:
     """Transfer ownership for a single model from one user to another."""
-    has_created_by = hasattr(model, "created_by")
-    has_shared_users = hasattr(model, "shared_users")
+    has_created_by = _has_field(model, "created_by")
+    has_shared_users = _has_field(model, "shared_users")
 
     if has_created_by:
         owned_pks = list(
@@ -79,7 +84,7 @@ def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> No
             for instance in model.objects.filter(pk__in=owned_pks, shared_users=to_user):
                 instance.shared_users.remove(to_user)
 
-    if hasattr(model, "modified_by"):
+    if _has_field(model, "modified_by"):
         model.objects.filter(modified_by=from_user).update(modified_by=to_user)
 
     if has_shared_users:
@@ -102,10 +107,11 @@ def transfer_ownership(from_user: User, to_user: User | None) -> None:
     if not to_user:
         return
 
-    for model in apps.get_models():
-        if model._meta.app_label not in _BUSINESS_APP_LABELS:
-            continue
-        _transfer_model_ownership(model, from_user, to_user)
+    with transaction.atomic():
+        for model in apps.get_models():
+            if model._meta.app_label not in _BUSINESS_APP_LABELS:
+                continue
+            _transfer_model_ownership(model, from_user, to_user)
 
 
 def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:
@@ -114,5 +120,6 @@ def delete_api_user_for_key(platform_api_key: PlatformApiKey) -> None:
     if not api_user:
         return
 
-    transfer_ownership(from_user=api_user, to_user=platform_api_key.created_by)
-    api_user.delete()
+    with transaction.atomic():
+        transfer_ownership(from_user=api_user, to_user=platform_api_key.created_by)
+        api_user.delete()
