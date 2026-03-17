@@ -4,7 +4,6 @@ from rest_framework import serializers
 from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
-from platform_api.constants import PLATFORM_API_KEY_MAX_COUNT
 from platform_api.models import PlatformApiKey
 
 # Alphanumeric, spaces, hyphens, underscores, periods, commas, colons,
@@ -58,16 +57,6 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
     class Meta:
         model = PlatformApiKey
         fields = ["name", "description", "permission"]
-
-    def validate(self, attrs):
-        organization = UserContext.get_organization()
-        key_count = PlatformApiKey.objects.filter(organization=organization).count()
-        if key_count >= PLATFORM_API_KEY_MAX_COUNT:
-            raise serializers.ValidationError(
-                f"Maximum platform API key limit of "
-                f"{PLATFORM_API_KEY_MAX_COUNT} exceeded."
-            )
-        return attrs
 
     def validate_name(self, value):
         value = validate_safe_text(value)
