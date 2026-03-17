@@ -34,7 +34,7 @@ import "./PlatformApiKeys.css";
 
 const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:()/]+$/;
 const SAFE_TEXT_MESSAGE =
-  "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, and parentheses are allowed.";
+  "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, parentheses, and forward slashes are allowed.";
 
 function PlatformApiKeys() {
   const [keys, setKeys] = useState([]);

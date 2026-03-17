@@ -11,6 +11,7 @@ from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
+from django.db import transaction
 from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.request import Request
@@ -1938,35 +1939,36 @@ class PromptStudioHelper:
                 "before syncing prompts."
             )
 
-        # Delete all existing prompts
-        deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+        with transaction.atomic():
+            # Delete all existing prompts
+            deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
 
-        # Create new prompts from export data
-        PromptStudioHelper.import_prompts(prompts_data, tool, user)
+            # Create new prompts from export data
+            PromptStudioHelper.import_prompts(prompts_data, tool, user)
 
-        # Update tool settings
-        tool_settings_fields = [
-            "preamble",
-            "postamble",
-            "summarize_prompt",
-            "summarize_context",
-            "summarize_as_source",
-            "enable_challenge",
-            "enable_highlight",
-            "exclude_failed",
-            "single_pass_extraction_mode",
-            "prompt_grammer",
-        ]
-        update_fields = []
-        for field in tool_settings_fields:
-            if field in tool_settings:
-                setattr(tool, field, tool_settings[field])
-                update_fields.append(field)
+            # Update tool settings
+            tool_settings_fields = [
+                "preamble",
+                "postamble",
+                "summarize_prompt",
+                "summarize_context",
+                "summarize_as_source",
+                "enable_challenge",
+                "enable_highlight",
+                "exclude_failed",
+                "single_pass_extraction_mode",
+                "prompt_grammer",
+            ]
+            update_fields = []
+            for field in tool_settings_fields:
+                if field in tool_settings:
+                    setattr(tool, field, tool_settings[field])
+                    update_fields.append(field)
 
-        if update_fields:
-            tool.modified_by = user
-            update_fields.append("modified_by")
-            tool.save(update_fields=update_fields)
+            if update_fields:
+                tool.modified_by = user
+                update_fields.append("modified_by")
+                tool.save(update_fields=update_fields)
 
         return {
             "prompts_deleted": deleted_count,

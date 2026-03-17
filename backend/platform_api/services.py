@@ -1,39 +1,54 @@
 from account_v2.enums import UserRole
 from account_v2.models import User
 from django.apps import apps
+from django.db import transaction
 from tenant_account_v2.models import OrganizationMember
+
+# Business app labels whose models may have created_by / shared_users fields.
+# Restricts transfer_ownership to avoid scanning Django built-in and third-party models.
+_BUSINESS_APP_LABELS = {
+    "adapter_processor_v2",
+    "api_v2",
+    "connector_v2",
+    "pipeline_v2",
+    "workflow_manager",
+    "prompt_studio_core_v2",
+    "prompt_studio_registry_v2",
+    "agentic_studio_registry",
+}
 
 
 def create_api_user_for_key(platform_api_key, organization):
     """Create a dedicated service account for bearer auth sessions."""
     import uuid as _uuid
 
-    uid = str(_uuid.uuid4())
-    key_name = platform_api_key.name.lower().replace(" ", "-")
-    user = User(
-        username=f"svc-{key_name}-{uid[:8]}",
-        email=f"{key_name}@platform.internal",
-        user_id=uid,
-        is_service_account=True,
-    )
-    user.set_unusable_password()
-    user.save()
+    with transaction.atomic():
+        uid = str(_uuid.uuid4())
+        key_name = platform_api_key.name.lower().replace(" ", "-")
+        user = User(
+            username=f"svc-{key_name}-{uid[:8]}",
+            email=f"{key_name}-{uid[:8]}@platform.internal",
+            user_id=uid,
+            is_service_account=True,
+        )
+        user.set_unusable_password()
+        user.save()
 
-    OrganizationMember.objects.create(
-        user=user,
-        organization=organization,
-        role=UserRole.USER.value,
-    )
+        OrganizationMember.objects.create(
+            user=user,
+            organization=organization,
+            role=UserRole.USER.value,
+        )
 
-    platform_api_key.api_user = user
-    platform_api_key.save(update_fields=["api_user"])
+        platform_api_key.api_user = user
+        platform_api_key.save(update_fields=["api_user"])
     return user
 
 
 def transfer_ownership(from_user, to_user):
     """Transfer all resource ownership from one user to another.
 
-    Replaces from_user with to_user across:
+    Replaces from_user with to_user across business models:
     - created_by / modified_by ForeignKey fields
     - shared_users ManyToMany fields
 
@@ -45,6 +60,9 @@ def transfer_ownership(from_user, to_user):
         return
 
     for model in apps.get_models():
+        if model._meta.app_label not in _BUSINESS_APP_LABELS:
+            continue
+
         has_created_by = hasattr(model, "created_by")
         has_shared_users = hasattr(model, "shared_users")
 
