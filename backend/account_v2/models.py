@@ -96,9 +96,7 @@ class User(AbstractUser):
     auth_provider = models.CharField(max_length=64, default="")
     is_service_account = models.BooleanField(
         default=False,
-        db_comment=(
-            "True for service accounts (e.g. platform API key" " bearer auth sessions)"
-        ),
+        db_comment="True for service accounts (e.g. platform API key bearer auth sessions)",
     )
 
     def __str__(self):  # type: ignore
