@@ -96,6 +96,11 @@ class WorkerBuilder:
         # Apply configuration to Celery app
         app.conf.update(celery_config)
 
+        # Apply RabbitMQ HA quorum-queue declarations (after overrides).
+        from .rabbitmq_ha import apply_rabbitmq_ha
+
+        apply_rabbitmq_ha(app, worker_celery_config)
+
         logger.info(
             f"Built {worker_type} worker with queues: "
             f"{worker_celery_config.queue_config.all_queues()}"
