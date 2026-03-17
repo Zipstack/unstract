@@ -15,7 +15,7 @@ from platform_api.serializers import (
     PlatformApiKeyListSerializer,
     PlatformApiKeyUpdateSerializer,
 )
-from platform_api.services import create_api_user_for_key, delete_api_user_for_key
+from platform_api.services import create_api_user_for_key
 
 
 class PlatformApiKeyViewSet(viewsets.ModelViewSet):
@@ -74,7 +74,6 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
-        delete_api_user_for_key(instance)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
