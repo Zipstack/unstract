@@ -27,6 +27,9 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Mana
         return super().get_queryset()
 
     def for_user(self, user: User) -> models.QuerySet:
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         return (
             self.get_queryset()
             .filter(

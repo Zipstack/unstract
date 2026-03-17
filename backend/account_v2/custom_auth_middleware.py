@@ -104,6 +104,24 @@ class CustomAuthMiddleware:
                 {"message": "API key not properly configured"}, status=401
             )
 
+        # Block DELETE for all API key access
+        if request.method == "DELETE":
+            return JsonResponse(
+                {"message": "DELETE operations are not allowed via API key"},
+                status=403,
+            )
+
+        # Block write operations for read-only keys
+        if key.permission == "read" and request.method not in (
+            "GET",
+            "HEAD",
+            "OPTIONS",
+        ):
+            return JsonResponse(
+                {"message": "API key has read-only permission"},
+                status=403,
+            )
+
         request.user = key.api_user
         request.platform_api_key = key
         # Skip CSRF for Bearer-authenticated requests

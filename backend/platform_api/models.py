@@ -6,12 +6,22 @@ from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import DefaultOrganizationMixin
 
 
+class ApiKeyPermission(models.TextChoices):
+    READ = "read", "Read"
+    READ_WRITE = "read_write", "Read/Write"
+
+
 class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=128)
     description = models.TextField(max_length=512)
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
+    permission = models.CharField(
+        max_length=16,
+        choices=ApiKeyPermission.choices,
+        default=ApiKeyPermission.READ_WRITE,
+    )
     created_by = models.ForeignKey(
         User,
         on_delete=models.SET_NULL,

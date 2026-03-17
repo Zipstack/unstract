@@ -38,6 +38,7 @@ class PlatformApiKeyListSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "modified_at",
+            "permission",
             "created_by_email",
         ]
 
@@ -54,7 +55,7 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
 
     class Meta:
         model = PlatformApiKey
-        fields = ["name", "description"]
+        fields = ["name", "description", "permission"]
 
     def validate_name(self, value):
         return validate_safe_text(value)
@@ -66,11 +67,12 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
 class PlatformApiKeyUpdateSerializer(AuditSerializer):
     class Meta:
         model = PlatformApiKey
-        fields = ["name", "description", "is_active"]
+        fields = ["name", "description", "is_active", "permission"]
         extra_kwargs = {
             "name": {"required": False},
             "description": {"required": False},
             "is_active": {"required": False},
+            "permission": {"required": False},
         }
 
     def validate_name(self, value):

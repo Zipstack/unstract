@@ -11,6 +11,8 @@ class IsOwner(permissions.BasePermission):
     """Custom permission to only allow owners of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if getattr(request.user, "is_service_account", False):
+            return True
         return True if obj.created_by == request.user else False
 
 
@@ -26,6 +28,8 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if getattr(request.user, "is_service_account", False):
+            return True
         return (
             True
             if (
@@ -42,6 +46,8 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if getattr(request.user, "is_service_account", False):
+            return True
         return (
             True
             if (

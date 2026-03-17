@@ -205,7 +205,9 @@ class SharedUserListSerializer(BaseAdapterSerializer):
         )  # type: ignore
 
     def get_shared_users(self, obj):
-        return UserSerializer(obj.shared_users.all(), many=True).data
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

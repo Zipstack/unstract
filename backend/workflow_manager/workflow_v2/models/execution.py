@@ -42,12 +42,17 @@ class WorkflowExecutionManager(models.Manager):
         3. Both shared -> User can see all executions
         4. Neither shared -> User cannot see executions
 
+        Service accounts see all executions (org-scoped by view).
+
         Args:
             user: The user to filter executions for
 
         Returns:
             QuerySet of executions that the user has permission to access
         """
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         # Filter for workflow access
         workflow_filter = Q(workflow__created_by=user) | Q(workflow__shared_users=user)
 

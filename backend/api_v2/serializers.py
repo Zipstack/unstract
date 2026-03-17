@@ -513,7 +513,10 @@ class SharedUserListSerializer(ModelSerializer):
 
     def get_shared_users(self, obj):
         """Return list of shared users with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
+        return [
+            {"id": user.id, "email": user.email}
+            for user in obj.shared_users.filter(is_service_account=False)
+        ]
 
     def get_created_by(self, obj):
         """Return creator details."""

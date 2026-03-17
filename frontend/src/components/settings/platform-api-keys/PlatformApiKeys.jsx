@@ -11,8 +11,10 @@ import {
   Form,
   Input,
   Modal,
+  Select,
   Switch,
   Table,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -194,6 +196,7 @@ function PlatformApiKeys() {
     editForm.setFieldsValue({
       name: record?.name,
       description: record?.description,
+      permission: record?.permission,
     });
     setIsEditModalOpen(true);
   };
@@ -250,6 +253,17 @@ function PlatformApiKeys() {
             <CopyOutlined className="platform-api-keys__copy-icon" />
           </div>
         </Tooltip>
+      ),
+    },
+    {
+      title: "Permission",
+      dataIndex: "permission",
+      key: "permission",
+      width: "10%",
+      render: (text) => (
+        <Tag color={text === "read_write" ? "blue" : "default"}>
+          {text === "read_write" ? "Read/Write" : "Read"}
+        </Tag>
       ),
     },
     {
@@ -402,6 +416,16 @@ function PlatformApiKeys() {
               maxLength={512}
             />
           </Form.Item>
+          <Form.Item
+            name="permission"
+            label="Permission"
+            initialValue="read_write"
+          >
+            <Select>
+              <Select.Option value="read_write">Read/Write</Select.Option>
+              <Select.Option value="read">Read</Select.Option>
+            </Select>
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -448,6 +472,12 @@ function PlatformApiKeys() {
               rows={3}
               maxLength={512}
             />
+          </Form.Item>
+          <Form.Item name="permission" label="Permission">
+            <Select>
+              <Select.Option value="read_write">Read/Write</Select.Option>
+              <Select.Option value="read">Read</Select.Option>
+            </Select>
           </Form.Item>
         </Form>
       </Modal>
