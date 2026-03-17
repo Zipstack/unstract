@@ -53,6 +53,31 @@ def create_api_user_for_key(platform_api_key, organization):
     return user
 
 
+def _transfer_model_ownership(model, from_user, to_user):
+    """Transfer ownership for a single model from one user to another."""
+    has_created_by = hasattr(model, "created_by")
+    has_shared_users = hasattr(model, "shared_users")
+
+    if has_created_by:
+        owned_pks = list(
+            model.objects.filter(created_by=from_user).values_list("pk", flat=True)
+        )
+        model.objects.filter(pk__in=owned_pks).update(created_by=to_user)
+
+        # Remove to_user from shared_users on records they now own
+        if has_shared_users and owned_pks:
+            for instance in model.objects.filter(pk__in=owned_pks, shared_users=to_user):
+                instance.shared_users.remove(to_user)
+
+    if hasattr(model, "modified_by"):
+        model.objects.filter(modified_by=from_user).update(modified_by=to_user)
+
+    if has_shared_users:
+        for instance in model.objects.filter(shared_users=from_user):
+            instance.shared_users.add(to_user)
+            instance.shared_users.remove(from_user)
+
+
 def transfer_ownership(from_user, to_user):
     """Transfer all resource ownership from one user to another.
 
@@ -70,30 +95,7 @@ def transfer_ownership(from_user, to_user):
     for model in apps.get_models():
         if model._meta.app_label not in _BUSINESS_APP_LABELS:
             continue
-
-        has_created_by = hasattr(model, "created_by")
-        has_shared_users = hasattr(model, "shared_users")
-
-        if has_created_by:
-            owned_pks = list(
-                model.objects.filter(created_by=from_user).values_list("pk", flat=True)
-            )
-            model.objects.filter(pk__in=owned_pks).update(created_by=to_user)
-
-            # Remove to_user from shared_users on records they now own
-            if has_shared_users and owned_pks:
-                for instance in model.objects.filter(
-                    pk__in=owned_pks, shared_users=to_user
-                ):
-                    instance.shared_users.remove(to_user)
-
-        if hasattr(model, "modified_by"):
-            model.objects.filter(modified_by=from_user).update(modified_by=to_user)
-
-        if has_shared_users:
-            for instance in model.objects.filter(shared_users=from_user):
-                instance.shared_users.add(to_user)
-                instance.shared_users.remove(from_user)
+        _transfer_model_ownership(model, from_user, to_user)
 
 
 def delete_api_user_for_key(platform_api_key):
