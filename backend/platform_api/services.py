@@ -9,11 +9,10 @@ def create_api_user_for_key(platform_api_key, organization):
     import uuid as _uuid
 
     uid = str(_uuid.uuid4())
-    name_slug = platform_api_key.name.lower().replace(" ", "-")[:20]
-    short_uid = uid[-4:]
+    key_name = platform_api_key.name.lower().replace(" ", "-")
     user = User(
-        username=f"svc-{name_slug}-{short_uid}",
-        email=f"{name_slug}-{short_uid}@platform.internal",
+        username=f"svc-{key_name}-{uid[:8]}",
+        email=f"{key_name}@platform.internal",
         user_id=uid,
         is_service_account=True,
     )
