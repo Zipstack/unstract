@@ -1,6 +1,7 @@
 import re
 
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 
 from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
@@ -56,6 +57,13 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
     class Meta:
         model = PlatformApiKey
         fields = ["name", "description", "permission"]
+        validators = [
+            UniqueTogetherValidator(
+                queryset=PlatformApiKey.objects.all(),
+                fields=["name", "organization"],
+                message="A key with this name already exists in your organization.",
+            )
+        ]
 
     def validate_name(self, value):
         return validate_safe_text(value)
@@ -74,6 +82,13 @@ class PlatformApiKeyUpdateSerializer(AuditSerializer):
             "is_active": {"required": False},
             "permission": {"required": False},
         }
+        validators = [
+            UniqueTogetherValidator(
+                queryset=PlatformApiKey.objects.all(),
+                fields=["name", "organization"],
+                message="A key with this name already exists in your organization.",
+            )
+        ]
 
     def validate_name(self, value):
         return validate_safe_text(value)
