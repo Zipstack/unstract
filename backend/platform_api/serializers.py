@@ -1,7 +1,7 @@
 import re
 
 from rest_framework import serializers
-from rest_framework.validators import UniqueTogetherValidator
+from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
@@ -57,16 +57,15 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
     class Meta:
         model = PlatformApiKey
         fields = ["name", "description", "permission"]
-        validators = [
-            UniqueTogetherValidator(
-                queryset=PlatformApiKey.objects.all(),
-                fields=["name", "organization"],
-                message="A key with this name already exists in your organization.",
-            )
-        ]
 
     def validate_name(self, value):
-        return validate_safe_text(value)
+        value = validate_safe_text(value)
+        organization = UserContext.get_organization()
+        if PlatformApiKey.objects.filter(name=value, organization=organization).exists():
+            raise serializers.ValidationError(
+                "A key with this name already exists in your organization."
+            )
+        return value
 
     def validate_description(self, value):
         return validate_safe_text(value)
@@ -82,16 +81,18 @@ class PlatformApiKeyUpdateSerializer(AuditSerializer):
             "is_active": {"required": False},
             "permission": {"required": False},
         }
-        validators = [
-            UniqueTogetherValidator(
-                queryset=PlatformApiKey.objects.all(),
-                fields=["name", "organization"],
-                message="A key with this name already exists in your organization.",
-            )
-        ]
 
     def validate_name(self, value):
-        return validate_safe_text(value)
+        value = validate_safe_text(value)
+        organization = UserContext.get_organization()
+        qs = PlatformApiKey.objects.filter(name=value, organization=organization)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
+            raise serializers.ValidationError(
+                "A key with this name already exists in your organization."
+            )
+        return value
 
     def validate_description(self, value):
         return validate_safe_text(value)
