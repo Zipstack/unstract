@@ -210,3 +210,16 @@ class FileUploadIdeSerializer(serializers.Serializer):
             )
         ],
     )
+
+
+class SyncPromptsSerializer(serializers.Serializer):
+    data = serializers.DictField(required=True)
+    create_copy = serializers.BooleanField(default=False)
+
+    def validate_data(self, value):
+        required_keys = {"prompts"}
+        if not required_keys.issubset(value.keys()):
+            raise serializers.ValidationError(
+                f"Export JSON must contain keys: {required_keys}"
+            )
+        return value
