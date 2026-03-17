@@ -51,7 +51,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = PlatformApiKeyListSerializer(instance)
+        serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(serializer.data)
 
     def partial_update(self, request, *args, **kwargs):
