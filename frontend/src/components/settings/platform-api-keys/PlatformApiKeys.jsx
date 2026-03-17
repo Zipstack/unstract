@@ -243,15 +243,17 @@ function PlatformApiKeys() {
       width: "14%",
       render: (_, record) => (
         <Tooltip title="Click to copy">
-          <div
+          <Button
+            type="text"
             className="platform-api-keys__key-cell"
             onClick={() => handleCopyKey(record)}
+            aria-label={`Copy API key ${record?.name}`}
           >
             <Typography.Text className="platform-api-keys__key-text">
               {record?.key}
             </Typography.Text>
             <CopyOutlined className="platform-api-keys__copy-icon" />
-          </div>
+          </Button>
         </Tooltip>
       ),
     },
