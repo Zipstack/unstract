@@ -83,6 +83,13 @@ class CustomAuthMiddleware:
         except (ValueError, AttributeError):
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
+        # Block DELETE before any DB lookup — never allowed via API key
+        if request.method == "DELETE":
+            return JsonResponse(
+                {"message": "DELETE operations are not allowed via API key"},
+                status=403,
+            )
+
         try:
             key = PlatformApiKey.objects.select_related(
                 "created_by", "api_user", "organization"
@@ -100,15 +107,13 @@ class CustomAuthMiddleware:
             )
 
         if not key.api_user:
+            logger.error("API key %s has no linked service account", key.id)
             return JsonResponse(
-                {"message": "API key not properly configured"}, status=401
-            )
-
-        # Block DELETE for all API key access
-        if request.method == "DELETE":
-            return JsonResponse(
-                {"message": "DELETE operations are not allowed via API key"},
-                status=403,
+                {
+                    "message": "API key service account is missing. "
+                    "Please delete and recreate the key."
+                },
+                status=401,
             )
 
         # Block write operations for read-only keys

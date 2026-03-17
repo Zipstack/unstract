@@ -5,8 +5,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from utils.user_context import UserContext
 
-from platform_api.constants import PLATFORM_API_KEY_MAX_COUNT
-from platform_api.exceptions import KeyCountExceeded
 from platform_api.models import PlatformApiKey
 from platform_api.permissions import IsOrganizationAdmin
 from platform_api.serializers import (
@@ -37,12 +35,6 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         organization = UserContext.get_organization()
-
-        key_count = PlatformApiKey.objects.filter(
-            organization=organization,
-        ).count()
-        if key_count >= PLATFORM_API_KEY_MAX_COUNT:
-            raise KeyCountExceeded()
 
         serializer = PlatformApiKeyCreateSerializer(
             data=request.data, context={"request": request}

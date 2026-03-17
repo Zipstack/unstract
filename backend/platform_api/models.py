@@ -15,6 +15,8 @@ class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     name = models.CharField(max_length=128)
     description = models.TextField(max_length=512)
+    # TODO: Store hashed key instead of plaintext. Show plaintext only at
+    # create/rotate, then store hash. Retrieve should return masked value.
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
     permission = models.CharField(
