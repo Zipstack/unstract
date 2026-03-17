@@ -202,16 +202,7 @@ function PlatformApiKeys() {
   };
 
   const handleCopyKey = (record) => {
-    axiosPrivate({
-      method: "GET",
-      url: `${basePath}/keys/${record?.id}/`,
-    })
-      .then((res) => {
-        copyToClipboard(res?.data?.key, "API key");
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to copy API key"));
-      });
+    copyToClipboard(record?.key, "API key (masked)");
   };
 
   const formatDate = (dateStr) => {
