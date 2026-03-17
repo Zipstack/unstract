@@ -1,3 +1,6 @@
+import re
+import uuid as _uuid
+
 from account_v2.enums import UserRole
 from account_v2.models import User
 from django.apps import apps
@@ -18,16 +21,21 @@ _BUSINESS_APP_LABELS = {
 }
 
 
+def _slugify_for_email(name: str) -> str:
+    """Sanitize key name to RFC 5321-safe email local part."""
+    slug = name.lower().replace(" ", "-")
+    slug = re.sub(r"[^a-z0-9\-]", "", slug)
+    return slug[:20] or "key"
+
+
 def create_api_user_for_key(platform_api_key, organization):
     """Create a dedicated service account for bearer auth sessions."""
-    import uuid as _uuid
-
     with transaction.atomic():
         uid = str(_uuid.uuid4())
-        key_name = platform_api_key.name.lower().replace(" ", "-")
+        name_slug = _slugify_for_email(platform_api_key.name)
         user = User(
-            username=f"svc-{key_name}-{uid[:8]}",
-            email=f"{key_name}-{uid[:8]}@platform.internal",
+            username=f"svc-{name_slug}-{uid[:8]}",
+            email=f"{name_slug}-{uid[:8]}@platform.internal",
             user_id=uid,
             is_service_account=True,
         )

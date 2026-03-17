@@ -51,6 +51,11 @@ class WorkflowExecutionManager(models.Manager):
             QuerySet of executions that the user has permission to access
         """
         if getattr(user, "is_service_account", False):
+            from utils.user_context import UserContext
+
+            org = UserContext.get_organization()
+            if org:
+                return self.filter(workflow__organization=org)
             return self.all()
 
         # Filter for workflow access
