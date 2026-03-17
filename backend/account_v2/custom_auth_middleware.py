@@ -101,7 +101,7 @@ class CustomAuthMiddleware:
 
         if not key.api_user:
             return JsonResponse(
-                {"message": "API key not properly configured"}, status=500
+                {"message": "API key not properly configured"}, status=401
             )
 
         request.user = key.api_user
@@ -111,9 +111,8 @@ class CustomAuthMiddleware:
         StateStore.set(Common.LOG_EVENTS_ID, str(key.id))
         StateStore.set(Account.ORGANIZATION_ID, key.organization.organization_id)
 
-        response = self.get_response(request)
-
-        StateStore.clear(Account.ORGANIZATION_ID)
-        StateStore.clear(Common.LOG_EVENTS_ID)
-
-        return response
+        try:
+            return self.get_response(request)
+        finally:
+            StateStore.clear(Account.ORGANIZATION_ID)
+            StateStore.clear(Common.LOG_EVENTS_ID)

@@ -55,6 +55,7 @@ function PlatformApiKeys() {
   const basePath = `/api/v1/unstract/${sessionDetails?.orgId}/platform-api`;
 
   const fetchKeys = useCallback(() => {
+    if (!sessionDetails?.orgId) return;
     setIsLoading(true);
     axiosPrivate({
       method: "GET",
@@ -69,11 +70,11 @@ function PlatformApiKeys() {
       .finally(() => {
         setIsLoading(false);
       });
-  }, [basePath]);
+  }, [basePath, sessionDetails?.orgId]);
 
   useEffect(() => {
     fetchKeys();
-  }, []);
+  }, [fetchKeys]);
 
   const handleCreate = () => {
     createForm.validateFields().then((values) => {

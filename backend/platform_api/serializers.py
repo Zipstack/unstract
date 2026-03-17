@@ -10,7 +10,7 @@ from platform_api.models import PlatformApiKey
 SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:()/]+$")
 SAFE_TEXT_ERROR = (
     "Only alphanumeric characters, spaces, hyphens, underscores, "
-    "periods, commas, colons, and parentheses are allowed."
+    "periods, commas, colons, parentheses, and forward slashes are allowed."
 )
 
 
@@ -50,7 +50,7 @@ class PlatformApiKeyListSerializer(serializers.ModelSerializer):
 
 
 class PlatformApiKeyCreateSerializer(AuditSerializer):
-    description = serializers.CharField(required=True)
+    description = serializers.CharField(required=True, max_length=512)
 
     class Meta:
         model = PlatformApiKey
