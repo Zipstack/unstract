@@ -668,26 +668,28 @@ class LLMCompat:
         )
 
     # ── Sync methods (llama-index interface) ─────────────────────────────────
-    # NOTE: These methods call litellm.completion() directly and do NOT
-    # invoke LLM._record_usage(). Platform-level usage auditing for
-    # retriever LLM calls is not yet wired. The CallbackManager set in
-    # __init__ only registers handlers for BaseEmbedding, not LLMs.
-    # TODO: Add usage recording once the audit pipeline supports it.
+    # All LLM calls delegate to self._llm_instance (SDK1 LLM) so that
+    # litellm invocation, error handling, and usage auditing stay in one
+    # place.
 
     def chat(
         self,
         messages: Sequence[ChatMessage],
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
-        """Synchronous chat completion."""
-        response = litellm.completion( # shouldn't invoke litellm directly
-            messages=self._to_litellm_messages(messages),
-            **self._get_completion_kwargs(**kwargs),
-        )
-        content = response["choices"][0]["message"]["content"]
+        """Synchronous chat completion.
+
+        Extracts the last user message as the prompt and delegates to
+        ``LLM.complete()``.
+        """
+        prompt = self._messages_to_prompt(messages)
+        result = self._llm_instance.complete(prompt, **kwargs)
+        resp = result["response"]
         return ChatResponse(
-            message=ChatMessage(role=MessageRole.ASSISTANT, content=content),
-            raw=response,
+            message=ChatMessage(
+                role=MessageRole.ASSISTANT, content=resp.text
+            ),
+            raw=resp.raw,
         )
 
     def complete(
@@ -697,12 +699,9 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
         """Synchronous completion."""
-        response = litellm.completion(
-            messages=[{"role": "user", "content": prompt}],
-            **self._get_completion_kwargs(**kwargs),
-        )
-        content = response["choices"][0]["message"]["content"]
-        return CompletionResponse(text=content, raw=response)
+        result = self._llm_instance.complete(prompt, **kwargs)
+        resp = result["response"]
+        return CompletionResponse(text=resp.text, raw=resp.raw)
 
     def stream_chat(
         self,
@@ -728,15 +727,19 @@ class LLMCompat:
         messages: Sequence[ChatMessage],
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
-        """Asynchronous chat completion."""
-        response = await litellm.acompletion(
-            messages=self._to_litellm_messages(messages),
-            **self._get_completion_kwargs(**kwargs),
-        )
-        content = response["choices"][0]["message"]["content"]
+        """Asynchronous chat completion.
+
+        Extracts the last user message as the prompt and delegates to
+        ``LLM.acomplete()``.
+        """
+        prompt = self._messages_to_prompt(messages)
+        result = await self._llm_instance.acomplete(prompt, **kwargs)
+        resp = result["response"]
         return ChatResponse(
-            message=ChatMessage(role=MessageRole.ASSISTANT, content=content),
-            raw=response,
+            message=ChatMessage(
+                role=MessageRole.ASSISTANT, content=resp.text
+            ),
+            raw=resp.raw,
         )
 
     async def acomplete(
@@ -746,12 +749,9 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> CompletionResponse:
         """Asynchronous completion."""
-        response = await litellm.acompletion(
-            messages=[{"role": "user", "content": prompt}],
-            **self._get_completion_kwargs(**kwargs),
-        )
-        content = response["choices"][0]["message"]["content"]
-        return CompletionResponse(text=content, raw=response)
+        result = await self._llm_instance.acomplete(prompt, **kwargs)
+        resp = result["response"]
+        return CompletionResponse(text=resp.text, raw=resp.raw)
 
     async def astream_chat(
         self,
@@ -772,33 +772,21 @@ class LLMCompat:
 
     # ── Helper methods ───────────────────────────────────────────────────────
 
-    def _get_completion_kwargs(
-        self,
-        **kwargs: Any,  # noqa: ANN401
-    ) -> dict[str, Any]:
-        """Get validated completion kwargs.
-
-        Merges any runtime overrides with the stored kwargs, validates
-        through the adapter, and removes ``cost_model`` (which is used
-        for internal billing but not accepted by litellm).
-        """
-        merged = {**self._llm_instance.kwargs, **kwargs}
-        completion_kwargs = self._llm_instance.adapter.validate(merged)
-        completion_kwargs.pop("cost_model", None)
-        return completion_kwargs
-
     @staticmethod
-    def _to_litellm_messages(
-        messages: Sequence[ChatMessage],
-    ) -> list[dict[str, str]]:
-        """Convert ChatMessage sequence to litellm message format."""
-        return [
-            {
-                "role": getattr(m.role, "value", str(m.role)),
-                "content": m.content or "",
-            }
-            for m in messages
-        ]
+    def _messages_to_prompt(messages: Sequence[ChatMessage]) -> str:
+        """Extract a single prompt string from a message sequence.
+
+        Uses the content of the last user message. Falls back to the
+        last message of any role if no user message is found.
+        """
+        for msg in reversed(messages):
+            role = getattr(msg.role, "value", str(msg.role))
+            if role == "user":
+                return msg.content or ""
+        # Fallback: use the last message regardless of role.
+        if messages:
+            return messages[-1].content or ""
+        return ""
 
     # ── Factory methods ────────────────────────────────────────────────────
 

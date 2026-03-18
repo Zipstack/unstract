@@ -126,41 +126,47 @@ class TestEmulatedTypes:
         assert meta.model_name == ""
 
 
-# ── _to_litellm_messages tests ──────────────────────────────────────────────
+# ── _messages_to_prompt tests ────────────────────────────────────────────────
 
 
-class TestToLitellmMessages:
-    """Tests for LLMCompat._to_litellm_messages role conversion."""
+class TestMessagesToPrompt:
+    """Tests for LLMCompat._messages_to_prompt extraction."""
 
-    def test_emulated_message_role(self: Self) -> None:
-        """Should handle emulated MessageRole enum."""
+    def test_single_user_message(self: Self) -> None:
+        """Should extract content from a single user message."""
         messages = [ChatMessage(role=MessageRole.USER, content="hello")]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert result == [{"role": "user", "content": "hello"}]
+        assert LLMCompat._messages_to_prompt(messages) == "hello"
 
     def test_none_content_becomes_empty_string(self: Self) -> None:
         """None content should be converted to empty string."""
         messages = [ChatMessage(role=MessageRole.USER, content=None)]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert result == [{"role": "user", "content": ""}]
+        assert LLMCompat._messages_to_prompt(messages) == ""
 
-    def test_multiple_messages(self: Self) -> None:
-        """Should handle multiple messages in sequence."""
+    def test_extracts_last_user_message(self: Self) -> None:
+        """Should extract the last user message from a multi-message sequence."""
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content="You are helpful"),
-            ChatMessage(role=MessageRole.USER, content="Hi"),
-            ChatMessage(role=MessageRole.ASSISTANT, content="Hello"),
+            ChatMessage(role=MessageRole.USER, content="First question"),
+            ChatMessage(role=MessageRole.ASSISTANT, content="Answer"),
+            ChatMessage(role=MessageRole.USER, content="Follow-up"),
         ]
-        result = LLMCompat._to_litellm_messages(messages)
-        assert len(result) == 3
-        assert result[0]["role"] == "system"
-        assert result[1]["role"] == "user"
-        assert result[2]["role"] == "assistant"
+        assert LLMCompat._messages_to_prompt(messages) == "Follow-up"
+
+    def test_falls_back_to_last_message_if_no_user(self: Self) -> None:
+        """Should use last message of any role when no user message exists."""
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content="System prompt"),
+            ChatMessage(role=MessageRole.ASSISTANT, content="Fallback"),
+        ]
+        assert LLMCompat._messages_to_prompt(messages) == "Fallback"
+
+    def test_empty_messages_returns_empty_string(self: Self) -> None:
+        """Should return empty string for empty message list."""
+        assert LLMCompat._messages_to_prompt([]) == ""
 
     def test_string_role_fallback(self: Self) -> None:
         """Should handle non-enum role via getattr fallback."""
         msg = MagicMock()
-        msg.role = "custom_role"
+        msg.role = "user"
         msg.content = "test"
-        result = LLMCompat._to_litellm_messages([msg])
-        assert result == [{"role": "custom_role", "content": "test"}]
+        assert LLMCompat._messages_to_prompt([msg]) == "test"
