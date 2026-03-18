@@ -1,5 +1,6 @@
-"""Unit tests for RetrieverLLM bridge class."""
+"""Unit tests for RetrieverLLM bridge class and BaseRetriever.llm property."""
 
+import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -46,6 +47,146 @@ def mock_compat():
         is_chat_model=True, model_name="gpt-4"
     )
     return compat
+
+
+# ── BaseRetriever.llm property tests ────────────────────────────────────────
+# BaseRetriever imports VectorDB which triggers the full adapter registration
+# chain (Pinecone, Milvus, etc.). We stub unstract.sdk1.vector_db in
+# sys.modules so that BaseRetriever can be imported without those heavy deps.
+
+
+@pytest.fixture
+def _stub_vector_db():
+    """Temporarily stub VectorDB module for BaseRetriever import."""
+    stub = MagicMock()
+    key = "unstract.sdk1.vector_db"
+    original = sys.modules.get(key)
+    sys.modules[key] = stub
+    # Also ensure the base_retriever module is re-imported with the stub.
+    mod_key = (
+        "unstract.prompt_service.core.retrievers.base_retriever"
+    )
+    sys.modules.pop(mod_key, None)
+    yield stub
+    # Restore original module (or remove stub).
+    if original is not None:
+        sys.modules[key] = original
+    else:
+        sys.modules.pop(key, None)
+    sys.modules.pop(mod_key, None)
+
+
+@pytest.fixture
+def base_retriever_cls(_stub_vector_db):
+    """Import and return BaseRetriever with VectorDB stubbed."""
+    from unstract.prompt_service.core.retrievers.base_retriever import (
+        BaseRetriever,
+    )
+
+    return BaseRetriever
+
+
+class TestBaseRetrieverLlmProperty:
+    """Tests for BaseRetriever.llm lazy property."""
+
+    def test_returns_none_when_no_llm_provided(
+        self, base_retriever_cls
+    ):
+        """llm property should return None when constructed without LLM."""
+        retriever = base_retriever_cls(
+            vector_db=MagicMock(),
+            prompt="test",
+            doc_id="doc-1",
+            top_k=5,
+        )
+        assert retriever.llm is None
+
+    def test_returns_retriever_llm_instance(
+        self, base_retriever_cls, mock_sdk1_llm
+    ):
+        """llm property should return a RetrieverLLM wrapping SDK1 LLM."""
+        with patch.object(LLMCompat, "from_llm", return_value=MagicMock()):
+            retriever = base_retriever_cls(
+                vector_db=MagicMock(),
+                prompt="test",
+                doc_id="doc-1",
+                top_k=5,
+                llm=mock_sdk1_llm,
+            )
+            result = retriever.llm
+
+            assert isinstance(result, RetrieverLLM)
+            assert isinstance(result, LlamaIndexBaseLLM)
+
+    def test_lazily_creates_retriever_llm(
+        self, base_retriever_cls, mock_sdk1_llm
+    ):
+        """RetrieverLLM should not be created until .llm is accessed."""
+        retriever = base_retriever_cls(
+            vector_db=MagicMock(),
+            prompt="test",
+            doc_id="doc-1",
+            top_k=5,
+            llm=mock_sdk1_llm,
+        )
+        # Before accessing .llm, the internal cache should be None.
+        assert retriever._retriever_llm is None
+
+        with patch.object(LLMCompat, "from_llm", return_value=MagicMock()):
+            _ = retriever.llm
+
+        # After access, it should be populated.
+        assert retriever._retriever_llm is not None
+
+    def test_caches_retriever_llm_across_accesses(
+        self, base_retriever_cls, mock_sdk1_llm
+    ):
+        """Repeated .llm accesses should return the same instance."""
+        with patch.object(LLMCompat, "from_llm", return_value=MagicMock()):
+            retriever = base_retriever_cls(
+                vector_db=MagicMock(),
+                prompt="test",
+                doc_id="doc-1",
+                top_k=5,
+                llm=mock_sdk1_llm,
+            )
+            first = retriever.llm
+            second = retriever.llm
+
+            assert first is second
+
+    def test_from_llm_called_once_on_repeated_access(
+        self, base_retriever_cls, mock_sdk1_llm
+    ):
+        """LLMCompat.from_llm should only be called once across accesses."""
+        with patch.object(
+            LLMCompat, "from_llm", return_value=MagicMock()
+        ) as mock_factory:
+            retriever = base_retriever_cls(
+                vector_db=MagicMock(),
+                prompt="test",
+                doc_id="doc-1",
+                top_k=5,
+                llm=mock_sdk1_llm,
+            )
+            _ = retriever.llm
+            _ = retriever.llm
+            _ = retriever.llm
+
+            mock_factory.assert_called_once()
+
+    def test_raw_llm_still_accessible(
+        self, base_retriever_cls, mock_sdk1_llm
+    ):
+        """The raw SDK1 LLM should remain accessible via _llm."""
+        retriever = base_retriever_cls(
+            vector_db=MagicMock(),
+            prompt="test",
+            doc_id="doc-1",
+            top_k=5,
+            llm=mock_sdk1_llm,
+        )
+        assert retriever._llm is mock_sdk1_llm
 
 
 # ── RetrieverLLM tests ───────────────────────────────────────────────────────
