@@ -32,6 +32,8 @@ def mock_sdk1_llm():
     llm._tool = MagicMock()
     llm._usage_kwargs = {"run_id": "test-run"}
     llm._capture_metrics = False
+    llm.get_model_name.return_value = "gpt-4"
+    llm.platform_kwargs = {"run_id": "test-run"}
     return llm
 
 

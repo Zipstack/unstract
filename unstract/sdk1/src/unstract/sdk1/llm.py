@@ -259,8 +259,6 @@ class LLM:
                 any processed output, and the captured metrics (if applicable).
         """
         try:
-            litellm.drop_params = True  # drop params that are not supported by the model
-
             messages: list[dict[str, str]] = [
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": prompt},
@@ -682,7 +680,7 @@ class LLMCompat:
         **kwargs: Any,  # noqa: ANN401
     ) -> ChatResponse:
         """Synchronous chat completion."""
-        response = litellm.completion(
+        response = litellm.completion( # shouldn't invoke litellm directly
             messages=self._to_litellm_messages(messages),
             **self._get_completion_kwargs(**kwargs),
         )
@@ -806,27 +804,51 @@ class LLMCompat:
 
     @classmethod
     def from_llm(cls, llm: "LLM") -> "LLMCompat":
-        """Create an LLMCompat instance from an existing SDK1 LLM.
+        """Create an LLMCompat instance reusing an existing SDK1 LLM.
 
-        This factory method encapsulates access to LLM's internal
-        attributes, keeping that knowledge within SDK1 and avoiding
-        cross-package coupling.
+        Reuses the already-initialised ``LLM`` object directly, avoiding
+        redundant adapter validation and ``PlatformHelper`` calls that
+        would occur if we re-created the instance from scratch.
 
         Args:
             llm: An SDK1 LLM instance.
 
         Returns:
-            A new LLMCompat wrapping the same adapter configuration.
+            A new LLMCompat wrapping the same LLM instance.
         """
-        return cls(
-            adapter_id=llm._adapter_id,
-            adapter_metadata=llm._adapter_metadata,
-            adapter_instance_id=llm._adapter_instance_id,
-            tool=llm._tool,
-            usage_kwargs=llm._usage_kwargs,
-            system_prompt=llm._system_prompt,
-            capture_metrics=llm._capture_metrics,
-        )
+        instance = cls.__new__(cls)
+        instance._llm_instance = llm
+        instance._tool = llm._tool
+        instance._adapter_instance_id = llm._adapter_instance_id
+
+        # For compatibility with SDK Callback Manager.
+        instance.model_name = llm.get_model_name()
+        instance.callback_manager = None
+
+        if not PlatformHelper.is_public_adapter(
+            adapter_id=llm._adapter_instance_id
+        ):
+            if llm._tool:
+                platform_api_key = llm._tool.get_env_or_die(
+                    ToolEnv.PLATFORM_API_KEY
+                )
+            else:
+                platform_api_key = os.environ.get(
+                    ToolEnv.PLATFORM_API_KEY, ""
+                )
+
+            from unstract.sdk1.utils.callback_manager import CallbackManager
+
+            CallbackManager.set_callback(
+                platform_api_key=platform_api_key,
+                model=instance,
+                kwargs={
+                    **llm.platform_kwargs,
+                    "adapter_instance_id": llm._adapter_instance_id,
+                },
+            )
+
+        return instance
 
     # ── SDK1 compatibility methods ───────────────────────────────────────────
 

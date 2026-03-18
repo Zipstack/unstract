@@ -28,6 +28,8 @@ def mock_sdk1_llm() -> MagicMock:
     llm._usage_kwargs = {"run_id": "test-run"}
     llm._system_prompt = ""
     llm._capture_metrics = False
+    llm.get_model_name.return_value = "gpt-4"
+    llm.platform_kwargs = {"run_id": "test-run"}
     return llm
 
 
@@ -37,30 +39,51 @@ def mock_sdk1_llm() -> MagicMock:
 class TestLLMCompatFromLlm:
     """Tests for the LLMCompat.from_llm factory method."""
 
-    @patch.object(LLMCompat, "__init__", return_value=None)
-    def test_from_llm_passes_adapter_params(
-        self: Self, mock_init: MagicMock, mock_sdk1_llm: MagicMock
+    @patch("unstract.sdk1.llm.PlatformHelper")
+    def test_from_llm_reuses_llm_instance(
+        self: Self,
+        mock_platform_helper: MagicMock,
+        mock_sdk1_llm: MagicMock,
     ) -> None:
-        """Verify from_llm extracts and forwards all adapter params."""
-        LLMCompat.from_llm(mock_sdk1_llm)
+        """Verify from_llm reuses the existing LLM, not re-creating one."""
+        mock_platform_helper.is_public_adapter.return_value = True
+        result = LLMCompat.from_llm(mock_sdk1_llm)
 
-        mock_init.assert_called_once_with(
-            adapter_id="openai",
-            adapter_metadata={"api_key": "test-key"},
-            adapter_instance_id="inst-123",
-            tool=mock_sdk1_llm._tool,
-            usage_kwargs={"run_id": "test-run"},
-            system_prompt="",
-            capture_metrics=False,
-        )
+        assert result._llm_instance is mock_sdk1_llm
 
-    @patch.object(LLMCompat, "__init__", return_value=None)
+    @patch("unstract.sdk1.llm.PlatformHelper")
     def test_from_llm_returns_llmcompat_instance(
-        self: Self, mock_init: MagicMock, mock_sdk1_llm: MagicMock
+        self: Self,
+        mock_platform_helper: MagicMock,
+        mock_sdk1_llm: MagicMock,
     ) -> None:
         """Verify from_llm returns an LLMCompat instance."""
+        mock_platform_helper.is_public_adapter.return_value = True
         result = LLMCompat.from_llm(mock_sdk1_llm)
         assert isinstance(result, LLMCompat)
+
+    @patch("unstract.sdk1.llm.PlatformHelper")
+    def test_from_llm_sets_model_name(
+        self: Self,
+        mock_platform_helper: MagicMock,
+        mock_sdk1_llm: MagicMock,
+    ) -> None:
+        """Verify from_llm sets model_name from the LLM instance."""
+        mock_platform_helper.is_public_adapter.return_value = True
+        result = LLMCompat.from_llm(mock_sdk1_llm)
+        assert result.model_name == "gpt-4"
+
+    @patch("unstract.sdk1.llm.PlatformHelper")
+    def test_from_llm_does_not_call_init(
+        self: Self,
+        mock_platform_helper: MagicMock,
+        mock_sdk1_llm: MagicMock,
+    ) -> None:
+        """Verify from_llm bypasses __init__ (no redundant LLM creation)."""
+        mock_platform_helper.is_public_adapter.return_value = True
+        with patch.object(LLMCompat, "__init__") as mock_init:
+            LLMCompat.from_llm(mock_sdk1_llm)
+            mock_init.assert_not_called()
 
 
 # ── Emulated types tests ────────────────────────────────────────────────────
