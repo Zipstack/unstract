@@ -155,7 +155,9 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output
-        data["created_by_email"] = instance.created_by.email
+        data["created_by_email"] = (
+            instance.created_by.email if instance.created_by else ""
+        )
 
         return data
 
