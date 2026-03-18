@@ -686,9 +686,7 @@ class LLMCompat:
         result = self._llm_instance.complete(prompt, **kwargs)
         resp = result["response"]
         return ChatResponse(
-            message=ChatMessage(
-                role=MessageRole.ASSISTANT, content=resp.text
-            ),
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=resp.text),
             raw=resp.raw,
         )
 
@@ -736,9 +734,7 @@ class LLMCompat:
         result = await self._llm_instance.acomplete(prompt, **kwargs)
         resp = result["response"]
         return ChatResponse(
-            message=ChatMessage(
-                role=MessageRole.ASSISTANT, content=resp.text
-            ),
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=resp.text),
             raw=resp.raw,
         )
 
@@ -813,17 +809,11 @@ class LLMCompat:
         instance.model_name = llm.get_model_name()
         instance.callback_manager = None
 
-        if not PlatformHelper.is_public_adapter(
-            adapter_id=llm._adapter_instance_id
-        ):
+        if not PlatformHelper.is_public_adapter(adapter_id=llm._adapter_instance_id):
             if llm._tool:
-                platform_api_key = llm._tool.get_env_or_die(
-                    ToolEnv.PLATFORM_API_KEY
-                )
+                platform_api_key = llm._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
             else:
-                platform_api_key = os.environ.get(
-                    ToolEnv.PLATFORM_API_KEY, ""
-                )
+                platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
 
             from unstract.sdk1.utils.callback_manager import CallbackManager
 

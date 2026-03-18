@@ -117,9 +117,7 @@ class TestLLMCompatDelegation:
     ) -> None:
         """complete() should call LLM.complete() and wrap the result."""
         llm_mock = compat_from_mock._llm_instance
-        llm_mock.complete.return_value = self._make_llm_response(
-            "done", {"id": "r1"}
-        )
+        llm_mock.complete.return_value = self._make_llm_response("done", {"id": "r1"})
 
         result = compat_from_mock.complete("test prompt")
 
@@ -202,9 +200,7 @@ class TestLLMCompatDelegation:
         """achat() should extract prompt and delegate to LLM.acomplete()."""
         llm_mock = compat_from_mock._llm_instance
         llm_mock.acomplete = AsyncMock(
-            return_value=self._make_llm_response(
-                "async chat reply", {"id": "r4"}
-            )
+            return_value=self._make_llm_response("async chat reply", {"id": "r4"})
         )
 
         messages = [
@@ -255,7 +251,7 @@ class TestLLMCompatDelegation:
         self: Self,
         compat_from_mock: LLMCompat,
     ) -> None:
-        """metadata property should return emulated LLMMetadata."""
+        """Metadata property should return emulated LLMMetadata."""
         meta = compat_from_mock.metadata
         assert isinstance(meta, LLMMetadata)
         assert meta.is_chat_model is True
@@ -274,9 +270,7 @@ class TestLLMCompatDelegation:
         compat_from_mock: LLMCompat,
     ) -> None:
         """get_metrics() should delegate to LLM instance."""
-        compat_from_mock._llm_instance.get_metrics.return_value = {
-            "time": 1.5
-        }
+        compat_from_mock._llm_instance.get_metrics.return_value = {"time": 1.5}
         assert compat_from_mock.get_metrics() == {"time": 1.5}
 
     def test_test_connection_delegates(
