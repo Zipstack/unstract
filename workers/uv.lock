@@ -4700,7 +4700,6 @@ dependencies = [
     { name = "redis" },
     { name = "singleton-decorator" },
     { name = "tiktoken" },
-    { name = "unstract-core" },
 ]
 
 [package.optional-dependencies]
@@ -4731,7 +4730,7 @@ requires-dist = [
     { name = "llama-index-vector-stores-qdrant", specifier = ">=0.9.1" },
     { name = "llama-index-vector-stores-weaviate", specifier = ">=1.4.1" },
     { name = "llama-parse", specifier = ">=0.6.0" },
-    { name = "llmwhisperer-client", specifier = ">=2.6.2" },
+    { name = "llmwhisperer-client", specifier = ">=2.2.1" },
     { name = "pdfplumber", specifier = ">=0.11.2" },
     { name = "python-dotenv", specifier = "==1.0.1" },
     { name = "python-magic", specifier = "~=0.4.27" },
@@ -4740,7 +4739,6 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], marker = "extra == 'aws'", specifier = "~=2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "tiktoken", specifier = "~=0.9.0" },
-    { name = "unstract-core", editable = "../unstract/core" },
 ]
 provides-extras = ["aws", "azure", "gcs"]
 
@@ -4758,7 +4756,6 @@ docs = [{ name = "lazydocs", specifier = "~=0.4.8" }]
 test = [
     { name = "parameterized", specifier = "==0.9.0" },
     { name = "pytest", specifier = "==8.3.3" },
-    { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-md-report", specifier = ">=0.6.2" },
     { name = "pytest-mock", specifier = "==3.14.0" },

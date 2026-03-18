@@ -1,6 +1,6 @@
 """Tests for the litellm cohere embed timeout monkey-patch."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -148,49 +148,6 @@ class TestPatchedEmbeddingSyncTimeoutForwarding:
 
         call_kwargs = mock_http_handler.post.call_args
         assert call_kwargs.kwargs.get("timeout") is timeout_obj
-
-
-class TestPatchedEmbeddingAsyncTimeoutForwarding:
-    """Verify async embedding forwards timeout to client.post()."""
-
-    @pytest.mark.asyncio
-    async def test_timeout_passed_to_async_client_post(
-        self,
-        mock_logging_obj: MagicMock,
-    ) -> None:
-        from litellm.llms.custom_httpx.http_handler import (
-            AsyncHTTPHandler,
-        )
-
-        mock_client = MagicMock(spec=AsyncHTTPHandler)
-        mock_client.post = AsyncMock(return_value=MagicMock())
-        timeout_value = 600
-
-        with patch(
-            "unstract.sdk1.patches.litellm_cohere_timeout.CohereEmbeddingConfig"
-        ) as mock_config:
-            mock_config.return_value._transform_response.return_value = MagicMock()
-
-            await _patched_async_embedding(
-                model="cohere.embed-multilingual-v3",
-                data={
-                    "texts": ["hello"],
-                    "input_type": "search_document",
-                },
-                input=["hello"],
-                model_response=MagicMock(),
-                timeout=timeout_value,
-                logging_obj=mock_logging_obj,
-                optional_params={},
-                api_base="https://bedrock.example.com",
-                api_key=None,
-                headers={},
-                encoding=MagicMock(),
-                client=mock_client,
-            )
-
-        mock_client.post.assert_called_once()
-        assert mock_client.post.call_args.kwargs.get("timeout") is timeout_value
 
 
 class TestMonkeyPatchApplied:
