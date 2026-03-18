@@ -40,6 +40,15 @@ class FileStorageHelper:
                     for k, v in storage_config.items()
                     if not (isinstance(v, str) and v.strip() == "")
                 }
+                # s3fs expects region_name inside client_kwargs,
+                # not as a top-level arg
+                region_name = storage_config.pop("region_name", None)
+                if region_name:
+                    client_kwargs: dict[str, object] = storage_config.get(  # type: ignore[assignment]
+                        "client_kwargs", {}
+                    )
+                    client_kwargs["region_name"] = region_name
+                    storage_config["client_kwargs"] = client_kwargs
 
             fs = fsspec.filesystem(
                 protocol=protocol,
