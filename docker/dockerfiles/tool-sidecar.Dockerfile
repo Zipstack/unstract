@@ -1,10 +1,8 @@
 # Use Python 3.12.9-slim for minimal size
 FROM python:3.12-slim-trixie  AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Tool Sidecar Container" \
-    version="${VERSION}"
+    description="Tool Sidecar Container"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \

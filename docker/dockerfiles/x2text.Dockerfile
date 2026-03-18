@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
 FROM python:3.12-slim-trixie  AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="X2Text Service Container" \
-    version="${VERSION}"
+    description="X2Text Service Container"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \

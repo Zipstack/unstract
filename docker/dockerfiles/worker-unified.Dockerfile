@@ -1,10 +1,8 @@
 # Unified Worker Dockerfile - Optimized for fast builds
 FROM python:3.12.9-slim AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Unified Worker Container for All Worker Types" \
-    version="${VERSION}"
+    description="Unified Worker Container for All Worker Types"
 
 # Set environment variables (CRITICAL: PYTHONPATH makes paths work!)
 ENV PYTHONDONTWRITEBYTECODE=1 \

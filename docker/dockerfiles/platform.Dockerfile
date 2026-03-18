@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
 FROM python:3.12-slim-trixie AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Platform Service Container" \
-    version="${VERSION}"
+    description="Platform Service Container"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
