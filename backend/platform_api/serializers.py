@@ -74,25 +74,12 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
 class PlatformApiKeyUpdateSerializer(AuditSerializer):
     class Meta:
         model = PlatformApiKey
-        fields = ["name", "description", "is_active", "permission"]
+        fields = ["description", "is_active", "permission"]
         extra_kwargs = {
-            "name": {"required": False},
             "description": {"required": False},
             "is_active": {"required": False},
             "permission": {"required": False},
         }
-
-    def validate_name(self, value):
-        value = validate_safe_text(value)
-        organization = UserContext.get_organization()
-        qs = PlatformApiKey.objects.filter(name=value, organization=organization)
-        if self.instance:
-            qs = qs.exclude(pk=self.instance.pk)
-        if qs.exists():
-            raise serializers.ValidationError(
-                "A key with this name already exists in your organization."
-            )
-        return value
 
     def validate_description(self, value):
         return validate_safe_text(value)

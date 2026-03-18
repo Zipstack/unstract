@@ -194,7 +194,6 @@ function PlatformApiKeys() {
   const openEditModal = (record) => {
     setSelectedKey(record);
     editForm.setFieldsValue({
-      name: record?.name,
       description: record?.description,
       permission: record?.permission,
     });
@@ -446,16 +445,8 @@ function PlatformApiKeys() {
         centered
       >
         <Form form={editForm} layout="vertical">
-          <Form.Item
-            name="name"
-            label="Name"
-            rules={[
-              { required: true, message: "Name is required" },
-              { max: 128, message: "Name cannot exceed 128 characters" },
-              { pattern: SAFE_TEXT_REGEX, message: SAFE_TEXT_MESSAGE },
-            ]}
-          >
-            <Input placeholder="Enter key name" maxLength={128} />
+          <Form.Item label="Name">
+            <Input value={selectedKey?.name} disabled />
           </Form.Item>
           <Form.Item
             name="description"
