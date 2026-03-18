@@ -26,7 +26,9 @@ class SharedUserListSerializer(serializers.ModelSerializer):
 
     def get_shared_users(self, obj):
         """Get list of shared users with their details."""
-        return UserSerializer(obj.shared_users.all(), many=True).data
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
     def get_created_by(self, obj):
         """Get the creator's username."""

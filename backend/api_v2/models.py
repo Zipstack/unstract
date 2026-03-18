@@ -30,7 +30,11 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager)
         - API deployments created by the user
         - API deployments shared with the user
         - API deployments shared with the entire organization
+        - Service accounts see all org resources
         """
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         from django.db.models import Q
 
         return self.filter(
