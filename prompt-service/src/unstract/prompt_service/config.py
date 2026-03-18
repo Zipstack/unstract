@@ -38,7 +38,7 @@ def create_app() -> Flask:
     log_level = getattr(logging, log_level, logging.INFO)
     app = Flask("prompt-service")
     app.logger.setLevel(log_level)
-    app.logger.info("Initializing Flask application...")
+    app.logger.info("Initializing Flask application")
 
     # Load plugins
     plugins_dir = Path(__file__).parent / "plugins"
