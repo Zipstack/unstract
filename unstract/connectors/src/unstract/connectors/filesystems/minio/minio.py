@@ -16,22 +16,30 @@ logger = logging.getLogger(__name__)
 class MinioFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MinioFS/S3")
-        key = settings.get("key", "")
-        secret = settings.get("secret", "")
-        endpoint_url = settings.get("endpoint_url", "")
+        key = (settings.get("key") or "").strip()
+        secret = (settings.get("secret") or "").strip()
+        endpoint_url = (settings.get("endpoint_url") or "").strip()
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}
+
+        creds: dict[str, str] = {}
+        if key and secret:
+            creds["key"] = key
+            creds["secret"] = secret
+        if endpoint_url:
+            creds["endpoint_url"] = endpoint_url
+
+        self._using_static_creds = bool(key and secret)
+
         self.s3 = S3FileSystem(
             anon=False,
-            key=key,
-            secret=secret,
             use_listings_cache=False,
             default_fill_cache=False,
             default_cache_type="none",
             skip_instance_cache=True,
-            endpoint_url=endpoint_url,
             client_kwargs=client_kwargs,
+            **creds,
         )
 
     @staticmethod
@@ -92,12 +100,13 @@ class MinioFS(UnstractFileSystem):
             file_hash = file_hash.strip('"')
             if "-" in file_hash:
                 logger.warning(
-                    f"[S3/MinIO] Multipart upload detected. ETag may not be an "
-                    f"MD5 hash. Full metadata: {metadata}"
+                    "[S3/MinIO] Multipart upload detected. ETag may not be an "
+                    "MD5 hash. Full metadata: %s",
+                    metadata,
                 )
                 return None
             return file_hash
-        logger.error(f"[MinIO] File hash not found for the metadata: {metadata}")
+        logger.error("[MinIO] File hash not found for the metadata: %s", metadata)
         return None
 
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
@@ -119,7 +128,8 @@ class MinioFS(UnstractFileSystem):
                 return last_modified
 
         logger.debug(
-            f"[S3/MinIO] No modified date found in metadata keys: {list(metadata.keys())}"
+            "[S3/MinIO] No modified date found in metadata keys: %s",
+            list(metadata.keys()),
         )
         return None
 
@@ -146,7 +156,9 @@ class MinioFS(UnstractFileSystem):
             return dt.astimezone(UTC)
         except (ValueError, TypeError):
             logger.warning(
-                f"[S3/MinIO] Failed to parse datetime '{date_str}' from metadata keys: {metadata_keys}"
+                "[S3/MinIO] Failed to parse datetime '%s' from metadata keys: %s",
+                date_str,
+                metadata_keys,
             )
             return None
 
@@ -155,7 +167,7 @@ class MinioFS(UnstractFileSystem):
         try:
             return datetime.fromtimestamp(timestamp, tz=UTC)
         except (ValueError, OSError):
-            logger.warning(f"[S3/MinIO] Invalid epoch timestamp: {timestamp}")
+            logger.warning("[S3/MinIO] Invalid epoch timestamp: %s", timestamp)
             return None
 
     def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
@@ -183,7 +195,9 @@ class MinioFS(UnstractFileSystem):
             return self._parse_numeric_timestamp(last_modified)
 
         logger.debug(
-            f"[S3/MinIO] Unsupported datetime type '{type(last_modified)}' in metadata keys: {list(metadata.keys())}"
+            "[S3/MinIO] Unsupported datetime type '%s' in metadata keys: %s",
+            type(last_modified),
+            list(metadata.keys()),
         )
         return None
 
@@ -195,5 +209,7 @@ class MinioFS(UnstractFileSystem):
         try:
             self.get_fsspec_fs().ls("")
         except Exception as e:
-            raise handle_s3fs_exception(e) from e
+            raise handle_s3fs_exception(
+                e, using_static_creds=self._using_static_creds
+            ) from e
         return True
