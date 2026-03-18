@@ -41,6 +41,21 @@ class BaseRetriever:
             self._retriever_llm = RetrieverLLM(llm=self._llm)
         return self._retriever_llm
 
+    def require_llm(self) -> RetrieverLLM:
+        """Return the llama-index LLM or raise if not configured.
+
+        Call this in retrievers that need an LLM (KeywordTable, Fusion,
+        Subquestion) to fail early with a clear message instead of
+        letting llama-index silently fall back to its default OpenAI LLM.
+        """
+        llm = self.llm
+        if llm is None:
+            raise ValueError(
+                f"{type(self).__name__} requires an LLM. "
+                "Pass llm= when constructing the retriever."
+            )
+        return llm
+
     @staticmethod
     def retrieve() -> set[str]:
         return set()
