@@ -41,6 +41,7 @@ COPY tools/structure/requirements.txt ${APP_HOME}/
 
 # Copy specific subdirectories while preserving structure
 COPY ${BUILD_PACKAGES_PATH}/sdk1 /unstract/sdk1
+COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 # Install OpenTelemetry packages first (less likely to change)

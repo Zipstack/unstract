@@ -17,7 +17,7 @@
       "type": "string",
       "title": "Model",
       "default": "",
-      "description": "Provide the model name to be used. Example:llama2, llama3, mistral"
+      "description": "Provide the model name to be used. Example: llama3.1, llama3, mistral, deepseek-r1"
     },
     "base_url": {
       "type": "string",
@@ -25,12 +25,27 @@
       "default": "",
       "description": "Provide the base URL where Ollama server is running. Example: http://docker.host.internal:11434 or http://localhost:11434"
     },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to generate. Maps to Ollama's num_predict parameter."
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "title": "Temperature",
+      "default": 0.7,
+      "description": "Controls randomness. Lower values make output more focused and deterministic (0-2)."
+    },
     "context_window": {
       "type": "number",
       "minimum": 0,
       "multipleOf": 1,
-      "title": "Context window",
-      "default":3900,
+      "title": "Context Window",
+      "default": 3900,
       "description": "The maximum number of context tokens for the model."
     },
     "request_timeout": {
@@ -40,6 +55,12 @@
       "title": "Request Timeout",
       "default": 900,
       "description": "Request timeout in seconds"
+    },
+    "json_mode": {
+      "type": "boolean",
+      "title": "JSON Mode",
+      "default": false,
+      "description": "Enable JSON mode to constrain output to valid JSON. Useful for structured data extraction."
     }
   }
 }

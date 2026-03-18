@@ -41,13 +41,14 @@ class AzureCloudStorageFS(UnstractFileSystem):
         self.bucket = settings.get("bucket", "")
         # adlfs._ls_containers() unconditionally reads from DirCache after
         # populating it — use_listings_cache=False makes the write a no-op,
-        # causing a KeyError. Setting listings_expiry_time=0 allows writes
-        # but expires entries immediately on subsequent reads.
+        # causing a KeyError. listings_expiry_time=0 also breaks because
+        # DirCache expires entries between the write and immediate read
+        # (even nanoseconds trigger expiry). Use 1s as the minimum safe value.
         # Check https://github.com/fsspec/adlfs/issues/230 for more context.
         self.azure_fs = AzureBlobFileSystem(
             account_name=account_name,
             credential=access_key,
-            listings_expiry_time=0,
+            listings_expiry_time=1,
         )
 
     @staticmethod
