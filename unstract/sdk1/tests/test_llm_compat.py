@@ -161,9 +161,7 @@ class TestLLMCompatDelegation:
         messages = [ChatMessage(role=MessageRole.USER, content="Hi")]
         compat_from_mock.chat(messages, temperature=0.5)
 
-        llm_mock.complete.assert_called_once_with(
-            "user: Hi", temperature=0.5
-        )
+        llm_mock.complete.assert_called_once_with("user: Hi", temperature=0.5)
 
     def test_complete_forwards_kwargs_to_llm(
         self: Self,
@@ -360,10 +358,7 @@ class TestMessagesToPrompt:
         ]
         result = LLMCompat._messages_to_prompt(messages)
         assert result == (
-            "system: Be concise\n"
-            "user: First\n"
-            "assistant: Answer\n"
-            "user: Follow-up"
+            "system: Be concise\n" "user: First\n" "assistant: Answer\n" "user: Follow-up"
         )
 
     def test_empty_messages_returns_empty_string(self: Self) -> None:
