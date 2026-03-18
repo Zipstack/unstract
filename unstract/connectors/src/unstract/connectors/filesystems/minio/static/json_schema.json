@@ -4,6 +4,8 @@
   "type": "object",
   "required": [
     "connectorName",
+    "key",
+    "secret",
     "endpoint_url",
     "region_name"
   ],
@@ -17,25 +19,25 @@
       "type": "string",
       "title": "Key",
       "default": "",
-      "description": "Access Key ID (leave blank to use IAM role / instance profile)"
+      "description": "Access Key ID"
     },
     "secret": {
       "type": "string",
       "title": "Secret",
       "format": "password",
-      "description": "Secret Access Key (leave blank to use IAM role / instance profile)"
+      "description": "Secret Access Key"
     },
     "endpoint_url": {
       "type": "string",
       "title": "Endpoint URL",
       "default": "https://s3.amazonaws.com",
-      "description": "Endpoint URL (leave blank for default AWS S3)"
+      "description": "Endpoint URL to connect to. (example `https://s3.amazonaws.com`)"
     },
     "region_name": {
       "type": "string",
       "title": "Region Name",
       "default": "ap-south",
-      "description": "Region of the AWS S3 account (leave blank for Minio)"
+      "description": "Region of the AWS S3 account. For Minio, leave it blank"
     }
   }
 }
