@@ -10,8 +10,13 @@ from utils.user_context import UserContext
 def _is_service_account(request: Request) -> bool:
     """Allow service accounts through for all non-DELETE methods.
 
-    DELETE is blocked at the middleware layer, so any request that reaches
-    here from a service account is permitted.
+    Two constraints are enforced upstream in the authentication middleware
+    before this check is ever reached:
+      1. DELETE is blocked for all API keys.
+      2. Write methods (POST/PUT/PATCH) are blocked for READ-only API keys.
+
+    Therefore any service-account request that arrives here is permitted to
+    proceed regardless of HTTP method.
     """
     return getattr(request.user, "is_service_account", False)
 
