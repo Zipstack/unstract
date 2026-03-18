@@ -118,9 +118,9 @@ function SocketMessages() {
     }
 
     const channel = `logs:${logId}`;
-    socket.on(channel, onMessage);
+    socket?.on(channel, onMessage);
     return () => {
-      socket.off(channel, onMessage);
+      socket?.off(channel, onMessage);
     };
   }, [socket, logId, onMessage]);
 

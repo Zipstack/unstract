@@ -189,7 +189,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     Used for listing adapter users
     """
 
-    shared_users = UserSerializer(many=True)
+    shared_users = serializers.SerializerMethodField()
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -203,6 +203,11 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "shared_users",
             "shared_to_org",
         )  # type: ignore
+
+    def get_shared_users(self, obj):
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

@@ -16,7 +16,9 @@ logger = logging.getLogger(__name__)
 
 _kombu_kwargs: dict[str, Any] = {"url": settings.SOCKET_IO_MANAGER_URL}
 if getattr(settings, "SOCKET_IO_TRANSPORT_OPTIONS", None):
-    _kombu_kwargs["transport_options"] = settings.SOCKET_IO_TRANSPORT_OPTIONS
+    _kombu_kwargs["connection_options"] = {
+        "transport_options": settings.SOCKET_IO_TRANSPORT_OPTIONS
+    }
 
 sio = socketio.Server(
     # Allowed values: {threading, eventlet, gevent, gevent_uwsgi}

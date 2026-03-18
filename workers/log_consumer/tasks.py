@@ -59,7 +59,11 @@ sio = socketio.Server(
     client_manager=socketio.KombuManager(
         url=socket_io_manager_url,
         write_only=True,
-        **({"transport_options": _transport_options} if _transport_options else {}),
+        **(
+            {"connection_options": {"transport_options": _transport_options}}
+            if _transport_options
+            else {}
+        ),
     ),
 )
 
