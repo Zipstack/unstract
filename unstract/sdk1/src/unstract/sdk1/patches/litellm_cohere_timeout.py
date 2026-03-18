@@ -13,11 +13,11 @@ embeddings without going through unstract.sdk1.embedding will NOT
 have this patch active.
 
 #TODO Remove this patch when litellm ships a fix upstream.
+Issue link: https://github.com/BerriAI/litellm/issues/14635
 """
 
 import importlib.metadata
 import logging
-import warnings
 
 from packaging.version import Version
 
@@ -31,13 +31,13 @@ _PATCHED_LITELLM_VERSION = "1.81.7"
 _litellm_version = importlib.metadata.version("litellm")
 _SKIP_PATCH = Version(_litellm_version) != Version(_PATCHED_LITELLM_VERSION)
 if _SKIP_PATCH:
-    warnings.warn(
+    logger.warning(
         "litellm_cohere_timeout patch was SKIPPED — not applied. "
-        f"Current litellm version: {_litellm_version}. "
-        f"Patch was written for: {_PATCHED_LITELLM_VERSION}. "
+        "Current litellm version: %s. "
+        "Patch was written for: %s. "
         "Please verify the upstream fix and remove this module.",
-        DeprecationWarning,
-        stacklevel=2,
+        _litellm_version,
+        _PATCHED_LITELLM_VERSION,
     )
 else:
     # Private litellm imports are deferred to here so they are only
