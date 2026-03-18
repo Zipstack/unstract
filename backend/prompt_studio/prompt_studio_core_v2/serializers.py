@@ -120,6 +120,10 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             tool_id=data.get(TSKeys.TOOL_ID)
         ).order_by("sequence_number")
 
+        data["created_by_email"] = (
+            instance.created_by.email if instance.created_by else ""
+        )
+
         if not prompt_instances.exists():
             data[TSKeys.PROMPTS] = []
             return data
@@ -155,9 +159,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output
-        data["created_by_email"] = (
-            instance.created_by.email if instance.created_by else ""
-        )
 
         return data
 

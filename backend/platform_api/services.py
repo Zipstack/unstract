@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from account_v2.enums import UserRole
 from account_v2.models import User
 from django.apps import apps
-from django.db import transaction
+from django.db import models, transaction
 from tenant_account_v2.models import OrganizationMember
 
 if TYPE_CHECKING:
@@ -63,34 +63,48 @@ def create_api_user_for_key(
     return user
 
 
-def _has_field(model: type, field_name: str) -> bool:
-    """Check if a Django model has a specific field using _meta API."""
-    return any(f.name == field_name for f in model._meta.get_fields())
+def _get_user_fk_fields(model: type) -> list[str]:
+    """Return names of all ForeignKey fields pointing to User."""
+    return [
+        f.name
+        for f in model._meta.get_fields()
+        if isinstance(f, models.ForeignKey) and f.related_model is User
+    ]
+
+
+def _get_user_m2m_fields(model: type) -> list[str]:
+    """Return names of all ManyToManyField fields pointing to User."""
+    return [
+        f.name
+        for f in model._meta.get_fields()
+        if isinstance(f, models.ManyToManyField) and f.related_model is User
+    ]
 
 
 def _transfer_model_ownership(model: type, from_user: User, to_user: User) -> None:
-    """Transfer ownership for a single model from one user to another."""
-    has_created_by = _has_field(model, "created_by")
-    has_shared_users = _has_field(model, "shared_users")
+    """Transfer ownership for a single model from one user to another.
 
-    if has_created_by:
-        owned_pks = list(
-            model.objects.filter(created_by=from_user).values_list("pk", flat=True)
-        )
-        model.objects.filter(pk__in=owned_pks).update(created_by=to_user)
+    Dynamically discovers all ForeignKey and ManyToMany fields pointing to
+    User, so custom fields like workflow_owner are handled automatically.
 
-        # Remove to_user from shared_users on records they now own
-        if has_shared_users and owned_pks:
-            for instance in model.objects.filter(pk__in=owned_pks, shared_users=to_user):
-                instance.shared_users.remove(to_user)
+    Uses _base_manager to bypass DefaultOrganizationManagerMixin which
+    relies on UserContext (unavailable during signal/cleanup paths).
+    """
+    # Use _base_manager to bypass org-scoped default manager filtering.
+    qs = model._base_manager.all()
 
-    if _has_field(model, "modified_by"):
-        model.objects.filter(modified_by=from_user).update(modified_by=to_user)
+    user_fk_fields = _get_user_fk_fields(model)
+    user_m2m_fields = _get_user_m2m_fields(model)
 
-    if has_shared_users:
-        for instance in model.objects.filter(shared_users=from_user):
-            instance.shared_users.add(to_user)
-            instance.shared_users.remove(from_user)
+    # Transfer all ForeignKey fields pointing to User
+    for field_name in user_fk_fields:
+        qs.filter(**{field_name: from_user}).update(**{field_name: to_user})
+
+    # Transfer all ManyToMany fields pointing to User
+    for field_name in user_m2m_fields:
+        for instance in qs.filter(**{field_name: from_user}):
+            getattr(instance, field_name).add(to_user)
+            getattr(instance, field_name).remove(from_user)
 
 
 def transfer_ownership(from_user: User, to_user: User | None) -> None:
