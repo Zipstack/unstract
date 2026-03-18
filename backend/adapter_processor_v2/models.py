@@ -34,6 +34,9 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, models.Manage
         return super().get_queryset()
 
     def for_user(self, user: User) -> QuerySet[Any]:
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         return (
             self.get_queryset()
             .filter(

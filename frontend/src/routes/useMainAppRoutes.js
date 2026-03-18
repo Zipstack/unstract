@@ -16,6 +16,7 @@ import { LogsPage } from "../pages/LogsPage.jsx";
 import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { PlatformApiKeysPage } from "../pages/PlatformApiKeysPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
@@ -208,6 +209,10 @@ function useMainAppRoutes() {
           <Route path="users" element={<UsersPage />} />
           <Route path="users/invite" element={<InviteEditUserPage />} />
           <Route path="users/edit" element={<InviteEditUserPage />} />
+          <Route
+            path="settings/platform-api-keys"
+            element={<PlatformApiKeysPage />}
+          />
         </Route>
         <Route path="settings/triad" element={<DefaultTriad />} />
         {RequirePlatformAdmin && PlatformAdminPage && (
