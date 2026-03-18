@@ -1706,6 +1706,13 @@ class PromptStudioHelper:
                 key = PlatformApiKey.objects.get(api_user=user)
                 if key.created_by:
                     tool.shared_users.add(key.created_by)
+                else:
+                    logger.warning(
+                        "PlatformApiKey for service account %s has no "
+                        "created_by while creating tool %s",
+                        user.username,
+                        tool.tool_id,
+                    )
             except PlatformApiKey.DoesNotExist:
                 logger.warning(
                     "No PlatformApiKey found for service account %s "
