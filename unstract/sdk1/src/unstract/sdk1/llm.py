@@ -592,8 +592,13 @@ class LLMCompat:
     SubQuestionQueryEngine, QueryFusionRetriever, and RouterQueryEngine
     to work with SDK1's LLM.
 
-    Follows the same initialization pattern as :class:`EmbeddingCompat` in
-    ``unstract.sdk1.embedding``.
+    Unlike :class:`EmbeddingCompat` (which inherits from llama-index's
+    ``BaseEmbedding``), this class is a plain Python object with no
+    llama-index inheritance. The prompt-service's ``RetrieverLLM``
+    provides the llama-index base class and delegates to this wrapper.
+
+    Prefer :meth:`from_llm` when an SDK1 ``LLM`` instance already
+    exists — it reuses the instance directly, bypassing ``__init__``.
     """
 
     def __init__(
@@ -774,6 +779,12 @@ class LLMCompat:
 
         Uses the content of the last user message. Falls back to the
         last message of any role if no user message is found.
+
+        Note: This is intentionally single-turn. Retriever components
+        (KeywordTableIndex, QueryFusionRetriever, SubQuestionQueryEngine)
+        always send single-turn queries. Multi-turn context and system
+        messages are not preserved — ``LLM.complete()`` injects its own
+        system prompt separately.
         """
         for msg in reversed(messages):
             role = getattr(msg.role, "value", str(msg.role))
