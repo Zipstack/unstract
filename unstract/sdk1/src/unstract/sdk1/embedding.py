@@ -16,6 +16,8 @@ from unstract.sdk1.utils.callback_manager import CallbackManager
 if TYPE_CHECKING:
     from unstract.sdk1.tool.base import BaseTool
 
+litellm.drop_params = True
+
 
 class Embedding:
     """Unified embedding interface powered by LiteLLM.
@@ -103,8 +105,6 @@ class Embedding:
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
-
-            litellm.drop_params = True
 
             resp = litellm.embedding(model=model, input=[text], **kwargs)
 
