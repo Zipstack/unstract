@@ -130,7 +130,7 @@ class TestLLMCompatDelegation:
         self: Self,
         compat_from_mock: LLMCompat,
     ) -> None:
-        """chat() should extract prompt and delegate to LLM.complete()."""
+        """chat() should flatten messages and delegate to LLM.complete()."""
         llm_mock = compat_from_mock._llm_instance
         llm_mock.complete.return_value = self._make_llm_response(
             "chat reply", {"id": "r2"}
@@ -142,8 +142,9 @@ class TestLLMCompatDelegation:
         ]
         result = compat_from_mock.chat(messages)
 
-        # Should extract "Hello" (last user message) as the prompt.
-        llm_mock.complete.assert_called_once_with("Hello")
+        # Should concatenate all messages with role prefixes.
+        expected = "system: Be helpful\nuser: Hello"
+        llm_mock.complete.assert_called_once_with(expected)
         assert isinstance(result, ChatResponse)
         assert result.message.role == MessageRole.ASSISTANT
         assert result.message.content == "chat reply"
@@ -160,7 +161,9 @@ class TestLLMCompatDelegation:
         messages = [ChatMessage(role=MessageRole.USER, content="Hi")]
         compat_from_mock.chat(messages, temperature=0.5)
 
-        llm_mock.complete.assert_called_once_with("Hi", temperature=0.5)
+        llm_mock.complete.assert_called_once_with(
+            "user: Hi", temperature=0.5
+        )
 
     def test_complete_forwards_kwargs_to_llm(
         self: Self,
@@ -208,7 +211,7 @@ class TestLLMCompatDelegation:
         ]
         result = await compat_from_mock.achat(messages)
 
-        llm_mock.acomplete.assert_called_once_with("Async hello")
+        llm_mock.acomplete.assert_called_once_with("user: Async hello")
         assert isinstance(result, ChatResponse)
         assert result.message.role == MessageRole.ASSISTANT
         assert result.message.content == "async chat reply"
@@ -326,35 +329,42 @@ class TestEmulatedTypes:
 
 
 class TestMessagesToPrompt:
-    """Tests for LLMCompat._messages_to_prompt extraction."""
+    """Tests for LLMCompat._messages_to_prompt flattening."""
 
     def test_single_user_message(self: Self) -> None:
-        """Should extract content from a single user message."""
+        """Should format a single user message with role prefix."""
         messages = [ChatMessage(role=MessageRole.USER, content="hello")]
-        assert LLMCompat._messages_to_prompt(messages) == "hello"
+        assert LLMCompat._messages_to_prompt(messages) == "user: hello"
 
     def test_none_content_becomes_empty_string(self: Self) -> None:
         """None content should be converted to empty string."""
         messages = [ChatMessage(role=MessageRole.USER, content=None)]
-        assert LLMCompat._messages_to_prompt(messages) == ""
+        assert LLMCompat._messages_to_prompt(messages) == "user: "
 
-    def test_extracts_last_user_message(self: Self) -> None:
-        """Should extract the last user message from a multi-message sequence."""
+    def test_preserves_all_messages(self: Self) -> None:
+        """Should concatenate all messages preserving system instructions."""
         messages = [
             ChatMessage(role=MessageRole.SYSTEM, content="You are helpful"),
-            ChatMessage(role=MessageRole.USER, content="First question"),
+            ChatMessage(role=MessageRole.USER, content="Question"),
+        ]
+        expected = "system: You are helpful\nuser: Question"
+        assert LLMCompat._messages_to_prompt(messages) == expected
+
+    def test_multi_turn_conversation(self: Self) -> None:
+        """Should preserve all turns in a multi-turn conversation."""
+        messages = [
+            ChatMessage(role=MessageRole.SYSTEM, content="Be concise"),
+            ChatMessage(role=MessageRole.USER, content="First"),
             ChatMessage(role=MessageRole.ASSISTANT, content="Answer"),
             ChatMessage(role=MessageRole.USER, content="Follow-up"),
         ]
-        assert LLMCompat._messages_to_prompt(messages) == "Follow-up"
-
-    def test_falls_back_to_last_message_if_no_user(self: Self) -> None:
-        """Should use last message of any role when no user message exists."""
-        messages = [
-            ChatMessage(role=MessageRole.SYSTEM, content="System prompt"),
-            ChatMessage(role=MessageRole.ASSISTANT, content="Fallback"),
-        ]
-        assert LLMCompat._messages_to_prompt(messages) == "Fallback"
+        result = LLMCompat._messages_to_prompt(messages)
+        assert result == (
+            "system: Be concise\n"
+            "user: First\n"
+            "assistant: Answer\n"
+            "user: Follow-up"
+        )
 
     def test_empty_messages_returns_empty_string(self: Self) -> None:
         """Should return empty string for empty message list."""
@@ -365,4 +375,4 @@ class TestMessagesToPrompt:
         msg = MagicMock()
         msg.role = "user"
         msg.content = "test"
-        assert LLMCompat._messages_to_prompt([msg]) == "test"
+        assert LLMCompat._messages_to_prompt([msg]) == "user: test"

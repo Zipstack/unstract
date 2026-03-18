@@ -775,25 +775,19 @@ class LLMCompat:
 
     @staticmethod
     def _messages_to_prompt(messages: Sequence[ChatMessage]) -> str:
-        """Extract a single prompt string from a message sequence.
+        """Flatten a message sequence into a single prompt string.
 
-        Uses the content of the last user message. Falls back to the
-        last message of any role if no user message is found.
-
-        Note: This is intentionally single-turn. Retriever components
-        (KeywordTableIndex, QueryFusionRetriever, SubQuestionQueryEngine)
-        always send single-turn queries. Multi-turn context and system
-        messages are not preserved — ``LLM.complete()`` injects its own
-        system prompt separately.
+        Concatenates all messages with role prefixes so that
+        system-level task instructions (e.g. from llama-index's
+        ``LLMQuestionGenerator`` or ``KeywordTableIndex``) are
+        preserved when forwarded to ``LLM.complete()``.
         """
-        for msg in reversed(messages):
+        parts: list[str] = []
+        for msg in messages:
             role = getattr(msg.role, "value", str(msg.role))
-            if role == "user":
-                return msg.content or ""
-        # Fallback: use the last message regardless of role.
-        if messages:
-            return messages[-1].content or ""
-        return ""
+            content = msg.content or ""
+            parts.append(f"{role}: {content}")
+        return "\n".join(parts)
 
     # ── Factory methods ────────────────────────────────────────────────────
 
