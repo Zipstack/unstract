@@ -344,6 +344,7 @@ SHARED_APPS = (
     "tags",
     "configuration",
     "dashboard_metrics",
+    "platform_api",
 )
 TENANT_APPS = []
 

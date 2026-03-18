@@ -11,6 +11,7 @@ from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
+from django.db import transaction
 from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.request import Request
@@ -1908,3 +1909,69 @@ class PromptStudioHelper:
             return True, warning_message
 
         return False, ""
+
+    @staticmethod
+    def sync_prompts(tool: CustomTool, import_data: dict, user) -> dict:
+        """Sync prompts from export JSON into an existing project.
+
+        Replaces all existing prompts with prompts from the export data.
+        Tool settings (preamble, postamble, etc.) are also updated.
+        Profiles and adapters are left untouched.
+
+        Args:
+            tool: Target CustomTool instance
+            import_data: Parsed export JSON
+            user: User performing the sync
+
+        Returns:
+            dict: Summary of the sync operation
+        """
+        prompts_data = import_data.get("prompts", [])
+        tool_settings = import_data.get("tool_settings", {})
+
+        # Get the target tool's default profile
+        default_profile = ProfileManager.objects.filter(
+            prompt_studio_tool=tool, is_default=True
+        ).first()
+        if not default_profile:
+            raise ValueError(
+                "Target project must have a default profile configured "
+                "before syncing prompts."
+            )
+
+        with transaction.atomic():
+            # Delete all existing prompts
+            deleted_count, _ = ToolStudioPrompt.objects.filter(tool_id=tool).delete()
+
+            # Create new prompts from export data
+            PromptStudioHelper.import_prompts(prompts_data, tool, user)
+
+            # Update tool settings
+            tool_settings_fields = [
+                "preamble",
+                "postamble",
+                "summarize_prompt",
+                "summarize_context",
+                "summarize_as_source",
+                "enable_challenge",
+                "enable_highlight",
+                "exclude_failed",
+                "single_pass_extraction_mode",
+                "prompt_grammer",
+            ]
+            update_fields = []
+            for field in tool_settings_fields:
+                if field in tool_settings:
+                    setattr(tool, field, tool_settings[field])
+                    update_fields.append(field)
+
+            if update_fields:
+                tool.modified_by = user
+                update_fields.append("modified_by")
+                tool.save(update_fields=update_fields)
+
+        return {
+            "prompts_deleted": deleted_count,
+            "prompts_created": len(prompts_data),
+            "tool_settings_updated": bool(update_fields),
+        }
