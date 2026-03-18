@@ -12,10 +12,10 @@ class UserSessionUtils:
         session_org_id = request.session.get("organization")
         requested_org_id = getattr(request, "organization_id", None)
 
-        # For Bearer token (API key) requests there is no session.
-        # Fall back to the org ID from the URL which the auth middleware
-        # has already validated against the key's organization.
-        if not session_org_id and getattr(request, "platform_api_key", None):
+        # For Bearer token (API key) requests the middleware has already
+        # validated the key's org. Return the URL org unconditionally —
+        # ignore any stale session cookie that may also be present.
+        if getattr(request, "platform_api_key", None):
             return requested_org_id
 
         if requested_org_id and (session_org_id != requested_org_id):

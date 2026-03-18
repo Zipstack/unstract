@@ -1710,14 +1710,14 @@ class PromptStudioHelper:
                     logger.warning(
                         "PlatformApiKey for service account %s has no "
                         "created_by while creating tool %s",
-                        user.username,
+                        user.id,
                         tool.tool_id,
                     )
             except PlatformApiKey.DoesNotExist:
                 logger.warning(
                     "No PlatformApiKey found for service account %s "
                     "while creating tool %s",
-                    user.username,
+                    user.id,
                     tool.tool_id,
                 )
 
