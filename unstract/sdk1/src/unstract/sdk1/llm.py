@@ -467,12 +467,14 @@ class LLM:
         the gap by copying max_retries into num_retries so httpx-based providers
         (Anthropic, Vertex, Bedrock, Mistral, etc.) also get retries.
 
-        litellm internally sets max_retries=0 during wrapper retries to prevent
-        double-retry with SDK providers.
+        SDK-based providers (OpenAI, Azure) default to max_retries=2 internally,
+        which would multiply with wrapper retries. Setting max_retries=0 ensures
+        all retries go through the wrapper uniformly.
         """
         max_retries = completion_kwargs.get("max_retries")
         if max_retries:
             completion_kwargs["num_retries"] = max_retries
+            completion_kwargs["max_retries"] = 0
             completion_kwargs["retry_strategy"] = "exponential_backoff_retry"
 
     def _record_usage(
