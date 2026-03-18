@@ -22,7 +22,7 @@ _BUSINESS_APP_LABELS = {
     "api_v2",
     "connector_v2",
     "pipeline_v2",
-    "workflow_manager",
+    "workflow_v2",
     "prompt_studio_core_v2",
     "prompt_studio_registry_v2",
     "agentic_studio_registry",
