@@ -7,18 +7,20 @@ from rest_framework.views import APIView
 from utils.user_context import UserContext
 
 
-def _is_service_account_safe_request(request: Request) -> bool:
-    """Allow service accounts through for safe (read-only) HTTP methods."""
-    return getattr(request.user, "is_service_account", False) and (
-        request.method in permissions.SAFE_METHODS
-    )
+def _is_service_account(request: Request) -> bool:
+    """Allow service accounts through for all non-DELETE methods.
+
+    DELETE is blocked at the middleware layer, so any request that reaches
+    here from a service account is permitted.
+    """
+    return getattr(request.user, "is_service_account", False)
 
 
 class IsOwner(permissions.BasePermission):
     """Custom permission to only allow owners of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if _is_service_account_safe_request(request):
+        if _is_service_account(request):
             return True
         return True if obj.created_by == request.user else False
 
@@ -35,7 +37,7 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if _is_service_account_safe_request(request):
+        if _is_service_account(request):
             return True
         return (
             True
@@ -53,7 +55,7 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if _is_service_account_safe_request(request):
+        if _is_service_account(request):
             return True
         return (
             True
