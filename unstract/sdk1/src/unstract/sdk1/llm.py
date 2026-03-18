@@ -207,6 +207,7 @@ class LLM:
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            self._set_litellm_retry_params(completion_kwargs)
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
             #     completion_kwargs["temperature"] = 0.003
@@ -295,6 +296,7 @@ class LLM:
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            self._set_litellm_retry_params(completion_kwargs)
 
             for chunk in litellm.completion(
                 messages=messages,
@@ -363,6 +365,7 @@ class LLM:
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
+            self._set_litellm_retry_params(completion_kwargs)
 
             response = await litellm.acompletion(
                 messages=messages,
@@ -453,6 +456,24 @@ class LLM:
 
     def get_usage_reason(self) -> object:
         return self.platform_kwargs.get("llm_usage_reason")
+
+    @staticmethod
+    def _set_litellm_retry_params(completion_kwargs: dict) -> None:
+        """Activate litellm's wrapper-level retry for all providers.
+
+        litellm's retry mechanism (completion_with_retries) only activates when
+        num_retries is set. Our adapters pass max_retries (from user UI config)
+        which only works for SDK-based providers (OpenAI, Azure). This bridges
+        the gap by copying max_retries into num_retries so httpx-based providers
+        (Anthropic, Vertex, Bedrock, Mistral, etc.) also get retries.
+
+        litellm internally sets max_retries=0 during wrapper retries to prevent
+        double-retry with SDK providers.
+        """
+        max_retries = completion_kwargs.get("max_retries")
+        if max_retries:
+            completion_kwargs["num_retries"] = max_retries
+            completion_kwargs["retry_strategy"] = "exponential_backoff_retry"
 
     def _record_usage(
         self,
