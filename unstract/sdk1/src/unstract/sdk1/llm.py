@@ -566,7 +566,7 @@ class LLM:
                 return None
             self._raise_for_empty_response(finish_reason)
 
-        text = chunk["choices"][0]["delta"].get("content", "")
+        text = chunk["choices"][0].get("delta", {}).get("content", "")
         if not text:
             return None
 
