@@ -39,7 +39,7 @@ S3FS_EXC_TO_UNSTRACT_EXC_AMBIENT = {
     "Unable to locate credentials": _IRSA_NO_CREDS_MSG,
     "AssumeRoleWithWebIdentity": _IRSA_ASSUME_ROLE_MSG,
     "InvalidIdentityToken": _IRSA_ASSUME_ROLE_MSG,
-    "Access Denied": _IRSA_ACCESS_DENIED_MSG,
+    "AccessDenied": _IRSA_ACCESS_DENIED_MSG,
 }
 
 S3FS_EXC_TO_UNSTRACT_EXC_COMMON = {
