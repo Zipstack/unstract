@@ -136,15 +136,18 @@ class BaseAPIClient:
 
     def _setup_session(self):
         """Configure session with retry strategy, timeouts, and connection pooling."""
-        # Enhanced retry strategy with enum-based status codes
-        retry_status_codes = [429, 500, 502, 503, 504]
         allowed_http_methods = [method.value for method in HTTPMethod]
 
+        # Only retry transport-level connection failures at this layer.
+        # Status code retries (5xx, 429) are handled exclusively by _make_request()
+        # to avoid retry amplification (urllib3 retries × app-level retries).
         retry_strategy = Retry(
             total=self.config.api_retry_attempts,
             backoff_factor=self.config.api_retry_backoff_factor,
-            status_forcelist=retry_status_codes,
+            status_forcelist=[],
             allowed_methods=allowed_http_methods,
+            connect=self.config.api_retry_attempts,
+            read=0,
             respect_retry_after_header=True,
         )
 
@@ -200,8 +203,8 @@ class BaseAPIClient:
         data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
         timeout: int | None = None,
-        max_retries: int = 3,
-        backoff_factor: float = 0.5,
+        max_retries: int | None = None,
+        backoff_factor: float | None = None,
         organization_id: str | None = None,
     ) -> dict[str, Any]:
         """Enhanced HTTP request with robust error handling and retry logic.
@@ -212,8 +215,8 @@ class BaseAPIClient:
             data: Request payload for POST/PUT/PATCH
             params: Query parameters
             timeout: Request timeout in seconds
-            max_retries: Maximum number of retry attempts
-            backoff_factor: Exponential backoff factor
+            max_retries: Maximum number of retry attempts (defaults to config)
+            backoff_factor: Exponential backoff factor (defaults to config)
             organization_id: Optional organization ID override
 
         Returns:
@@ -225,6 +228,14 @@ class BaseAPIClient:
         """
         url = f"{self.base_url.rstrip('/')}/{endpoint.lstrip('/')}"
         timeout = timeout or self.config.api_timeout
+        max_retries = (
+            max_retries if max_retries is not None else self.config.api_retry_attempts
+        )
+        backoff_factor = (
+            backoff_factor
+            if backoff_factor is not None
+            else self.config.api_retry_backoff_factor
+        )
 
         last_exception = None
         # HTTP status codes that should trigger retries

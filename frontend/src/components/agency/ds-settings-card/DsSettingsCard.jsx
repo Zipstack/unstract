@@ -1,24 +1,24 @@
 import {
   Button,
   Col,
+  Image,
   Row,
   Select,
   Space,
   Tooltip,
   Typography,
-  Image,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { ConfigureConnectorModal } from "../configure-connector-modal/ConfigureConnectorModal";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import "./DsSettingsCard.css";
 
 function DsSettingsCard({ connType, endpointDetails, message }) {
@@ -69,15 +69,19 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
   };
 
   useEffect(() => {
-    try {
-      const inputOption =
-        require("../../../plugins/dscard-input-options/AppDeploymentCardInputOptions").appDeploymentInputOption;
-      if (flags.app_deployment && inputOption) {
-        setUpdatedInputoptions(inputOption);
+    const loadPlugin = async () => {
+      try {
+        const mod = await import(
+          "../../../plugins/dscard-input-options/AppDeploymentCardInputOptions"
+        );
+        if (flags.app_deployment && mod.appDeploymentInputOption) {
+          setUpdatedInputoptions(mod.appDeploymentInputOption);
+        }
+      } catch {
+        // The component will remain null of it is not available
       }
-    } catch {
-      // The component will remain null of it is not available
-    }
+    };
+    loadPlugin();
   }, []);
 
   useEffect(() => {
@@ -89,7 +93,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
         // Filter options based on source connection type
         const isAPI = source?.connection_type === "API";
         const filteredOptions = inputOptions.filter((option) =>
-          isAPI ? option.value === "API" : option.value !== "API"
+          isAPI ? option.value === "API" : option.value !== "API",
         );
 
         setOptions(filteredOptions);
@@ -100,7 +104,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       // Remove Database from Source Dropdown
       const filteredOptions = inputOptions.filter(
         (option) =>
-          option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT"
+          option.value !== "DATABASE" && option.value !== "APPDEPLOYMENT",
       );
       setOptions(filteredOptions);
     }

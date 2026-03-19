@@ -2,9 +2,7 @@
   "title": "Bedrock LLM",
   "type": "object",
   "required": [
-    "aws_secret_access_key",
     "region_name",
-    "aws_access_key_id",
     "model",
     "adapter_name"
   ],
@@ -24,19 +22,29 @@
     "aws_access_key_id": {
       "type": "string",
       "title": "AWS Access Key ID",
-      "description": "Provide your AWS Access Key ID",
+      "description": "Provide your AWS Access Key ID. Leave empty if using AWS Profile or IAM role.",
       "format": "password"
     },
     "aws_secret_access_key": {
       "type": "string",
       "title": "AWS Secret Access Key",
-      "description": "Provide your AWS Secret Access Key",
+      "description": "Provide your AWS Secret Access Key. Leave empty if using AWS Profile or IAM role.",
       "format": "password"
     },
     "region_name": {
       "type": "string",
-      "title": "AWS Region name",
+      "title": "AWS Region Name",
       "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
+    },
+    "aws_profile_name": {
+      "type": "string",
+      "title": "AWS Profile Name",
+      "description": "AWS SSO profile name for authentication. Use this instead of access keys when using AWS SSO. Example: dev-profile"
+    },
+    "model_id": {
+      "type": "string",
+      "title": "Application Inference Profile ARN",
+      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
     },
     "max_tokens": {
       "type": "number",

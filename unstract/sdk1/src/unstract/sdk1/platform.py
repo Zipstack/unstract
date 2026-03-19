@@ -110,7 +110,6 @@ class PlatformHelper:
 
         Retry behavior is configurable via environment variables:
         - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
-        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
         - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
         - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
         - PLATFORM_SERVICE_JITTER (default: true)
@@ -230,7 +229,6 @@ class PlatformHelper:
 
         Retry behavior is configurable via environment variables:
         - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
-        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
         - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
         - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
         - PLATFORM_SERVICE_JITTER (default: true)

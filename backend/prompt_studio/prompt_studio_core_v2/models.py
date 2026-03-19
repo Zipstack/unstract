@@ -23,6 +23,9 @@ logger = logging.getLogger(__name__)
 
 class CustomToolModelManager(DefaultOrganizationManagerMixin, models.Manager):
     def for_user(self, user: User) -> QuerySet[Any]:
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         return (
             self.get_queryset()
             .filter(

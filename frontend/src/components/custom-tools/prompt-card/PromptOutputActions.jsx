@@ -1,6 +1,6 @@
 import { PlayCircleFilled, PlayCircleOutlined } from "@ant-design/icons";
-import PropTypes from "prop-types";
 import { Button, Tooltip } from "antd";
+import PropTypes from "prop-types";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 

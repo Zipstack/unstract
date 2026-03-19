@@ -1,66 +1,66 @@
 /* Styles for Layout */
 
 .deploy-layout {
-    height: 100%;
-    display: flex;
-    flex-direction: column;
-    background-color: var(--page-bg-2);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--page-bg-2);
 }
 
 .layout-header {
-    padding: 12px 16px;
-    background-color: #F5F7F9;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  padding: 12px 16px;
+  background-color: #f5f7f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .layout-header .title {
-    font-size: 16px;
+  font-size: 16px;
 }
 
 .layout-body {
-    flex: 1;
-    overflow-y: hidden;
+  flex: 1;
+  overflow-y: hidden;
 }
 
 .layout-body .body-div {
-    display: flex;
-    flex-direction: column;
-    height: 100%;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 
 .layout-body .table-div {
-    padding: 12px;
-    overflow-y: auto;
-    flex: 1;
+  padding: 12px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .layout-body .table .ant-table-thead > tr > th {
-    background: #EBEDEF;
-    border-start-start-radius: 0px !important;
-    border-start-end-radius: 0px !important;
+  background: #ebedef;
+  border-start-start-radius: 0px !important;
+  border-start-end-radius: 0px !important;
 }
 
 .layout-body .table .ant-table-thead > tr > th::before {
-    background-color: #dddfe0 !important;
+  background-color: #dddfe0 !important;
 }
 
 .layout-body .table tr:nth-child(even) {
-    background: #FBFCFC;
+  background: #fbfcfc;
 }
 
 .layout-body .table .workflowName {
-    color: #1890ff;
-    cursor: pointer;
+  color: #1890ff;
+  cursor: pointer;
 }
 
 .layout-body .gap {
-    padding-bottom: 3px;
-    background-color: var(--page-bg-2);
+  padding-bottom: 3px;
+  background-color: var(--page-bg-2);
 }
 
 .layout-body .empty {
-    width: 100%;
-    align-items: center;
+  width: 100%;
+  align-items: center;
 }

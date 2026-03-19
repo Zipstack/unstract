@@ -22,12 +22,10 @@ def clean_env(monkeypatch: MonkeyPatch) -> MonkeyPatch:
     # Remove any retry-related environment variables
     env_vars = [
         "PLATFORM_SERVICE_MAX_RETRIES",
-        "PLATFORM_SERVICE_MAX_TIME",
         "PLATFORM_SERVICE_BASE_DELAY",
         "PLATFORM_SERVICE_MULTIPLIER",
         "PLATFORM_SERVICE_JITTER",
         "PROMPT_SERVICE_MAX_RETRIES",
-        "PROMPT_SERVICE_MAX_TIME",
         "PROMPT_SERVICE_BASE_DELAY",
         "PROMPT_SERVICE_MULTIPLIER",
         "PROMPT_SERVICE_JITTER",

@@ -18,14 +18,14 @@ import {
   docIndexStatus,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { ManageDocsModal } from "../manage-docs-modal/ManageDocsModal";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
-import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { TextViewer } from "../text-viewer/TextViewer";
+import { TextViewerPre } from "../text-viewer-pre/TextViewerPre";
 
 let items = [
   {
@@ -46,10 +46,10 @@ const viewTypes = {
 // Import components for the summarize feature
 let SummarizeView = null;
 try {
-  SummarizeView =
-    require("../../../plugins/summarize-view/SummarizeView").SummarizeView;
-  const tabLabel =
-    require("../../../plugins/summarize-tab/SummarizeTab").tabLabel;
+  const svMod = await import("../../../plugins/summarize-view/SummarizeView");
+  SummarizeView = svMod.SummarizeView;
+  const stMod = await import("../../../plugins/summarize-tab/SummarizeTab");
+  const tabLabel = stMod.tabLabel;
   if (tabLabel) {
     items.push({
       key: "3",
@@ -63,15 +63,19 @@ try {
 // Import component for the simple prompt studio feature
 let getDocumentsSps;
 try {
-  getDocumentsSps =
-    require("../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service").getDocumentsSps;
+  const mod = await import(
+    "../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service"
+  );
+  getDocumentsSps = mod.getDocumentsSps;
 } catch {
   // The component will remain null of it is not available
 }
 let publicDocumentApi;
 try {
-  publicDocumentApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicDocumentApi;
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
+  publicDocumentApi = mod.publicDocumentApi;
 } catch {
   // The component will remain null of it is not available
 }
@@ -86,7 +90,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [isDocLoading, setIsDocLoading] = useState(false);
   const [isExtractLoading, setIsExtractLoading] = useState(false);
   const [currDocIndexStatus, setCurrDocIndexStatus] = useState(
-    docIndexStatus.yet_to_start
+    docIndexStatus.yet_to_start,
   );
   const [hasMounted, setHasMounted] = useState(false);
   const {
@@ -112,6 +116,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   useEffect(() => {
     // Convert blob URL to an object URL
+    console.log("here--->", fileData);
     if (fileData.blob) {
       const objectUrl = URL.createObjectURL(fileData.blob);
       setBlobFileUrl(objectUrl);
@@ -159,6 +164,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     Object.keys(viewTypes).forEach((item) => {
       handleFetchContent(viewTypes[item]);
     });
+    console.log(selectedDoc);
   }, [selectedDoc]);
 
   useEffect(() => {
@@ -171,7 +177,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   useEffect(() => {
     if (docIndexStatus.yet_to_start === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (isIndexing) {
@@ -182,7 +188,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (docIndexStatus.indexing === currDocIndexStatus) {
       const isIndexing = indexDocs.find(
-        (item) => item === selectedDoc?.document_id
+        (item) => item === selectedDoc?.document_id,
       );
 
       if (!isIndexing) {
@@ -216,7 +222,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const handleGetDocumentsReq = (getDocsFunc, viewType) => {
     getDocsFunc(details?.tool_id, selectedDoc?.document_id, viewType)
       .then((res) => {
-        const data = res?.data?.data || "";
+        const data = res?.data || "";
         const mimeType = res?.data?.mime_type || "";
         processGetDocsResponse(data, viewType, mimeType);
       })
@@ -246,24 +252,39 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const processGetDocsResponse = (data, viewType, mimeType) => {
+    console.log("response-->", viewType, mimeType);
     if (viewType === viewTypes.original) {
-      const base64String = data || "";
-      const blob = base64toBlobWithMime(base64String, mimeType);
-      setFileData({ blob, mimeType });
-      const reader = new FileReader();
-      reader.readAsDataURL(blob);
-      reader.onload = () => {
-        setFileUrl(reader.result);
-      };
-      reader.onerror = () => {
-        throw new Error("Fail to load the file");
-      };
+      if (mimeType === "application/pdf") {
+        // Existing flow: base64 → blob → PdfViewer
+        const base64String = data || "";
+        const blob = base64toBlobWithMime(base64String, mimeType);
+        console.log("blob-->", blob);
+        setFileData({ blob, mimeType });
+        const reader = new FileReader();
+        reader.readAsDataURL(blob);
+        reader.onload = () => {
+          setFileUrl(reader.result);
+        };
+        reader.onerror = () => {
+          setFileErrMsg("Failed to load the file");
+        };
+      } else {
+        // Non-PDF file (CSV, TXT, Excel, or non-convertible)
+        // data is text, not base64
+        setFileUrl("");
+        setFileData({ blob: null, mimeType });
+        // Auto-switch to Raw View for non-PDF files
+        setActiveKey("2");
+      }
     } else if (viewType === viewTypes.extract) {
       setExtractTxt(data?.data);
     }
   };
 
   const handleGetDocsError = (err, viewType) => {
+    if (viewType === viewTypes.original) {
+      setFileData({});
+    }
     if (err?.response?.status === 404) {
       setErrorMessage(viewType);
     }
@@ -294,7 +315,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           info: "Clicked on the 'Summary View' tab",
         });
       }
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -306,14 +327,14 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
     if (viewType === viewTypes.extract) {
       setExtractErrMsg(
-        "Raw content is not available. Please index or re-index to generate it."
+        "Raw content is not available. Please index or re-index to generate it.",
       );
     }
   };
 
   useEffect(() => {
     const index = [...listOfDocs].findIndex(
-      (item) => item?.document_id === selectedDoc?.document_id
+      (item) => item?.document_id === selectedDoc?.document_id,
     );
     setPage(index + 1);
   }, [selectedDoc, listOfDocs]);
@@ -345,16 +366,20 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const renderDoc = (docName, fileUrl, highlightData) => {
-    const fileType = docName?.split(".").pop().toLowerCase(); // Get the file extension
-    switch (fileType) {
-      case "pdf":
-        return <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />;
-      case "txt":
-      case "md":
-        return <TextViewer fileUrl={fileUrl} />;
-      default:
-        return <div>Unsupported file type: {fileType}</div>;
+    // Use mimeType from response for rendering decisions
+    console.log(fileData);
+    if (fileData.mimeType === "application/pdf") {
+      return <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />;
     }
+    // Non-PDF: show placeholder message
+    return (
+      <div className="text-viewer-layout">
+        <Typography.Text type="secondary">
+          Document preview is not available for this file type. Please index the
+          document and switch to Raw View.
+        </Typography.Text>
+      </div>
+    );
   };
 
   return (
@@ -373,8 +398,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
             {details?.enable_highlight && (
               <div>
                 <Tag color="rgb(45, 183, 245)">
-                  Confidence Score:{" "}
-                  {(() => {
+                  Confidence Score: {(() => {
                     const { confidence } = selectedHighlight || {};
                     // Handle new format: confidence is a number (average)
                     if (typeof confidence === "number") {
@@ -467,7 +491,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
         <DocumentViewer
           doc={selectedDoc?.document_name}
           isLoading={isDocLoading}
-          isContentAvailable={fileUrl?.length > 0}
+          isContentAvailable={
+            fileUrl?.length > 0 ||
+            (fileData.mimeType && fileData.mimeType !== "application/pdf")
+          }
           setOpenManageDocsModal={setOpenManageDocsModal}
           errMsg={fileErrMsg}
         >

@@ -29,8 +29,8 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import "./AddLlmProfile.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
-import RetrievalStrategyModal from "../retrieval-strategy-modal/RetrievalStrategyModal";
 import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";
+import RetrievalStrategyModal from "../retrieval-strategy-modal/RetrievalStrategyModal";
 
 function AddLlmProfile({
   editLlmProfileId,
@@ -125,23 +125,23 @@ function AddLlmProfile({
     setModalTitle("Edit LLM Profile");
 
     const llmProfileDetails = [...llmProfiles].find(
-      (item) => item?.profile_id === editLlmProfileId
+      (item) => item?.profile_id === editLlmProfileId,
     );
 
     const llmItem = llmItems.find(
-      (item) => item?.label === llmProfileDetails?.llm
+      (item) => item?.label === llmProfileDetails?.llm,
     );
 
     const vectorDbItem = vectorDbItems.find(
-      (item) => item?.label === llmProfileDetails?.vector_store
+      (item) => item?.label === llmProfileDetails?.vector_store,
     );
 
     const embeddingItem = embeddingItems.find(
-      (item) => item?.label === llmProfileDetails?.embedding_model
+      (item) => item?.label === llmProfileDetails?.embedding_model,
     );
 
     const x2TextItem = x2TextItems.find(
-      (item) => item?.label === llmProfileDetails?.x2text
+      (item) => item?.label === llmProfileDetails?.x2text,
     );
 
     setResetForm(true);
@@ -190,7 +190,7 @@ function AddLlmProfile({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== changedFieldName
+          (error) => error.attr !== changedFieldName,
         );
         return { ...prevErrors, errors: updatedErrors };
       }
@@ -208,56 +208,36 @@ function AddLlmProfile({
       .then((res) => {
         const data = res?.data;
 
+        const llm = [];
+        const vectorDb = [];
+        const embedding = [];
+        const x2Text = [];
+
         data.forEach((item) => {
+          const option = { value: item?.id, label: item?.adapter_name };
           if (item?.adapter_type === "LLM") {
-            setLlmItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
-          }
-          if (item?.adapter_type === "VECTOR_DB") {
-            setVectorDbItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
-          }
-          if (item?.adapter_type === "EMBEDDING") {
-            setEmbeddingItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
-          }
-          if (item?.adapter_type === "X2TEXT") {
-            setX2TextItems((prev) => {
-              const newItems = [...prev];
-              newItems.push({
-                value: item?.id,
-                label: item?.adapter_name,
-              });
-              return newItems;
-            });
+            llm.push(option);
+          } else if (item?.adapter_type === "VECTOR_DB") {
+            vectorDb.push(option);
+          } else if (item?.adapter_type === "EMBEDDING") {
+            embedding.push(option);
+          } else if (item?.adapter_type === "X2TEXT") {
+            x2Text.push(option);
           }
         });
+
+        setLlmItems(llm);
+        setVectorDbItems(vectorDb);
+        setEmbeddingItems(embedding);
+        setX2TextItems(x2Text);
         setAreAdaptersReady(true);
       })
       .catch((err) => {
         setAlertDetails(
           handleException(
             err,
-            "Failed to get the dropdown list for LLM Adapters"
-          )
+            "Failed to get the dropdown list for LLM Adapters",
+          ),
         );
       });
   };
@@ -296,7 +276,7 @@ function AddLlmProfile({
               >
                 {formDetails.retrieval_strategy
                   ? retrievalItems.find(
-                      (item) => item.value === formDetails.retrieval_strategy
+                      (item) => item.value === formDetails.retrieval_strategy,
                     )?.label || "Select retrieval strategy"
                   : "Select retrieval strategy"}
               </span>
@@ -371,7 +351,7 @@ function AddLlmProfile({
         let newLlmProfiles = [...llmProfiles];
         if (editLlmProfileId) {
           newLlmProfiles = [...llmProfiles].map((item) =>
-            item?.profile_id === editLlmProfileId ? data : item
+            item?.profile_id === editLlmProfileId ? data : item,
           );
         } else {
           newLlmProfiles.push(data);
@@ -431,8 +411,8 @@ function AddLlmProfile({
         setAlertDetails(
           handleException(
             err,
-            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default."
-          )
+            "Failed to get chunk size information for the requested LLM. Please proceed with a sane default.",
+          ),
         );
       });
   };
@@ -463,7 +443,7 @@ function AddLlmProfile({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== "retrieval_strategy"
+          (error) => error.attr !== "retrieval_strategy",
         );
         return { ...prevErrors, errors: updatedErrors };
       }

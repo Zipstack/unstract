@@ -1,4 +1,4 @@
-import { Row, Col } from "antd";
+import { Col, Row } from "antd";
 import PropTypes from "prop-types";
 import "./CustomFieldTemplate.css";
 

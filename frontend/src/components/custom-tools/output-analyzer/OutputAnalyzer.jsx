@@ -1,12 +1,12 @@
-import { useEffect, useState, useMemo, useCallback } from "react";
 import { Drawer } from "antd";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { OutputAnalyzerHeader } from "./OutputAnalyzerHeader";
 import "./OutputAnalyzer.css";
-import { OutputAnalyzerCard } from "./OutputAnalyzerCard";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { promptType } from "../../../helpers/GetStaticData";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { FilterPromptFields } from "./FilterPromptFields";
+import { OutputAnalyzerCard } from "./OutputAnalyzerCard";
 
 function OutputAnalyzer() {
   const [currentDocIndex, setCurrentDocIndex] = useState(-1);
@@ -18,7 +18,7 @@ function OutputAnalyzer() {
   useEffect(() => {
     const allPrompts = details?.prompts || [];
     const promptFields = allPrompts.filter(
-      (item) => item?.prompt_type === promptType.prompt
+      (item) => item?.prompt_type === promptType.prompt,
     );
 
     const initialSelectedPrompts = promptFields.reduce((acc, item) => {
@@ -30,7 +30,7 @@ function OutputAnalyzer() {
 
     const selectedDocIndex =
       listOfDocs.findIndex(
-        (doc) => doc?.document_id === selectedDoc?.document_id
+        (doc) => doc?.document_id === selectedDoc?.document_id,
       ) || 0;
     setCurrentDocIndex(selectedDocIndex);
   }, []);

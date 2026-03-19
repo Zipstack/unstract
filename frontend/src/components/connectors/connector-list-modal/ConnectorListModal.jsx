@@ -28,7 +28,7 @@ function ConnectorListModal({
     if (searchText?.trim()) {
       const searchUpper = searchText.toUpperCase().trim();
       filtered = filtered.filter((connector) =>
-        connector?.name?.toUpperCase().includes(searchUpper)
+        connector?.name?.toUpperCase().includes(searchUpper),
       );
     }
 

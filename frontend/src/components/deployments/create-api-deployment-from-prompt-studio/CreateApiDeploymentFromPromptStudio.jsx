@@ -1,28 +1,27 @@
 import {
+  Button,
+  Divider,
   Form,
   Input,
   Modal,
-  Steps,
-  Spin,
-  Button,
-  Typography,
   Space,
-  Divider,
+  Spin,
+  Steps,
+  Typography,
 } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useAlertStore } from "../../../store/alert-store";
-import { useSessionStore } from "../../../store/session-store";
-import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
-import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout";
-import { workflowService } from "../../workflows/workflow/workflow-service";
-import { apiDeploymentsService } from "../api-deployment/api-deployments-service";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
+import { workflowService } from "../../workflows/workflow/workflow-service";
+import { apiDeploymentsService } from "../api-deployment/api-deployments-service";
 import "./CreateApiDeploymentFromPromptStudio.css";
 
 const { Step } = Steps;
@@ -109,7 +108,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       const matchingTool = tools.find(
         (tool) =>
           tool.function_name === toolDetails.tool_id ||
-          tool.name === toolDetails.tool_name
+          tool.name === toolDetails.tool_name,
       );
 
       if (matchingTool?.function_name) {
@@ -190,10 +189,10 @@ const CreateApiDeploymentFromPromptStudio = ({
     const changedFieldName = Object.keys(changedValues)[0];
     if (changedFieldName && backendErrors) {
       const updatedErrors = backendErrors.errors.filter(
-        (error) => error.attr !== changedFieldName
+        (error) => error.attr !== changedFieldName,
       );
       setBackendErrors(
-        updatedErrors.length > 0 ? { errors: updatedErrors } : null
+        updatedErrors.length > 0 ? { errors: updatedErrors } : null,
       );
     }
   };
@@ -255,7 +254,7 @@ const CreateApiDeploymentFromPromptStudio = ({
           })
           .catch(() => {
             cleanupResults.failed.push("API deployment");
-          })
+          }),
       );
     }
 
@@ -274,7 +273,7 @@ const CreateApiDeploymentFromPromptStudio = ({
           })
           .catch(() => {
             cleanupResults.failed.push("Tool instance");
-          })
+          }),
       );
     }
 
@@ -288,7 +287,7 @@ const CreateApiDeploymentFromPromptStudio = ({
           })
           .catch(() => {
             cleanupResults.failed.push("Workflow");
-          })
+          }),
       );
     }
 
@@ -299,7 +298,7 @@ const CreateApiDeploymentFromPromptStudio = ({
     if (cleanupResults.failed.length > 0) {
       console.warn(
         "Some resources could not be cleaned up:",
-        cleanupResults.failed
+        cleanupResults.failed,
       );
     }
 
@@ -356,7 +355,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       const workflowResponse = await workflowApiService.editProject(
         workflowName,
         `Workflow for ${deploymentDetails.display_name} API deployment`,
-        null
+        null,
       );
 
       const workflowId = workflowResponse.data.id;
@@ -451,7 +450,7 @@ const CreateApiDeploymentFromPromptStudio = ({
       // go back to step 1 to show the errors
       if (errorDetails && currentStep === 1) {
         const hasDeploymentFieldErrors = errorDetails.some((error) =>
-          ["api_name", "display_name", "description"].includes(error?.attr)
+          ["api_name", "display_name", "description"].includes(error?.attr),
         );
         if (hasDeploymentFieldErrors) {
           setCurrentStep(0);

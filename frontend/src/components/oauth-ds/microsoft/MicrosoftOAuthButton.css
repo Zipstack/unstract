@@ -1,0 +1,17 @@
+/* Styles for MicrosoftOAuthButton - matching Google OAuth button style */
+
+.microsoft-oauth-layout {
+  margin-bottom: 20px;
+}
+
+/* White background to match Google OAuth button */
+.microsoft-oauth-layout button {
+  background-color: #ffffff !important;
+  color: #3c4043 !important;
+  border: 1px solid #dadce0 !important;
+}
+
+.microsoft-oauth-layout button:hover {
+  background-color: #f8f9fa !important;
+  border-color: #dadce0 !important;
+}

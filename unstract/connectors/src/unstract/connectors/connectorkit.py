@@ -108,6 +108,7 @@ class Connectorkit:
                     "can_write": can_write,
                     "json_schema": json_schema,
                     "connector_mode": connector_mode,
+                    "doc_url": m.get_doc_url(),
                 }
             )
         return connectors

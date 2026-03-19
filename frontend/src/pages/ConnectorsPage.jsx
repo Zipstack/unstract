@@ -1,18 +1,18 @@
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import { Button } from "antd";
+import { useCallback, useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
-import { useSessionStore } from "../store/session-store";
-import { useAlertStore } from "../store/alert-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
-import useRequestUrl from "../hooks/useRequestUrl";
 import { useListSearch } from "../hooks/useListSearch";
+import useRequestUrl from "../hooks/useRequestUrl";
+import { useAlertStore } from "../store/alert-store";
+import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
-import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
-import { SharePermission } from "../components/widgets/share-permission/SharePermission";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
+import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
+import { SharePermission } from "../components/widgets/share-permission/SharePermission";
 
 function ConnectorsPage() {
   const [loading, setLoading] = useState(false);
@@ -29,7 +29,7 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
-  const { displayList, setDisplayList, setMasterList, onSearch } =
+  const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
     useListSearch("connector_name");
 
   useEffect(() => {
@@ -59,7 +59,7 @@ function ConnectorsPage() {
           .map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
       );
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load users"));
@@ -114,7 +114,7 @@ function ConnectorsPage() {
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
           },
-        }
+        },
       );
       setShareModalVisible(false);
       setAlertDetails({
@@ -150,7 +150,7 @@ function ConnectorsPage() {
         New Connector
       </Button>
     ),
-    []
+    [],
   );
 
   return (
@@ -177,7 +177,7 @@ function ConnectorsPage() {
             iconProp="icon"
             showOwner={true}
             type="Connector"
-            isEmpty={!displayList.length}
+            isEmpty={!listRef.current.length}
             centered
             isClickable={false}
           />

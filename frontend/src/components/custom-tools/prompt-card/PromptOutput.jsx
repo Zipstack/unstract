@@ -4,7 +4,6 @@ import {
   PlayCircleFilled,
   PlayCircleOutlined,
 } from "@ant-design/icons";
-import PropTypes from "prop-types";
 import {
   Button,
   Col,
@@ -15,7 +14,8 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
+import PropTypes from "prop-types";
 import { useState } from "react";
 
 import {
@@ -24,28 +24,29 @@ import {
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
 } from "../../../helpers/GetStaticData";
-import { TokenUsage } from "../token-usage/TokenUsage";
-import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { TABLE } from "./constants";
-import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
-import { useAlertStore } from "../../../store/alert-store";
-import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
-import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
-import { PromptRunTimer } from "./PromptRunTimer";
+import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
+import { useAlertStore } from "../../../store/alert-store";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { TokenUsage } from "../token-usage/TokenUsage";
+import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
+import { TABLE } from "./constants";
+import { DisplayPromptResult } from "./DisplayPromptResult";
+import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
+import { PromptRunTimer } from "./PromptRunTimer";
 
 let TableOutput;
 try {
-  TableOutput = require("../../../plugins/prompt-card/TableOutput").TableOutput;
+  const mod = await import("../../../plugins/prompt-card/TableOutput");
+  TableOutput = mod.TableOutput;
 } catch {
   // The component will remain null of it is not available
 }
 let ChallengeModal;
 try {
-  ChallengeModal =
-    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+  const mod = await import("../../../plugins/challenge-modal/ChallengeModal");
+  ChallengeModal = mod.ChallengeModal;
 } catch {
   // The component will remain null of it is not available
 }
@@ -115,7 +116,7 @@ function PromptOutput({
             <CopyPromptOutputBtn
               copyToClipboard={() =>
                 copyOutputToClipboard(
-                  displayPromptResult(promptOutputData?.output, true)
+                  displayPromptResult(promptOutputData?.output, true),
                 )
               }
             />
@@ -158,7 +159,7 @@ function PromptOutput({
       docId,
       defaultLlmProfile,
       singlePassExtractMode,
-      true
+      true,
     );
 
     const promptOutput = promptOutputs[promptOutputKey]?.output;
@@ -170,7 +171,7 @@ function PromptOutput({
         docId,
         defaultLlmProfile,
         singlePassExtractMode,
-        true
+        true,
       );
       if (promptOutputs[promptOutputKey] !== undefined) {
         promptOutputData = promptOutputs[promptOutputKey];
@@ -211,8 +212,8 @@ function PromptOutput({
                   displayPromptResult(
                     promptOutput,
                     true,
-                    promptDetails?.enable_highlight
-                  )
+                    promptDetails?.enable_highlight,
+                  ),
                 )
               }
             />
@@ -249,7 +250,7 @@ function PromptOutput({
               docId,
               profileId,
               singlePassExtractMode,
-              true
+              true,
             );
             if (promptOutputs[promptOutputKey] !== undefined) {
               promptOutputData = promptOutputs[promptOutputKey];
@@ -290,7 +291,7 @@ function PromptOutput({
                         promptOutputData?.highlightData,
                         promptId,
                         profileId,
-                        promptOutputData?.confidenceData
+                        promptOutputData?.confidenceData,
                       );
                   }}
                 >
@@ -379,7 +380,7 @@ function PromptOutput({
                             PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
                             promptDetails?.prompt_id,
                             profileId,
-                            selectedDoc?.document_id
+                            selectedDoc?.document_id,
                           )
                         }
                         disabled={isPromptLoading || isPublicSource}
@@ -397,7 +398,7 @@ function PromptOutput({
                             PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
                             promptDetails?.prompt_id,
                             profileId,
-                            null
+                            null,
                           )
                         }
                         disabled={isPromptLoading || isPublicSource}
@@ -445,8 +446,8 @@ function PromptOutput({
                               copyOutputToClipboard(
                                 displayPromptResult(
                                   promptOutputData?.output,
-                                  true
-                                )
+                                  true,
+                                ),
                               )
                             }
                           />

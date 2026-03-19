@@ -34,6 +34,10 @@ class UnstractConnector(ABC):
         return ""
 
     @staticmethod
+    def get_doc_url() -> str:
+        return ""
+
+    @staticmethod
     @abstractmethod
     def get_json_schema() -> str:
         return ""

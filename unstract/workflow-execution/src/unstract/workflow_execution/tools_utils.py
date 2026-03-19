@@ -8,6 +8,7 @@ from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_registry import ToolRegistry
 from unstract.tool_sandbox import ToolSandbox
 from unstract.tool_sandbox.dto import RunnerContainerRunResponse
+from unstract.tool_sandbox.exceptions import ToolNotFoundInRegistryError
 from unstract.workflow_execution.constants import ToolExecution
 from unstract.workflow_execution.constants import ToolRuntimeVariable as ToolRV
 from unstract.workflow_execution.dto import ToolInstance, WorkflowDto
@@ -61,6 +62,12 @@ class ToolsUtils:
         self.redis_user = ToolsUtils.get_env(ToolRV.REDIS_USER, raise_exception=True)
         self.redis_password = ToolsUtils.get_env(
             ToolRV.REDIS_PASSWORD, raise_exception=True
+        )
+        self.redis_sentinel_mode = ToolsUtils.get_env(
+            ToolRV.REDIS_SENTINEL_MODE, raise_exception=False
+        )
+        self.redis_sentinel_master_name = ToolsUtils.get_env(
+            ToolRV.REDIS_SENTINEL_MASTER_NAME, raise_exception=False
         )
 
     def set_messaging_channel(self, messaging_channel: str) -> None:
@@ -195,6 +202,10 @@ class ToolsUtils:
                 logger.warning(
                     f"ToolExecutionException - Retrying ({retry_count + 1}/{max_retries})"
                 )
+            except ToolNotFoundInRegistryError:
+                # Don't retry configuration errors - tool image is not available
+                logger.error("Tool image not found in container registry - not retrying")
+                raise
             except Exception as e:
                 if retry_count < max_retries - 1:
                     logger.warning(
@@ -230,6 +241,9 @@ class ToolsUtils:
             ToolRV.REDIS_PORT: self.redis_port,
             ToolRV.REDIS_USER: self.redis_user,
             ToolRV.REDIS_PASSWORD: self.redis_password,
+            ToolRV.REDIS_SENTINEL_MODE: self.redis_sentinel_mode or "False",
+            ToolRV.REDIS_SENTINEL_MASTER_NAME: self.redis_sentinel_master_name
+            or "mymaster",
         }
         # For async LLM Whisperer extraction
         if self.llmw_poll_interval:

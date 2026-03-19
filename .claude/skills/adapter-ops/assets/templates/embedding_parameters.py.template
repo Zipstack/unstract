@@ -1,0 +1,57 @@
+"""Embedding Parameter Class Template for ${PROVIDER_NAME}.
+
+Add this class to base1.py after the existing parameter classes.
+
+Replace placeholders:
+- ${PROVIDER_NAME} -> Display name (e.g., "New Provider")
+- ${PROVIDER_ID} -> Lowercase identifier (e.g., "newprovider")
+- ${CLASS_NAME} -> PascalCase name (e.g., "NewProvider")
+"""
+
+
+class ${CLASS_NAME}EmbeddingParameters(BaseEmbeddingParameters):
+    """Parameters for ${PROVIDER_NAME} Embedding.
+
+    See https://docs.litellm.ai/docs/providers/${PROVIDER_ID}
+    """
+
+    # Required fields
+    api_key: str
+
+    # Optional fields with defaults
+    api_base: str | None = None
+    embed_batch_size: int | None = 10
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        """Validate and transform adapter metadata.
+
+        Args:
+            adapter_metadata: Raw configuration from UI form
+
+        Returns:
+            Validated configuration dict for embedding provider
+        """
+        # Set model (embedding models often don't need prefix)
+        adapter_metadata["model"] = ${CLASS_NAME}EmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+
+        # Map any custom field names here
+        # Example: if "endpoint" in adapter_metadata:
+        #     adapter_metadata["api_base"] = adapter_metadata["endpoint"]
+
+        # Validate with pydantic and return
+        return ${CLASS_NAME}EmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        """Get model name (embedding models typically don't need prefix).
+
+        Args:
+            adapter_metadata: Configuration containing 'model' key
+
+        Returns:
+            Model name (usually without prefix for embeddings)
+        """
+        return adapter_metadata.get("model", "")

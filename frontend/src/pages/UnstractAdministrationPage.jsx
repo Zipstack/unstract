@@ -4,9 +4,11 @@ import { useSessionStore } from "../store/session-store";
 let UnstractAdministration;
 
 try {
-  UnstractAdministration =
-    require("../plugins/subscription-admin/components/UnstractAdministration.jsx").UnstractAdministration;
-} catch (err) {
+  const mod = await import(
+    "../plugins/subscription-admin/components/UnstractAdministration.jsx"
+  );
+  UnstractAdministration = mod.UnstractAdministration;
+} catch {
   // NOSONAR
   // Cloud-only feature, not available in OSS
 }

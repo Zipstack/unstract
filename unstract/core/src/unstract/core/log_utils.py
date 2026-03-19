@@ -116,32 +116,3 @@ def store_execution_log(
 
     except Exception as e:
         logger.error(f"Error storing execution log: {e}")
-
-
-def create_redis_client(
-    host: str = "localhost",
-    port: int = 6379,
-    username: str | None = None,
-    password: str | None = None,
-    **kwargs,
-) -> redis.Redis:
-    """Create Redis client with configuration.
-
-    Args:
-        host: Redis host
-        port: Redis port
-        username: Redis username (optional)
-        password: Redis password (optional)
-        **kwargs: Additional Redis configuration
-
-    Returns:
-        Configured Redis client
-    """
-    return redis.Redis(
-        host=host,
-        port=port,
-        username=username,
-        password=password,
-        decode_responses=False,  # Keep as bytes for consistency
-        **kwargs,
-    )

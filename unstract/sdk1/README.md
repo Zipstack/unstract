@@ -16,7 +16,6 @@ The SDK automatically retries platform and prompt service calls on transient fai
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MAX_RETRIES` | 3 | Maximum retry attempts |
-| `MAX_TIME` | 60 | Maximum total time (seconds) |
 | `BASE_DELAY` | 1.0 | Initial delay (seconds) |
 | `MULTIPLIER` | 2.0 | Backoff multiplier |
 | `JITTER` | true | Add random jitter (0-25%) |

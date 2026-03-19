@@ -1,111 +1,118 @@
-import {
-  DeleteOutlined,
-  EllipsisOutlined,
-  SyncOutlined,
-  HighlightOutlined,
-  FileSearchOutlined,
-  ReloadOutlined,
-  NotificationOutlined,
-  EditOutlined,
-  KeyOutlined,
-  CloudDownloadOutlined,
-  CopyOutlined,
-  LoadingOutlined,
-  ShareAltOutlined,
-  HistoryOutlined,
-} from "@ant-design/icons";
-import {
-  Button,
-  Dropdown,
-  Image,
-  Space,
-  Switch,
-  Tooltip,
-  Typography,
-} from "antd";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
-import cronstrue from "cronstrue";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 
 import {
   deploymentApiTypes,
   deploymentsStaticContent,
-  displayURL,
 } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { Layout } from "../../deployments/layout/Layout.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
-import { LogsModal } from "../log-modal/LogsModal.jsx";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
 import FileHistoryModal from "../file-history-modal/FileHistoryModal.jsx";
+import { LogsModal } from "../log-modal/LogsModal.jsx";
 import "./Pipelines.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
-import { pipelineService } from "../pipeline-service.js";
-import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
-import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import useClearFileHistory from "../../../hooks/useClearFileHistory";
-import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
-import { PromptStudioModal } from "../../common/PromptStudioModal";
-import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+import { useExecutionLogs } from "../../../hooks/useExecutionLogs";
+import { usePaginatedList } from "../../../hooks/usePaginatedList";
+import usePipelineHelper from "../../../hooks/usePipelineHelper.js";
 import {
   useInitialFetchCount,
   usePromptStudioModal,
 } from "../../../hooks/usePromptStudioFetchCount";
+import { useScrollRestoration } from "../../../hooks/useScrollRestoration";
+import { useShareModal } from "../../../hooks/useShareModal";
+import { usePromptStudioStore } from "../../../store/prompt-studio-store";
+import { usePromptStudioService } from "../../api/prompt-studio-service";
+import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
+import { NotificationModal } from "../notification-modal/NotificationModal.jsx";
+import { pipelineService } from "../pipeline-service.js";
+import { createPipelineCardConfig } from "./PipelineCardConfig.jsx";
 
 function Pipelines({ type }) {
   const [tableData, setTableData] = useState([]);
   const [openEtlOrTaskModal, setOpenEtlOrTaskModal] = useState(false);
-  const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [selectedPorD, setSelectedPorD] = useState({});
   const [tableLoading, setTableLoading] = useState(true);
   const { sessionDetails } = useSessionStore();
+  const location = useLocation();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { clearFileHistory, isClearing: isClearingFileHistory } =
     useClearFileHistory();
   const [isEdit, setIsEdit] = useState(false);
-  const [openLogsModal, setOpenLogsModal] = useState(false);
-  const [executionLogs, setExecutionLogs] = useState([]);
-  const [executionLogsTotalCount, setExecutionLogsTotalCount] = useState(0);
   const [openFileHistoryModal, setOpenFileHistoryModal] = useState(false);
-  const { fetchExecutionLogs } = require("../log-modal/fetchExecutionLogs.js");
   const [openManageKeysModal, setOpenManageKeysModal] = useState(false);
   const [apiKeys, setApiKeys] = useState([]);
   const pipelineApiService = pipelineService();
-  const { getApiKeys, downloadPostmanCollection, copyUrl } =
-    usePipelineHelper();
+  const { getApiKeys, downloadPostmanCollection } = usePipelineHelper();
   const [openNotificationModal, setOpenNotificationModal] = useState(false);
   const { count, isLoading, fetchCount } = usePromptStudioStore();
   const { getPromptStudioCount } = usePromptStudioService();
-  // Sharing state
-  const [openShareModal, setOpenShareModal] = useState(false);
-  const [allUsers, setAllUsers] = useState([]);
-  const [isLoadingShare, setIsLoadingShare] = useState(false);
+
+  // Ref to forward the fetch function to hooks (avoids declaration ordering)
+  const fetchListRef = useRef(null);
+
+  const {
+    pagination,
+    setPagination,
+    searchTerm,
+    setSearchTerm,
+    handlePaginationChange,
+    handleSearch,
+  } = usePaginatedList({
+    fetchData: (...args) => fetchListRef.current?.(...args),
+  });
+
+  const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
+    useScrollRestoration({
+      location,
+      setSearchTerm,
+      setPagination,
+      fetchData: (...args) => fetchListRef.current?.(...args),
+    });
+
+  const {
+    openLogsModal,
+    setOpenLogsModal,
+    executionLogs,
+    executionLogsTotalCount,
+    isFetchingLogs,
+    handleFetchLogs,
+    handleViewLogs,
+  } = useExecutionLogs({
+    axiosPrivate,
+    handleException,
+    sessionDetails,
+    setAlertDetails,
+  });
+
+  const {
+    openShareModal,
+    setOpenShareModal,
+    allUsers,
+    isLoadingShare,
+    handleShare,
+    onShare,
+  } = useShareModal({
+    apiService: pipelineApiService,
+    setSelectedItem: setSelectedPorD,
+    setAlertDetails,
+    handleException,
+    refreshList: () =>
+      getPipelineList(pagination.current, pagination.pageSize, searchTerm),
+  });
 
   const initialFetchComplete = useInitialFetchCount(
     fetchCount,
-    getPromptStudioCount
+    getPromptStudioCount,
   );
-
-  const handleFetchLogs = (page, pageSize) => {
-    fetchExecutionLogs(
-      axiosPrivate,
-      handleException,
-      sessionDetails,
-      selectedPorD,
-      setExecutionLogs,
-      setExecutionLogsTotalCount,
-      setAlertDetails,
-      page,
-      pageSize
-    );
-  };
 
   useEffect(() => {
     getPipelineList();
@@ -116,84 +123,70 @@ function Pipelines({ type }) {
     setOpenEtlOrTaskModal(true);
   };
 
-  const getPipelineList = () => {
+  const getPipelineList = (page = 1, pageSize = 10, search = "") => {
     setTableLoading(true);
+    const params = {
+      type: type.toUpperCase(),
+      page,
+      page_size: pageSize,
+    };
+    if (search) {
+      params.search = search;
+    }
     const requestOptions = {
       method: "GET",
-      url: `/api/v1/unstract/${
-        sessionDetails?.orgId
-      }/pipeline/?type=${type.toUpperCase()}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/`,
+      params,
     };
 
     axiosPrivate(requestOptions)
       .then((res) => {
-        setTableData(res?.data);
+        const data = res?.data;
+        // Handle paginated response
+        setTableData(data.results || data);
+        setPagination((prev) => ({
+          ...prev,
+          current: page,
+          pageSize,
+          total: data.count ?? data.results?.length ?? data.length ?? 0,
+        }));
+
+        activateScrollRestore();
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
+        clearPendingScroll();
       })
       .finally(() => {
         setTableLoading(false);
       });
   };
 
+  fetchListRef.current = getPipelineList;
+
   const handleSync = (params) => {
     const body = { ...params, pipeline_type: type.toUpperCase() };
     const pipelineId = params?.pipeline_id;
-    const fieldsToUpdate = {
-      last_run_status: "processing",
-    };
-    handleLoaderInTableData(fieldsToUpdate, pipelineId);
 
     handleSyncApiReq(body)
       .then((res) => {
-        const data = res?.data?.pipeline;
-        fieldsToUpdate.last_run_status = data?.last_run_status;
-        fieldsToUpdate.last_run_time = data?.last_run_time;
+        const pipelineData = res?.data?.pipeline;
+        if (pipelineData) {
+          handleLoaderInTableData(pipelineData, pipelineId);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to sync."));
-        fieldsToUpdate.last_run_status = "FAILURE";
-        fieldsToUpdate.last_run_time = new Date().toISOString();
-      })
-      .finally(() => {
-        handleLoaderInTableData(fieldsToUpdate, pipelineId);
-      });
-  };
-
-  const handleStatusRefresh = (pipelineId) => {
-    const fieldsToUpdate = {
-      last_run_status: "processing",
-    };
-    handleLoaderInTableData(fieldsToUpdate, pipelineId);
-
-    getPipelineData(pipelineId)
-      .then((res) => {
-        const data = res?.data;
-        fieldsToUpdate["last_run_status"] = data?.last_run_status;
-        fieldsToUpdate["last_run_time"] = data?.last_run_time;
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, `Failed to update pipeline status.`)
-        );
-        const date = new Date();
-        fieldsToUpdate["last_run_status"] = "FAILURE";
-        fieldsToUpdate["last_run_time"] = date.toISOString();
-      })
-      .finally(() => {
-        handleLoaderInTableData(fieldsToUpdate, pipelineId);
       });
   };
 
   const handleLoaderInTableData = (updatedFields, pipelineId) => {
-    const filteredData = tableData.map((item) => {
-      if (item.id === pipelineId) {
-        return { ...item, ...updatedFields };
-      }
-      return item;
-    });
-    setTableData(filteredData);
+    // Use functional update to avoid stale closure issues
+    setTableData((prevData) =>
+      prevData.map((item) =>
+        item.id === pipelineId ? { ...item, ...updatedFields } : item,
+      ),
+    );
   };
 
   const handleSyncApiReq = async (body) => {
@@ -215,6 +208,10 @@ function Pipelines({ type }) {
   };
 
   const handleEnablePipeline = (value, id) => {
+    // Optimistically update the UI immediately
+    const fieldsToUpdate = { active: value };
+    handleLoaderInTableData(fieldsToUpdate, id);
+
     const body = { active: value, pipeline_id: id };
     const requestOptions = {
       method: "PATCH",
@@ -225,28 +222,26 @@ function Pipelines({ type }) {
       },
       data: body,
     };
-    axiosPrivate(requestOptions)
-      .then(() => {
-        getPipelineList();
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {});
+
+    axiosPrivate(requestOptions).catch((err) => {
+      // Revert optimistic update on failure
+      handleLoaderInTableData({ active: !value }, id);
+      setAlertDetails(handleException(err));
+    });
   };
 
-  const deletePipeline = () => {
+  const deletePipeline = (item) => {
+    const id = item?.id || selectedPorD.id;
     const requestOptions = {
       method: "DELETE",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedPorD.id}/`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
     };
     axiosPrivate(requestOptions)
       .then(() => {
-        setOpenDeleteModal(false);
-        getPipelineList();
+        getPipelineList(pagination.current, pagination.pageSize, searchTerm);
         setAlertDetails({
           type: "success",
           content: "Pipeline Deleted Successfully",
@@ -257,459 +252,112 @@ function Pipelines({ type }) {
       });
   };
 
-  const getPipelineData = (pipelineId) => {
-    const requestOptions = {
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${pipelineId}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
-    };
-    return axiosPrivate(requestOptions)
-      .then((res) => res)
-      .catch((err) => {
-        throw err;
-      });
+  const clearFileMarkers = async (workflowId) => {
+    const id = workflowId || selectedPorD?.workflow_id;
+    await clearFileHistory(id);
   };
 
-  const clearFileMarkers = async () => {
-    const workflowId = selectedPorD?.workflow_id;
-    const success = await clearFileHistory(workflowId);
-    if (success && openDeleteModal) {
-      setOpenDeleteModal(false);
+  // Handlers for icon actions (top-right)
+  const handleEditPipeline = () => {
+    openAddModal(true);
+  };
+
+  const handleDeletePipeline = (item) => {
+    deletePipeline(item);
+  };
+
+  // Handlers for expanded view actions
+  const handleViewLogsPipeline = (pipeline) => {
+    handleViewLogs(pipeline, setSelectedPorD);
+  };
+
+  const handleViewFileHistoryPipeline = (pipeline) => {
+    if (!pipeline?.workflow_id) {
+      setAlertDetails({
+        type: "error",
+        content: "Cannot view file history: Workflow ID not found",
+      });
+      return;
     }
+    setSelectedPorD(pipeline);
+    setOpenFileHistoryModal(true);
   };
 
-  const handleShare = async () => {
-    setIsLoadingShare(true);
-    // Fetch all users and shared users first, then open modal
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        pipelineApiService.getAllUsers(),
-        pipelineApiService.getSharedUsers(selectedPorD.id),
-      ]);
-
-      // Extract members array from the response and map to the required format
-      const userList =
-        usersResponse?.data?.members?.map((member) => ({
-          id: member.id,
-          email: member.email,
-        })) || [];
-
-      const sharedUsersList = sharedUsersResponse.data?.shared_users || [];
-
-      // Set shared_users property on selectedPorD for SharePermission component
-      setSelectedPorD({
-        ...selectedPorD,
-        shared_users: Array.isArray(sharedUsersList) ? sharedUsersList : [],
-      });
-
-      setAllUsers(userList);
-
-      // Only open modal after data is loaded
-      setOpenShareModal(true);
-    } catch (error) {
-      setAlertDetails(handleException(error));
-      // Ensure allUsers is always an array even on error
-      setAllUsers([]);
-    } finally {
-      setIsLoadingShare(false);
-    }
+  const handleClearFileHistoryPipeline = (pipeline) => {
+    setSelectedPorD(pipeline);
+    clearFileMarkers(pipeline.workflow_id);
   };
 
-  const onShare = (sharedUsers, _, shareWithEveryone) => {
-    setIsLoadingShare(true);
-    // sharedUsers is already an array of user IDs from SharePermission component
-
-    pipelineApiService
-      .updateSharing(selectedPorD.id, sharedUsers, shareWithEveryone)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "Sharing permissions updated successfully",
-        });
-        setOpenShareModal(false);
-        // Refresh pipeline list to show updated ownership
-        getPipelineList();
-      })
-      .catch((error) => {
-        setAlertDetails(
-          handleException(error, "Failed to update sharing settings")
-        );
-      })
-      .finally(() => {
-        setIsLoadingShare(false);
-      });
+  const handleSyncNowPipeline = (pipeline) => {
+    handleSync({ pipeline_id: pipeline.id });
   };
 
-  const actionItems = [
-    // Configuration Section
-    {
-      key: "1",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => openAddModal(true)}
-        >
-          <div>
-            <EditOutlined />
-          </div>
-          <div>
-            <Typography.Text>Edit</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "2",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() =>
-            getApiKeys(
-              pipelineApiService,
-              selectedPorD?.id,
-              setApiKeys,
-              setOpenManageKeysModal
-            )
-          }
-        >
-          <KeyOutlined />
-          <Typography.Text>Manage Keys</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "3",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenNotificationModal(true)}
-        >
-          <NotificationOutlined />
-          <Typography.Text>Setup Notifications</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "share",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={handleShare}
-        >
-          <ShareAltOutlined />
-          <Typography.Text>Share</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "divider-config",
-      type: "divider",
-    },
-    // Operation Section
-    {
-      key: "4",
-      label: (
-        <Space
-          direction="horizontal"
-          className={`action-items ${
-            isClearingFileHistory
-              ? "action-item-disabled"
-              : "action-item-enabled"
-          }`}
-          onClick={() =>
-            !isClearingFileHistory &&
-            handleSync({
-              pipeline_id: selectedPorD.id,
-            })
-          }
-        >
-          <SyncOutlined />
-          <Typography.Text>Sync Now</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "5",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => {
-            setOpenLogsModal(true);
-            fetchExecutionLogs(
-              axiosPrivate,
-              handleException,
-              sessionDetails,
-              selectedPorD,
-              setExecutionLogs,
-              setExecutionLogsTotalCount,
-              setAlertDetails
-            );
-          }}
-        >
-          <FileSearchOutlined />
-          <Typography.Text>View Logs</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "view-file-history",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => {
-            if (!selectedPorD?.workflow_id) {
-              setAlertDetails({
-                type: "error",
-                content: "Cannot view file history: Workflow ID not found",
-              });
-              return;
-            }
+  const handleManageKeysPipeline = (pipeline) => {
+    setSelectedPorD(pipeline);
+    getApiKeys(
+      pipelineApiService,
+      pipeline.id,
+      setApiKeys,
+      setOpenManageKeysModal,
+    );
+  };
 
-            setOpenFileHistoryModal(true);
-          }}
-        >
-          <HistoryOutlined />
-          <Typography.Text>View File History</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "divider-operation",
-      type: "divider",
-    },
-    // Developer related Section
-    {
-      key: "6",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() =>
-            downloadPostmanCollection(pipelineApiService, selectedPorD?.id)
-          }
-        >
-          <CloudDownloadOutlined />
-          <Typography.Text>Download Postman Collection</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "divider-dev-related",
-      type: "divider",
-    },
-    // Delete related section
-    {
-      key: "7",
-      label: (
-        <Space
-          direction="horizontal"
-          className={`action-items ${
-            isClearingFileHistory
-              ? "action-item-disabled"
-              : "action-item-enabled"
-          }`}
-          onClick={() => !isClearingFileHistory && clearFileMarkers()}
-        >
-          {isClearingFileHistory ? <LoadingOutlined /> : <HighlightOutlined />}
-          <Typography.Text>Clear Processed File History</Typography.Text>
-        </Space>
-      ),
-    },
-    {
-      key: "8",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() => setOpenDeleteModal(true)}
-        >
-          <DeleteOutlined />
-          <Typography.Text>Delete</Typography.Text>
-        </Space>
-      ),
-    },
-  ];
+  const handleSetupNotificationsPipeline = (pipeline) => {
+    setSelectedPorD(pipeline);
+    setOpenNotificationModal(true);
+  };
 
-  const columns = [
-    {
-      title: "Source",
-      render: (_, record) => (
-        <div>
-          <div>
-            <Image src={record?.source_icon} preview={false} width={30} />
-          </div>
-          <Typography.Text className="p-or-d-typography" strong>
-            {record?.source_name}
-          </Typography.Text>
-        </div>
-      ),
-      key: "source",
-      align: "center",
-    },
-    {
-      title: "Pipeline",
-      key: "pipeline_name",
-      render: (_, record) => (
-        <>
-          <Typography.Text strong>{record?.pipeline_name}</Typography.Text>
-          <br />
-          <Typography.Text type="secondary" className="p-or-d-typography">
-            from {record?.workflow_name}
-          </Typography.Text>
-        </>
-      ),
-      align: "center",
-    },
-    {
-      title: "Destination",
-      render: (_, record) => (
-        <div>
-          <div>
-            <Image src={record?.destination_icon} preview={false} width={30} />
-          </div>
-          <Typography.Text className="p-or-d-typography" strong>
-            {record?.destination_name}
-          </Typography.Text>
-        </div>
-      ),
-      key: "destination",
-      align: "center",
-    },
-    {
-      title: "API Endpoint",
-      key: "api_endpoint",
-      render: (_, record) => (
-        <Space direction="horizontal" className="display-flex-space-between">
-          <div>
-            <Typography.Text>
-              {displayURL(record?.api_endpoint)}
-            </Typography.Text>
-          </div>
-          <div>
-            <Tooltip title="click to copy">
-              <Button
-                size="small"
-                onClick={() => copyUrl(record?.api_endpoint)}
-              >
-                <CopyOutlined />
-              </Button>
-            </Tooltip>
-          </div>
-        </Space>
-      ),
-      align: "left",
-    },
-    {
-      title: "Status of Previous Run",
-      dataIndex: "last_run_status",
-      key: "last_run_status",
-      align: "center",
-      render: (_, record) => (
-        <>
-          {record.last_run_status === "processing" ? (
-            <SpinnerLoader />
-          ) : (
-            <Space>
-              <Typography.Text className="p-or-d-typography" strong>
-                {record?.last_run_status}
-              </Typography.Text>
-              <Button
-                icon={<ReloadOutlined />}
-                type="text"
-                size="small"
-                onClick={() => handleStatusRefresh(record?.id)}
-              />
-            </Space>
-          )}
-        </>
-      ),
-    },
-    {
-      title: "Previous Run At",
-      key: "last_run_time",
-      dataIndex: "last_run_time",
-      align: "center",
-      render: (_, record) => (
-        <div>
-          <Typography.Text className="p-or-d-typography" strong>
-            {record?.last_run_time}
-          </Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: "Frequency",
-      key: "last_run_time",
-      dataIndex: "last_run_time",
-      align: "center",
-      render: (_, record) => (
-        <div>
-          <Typography.Text className="p-or-d-typography" strong>
-            {record?.cron_string && cronstrue.toString(record?.cron_string)}
-          </Typography.Text>
-        </div>
-      ),
-    },
-    {
-      title: "Owner",
-      dataIndex: "created_by_email",
-      key: "created_by_email",
-      align: "center",
-      render: (email, record) => {
-        const isOwner = record.created_by === sessionDetails?.userId;
-        return (
-          <Tooltip title={email}>
-            <Typography.Text className="p-or-d-typography">
-              {isOwner ? "You" : email?.split("@")[0] || "Unknown"}
-            </Typography.Text>
-          </Tooltip>
-        );
-      },
-    },
-    {
-      title: "Enabled",
-      key: "active",
-      dataIndex: "active",
-      align: "center",
-      render: (_, record) => (
-        <Switch
-          checked={record.active}
-          onChange={() => {
-            handleEnablePipeline(!record.active, record.id);
-          }}
-        />
-      ),
-    },
-    {
-      title: "Actions",
-      key: "pipeline_id",
-      align: "center",
-      render: (_, record) => (
-        <Dropdown
-          menu={{ items: actionItems }}
-          placement="bottomLeft"
-          onOpenChange={() => setSelectedPorD(record)}
-          trigger={["click"]}
-        >
-          <EllipsisOutlined className="p-or-d-actions cur-pointer" />
-        </Dropdown>
-      ),
-    },
-  ];
+  const handleDownloadPostmanPipeline = (pipeline) => {
+    downloadPostmanCollection(pipelineApiService, pipeline.id);
+  };
+
+  // Card view configuration - no actionItems needed, all handlers passed directly
+  const pipelineCardConfig = useMemo(
+    () =>
+      createPipelineCardConfig({
+        setSelectedPorD,
+        handleEnablePipeline,
+        sessionDetails,
+        location,
+        // Icon actions
+        onEdit: handleEditPipeline,
+        onShare: handleShare,
+        onDelete: handleDeletePipeline,
+        // Expanded view actions
+        onViewLogs: handleViewLogsPipeline,
+        onViewFileHistory: handleViewFileHistoryPipeline,
+        onClearFileHistory: handleClearFileHistoryPipeline,
+        onSyncNow: handleSyncNowPipeline,
+        onManageKeys: handleManageKeysPipeline,
+        onSetupNotifications: handleSetupNotificationsPipeline,
+        onDownloadPostman: handleDownloadPostmanPipeline,
+        // Loading states
+        isClearingFileHistory,
+        // Pipeline type for status pill navigation
+        pipelineType: type,
+        // List context for scroll restoration on back navigation
+        listContext: {
+          page: pagination.current,
+          pageSize: pagination.pageSize,
+          searchTerm,
+        },
+      }),
+    [
+      sessionDetails,
+      isClearingFileHistory,
+      location,
+      type,
+      pagination.current,
+      pagination.pageSize,
+      searchTerm,
+    ],
+  );
 
   // Using the custom hook to manage modal state
   const { showModal, handleModalClose } = usePromptStudioModal(
     initialFetchComplete,
     isLoading,
-    count
+    count,
   );
 
   return (
@@ -719,10 +367,22 @@ function Pipelines({ type }) {
       )}
       <Layout
         type={type}
-        columns={columns}
         tableData={tableData}
         isTableLoading={tableLoading}
         openAddModal={openAddModal}
+        cardConfig={pipelineCardConfig}
+        listMode={true}
+        scrollToId={scrollRestoreId}
+        enableSearch={true}
+        onSearch={handleSearch}
+        searchTerm={searchTerm}
+        pagination={{
+          current: pagination.current,
+          pageSize: pagination.pageSize,
+          total: pagination.total,
+          onChange: handlePaginationChange,
+          itemLabel: "pipelines",
+        }}
       />
       {openEtlOrTaskModal && (
         <EtlTaskDeploy
@@ -742,11 +402,7 @@ function Pipelines({ type }) {
         logRecord={executionLogs}
         totalLogs={executionLogsTotalCount}
         fetchExecutionLogs={handleFetchLogs}
-      />
-      <DeleteModal
-        open={openDeleteModal}
-        setOpen={setOpenDeleteModal}
-        deleteRecord={deletePipeline}
+        loading={isFetchingLogs}
       />
       <ManageKeys
         isDialogOpen={openManageKeysModal}

@@ -1,6 +1,3 @@
-import { useEffect, useState, useRef } from "react";
-import PropTypes from "prop-types";
-import { useNavigate, useParams } from "react-router-dom";
 import {
   ArrowLeftOutlined,
   CalendarOutlined,
@@ -20,26 +17,29 @@ import {
   Checkbox,
   Dropdown,
   Flex,
+  Input,
   Table,
   Tooltip,
   Typography,
-  Input,
 } from "antd";
+import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
-import { useAlertStore } from "../../../store/alert-store";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
 import "./DetailedLogs.css";
 import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
-import { LogModal } from "../log-modal/LogModal";
-import { FilterIcon } from "../filter-dropdown/FilterDropdown";
-import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
-import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
+import useRequestUrl from "../../../hooks/useRequestUrl";
+import { FilterIcon } from "../filter-dropdown/FilterDropdown";
+import { LogModal } from "../log-modal/LogModal";
+import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
 
 // Component for status message with conditional tooltip (only when truncated)
 const StatusMessageCell = ({ text }) => {
@@ -50,7 +50,7 @@ const StatusMessageCell = ({ text }) => {
     const checkOverflow = () => {
       if (textRef.current) {
         setIsOverflowing(
-          textRef.current.scrollWidth > textRef.current.clientWidth
+          textRef.current.scrollWidth > textRef.current.clientWidth,
         );
       }
     };
@@ -91,12 +91,14 @@ ActionColumnHeader.propTypes = {
 const DetailedLogs = () => {
   const { id, type } = useParams(); // Get the ID from the URL
   const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { sessionDetails } = useSessionStore();
   const { getUrl } = useRequestUrl();
   const copyToClipboard = useCopyToClipboard();
+  const cameFromDashboard = location.state?.from === "dashboard";
 
   const [executionDetails, setExecutionDetails] = useState();
   const [executionFiles, setExecutionFiles] = useState();
@@ -202,7 +204,7 @@ const DetailedLogs = () => {
       }
 
       const response = await axiosPrivate.get(
-        `${url}?${searchParams.toString()}`
+        `${url}?${searchParams.toString()}`,
       );
       setPagination({
         current: page,
@@ -462,7 +464,13 @@ const DetailedLogs = () => {
             type="text"
             shape="circle"
             icon={<ArrowLeftOutlined />}
-            onClick={() => navigate(`/${sessionDetails?.orgName}/logs`)}
+            onClick={() =>
+              navigate(
+                cameFromDashboard
+                  ? `/${sessionDetails?.orgName}/dashboard`
+                  : `/${sessionDetails?.orgName}/logs`,
+              )
+            }
           />
           {type} Execution ID {id}
           <Button

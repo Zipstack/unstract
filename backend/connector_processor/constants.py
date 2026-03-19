@@ -21,6 +21,7 @@ class ConnectorKeys:
     TYPE = "type"
     PROJECT = "project"
     CONNECTOR_MODE = "connector_mode"
+    DOC_URL = "doc_url"
 
 
 class Connector:

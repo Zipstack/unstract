@@ -1,24 +1,24 @@
-import { useState, useEffect } from "react";
 import {
+  ForkOutlined,
+  MergeCellsOutlined,
+  QuestionCircleOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  ShareAltOutlined,
+  TableOutlined,
+} from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Divider,
   Modal,
   Radio,
   Space,
-  Typography,
-  Button,
-  Alert,
-  Divider,
   Spin,
+  Typography,
 } from "antd";
-import {
-  SearchOutlined,
-  QuestionCircleOutlined,
-  ForkOutlined,
-  ReloadOutlined,
-  ShareAltOutlined,
-  TableOutlined,
-  MergeCellsOutlined,
-} from "@ant-design/icons";
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import { useRetrievalStrategies } from "../../../hooks/useRetrievalStrategies";
@@ -44,7 +44,7 @@ const RetrievalStrategyModal = ({
   loading = false,
 }) => {
   const [selectedStrategy, setSelectedStrategy] = useState(
-    currentStrategy || "simple"
+    currentStrategy || "simple",
   );
 
   // Update selectedStrategy when currentStrategy prop changes or modal opens
@@ -75,7 +75,7 @@ const RetrievalStrategyModal = ({
   }));
 
   const selectedDetails = strategiesWithIcons.find(
-    (s) => s.key === selectedStrategy
+    (s) => s.key === selectedStrategy,
   );
 
   const handleStrategyChange = (e) => {
@@ -227,7 +227,7 @@ const RetrievalStrategyModal = ({
                         <Text
                           strong
                           className={getTokenUsageClassName(
-                            selectedDetails?.tokenUsage || "Unknown"
+                            selectedDetails?.tokenUsage || "Unknown",
                           )}
                         >
                           {selectedDetails?.tokenUsage || "Unknown"}
@@ -238,7 +238,7 @@ const RetrievalStrategyModal = ({
                         <Text
                           strong
                           className={getCostImpactClassName(
-                            selectedDetails?.costImpact || "Unknown"
+                            selectedDetails?.costImpact || "Unknown",
                           )}
                         >
                           {selectedDetails?.costImpact || "Unknown"}

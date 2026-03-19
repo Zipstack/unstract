@@ -72,7 +72,7 @@ function DefaultTriad() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to get the adapters list")
+          handleException(err, "Failed to get the adapters list"),
         );
       });
   };
@@ -144,8 +144,8 @@ function DefaultTriad() {
     // Filter out null or blank values
     body = Object.fromEntries(
       Object.entries(body).filter(
-        ([key, value]) => value !== null && value !== ""
-      )
+        ([key, value]) => value !== null && value !== "",
+      ),
     );
 
     const header = {
@@ -165,7 +165,7 @@ function DefaultTriad() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to update Default Triads")
+          handleException(err, "Failed to update Default Triads"),
         );
       });
   };

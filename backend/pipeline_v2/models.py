@@ -24,7 +24,11 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
         - Pipelines created by the user
         - Pipelines shared with the user
         - Pipelines shared with the entire organization
+        - Service accounts see all org resources
         """
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user

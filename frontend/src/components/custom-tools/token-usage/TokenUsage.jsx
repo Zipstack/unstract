@@ -1,8 +1,7 @@
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-
-import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { formatNumberWithCommas } from "../../../helpers/GetStaticData";
+import { useTokenUsageStore } from "../../../store/token-usage-store";
 
 /**
  * TokenUsage component displays token usage details in a tag with a tooltip.

@@ -1,7 +1,7 @@
-import { Button, Input, Typography, List, Card, Tag } from "antd";
-import { SearchOutlined, FileTextOutlined } from "@ant-design/icons";
-import { useState, useEffect } from "react";
+import { FileTextOutlined, SearchOutlined } from "@ant-design/icons";
+import { Button, Card, Input, List, Tag, Typography } from "antd";
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import "./ToolSelectionSidebar.css";
 import { ToolIcon } from "../tool-icon/ToolIcon";
@@ -31,7 +31,7 @@ function ToolSelectionSidebar({
   const filteredTools = tools.filter(
     (tool) =>
       tool.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tool.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      tool.description?.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   const handleToolSelect = (toolFunctionName) => {

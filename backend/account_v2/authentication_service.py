@@ -266,9 +266,6 @@ class AuthenticationService:
     def frictionless_onboarding(self, organization: Organization, user: User) -> None:
         raise MethodNotImplemented()
 
-    def hubspot_signup_api(self, request: Request) -> None:
-        raise MethodNotImplemented()
-
     def delete_invitation(self, organization_id: str, invitation_id: str) -> bool:
         raise MethodNotImplemented()
 

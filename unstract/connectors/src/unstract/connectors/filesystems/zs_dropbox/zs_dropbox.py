@@ -16,7 +16,9 @@ class DropboxFS(UnstractFileSystem):
         from dropboxdrivefs import DropboxDriveFileSystem
 
         super().__init__("Dropbox")
-        self.dropbox_fs = DropboxDriveFileSystem(token=settings["token"])
+        self.dropbox_fs = DropboxDriveFileSystem(
+            token=settings["token"], use_listings_cache=False
+        )
         self.path = "///"
 
     @staticmethod
@@ -35,6 +37,10 @@ class DropboxFS(UnstractFileSystem):
     def get_icon() -> str:
         # TODO: Add an icon to GCS and serve it
         return "/icons/connector-icons/Dropbox.png"
+
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/dropbox_filesystem/"
 
     @staticmethod
     def get_json_schema() -> str:

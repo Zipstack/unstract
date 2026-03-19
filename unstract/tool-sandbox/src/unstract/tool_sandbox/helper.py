@@ -30,6 +30,7 @@ from unstract.tool_sandbox.dto import (
     RunnerContainerRunResponse,
     RunnerContainerRunStatus,
 )
+from unstract.tool_sandbox.exceptions import ToolNotFoundInRegistryError
 
 logger = logging.getLogger(__name__)
 
@@ -609,16 +610,29 @@ class ToolSandboxHelper:
             raise ToolSanboxError(msg) from connect_err
         except RequestException as e:
             error_message = str(e)
+            error_code = None
             content_type = response.headers.get("Content-Type", "").lower()
             if "application/json" in content_type:
                 response_json = response.json()
                 if "error" in response_json:
                     error_message = response_json["error"]
+                error_code = response_json.get("error_code")
             elif response.text:
                 error_message = response.text
             logger.error(f"Error from runner: {error_message}")
+            # Check for tool image not found error
+            if error_code == ToolNotFoundInRegistryError.ERROR_CODE:
+                raise ToolNotFoundInRegistryError(error_message) from e
             raise ToolSanboxError(error_message) from e
-        return RunnerContainerRunResponse.from_dict(response.json())
+
+        # Parse response and check for tool image not found error
+        result = RunnerContainerRunResponse.from_dict(response.json())
+        if (
+            result.status == RunnerContainerRunStatus.ERROR
+            and result.error_code == ToolNotFoundInRegistryError.ERROR_CODE
+        ):
+            raise ToolNotFoundInRegistryError(result.error or "Tool image not found")
+        return result
 
     def create_tool_request_data(
         self,

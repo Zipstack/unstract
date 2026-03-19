@@ -89,14 +89,14 @@ function ListOfSources({
                       : "Databases"
                   }`
                 : searchText
-                ? `No sources found matching "${searchText}"`
-                : localModeFilter
-                ? `No ${
-                    localModeFilter === "FILESYSTEM"
-                      ? "File System"
-                      : "Database"
-                  } connectors available`
-                : "No sources available"}
+                  ? `No sources found matching "${searchText}"`
+                  : localModeFilter
+                    ? `No ${
+                        localModeFilter === "FILESYSTEM"
+                          ? "File System"
+                          : "Database"
+                      } connectors available`
+                    : "No sources available"}
             </p>
             {localModeFilter && (
               <p className="filter-hint">
@@ -127,7 +127,7 @@ function ListOfSources({
 ListOfSources.propTypes = {
   setSelectedSourceId: PropTypes.func.isRequired,
   sourcesList: PropTypes.array,
-  type: PropTypes.string.isRequired,
+  type: PropTypes.string,
   isConnector: PropTypes.bool,
   connectorMode: PropTypes.string,
 };
