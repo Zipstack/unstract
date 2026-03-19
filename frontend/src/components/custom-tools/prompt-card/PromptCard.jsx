@@ -255,9 +255,13 @@ const PromptCard = memo(
 
     // Generate the result for the currently selected document
     const handleRun = (promptRunType, promptId, profileId, documentId) => {
-      setPostHogCustomEvent("ps_prompt_run", {
-        info: "Click on 'Run Prompt' button (Multi Pass)",
-      });
+      try {
+        setPostHogCustomEvent("ps_prompt_run", {
+          info: "Click on 'Run Prompt' button (Multi Pass)",
+        });
+      } catch {
+        // Analytics failure should not block prompt execution
+      }
 
       const validateInputs = () => {
         if (!selectedDoc) {

@@ -50,7 +50,19 @@ const usePromptRun = () => {
 
     // Fire-and-forget: POST dispatches the Celery task, socket delivers result.
     makeApiRequest(requestOptions)
-      .then(() => {
+      .then((res) => {
+        // Handle pending-indexing response: clear running status immediately
+        if (res?.data?.status === "pending") {
+          const statusKey = generateApiRunStatusId(docId, profileId);
+          removePromptStatus(promptId, statusKey);
+          setAlertDetails({
+            type: "info",
+            content:
+              res?.data?.message || "Document is being indexed. Please wait.",
+          });
+          return;
+        }
+
         // Timeout safety net: clear stale status if socket event never arrives.
         setTimeout(() => {
           const statusKey = generateApiRunStatusId(docId, profileId);

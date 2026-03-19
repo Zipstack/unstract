@@ -119,6 +119,7 @@ function ConfigureDs({
 
   useEffect(() => {
     if (!metadata) {
+      setFormData({});
       return;
     }
     setFormData(metadata);

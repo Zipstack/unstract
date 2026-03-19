@@ -291,6 +291,11 @@ class PromptStudioHelper:
         )
 
         platform_key = PlatformAuthenticationService.get_active_platform_key(org_id)
+        if not platform_key:
+            raise ValueError(
+                f"No active platform API key found for organization {org_id}. "
+                "Cannot dispatch executor task."
+            )
         return str(platform_key.key)
 
     # ------------------------------------------------------------------
@@ -321,8 +326,6 @@ class PromptStudioHelper:
         file_path = str(Path(file_path) / file_name)
 
         default_profile = ProfileManager.get_default_llm_profile(tool)
-        if not tool:
-            raise ToolNotValid()
 
         PromptStudioHelper.validate_adapter_status(default_profile)
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
@@ -526,11 +529,11 @@ class PromptStudioHelper:
 
         monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
-        PromptStudioHelper.validate_adapter_status(profile_manager)
-        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
-
         if not profile_manager:
             raise DefaultProfileError()
+
+        PromptStudioHelper.validate_adapter_status(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
 
         vector_db = str(profile_manager.vector_store.id)
         embedding_model = str(profile_manager.embedding_model.id)
@@ -733,6 +736,9 @@ class PromptStudioHelper:
         prompt_grammar = tool.prompt_grammer
         default_profile = ProfileManager.get_default_llm_profile(tool)
 
+        if not default_profile:
+            raise DefaultProfileError()
+
         challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
         challenge_llm: str | None = None
         if challenge_llm_instance:
@@ -743,9 +749,6 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(default_profile)
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
         default_profile.chunk_size = 0
-
-        if not default_profile:
-            raise DefaultProfileError()
 
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
@@ -972,10 +975,6 @@ class PromptStudioHelper:
                         f"No summarize profile found for tool {tool_id}, using default profile"
                     )
                     summary_profile = default_profile
-
-        if not tool:
-            logger.error(f"No tool instance found for the ID {tool_id}")
-            raise ToolNotValid()
 
         # Validate the status of adapter in profile manager
         PromptStudioHelper.validate_adapter_status(default_profile)
@@ -1397,6 +1396,9 @@ class PromptStudioHelper:
                 profile_manager_id=profile_manager_id
             )
 
+        if not profile_manager:
+            raise DefaultProfileError()
+
         monitor_llm_instance: AdapterInstance | None = tool.monitor_llm
         monitor_llm: str | None = None
         challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
@@ -1426,8 +1428,6 @@ class PromptStudioHelper:
         embedding_model = str(profile_manager.embedding_model.id)
         llm = str(profile_manager.llm.id)
         x2text = str(profile_manager.x2text.id)
-        if not profile_manager:
-            raise DefaultProfileError()
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,

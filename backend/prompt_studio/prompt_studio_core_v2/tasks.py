@@ -153,12 +153,24 @@ def ide_index_complete(
 
         doc_id = result_dict.get("data", {}).get("doc_id", doc_id_key)
 
+        # Fetch profile manager before ORM writes so a missing profile
+        # doesn't leave partial state.
+        profile_manager = None
+        if profile_manager_id:
+            try:
+                profile_manager = ProfileManager.objects.get(pk=profile_manager_id)
+            except ProfileManager.DoesNotExist:
+                logger.warning(
+                    "ProfileManager %s not found during ide_index_complete; "
+                    "skipping index manager update.",
+                    profile_manager_id,
+                )
+
         # ORM writes
         DocumentIndexingService.mark_document_indexed(
             org_id=org_id, user_id=user_id, doc_id_key=doc_id_key, doc_id=doc_id
         )
-        if profile_manager_id:
-            profile_manager = ProfileManager.objects.get(pk=profile_manager_id)
+        if profile_manager:
             PromptStudioIndexHelper.handle_index_manager(
                 document_id=document_id,
                 profile_manager=profile_manager,

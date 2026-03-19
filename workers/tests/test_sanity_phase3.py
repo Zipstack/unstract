@@ -427,6 +427,7 @@ class TestStructureToolSmartTable:
 class TestStructureToolAgentic:
     """Agentic project routes to AgenticPromptStudioExecutor."""
 
+    @patch("unstract.sdk1.x2txt.X2Text")
     @patch(_PATCH_SHIM)
     @patch(_PATCH_FILE_STORAGE)
     @patch(_PATCH_PLATFORM_HELPER)
@@ -437,6 +438,7 @@ class TestStructureToolAgentic:
         mock_create_ph,
         mock_get_fs,
         mock_shim_cls,
+        mock_x2text_cls,
         base_params,
         mock_fs,
         mock_platform_helper,
@@ -462,6 +464,13 @@ class TestStructureToolAgentic:
 
         dispatcher_instance = MagicMock()
         mock_dispatcher_cls.return_value = dispatcher_instance
+
+        # Mock X2Text extraction
+        mock_x2text_instance = MagicMock()
+        mock_x2text_instance.process.return_value = MagicMock(
+            extracted_text="extracted text"
+        )
+        mock_x2text_cls.return_value = mock_x2text_instance
 
         # Simulate successful agentic extraction
         agentic_result = ExecutionResult(
@@ -937,7 +946,7 @@ class TestHelperFunctions:
 
         outputs = [{"name": "field_a", "prompt": "What?"}]
         assert (
-            _should_skip_extraction_for_smart_table("file.xlsx", outputs)
+            _should_skip_extraction_for_smart_table(outputs)
             is False
         )
 
@@ -954,6 +963,6 @@ class TestHelperFunctions:
             }
         ]
         assert (
-            _should_skip_extraction_for_smart_table("file.xlsx", outputs)
+            _should_skip_extraction_for_smart_table(outputs)
             is True
         )

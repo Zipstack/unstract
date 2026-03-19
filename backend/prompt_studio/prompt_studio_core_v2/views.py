@@ -299,7 +299,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             select_choices: dict[str, Any] = PromptStudioHelper.get_select_fields()
             return Response(select_choices, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Error occured while fetching select fields {e}")
+            logger.error("Error occurred while fetching select fields: %s", e)
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get"])
@@ -320,7 +320,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             strategies = get_retrieval_strategy_metadata()
             return Response(strategies, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Error occurred while fetching retrieval strategies: {e}")
+            logger.error("Error occurred while fetching retrieval strategies: %s", e)
             return Response(
                 {"error": "Failed to fetch retrieval strategies"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -399,9 +399,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         dispatcher = PromptStudioHelper._get_dispatcher()
 
         # Pre-generate task ID so callbacks can reference it
-        import uuid as _uuid
-
-        executor_task_id = str(_uuid.uuid4())
+        executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
 
         task = dispatcher.dispatch_with_callback(
@@ -480,9 +478,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         dispatcher = PromptStudioHelper._get_dispatcher()
 
-        import uuid as _uuid
-
-        executor_task_id = str(_uuid.uuid4())
+        executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
 
         task = dispatcher.dispatch_with_callback(
@@ -571,9 +567,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         dispatcher = PromptStudioHelper._get_dispatcher()
 
-        import uuid as _uuid
-
-        executor_task_id = str(_uuid.uuid4())
+        executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
 
         task = dispatcher.dispatch_with_callback(
@@ -616,6 +610,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         from celery.result import AsyncResult
 
         from backend.worker_celery import get_worker_celery_app
+
+        # Verify the user has access to this tool (triggers permission check)
+        self.get_object()
 
         result = AsyncResult(task_id, app=get_worker_celery_app())
         if not result.ready():
@@ -732,7 +729,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             except (FileNotFoundError, FileNotFound):
                 pass  # No converted file — fall through to return original
             except Exception:
-                logger.exception(f"Error fetching converted file: {converted_name}")
+                logger.exception("Error fetching converted file: %s", converted_name)
 
         try:
             contents = PromptStudioFileHelper.fetch_file_contents(
@@ -789,7 +786,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     file_data = uploaded_file
                 # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
-            logger.info(f"Uploading file: {file_name}" if file_name else "Uploading file")
+            logger.info("Uploading file: %s", file_name) if file_name else logger.info("Uploading file")
 
             # Store original file in main dir (always the original)
             PromptStudioFileHelper.upload_for_ide(
@@ -855,7 +852,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK,
             )
         except Exception as exc:
-            logger.error(f"Exception thrown from file deletion, error {exc}")
+            logger.error("Exception thrown from file deletion, error: %s", exc)
             return Response(
                 {"data": "File deletion failed."},
                 status=status.HTTP_400_BAD_REQUEST,
@@ -929,7 +926,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return response
 
         except Exception as exc:
-            logger.error(f"Error exporting project: {exc}")
+            logger.error("Error exporting project: %s", exc)
             return Response(
                 {"error": "Failed to export project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -968,7 +965,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             except Exception as e:
-                logger.error(f"Error creating profile manager: {e}")
+                logger.error("Error creating profile manager: %s", e)
                 return Response(
                     {"error": "Failed to create profile manager"},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -996,7 +993,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as exc:
-            logger.error(f"Error importing project: {exc}")
+            logger.error("Error importing project: %s", exc)
             return Response(
                 {"error": "Failed to import project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1088,7 +1085,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response(deployment_info, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Error checking deployment usage for tool {pk}: {e}")
+            logger.error("Error checking deployment usage for tool %s: %s", pk, e)
             raise DeploymentUsageCheckError(
                 detail=f"Failed to check deployment usage: {str(e)}"
             )

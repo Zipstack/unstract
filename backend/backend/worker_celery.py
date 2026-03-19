@@ -21,7 +21,6 @@ from urllib.parse import quote_plus
 
 from celery import Celery
 from django.conf import settings
-from kombu import Queue
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +67,7 @@ def get_worker_celery_app() -> Celery:
 
     # Reuse the same PostgreSQL result backend as Django's Celery app
     result_backend = (
-        f"db+postgresql://{settings.DB_USER}:"
+        f"db+postgresql://{quote_plus(settings.DB_USER)}:"
         f"{quote_plus(settings.DB_PASSWORD)}"
         f"@{settings.DB_HOST}:{settings.DB_PORT}/"
         f"{settings.CELERY_BACKEND_DB_NAME}"
@@ -84,7 +83,6 @@ def get_worker_celery_app() -> Celery:
 
     app.conf.update(
         result_backend=result_backend,
-        task_queues=[Queue("executor")],
         task_serializer="json",
         accept_content=["json"],
         result_serializer="json",
