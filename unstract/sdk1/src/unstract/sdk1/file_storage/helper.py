@@ -44,9 +44,10 @@ class FileStorageHelper:
                 # not as a top-level arg
                 region_name = storage_config.pop("region_name", None)
                 if region_name:
-                    client_kwargs: dict[str, object] = storage_config.get(  # type: ignore[assignment]
-                        "client_kwargs", {}
-                    )
+                    existing_kwargs = storage_config.get("client_kwargs", {})
+                    if not isinstance(existing_kwargs, dict):
+                        existing_kwargs = {}
+                    client_kwargs: dict[str, object] = existing_kwargs
                     client_kwargs["region_name"] = region_name
                     storage_config["client_kwargs"] = client_kwargs
 
@@ -81,7 +82,7 @@ class FileStorageHelper:
         except Exception as e:
             logger.error(
                 "Error in initialising %s file system %s",
-                FileStorageProvider.GCS.value,
+                FileStorageProvider.LOCAL.value,
                 e,
             )
             raise FileStorageError(str(e)) from e
