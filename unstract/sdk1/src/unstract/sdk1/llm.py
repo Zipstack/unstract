@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from collections.abc import Callable, Generator, Mapping
-from typing import cast
+from typing import NoReturn, cast
 
 import litellm
 
@@ -301,6 +301,7 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
+            has_yielded_content = False
             for chunk in litellm.completion(
                 messages=messages,
                 stream=True,
@@ -317,8 +318,11 @@ class LLM:
                         "stream_complete",
                     )
 
-                response = self._process_stream_chunk(chunk, callback_manager)
+                response = self._process_stream_chunk(
+                    chunk, callback_manager, has_yielded_content
+                )
                 if response is not None:
+                    has_yielded_content = True
                     yield response
 
         except LLMError:
@@ -482,7 +486,7 @@ class LLM:
             kwargs={"provider": self.adapter.get_provider(), **self.platform_kwargs},
         )
 
-    def _raise_for_empty_response(self, finish_reason: str | None) -> "NoReturn":
+    def _raise_for_empty_response(self, finish_reason: str | None) -> NoReturn:
         """Raise an appropriate error when the LLM response content is None.
 
         This typically happens when the LLM provider refuses to generate a
@@ -515,21 +519,31 @@ class LLM:
         self,
         chunk: dict[str, object],
         callback_manager: object | None,
+        has_yielded_content: bool = False,
     ) -> LLMResponseCompat | None:
         """Process a single streaming chunk and return a response if content.
 
         Args:
             chunk: A streaming chunk from litellm.
             callback_manager: Optional callback manager for stream events.
+            has_yielded_content: Whether any content has already been yielded.
 
         Returns:
             LLMResponseCompat with the text chunk, or None if no content.
 
         Raises:
-            LLMError: If the chunk indicates a refusal.
+            LLMError: If the chunk indicates a refusal and no content has
+                been yielded yet. If content was already streamed, logs a
+                warning instead to avoid confusing late errors.
         """
         finish_reason = chunk["choices"][0].get("finish_reason")
         if finish_reason == "refusal":
+            if has_yielded_content:
+                logger.warning(
+                    "[sdk1][LLM] Provider sent refusal after content was "
+                    "already streamed. Partial content may have been returned."
+                )
+                return None
             self._raise_for_empty_response(finish_reason)
 
         text = chunk["choices"][0]["delta"].get("content", "")
