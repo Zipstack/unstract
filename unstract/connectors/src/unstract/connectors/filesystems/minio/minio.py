@@ -30,8 +30,6 @@ class MinioFS(UnstractFileSystem):
         if endpoint_url:
             creds["endpoint_url"] = endpoint_url
 
-        self._using_static_creds = bool(key and secret)
-
         self.s3 = S3FileSystem(
             anon=False,
             use_listings_cache=False,
@@ -95,7 +93,7 @@ class MinioFS(UnstractFileSystem):
             Optional[str]: The file hash in hexadecimal format or None if not found.
         """
         # Extracts ETag for MinIO
-        file_hash = metadata.get("ETag")
+        file_hash: str | None = metadata.get("ETag")
         if file_hash:
             file_hash = file_hash.strip('"')
             if "-" in file_hash:
@@ -209,7 +207,5 @@ class MinioFS(UnstractFileSystem):
         try:
             self.get_fsspec_fs().ls("")
         except Exception as e:
-            raise handle_s3fs_exception(
-                e, using_static_creds=self._using_static_creds
-            ) from e
+            raise handle_s3fs_exception(e) from e
         return True

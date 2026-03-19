@@ -1,104 +1,67 @@
-from typing import NamedTuple
-
 from unstract.connectors.exceptions import ConnectorError
 
-
-class S3ErrorMessage(NamedTuple):
-    """Maps an S3/MinIO error to user-friendly messages per auth mode.
-
-    Attributes:
-        static_msg: Message when using access key / secret credentials.
-            None if the error is irrelevant for static credential mode.
-        ambient_msg: Message when using IAM / IRSA credentials.
-            None if the error is irrelevant for ambient credential mode.
-    """
-
-    static_msg: str | None
-    ambient_msg: str | None
-
-
-_AMBIENT_AUTH_MSG = (
-    "AWS authentication failed — verify IAM role permissions "
-    "or IRSA service account annotation."
-)
-
-_IRSA_NO_CREDS_MSG = (
-    "No AWS credentials found. If running on EKS, ensure the pod's ServiceAccount "
-    "is annotated with an IAM role ARN for IRSA. If running on EC2/ECS, ensure an "
-    "IAM role is attached to the instance/task. Alternatively, provide static "
-    "access key/secret."
-)
-
-_IRSA_ASSUME_ROLE_MSG = (
-    "Failed to assume IAM role via web identity. Verify the IAM role exists, "
-    "has the correct trust policy for the OIDC provider, and the identity "
-    "(ServiceAccount, workload identity, etc.) is configured correctly."
-)
-
-_ACCESS_DENIED_MSG = (
-    "Access denied — the IAM user or role does not have sufficient S3 "
-    "permissions. Ensure the policy grants s3:ListAllMyBuckets (for connection "
-    "test), s3:GetObject, s3:PutObject, s3:ListBucket, and s3:DeleteObject on "
-    "the target bucket."
-)
-
-S3_ERROR_MAP: dict[str, S3ErrorMessage] = {
-    # Auth errors — different messages for static vs ambient credentials
-    "The AWS Access Key Id you provided does not exist in our records": S3ErrorMessage(
-        static_msg="Invalid Key (Access Key ID) provided, please provide a valid one.",
-        ambient_msg=_AMBIENT_AUTH_MSG,
+S3FS_EXC_TO_UNSTRACT_EXC: dict[str, str] = {
+    # Auth errors
+    "The AWS Access Key Id you provided does not exist in our records": (
+        "Invalid Key (Access Key ID) provided, please provide a valid one."
     ),
     "The request signature we calculated does not match the signature you provided": (
-        S3ErrorMessage(
-            static_msg=(
-                "Invalid Secret (Secret Access Key) provided,"
-                " please provide a valid one."
-            ),
-            ambient_msg=_AMBIENT_AUTH_MSG,
-        )
+        "Invalid Secret (Secret Access Key) provided, please provide a valid one."
     ),
-    # IAM/IRSA-only errors — no static equivalent
-    "Unable to locate credentials": S3ErrorMessage(
-        static_msg=None,
-        ambient_msg=_IRSA_NO_CREDS_MSG,
+    "Unable to locate credentials": (
+        "No AWS credentials found. Provide a valid access key/secret or ensure "
+        "the instance/pod has an IAM role attached."
     ),
-    "AssumeRoleWithWebIdentity": S3ErrorMessage(
-        static_msg=None,
-        ambient_msg=_IRSA_ASSUME_ROLE_MSG,
+    "AssumeRoleWithWebIdentity": (
+        "Failed to assume IAM role via web identity. Verify the IAM role exists "
+        "and has the correct trust policy."
     ),
-    "InvalidIdentityToken": S3ErrorMessage(
-        static_msg=None,
-        ambient_msg=_IRSA_ASSUME_ROLE_MSG,
+    "InvalidIdentityToken": (
+        "The identity token provided is invalid. Verify the OIDC provider "
+        "and ServiceAccount configuration."
     ),
-    # Common errors — same message regardless of auth mode
-    "AccessDenied": S3ErrorMessage(
-        static_msg=_ACCESS_DENIED_MSG,
-        ambient_msg=_ACCESS_DENIED_MSG,
+    "ExpiredToken": (
+        "AWS security token has expired. Refresh your credentials or ensure "
+        "IAM role session duration is sufficient."
     ),
-    "[Errno 22] S3 API Requests must be made to API port": S3ErrorMessage(  # Minio only
-        static_msg=(
-            "Request made to invalid port, please check the port of the endpoint URL."
-        ),
-        ambient_msg=(
-            "Request made to invalid port, please check the port of the endpoint URL."
-        ),
+    # Permission errors
+    "AccessDenied": (
+        "Access denied. The IAM user or role does not have sufficient S3 "
+        "permissions. Ensure the policy grants the required S3 actions "
+        "(s3:ListAllMyBuckets, s3:ListBucket, s3:GetObject, s3:PutObject) "
+        "on the target bucket."
     ),
-    "Invalid endpoint": S3ErrorMessage(
-        static_msg=(
-            "Could not connect to the endpoint URL. Please check if the URL is correct "
-            "and accessible."
-        ),
-        ambient_msg=(
-            "Could not connect to the endpoint URL. Please check if the URL is correct "
-            "and accessible."
-        ),
+    # Bucket errors
+    "NoSuchBucket": (
+        "The specified bucket does not exist. Please check the bucket name."
+    ),
+    # Endpoint / connectivity errors
+    "[Errno 22] S3 API Requests must be made to API port": (  # Minio only
+        "Request made to invalid port, please check the port of the endpoint URL."
+    ),
+    "Invalid endpoint": (
+        "Could not connect to the endpoint URL. Please check if the URL is correct "
+        "and accessible."
+    ),
+    "timed out": (
+        "Connection timed out. Check network connectivity and the endpoint URL."
+    ),
+    "SSL: CERTIFICATE_VERIFY_FAILED": (
+        "SSL certificate verification failed. If using a self-signed certificate "
+        "(e.g. MinIO), check your endpoint configuration."
+    ),
+    "Name or service not known": (
+        "Could not resolve the endpoint hostname. Please check the endpoint URL."
+    ),
+    # Clock / request errors
+    "RequestTimeTooSkewed": (
+        "The system clock is out of sync with AWS. Ensure the host's clock "
+        "is accurate (max allowed skew is 15 minutes)."
     ),
 }
 
 
-def handle_s3fs_exception(
-    e: Exception, using_static_creds: bool = True
-) -> ConnectorError:
+def handle_s3fs_exception(e: Exception) -> ConnectorError:
     """Parses the exception from S3/MinIO.
 
     Helps parse the S3/MinIO error and wraps it with our
@@ -106,8 +69,6 @@ def handle_s3fs_exception(
 
     Args:
         e (Exception): Error from S3/MinIO
-        using_static_creds (bool): Whether static credentials were configured.
-            Controls the auth error message style (key/secret vs IAM/IRSA).
 
     Returns:
         ConnectorError: Unstract's ConnectorError object
@@ -118,12 +79,9 @@ def handle_s3fs_exception(
     original_exc = str(e)
     user_msg = "Error from S3 / MinIO while testing connection: "
     exc_to_append = ""
-
-    for s3_exc, err_msg in S3_ERROR_MAP.items():
-        if s3_exc in original_exc:
-            msg = err_msg.static_msg if using_static_creds else err_msg.ambient_msg
-            if msg:
-                exc_to_append = msg
+    for s3fs_exc, user_friendly_msg in S3FS_EXC_TO_UNSTRACT_EXC.items():
+        if s3fs_exc in original_exc:
+            exc_to_append = user_friendly_msg
             break
 
     # Generic error handling
