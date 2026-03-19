@@ -21,6 +21,7 @@ COPY tools/text_extractor/requirements.txt /app/
 
 # Copy specific subdirectories while preserving structure
 COPY ${BUILD_PACKAGES_PATH}/sdk1 /unstract/sdk1
+COPY ${BUILD_PACKAGES_PATH}/core /unstract/core
 COPY ${BUILD_PACKAGES_PATH}/flags /unstract/flags
 
 RUN pip install --no-cache-dir -r requirements.txt && \
