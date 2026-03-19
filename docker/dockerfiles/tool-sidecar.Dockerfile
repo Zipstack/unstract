@@ -79,4 +79,7 @@ RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
     chmod +x ./entrypoint.sh
 
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 CMD ["./entrypoint.sh"]

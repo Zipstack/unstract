@@ -81,4 +81,7 @@ RUN if [ -f cloud_requirements.txt ]; then \
 
 EXPOSE 5002
 
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 CMD [ "./entrypoint.sh" ]

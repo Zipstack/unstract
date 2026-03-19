@@ -78,4 +78,8 @@ RUN if [ -f requirements.txt ]; then \
 
 EXPOSE 8000
 
+# Capture build version at the very end so it doesn't affect layer caching
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 ENTRYPOINT [ "./entrypoint.sh" ]

@@ -80,5 +80,8 @@ RUN uv sync --group deploy --locked && \
 
 EXPOSE 3001
 
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 # During debugging, this entry point will be overridden
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3001", "--timeout", "300", "unstract.platform_service.run:app"]

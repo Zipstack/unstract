@@ -85,6 +85,10 @@ RUN uv sync --group deploy --locked && \
 USER worker
 
 
+# Capture build version at the very end so it doesn't affect layer caching
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 # Default command - runs the Docker-optimized worker script
 ENTRYPOINT ["/app/run-worker-docker.sh"]
 CMD ["general"]

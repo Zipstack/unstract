@@ -95,4 +95,7 @@ RUN mkdir -p prompt-studio-data
 
 EXPOSE 3003
 
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 CMD ["./entrypoint.sh"]
