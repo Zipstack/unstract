@@ -8,6 +8,7 @@ from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -69,6 +70,27 @@ def make_execution_response(response: ExecutionResponse) -> Any:
     return ExecuteWorkflowResponseSerializer(response).data
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List workflows",
+        description="Returns all workflows accessible to the caller. "
+        "Supports `?order_by=asc|desc` for sorting by modified date.",
+        tags=["Workflows"],
+    ),
+    create=extend_schema(summary="Create a workflow", tags=["Workflows"]),
+    retrieve=extend_schema(
+        summary="Get workflow details",
+        description="Returns full workflow definition including tool instances.",
+        tags=["Workflows"],
+    ),
+    update=extend_schema(summary="Update a workflow", tags=["Workflows"]),
+    partial_update=extend_schema(
+        summary="Partially update a workflow",
+        description="Update specific fields like `workflow_name`, `shared_users`, etc.",
+        tags=["Workflows"],
+    ),
+    destroy=extend_schema(summary="Delete a workflow", tags=["Workflows"]),
+)
 class WorkflowViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
 
@@ -213,6 +235,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             raise WorkflowDoesNotExistError()
         return workflow
 
+    @extend_schema(
+        summary="Execute a workflow",
+        description="Trigger workflow execution. Pass `workflow_id` in the request body. "
+        "Optionally attach files via multipart form data for API-style execution.",
+        tags=["Workflows"],
+    )
     def execute(
         self,
         request: Request,
@@ -312,16 +340,31 @@ class WorkflowViewSet(viewsets.ModelViewSet):
             )
         return execution_response
 
+    @extend_schema(
+        summary="Activate a project workflow",
+        description="Sets a project's workflow as the active one.",
+        tags=["Workflows"],
+    )
     def activate(self, request: Request, pk: str) -> Response:
         workflow = WorkflowHelper.active_project_workflow(pk)
         serializer = WorkflowSerializer(workflow)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Check if workflow can be updated",
+        description="Returns whether the workflow is safe to update (no running executions).",
+        tags=["Workflows"],
+    )
     @action(detail=True, methods=["get"])
     def can_update(self, request: Request, pk: str) -> Response:
         response: dict[str, Any] = WorkflowHelper.can_update_workflow(pk)
         return Response(response, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Clear file execution markers",
+        description="Resets file execution tracking markers so files can be reprocessed.",
+        tags=["Workflows"],
+    )
     @action(detail=True, methods=["get"])
     def clear_file_marker(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         workflow = self.get_object()
@@ -330,6 +373,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         )
         return Response(response.get("message"), status=response.get("status"))
 
+    @extend_schema(
+        summary="Get workflow JSON schema",
+        description="Returns JSON schema for source/destination configuration. "
+        "Query params: type (src|dst), entity (file|api|db).",
+        tags=["Workflows"],
+    )
     @action(detail=False, methods=["get"])
     def get_schema(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Retrieves the JSON schema for source/destination type modules for
@@ -353,6 +402,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         )
         return Response(data=json_schema, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="List shared users",
+        description="Returns the list of users the workflow is shared with.",
+        tags=["Workflows"],
+        responses={200: SharedUserListSerializer},
+    )
     @action(detail=True, methods=["get"], url_path="users")
     def list_of_shared_users(self, request: Request, pk: str) -> Response:
         """Get list of users with whom the workflow is shared."""

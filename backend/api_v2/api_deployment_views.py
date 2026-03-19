@@ -6,6 +6,11 @@ from typing import Any
 from configuration.models import Configuration
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
+from drf_spectacular.utils import (
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+)
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
@@ -48,6 +53,7 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["API Deployments"])
 class DeploymentExecution(views.APIView):
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
@@ -61,6 +67,14 @@ class DeploymentExecution(views.APIView):
         request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
 
+    @extend_schema(
+        summary="Execute an API deployment",
+        description="Submit files for processing through a deployed workflow.",
+        responses={
+            200: OpenApiResponse(description="Extraction completed successfully"),
+            422: OpenApiResponse(description="Processing error"),
+        },
+    )
     @DeploymentHelper.validate_api_key
     def post(
         self,
@@ -158,6 +172,15 @@ class DeploymentExecution(views.APIView):
         # Success
         return Response({"message": response}, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Get execution status",
+        description="Poll for the result of an async API deployment execution.",
+        responses={
+            200: OpenApiResponse(description="Execution completed"),
+            406: OpenApiResponse(description="Result already acknowledged"),
+            422: OpenApiResponse(description="Execution error"),
+        },
+    )
     @DeploymentHelper.validate_api_key
     def get(
         self,
@@ -245,6 +268,32 @@ class DeploymentExecution(views.APIView):
         )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List API deployments",
+        description="Returns paginated list of API deployments the caller has access to. "
+        "Supports `?workflow=<uuid>` and `?search=<name>` query filters.",
+        tags=["API Deployments"],
+    ),
+    create=extend_schema(summary="Create an API deployment", tags=["API Deployments"]),
+    retrieve=extend_schema(
+        summary="Get API deployment details",
+        description="Returns full details for a single API deployment by UUID.",
+        tags=["API Deployments"],
+    ),
+    update=extend_schema(summary="Update an API deployment", tags=["API Deployments"]),
+    partial_update=extend_schema(
+        summary="Partially update an API deployment",
+        description="Update specific fields. Commonly used to toggle `is_active` "
+        "or update `shared_users`.",
+        tags=["API Deployments"],
+    ),
+    destroy=extend_schema(
+        summary="Delete an API deployment",
+        description="Permanently removes the deployment and associated API keys.",
+        tags=["API Deployments"],
+    ),
+)
 class APIDeploymentViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPagination
 
@@ -320,6 +369,12 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
             headers=headers,
         )
 
+    @extend_schema(
+        summary="Get deployments by Prompt Studio tool",
+        description="Returns API deployments linked to workflows that use the specified "
+        "Prompt Studio tool. Query param: tool_id.",
+        tags=["API Deployments"],
+    )
     @action(detail=False, methods=["get"])
     def by_prompt_studio_tool(self, request: Request) -> Response:
         """Get API deployments for a specific prompt studio tool."""
@@ -357,6 +412,12 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        summary="Download Postman collection",
+        description="Downloads a Postman Collection JSON file for the deployment, "
+        "pre-configured with the active API key.",
+        tags=["API Deployments"],
+    )
     @action(detail=True, methods=["get"])
     def download_postman_collection(
         self, request: Request, pk: str | None = None
@@ -379,6 +440,12 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         )
         return response
 
+    @extend_schema(
+        summary="List shared users for deployment",
+        description="Returns the list of users the deployment is shared with.",
+        tags=["API Deployments"],
+        responses={200: SharedUserListSerializer},
+    )
     @action(detail=True, methods=["get"], permission_classes=[IsOwner])
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
         """List users who have access to this API deployment."""

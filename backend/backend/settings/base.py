@@ -308,7 +308,7 @@ SHARED_APPS = (
     # "connector_auth",
     "social_django",
     # Doc generator
-    "drf_yasg",
+    "drf_spectacular",
     "docs",
     # Plugins
     "plugins.apps.PluginsConfig",
@@ -569,6 +569,7 @@ REST_FRAMEWORK = {
         "rest_framework.renderers.JSONRenderer",
     ],
     "DEFAULT_PERMISSION_CLASSES": [],  # TODO: Update once auth is figured
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
@@ -599,14 +600,60 @@ WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 
+# Whitelisting API docs
+WHITELISTED_PATHS.append(f"/{PATH_PREFIX}/doc")
+
 # These path will work without organization in request
 ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
 
-# API Doc Generator Settings
-# https://drf-yasg.readthedocs.io/en/stable/settings.html
-REDOC_SETTINGS = {
-    "PATH_IN_MIDDLE": True,
-    "REQUIRED_PROPS_FIRST": True,
+# API Doc Generator Settings (drf-spectacular)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Unstract API",
+    "DESCRIPTION": (
+        "Unstract platform API for document processing, "
+        "workflow management, and deployment."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "PREPROCESSING_HOOKS": ["docs.spectacular_hooks.filter_endpoints"],
+    "POSTPROCESSING_HOOKS": ["docs.spectacular_hooks.strip_version_suffix"],
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SCHEMA_PATH_PREFIX": r"/api/v1/",
+    # Only show Bearer auth, suppress auto-detected session/basic auth
+    "SECURITY": [{"BearerAuth": []}],
+    "AUTHENTICATION_WHITELIST": [],
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "BearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": (
+                    "Platform API key (UUID). "
+                    "Pass as: Authorization: Bearer {api-key-uuid}"
+                ),
+            },
+        }
+    },
+    "TAGS": [
+        {"name": "Prompt Studio", "description": "Prompt Studio project management"},
+        {
+            "name": "Workflows",
+            "description": "Workflow CRUD, execution, and file history",
+        },
+        {
+            "name": "API Deployments",
+            "description": "API deployment management, execution, and keys",
+        },
+        {
+            "name": "Pipelines",
+            "description": "ETL/task pipeline management and execution",
+        },
+        {"name": "Connectors", "description": "Connector instance management"},
+        {
+            "name": "Adapters",
+            "description": "LLM, Embedding, VectorDB, Text Extractor adapter management",
+        },
+    ],
 }
 
 # Social Auth Settings

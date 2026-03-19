@@ -10,6 +10,8 @@ from api_v2.models import APIDeployment
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -84,9 +86,39 @@ from .serializers import (
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List Prompt Studio projects",
+        description="Returns all Prompt Studio projects accessible to the caller.",
+        tags=["Prompt Studio"],
+    ),
+    create=extend_schema(
+        summary="Create a Prompt Studio project",
+        description="Creates a new project with the given name and settings.",
+        tags=["Prompt Studio"],
+    ),
+    retrieve=extend_schema(
+        summary="Get Prompt Studio project details",
+        description="Returns full project details including prompts, profiles, "
+        "and default profile configuration.",
+        tags=["Prompt Studio"],
+    ),
+    update=extend_schema(
+        summary="Update a Prompt Studio project", tags=["Prompt Studio"]
+    ),
+    partial_update=extend_schema(
+        summary="Partially update a Prompt Studio project",
+        description="Update specific fields. Commonly used for `shared_users`, "
+        "`tool_name`, or LLM settings.",
+        tags=["Prompt Studio"],
+    ),
+    destroy=extend_schema(
+        summary="Delete a Prompt Studio project",
+        description="Deletes the project. Fails if the tool is deployed in any workflow.",
+        tags=["Prompt Studio"],
+    ),
+)
 class PromptStudioCoreView(viewsets.ModelViewSet):
-    """Viewset to handle all Custom tool related operations."""
-
     versioning_class = URLPathVersioning
 
     serializer_class = CustomToolSerializer
@@ -285,6 +317,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         return response
 
+    @extend_schema(
+        summary="Get select field choices",
+        description="Returns all static dropdown field values for the Prompt Studio UI "
+        "(output types, LLM parameters, etc.).",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
         """Method to return all static dropdown field values.
@@ -301,6 +340,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.error(f"Error occured while fetching select fields {e}")
             return Response(select_choices, status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(
+        summary="Get retrieval strategies",
+        description="Returns metadata about available RAG retrieval strategies "
+        "including descriptions, use cases, and performance tradeoffs.",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["get"])
     def get_retrieval_strategies(self, request: HttpRequest, pk: Any = None) -> Response:
         """Method to return all retrieval strategy metadata.
@@ -325,6 +371,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        summary="List LLM profiles for a project",
+        description="Returns all LLM profile configurations for the given project.",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["get"])
     def list_profiles(self, request: HttpRequest, pk: Any = None) -> Response:
         prompt_tool = (
@@ -341,6 +393,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         return Response(serialized_instances)
 
+    @extend_schema(
+        summary="Set default LLM profile",
+        description="Sets the specified profile as the default. "
+        'Body: {"default_profile": "profile_uuid"}.',
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["patch"])
     def make_profile_default(self, request: HttpRequest, pk: Any = None) -> Response:
         prompt_tool = (
@@ -360,6 +419,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             data={"default_profile": profile_manager.profile_id},
         )
 
+    @extend_schema(
+        summary="Index a document for RAG",
+        description="Indexes a document for RAG retrieval. "
+        'Body: {"document_id": "uuid"}. Must be called before fetch_response.',
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["post"])
     def index_document(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to index input file.
@@ -400,6 +466,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             logger.error("Error occured while indexing. Unique ID is not valid.")
             raise IndexingAPIError()
 
+    @extend_schema(
+        summary="Fetch prompt response",
+        description="Runs a prompt against an indexed document and returns the LLM response. "
+        'Body: {"document_id", "id" (prompt_id), "profile_manager" (profile_uuid)}.',
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["post"])
     def fetch_response(self, request: HttpRequest, pk: Any = None) -> Response:
         """API Entry point method to fetch response to prompt.
@@ -450,6 +523,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         return Response(response, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Run single-pass extraction",
+        description="Runs all prompts in a single LLM call for cost-efficient extraction. "
+        'Body: {"document_id"}.',
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["post"])
     def single_pass_extraction(self, request: HttpRequest, pk: uuid) -> Response:
         """API Entry point method to fetch response to prompt.
@@ -479,6 +559,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
         return Response(response, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="List shared users",
+        description="Returns the list of users the project is shared with.",
+        tags=["Prompt Studio"],
+        responses={200: SharedUserListSerializer},
+    )
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
         custom_tool = (
@@ -489,6 +575,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         return Response(serialized_instances)
 
+    @extend_schema(
+        summary="Create a prompt",
+        description="Creates a new prompt within the project.",
+        tags=["Prompt Studio"],
+    )
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
@@ -505,6 +596,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     # TODO: Move to prompt_profile_manager app and move validation to serializer
+    @extend_schema(
+        summary="Create a profile manager",
+        description="Creates a new LLM profile configuration for the project.",
+        tags=["Prompt Studio"],
+    )
     @action(detail=True, methods=["post"])
     def create_profile_manager(self, request: HttpRequest, pk: Any = None) -> Response:
         context = super().get_serializer_context()
@@ -536,6 +632,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        summary="Fetch file contents",
+        description="Returns the extracted text content of a document for the IDE view.",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["get"])
     def fetch_contents_ide(self, request: HttpRequest, pk: Any = None) -> Response:
         custom_tool = self.get_object()
@@ -596,6 +698,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             raise FileNotFound()
         return Response(contents, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Upload a file to project",
+        description="Uploads a document file to the project for processing.",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["post"])
     def upload_for_ide(self, request: HttpRequest, pk: Any = None) -> Response:
         custom_tool = self.get_object()
@@ -672,6 +780,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         return Response({"data": documents})
 
+    @extend_schema(
+        summary="Delete a file from project",
+        description="Removes a document file from the project.",
+        tags=["Prompt Studio"],
+        responses={204: None},
+    )
     @action(detail=True, methods=["delete"])
     def delete_for_ide(self, request: HttpRequest, pk: uuid) -> Response:
         custom_tool = self.get_object()
@@ -711,6 +825,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    @extend_schema(
+        summary="Export project as a tool for deployment",
+        description="Exports the project as a deployable tool that can be "
+        "used in workflows and API deployments.",
+        tags=["Prompt Studio"],
+    )
     @action(detail=True, methods=["post"])
     def export_tool(self, request: Request, pk: Any = None) -> Response:
         """API Endpoint for exporting required jsons for the custom tool."""
@@ -744,6 +864,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
         )
 
+    @extend_schema(
+        summary="Get export info for a project tool",
+        description="Returns metadata about the exportable tool (version, prompts count, etc.).",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["get"])
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:
         custom_tool = self.get_object()
@@ -757,6 +883,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         else:
             return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(
+        summary="Export project as portable JSON",
+        description="Downloads the project as a JSON file suitable for importing "
+        "into another environment via `POST /prompt-studio/project-transfer/`.",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.BINARY},
+    )
     @action(detail=True, methods=["get"])
     def export_project(self, request: Request, pk: Any = None) -> HttpResponse:
         """API Endpoint for exporting project settings as downloadable JSON."""
@@ -785,6 +918,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        summary="Import a Prompt Studio project",
+        description="Import a project from JSON previously exported via "
+        "`GET /prompt-studio/project-transfer/{tool_id}`. "
+        "Adapters must be reconfigured on the target environment.",
+        tags=["Prompt Studio"],
+    )
     @action(detail=False, methods=["post"])
     def import_project(self, request: Request) -> Response:
         """API Endpoint for importing project settings from JSON file."""
@@ -852,6 +992,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        summary="Check deployment usage for project",
+        description="Checks if the project's exported tool is used in any active deployments or workflows.",
+        tags=["Prompt Studio"],
+        responses={200: OpenApiTypes.OBJECT},
+    )
     @action(detail=True, methods=["get"])
     def check_deployment_usage(self, request: Request, pk: Any = None) -> Response:
         """Check if the Prompt Studio project is used in any deployments.

@@ -27,6 +27,17 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+        extra_kwargs = {
+            "connector_name": {
+                "help_text": "Display name for the connector",
+            },
+            "connector_id": {
+                "help_text": "Connector type identifier (e.g. google_cloud_storage|uuid)",
+            },
+            "connector_mode": {
+                "help_text": "FILE_SYSTEM or DATABASE",
+            },
+        }
 
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None
@@ -64,7 +75,7 @@ class ConnectorInstanceSerializer(AuditSerializer):
         return instance
 
     def get_icon(self, obj: ConnectorInstance) -> str:
-        """Get connector icon from ConnectorProcessor."""
+        """Connector icon URL."""
         icon_path = ConnectorProcessor.get_connector_data_with_key(
             obj.connector_id, ConnectorKeys.ICON
         )

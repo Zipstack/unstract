@@ -1,20 +1,17 @@
 from django.urls import path
-from drf_yasg import openapi
-from drf_yasg.views import get_schema_view
+from drf_spectacular.views import SpectacularAPIView, SpectacularRedocView
 
-schema_view = get_schema_view(
-    openapi.Info(
-        title="Unstract APIs",
-        default_version="v1",
-        description="<Unstract description>",
-    ),
-    public=False,
-)
+app_name = "docs"
 
 urlpatterns = [
     path(
+        "doc/schema/",
+        SpectacularAPIView.as_view(),
+        name="schema",
+    ),
+    path(
         "doc/",
-        schema_view.with_ui("redoc", cache_timeout=0),
+        SpectacularRedocView.as_view(url_name="public:docs:schema"),
         name="schema-redoc",
     ),
 ]

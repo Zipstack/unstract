@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from drf_spectacular.utils import extend_schema
 from rest_framework import status, views
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -12,6 +13,7 @@ from pipeline_v2.models import Pipeline
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["Pipelines"])
 class PipelineApiExecution(views.APIView):
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
@@ -25,6 +27,11 @@ class PipelineApiExecution(views.APIView):
         request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
 
+    @extend_schema(
+        summary="Trigger a pipeline execution via API key",
+        description="Triggers async pipeline execution via API key authentication. "
+        "The pipeline runs in the background via Celery.",
+    )
     @DeploymentHelper.validate_api_key
     def post(
         self, request: Request, org_name: str, pipeline_id: str, pipeline: Pipeline

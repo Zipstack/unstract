@@ -41,27 +41,36 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager)
 
 
 class APIDeployment(DefaultOrganizationMixin, BaseModel):
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    id = models.UUIDField(
+        primary_key=True,
+        default=uuid.uuid4,
+        editable=False,
+        help_text="Deployment UUID",
+    )
     display_name = models.CharField(
         max_length=API_NAME_MAX_LENGTH,
         default="default api",
         db_comment="User-given display name for the API.",
+        help_text="Display name for the deployment",
     )
     description = models.CharField(
         max_length=DESCRIPTION_MAX_LENGTH,
         blank=True,
         default="",
         db_comment="User-given description for the API.",
+        help_text="Optional description",
     )
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.CASCADE,
         db_comment="Foreign key reference to the Workflow model.",
         related_name="apis",
+        help_text="Associated workflow",
     )
     is_active = models.BooleanField(
         default=True,
         db_comment="Flag indicating whether the API is active or not.",
+        help_text="Whether the deployment accepts requests",
     )
     # TODO: Implement dynamic generation of API endpoints for API deployments
     # instead of persisting them in the database.
@@ -70,11 +79,13 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         unique=True,
         editable=False,
         db_comment="URL endpoint for the API deployment.",
+        help_text="Full URL path for the deployment endpoint",
     )
     api_name = models.CharField(
         max_length=API_NAME_MAX_LENGTH,
         default=uuid.uuid4,
         db_comment="Short name for the API deployment.",
+        help_text="URL-safe identifier used in the endpoint path",
     )
     created_by = models.ForeignKey(
         User,
@@ -83,6 +94,7 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         null=True,
         blank=True,
         editable=False,
+        help_text="User who created this resource",
     )
     modified_by = models.ForeignKey(
         User,
@@ -91,6 +103,7 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         null=True,
         blank=True,
         editable=False,
+        help_text="User who last modified this resource",
     )
     # Sharing fields
     shared_users = models.ManyToManyField(
@@ -99,6 +112,7 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this API deployment is shared with the entire organization",
+        help_text="Whether shared with entire organization",
     )
 
     # Manager
@@ -200,12 +214,14 @@ class APIKey(BaseModel):
         editable=False,
         default=uuid.uuid4,
         db_comment="Unique identifier for the API key.",
+        help_text="API key UUID",
     )
     api_key = models.UUIDField(
         default=uuid.uuid4,
         editable=False,
         unique=True,
         db_comment="Actual key UUID.",
+        help_text="The actual API key value (UUID) used for authentication",
     )
     api = models.ForeignKey(
         APIDeployment,
@@ -214,6 +230,7 @@ class APIKey(BaseModel):
         blank=True,
         db_comment="Foreign key reference to the APIDeployment model.",
         related_name="api_keys",
+        help_text="Associated API deployment (null if pipeline key)",
     )
     pipeline = models.ForeignKey(
         Pipeline,
@@ -221,15 +238,18 @@ class APIKey(BaseModel):
         null=True,
         blank=True,
         db_comment="Foreign key reference to the Pipeline model.",
+        help_text="Associated pipeline (null if deployment key)",
     )
     description = models.CharField(
         max_length=DESCRIPTION_MAX_LENGTH,
         null=True,
         db_comment="Description of the API key.",
+        help_text="Optional description for the API key",
     )
     is_active = models.BooleanField(
         default=True,
         db_comment="Flag indicating whether the API key is active or not.",
+        help_text="Whether the API key is active",
     )
     created_by = models.ForeignKey(
         User,
@@ -238,6 +258,7 @@ class APIKey(BaseModel):
         null=True,
         blank=True,
         editable=False,
+        help_text="User who created this resource",
     )
     modified_by = models.ForeignKey(
         User,
@@ -245,6 +266,7 @@ class APIKey(BaseModel):
         related_name="api_keys_modified",
         null=True,
         blank=True,
+        help_text="User who last modified this resource",
         editable=False,
     )
 

@@ -9,6 +9,7 @@ from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
@@ -42,6 +43,27 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List pipelines",
+        description="Returns paginated list of ETL/task pipelines. "
+        "Supports `?pipeline_type=ETL|TASK`, `?workflow=<uuid>`, and `?search=<name>` filters.",
+        tags=["Pipelines"],
+    ),
+    create=extend_schema(summary="Create a pipeline", tags=["Pipelines"]),
+    retrieve=extend_schema(summary="Get pipeline details", tags=["Pipelines"]),
+    update=extend_schema(summary="Update a pipeline", tags=["Pipelines"]),
+    partial_update=extend_schema(
+        summary="Partially update a pipeline",
+        description="Update specific fields like `pipeline_name`, `cron_string`, `shared_users`.",
+        tags=["Pipelines"],
+    ),
+    destroy=extend_schema(
+        summary="Delete a pipeline",
+        description="Deletes the pipeline and removes any associated scheduler jobs.",
+        tags=["Pipelines"],
+    ),
+)
 class PipelineViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
@@ -96,6 +118,12 @@ class PipelineViewSet(viewsets.ModelViewSet):
     # For eg, passing pipeline ID and with_log=False -> executes pipeline
     # For FE however we call the same API twice
     # (first call generates execution ID)
+    @extend_schema(
+        summary="Execute a pipeline",
+        description="Triggers pipeline execution. Body: {pipeline_id, execution_id (optional)}. "
+        "Returns the pipeline data with execution details.",
+        tags=["Pipelines"],
+    )
     def execute(self, request: Request) -> Response:
         serializer: ExecuteSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -133,6 +161,12 @@ class PipelineViewSet(viewsets.ModelViewSet):
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
+    @extend_schema(
+        summary="List shared users for pipeline",
+        description="Returns the list of users the pipeline is shared with.",
+        tags=["Pipelines"],
+        responses={200: SharedUserListSerializer},
+    )
     @action(detail=True, methods=["get"], url_path="users", permission_classes=[IsOwner])
     def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
         """Returns the list of users the pipeline is shared with."""
@@ -188,6 +222,12 @@ class PipelineViewSet(viewsets.ModelViewSet):
 
         return response
 
+    @extend_schema(
+        summary="Download Postman collection",
+        description="Downloads a Postman Collection JSON file for the pipeline, "
+        "pre-configured with the active API key.",
+        tags=["Pipelines"],
+    )
     @action(detail=True, methods=["get"])
     def download_postman_collection(
         self, request: Request, pk: str | None = None

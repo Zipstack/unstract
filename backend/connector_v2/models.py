@@ -50,11 +50,22 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     connector_name = models.TextField(
-        max_length=CONNECTOR_NAME_SIZE, null=False, blank=False
+        max_length=CONNECTOR_NAME_SIZE,
+        null=False,
+        blank=False,
+        help_text="Display name for the connector",
     )
-    connector_id = models.CharField(max_length=FLC.CONNECTOR_ID_LENGTH, default="")
+    connector_id = models.CharField(
+        max_length=FLC.CONNECTOR_ID_LENGTH,
+        default="",
+        help_text="Connector type identifier",
+    )
     connector_metadata = EncryptedBinaryField(null=True)
-    connector_version = models.CharField(max_length=VERSION_NAME_SIZE, default="")
+    connector_version = models.CharField(
+        max_length=VERSION_NAME_SIZE,
+        default="",
+        help_text="Connector version",
+    )
     # TODO: handle connector_auth cascade deletion
     connector_auth = models.ForeignKey(
         ConnectorAuth,
@@ -70,6 +81,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         db_comment="0: UNKNOWN, 1: FILE_SYSTEM, 2: DATABASE",
         null=True,
         blank=True,
+        help_text="FILE_SYSTEM or DATABASE",
     )
 
     created_by = models.ForeignKey(
@@ -78,6 +90,7 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         related_name="connectors_created",
         null=True,
         blank=True,
+        help_text="User who created this resource",
     )
     modified_by = models.ForeignKey(
         User,
@@ -85,11 +98,13 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
         related_name="connectors_modified",
         null=True,
         blank=True,
+        help_text="User who last modified this resource",
     )
 
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Is the connector shared to entire org",
+        help_text="Whether shared with entire organization",
     )
 
     # Introduced field to establish M2M relation between users and connectors.

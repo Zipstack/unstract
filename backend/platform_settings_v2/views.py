@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from account_v2.models import Organization, PlatformKey
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -21,6 +22,13 @@ from platform_settings_v2.serializers import (
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(summary="List platform API keys", tags=["Platform API Keys"]),
+    create=extend_schema(summary="Create a platform API key", tags=["Platform API Keys"]),
+    destroy=extend_schema(
+        summary="Delete a platform API key", tags=["Platform API Keys"]
+    ),
+)
 class PlatformKeyViewSet(viewsets.ModelViewSet):
     serializer_class = PlatformKeySerializer
 
@@ -50,6 +58,9 @@ class PlatformKeyViewSet(viewsets.ModelViewSet):
             data=serializer.data,
         )
 
+    @extend_schema(
+        summary="Refresh (rotate) a platform API key", tags=["Platform API Keys"]
+    )
     @validate_user_role
     def refresh(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
@@ -83,6 +94,9 @@ class PlatformKeyViewSet(viewsets.ModelViewSet):
             data={"message": "Platform key deleted successfully"},
         )
 
+    @extend_schema(
+        summary="Toggle platform API key active/inactive", tags=["Platform API Keys"]
+    )
     @validate_user_role
     def toggle_platform_key(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]

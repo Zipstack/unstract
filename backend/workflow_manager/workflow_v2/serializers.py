@@ -37,6 +37,15 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
             WorkflowKey.LLM_RESPONSE: {
                 "required": False,
             },
+            "workflow_name": {
+                "help_text": "Display name of the workflow",
+            },
+            "description": {
+                "help_text": "Optional description",
+            },
+            "is_active": {
+                "help_text": "Whether the workflow is active",
+            },
         }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
@@ -70,12 +79,16 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
 
 
 class ExecuteWorkflowSerializer(Serializer):
-    workflow_id = UUIDField(required=True)
+    workflow_id = UUIDField(required=True, help_text="UUID of the workflow to execute")
     execution_action = ChoiceField(
-        choices=Workflow.ExecutionAction.choices, required=False
+        choices=Workflow.ExecutionAction.choices,
+        required=False,
+        help_text="Action to perform (e.g. START, STOP)",
     )
-    execution_id = UUIDField(required=False)
-    log_guid = UUIDField(required=False)
+    execution_id = UUIDField(
+        required=False, help_text="UUID of an existing execution to act on"
+    )
+    log_guid = UUIDField(required=False, help_text="UUID to correlate log entries")
     # TODO: Add other fields to handle WFExecution method, mode .etc.
 
     def get_workflow_id(self, validated_data: dict[str, str | None]) -> str | None:
@@ -139,14 +152,7 @@ class FileHistorySerializer(ModelSerializer):
         fields = "__all__"
 
     def get_max_execution_count(self, obj: FileHistory) -> int:
-        """Get the maximum execution count from the associated workflow.
-
-        Args:
-            obj: FileHistory instance
-
-        Returns:
-            int: Maximum execution count from workflow configuration
-        """
+        """Maximum execution count configured for this workflow."""
         return obj.workflow.get_max_execution_count()
 
     def get_has_exceeded_limit(self, obj: FileHistory) -> bool:

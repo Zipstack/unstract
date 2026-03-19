@@ -35,12 +35,20 @@ except ImportError:
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), required=False, allow_null=True, many=True
+        queryset=User.objects.all(),
+        required=False,
+        allow_null=True,
+        many=True,
+        help_text="User IDs this project is shared with",
     )
 
     class Meta:
         model = CustomTool
         fields = "__all__"
+        extra_kwargs = {
+            "created_at": {"help_text": "Creation timestamp (ISO 8601)"},
+            "modified_at": {"help_text": "Last modification timestamp (ISO 8601)"},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_tool_name": {
@@ -168,8 +176,6 @@ class PromptStudioResponseSerializer(serializers.Serializer):
 
 
 class SharedUserListSerializer(serializers.ModelSerializer):
-    """Used for listing users of Custom tool."""
-
     created_by = UserSerializer()
     shared_users = UserSerializer(many=True)
 

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import IsOwnerOrSharedUser
 from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.pipeline_processor import PipelineProcessor
@@ -13,6 +14,13 @@ from api_v2.models import APIKey
 from api_v2.serializers import APIKeyListSerializer, APIKeySerializer
 
 
+@extend_schema_view(
+    list=extend_schema(summary="List API keys", tags=["API Deployments"]),
+    create=extend_schema(summary="Create an API key", tags=["API Deployments"]),
+    retrieve=extend_schema(summary="Get API key details", tags=["API Deployments"]),
+    update=extend_schema(summary="Update an API key", tags=["API Deployments"]),
+    destroy=extend_schema(summary="Delete an API key", tags=["API Deployments"]),
+)
 class APIKeyViewSet(viewsets.ModelViewSet):
     queryset = APIKey.objects.all()
     permission_classes = [IsOwnerOrSharedUser]
@@ -22,6 +30,12 @@ class APIKeyViewSet(viewsets.ModelViewSet):
             return APIKeyListSerializer
         return APIKeySerializer
 
+    @extend_schema(
+        summary="List API keys for a deployment or pipeline",
+        description="Returns API keys for a specific deployment (by api_id) or "
+        "pipeline (by pipeline_id). One path variable must be provided.",
+        tags=["API Deployments"],
+    )
     @action(detail=True, methods=["get"])
     def api_keys(
         self,

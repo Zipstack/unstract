@@ -27,6 +27,20 @@ class BaseAdapterSerializer(AuditSerializer):
     class Meta:
         model = AdapterInstance
         fields = "__all__"
+        extra_kwargs = {
+            "adapter_name": {
+                "help_text": "Display name for the adapter",
+            },
+            "adapter_id": {
+                "help_text": "Adapter type identifier (e.g. openai|uuid)",
+            },
+            "adapter_type": {
+                "help_text": "LLM, EMBEDDING, VECTOR_DB, or X2TEXT",
+            },
+            "description": {
+                "help_text": "Optional description",
+            },
+        }
 
 
 class DefaultAdapterSerializer(serializers.Serializer):
@@ -36,11 +50,6 @@ class DefaultAdapterSerializer(serializers.Serializer):
 
 
 class AdapterInstanceSerializer(BaseAdapterSerializer):
-    """Inherits BaseAdapterSerializer.
-
-    Used for CRUD other than listing
-    """
-
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if data.get(AdapterKeys.ADAPTER_METADATA, None):
             encryption_secret: str = settings.ENCRYPTION_KEY
@@ -127,11 +136,6 @@ class AdapterInfoSerializer(BaseAdapterSerializer):
 
 
 class AdapterListSerializer(BaseAdapterSerializer):
-    """Inherits BaseAdapterSerializer.
-
-    Used for listing adapters
-    """
-
     class Meta(BaseAdapterSerializer.Meta):
         model = AdapterInstance
         fields = (
@@ -184,11 +188,6 @@ class AdapterListSerializer(BaseAdapterSerializer):
 
 
 class SharedUserListSerializer(BaseAdapterSerializer):
-    """Inherits BaseAdapterSerializer.
-
-    Used for listing adapter users
-    """
-
     shared_users = UserSerializer(many=True)
     created_by = UserSerializer()
 

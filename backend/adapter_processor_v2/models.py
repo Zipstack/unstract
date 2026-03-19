@@ -58,11 +58,13 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         null=False,
         blank=False,
         db_comment="Name of the Adapter Instance",
+        help_text="Display name for the adapter instance",
     )
     adapter_id = models.CharField(
         max_length=ADAPTER_ID_LENGTH,
         default="",
         db_comment="Unique identifier of the Adapter",
+        help_text="Adapter type identifier (e.g. openai|uuid)",
     )
 
     # TODO to be removed once the migration for encryption
@@ -77,6 +79,7 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     adapter_type = models.CharField(
         choices=[(tag.value, tag.name) for tag in AdapterTypes],
         db_comment="Type of adapter LLM/EMBEDDING/VECTOR_DB",
+        help_text="Adapter category: LLM, EMBEDDING, VECTOR_DB, or X2TEXT",
     )
     created_by = models.ForeignKey(
         User,
@@ -84,6 +87,7 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         related_name="adapters_created",
         null=True,
         blank=True,
+        help_text="User who created this resource",
     )
     modified_by = models.ForeignKey(
         User,
@@ -91,15 +95,18 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
         related_name="adapters_modified",
         null=True,
         blank=True,
+        help_text="User who last modified this resource",
     )
 
     is_active = models.BooleanField(
         default=False,
         db_comment="Is the adapter instance currently being used",
+        help_text="Whether the adapter is active",
     )
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Is the adapter shared to entire org",
+        help_text="Whether shared with entire organization",
     )
 
     is_friction_less = models.BooleanField(
@@ -131,7 +138,12 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
-    description = models.TextField(blank=True, null=True, default=None)
+    description = models.TextField(
+        blank=True,
+        null=True,
+        default=None,
+        help_text="Optional description",
+    )
 
     objects = AdapterInstanceModelManager()
 

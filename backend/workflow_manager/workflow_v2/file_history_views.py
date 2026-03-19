@@ -1,6 +1,7 @@
 import logging
 
 from django.shortcuts import get_object_or_404
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
@@ -18,9 +19,12 @@ logger = logging.getLogger(__name__)
 MAX_BULK_DELETE_LIMIT = 100
 
 
+@extend_schema_view(
+    list=extend_schema(summary="List file histories for a workflow", tags=["Workflows"]),
+    retrieve=extend_schema(summary="Get file history details", tags=["Workflows"]),
+    destroy=extend_schema(summary="Delete a file history entry", tags=["Workflows"]),
+)
 class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
-    """ViewSet for file history operations with filtering support."""
-
     serializer_class = FileHistorySerializer
     lookup_field = "id"
     permission_classes = [IsAuthenticated, IsWorkflowOwnerOrShared]
@@ -95,6 +99,11 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
             {"message": "File history deleted successfully"}, status=status.HTTP_200_OK
         )
 
+    @extend_schema(
+        summary="Clear file history for a workflow",
+        description="Clears all file history entries for the workflow, allowing full reprocessing.",
+        tags=["Workflows"],
+    )
     @action(detail=False, methods=["post"])
     def clear(self, request, workflow_id=None):
         """Clear file histories with filters or by specific IDs.

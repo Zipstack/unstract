@@ -36,6 +36,27 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     class Meta:
         model = APIDeployment
         fields = "__all__"
+        extra_kwargs = {
+            "id": {"help_text": "Deployment UUID"},
+            "display_name": {
+                "help_text": "Display name for the deployment",
+            },
+            "description": {
+                "help_text": "Optional description",
+            },
+            "is_active": {
+                "help_text": "Whether the deployment accepts requests",
+            },
+            "api_name": {
+                "help_text": "URL-safe name used in the deployment endpoint",
+            },
+            "workflow": {
+                "help_text": "UUID of the workflow to deploy",
+            },
+            "shared_users": {
+                "help_text": "User IDs this deployment is shared with",
+            },
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_api_name": {
@@ -219,11 +240,23 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     MAX_FILES_ALLOWED = 32
 
     timeout = IntegerField(
-        min_value=-1, max_value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC, default=-1
+        min_value=-1,
+        max_value=ApiExecution.MAXIMUM_TIMEOUT_IN_SEC,
+        default=-1,
+        help_text="Max wait time in seconds for sync execution (0 for async)",
     )
-    include_metadata = BooleanField(default=False)
-    include_metrics = BooleanField(default=False)
-    use_file_history = BooleanField(default=False)
+    include_metadata = BooleanField(
+        default=False,
+        help_text="Include extraction metadata in response",
+    )
+    include_metrics = BooleanField(
+        default=False,
+        help_text="Include processing metrics in response",
+    )
+    use_file_history = BooleanField(
+        default=False,
+        help_text="Skip reprocessing if file was previously processed",
+    )
 
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
@@ -396,9 +429,18 @@ class ExecutionRequestSerializer(TagParamsSerializer):
 
 
 class ExecutionQuerySerializer(Serializer):
-    execution_id = CharField(required=True)
-    include_metadata = BooleanField(default=False)
-    include_metrics = BooleanField(default=False)
+    execution_id = CharField(
+        required=True,
+        help_text="UUID of the execution to check status for",
+    )
+    include_metadata = BooleanField(
+        default=False,
+        help_text="Include extraction metadata in response",
+    )
+    include_metrics = BooleanField(
+        default=False,
+        help_text="Include processing metrics in response",
+    )
 
     def validate_execution_id(self, value):
         """Trim spaces, validate UUID format, and check if execution_id exists."""
@@ -423,11 +465,17 @@ class ExecutionQuerySerializer(Serializer):
 
 
 class APIDeploymentListSerializer(ModelSerializer):
-    workflow_name = CharField(source="workflow.workflow_name", read_only=True)
-    created_by_email = SerializerMethodField()
-    last_5_run_statuses = SerializerMethodField()
-    run_count = SerializerMethodField()
-    last_run_time = SerializerMethodField()
+    workflow_name = CharField(
+        source="workflow.workflow_name",
+        read_only=True,
+        help_text="Name of the associated workflow",
+    )
+    created_by_email = SerializerMethodField(help_text="Email of the creator")
+    last_5_run_statuses = SerializerMethodField(
+        help_text="Last 5 execution statuses with timestamps"
+    )
+    run_count = SerializerMethodField(help_text="Total execution count")
+    last_run_time = SerializerMethodField(help_text="Timestamp of the last execution")
 
     class Meta:
         model = APIDeployment
@@ -448,11 +496,11 @@ class APIDeploymentListSerializer(ModelSerializer):
         ]
 
     def get_created_by_email(self, obj):
-        """Get the email of the creator."""
+        """Email of the user who created this deployment."""
         return obj.created_by.email if obj.created_by else None
 
     def get_run_count(self, instance) -> int:
-        """Get total execution count for this API deployment."""
+        """Total number of executions."""
         return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
 
     def get_last_run_time(self, instance) -> str | None:

@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import IsOwner
 from rest_framework import viewsets
 from rest_framework.versioning import URLPathVersioning
@@ -7,6 +8,9 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.serializers import WorkflowExecutionSerializer
 
 
+@extend_schema_view(
+    list=extend_schema(summary="List pipeline executions", tags=["Pipelines"]),
+)
 class PipelineExecutionViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     permission_classes = [IsOwner]

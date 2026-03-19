@@ -7,10 +7,6 @@ logger = logging.getLogger(__name__)
 
 
 class IntegrityErrorMixin:
-    """Mixin to handle IntegrityError across multiple serializers for unique
-    constraint violations.
-    """
-
     unique_error_message_map: dict[str, dict[str, str]] = {}
 
     def save(self, **kwargs):

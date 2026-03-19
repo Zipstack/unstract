@@ -12,6 +12,7 @@ class DefaultOrganizationMixin(models.Model):
         null=True,
         blank=True,
         default=None,
+        help_text="Organization this resource belongs to",
     )
 
     class Meta:

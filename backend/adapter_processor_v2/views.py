@@ -6,6 +6,7 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import (
     IsFrictionLessAdapter,
     IsFrictionLessAdapterDelete,
@@ -52,10 +53,15 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["Adapters"])
 class DefaultAdapterViewSet(ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = DefaultAdapterSerializer
 
+    @extend_schema(
+        summary="Configure default adapter triad",
+        description="Sets the default LLM, embedding, and vector DB adapters for the current user.",
+    )
     def configure_default_triad(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> HttpResponse:
@@ -66,6 +72,11 @@ class DefaultAdapterViewSet(ModelViewSet):
         AdapterProcessor.set_default_triad(default_triad, request.user)
         return Response(status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Get default adapter triad",
+        description="Returns the current user's default adapter configuration "
+        "(LLM, embedding, vector DB, text extractor).",
+    )
     def get_default_triad(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> HttpResponse:
@@ -84,10 +95,16 @@ class DefaultAdapterViewSet(ModelViewSet):
             return Response(status=status.HTTP_200_OK, data={})
 
 
+@extend_schema(tags=["Adapters"])
 class AdapterViewSet(GenericViewSet):
     versioning_class = URLPathVersioning
     serializer_class = TestAdapterSerializer
 
+    @extend_schema(
+        summary="List supported adapters by type",
+        description="Returns all supported adapter implementations for the given type. "
+        "Query param: adapter_type (LLM|EMBEDDING|VECTOR_DB|X2TEXT|OCR).",
+    )
     def list(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> HttpResponse:
@@ -107,6 +124,11 @@ class AdapterViewSet(GenericViewSet):
             else:
                 raise InValidType
 
+    @extend_schema(
+        summary="Get adapter JSON schema",
+        description="Returns the JSON configuration schema for a specific adapter. "
+        "Query param: id (adapter identifier).",
+    )
     def get_adapter_schema(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> HttpResponse:
@@ -117,6 +139,11 @@ class AdapterViewSet(GenericViewSet):
             json_schema = AdapterProcessor.get_json_schema(adapter_id=adapter_name)
             return Response(data=json_schema, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        summary="Test adapter connection",
+        description="Tests adapter connectivity with the provided credentials. "
+        "Returns {is_valid: true/false}.",
+    )
     def test(self, request: Request) -> Response:
         """Tests the connector against the credentials passed."""
         serializer: AdapterInstanceSerializer = self.get_serializer(data=request.data)
@@ -135,6 +162,33 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List adapter instances",
+        description="Returns adapter instances. "
+        "Supports `?adapter_type=LLM|EMBEDDING|VECTOR_DB|X2TEXT` filter.",
+        tags=["Adapters"],
+    ),
+    create=extend_schema(
+        summary="Create an adapter instance",
+        description="Create a new adapter with credentials. "
+        "Automatically sets as default if no default exists for the adapter type.",
+        tags=["Adapters"],
+    ),
+    retrieve=extend_schema(summary="Get adapter details", tags=["Adapters"]),
+    update=extend_schema(summary="Update an adapter", tags=["Adapters"]),
+    partial_update=extend_schema(
+        summary="Partially update an adapter",
+        description="Update specific fields. Commonly used for `shared_users` updates.",
+        tags=["Adapters"],
+    ),
+    destroy=extend_schema(
+        summary="Delete an adapter",
+        description="Deletes the adapter. Cannot delete a default adapter "
+        "or one in use by workflows.",
+        tags=["Adapters"],
+    ),
+)
 class AdapterInstanceViewSet(ModelViewSet):
     serializer_class = AdapterInstanceSerializer
 
@@ -380,6 +434,12 @@ class AdapterInstanceViewSet(ModelViewSet):
 
         return response
 
+    @extend_schema(
+        summary="List shared users for adapter",
+        description="Returns the list of users the adapter instance is shared with.",
+        tags=["Adapters"],
+        responses={200: SharedUserListSerializer},
+    )
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
         adapter = self.get_object()
@@ -433,6 +493,12 @@ class AdapterInstanceViewSet(ModelViewSet):
         # For non-platform-key cases, use the default update behavior
         return super().update(request, *args, **kwargs)
 
+    @extend_schema(
+        summary="Get adapter info",
+        description="Returns metadata about the adapter instance including "
+        "availability and deprecation status.",
+        tags=["Adapters"],
+    )
     @action(detail=True, methods=["get"])
     def adapter_info(self, request: HttpRequest, pk: uuid) -> Response:
         adapter = self.get_object()

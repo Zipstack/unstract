@@ -50,35 +50,56 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         PAUSED = "PAUSED", "Paused"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-    pipeline_name = models.CharField(max_length=PIPELINE_NAME_LENGTH, default="")
+    pipeline_name = models.CharField(
+        max_length=PIPELINE_NAME_LENGTH,
+        default="",
+        help_text="Display name of the pipeline",
+    )
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.CASCADE,
         related_name="pipelines",
         null=False,
         blank=False,
+        help_text="Associated workflow",
     )
     # Added as text field until a model for App is included.
     app_id = models.TextField(null=True, blank=True, max_length=APP_ID_LENGTH)
     active = models.BooleanField(
-        default=False, db_comment="Indicates whether the pipeline is active"
+        default=False,
+        db_comment="Indicates whether the pipeline is active",
+        help_text="Whether the pipeline is active",
     )
     scheduled = models.BooleanField(
-        default=False, db_comment="Indicates whether the pipeline is scheduled"
+        default=False,
+        db_comment="Indicates whether the pipeline is scheduled",
+        help_text="Whether the pipeline runs on a schedule",
     )
     cron_string = models.TextField(
         db_comment="UNIX cron string",
         null=True,
         blank=True,
         max_length=FieldLength.CRON_LENGTH,
+        help_text="Cron expression for scheduled execution",
     )
     pipeline_type = models.CharField(
-        choices=PipelineType.choices, default=PipelineType.DEFAULT
+        choices=PipelineType.choices,
+        default=PipelineType.DEFAULT,
+        help_text="Pipeline type: ETL or TASK",
     )
-    run_count = models.IntegerField(default=0)
-    last_run_time = models.DateTimeField(null=True, blank=True)
+    run_count = models.IntegerField(
+        default=0,
+        help_text="Number of times the pipeline has been executed",
+    )
+    last_run_time = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="Timestamp of the last execution",
+    )
     last_run_status = models.CharField(
-        choices=PipelineStatus.choices, default=PipelineStatus.YET_TO_START
+        choices=PipelineStatus.choices,
+        default=PipelineStatus.YET_TO_START,
+        help_text="Status of the last execution",
     )
     app_icon = models.URLField(
         null=True, blank=True, db_comment="Field to store icon url for Apps"
@@ -94,6 +115,7 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         related_name="pipelines_created",
         null=True,
         blank=True,
+        help_text="User who created this resource",
     )
     modified_by = models.ForeignKey(
         User,
@@ -101,6 +123,7 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         related_name="pipelines_modified",
         null=True,
         blank=True,
+        help_text="User who last modified this resource",
     )
     # Sharing fields
     shared_users = models.ManyToManyField(
@@ -112,6 +135,7 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this pipeline is shared with the entire organization",
+        help_text="Whether shared with entire organization",
     )
 
     # Manager

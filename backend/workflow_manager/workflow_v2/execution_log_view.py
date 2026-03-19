@@ -3,6 +3,7 @@ import logging
 from django.db.models import Q
 from django.db.models.query import QuerySet
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import IsOwner
 from rest_framework import viewsets
 from rest_framework.filters import OrderingFilter
@@ -16,6 +17,14 @@ from workflow_manager.workflow_v2.serializers import WorkflowExecutionLogSeriali
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List execution logs",
+        description="Returns paginated log entries for a specific execution. "
+        "Supports ordering by `event_time`.",
+        tags=["Workflows"],
+    ),
+)
 class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     permission_classes = [IsOwner]

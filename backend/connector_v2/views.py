@@ -8,6 +8,7 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -33,6 +34,32 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(
+    list=extend_schema(
+        summary="List connectors",
+        description="Returns connector instances. "
+        "Supports `?connector_type=<type>` and `?connector_mode=FILE_SYSTEM|DATABASE` filters.",
+        tags=["Connectors"],
+    ),
+    create=extend_schema(
+        summary="Create a connector",
+        description="Create a new connector instance with credentials. "
+        "For OAuth connectors, pass the `oauth_key` query parameter.",
+        tags=["Connectors"],
+    ),
+    retrieve=extend_schema(summary="Get connector details", tags=["Connectors"]),
+    update=extend_schema(summary="Update a connector", tags=["Connectors"]),
+    partial_update=extend_schema(
+        summary="Partially update a connector",
+        description="Update specific fields. Commonly used for `shared_users` updates.",
+        tags=["Connectors"],
+    ),
+    destroy=extend_schema(
+        summary="Delete a connector",
+        description="Deletes the connector. Fails if the connector is in use by any workflow.",
+        tags=["Connectors"],
+    ),
+)
 class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer

@@ -34,6 +34,23 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     class Meta:
         model = Pipeline
         fields = "__all__"
+        extra_kwargs = {
+            "pipeline_name": {
+                "help_text": "Display name of the pipeline",
+            },
+            "pipeline_type": {
+                "help_text": "Pipeline type: ETL or TASK",
+            },
+            "active": {
+                "help_text": "Whether the pipeline is active",
+            },
+            "cron_string": {
+                "help_text": "Cron expression for scheduled execution",
+            },
+            "workflow": {
+                "help_text": "UUID of the associated workflow",
+            },
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_pipeline_name": {
@@ -210,7 +227,7 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
 
     def get_next_run_time(self, instance: Pipeline) -> str | None:
-        """Calculate next scheduled run time from cron expression."""
+        """Next scheduled run time (ISO 8601), or null if unscheduled."""
         if not instance.cron_string or not instance.active:
             return None
         try:
