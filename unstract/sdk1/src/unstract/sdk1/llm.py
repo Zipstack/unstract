@@ -482,7 +482,7 @@ class LLM:
             kwargs={"provider": self.adapter.get_provider(), **self.platform_kwargs},
         )
 
-    def _raise_for_empty_response(self, finish_reason: str | None) -> None:
+    def _raise_for_empty_response(self, finish_reason: str | None) -> "NoReturn":
         """Raise an appropriate error when the LLM response content is None.
 
         This typically happens when the LLM provider refuses to generate a
