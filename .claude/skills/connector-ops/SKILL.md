@@ -66,11 +66,12 @@ Ask the user for:
 
 Use web search to discover:
 1. **Official Python library** for the service
-2. **All supported authentication modes** (API key, OAuth, connection string, certificates, etc.)
-3. **Required connection parameters** for each auth mode
-4. **Official logo/icon** source
+2. **Existing fsspec provider** — check if a mature fsspec-compatible library exists (e.g., `s3fs` for S3, `adlfs` for Azure, `gcsfs` for GCS, `boxfs` for Box). **Always prefer wrapping an existing provider over building a custom one.**
+3. **All supported authentication modes** (API key, OAuth, connection string, certificates, etc.)
+4. **Required connection parameters** for each auth mode
+5. **Official logo/icon** source
 
-Document findings before proceeding.
+Document findings before proceeding. If no fsspec provider exists, note that a custom `AbstractFileSystem` subclass will be needed (see Step 5b).
 
 ### Step 3: Generate Connector ID
 
@@ -124,10 +125,33 @@ Read the template and adapt it for the specific service. Key methods to implemen
 - `execute()` → Execute queries (inherited, may override)
 
 **For Filesystem Connectors:**
-- `get_fsspec_fs()` → Return fsspec filesystem instance
+
+There are two approaches depending on whether an fsspec provider exists:
+
+**Approach 1: Wrapping an existing fsspec provider (PREFERRED)**
+When a library like `s3fs`, `adlfs`, `gcsfs`, `boxfs` exists, the connector only extends `UnstractFileSystem`:
+- `get_fsspec_fs()` → Return the provider's filesystem instance (e.g., `S3FileSystem(...)`)
 - `test_credentials()` → Verify connection works
 - `extract_metadata_file_hash()` → Extract file hash from metadata
 - `is_dir_by_metadata()` → Check if path is directory
+- `extract_modified_date()` → Extract last modified date
+- **Do NOT implement `ls`, `walk`, `info`, etc.** — the provider handles all file operations.
+- See `minio.py` for reference.
+
+**Approach 2: Custom AbstractFileSystem (ONLY when no provider exists)**
+Create a custom `AbstractFileSystem` subclass with ONLY these core methods:
+- `ls(path, detail=True)` — List directory contents (REQUIRED)
+- `info(path)` — Get single item metadata (optimization, optional)
+- `_open(path, mode)` — Open a file for reading
+- `cat_file(path)` — Read file contents
+- `pipe_file(path, value)` — Write bytes (NOT `write_bytes` — that's an alias)
+- `rm(path)` — Delete a file
+- `mkdir(path)` — Create directory
+
+**CRITICAL: NEVER override** `listdir()`, `stat()`, `exists()`, `isdir()`, `isfile()`, `delete()`, `read_bytes()`, or `write_bytes()`. These are provided by `AbstractFileSystem` and delegate to `ls()`/`info()`/`pipe_file()`.
+
+**`walk()` exception**: Override `walk()` ONLY if the filesystem has path normalization that differs from `_strip_protocol` (e.g., SharePoint maps `""` to `"root"`), or if the service raises exceptions that aren't `FileNotFoundError`/`OSError` (the only types the base catches). If you override `walk()`, you MUST support the `detail` kwarg (return dicts when `True`, lists when `False`) and the `on_error` callback.
+- See `sharepoint.py` for reference.
 
 **For Queue Connectors:**
 - `get_engine()` → Return queue connection
@@ -467,3 +491,7 @@ Use these templates as starting points:
 4. **Icon Naming**: Use PascalCase with spaces URL-encoded (e.g., `Google%20Drive.png`).
 
 5. **Test Isolation**: Mock tests should never require external services. Use `@unittest.skipUnless` for integration tests.
+
+6. **fsspec Delegation**: NEVER override `walk()`, `listdir()`, `stat()`, `exists()`, `isdir()`, `isfile()`, `delete()`, `read_bytes()`, or `write_bytes()` in custom `AbstractFileSystem` subclasses. These are provided by fsspec's base class and delegate to `ls()`/`info()`/`pipe_file()`. Overriding them creates maintenance burden and introduces subtle bugs. See `references/connector_patterns.md` for the "Anti-Pattern: Reimplementing fsspec Base Methods" section.
+
+7. **pipe_file vs write_bytes**: When implementing file writes in a custom `AbstractFileSystem`, override `pipe_file()` (not `write_bytes()`). The base `write_bytes()` is an alias that delegates to `pipe_file()`.

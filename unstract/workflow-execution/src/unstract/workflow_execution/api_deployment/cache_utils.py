@@ -5,8 +5,7 @@ import logging
 import os
 from typing import Any
 
-import redis
-
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.worker_models import FileExecutionResult
 
 logger = logging.getLogger(__name__)
@@ -24,19 +23,11 @@ class WorkerResultCacheUtils:
     def _get_redis_client(self):
         """Get Redis client instance."""
         if self._redis_client is None:
-            host = os.getenv("REDIS_HOST", "localhost")
-            port = int(os.getenv("REDIS_PORT", "6379"))
-            db = int(os.getenv("REDIS_DB", "0"))
-
-            self._redis_client = redis.Redis(
-                host=host,
-                port=port,
-                db=db,
-                decode_responses=False,  # Keep binary for JSON handling
+            self._redis_client = create_redis_client(
+                decode_responses=False,
                 socket_connect_timeout=5,
                 socket_timeout=5,
             )
-
         return self._redis_client
 
     def check_redis_health(self, timeout_seconds: float = 2.0) -> bool:

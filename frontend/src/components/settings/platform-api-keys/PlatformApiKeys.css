@@ -1,0 +1,38 @@
+/* Styles for PlatformApiKeys */
+
+.platform-api-keys__content {
+  padding: 20px;
+}
+
+.platform-api-keys__header-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.platform-api-keys__key-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.platform-api-keys__key-text {
+  font-family: monospace;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.platform-api-keys__copy-icon {
+  font-size: 12px;
+  color: rgba(0, 0, 0, 0.45);
+}
+
+.platform-api-keys__key-cell:hover .platform-api-keys__copy-icon {
+  color: rgba(0, 0, 0, 0.88);
+}
+
+.platform-api-keys__actions {
+  display: flex;
+  gap: 8px;
+}

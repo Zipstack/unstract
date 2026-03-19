@@ -1,10 +1,8 @@
 import logging
-import os
 import time
 from typing import Any
 
-import redis
-
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.tool_sandbox import ToolSandbox
 from unstract.workflow_execution.constants import StepExecution, ToolExecution
@@ -29,12 +27,13 @@ logger = logging.getLogger(__name__)
 
 
 class WorkflowExecutionService:
-    redis_con = redis.Redis(
-        host=os.environ.get("REDIS_HOST", "http://127.0.0.1"),
-        port=int(os.environ.get("REDIS_PORT", "6379")),
-        password=os.environ.get("REDIS_USER"),
-        username=os.environ.get("REDIS_PASSWORD"),
-    )
+    _redis_client = None
+
+    @classmethod
+    def _get_redis_client(cls):
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=False)
+        return cls._redis_client
 
     def __init__(
         self,
@@ -48,6 +47,7 @@ class WorkflowExecutionService:
     ) -> None:
         self.organization_id = organization_id
         self.workflow_id = workflow_id
+        self.redis_con = self._get_redis_client()
 
         self.tool_instances = tool_instances
         self.tool_utils = ToolsUtils(

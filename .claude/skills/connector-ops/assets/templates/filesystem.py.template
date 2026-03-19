@@ -1,6 +1,47 @@
 """
 Filesystem Connector Template
 
+There are TWO approaches for filesystem connectors:
+
+## Approach 1: Wrapping an existing fsspec provider (PREFERRED)
+Use this when a mature fsspec-compatible library exists (e.g., s3fs, adlfs, gcsfs, boxfs).
+The connector class extends UnstractFileSystem and delegates all file operations to the
+provider via get_fsspec_fs(). You do NOT implement ls, walk, info, etc. — the provider
+handles all of that.
+
+## Approach 2: Custom AbstractFileSystem (RARE)
+Use this ONLY when no fsspec provider exists for the service. You must create a custom
+AbstractFileSystem subclass implementing ONLY these core methods:
+  - ls(path, detail=True)   — List directory contents (REQUIRED)
+  - info(path)              — Get single item metadata (optimization, optional)
+  - _open(path, mode)       — Open a file for reading (REQUIRED for reads)
+  - cat_file(path)          — Read file contents (REQUIRED for reads)
+  - pipe_file(path, value)  — Write bytes to file (REQUIRED for writes)
+  - rm(path)                — Delete a file (REQUIRED for writes)
+  - mkdir(path)             — Create directory (REQUIRED for writes)
+
+NEVER override these methods — AbstractFileSystem already provides them by delegating
+to ls()/info():
+  - walk()      — delegates to ls(), handles detail=True, on_error, topdown.
+                   EXCEPTION: override walk() if the filesystem has custom path
+                   normalization (e.g., "" → "root") or raises exceptions that aren't
+                   FileNotFoundError/OSError. If overriding, MUST support detail kwarg.
+  - listdir()   — alias for ls()
+  - stat()      — alias for info()
+  - exists()    — calls info(), catches exceptions
+  - isdir()     — calls info(), checks type
+  - isfile()    — calls info(), checks type
+  - delete()    — alias for rm()
+  - read_bytes()— alias for cat_file()
+  - write_bytes() — alias for pipe_file()
+
+Overriding these creates maintenance burden and risks bugs (e.g., walk() not
+supporting detail=True, which breaks file discovery).
+
+Reference existing connectors:
+  - Approach 1: See minio.py (wraps s3fs.S3FileSystem)
+  - Approach 2: See sharepoint.py (custom SharePointFileSystem)
+
 Replace placeholders:
 - {ClassName}: PascalCase class name (e.g., MinioFS, AzureBlobFS)
 - {connector_name}: lowercase connector name (e.g., minio, azure_blob)
@@ -90,8 +131,7 @@ class {ClassName}(UnstractFileSystem):
         return ""
 
     def get_fsspec_fs(self) -> AbstractFileSystem:
-        """
-        Return fsspec filesystem instance.
+        """Return fsspec filesystem instance.
 
         Uses lazy initialization with thread safety for Celery compatibility.
 
@@ -121,8 +161,7 @@ class {ClassName}(UnstractFileSystem):
         return self._fs
 
     def test_credentials(self) -> bool:
-        """
-        Test filesystem credentials.
+        """Test filesystem credentials.
 
         Returns:
             True if connection successful
@@ -142,8 +181,7 @@ class {ClassName}(UnstractFileSystem):
             ) from e
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
-        """
-        Extract unique file hash from fsspec metadata.
+        """Extract unique file hash from fsspec metadata.
 
         Different storage systems use different keys for file hashes:
         - S3/Minio: ETag
@@ -170,8 +208,7 @@ class {ClassName}(UnstractFileSystem):
         return None
 
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
-        """
-        Check if path is a directory from metadata.
+        """Check if path is a directory from metadata.
 
         Args:
             metadata: File metadata from fsspec

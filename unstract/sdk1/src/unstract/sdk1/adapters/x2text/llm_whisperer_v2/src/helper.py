@@ -111,6 +111,9 @@ class LLMWhispererHelper:
                 base_url=llm_whisperer_svc_url,
                 api_key=config.get(WhispererConfig.UNSTRACT_KEY),
                 logging_level=WhispererDefaults.LOGGING_LEVEL,
+                max_retries=WhispererDefaults.MAX_RETRIES,
+                retry_min_wait=WhispererDefaults.RETRY_MIN_WAIT,
+                retry_max_wait=WhispererDefaults.RETRY_MAX_WAIT,
             )
             if type == "whisper":
                 response = client.whisper(**params, stream=data)

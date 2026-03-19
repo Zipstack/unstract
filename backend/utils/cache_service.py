@@ -7,6 +7,8 @@ from django.conf import settings
 from django.core.cache import cache
 from django_redis import get_redis_connection
 
+from unstract.core.cache.redis_client import create_redis_client
+
 redis_cache = get_redis_connection("default")
 
 logger = logging.getLogger(__name__)
@@ -66,15 +68,7 @@ class CacheService:
 
         # Use specified DB or default connection
         if db is not None:
-            import redis
-
-            redis_connection = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=db,
-                username=getattr(settings, "REDIS_USER", None),
-                password=getattr(settings, "REDIS_PASSWORD", None),
-            )
+            redis_connection = create_redis_client(decode_responses=False, db=db)
         else:
             redis_connection = redis_cache
 

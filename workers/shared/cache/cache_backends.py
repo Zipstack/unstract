@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any
 
-from unstract.core.cache.redis_client import RedisClient
+from unstract.core.cache.redis_client import RedisClient, create_redis_client
 
 logger = logging.getLogger(__name__)
 
@@ -99,26 +99,23 @@ class RedisCacheBackend(BaseCacheBackend):
                 self.available = False
                 return
 
-            # Initialize RedisClient with cache configuration
-            self.redis_client = RedisClient(
-                host=cache_config["host"],
-                port=cache_config["port"],
-                username=cache_config.get("username"),
-                password=cache_config.get("password"),
-                db=cache_config["db"],
+            raw_client = create_redis_client(
+                env_prefix="CACHE_REDIS_",
                 decode_responses=True,
                 socket_timeout=5,
                 socket_connect_timeout=5,
+                health_check_interval=30,
             )
+            # Wrap in RedisClient for interface compatibility
+            self.redis_client = RedisClient.__new__(RedisClient)
+            self.redis_client.redis_client = raw_client
 
             # Test connection
             if not self.redis_client.ping():
                 raise ConnectionError("Failed to ping Redis server")
 
             self.available = True
-            logger.info(
-                f"RedisCacheBackend initialized successfully: {cache_config['host']}:{cache_config['port']}/{cache_config['db']}"
-            )
+            logger.info("RedisCacheBackend initialized successfully")
 
         except ImportError:
             logger.error("Redis module not available - install with: pip install redis")
