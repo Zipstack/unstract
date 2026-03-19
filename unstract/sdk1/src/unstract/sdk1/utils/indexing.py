@@ -3,7 +3,6 @@ import json
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.stream import StreamMixin
-from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.tool import ToolUtils
 
