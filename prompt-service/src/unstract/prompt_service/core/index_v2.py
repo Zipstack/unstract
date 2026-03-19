@@ -28,7 +28,7 @@ from unstract.sdk1.file_storage.impl import FileStorage
 from unstract.sdk1.file_storage.provider import FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper as ToolAdapter
 from unstract.sdk1.tool.stream import StreamMixin
-from unstract.sdk1.utils.common import capture_metrics
+from unstract.sdk1.utils.common import Utils, capture_metrics
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.vector_db import VectorDB
 
@@ -83,17 +83,21 @@ class Index:
         # Whole adapter config is used currently even though it contains some keys
         # which might not be relevant to indexing. This is easier for now than
         # marking certain keys of the adapter config as necessary.
+        vector_db_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.vector_db_instance_id
+        )
+        embedding_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.embedding_instance_id
+        )
+        x2text_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.x2text_instance_id
+        )
+        Utils.strip_adapter_name(vector_db_config, embedding_config, x2text_config)
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.vector_db_instance_id
-            ),
-            "embedding_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.embedding_instance_id
-            ),
-            "x2text_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.x2text_instance_id
-            ),
+            "vector_db_config": vector_db_config,
+            "embedding_config": embedding_config,
+            "x2text_config": x2text_config,
             # Typed and hashed as strings since the final hash is persisted
             # and this is required to be backward compatible
             "chunk_size": str(self.chunking_config.chunk_size),

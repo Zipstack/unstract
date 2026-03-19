@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
+from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
 from unstract.sdk1.platform import PlatformHelper
@@ -85,6 +86,7 @@ class LLM:
                 self._adapter_id = llm_config[Common.ADAPTER_ID]
                 self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
+                self._adapter_name = llm_config.pop(SdkCommon.ADAPTER_NAME, "")
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id
@@ -93,6 +95,7 @@ class LLM:
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
                 self._adapter_instance_id = ""
+                self._adapter_name = ""
                 self._tool = None
 
             # Retrieve the adapter class.
@@ -137,6 +140,13 @@ class LLM:
         if capture_metrics_from_platform is not None:
             self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
+
+    def _get_adapter_info(self) -> str:
+        """Build a display string identifying this adapter for errors."""
+        provider = self.adapter.get_provider()
+        if self._adapter_name:
+            return f"{self._adapter_name} ({provider})"
+        return provider
 
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""
@@ -266,7 +276,7 @@ class LLM:
                 status_code = e.http_status
 
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -342,7 +352,7 @@ class LLM:
                 status_code = e.http_status
 
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -401,7 +411,7 @@ class LLM:
                 status_code = e.http_status
 
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
