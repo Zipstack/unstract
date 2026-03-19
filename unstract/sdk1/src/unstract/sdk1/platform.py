@@ -7,6 +7,7 @@ from requests import RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
 from unstract.sdk1.constants import (
     AdapterKeys,
+    Common,
     LogLevel,
     MimeType,
     PromptStudioKeys,
@@ -138,6 +139,9 @@ class PlatformHelper:
             adapter_name = adapter_data.pop("adapter_name", "")
             adapter_type = adapter_data.pop("adapter_type", "")
             provider = adapter_data.get("adapter_id", "").split("|")[0]
+            # Store adapter name under a private key for use in error messages.
+            # This key is stripped before hashing in index key generation.
+            adapter_data[Common.ADAPTER_NAME] = adapter_name
             # TODO: Print metadata after redacting sensitive information
             tool.stream_log(
                 f"Retrieved config for '{adapter_instance_id}', type: "
