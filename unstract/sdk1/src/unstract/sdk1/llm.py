@@ -221,16 +221,16 @@ class LLM:
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
 
-            # Handle refusal or empty content from the LLM provider
-            if response_text is None:
-                self._raise_for_empty_response(finish_reason)
-
             self._record_usage(
                 self._cost_model or self.kwargs["model"],
                 messages,
                 response.get("usage"),
                 "complete",
             )
+
+            # Handle refusal or empty content from the LLM provider
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
 
             # NOTE:
             # The typecasting was required to stop the type checker from complaining.
@@ -372,16 +372,16 @@ class LLM:
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
 
-            # Handle refusal or empty content from the LLM provider
-            if response_text is None:
-                self._raise_for_empty_response(finish_reason)
-
             self._record_usage(
                 self._cost_model or self.kwargs["model"],
                 messages,
                 response.get("usage"),
                 "acomplete",
             )
+
+            # Handle refusal or empty content from the LLM provider
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
 
             response_object = LLMResponseCompat(response_text)
             response_object.raw = (
