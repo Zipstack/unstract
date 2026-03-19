@@ -48,7 +48,6 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     NoPromptsFound,
     OperationNotSupported,
     PermissionError,
-    ToolNotValid,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import (
     SummarizeMigrationUtils,

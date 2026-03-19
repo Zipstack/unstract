@@ -786,7 +786,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                     file_data = uploaded_file
                 # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
-            logger.info("Uploading file: %s", file_name) if file_name else logger.info("Uploading file")
+            logger.info("Uploading file: %s", file_name) if file_name else logger.info(
+                "Uploading file"
+            )
 
             # Store original file in main dir (always the original)
             PromptStudioFileHelper.upload_for_ide(
