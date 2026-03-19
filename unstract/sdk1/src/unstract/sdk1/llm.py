@@ -486,11 +486,17 @@ class LLM:
             kwargs={"provider": self.adapter.get_provider(), **self.platform_kwargs},
         )
 
+    # Finish reasons indicating a safety/policy refusal across providers:
+    # - "refusal": Anthropic
+    # - "content_filter": OpenAI / Azure OpenAI
+    REFUSAL_FINISH_REASONS = {"refusal", "content_filter"}
+
     def _raise_for_empty_response(self, finish_reason: str | None) -> NoReturn:
         """Raise an appropriate error when the LLM response content is None.
 
         This typically happens when the LLM provider refuses to generate a
-        response (e.g. Anthropic's safety filters) or returns an empty response.
+        response (e.g. Anthropic's safety filters, OpenAI's content filter)
+        or returns an empty response.
 
         Args:
             finish_reason: The finish_reason from the LLM response.
@@ -498,11 +504,12 @@ class LLM:
         Raises:
             LLMError: With a descriptive message based on the finish_reason.
         """
-        if finish_reason == "refusal":
+        if finish_reason in self.REFUSAL_FINISH_REASONS:
             raise LLMError(
                 message=(
                     "The LLM refused to generate a response due to safety "
-                    "restrictions. Please review your prompt and try again."
+                    f"restrictions (finish_reason: {finish_reason!r}). "
+                    "Please review your prompt and try again."
                 ),
                 status_code=400,
             )
@@ -536,8 +543,11 @@ class LLM:
                 been yielded yet. If content was already streamed, logs a
                 warning instead to avoid confusing late errors.
         """
+        if not chunk.get("choices"):
+            return None
+
         finish_reason = chunk["choices"][0].get("finish_reason")
-        if finish_reason == "refusal":
+        if finish_reason in self.REFUSAL_FINISH_REASONS:
             if has_yielded_content:
                 logger.warning(
                     "[sdk1][LLM] Provider sent refusal after content was "
