@@ -1,30 +1,12 @@
 from django.db.models.query import QuerySet
-from django_filters import CharFilter, FilterSet, ModelChoiceFilter
-from rest_framework.request import Request
+from django_filters import CharFilter, FilterSet, UUIDFilter
 
 from unstract.sdk1.constants import LogLevel
-from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 
 
-def get_file_executions(request: Request | None) -> QuerySet:
-    """Callable for ModelChoiceFilter to dynamically filter file_execution_id."""
-    if request is None or not hasattr(request, "parser_context"):
-        return WorkflowFileExecution.objects.none()
-
-    # Extract execution_id from URL kwargs
-    execution_id = request.parser_context["kwargs"].get("pk")
-    if not execution_id:
-        return WorkflowFileExecution.objects.none()
-
-    return WorkflowFileExecution.objects.filter(workflow_execution_id=execution_id)
-
-
 class ExecutionLogFilter(FilterSet):
-    file_execution_id = ModelChoiceFilter(
-        queryset=get_file_executions,
-        null_label="null",
-    )
+    file_execution_id = UUIDFilter(field_name="file_execution_id")
 
     log_level = CharFilter(field_name="data__level", method="filter_logs")
 
