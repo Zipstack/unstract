@@ -4,7 +4,6 @@ import logging
 
 from django.db import models
 from django.db.utils import OperationalError, ProgrammingError
-
 from utils.models.org_path_discovery import get_org_path
 from utils.user_context import UserContext
 
@@ -37,6 +36,7 @@ class OrgAwareManager(models.Manager):
                     # self.all() automatically include org scoping from
                     # OrgAwareManager.get_queryset().
                     ...
+
 
             class WorkflowExecution(BaseModel):
                 objects = WorkflowExecutionManager()
