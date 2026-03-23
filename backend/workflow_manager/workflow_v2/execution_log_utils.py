@@ -140,13 +140,20 @@ def create_log_consumer_scheduler_if_not_exists() -> None:
             period=IntervalSchedule.SECONDS,
         )
     except (ProgrammingError, OperationalError) as error:
-        logger.warning(
-            "Database error occurred while creating "
-            "log consumer scheduler. If you are currently running "
-            "migrations or tests, you can ignore this warning"
+        is_expected = any(
+            arg in sys.argv
+            for arg in ("migrate", "makemigrations", "test", "pytest")
         )
-        if all(arg not in sys.argv for arg in ("migrate", "makemigrations")):
-            logger.warning(f"Database error details: {error}")
+        if is_expected:
+            logger.warning(
+                "Database error while creating log consumer scheduler. "
+                "Expected during migrations/tests."
+            )
+        else:
+            logger.warning(
+                "Database error while creating log consumer scheduler: %s",
+                error,
+            )
         return
     except IntervalSchedule.MultipleObjectsReturned as error:
         logger.error(f"Error occurred while getting interval schedule: {error}")
