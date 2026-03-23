@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.12.*"
 
 [[package]]
@@ -1127,7 +1127,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.81.7"
+version = "1.82.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1143,9 +1143,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/77/69/cfa8a1d68cd10223a9d9741c411e131aece85c60c29c1102d762738b3e5c/litellm-1.81.7.tar.gz", hash = "sha256:442ff38708383ebee21357b3d936e58938172bae892f03bc5be4019ed4ff4a17", size = 14039864, upload-time = "2026-02-03T19:43:10.633Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/00/13993312e6d2fb29cd6d5ffceb293455ef747fe5675eaa9aa49b09184656/litellm-1.82.3.tar.gz", hash = "sha256:7215b95e7cc38a52b5ae778d67e8829dec86594c8b05d8431294e95c7d59937c", size = 17368754, upload-time = "2026-03-16T21:51:30.356Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/95/8cecc7e6377171e4ac96f23d65236af8706d99c1b7b71a94c72206672810/litellm-1.81.7-py3-none-any.whl", hash = "sha256:58466c88c3289c6a3830d88768cf8f307581d9e6c87861de874d1128bb2de90d", size = 12254178, upload-time = "2026-02-03T19:43:08.035Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/3a/590d58dee65a238f7f3d5c37f8f9f9021ecaf27fe379a393b4259324b56e/litellm-1.82.3-py3-none-any.whl", hash = "sha256:609901f6c5a5cf8c24386e4e3f50738bb8a9db719709fd76b208c8ee6d00f7a7", size = 15551034, upload-time = "2026-03-16T21:51:26.747Z" },
 ]
 
 [[package]]
@@ -2859,7 +2859,7 @@ requires-dist = [
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = "~=2024.10.0" },
     { name = "httpx", specifier = ">=0.25.2" },
     { name = "jsonschema" },
-    { name = "litellm", specifier = "==1.81.7" },
+    { name = "litellm", specifier = "==1.82.3" },
     { name = "llama-index", specifier = ">=0.14.13" },
     { name = "llama-index-vector-stores-milvus", specifier = ">=0.9.6" },
     { name = "llama-index-vector-stores-pinecone", specifier = ">=0.7.1" },

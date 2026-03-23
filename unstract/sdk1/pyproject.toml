@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv==1.0.1",
     # # Adapter changes
     "tiktoken~=0.9.0",
-    "litellm==1.81.7",
+    "litellm==1.82.3",
     "llama-index>=0.14.13",
     "llama-index-vector-stores-postgres>=0.7.3",
     "llama-index-vector-stores-milvus>=0.9.6",
