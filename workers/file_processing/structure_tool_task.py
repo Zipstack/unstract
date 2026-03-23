@@ -631,11 +631,10 @@ def _write_tool_result(
 ) -> None:
     """Write tool result and tool_metadata to METADATA.json.
 
-    Matches BaseTool._update_exec_metadata() + write_tool_result():
+    Matches BaseTool._update_exec_metadata():
     - tool_metadata: list of dicts with tool_name, output_type, elapsed_time
       (destination connector reads output_type from here)
     - total_elapsed_time: cumulative elapsed time
-    - tool_result: the structured output data
     """
     try:
         metadata_path = Path(execution_data_dir) / "METADATA.json"
@@ -666,8 +665,6 @@ def _write_tool_result(
             existing.get("total_elapsed_time", 0.0) + elapsed_time
         )
 
-        # Add tool result
-        existing["tool_result"] = data
         fs.write(
             path=metadata_path,
             mode="w",

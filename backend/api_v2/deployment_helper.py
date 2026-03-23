@@ -278,7 +278,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 result.remove_result_metadata_keys(["extracted_text"])
             if include_metadata or include_metrics:
                 cls._enrich_result_with_usage_metadata(result)
-            if not include_metadata and not include_metrics:
+            if not include_metadata:
                 result.remove_inner_result_metadata()
             if not include_metrics:
                 result.remove_result_metrics()
@@ -482,7 +482,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
             response.remove_result_metadata_keys(["extracted_text"])
         if include_metadata or include_metrics:
             DeploymentHelper._enrich_result_with_usage_metadata(response)
-        if not include_metadata and not include_metrics:
+        if not include_metadata:
             response.remove_inner_result_metadata()
         if not include_metrics:
             response.remove_result_metrics()

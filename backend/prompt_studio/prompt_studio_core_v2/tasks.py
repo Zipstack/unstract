@@ -8,8 +8,6 @@ from account_v2.constants import Common
 from celery import shared_task
 from utils.constants import Account
 from utils.local_context import StateStore
-from utils.log_events import _emit_websocket_event
-
 logger = logging.getLogger(__name__)
 
 PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result"
@@ -57,6 +55,8 @@ def _emit_result(
     result: dict[str, Any],
 ) -> None:
     """Push a success event to the frontend via Socket.IO."""
+    from utils.log_events import _emit_websocket_event
+
     _emit_websocket_event(
         room=log_events_id,
         event=PROMPT_STUDIO_RESULT_EVENT,
@@ -79,6 +79,8 @@ def _emit_error(
     extra: dict[str, Any] | None = None,
 ) -> None:
     """Push a failure event to the frontend via Socket.IO."""
+    from utils.log_events import _emit_websocket_event
+
     data: dict[str, Any] = {
         "task_id": task_id,
         "status": "failed",
