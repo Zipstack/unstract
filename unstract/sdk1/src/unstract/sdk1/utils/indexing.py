@@ -3,6 +3,7 @@ import json
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.tool import ToolUtils
 
 
@@ -41,11 +42,15 @@ class IndexingUtils:
         # Whole adapter config is used currently even though it contains some keys
         # which might not be relevant to indexing. This is easier for now than
         # marking certain keys of the adapter config as necessary.
+        vector_db_config = PlatformHelper.get_adapter_config(tool, vector_db)
+        embedding_config = PlatformHelper.get_adapter_config(tool, embedding)
+        x2text_config = PlatformHelper.get_adapter_config(tool, x2text)
+        Utils.strip_adapter_name(vector_db_config, embedding_config, x2text_config)
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": PlatformHelper.get_adapter_config(tool, vector_db),
-            "embedding_config": PlatformHelper.get_adapter_config(tool, embedding),
-            "x2text_config": PlatformHelper.get_adapter_config(tool, x2text),
+            "vector_db_config": vector_db_config,
+            "embedding_config": embedding_config,
+            "x2text_config": x2text_config,
             # Typed and hashed as strings since the final hash is persisted
             # and this is required to be backward compatible
             "chunk_size": str(chunk_size),
