@@ -1662,7 +1662,7 @@ class PromptStudioHelper:
         tool_metadata = import_data["tool_metadata"]
         tool_settings = import_data["tool_settings"]
 
-        return CustomTool.objects.create(
+        tool = CustomTool.objects.create(
             tool_name=tool_name,
             description=tool_metadata["description"],
             author=tool_metadata["author"],
@@ -1696,6 +1696,32 @@ class PromptStudioHelper:
             modified_by=user,
             organization=organization,
         )
+
+        # When a service account creates a tool, add the API key owner
+        # as a shared user so they can see it in the UI.
+        if getattr(user, "is_service_account", False):
+            from platform_api.models import PlatformApiKey
+
+            try:
+                key = PlatformApiKey.objects.get(api_user=user)
+                if key.created_by:
+                    tool.shared_users.add(key.created_by)
+                else:
+                    logger.warning(
+                        "PlatformApiKey for service account %s has no "
+                        "created_by while creating tool %s",
+                        user.id,
+                        tool.tool_id,
+                    )
+            except PlatformApiKey.DoesNotExist:
+                logger.warning(
+                    "No PlatformApiKey found for service account %s "
+                    "while creating tool %s",
+                    user.id,
+                    tool.tool_id,
+                )
+
+        return tool
 
     @staticmethod
     def create_profile_manager(
