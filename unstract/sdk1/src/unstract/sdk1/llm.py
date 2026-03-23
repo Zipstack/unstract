@@ -4,7 +4,7 @@ import re
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import NoReturn, cast
+from typing import Any, NoReturn, cast
 
 import litellm
 
