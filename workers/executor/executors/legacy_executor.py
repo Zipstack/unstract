@@ -524,7 +524,10 @@ class LegacyExecutor(BaseExecutor):
             request_id=context.request_id,
             log_events_id=context.log_events_id,
         )
-        answer_result = self._handle_answer_prompt(answer_ctx)
+        if is_single_pass:
+            answer_result = self._handle_single_pass_extraction(answer_ctx)
+        else:
+            answer_result = self._handle_answer_prompt(answer_ctx)
         if not answer_result.success:
             return answer_result
 
@@ -1694,22 +1697,33 @@ class LegacyExecutor(BaseExecutor):
     ) -> ExecutionResult:
         """Handle ``Operation.SINGLE_PASS_EXTRACTION``.
 
-        Functionally identical to ``_handle_answer_prompt``.  The "single
-        pass" vs "multi pass" distinction is at the *caller* level (the
-        structure tool batches all prompts into one request vs iterating).
-        The prompt-service processes both with the same ``prompt_processor``
-        handler.
+        Delegates to the cloud single_pass_extraction plugin if
+        available (reads file ONCE, builds ONE combined prompt, makes
+        ONE LLM call).  Falls back to ``_handle_answer_prompt`` if the
+        plugin is not installed.
 
         Returns:
             ExecutionResult with ``data`` containing::
 
                 {"output": dict, "metadata": dict, "metrics": dict}
         """
-        logger.info(
-            "single_pass_extraction delegating to answer_prompt (run_id=%s)",
-            context.run_id,
-        )
-        return self._handle_answer_prompt(context)
+        try:
+            from unstract.sdk1.execution.registry import ExecutorRegistry
+
+            executor = ExecutorRegistry.get("single_pass_extraction")
+            logger.info(
+                "Delegating single_pass_extraction to cloud plugin "
+                "(run_id=%s)",
+                context.run_id,
+            )
+            return executor.execute(context)
+        except KeyError:
+            logger.info(
+                "No single_pass_extraction plugin; falling back to "
+                "answer_prompt (run_id=%s)",
+                context.run_id,
+            )
+            return self._handle_answer_prompt(context)
 
     def _handle_summarize(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.SUMMARIZE`` — document summarization.
