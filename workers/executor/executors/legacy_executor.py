@@ -1767,7 +1767,7 @@ class LegacyExecutor(BaseExecutor):
             log_events_id=self._log_events_id,
             component=self._log_component,
         )
-        usage_kwargs = {"run_id": context.run_id}
+        usage_kwargs = {"run_id": context.run_id, PSKeys.LLM_USAGE_REASON: PSKeys.SUMMARIZE}
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
 
