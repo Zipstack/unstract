@@ -117,6 +117,18 @@ wheels = [
 ]
 
 [[package]]
+name = "amqp"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "vine" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/79/fc/ec94a357dfc6683d8c86f8b4cfa5416a4c36b28052ec8260c77aca96a443/amqp-5.3.1.tar.gz", hash = "sha256:cddc00c725449522023bad949f70fff7b48f0b1ade74d170a6f10ab044739432", size = 129013, upload-time = "2024-11-12T19:55:44.051Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/26/99/fc813cd978842c26c82534010ea849eee9ab3a13ea2b74e95cb9c99e747b/amqp-5.3.1-py3-none-any.whl", hash = "sha256:43b3319e1b4e7d1251833a93d672b4af1e40f3d632d479b98661a95f117880a2", size = 50944, upload-time = "2024-11-12T19:55:41.782Z" },
+]
+
+[[package]]
 name = "annotated-types"
 version = "0.7.0"
 source = { registry = "https://pypi.org/simple" }
@@ -1044,6 +1056,21 @@ wheels = [
 ]
 
 [[package]]
+name = "kombu"
+version = "5.5.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "amqp" },
+    { name = "packaging" },
+    { name = "tzdata" },
+    { name = "vine" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0f/d3/5ff936d8319ac86b9c409f1501b07c426e6ad41966fedace9ef1b966e23f/kombu-5.5.4.tar.gz", hash = "sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363", size = 461992, upload-time = "2025-06-01T10:19:22.281Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ef/70/a07dcf4f62598c8ad579df241af55ced65bed76e42e45d3c368a6d82dbc1/kombu-5.5.4-py3-none-any.whl", hash = "sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8", size = 210034, upload-time = "2025-06-01T10:19:20.436Z" },
+]
+
+[[package]]
 name = "lazydocs"
 version = "0.4.8"
 source = { registry = "https://pypi.org/simple" }
@@ -1076,7 +1103,7 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.81.7"
+version = "1.82.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1092,9 +1119,9 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tokenizers" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/77/69/cfa8a1d68cd10223a9d9741c411e131aece85c60c29c1102d762738b3e5c/litellm-1.81.7.tar.gz", hash = "sha256:442ff38708383ebee21357b3d936e58938172bae892f03bc5be4019ed4ff4a17", size = 14039864, upload-time = "2026-02-03T19:43:10.633Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/53/00/13993312e6d2fb29cd6d5ffceb293455ef747fe5675eaa9aa49b09184656/litellm-1.82.3.tar.gz", hash = "sha256:7215b95e7cc38a52b5ae778d67e8829dec86594c8b05d8431294e95c7d59937c", size = 17368754, upload-time = "2026-03-16T21:51:30.356Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/60/95/8cecc7e6377171e4ac96f23d65236af8706d99c1b7b71a94c72206672810/litellm-1.81.7-py3-none-any.whl", hash = "sha256:58466c88c3289c6a3830d88768cf8f307581d9e6c87861de874d1128bb2de90d", size = 12254178, upload-time = "2026-02-03T19:43:08.035Z" },
+    { url = "https://files.pythonhosted.org/packages/5a/3a/590d58dee65a238f7f3d5c37f8f9f9021ecaf27fe379a393b4259324b56e/litellm-1.82.3-py3-none-any.whl", hash = "sha256:609901f6c5a5cf8c24386e4e3f50738bb8a9db719709fd76b208c8ee6d00f7a7", size = 15551034, upload-time = "2026-03-16T21:51:26.747Z" },
 ]
 
 [[package]]
@@ -1736,32 +1763,18 @@ wheels = [
 
 [[package]]
 name = "pinecone"
-version = "7.3.0"
+version = "7.0.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
-    { name = "pinecone-plugin-assistant" },
     { name = "pinecone-plugin-interface" },
     { name = "python-dateutil" },
     { name = "typing-extensions" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fa/38/12731d4af470851b4963eba616605868a8599ef4df51c7b6c928e5f3166d/pinecone-7.3.0.tar.gz", hash = "sha256:307edc155621d487c20dc71b76c3ad5d6f799569ba42064190d03917954f9a7b", size = 235256, upload-time = "2025-06-27T20:03:51.498Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bc/9d/07a7f2136ce04cabd21d69c057dc2915867082b0047e6873e424388d4475/pinecone-7.0.1.tar.gz", hash = "sha256:49ff7b0f5be4a2ddec5aaa709758a9f2df56baa58ad46507d081409e246a81ec", size = 207930, upload-time = "2025-05-21T19:39:01.218Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b7/a6/c5d54a5fb1de3983a8739c1a1660e7a7074db2cbadfa875b823fcf29b629/pinecone-7.3.0-py3-none-any.whl", hash = "sha256:315b8fef20320bef723ecbb695dec0aafa75d8434d86e01e5a0e85933e1009a8", size = 587563, upload-time = "2025-06-27T20:03:50.249Z" },
-]
-
-[[package]]
-name = "pinecone-plugin-assistant"
-version = "1.8.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-    { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/01/65c4c3a81732fa379f8e7f78a8c18aa57a1139f5b79d58b93a69f2fc8cb0/pinecone_plugin_assistant-1.8.0.tar.gz", hash = "sha256:8e8682cff30f9bae9243b384021aba71c91f4e6ef1650e9d63ee64aab83cba87", size = 150435, upload-time = "2025-08-31T14:31:18.046Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/49/62ab8e2f9098bf8593e36bbe6e729fcc0500bafca7d88be7b62eac66c8b0/pinecone_plugin_assistant-1.8.0-py3-none-any.whl", hash = "sha256:71ae42c3b4478d23138cbc4fe3505db561319a826f5aff4ef2e306a25ac56686", size = 259281, upload-time = "2025-08-31T14:31:16.587Z" },
+    { url = "https://files.pythonhosted.org/packages/81/88/896221e991077d353e61991b759f46d75f3b4298eb5a4aa6534c1371f4b0/pinecone-7.0.1-py3-none-any.whl", hash = "sha256:ce7b0dab3c9f7d81e75b24c13fcbca4a51371e08021faaecaf0cd9a45ca1be6c", size = 516590, upload-time = "2025-05-21T19:38:59.117Z" },
 ]
 
 [[package]]
@@ -2219,11 +2232,11 @@ wheels = [
 
 [[package]]
 name = "redis"
-version = "6.4.0"
+version = "5.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/0d/d6/e8b92798a5bd67d659d51a18170e91c16ac3b59738d91894651ee255ed49/redis-6.4.0.tar.gz", hash = "sha256:b01bc7282b8444e28ec36b261df5375183bb47a07eb9c603f284e89cbc5ef010", size = 4647399, upload-time = "2025-08-07T08:10:11.441Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/da/d283a37303a995cd36f8b92db85135153dc4f7a8e4441aa827721b442cfb/redis-5.2.1.tar.gz", hash = "sha256:16f2e22dff21d5125e8481515e386711a34cbec50f0e44413dd7d9c060a54e0f", size = 4608355, upload-time = "2024-12-06T09:50:41.956Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e8/02/89e2ed7e85db6c93dfa9e8f691c5087df4e3551ab39081a4d7c6d1f90e05/redis-6.4.0-py3-none-any.whl", hash = "sha256:f0544fa9604264e9464cdf4814e7d4830f74b165d52f2a330a760a88dd248b7f", size = 279847, upload-time = "2025-08-07T08:10:09.84Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/5f/fa26b9b2672cbe30e07d9a5bdf39cf16e3b80b42916757c5f92bca88e4ba/redis-5.2.1-py3-none-any.whl", hash = "sha256:ee7e1056b9aea0f04c6c2ed59452947f34c4940ee025f5dd83e6a6418b6989e4", size = 261502, upload-time = "2024-12-06T09:50:39.656Z" },
 ]
 
 [[package]]
@@ -2264,7 +2277,7 @@ wheels = [
 
 [[package]]
 name = "requests"
-version = "2.32.5"
+version = "2.31.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "certifi" },
@@ -2272,9 +2285,9 @@ dependencies = [
     { name = "idna" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/74/b3ff8e6c8446842c3f5c837e9c3dfcfe2018ea6ecef224c710c85ef728f4/requests-2.32.5.tar.gz", hash = "sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf", size = 134517, upload-time = "2025-08-18T20:46:02.573Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/9d/be/10918a2eac4ae9f02f6cfe6414b7a155ccd8f7f9d4380d62fd5b955065c3/requests-2.31.0.tar.gz", hash = "sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1", size = 110794, upload-time = "2023-05-22T15:12:44.175Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/db/4254e3eabe8020b458f1a747140d32277ec7a271daf1d235b70dc0b4e6e3/requests-2.32.5-py3-none-any.whl", hash = "sha256:2462f94637a34fd532264295e186976db0f5d453d1cdd31473c85a6a161affb6", size = 64738, upload-time = "2025-08-18T20:46:00.542Z" },
+    { url = "https://files.pythonhosted.org/packages/70/8e/0e2d847013cb52cd35b38c009bb167a1a26b2ce6cd6965bf26b47bc0bf44/requests-2.31.0-py3-none-any.whl", hash = "sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f", size = 62574, upload-time = "2023-05-22T15:12:42.313Z" },
 ]
 
 [[package]]
@@ -2673,6 +2686,27 @@ wheels = [
 ]
 
 [[package]]
+name = "unstract-core"
+version = "0.0.1"
+source = { editable = "../core" }
+dependencies = [
+    { name = "httpx" },
+    { name = "kombu" },
+    { name = "redis" },
+    { name = "requests" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "flask", marker = "extra == 'flask'", specifier = "~=3.1.0" },
+    { name = "httpx", specifier = ">=0.27.0" },
+    { name = "kombu", specifier = "~=5.5.3" },
+    { name = "redis", specifier = "~=5.2.1" },
+    { name = "requests", specifier = "==2.31.0" },
+]
+provides-extras = ["flask"]
+
+[[package]]
 name = "unstract-sdk1"
 source = { editable = "." }
 dependencies = [
@@ -2695,6 +2729,7 @@ dependencies = [
     { name = "redis" },
     { name = "singleton-decorator" },
     { name = "tiktoken" },
+    { name = "unstract-core" },
 ]
 
 [package.optional-dependencies]
@@ -2739,7 +2774,7 @@ requires-dist = [
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = "~=2024.10.0" },
     { name = "httpx", specifier = ">=0.25.2" },
     { name = "jsonschema" },
-    { name = "litellm", specifier = "==1.81.7" },
+    { name = "litellm", specifier = "==1.82.3" },
     { name = "llama-index", specifier = ">=0.14.13" },
     { name = "llama-index-vector-stores-milvus", specifier = ">=0.9.6" },
     { name = "llama-index-vector-stores-pinecone", specifier = ">=0.7.1" },
@@ -2756,6 +2791,7 @@ requires-dist = [
     { name = "s3fs", extras = ["boto3"], marker = "extra == 'aws'", specifier = "~=2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "tiktoken", specifier = "~=0.9.0" },
+    { name = "unstract-core", editable = "../core" },
 ]
 provides-extras = ["aws", "azure", "gcs"]
 
@@ -2795,6 +2831,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/66/a435d9ae49850b2f071f7ebd8119dd4e84872b01630d6736761e6e7fd847/validators-0.35.0.tar.gz", hash = "sha256:992d6c48a4e77c81f1b4daba10d16c3a9bb0dbb79b3a19ea847ff0928e70497a", size = 73399, upload-time = "2025-05-01T05:42:06.7Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/6e/3e955517e22cbdd565f2f8b2e73d52528b14b8bcfdb04f62466b071de847/validators-0.35.0-py3-none-any.whl", hash = "sha256:e8c947097eae7892cb3d26868d637f79f47b4a0554bc6b80065dfe5aac3705dd", size = 44712, upload-time = "2025-05-01T05:42:04.203Z" },
+]
+
+[[package]]
+name = "vine"
+version = "5.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/bd/e4/d07b5f29d283596b9727dd5275ccbceb63c44a1a82aa9e4bfd20426762ac/vine-5.1.0.tar.gz", hash = "sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0", size = 48980, upload-time = "2023-11-05T08:46:53.857Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/ff/7c0c86c43b3cbb927e0ccc0255cb4057ceba4799cd44ae95174ce8e8b5b2/vine-5.1.0-py3-none-any.whl", hash = "sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc", size = 9636, upload-time = "2023-11-05T08:46:51.205Z" },
 ]
 
 [[package]]
