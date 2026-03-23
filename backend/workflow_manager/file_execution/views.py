@@ -31,6 +31,6 @@ class FileCentricExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             .values("data")[:1]
         )
 
-        return FileExecution.objects.filter(
-            workflow_execution_id=execution_id
-        ).annotate(latest_log_data=Subquery(latest_log_subquery))
+        return FileExecution.objects.filter(workflow_execution_id=execution_id).annotate(
+            latest_log_data=Subquery(latest_log_subquery)
+        )

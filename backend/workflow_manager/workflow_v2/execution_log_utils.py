@@ -141,8 +141,7 @@ def create_log_consumer_scheduler_if_not_exists() -> None:
         )
     except (ProgrammingError, OperationalError) as error:
         is_expected = any(
-            arg in sys.argv
-            for arg in ("migrate", "makemigrations", "test", "pytest")
+            arg in sys.argv for arg in ("migrate", "makemigrations", "test", "pytest")
         )
         if is_expected:
             logger.warning(
