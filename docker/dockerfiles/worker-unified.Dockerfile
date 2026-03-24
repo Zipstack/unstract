@@ -24,6 +24,7 @@ RUN apt-get update \
        build-essential \
        curl \
        gcc \
+       git \
        libmagic-dev \
        libssl-dev \
        pkg-config \
