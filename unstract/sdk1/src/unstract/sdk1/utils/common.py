@@ -37,6 +37,17 @@ class Utils:
         return string.lower() == "true"
 
     @staticmethod
+    def strip_adapter_name(*configs: dict | None) -> None:
+        """Strip the private ``_adapter_name`` key from adapter configs.
+
+        Call this before hashing configs for index key generation so the
+        adapter name (added for error reporting) does not affect the hash.
+        """
+        for config in configs:
+            if config:
+                config.pop(Common.ADAPTER_NAME, None)
+
+    @staticmethod
     def pretty_file_size(num: float, suffix: str = "B") -> str:
         """Gets the human readable size for a file.
 
@@ -151,10 +162,12 @@ class LLMResponseCompat:
 
     def __str__(self) -> str:
         """Return text for string operations like join()."""
-        return self.text
+        return self.text or ""
 
     def __repr__(self) -> str:
         """Return detailed representation with text preview."""
+        if self.text is None:
+            return "LLMResponseCompat(text=None)"
         text_preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
         return f"LLMResponseCompat(text={text_preview!r})"
 
