@@ -7,6 +7,10 @@ from enum import Enum
 from typing import Any
 
 from unstract.connectors.base import UnstractConnector
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+)
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 
@@ -68,6 +72,15 @@ class UnstractDB(UnstractConnector, ABC):
     def get_engine(self) -> Any:
         pass
 
+    @abstractmethod
+    def get_quote_style(self) -> QuoteStyle:
+        """Return the identifier quoting style for this database.
+
+        Returns:
+            QuoteStyle: The quoting convention used by this database engine.
+        """
+        pass
+
     def test_credentials(self) -> bool:
         """To test credentials for a DB connector."""
         try:
@@ -76,10 +89,13 @@ class UnstractDB(UnstractConnector, ABC):
             raise ConnectorError(f"Error while connecting to DB: {str(e)}") from e
         return True
 
-    def execute(self, query: str) -> Any:
+    def execute(self, query: str, params: Any = None) -> Any:
         try:
             with self.get_engine().cursor() as cursor:
-                cursor.execute(query)
+                if params is not None:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
                 return cursor.fetchall()
         except Exception as e:
             raise ConnectorError(str(e)) from e
@@ -154,13 +170,13 @@ class UnstractDB(UnstractConnector, ABC):
         for key, val in database_entry.items():
             if key not in PERMANENT_COLUMNS:
                 sql_type = self.sql_to_db_mapping(val, column_name=key)
-                sql_query += f"{key} {sql_type}, "
+                quoted_key = safe_identifier(key, self.get_quote_style())
+                sql_query += f"{quoted_key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ")"
 
-    @staticmethod
     def get_sql_insert_query(
-        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
@@ -172,10 +188,12 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             str: returns a string with parameterised insert sql query
         """
-        # Base implementation ignores sql_values and returns parameterized query
-        keys_str = ",".join(sql_keys)
+        style = self.get_quote_style()
+        quoted_table = safe_identifier(table_name, style, allow_dots=True)
+        quoted_keys = [safe_identifier(k, style) for k in sql_keys]
+        keys_str = ",".join(quoted_keys)
         values_placeholder = ",".join(["%s" for _ in sql_keys])
-        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
+        return f"INSERT INTO {quoted_table} ({keys_str}) VALUES ({values_placeholder})"
 
     @abstractmethod
     def execute_query(
@@ -204,9 +222,9 @@ class UnstractDB(UnstractConnector, ABC):
         query = (
             "SELECT column_name, data_type FROM "
             "information_schema.columns WHERE "
-            f"table_name = '{table_name}'"
+            "table_name = %s"
         )
-        results = self.execute(query=query)
+        results = self.execute(query=query, params=(table_name,))
         column_types: dict[str, str] = self.get_db_column_types(
             columns_with_types=results
         )

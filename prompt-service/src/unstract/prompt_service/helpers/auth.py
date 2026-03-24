@@ -21,8 +21,8 @@ class AuthHelper:
 
             platform_key_table = f'"{DB_SCHEMA}".{DBTableV2.PLATFORM_KEY}'
             with db_context():
-                query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-                cursor = db.execute_sql(query)
+                query = f"SELECT * FROM {platform_key_table} WHERE key = %s"
+                cursor = db.execute_sql(query, (token,))
                 result_row = cursor.fetchone()
                 cursor.close()
             if not result_row or len(result_row) == 0:
@@ -66,12 +66,10 @@ class AuthHelper:
         platform_key_table = DBTableV2.PLATFORM_KEY
         organization_table = DBTableV2.ORGANIZATION
 
-        query = f"SELECT organization_id FROM {platform_key_table} WHERE key='{token}'"
-        organization = DBUtils.execute_query(query)
-        query_org = (
-            f"SELECT schema_name FROM {organization_table} WHERE id='{organization}'"
-        )
-        schema_name: str = DBUtils.execute_query(query_org)
+        query = f"SELECT organization_id FROM {platform_key_table} WHERE key=%s"
+        organization = DBUtils.execute_query(query, (token,))
+        query_org = f"SELECT schema_name FROM {organization_table} WHERE id=%s"
+        schema_name: str = DBUtils.execute_query(query_org, (organization,))
         return schema_name
 
     @staticmethod
