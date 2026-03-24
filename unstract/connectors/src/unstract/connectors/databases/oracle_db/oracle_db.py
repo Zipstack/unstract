@@ -10,6 +10,7 @@ from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.sql_safety import (
     QuoteStyle,
     safe_identifier,
+    validate_identifier,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -170,9 +171,11 @@ class OracleDB(UnstractDB):
             str: returns a string with parameterised insert sql query
         """
         qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
-        quoted_keys = [safe_identifier(k, QuoteStyle.DOUBLE_QUOTE) for k in sql_keys]
-        columns = ", ".join(quoted_keys)
-        # safe_identifier above already validates each key
+        # Validate column names but don't quote — Oracle normalizes
+        # unquoted to UPPERCASE, matching existing table schemas.
+        for k in sql_keys:
+            validate_identifier(k)
+        columns = ", ".join(sql_keys)
         values = []
         for key in sql_keys:
             if key == "created_at":

@@ -11,6 +11,7 @@ from unstract.connectors.databases.exceptions import SnowflakeProgrammingExcepti
 from unstract.connectors.databases.sql_safety import (
     QuoteStyle,
     safe_identifier,
+    validate_identifier,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
@@ -344,8 +345,11 @@ class SnowflakeDB(UnstractDB):
             str: Complete SQL insert query with VARIANT columns handled appropriately
         """
         qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
-        quoted_keys = [safe_identifier(k, QuoteStyle.DOUBLE_QUOTE) for k in sql_keys]
-        keys_str = ",".join(quoted_keys)
+        # Validate column names but don't quote — Snowflake normalizes
+        # unquoted to UPPERCASE, matching existing table schemas.
+        for k in sql_keys:
+            validate_identifier(k)
+        keys_str = ",".join(sql_keys)
 
         if sql_values:
             # Check if we have SQL fragments that need SELECT format

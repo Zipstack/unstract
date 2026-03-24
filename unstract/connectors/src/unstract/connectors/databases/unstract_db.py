@@ -10,6 +10,7 @@ from unstract.connectors.base import UnstractConnector
 from unstract.connectors.databases.sql_safety import (
     QuoteStyle,
     safe_identifier,
+    validate_identifier,
 )
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
@@ -170,8 +171,12 @@ class UnstractDB(UnstractConnector, ABC):
         for key, val in database_entry.items():
             if key not in PERMANENT_COLUMNS:
                 sql_type = self.sql_to_db_mapping(val, column_name=key)
-                quoted_key = safe_identifier(key, self.get_quote_style())
-                sql_query += f"{quoted_key} {sql_type}, "
+                # Validate column name to block injection but don't quote —
+                # databases like Snowflake/Oracle normalize unquoted to
+                # UPPERCASE, and quoting would preserve lowercase, causing
+                # a mismatch with existing table schemas.
+                validate_identifier(key)
+                sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ")"
 
@@ -190,8 +195,13 @@ class UnstractDB(UnstractConnector, ABC):
         """
         style = self.get_quote_style()
         quoted_table = safe_identifier(table_name, style, allow_dots=True)
-        quoted_keys = [safe_identifier(k, style) for k in sql_keys]
-        keys_str = ",".join(quoted_keys)
+        # Validate column names to block injection but don't quote —
+        # databases like Snowflake/Oracle normalize unquoted to UPPERCASE,
+        # and quoting would preserve lowercase, causing a mismatch with
+        # existing table schemas where columns were created unquoted.
+        for k in sql_keys:
+            validate_identifier(k)
+        keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["%s" for _ in sql_keys])
         return f"INSERT INTO {quoted_table} ({keys_str}) VALUES ({values_placeholder})"
 
