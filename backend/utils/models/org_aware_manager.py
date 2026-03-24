@@ -5,7 +5,6 @@ import logging
 from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.db.utils import OperationalError, ProgrammingError
-
 from utils.models.org_path_discovery import get_org_path
 from utils.user_context import UserContext
 
