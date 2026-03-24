@@ -60,6 +60,16 @@ class TestValidateNoHtmlTags:
         with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
             validate_no_html_tags("data:text/html,alert(1)")
 
+    def test_rejects_data_uri_with_mime_type(self):
+        with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
+            validate_no_html_tags("data:application/javascript,code")
+
+    def test_allows_benign_data_colon_in_text(self):
+        assert validate_no_html_tags("Input data: JSON format") == "Input data: JSON format"
+
+    def test_allows_data_colon_without_mime(self):
+        assert validate_no_html_tags("my data: 100 records") == "my data: 100 records"
+
     def test_rejects_vbscript_protocol(self):
         with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
             validate_no_html_tags("vbscript:MsgBox")
