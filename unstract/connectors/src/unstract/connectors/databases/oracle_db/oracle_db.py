@@ -10,7 +10,6 @@ from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.sql_safety import (
     QuoteStyle,
     safe_identifier,
-    validate_identifier,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 
@@ -173,9 +172,9 @@ class OracleDB(UnstractDB):
         qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
         quoted_keys = [safe_identifier(k, QuoteStyle.DOUBLE_QUOTE) for k in sql_keys]
         columns = ", ".join(quoted_keys)
+        # safe_identifier above already validates each key
         values = []
         for key in sql_keys:
-            validate_identifier(key)
             if key == "created_at":
                 values.append("TO_TIMESTAMP(:created_at, 'YYYY-MM-DD HH24:MI:SS.FF')")
             else:

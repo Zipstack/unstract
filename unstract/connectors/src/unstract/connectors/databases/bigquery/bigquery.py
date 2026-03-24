@@ -225,9 +225,7 @@ class BigQuery(UnstractDB):
         escaped_keys = [safe_identifier(key, QuoteStyle.BACKTICK) for key in sql_keys]
         keys_str = ",".join(escaped_keys)
 
-        # Validate and escape parameter names with backticks
-        for key in sql_keys:
-            validate_identifier(key)
+        # safe_identifier above already validates each key
         escaped_params = [f"@`{key}`" for key in sql_keys]
         values_placeholder = ",".join(escaped_params)
         return f"INSERT INTO {qt} ({keys_str}) VALUES ({values_placeholder})"

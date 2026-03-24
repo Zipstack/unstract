@@ -331,7 +331,7 @@ class SnowflakeDB(UnstractDB):
         return sql_values
 
     def get_sql_insert_query(
-        self, table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Generate SQL insert query for Snowflake with special handling for VARIANT columns.
 

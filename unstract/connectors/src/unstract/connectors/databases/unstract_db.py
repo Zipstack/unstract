@@ -176,7 +176,7 @@ class UnstractDB(UnstractConnector, ABC):
         return sql_query.rstrip(", ") + ")"
 
     def get_sql_insert_query(
-        self, table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
