@@ -2,8 +2,10 @@
 
 import logging
 
+from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.db.utils import OperationalError, ProgrammingError
+
 from utils.models.org_path_discovery import get_org_path
 from utils.user_context import UserContext
 
@@ -44,7 +46,7 @@ class OrgAwareManager(models.Manager):
     Behavior:
         - In request context (middleware sets org): filters by org
         - Outside request context (Celery, commands): no filtering
-        - No FK path to Organization: logs warning, no filtering
+        - No FK path to Organization: raises ImproperlyConfigured
         - During migrations/startup: gracefully skips filtering
 
     All queries on the model become org-scoped during requests — not just
@@ -69,12 +71,11 @@ class OrgAwareManager(models.Manager):
 
         path = get_org_path(self.model)
         if path is None:
-            logger.warning(
-                "OrgAwareManager: No org path for %s.%s. "
-                "Queries will not be org-scoped.",
-                self.model._meta.app_label,
-                self.model.__name__,
+            raise ImproperlyConfigured(
+                f"OrgAwareManager on {self.model._meta.app_label}."
+                f"{self.model.__name__} but no FK path to Organization. "
+                f"Either add a FK chain to Organization or "
+                f"remove OrgAwareManager from this model."
             )
-            return qs
 
         return qs.filter(**{path: org})
