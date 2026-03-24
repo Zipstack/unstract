@@ -2,10 +2,13 @@ import re
 
 from rest_framework.serializers import ValidationError
 
-# Pattern to detect HTML/script tags
-HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
-# Pattern to detect javascript: protocol
-JS_PROTOCOL_PATTERN = re.compile(r"javascript\s*:", re.IGNORECASE)
+# Pattern to detect HTML/script tags (closed tags and unclosed tags starting with a letter)
+# The second alternative catches unclosed tags like "<script" or "<img src=x" that could
+# be completed by adjacent content in non-React rendering contexts (emails, PDFs, logs)
+HTML_TAG_PATTERN = re.compile(r"<[^>]*>|<[a-zA-Z/!]")
+# Pattern to detect dangerous URI protocols: javascript:, data:, vbscript:
+# data: URIs can execute scripts via data:text/html or data:application/javascript
+JS_PROTOCOL_PATTERN = re.compile(r"(?:javascript|data|vbscript)\s*:", re.IGNORECASE)
 # Pattern to detect event handlers using a vetted list of DOM event names.
 # This avoids false positives on benign words like "connection=", "onboarding=", etc.
 _DOM_EVENTS = (
@@ -25,7 +28,7 @@ def validate_no_html_tags(value: str, field_name: str = "This field") -> str:
     if HTML_TAG_PATTERN.search(value):
         raise ValidationError(f"{field_name} must not contain HTML or script tags.")
     if JS_PROTOCOL_PATTERN.search(value):
-        raise ValidationError(f"{field_name} must not contain JavaScript protocols.")
+        raise ValidationError(f"{field_name} must not contain dangerous URI protocols.")
     if EVENT_HANDLER_PATTERN.search(value):
         raise ValidationError(f"{field_name} must not contain event handler attributes.")
     return value

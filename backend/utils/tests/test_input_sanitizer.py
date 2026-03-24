@@ -33,17 +33,36 @@ class TestValidateNoHtmlTags:
         with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
             validate_no_html_tags("<br/>")
 
+    def test_rejects_unclosed_script_tag(self):
+        with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
+            validate_no_html_tags("<script")
+
+    def test_rejects_unclosed_img_tag(self):
+        with pytest.raises(ValidationError, match="must not contain HTML or script tags"):
+            validate_no_html_tags("<img src=x onerror")
+
+    def test_allows_less_than_with_number(self):
+        assert validate_no_html_tags("a < 3") == "a < 3"
+
     def test_rejects_javascript_protocol(self):
-        with pytest.raises(ValidationError, match="must not contain JavaScript protocols"):
+        with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
             validate_no_html_tags("javascript:alert(1)")
 
     def test_rejects_javascript_protocol_with_spaces(self):
-        with pytest.raises(ValidationError, match="must not contain JavaScript protocols"):
+        with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
             validate_no_html_tags("javascript :alert(1)")
 
     def test_rejects_javascript_protocol_case_insensitive(self):
-        with pytest.raises(ValidationError, match="must not contain JavaScript protocols"):
+        with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
             validate_no_html_tags("JAVASCRIPT:alert(1)")
+
+    def test_rejects_data_uri(self):
+        with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
+            validate_no_html_tags("data:text/html,alert(1)")
+
+    def test_rejects_vbscript_protocol(self):
+        with pytest.raises(ValidationError, match="must not contain dangerous URI protocols"):
+            validate_no_html_tags("vbscript:MsgBox")
 
     def test_rejects_event_handler(self):
         with pytest.raises(
