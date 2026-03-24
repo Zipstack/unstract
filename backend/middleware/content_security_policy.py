@@ -5,10 +5,12 @@ from django.utils.deprecation import MiddlewareMixin
 class ContentSecurityPolicyMiddleware(MiddlewareMixin):
     """Middleware to add Content-Security-Policy header to all responses.
 
-    Since this is a JSON API backend, the policy is restrictive by default:
-    only 'self' is allowed for all directives, and no inline scripts or styles
-    are permitted. This prevents any injected content from being executed if a
-    response is ever rendered in a browser context.
+    The policy is restrictive by default. 'unsafe-inline' is required for
+    script-src and style-src because the backend serves HTML pages (e.g.
+    login.html) that contain inline scripts and styles.
+
+    Uses response.setdefault() so that route-specific CSP policies set by
+    views or earlier middleware are not overwritten.
     """
 
     def process_response(
@@ -18,11 +20,12 @@ class ContentSecurityPolicyMiddleware(MiddlewareMixin):
             "Content-Security-Policy",
             (
                 "default-src 'self'; "
-                "script-src 'self'; "
-                "style-src 'self'; "
+                "script-src 'self' 'unsafe-inline'; "
+                "style-src 'self' 'unsafe-inline'; "
                 "img-src 'self'; "
                 "font-src 'self'; "
                 "connect-src 'self'; "
+                "object-src 'none'; "
                 "frame-ancestors 'none'; "
                 "base-uri 'self'; "
                 "form-action 'self'"

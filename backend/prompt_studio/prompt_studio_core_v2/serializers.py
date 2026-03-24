@@ -56,6 +56,8 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         return validate_name_field(value, field_name="Tool name")
 
     def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
         return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):

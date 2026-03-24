@@ -51,6 +51,8 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
         return validate_name_field(value, field_name="Workflow name")
 
     def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
         return validate_no_html_tags(value, field_name="Description")
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:

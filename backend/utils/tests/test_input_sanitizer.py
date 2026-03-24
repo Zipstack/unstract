@@ -63,6 +63,30 @@ class TestValidateNoHtmlTags:
         ):
             validate_no_html_tags("ONLOAD=alert(1)")
 
+    def test_allows_benign_connection_text(self):
+        assert validate_no_html_tags("connection=ok") == "connection=ok"
+
+    def test_allows_onboarding_text(self):
+        assert validate_no_html_tags("onboarding = enabled") == "onboarding = enabled"
+
+    def test_allows_oncall_text(self):
+        assert validate_no_html_tags("oncall = primary") == "oncall = primary"
+
+    def test_allows_condition_text(self):
+        assert validate_no_html_tags("condition = good") == "condition = good"
+
+    def test_rejects_event_handler_after_semicolon(self):
+        with pytest.raises(
+            ValidationError, match="must not contain event handler attributes"
+        ):
+            validate_no_html_tags("foo;onclick=alert(1)")
+
+    def test_rejects_event_handler_after_ampersand(self):
+        with pytest.raises(
+            ValidationError, match="must not contain event handler attributes"
+        ):
+            validate_no_html_tags("foo&onerror=alert(1)")
+
     def test_custom_field_name_in_error(self):
         with pytest.raises(ValidationError, match="Workflow name"):
             validate_no_html_tags("<script>", field_name="Workflow name")

@@ -6,8 +6,18 @@ from rest_framework.serializers import ValidationError
 HTML_TAG_PATTERN = re.compile(r"<[^>]*>")
 # Pattern to detect javascript: protocol
 JS_PROTOCOL_PATTERN = re.compile(r"javascript\s*:", re.IGNORECASE)
-# Pattern to detect event handlers (onclick, onerror, etc.)
-EVENT_HANDLER_PATTERN = re.compile(r"(?:^|\s)on\w+\s*=", re.IGNORECASE)
+# Pattern to detect event handlers using a vetted list of DOM event names.
+# This avoids false positives on benign words like "connection=", "onboarding=", etc.
+_DOM_EVENTS = (
+    "abort|blur|change|click|close|contextmenu|copy|cut|dblclick|drag|dragend|"
+    "dragenter|dragleave|dragover|dragstart|drop|error|focus|focusin|focusout|"
+    "input|invalid|keydown|keypress|keyup|load|mousedown|mouseenter|mouseleave|"
+    "mousemove|mouseout|mouseover|mouseup|paste|pointerdown|pointerenter|"
+    "pointerleave|pointermove|pointerout|pointerover|pointerup|reset|resize|"
+    "scroll|select|submit|toggle|touchcancel|touchend|touchmove|touchstart|"
+    "unload|wheel"
+)
+EVENT_HANDLER_PATTERN = re.compile(rf"\bon({_DOM_EVENTS})\s*=", re.IGNORECASE)
 
 
 def validate_no_html_tags(value: str, field_name: str = "This field") -> str:
