@@ -11,5 +11,5 @@ logger = logging.getLogger(__name__)
 @api_view(["GET"])
 @require_http_methods(["GET"])
 def health_check(request: Request) -> Response:
-    logger.debug("Verifying backend health")
+    logger.debug("Verifying backend health..")
     return Response(status=200)
