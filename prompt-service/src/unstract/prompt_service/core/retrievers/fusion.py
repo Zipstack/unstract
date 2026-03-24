@@ -24,6 +24,7 @@ class FusionRetriever(BaseRetriever):
             set[str]: A set of text chunks retrieved from the database.
         """
         try:
+            llm = self.require_llm()
             logger.info(
                 f"Retrieving chunks for {self.doc_id} using LlamaIndex QueryFusionRetriever."
             )
@@ -64,7 +65,7 @@ class FusionRetriever(BaseRetriever):
                 mode="simple",  # Use simple fusion mode (reciprocal rank fusion)
                 use_async=False,
                 verbose=True,
-                llm=self.llm,  # LLM generates query variations
+                llm=llm,
             )
 
             # Retrieve nodes using fusion technique

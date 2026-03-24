@@ -5,7 +5,7 @@ performance optimizations while maintaining readability and testability.
 """
 
 from threading import Lock
-from typing import TypeVar
+from typing import Any, TypeVar
 
 from ...clients.base_client import BaseAPIClient
 from ...clients.execution_client import ExecutionAPIClient
@@ -162,7 +162,7 @@ class CachingConfigurationMixin:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._cache: dict[str, any] = {}
+        self._cache: dict[str, Any] = {}
         self._cache_timestamps: dict[str, float] = {}
         self._cache_lock = Lock()
 
@@ -179,12 +179,12 @@ class CachingConfigurationMixin:
 
         return (time.time() - self._cache_timestamps[cache_key]) < ttl
 
-    def _get_from_cache(self, cache_key: str) -> any | None:
+    def _get_from_cache(self, cache_key: str) -> Any | None:
         """Thread-safe cache retrieval."""
         with self._cache_lock:
             return self._cache.get(cache_key)
 
-    def _set_cache(self, cache_key: str, value: any) -> None:
+    def _set_cache(self, cache_key: str, value: Any) -> None:
         """Thread-safe cache storage."""
         import time
 
