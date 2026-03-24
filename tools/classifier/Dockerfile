@@ -10,7 +10,7 @@ ENV \
     PIP_DEFAULT_TIMEOUT=120
 
 # Install dependencies for unstructured library's partition
-RUN apt-get update && apt-get --no-install-recommends -y install dumb-init libmagic-dev poppler-utils\
+RUN apt-get update && apt-get --no-install-recommends -y install dumb-init git libmagic-dev poppler-utils\
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
