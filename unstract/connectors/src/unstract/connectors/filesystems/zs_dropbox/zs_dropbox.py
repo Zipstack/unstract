@@ -16,7 +16,9 @@ class DropboxFS(UnstractFileSystem):
         from dropboxdrivefs import DropboxDriveFileSystem
 
         super().__init__("Dropbox")
-        self.dropbox_fs = DropboxDriveFileSystem(token=settings["token"])
+        self.dropbox_fs = DropboxDriveFileSystem(
+            token=settings["token"], use_listings_cache=False
+        )
         self.path = "///"
 
     @staticmethod

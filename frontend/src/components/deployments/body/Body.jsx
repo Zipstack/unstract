@@ -17,9 +17,17 @@ function Body({
   forceExpandedId = null,
   scrollToId = null,
   pagination = null,
+  searchTerm = "",
 }) {
   if (isTableLoading) {
     return <SpinnerLoader />;
+  }
+  if (!tableData?.length && searchTerm) {
+    return (
+      <IslandLayout>
+        <EmptyState text="No results found for this search" />
+      </IslandLayout>
+    );
   }
   if (!tableData?.length) {
     return (
@@ -68,6 +76,7 @@ Body.propTypes = {
     total: PropTypes.number,
     onChange: PropTypes.func,
   }),
+  searchTerm: PropTypes.string,
 };
 
 export { Body };

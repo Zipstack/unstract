@@ -36,7 +36,9 @@ class BoxFS(UnstractFileSystem):
         try:
             oauth = JWTAuth.from_settings_dictionary(settings_dict)
             root_id = 0
-            self.box_fs = BoxFileSystem(oauth=oauth, root_id=root_id)
+            self.box_fs = BoxFileSystem(
+                oauth=oauth, root_id=root_id, use_listings_cache=False
+            )
         except ValueError as e:
             raise ConnectorError(
                 f"Error initialising from Box app settings: {e}",

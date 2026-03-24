@@ -207,6 +207,82 @@ class MyStorageFS(UnstractFileSystem):
 
 ---
 
+## Anti-Pattern: Reimplementing fsspec Base Methods
+
+**Problem**: When creating a custom `AbstractFileSystem` subclass (no existing fsspec
+provider), it's tempting to implement every method for "completeness". This creates
+maintenance burden and introduces bugs when the calling code evolves.
+
+**Real-world bug**: SharePoint connector overrode `walk()` but didn't support the
+`detail=True` parameter. When file discovery code switched to `walk(detail=True)`,
+SharePoint returned plain lists instead of dicts, breaking file processing silently.
+
+**Bad** — reimplementing methods the base class already provides:
+```python
+class MyFileSystem(AbstractFileSystem):
+    def ls(self, path, detail=True, **kwargs):
+        ...  # Core method - MUST implement
+
+    # BAD: These are all redundant reimplementations
+    def listdir(self, path, detail=True, **kwargs):
+        return self.ls(path, detail=detail, **kwargs)  # Base already does this
+
+    def stat(self, path, **kwargs):
+        return self.info(path, **kwargs)  # Base already does this
+
+    def exists(self, path, **kwargs):
+        try:
+            self.info(path)
+            return True
+        except Exception:
+            return False  # Base already does this
+
+    def isdir(self, path):
+        return self.info(path)["type"] == "directory"  # Base already does this
+
+    def walk(self, path, maxdepth=None, **kwargs):
+        ...  # Base already delegates to ls() with full detail/on_error support
+
+    def delete(self, path, **kwargs):
+        self.rm(path, **kwargs)  # Base already does this
+
+    def read_bytes(self, path):
+        return self.cat_file(path)  # Base already does this
+
+    def write_bytes(self, path, data, **kwargs):
+        ...  # Base already delegates to pipe_file()
+```
+
+**Good** — implement only the core methods, let fsspec handle the rest:
+```python
+class MyFileSystem(AbstractFileSystem):
+    # REQUIRED: Core methods that talk to the service API
+    def ls(self, path, detail=True, **kwargs): ...
+    def info(self, path, **kwargs): ...      # Optional optimization
+    def _open(self, path, mode="rb", **kwargs): ...
+    def cat_file(self, path, **kwargs): ...
+    def pipe_file(self, path, value, **kwargs): ...  # NOT write_bytes
+    def rm(self, path, recursive=False, **kwargs): ...
+    def mkdir(self, path, create_parents=True, **kwargs): ...
+
+    # Everything else (walk, exists, isdir, isfile, listdir, stat,
+    # delete, read_bytes, write_bytes) is inherited from AbstractFileSystem
+```
+
+**Key insight**: `write_bytes` is an alias for `pipe_file` in fsspec. Override
+`pipe_file`, not `write_bytes`, so the delegation chain works correctly.
+
+**Exception: `walk()` may need a custom override** when the custom filesystem has
+path normalization that differs from `_strip_protocol` (e.g., SharePoint maps `""`
+to `"root"` for the Graph API), or when the service raises exceptions that aren't
+`FileNotFoundError`/`OSError` (the only types the base `walk()` catches). If you
+override `walk()`, you MUST support the `detail` kwarg (return dicts when True,
+lists when False) and the `on_error` callback.
+
+**Applies to**: Any custom `AbstractFileSystem` subclass (SharePoint, OneDrive, etc.)
+
+---
+
 ## Anti-Pattern: Module-Level Heavy Imports
 
 **Bad**:

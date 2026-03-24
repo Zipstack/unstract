@@ -26,6 +26,7 @@ class MinioFS(UnstractFileSystem):
             anon=False,
             key=key,
             secret=secret,
+            use_listings_cache=False,
             default_fill_cache=False,
             default_cache_type="none",
             skip_instance_cache=True,

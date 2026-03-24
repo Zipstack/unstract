@@ -21,7 +21,11 @@ class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
         - Workflows created by the user
         - Workflows shared with the user
         - Workflows shared with the entire organization
+        - Service accounts see all org resources
         """
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         from django.db.models import Q
 
         return self.filter(

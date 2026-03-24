@@ -1,6 +1,55 @@
 #!/bin/bash
 set -o pipefail
 
+# Extract local path dependencies from [tool.uv.sources] in a pyproject.toml.
+# Returns resolved pyproject.toml paths for each local dependency.
+get_local_dep_pyprojects() {
+    local dir="$1"
+    local file_path="$dir/pyproject.toml"
+
+    grep -A1 'path\s*=' "$file_path" 2>/dev/null \
+        | grep -oP 'path\s*=\s*"\K[^"]+' \
+        | while read -r rel_path; do
+            # Resolve relative to the service directory
+            local dep_pyproject
+            if [[ "$dir" == "." ]]; then
+                dep_pyproject="$rel_path/pyproject.toml"
+            else
+                dep_pyproject="$dir/$rel_path/pyproject.toml"
+            fi
+            # Normalize the path
+            dep_pyproject=$(realpath --relative-to=. "$dep_pyproject" 2>/dev/null || echo "$dep_pyproject")
+            if [[ -f "$dep_pyproject" ]]; then
+                echo "$dep_pyproject"
+            fi
+        done
+}
+
+# Check if a directory's own pyproject.toml or any of its local
+# path dependencies' pyproject.toml files have changed vs origin/main.
+has_dependency_changes() {
+    local dir="$1"
+    local file_path="$dir/pyproject.toml"
+
+    # Check direct changes
+    if ! git diff --quiet origin/main -- "$file_path"; then
+        echo "[$dir] Changes detected in '$file_path'"
+        return 0
+    fi
+
+    # Check transitive local dependency changes
+    local dep_pyprojects
+    dep_pyprojects=$(get_local_dep_pyprojects "$dir")
+    for dep in $dep_pyprojects; do
+        if ! git diff --quiet origin/main -- "$dep"; then
+            echo "[$dir] Changes detected in transitive dependency '$dep'"
+            return 0
+        fi
+    done
+
+    return 1
+}
+
 # Function to update the lockfile in a directory
 update_lockfile() {
     dir="$1"
@@ -11,9 +60,9 @@ update_lockfile() {
         return 0
     fi
 
-    echo "[$dir] Checking '$file_path' for changes against origin/main..."
-    if ! git diff --quiet origin/main -- "$file_path"; then
-        echo "[$dir] Changes detected in '$file_path', updating uv.lock for '$dir' ..."
+    echo "[$dir] Checking '$file_path' and its dependencies for changes against origin/main..."
+    if has_dependency_changes "$dir"; then
+        echo "[$dir] Updating uv.lock for '$dir' ..."
 
         # Move to the directory if it's not root
         if [[ "$dir" != "." ]]; then
@@ -29,7 +78,7 @@ update_lockfile() {
             cd - || return 1
         fi
     else
-        echo "[$dir] No changes detected in '$file_path'"
+        echo "[$dir] No changes detected in '$file_path' or its dependencies"
     fi
 }
 
