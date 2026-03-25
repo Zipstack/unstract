@@ -312,8 +312,9 @@ class PromptStudioHelper:
     ) -> tuple[ExecutionContext, dict[str, Any]]:
         """Build ide_index ExecutionContext for fire-and-forget dispatch.
 
-        Does ORM validation and summarization synchronously, then returns
-        the execution context so the caller can dispatch with callbacks.
+        Does ORM validation synchronously, then returns the execution
+        context so the caller can dispatch with callbacks.  Summarization
+        is deferred to the executor worker via ``summarize_params``.
         """
         tool: CustomTool = CustomTool.objects.get(pk=tool_id)
         file_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
@@ -329,10 +330,18 @@ class PromptStudioHelper:
         PromptStudioHelper.validate_adapter_status(default_profile)
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
 
-        # Handle summarization synchronously (uses Django plugin)
+        # Common path decomposition used by extract, summarize, and index
+        directory, filename = os.path.split(file_path)
+        stem = os.path.splitext(filename)[0]
+        extract_file_path = os.path.join(directory, "extract", stem + ".txt")
+        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+
+        # Build summarize_params for executor (summarization runs in worker)
+        summarize_params = None
+        summary_profile = default_profile
+        summarize_file_path = ""
         if tool.summarize_context:
             SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
-            summary_profile = default_profile
             if not tool.summarize_llm_adapter:
                 try:
                     sp = ProfileManager.objects.get(
@@ -347,30 +356,27 @@ class PromptStudioHelper:
                 PromptStudioHelper.validate_adapter_status(summary_profile)
                 PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
 
-            summarize_file_path = PromptStudioHelper.summarize(
-                file_name, org_id, run_id, tool
+            llm_adapter_id = (
+                str(tool.summarize_llm_adapter.id)
+                if tool.summarize_llm_adapter
+                else str(summary_profile.llm.id)
             )
-            fs_instance = EnvHelper.get_storage(
-                storage_type=StorageType.PERMANENT,
-                env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+
+            prompts = PromptStudioHelper.fetch_prompt_from_tool(tool.tool_id)
+            prompt_keys = [p.prompt_key for p in prompts]
+
+            summarize_file_path = os.path.join(
+                directory, "summarize", stem + ".txt"
             )
-            util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
-            summarize_doc_id = IndexingUtils.generate_index_key(
-                vector_db=str(summary_profile.vector_store.id),
-                embedding=str(summary_profile.embedding_model.id),
-                x2text=str(summary_profile.x2text.id),
-                chunk_size="0",
-                chunk_overlap=str(summary_profile.chunk_overlap),
-                file_path=summarize_file_path,
-                fs=fs_instance,
-                tool=util,
-            )
-            PromptStudioIndexHelper.handle_index_manager(
-                document_id=document_id,
-                is_summary=True,
-                profile_manager=summary_profile,
-                doc_id=summarize_doc_id,
-            )
+
+            summarize_params = {
+                "llm_adapter_instance_id": llm_adapter_id,
+                "summarize_prompt": tool.summarize_prompt or "",
+                "extract_file_path": extract_file_path,
+                "summarize_file_path": summarize_file_path,
+                "platform_api_key": platform_api_key,
+                "prompt_keys": prompt_keys,
+            }
 
         # Generate doc_id for indexing tracking
         fs_instance = EnvHelper.get_storage(
@@ -394,13 +400,6 @@ class PromptStudioHelper:
         DocumentIndexingService.set_document_indexing(
             org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
         )
-
-        # Build extract params
-        directory, filename = os.path.split(file_path)
-        extract_file_path = os.path.join(
-            directory, "extract", os.path.splitext(filename)[0] + ".txt"
-        )
-        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
         usage_kwargs = {"run_id": run_id, "file_name": filename}
 
         from prompt_studio.prompt_studio_core_v2.constants import (
@@ -445,6 +444,7 @@ class PromptStudioHelper:
             executor_params={
                 "extract_params": extract_params,
                 "index_params": index_params,
+                "summarize_params": summarize_params,
             },
             request_id=request_id,
             log_events_id=log_events_id,
@@ -469,6 +469,12 @@ class PromptStudioHelper:
             "file_name": file_name,
             "x2text_config_hash": x2text_config_hash,
             "enable_highlight": tool.enable_highlight,
+            "summary_profile_id": (
+                str(summary_profile.profile_id)
+                if tool.summarize_context
+                else ""
+            ),
+            "summarize_file_path": summarize_file_path,
         }
 
         return context, cb_kwargs

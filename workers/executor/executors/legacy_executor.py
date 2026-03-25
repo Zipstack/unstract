@@ -366,7 +366,62 @@ class LegacyExecutor(BaseExecutor):
         if not extract_result.success:
             return extract_result
 
-        # Step 2: Index — inject extracted text
+        # Step 2: Optional summarize
+        summarize_params = params.get("summarize_params")
+        summarize_file_path = ""
+        if summarize_params:
+            extract_file_path = summarize_params.get("extract_file_path", "")
+            summarize_file_path = summarize_params.get("summarize_file_path", "")
+            platform_api_key = summarize_params.get("platform_api_key", "")
+            llm_adapter_id = summarize_params.get("llm_adapter_instance_id", "")
+            summarize_prompt = summarize_params.get("summarize_prompt", "")
+            prompt_keys = summarize_params.get("prompt_keys", [])
+
+            fs = FileUtils.get_fs_instance(
+                execution_source=context.execution_source
+            )
+
+            # Check cache — skip if summary already exists
+            cached = False
+            if fs.exists(summarize_file_path):
+                existing = fs.read(path=summarize_file_path, mode="r")
+                if existing:
+                    cached = True
+
+            if not cached:
+                doc_context = fs.read(path=extract_file_path, mode="r")
+                if not doc_context:
+                    return ExecutionResult.failure(
+                        error="No extracted text found for summarization"
+                    )
+
+                summarize_ctx = ExecutionContext(
+                    executor_name=context.executor_name,
+                    operation=Operation.SUMMARIZE.value,
+                    run_id=context.run_id,
+                    execution_source=context.execution_source,
+                    organization_id=context.organization_id,
+                    request_id=context.request_id,
+                    log_events_id=context.log_events_id,
+                    executor_params={
+                        "llm_adapter_instance_id": llm_adapter_id,
+                        "summarize_prompt": summarize_prompt,
+                        "context": doc_context,
+                        "prompt_keys": prompt_keys,
+                        "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                    },
+                )
+                summarize_result = self._handle_summarize(summarize_ctx)
+                if not summarize_result.success:
+                    return summarize_result
+
+                fs.write(
+                    path=summarize_file_path,
+                    mode="w",
+                    data=summarize_result.data.get("data", ""),
+                )
+
+        # Step 3: Index — inject extracted text
         extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
         index_params[IKeys.EXTRACTED_TEXT] = extracted_text
 
@@ -388,6 +443,7 @@ class LegacyExecutor(BaseExecutor):
             success=True,
             data={
                 IKeys.DOC_ID: index_result.data.get(IKeys.DOC_ID, ""),
+                "summarize_file_path": summarize_file_path,
             },
         )
 
