@@ -17,6 +17,7 @@ bypassing the config resolution chain entirely.
 """
 
 import logging
+import threading
 from urllib.parse import quote_plus
 
 from celery import Celery
@@ -25,6 +26,7 @@ from django.conf import settings
 logger = logging.getLogger(__name__)
 
 _worker_app: Celery | None = None
+_worker_app_lock = threading.Lock()
 
 
 class _WorkerDispatchCelery(Celery):
@@ -61,43 +63,50 @@ def get_worker_celery_app() -> Celery:
     if _worker_app is not None:
         return _worker_app
 
-    # Reuse the broker URL already built by Django settings (base.py)
-    # from CELERY_BROKER_BASE_URL + CELERY_BROKER_USER + CELERY_BROKER_PASS
-    broker_url = settings.CELERY_BROKER_URL
+    with _worker_app_lock:
+        # Double-check after acquiring lock
+        if _worker_app is not None:
+            return _worker_app
 
-    # Reuse the same PostgreSQL result backend as Django's Celery app
-    result_backend = (
-        f"db+postgresql://{quote_plus(settings.DB_USER)}:"
-        f"{quote_plus(settings.DB_PASSWORD)}"
-        f"@{settings.DB_HOST}:{settings.DB_PORT}/"
-        f"{settings.CELERY_BACKEND_DB_NAME}"
-    )
+        # Reuse the broker URL already built by Django settings (base.py)
+        # from CELERY_BROKER_BASE_URL + CELERY_BROKER_USER + CELERY_BROKER_PASS
+        broker_url = settings.CELERY_BROKER_URL
 
-    app = _WorkerDispatchCelery(
-        "worker-dispatch",
-        set_as_current=False,
-        fixups=[],
-    )
-    # Store the explicit broker URL for use in connection overrides
-    app._explicit_broker = broker_url
+        # Reuse the same PostgreSQL result backend as Django's Celery app
+        result_backend = (
+            f"db+postgresql://{quote_plus(settings.DB_USER)}:"
+            f"{quote_plus(settings.DB_PASSWORD)}"
+            f"@{settings.DB_HOST}:{settings.DB_PORT}/"
+            f"{settings.CELERY_BACKEND_DB_NAME}"
+        )
 
-    app.conf.update(
-        result_backend=result_backend,
-        task_serializer="json",
-        accept_content=["json"],
-        result_serializer="json",
-        result_extended=True,
-    )
+        app = _WorkerDispatchCelery(
+            "worker-dispatch",
+            set_as_current=False,
+            fixups=[],
+        )
+        # Store the explicit broker URL for use in connection overrides
+        app._explicit_broker = broker_url
 
-    _worker_app = app
-    # Log broker host only (mask credentials)
-    safe_broker = broker_url.split("@")[-1] if "@" in broker_url else broker_url
-    safe_backend = (
-        result_backend.split("@")[-1] if "@" in result_backend else result_backend
-    )
-    logger.info(
-        "Created worker dispatch Celery app (broker=%s, result_backend=%s)",
-        safe_broker,
-        safe_backend,
-    )
+        app.conf.update(
+            result_backend=result_backend,
+            task_serializer="json",
+            accept_content=["json"],
+            result_serializer="json",
+            result_extended=True,
+        )
+
+        _worker_app = app
+        # Log broker host only (mask credentials)
+        safe_broker = broker_url.split("@")[-1] if "@" in broker_url else broker_url
+        safe_backend = (
+            result_backend.split("@")[-1]
+            if "@" in result_backend
+            else result_backend
+        )
+        logger.info(
+            "Created worker dispatch Celery app (broker=%s, result_backend=%s)",
+            safe_broker,
+            safe_backend,
+        )
     return _worker_app

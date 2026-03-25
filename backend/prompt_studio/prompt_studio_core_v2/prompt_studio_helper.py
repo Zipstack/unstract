@@ -326,6 +326,8 @@ class PromptStudioHelper:
         file_path = str(Path(file_path) / file_name)
 
         default_profile = ProfileManager.get_default_llm_profile(tool)
+        if not default_profile:
+            raise DefaultProfileError()
 
         PromptStudioHelper.validate_adapter_status(default_profile)
         PromptStudioHelper.validate_profile_manager_owner_access(default_profile)
@@ -1811,6 +1813,9 @@ class PromptStudioHelper:
         grammar: list[dict[str, Any]] = []
         prompt_grammar = tool.prompt_grammer
         default_profile = ProfileManager.get_default_llm_profile(tool)
+        if not default_profile:
+            raise DefaultProfileError()
+
         challenge_llm_instance: AdapterInstance | None = tool.challenge_llm
         challenge_llm: str | None = None
         # Using default profile manager llm if challenge_llm is None
@@ -1826,9 +1831,6 @@ class PromptStudioHelper:
         if prompt_grammar:
             for word, synonyms in prompt_grammar.items():
                 grammar.append({TSPKeys.WORD: word, TSPKeys.SYNONYMS: synonyms})
-
-        if not default_profile:
-            raise DefaultProfileError()
 
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
