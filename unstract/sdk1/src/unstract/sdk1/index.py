@@ -24,7 +24,7 @@ from unstract.sdk1.embedding import EmbeddingCompat
 from unstract.sdk1.exceptions import IndexingError, SdkError, VectorDBError, X2TextError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
-from unstract.sdk1.utils.common import capture_metrics, log_elapsed
+from unstract.sdk1.utils.common import Utils, capture_metrics, log_elapsed
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.vector_db import VectorDB
 from unstract.sdk1.x2txt import X2Text
@@ -199,8 +199,8 @@ class Index:
             extracted_text = process_response.extracted_text
         # TODO: Handle prepend of context where error is raised and remove this
         except AdapterError as e:
-            msg = f"Error from text extractor '{x2text.x2text_instance.get_name()}'. "
-            msg += str(e)
+            adapter_info = getattr(x2text, "_adapter_name", "") or x2text_instance_id
+            msg = f"Error from text extractor '{adapter_info}'. {e}"
             raise X2TextError(msg) from e
         if process_text:
             try:
@@ -496,11 +496,15 @@ class Index:
         # Whole adapter config is used currently even though it contains some keys
         # which might not be relevant to indexing. This is easier for now than
         # marking certain keys of the adapter config as necessary.
+        vector_db_config = PlatformHelper.get_adapter_config(self.tool, vector_db)
+        embedding_config = PlatformHelper.get_adapter_config(self.tool, embedding)
+        x2text_config = PlatformHelper.get_adapter_config(self.tool, x2text)
+        Utils.strip_adapter_name(vector_db_config, embedding_config, x2text_config)
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": PlatformHelper.get_adapter_config(self.tool, vector_db),
-            "embedding_config": PlatformHelper.get_adapter_config(self.tool, embedding),
-            "x2text_config": PlatformHelper.get_adapter_config(self.tool, x2text),
+            "vector_db_config": vector_db_config,
+            "embedding_config": embedding_config,
+            "x2text_config": x2text_config,
             # Typed and hashed as strings since the final hash is persisted
             # and this is required to be backward compatible
             "chunk_size": str(chunk_size),

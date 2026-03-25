@@ -22,6 +22,7 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
@@ -61,6 +62,14 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate_display_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Display name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""
