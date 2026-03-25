@@ -20,7 +20,8 @@ const usePromptStudioSocket = () => {
   const socket = useContext(SocketContext);
   const { removePromptStatus, clearPromptStatusById } =
     usePromptRunStatusStore();
-  const { updateCustomTool, deleteIndexDoc } = useCustomToolStore();
+  const { updateCustomTool, deleteIndexDoc, selectedDoc } =
+    useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updatePromptOutputState } = usePromptOutput();
@@ -69,7 +70,7 @@ const usePromptStudioSocket = () => {
         }
         setAlertDetails({
           type: "success",
-          content: result?.message || "Document indexed successfully.",
+          content: `${selectedDoc?.document_name || "Document"} - Indexed successfully`,
         });
       }
     },
@@ -79,6 +80,7 @@ const usePromptStudioSocket = () => {
       updateCustomTool,
       setAlertDetails,
       deleteIndexDoc,
+      selectedDoc,
     ],
   );
 

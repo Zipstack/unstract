@@ -172,7 +172,7 @@ const usePromptOutput = () => {
       // only add output of selected document
       if (keyDoctId === selectedDoc?.document_id) {
         const currentOutput = { [key]: outputs[key] };
-        updatedPromptOutputs = { ...promptOutputs, ...currentOutput };
+        updatedPromptOutputs = { ...updatedPromptOutputs, ...currentOutput };
       }
       Object.keys(updatedPromptOutputs).forEach((innerKey) => {
         const [existingPromptId, , , existingIsSinglePass] =
