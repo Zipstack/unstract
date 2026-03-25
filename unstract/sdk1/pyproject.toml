@@ -27,7 +27,7 @@ dependencies = [
     "python-dotenv==1.0.1",
     # # Adapter changes
     "tiktoken~=0.9.0",
-    "litellm==1.82.3",
+    "litellm",
     "llama-index>=0.14.13",
     "llama-index-vector-stores-postgres>=0.7.3",
     "llama-index-vector-stores-milvus>=0.9.6",
@@ -71,7 +71,6 @@ docs = ["lazydocs~=0.4.8"]
 test = [
     "parameterized==0.9.0",
     "pytest==8.3.3",
-    "pytest-asyncio>=0.23.0",
     "pytest-mock==3.14.0",
     "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
@@ -80,6 +79,7 @@ test = [
 
 [tool.uv.sources]
 unstract-core = { path = "../core", editable = true }
+litellm = { git = "https://github.com/Zipstack/litellm.git", tag = "v1.82.3" }
 
 [build-system]
 requires = ["hatchling"]
