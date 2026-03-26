@@ -543,6 +543,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         """
         custom_tool = self.get_object()
         prompt_ids = request.data.get("prompt_ids", [])
+        if not prompt_ids:
+            return Response(
+                {"error": "prompt_ids is required and must be non-empty."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         profile_manager_id: str = request.data.get(
@@ -559,6 +564,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 "sequence_number"
             )
         )
+        if not prompts:
+            return Response(
+                {"error": "No matching prompts found for the provided prompt_ids."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
             org_id,
@@ -566,7 +576,18 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             user_id=user_id,
             tool_id=str(custom_tool.tool_id),
         )
-        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        if not document_id:
+            return Response(
+                {"error": "document_id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        except DocumentManager.DoesNotExist:
+            return Response(
+                {"error": f"Document {document_id} not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
         doc_path = str(Path(doc_path) / document.document_name)
 
         context, cb_kwargs = PromptStudioHelper.build_bulk_fetch_response_payload(
