@@ -1103,8 +1103,8 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.81.7"
-source = { registry = "https://pypi.org/simple" }
+version = "1.82.3"
+source = { git = "https://github.com/Zipstack/litellm.git?tag=v1.82.3#809ba8ce35f1c763eb28717a82f1079b5c8f151d" }
 dependencies = [
     { name = "aiohttp" },
     { name = "click" },
@@ -2747,6 +2747,7 @@ docs = [
 test = [
     { name = "parameterized" },
     { name = "pytest" },
+    { name = "pytest-asyncio" },
     { name = "pytest-cov" },
     { name = "pytest-md-report" },
     { name = "pytest-mock" },
@@ -2760,7 +2761,7 @@ requires-dist = [
     { name = "gcsfs", marker = "extra == 'gcs'", specifier = "~=2024.10.0" },
     { name = "httpx", specifier = ">=0.25.2" },
     { name = "jsonschema" },
-    { name = "litellm", specifier = "==1.81.7" },
+    { name = "litellm", git = "https://github.com/Zipstack/litellm.git?tag=v1.82.3" },
     { name = "llama-index", specifier = ">=0.14.13" },
     { name = "llama-index-vector-stores-milvus", specifier = ">=0.9.6" },
     { name = "llama-index-vector-stores-pinecone", specifier = ">=0.7.1" },
@@ -2795,6 +2796,7 @@ docs = [{ name = "lazydocs", specifier = "~=0.4.8" }]
 test = [
     { name = "parameterized", specifier = "==0.9.0" },
     { name = "pytest", specifier = "==8.3.3" },
+    { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-md-report", specifier = ">=0.6.2" },
     { name = "pytest-mock", specifier = "==3.14.0" },
