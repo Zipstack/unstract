@@ -59,9 +59,15 @@ class OrgAwareManager(models.Manager):
         try:
             org = UserContext.get_organization()
         except (RuntimeError, OperationalError, ProgrammingError):
-            # RuntimeError: pytest-django blocks DB access
             # OperationalError: DB not reachable (startup, migrations)
             # ProgrammingError: schema not ready (during migrations)
+            # RuntimeError: pytest-django blocks DB access outside
+            #   @pytest.mark.django_db. Note: this is a broad catch — any
+            #   RuntimeError (e.g. from StateStore/middleware) returns an
+            #   unfiltered queryset (fail-open). This is acceptable because
+            #   OrgAwareManager is defense-in-depth; OrganizationFilterBackend
+            #   at the view layer is the primary security boundary and
+            #   fails-closed independently.
             return qs
 
         if org is None:

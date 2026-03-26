@@ -1,14 +1,29 @@
+from uuid import UUID
+
 from django.db.models.query import QuerySet
-from django_filters import CharFilter, FilterSet, UUIDFilter
+from django_filters import CharFilter, FilterSet
 
 from unstract.sdk1.constants import LogLevel
 from workflow_manager.workflow_v2.models.execution_log import ExecutionLog
 
 
 class ExecutionLogFilter(FilterSet):
-    file_execution_id = UUIDFilter(field_name="file_execution_id")
+    file_execution_id = CharFilter(
+        field_name="file_execution_id", method="filter_file_execution"
+    )
 
     log_level = CharFilter(field_name="data__level", method="filter_logs")
+
+    def filter_file_execution(
+        self, queryset: QuerySet, name: str, value: str
+    ) -> QuerySet:
+        if value == "null":
+            return queryset.filter(file_execution_id__isnull=True)
+        try:
+            UUID(value)
+        except ValueError:
+            return queryset.none()
+        return queryset.filter(file_execution_id=value)
 
     class Meta:
         model = ExecutionLog
