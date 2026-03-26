@@ -24,14 +24,6 @@ let ChallengeManager = null;
 let HighlightManager = null;
 let LookupManager = null;
 try {
-  SummarizeManager =
-    require("../../../plugins/summarize-manager/SummarizeManager").SummarizeManager;
-  ChallengeManager =
-    require("../../../plugins/challenge-manager/ChallengeManager").ChallengeManager;
-  HighlightManager =
-    require("../../../plugins/highlight-manager/HighlightManager").HighlightManager;
-  LookupManager =
-    require("../../../plugins/lookup-manager/LookupManager").LookupManager;
   const smMod = await import(
     "../../../plugins/summarize-manager/SummarizeManager"
   );
@@ -44,6 +36,8 @@ try {
     "../../../plugins/highlight-manager/HighlightManager"
   );
   HighlightManager = hmMod.HighlightManager;
+  const lmMod = await import("../../../plugins/lookup-manager/LookupManager");
+  LookupManager = lmMod.LookupManager;
 } catch {
   // Component will remain null if it is not present.
 }
