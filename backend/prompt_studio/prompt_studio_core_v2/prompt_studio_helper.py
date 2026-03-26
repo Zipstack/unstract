@@ -11,6 +11,7 @@ from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
+from django.db import transaction
 from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.request import Request
