@@ -5,7 +5,7 @@ import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 
-function Header({ type, openAddModal }) {
+function Header({ type, openAddModal, enableSearch, onSearch, setSearchList }) {
   const { posthogDeploymentEventText, setPostHogCustomEvent } =
     usePostHogEvents();
 
@@ -16,7 +16,7 @@ function Header({ type, openAddModal }) {
       setPostHogCustomEvent(posthogDeploymentEventText[type], {
         info: `Clicked on '+ ${deploymentsStaticContent[type].addBtn}' button`,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -36,6 +36,9 @@ function Header({ type, openAddModal }) {
     <ToolNavBar
       title={deploymentsStaticContent[type].title}
       CustomButtons={customButtons}
+      enableSearch={enableSearch}
+      onSearch={onSearch}
+      setSearchList={setSearchList}
     />
   );
 }
@@ -43,6 +46,9 @@ function Header({ type, openAddModal }) {
 Header.propTypes = {
   type: PropTypes.string.isRequired,
   openAddModal: PropTypes.func.isRequired,
+  enableSearch: PropTypes.bool,
+  onSearch: PropTypes.func,
+  setSearchList: PropTypes.func,
 };
 
 export { Header };

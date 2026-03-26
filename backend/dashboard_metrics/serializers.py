@@ -4,6 +4,7 @@ from datetime import timedelta
 
 from django.utils import timezone
 from rest_framework import serializers
+from workflow_manager.execution.enum import ExecutionEntity
 
 from .models import EventMetricsHourly
 
@@ -68,6 +69,35 @@ class MetricsQuerySerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {"start_date": "Query range cannot exceed 365 days"}
             )
+
+        return attrs
+
+
+class DeploymentUsageQuerySerializer(MetricsQuerySerializer):
+    """Serializer for deployment usage query parameters."""
+
+    DEPLOYMENT_TYPE_CHOICES = [(e.value, e.name) for e in ExecutionEntity]
+
+    deployment_type = serializers.ChoiceField(
+        choices=DEPLOYMENT_TYPE_CHOICES,
+        default=ExecutionEntity.API.value,
+        help_text="Deployment type filter: API, ETL, TASK, or WF.",
+    )
+
+    def validate(self, attrs):
+        """Validate and enforce 30-day max range for deployment queries."""
+        attrs = super().validate(attrs)
+
+        # Enforce 30-day max range for deployment usage queries
+        max_range = timedelta(days=30)
+        if attrs["end_date"] - attrs["start_date"] > max_range:
+            attrs["start_date"] = attrs["end_date"] - max_range
+            attrs["range_truncated"] = True
+        else:
+            attrs["range_truncated"] = False
+
+        # Normalize deployment_type to uppercase
+        attrs["deployment_type"] = attrs["deployment_type"].upper()
 
         return attrs
 

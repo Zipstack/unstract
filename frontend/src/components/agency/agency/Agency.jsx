@@ -327,13 +327,14 @@ function Agency() {
         return;
       }
 
-      const apiDeploymentData = apiDeployments?.data || [];
-      const pipelineData = pipelines?.data || [];
+      const apiDeploymentData =
+        apiDeployments?.data?.results || apiDeployments?.data || [];
+      const pipelineData = pipelines?.data?.results || pipelines?.data || [];
 
-      // Find active deployments
-      const activeApiDeployment = apiDeploymentData.find(
-        (deployment) => deployment.is_active,
-      );
+      // Show banner for any API deployment linked to this workflow, prefer active one
+      const apiDeployment =
+        apiDeploymentData.find((deployment) => deployment.is_active) ||
+        apiDeploymentData[0];
 
       // For pipelines, any pipeline associated with this workflow is considered a deployment
       // regardless of active status, since workflows can only have one deployment
@@ -341,11 +342,11 @@ function Agency() {
 
       // Set deployment info
       let deploymentInfo = null;
-      if (activeApiDeployment) {
+      if (apiDeployment) {
         deploymentInfo = {
           type: "API",
-          name: activeApiDeployment.display_name,
-          id: activeApiDeployment.id,
+          name: apiDeployment.display_name,
+          id: apiDeployment.id,
         };
       } else if (workflowPipelines.length > 0) {
         // If multiple pipelines, prioritize by type: ETL > TASK

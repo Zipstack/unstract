@@ -24,8 +24,18 @@ const CACHE_TTL = {
  */
 function buildCacheKey(endpoint, params) {
   const sortedKeys = Object.keys(params).sort((a, b) => a.localeCompare(b));
-  const paramStr = sortedKeys.map((k) => `${k}=${params[k]}`).join("&");
-  // Use simple encoding to avoid btoa issues with unicode
+  const paramStr = sortedKeys
+    .map((k) => {
+      let v = params[k];
+      // Truncate ISO datetime strings to the minute so that
+      // "2026-03-03T15:21:47.123Z" and "2026-03-03T15:21:02.456Z"
+      // produce the same cache key within a 1-minute window.
+      if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(v)) {
+        v = v.slice(0, 16); // "2026-03-03T15:21"
+      }
+      return `${k}=${v}`;
+    })
+    .join("&");
   const hash = paramStr ? `_${encodeURIComponent(paramStr)}` : "";
   return `${CACHE_PREFIX}${endpoint}${hash}`;
 }
@@ -86,6 +96,31 @@ function setCache(endpoint, params = {}, data) {
 }
 
 /**
+ * Remove expired metrics cache entries.
+ * Call on dashboard mount to prevent localStorage bloat from old date ranges.
+ */
+function evictExpiredCache() {
+  try {
+    const keys = Object.keys(localStorage).filter((k) =>
+      k.startsWith(CACHE_PREFIX),
+    );
+    keys.forEach((k) => {
+      try {
+        const { expiry } = JSON.parse(localStorage.getItem(k));
+        if (!expiry || Date.now() > expiry) {
+          localStorage.removeItem(k);
+        }
+      } catch {
+        // Malformed cache entry — remove it
+        localStorage.removeItem(k);
+      }
+    });
+  } catch (error) {
+    console.warn("Cache eviction error:", error);
+  }
+}
+
+/**
  * Clear all metrics cache entries.
  * Useful when user manually refreshes or on logout.
  */
@@ -130,4 +165,11 @@ function getCacheInfo(endpoint, params = {}) {
   }
 }
 
-export { getCached, setCache, clearMetricsCache, getCacheInfo, CACHE_TTL };
+export {
+  getCached,
+  setCache,
+  clearMetricsCache,
+  evictExpiredCache,
+  getCacheInfo,
+  CACHE_TTL,
+};

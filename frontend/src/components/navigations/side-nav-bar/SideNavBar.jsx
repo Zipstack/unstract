@@ -10,6 +10,7 @@ import {
   Layout,
   Popover,
   Space,
+  Tag,
   Tooltip,
   Typography,
 } from "antd";
@@ -19,6 +20,7 @@ import { useNavigate } from "react-router-dom";
 import apiDeploy from "../../../assets/api-deployments.svg";
 import ConnectorsIcon from "../../../assets/connectors.svg";
 import CustomTools from "../../../assets/custom-tools-icon.svg";
+import DashboardIcon from "../../../assets/dashboard.svg";
 import EmbeddingIcon from "../../../assets/embedding.svg";
 import etl from "../../../assets/etl.svg";
 import LlmIcon from "../../../assets/llm.svg";
@@ -56,7 +58,6 @@ try {
 
 let unstractSubscriptionPlan;
 let unstractSubscriptionPlanStore;
-let dashboardSideMenuItem;
 let UNSTRACT_SUBSCRIPTION_PLANS;
 try {
   unstractSubscriptionPlanStore = await import(
@@ -65,7 +66,6 @@ try {
   const unstractSubscriptionConstants = await import(
     "../../../plugins/unstract-subscription/helper/constants"
   );
-  dashboardSideMenuItem = unstractSubscriptionConstants?.dashboardSideMenuItem;
   UNSTRACT_SUBSCRIPTION_PLANS =
     unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
 } catch {
@@ -98,12 +98,21 @@ try {
   // Plugin unavailable
 }
 
-const getSettingsMenuItems = (orgName) => [
+const getSettingsMenuItems = (orgName, isAdmin) => [
   {
     key: "platform",
     label: "Platform Settings",
     path: `/${orgName}/settings/platform`,
   },
+  ...(isAdmin
+    ? [
+        {
+          key: "platformApiKeys",
+          label: "Platform API Keys",
+          path: `/${orgName}/settings/platform-api-keys`,
+        },
+      ]
+    : []),
   {
     key: "users",
     label: "User Management",
@@ -127,6 +136,9 @@ const getSettingsMenuItems = (orgName) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
+  if (currentPath.includes("/settings/platform-api-keys")) {
+    return "platformApiKeys";
+  }
   if (currentPath.includes("/settings/platform")) {
     return "platform";
   }
@@ -142,8 +154,8 @@ const getActiveSettingsKey = () => {
   return "platform";
 };
 
-const SettingsPopoverContent = ({ orgName, navigate }) => {
-  const settingsMenuItems = getSettingsMenuItems(orgName);
+const SettingsPopoverContent = ({ orgName, navigate, isAdmin }) => {
+  const settingsMenuItems = getSettingsMenuItems(orgName, isAdmin);
   const currentActiveKey = getActiveSettingsKey();
 
   const handleMenuClick = (path) => {
@@ -171,6 +183,7 @@ const SettingsPopoverContent = ({ orgName, navigate }) => {
 SettingsPopoverContent.propTypes = {
   orgName: PropTypes.string.isRequired,
   navigate: PropTypes.func.isRequired,
+  isAdmin: PropTypes.bool,
 };
 
 const HITL_MENU_ITEMS = [
@@ -453,6 +466,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           active:
             globalThis.location.pathname === `/${orgName}/settings` ||
             globalThis.location.pathname === `/${orgName}/settings/platform` ||
+            globalThis.location.pathname ===
+              `/${orgName}/settings/platform-api-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
             globalThis.location.pathname === `/${orgName}/users`,
@@ -461,9 +476,15 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     },
   ];
 
-  if (dashboardSideMenuItem) {
-    unstractMenuItems[1].subMenu.unshift(dashboardSideMenuItem(orgName));
-  }
+  // Dashboard menu item (available for both OSS and cloud)
+  unstractMenuItems[1].subMenu.unshift({
+    id: 2.0,
+    title: "Dashboard",
+    description: "View platform usage metrics and analytics",
+    image: DashboardIcon,
+    path: `/${orgName}/dashboard`,
+    active: globalThis.location.pathname.startsWith(`/${orgName}/dashboard`),
+  });
 
   // If selectedProduct is verticals and menu is null, don't show any sidebar items
   const data =
@@ -492,6 +513,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       active: globalThis.location.pathname.startsWith(
         `/${orgName}/agentic-prompt-studio`,
       ),
+      tag: "BETA",
     });
   }
 
@@ -676,6 +698,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             <SettingsPopoverContent
                               orgName={orgName}
                               navigate={navigate}
+                              isAdmin={sessionDetails?.isAdmin}
                             />
                           }
                           trigger="hover"
@@ -713,6 +736,14 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             <div>
                               <Typography className="sidebar-item-text fs-14">
                                 {el.title}
+                                {el.tag && (
+                                  <Tag
+                                    color="blue"
+                                    className="sidebar-menu-tag"
+                                  >
+                                    {el.tag}
+                                  </Tag>
+                                )}
                               </Typography>
                               <Typography className="sidebar-item-text fs-11">
                                 {el.description}

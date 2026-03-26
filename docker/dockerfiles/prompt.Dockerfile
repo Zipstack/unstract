@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
 FROM python:3.12-slim-trixie AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Prompt Service Container" \
-    version="${VERSION}"
+    description="Prompt Service Container"
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -96,5 +94,8 @@ RUN for dir in "${TARGET_PLUGINS_PATH}"/*/; do \
 RUN mkdir -p prompt-studio-data
 
 EXPOSE 3003
+
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 CMD ["./entrypoint.sh"]

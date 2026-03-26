@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
@@ -35,7 +36,10 @@ except ImportError:
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), required=False, allow_null=True, many=True
+        queryset=User.objects.filter(is_service_account=False),
+        required=False,
+        allow_null=True,
+        many=True,
     )
 
     class Meta:
@@ -50,6 +54,14 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             ),
         }
     }
+
+    def validate_tool_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Tool name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""
@@ -117,6 +129,10 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             tool_id=data.get(TSKeys.TOOL_ID)
         ).order_by("sequence_number")
 
+        data["created_by_email"] = (
+            instance.created_by.email if instance.created_by else ""
+        )
+
         if not prompt_instances.exists():
             data[TSKeys.PROMPTS] = []
             return data
@@ -152,7 +168,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             output.append(serialized_data)
 
         data[TSKeys.PROMPTS] = output
-        data["created_by_email"] = instance.created_by.email
 
         return data
 
@@ -171,7 +186,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     """Used for listing users of Custom tool."""
 
     created_by = UserSerializer()
-    shared_users = UserSerializer(many=True)
+    shared_users = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -182,6 +197,11 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "shared_to_org",
         )
+
+    def get_shared_users(self, obj):
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
@@ -202,3 +222,16 @@ class FileUploadIdeSerializer(serializers.Serializer):
             )
         ],
     )
+
+
+class SyncPromptsSerializer(serializers.Serializer):
+    data = serializers.DictField(required=True)
+    create_copy = serializers.BooleanField(default=False)
+
+    def validate_data(self, value):
+        required_keys = {"prompts"}
+        if not required_keys.issubset(value.keys()):
+            raise serializers.ValidationError(
+                f"Export JSON must contain keys: {required_keys}"
+            )
+        return value

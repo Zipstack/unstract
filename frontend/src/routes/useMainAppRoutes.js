@@ -20,6 +20,7 @@ import { LookUpsPage } from "../pages/LookUpsPage.jsx";
 import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
 import { OnBoardPage } from "../pages/OnBoardPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
+import { PlatformApiKeysPage } from "../pages/PlatformApiKeysPage.jsx";
 import { ProfilePage } from "../pages/ProfilePage.jsx";
 import { SettingsPage } from "../pages/SettingsPage.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
@@ -40,7 +41,6 @@ let ManualReviewPage;
 let SimpleManualReviewPage;
 let ReviewLayout;
 let Manage;
-let UnstractUsagePage;
 let UnstractSubscriptionPage;
 let UnstractSubscriptionCheck;
 let AgenticPromptStudio;
@@ -120,10 +120,6 @@ try {
     "../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx"
   );
   UnstractSubscriptionPage = mod1.UnstractSubscriptionPage;
-  const mod2 = await import(
-    "../plugins/unstract-subscription/pages/UnstractUsagePage.jsx"
-  );
-  UnstractUsagePage = mod2.UnstractUsagePage;
   const mod3 = await import(
     "../plugins/unstract-subscription/components/UnstractSubscriptionCheck.jsx"
   );
@@ -144,9 +140,7 @@ function useMainAppRoutes() {
         </Route>
       )}
       <Route path=":orgName" element={<PageLayout />}>
-        {UnstractUsagePage && (
-          <Route path="dashboard" element={<UnstractUsagePage />} />
-        )}
+        <Route path="dashboard" element={<MetricsDashboardPage />} />
         {UnstractSubscriptionPage && (
           <Route element={<RequireAdmin />}>
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
@@ -196,7 +190,6 @@ function useMainAppRoutes() {
         )}
         <Route path="logs" element={<LogsPage />} />
         <Route path="logs/:type/:id/" element={<LogsPage />} />
-        <Route path="metrics" element={<MetricsDashboardPage />} />
         <Route
           path="settings/llms"
           element={<ToolsSettingsPage type="llm" />}
@@ -224,6 +217,10 @@ function useMainAppRoutes() {
           <Route path="users" element={<UsersPage />} />
           <Route path="users/invite" element={<InviteEditUserPage />} />
           <Route path="users/edit" element={<InviteEditUserPage />} />
+          <Route
+            path="settings/platform-api-keys"
+            element={<PlatformApiKeysPage />}
+          />
         </Route>
         <Route path="settings/triad" element={<DefaultTriad />} />
         {RequirePlatformAdmin && PlatformAdminPage && (

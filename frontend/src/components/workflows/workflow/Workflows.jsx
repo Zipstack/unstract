@@ -31,7 +31,7 @@ const PROJECT_FILTER_OPTIONS = [
   { label: "Organization Workflows", value: "all" },
 ];
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 function Workflows() {
   const navigate = useNavigate();
@@ -351,9 +351,7 @@ function Workflows() {
             </div>
           )}
           {isEmpty(projectList) && !isEmpty(projectListRef?.current) && (
-            <div className="center">
-              <Title level={5}>No results found for this search</Title>
-            </div>
+            <EmptyState text="No results found for this search" />
           )}
           {!isEmpty(projectList) && (
             <ViewTools

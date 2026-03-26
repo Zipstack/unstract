@@ -22,6 +22,7 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
@@ -61,6 +62,14 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate_display_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Display name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""
@@ -425,6 +434,9 @@ class ExecutionQuerySerializer(Serializer):
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
     created_by_email = SerializerMethodField()
+    last_5_run_statuses = SerializerMethodField()
+    run_count = SerializerMethodField()
+    last_run_time = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -439,11 +451,31 @@ class APIDeploymentListSerializer(ModelSerializer):
             "api_name",
             "created_by",
             "created_by_email",
+            "last_5_run_statuses",
+            "run_count",
+            "last_run_time",
         ]
 
     def get_created_by_email(self, obj):
         """Get the email of the creator."""
         return obj.created_by.email if obj.created_by else None
+
+    def get_run_count(self, instance) -> int:
+        """Get total execution count for this API deployment."""
+        return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
+
+    def get_last_run_time(self, instance) -> str | None:
+        """Get the timestamp of the most recent execution."""
+        last_execution = (
+            WorkflowExecution.objects.filter(pipeline_id=instance.id)
+            .order_by("-created_at")
+            .first()
+        )
+        return last_execution.created_at.isoformat() if last_execution else None
+
+    def get_last_5_run_statuses(self, instance) -> list[dict]:
+        """Fetch the last 5 execution statuses with timestamps for this API deployment."""
+        return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
 
 
 class APIKeyListSerializer(ModelSerializer):
@@ -490,7 +522,10 @@ class SharedUserListSerializer(ModelSerializer):
 
     def get_shared_users(self, obj):
         """Return list of shared users with id and email."""
-        return [{"id": user.id, "email": user.email} for user in obj.shared_users.all()]
+        return [
+            {"id": user.id, "email": user.email}
+            for user in obj.shared_users.filter(is_service_account=False)
+        ]
 
     def get_created_by(self, obj):
         """Return creator details."""

@@ -322,7 +322,7 @@ function ListOfTools() {
   const onShare = (userIds, adapter, shareWithEveryone) => {
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },

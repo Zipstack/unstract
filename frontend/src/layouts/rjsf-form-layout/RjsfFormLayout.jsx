@@ -296,8 +296,15 @@ function RjsfFormLayout({
             showErrorList={false}
             onChange={handleChange}
             templates={templates}
-            omitExtraData={true}
-            liveOmit={true}
+            // Must be false: tool instance metadata contains fields like
+            // prompt_registry_id and tool_instance_id that are not defined
+            // in the RJSF schema (e.g. Prompt Studio tools). Setting this to
+            // true strips those fields from the form submission, causing the
+            // PATCH to /tool_instance/ to lose them — breaking workflow execution.
+            omitExtraData={false}
+            // Only applies when omitExtraData is true; explicitly false here
+            // to prevent live-stripping of any non-schema fields during edits.
+            liveOmit={false}
           >
             {children || <></>}
           </Form>

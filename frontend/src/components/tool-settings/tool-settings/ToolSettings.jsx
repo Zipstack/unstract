@@ -49,6 +49,7 @@ function ToolSettings({ type }) {
   const handleException = useExceptionHandler();
   const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
   const {
+    listRef,
     displayList,
     setDisplayList,
     setMasterList,
@@ -259,7 +260,7 @@ function ToolSettings({ type }) {
               titleProp="adapter_name"
               descriptionProp="description"
               iconProp="icon"
-              isEmpty={!displayList?.length}
+              isEmpty={!listRef.current.length}
               centered
               isClickable={false}
               handleShare={handleShare}

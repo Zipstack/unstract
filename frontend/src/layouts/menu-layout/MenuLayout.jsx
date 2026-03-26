@@ -35,7 +35,29 @@ function MenuLayout({ children }) {
           <Button
             size="small"
             type="text"
-            onClick={() => navigate(`/${sessionDetails.orgName}/workflows`)}
+            onClick={() => {
+              if (location.state?.from) {
+                const from = location.state.from;
+                const fromState =
+                  typeof from === "object" && from.state ? from.state : {};
+                const mergedState = {
+                  ...fromState,
+                  ...(location.state?.scrollToCardId && {
+                    scrollToCardId: location.state.scrollToCardId,
+                  }),
+                };
+                const nextState = Object.keys(mergedState).length
+                  ? mergedState
+                  : undefined;
+                if (typeof from === "object") {
+                  navigate({ ...from, state: nextState });
+                } else {
+                  navigate(from, { state: nextState });
+                }
+              } else {
+                navigate(`/${sessionDetails.orgName}/workflows`);
+              }
+            }}
           >
             <ArrowLeftOutlined />
           </Button>

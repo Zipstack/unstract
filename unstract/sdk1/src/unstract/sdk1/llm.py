@@ -1,8 +1,10 @@
 import logging
 import os
 import re
-from collections.abc import Callable, Generator, Mapping
-from typing import cast
+from collections.abc import Callable, Generator, Mapping, Sequence
+from dataclasses import dataclass, field
+from enum import Enum
+from typing import Any, NoReturn, cast
 
 import litellm
 
@@ -12,6 +14,7 @@ from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
+from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
 from unstract.sdk1.platform import PlatformHelper
@@ -23,6 +26,68 @@ from unstract.sdk1.utils.common import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Drop unsupported params rather than raising errors.
+# Set once at module level instead of per-call to avoid repeated
+# global mutation in concurrent environments.
+litellm.drop_params = True
+
+
+# ── Emulated llama-index types ───────────────────────────────────────────────
+# These types emulate the llama-index interface without requiring the dependency.
+# This allows LLMCompat to work with llama-index components like
+# SubQuestionQueryEngine, QueryFusionRetriever, etc.
+
+
+class MessageRole(str, Enum):
+    """Emulates llama_index.core.base.llms.types.MessageRole."""
+
+    SYSTEM = "system"
+    USER = "user"
+    ASSISTANT = "assistant"
+    FUNCTION = "function"
+    TOOL = "tool"
+
+
+@dataclass
+class ChatMessage:
+    """Emulates llama_index.core.base.llms.types.ChatMessage."""
+
+    role: MessageRole = MessageRole.USER
+    content: str | None = None
+    additional_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ChatResponse:
+    """Emulates llama_index.core.base.llms.types.ChatResponse."""
+
+    message: ChatMessage = field(default_factory=ChatMessage)
+    raw: Any = None
+    delta: str | None = None
+    additional_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class CompletionResponse:
+    """Emulates llama_index.core.base.llms.types.CompletionResponse."""
+
+    text: str = ""
+    raw: Any = None
+    delta: str | None = None
+    additional_kwargs: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class LLMMetadata:
+    """Emulates llama_index.core.base.llms.types.LLMMetadata."""
+
+    context_window: int = 4096
+    num_output: int = 256
+    is_chat_model: bool = True
+    is_function_calling_model: bool = False
+    model_name: str = ""
+    system_role: MessageRole = MessageRole.SYSTEM
 
 
 class LLM:
@@ -85,6 +150,7 @@ class LLM:
                 self._adapter_id = llm_config[Common.ADAPTER_ID]
                 self._adapter_metadata = llm_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
+                self._adapter_name = llm_config.pop(SdkCommon.ADAPTER_NAME, "")
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id
@@ -93,6 +159,7 @@ class LLM:
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
                 self._adapter_instance_id = ""
+                self._adapter_name = ""
                 self._tool = None
 
             # Retrieve the adapter class.
@@ -109,6 +176,7 @@ class LLM:
                 self.platform_kwargs["adapter_instance_id"] = self._adapter_instance_id
 
             self.kwargs = self.adapter.validate(self._adapter_metadata)
+            self._cost_model = self.kwargs.pop("cost_model", None)
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"],
@@ -136,6 +204,13 @@ class LLM:
         if capture_metrics_from_platform is not None:
             self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
+
+    def _get_adapter_info(self) -> str:
+        """Build a display string identifying this adapter for errors."""
+        provider = self.adapter.get_provider()
+        if self._adapter_name:
+            return f"{self._adapter_name} ({provider})"
+        return provider
 
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""
@@ -194,8 +269,6 @@ class LLM:
                 any processed output, and the captured metrics (if applicable).
         """
         try:
-            litellm.drop_params = True  # drop params that are not supported by the model
-
             messages: list[dict[str, str]] = [
                 {"role": "system", "content": self._system_prompt},
                 {"role": "user", "content": prompt},
@@ -205,6 +278,7 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
 
             # if hasattr(self, "model") and self.model not in O1_MODELS:
             #     completion_kwargs["temperature"] = 0.003
@@ -217,10 +291,18 @@ class LLM:
             )
 
             response_text = response["choices"][0]["message"]["content"]
+            finish_reason = response["choices"][0].get("finish_reason")
 
             self._record_usage(
-                self.kwargs["model"], messages, response.get("usage"), "complete"
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "complete",
             )
+
+            # Handle refusal or empty content from the LLM provider
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
 
             # NOTE:
             # The typecasting was required to stop the type checker from complaining.
@@ -261,7 +343,7 @@ class LLM:
                 status_code = e.http_status
 
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -289,7 +371,9 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
 
+            has_yielded_content = False
             for chunk in litellm.completion(
                 messages=messages,
                 stream=True,
@@ -300,23 +384,18 @@ class LLM:
             ):
                 if chunk.get("usage"):
                     self._record_usage(
-                        self.kwargs["model"],
+                        self._cost_model or self.kwargs["model"],
                         messages,
                         chunk.get("usage"),
                         "stream_complete",
                     )
 
-                text = chunk["choices"][0]["delta"].get("content", "")
-
-                if text:
-                    if callback_manager and hasattr(callback_manager, "on_stream"):
-                        callback_manager.on_stream(text)
-
-                    # Yield LLMResponseCompat for backward compatibility
-                    # with code expecting .delta
-                    stream_response = LLMResponseCompat(text)
-                    stream_response.delta = text
-                    yield stream_response
+                response = self._process_stream_chunk(
+                    chunk, callback_manager, has_yielded_content
+                )
+                if response is not None:
+                    has_yielded_content = True
+                    yield response
 
         except LLMError:
             # Already wrapped LLMError, re-raise as is
@@ -336,7 +415,7 @@ class LLM:
                 status_code = e.http_status
 
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -356,16 +435,25 @@ class LLM:
             )
 
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
 
             response = await litellm.acompletion(
                 messages=messages,
                 **completion_kwargs,
             )
             response_text = response["choices"][0]["message"]["content"]
+            finish_reason = response["choices"][0].get("finish_reason")
 
             self._record_usage(
-                self.kwargs["model"], messages, response.get("usage"), "acomplete"
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "acomplete",
             )
+
+            # Handle refusal or empty content from the LLM provider
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
 
             response_object = LLMResponseCompat(response_text)
             response_object.raw = (
@@ -391,7 +479,7 @@ class LLM:
                 status_code = e.http_status
 
             error_msg = (
-                f"Error from LLM provider '{self.adapter.get_provider()}': "
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
                 f"{strip_litellm_prefix(str(e))}"
             )
 
@@ -470,6 +558,87 @@ class LLM:
             kwargs={"provider": self.adapter.get_provider(), **self.platform_kwargs},
         )
 
+    # Finish reasons indicating a safety/policy refusal across providers:
+    # - "refusal": Anthropic
+    # - "content_filter": OpenAI / Azure OpenAI
+    REFUSAL_FINISH_REASONS = {"refusal", "content_filter"}
+
+    def _raise_for_empty_response(self, finish_reason: str | None) -> NoReturn:
+        """Raise an appropriate error when the LLM response content is None.
+
+        This typically happens when the LLM provider refuses to generate a
+        response (e.g. Anthropic's safety filters, OpenAI's content filter)
+        or returns an empty response.
+
+        Args:
+            finish_reason: The finish_reason from the LLM response.
+
+        Raises:
+            LLMError: With a descriptive message based on the finish_reason.
+        """
+        if finish_reason in self.REFUSAL_FINISH_REASONS:
+            raise LLMError(
+                message=(
+                    "The LLM refused to generate a response due to safety "
+                    f"restrictions (finish_reason: {finish_reason!r}). "
+                    "Please review your prompt and try again."
+                ),
+                status_code=400,
+            )
+        raise LLMError(
+            message=(
+                f"The LLM returned an empty response "
+                f"(finish_reason: {finish_reason}). This may indicate "
+                f"the model could not generate content for the given prompt."
+            ),
+            status_code=500,
+        )
+
+    def _process_stream_chunk(
+        self,
+        chunk: dict[str, object],
+        callback_manager: object | None,
+        has_yielded_content: bool = False,
+    ) -> LLMResponseCompat | None:
+        """Process a single streaming chunk and return a response if content.
+
+        Args:
+            chunk: A streaming chunk from litellm.
+            callback_manager: Optional callback manager for stream events.
+            has_yielded_content: Whether any content has already been yielded.
+
+        Returns:
+            LLMResponseCompat with the text chunk, or None if no content.
+
+        Raises:
+            LLMError: If the chunk indicates a refusal and no content has
+                been yielded yet. If content was already streamed, logs a
+                warning instead to avoid confusing late errors.
+        """
+        if not chunk.get("choices"):
+            return None
+
+        finish_reason = chunk["choices"][0].get("finish_reason")
+        if finish_reason in self.REFUSAL_FINISH_REASONS:
+            if has_yielded_content:
+                logger.warning(
+                    "[sdk1][LLM] Provider sent refusal after content was "
+                    "already streamed. Partial content may have been returned."
+                )
+                return None
+            self._raise_for_empty_response(finish_reason)
+
+        text = chunk["choices"][0].get("delta", {}).get("content", "")
+        if not text:
+            return None
+
+        if callback_manager and hasattr(callback_manager, "on_stream"):
+            callback_manager.on_stream(text)
+
+        stream_response = LLMResponseCompat(text)
+        stream_response.delta = text
+        return stream_response
+
     def _post_process_response(
         self,
         response_text: str,
@@ -510,3 +679,271 @@ class LLM:
                 post_processed_output = {}
 
         return (response_text, post_processed_output)
+
+
+class LLMCompat:
+    """Compatibility wrapper that emulates the llama-index LLM interface.
+
+    This class emulates ``llama_index.core.llms.llm.LLM`` without requiring
+    the llama-index dependency. It allows llama-index components like
+    SubQuestionQueryEngine, QueryFusionRetriever, and RouterQueryEngine
+    to work with SDK1's LLM.
+
+    Unlike :class:`EmbeddingCompat` (which inherits from llama-index's
+    ``BaseEmbedding``), this class is a plain Python object with no
+    llama-index inheritance. The prompt-service's ``RetrieverLLM``
+    provides the llama-index base class and delegates to this wrapper.
+
+    Prefer :meth:`from_llm` when an SDK1 ``LLM`` instance already
+    exists — it reuses the instance directly, bypassing ``__init__``.
+    """
+
+    def __init__(
+        self,
+        adapter_id: str = "",
+        adapter_metadata: dict[str, object] | None = None,
+        adapter_instance_id: str = "",
+        tool: BaseTool | None = None,
+        usage_kwargs: dict[str, object] | None = None,
+        system_prompt: str = "",
+        kwargs: dict[str, object] | None = None,
+        capture_metrics: bool = False,
+    ) -> None:
+        """Initialize the LLMCompat wrapper for compatibility.
+
+        Args:
+            adapter_id: Adapter identifier for LLM model
+            adapter_metadata: Configuration metadata for the adapter
+            adapter_instance_id: Instance identifier for the adapter
+            tool: BaseTool instance for tool-specific operations
+            usage_kwargs: Usage tracking parameters
+            system_prompt: System prompt for the LLM
+            kwargs: Additional keyword arguments for configuration
+            capture_metrics: Whether to capture performance metrics
+        """
+        adapter_metadata = adapter_metadata or {}
+        usage_kwargs = usage_kwargs or {}
+        kwargs = kwargs or {}
+
+        self._llm_instance = LLM(
+            adapter_id=adapter_id,
+            adapter_metadata=adapter_metadata,
+            adapter_instance_id=adapter_instance_id,
+            tool=tool,
+            usage_kwargs=usage_kwargs,
+            system_prompt=system_prompt,
+            kwargs=kwargs,
+            capture_metrics=capture_metrics,
+        )
+        self._tool = tool
+        self._adapter_instance_id = adapter_instance_id
+
+        # For compatibility with SDK Callback Manager.
+        self.model_name = self._llm_instance.get_model_name()
+        self.callback_manager = None
+
+        if not PlatformHelper.is_public_adapter(adapter_id=adapter_instance_id):
+            if self._tool:
+                platform_api_key = self._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+            else:
+                platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
+
+            from unstract.sdk1.utils.callback_manager import CallbackManager
+
+            CallbackManager.set_callback(
+                platform_api_key=platform_api_key,
+                model=self,
+                kwargs={
+                    **self._llm_instance.platform_kwargs,
+                    "adapter_instance_id": adapter_instance_id,
+                },
+            )
+
+    # ── Properties (llama-index interface) ───────────────────────────────────
+
+    @property
+    def metadata(self) -> LLMMetadata:
+        """Return LLM metadata for llama-index compatibility."""
+        return LLMMetadata(
+            is_chat_model=True,
+            model_name=self._llm_instance.get_model_name(),
+        )
+
+    # ── Sync methods (llama-index interface) ─────────────────────────────────
+    # All LLM calls delegate to self._llm_instance (SDK1 LLM) so that
+    # litellm invocation, error handling, and usage auditing stay in one
+    # place.
+
+    def chat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> ChatResponse:
+        """Synchronous chat completion.
+
+        Extracts the last user message as the prompt and delegates to
+        ``LLM.complete()``.
+        """
+        prompt = self._messages_to_prompt(messages)
+        result = self._llm_instance.complete(prompt, **kwargs)
+        resp = result["response"]
+        return ChatResponse(
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=resp.text),
+            raw=resp.raw,
+        )
+
+    def complete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> CompletionResponse:
+        """Synchronous completion."""
+        result = self._llm_instance.complete(prompt, **kwargs)
+        resp = result["response"]
+        return CompletionResponse(text=resp.text, raw=resp.raw)
+
+    def stream_chat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> Generator[ChatResponse, None, None]:
+        """Streaming chat - not implemented."""
+        raise NotImplementedError("stream_chat is not supported by LLMCompat.")
+
+    def stream_complete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> Generator[CompletionResponse, None, None]:
+        """Streaming completion - not implemented."""
+        raise NotImplementedError("stream_complete is not supported by LLMCompat.")
+
+    # ── Async methods (llama-index interface) ────────────────────────────────
+
+    async def achat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> ChatResponse:
+        """Asynchronous chat completion.
+
+        Extracts the last user message as the prompt and delegates to
+        ``LLM.acomplete()``.
+        """
+        prompt = self._messages_to_prompt(messages)
+        result = await self._llm_instance.acomplete(prompt, **kwargs)
+        resp = result["response"]
+        return ChatResponse(
+            message=ChatMessage(role=MessageRole.ASSISTANT, content=resp.text),
+            raw=resp.raw,
+        )
+
+    async def acomplete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> CompletionResponse:
+        """Asynchronous completion."""
+        result = await self._llm_instance.acomplete(prompt, **kwargs)
+        resp = result["response"]
+        return CompletionResponse(text=resp.text, raw=resp.raw)
+
+    async def astream_chat(
+        self,
+        messages: Sequence[ChatMessage],
+        **kwargs: Any,  # noqa: ANN401
+    ) -> Any:  # noqa: ANN401
+        """Async streaming chat - not implemented."""
+        raise NotImplementedError("astream_chat is not supported by LLMCompat.")
+
+    async def astream_complete(
+        self,
+        prompt: str,
+        formatted: bool = False,
+        **kwargs: Any,  # noqa: ANN401
+    ) -> Any:  # noqa: ANN401
+        """Async streaming completion - not implemented."""
+        raise NotImplementedError("astream_complete is not supported by LLMCompat.")
+
+    # ── Helper methods ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _messages_to_prompt(messages: Sequence[ChatMessage]) -> str:
+        """Flatten a message sequence into a single prompt string.
+
+        Concatenates all messages with role prefixes so that
+        system-level task instructions (e.g. from llama-index's
+        ``LLMQuestionGenerator`` or ``KeywordTableIndex``) are
+        preserved when forwarded to ``LLM.complete()``.
+        """
+        parts: list[str] = []
+        for msg in messages:
+            role = getattr(msg.role, "value", str(msg.role))
+            content = msg.content or ""
+            parts.append(f"{role}: {content}")
+        return "\n".join(parts)
+
+    # ── Factory methods ────────────────────────────────────────────────────
+
+    @classmethod
+    def from_llm(cls, llm: "LLM") -> "LLMCompat":
+        """Create an LLMCompat instance reusing an existing SDK1 LLM.
+
+        Reuses the already-initialised ``LLM`` object directly, avoiding
+        redundant adapter validation and ``PlatformHelper`` calls that
+        would occur if we re-created the instance from scratch.
+
+        Args:
+            llm: An SDK1 LLM instance.
+
+        Returns:
+            A new LLMCompat wrapping the same LLM instance.
+        """
+        instance = cls.__new__(cls)
+        instance._llm_instance = llm
+        instance._tool = llm._tool
+        instance._adapter_instance_id = llm._adapter_instance_id
+
+        # For compatibility with SDK Callback Manager.
+        instance.model_name = llm.get_model_name()
+        instance.callback_manager = None
+
+        if not PlatformHelper.is_public_adapter(adapter_id=llm._adapter_instance_id):
+            if llm._tool:
+                platform_api_key = llm._tool.get_env_or_die(ToolEnv.PLATFORM_API_KEY)
+            else:
+                platform_api_key = os.environ.get(ToolEnv.PLATFORM_API_KEY, "")
+
+            from unstract.sdk1.utils.callback_manager import CallbackManager
+
+            CallbackManager.set_callback(
+                platform_api_key=platform_api_key,
+                model=instance,
+                kwargs={
+                    **llm.platform_kwargs,
+                    "adapter_instance_id": llm._adapter_instance_id,
+                },
+            )
+
+        return instance
+
+    # ── SDK1 compatibility methods ───────────────────────────────────────────
+
+    def get_model_name(self) -> str:
+        """Gets the name of the LLM model."""
+        return self._llm_instance.get_model_name()
+
+    def get_metrics(self) -> dict[str, object]:
+        """Get captured metrics."""
+        return self._llm_instance.get_metrics()
+
+    def get_usage_reason(self) -> object:
+        """Get usage reason from platform kwargs."""
+        return self._llm_instance.get_usage_reason()
+
+    def test_connection(self) -> bool:
+        """Test connection to the LLM provider."""
+        return self._llm_instance.test_connection()

@@ -8,7 +8,10 @@ const fetchExecutionLogs = (
   setAlertDetails,
   page = 1,
   pageSize = 10,
+  setIsLoading = null,
 ) => {
+  setIsLoading?.(true);
+
   const requestOptions = {
     method: "GET",
     url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${selectedRow.id}/executions/`,
@@ -34,6 +37,9 @@ const fetchExecutionLogs = (
     })
     .catch((err) => {
       setAlertDetails(handleException(err));
+    })
+    .finally(() => {
+      setIsLoading?.(false);
     });
 };
 

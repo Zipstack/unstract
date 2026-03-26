@@ -548,6 +548,35 @@ const displayURL = (text) => {
   return getBaseUrl() + "/" + text;
 };
 
+// Helper to strip trailing slashes without regex (avoids ReDoS concerns)
+const stripTrailingSlashes = (str) => {
+  let end = str.length;
+  while (end > 0 && str[end - 1] === "/") {
+    end--;
+  }
+  return str.slice(0, end);
+};
+
+const shortenApiEndpoint = (url) => {
+  if (typeof url !== "string" || url.trim() === "") {
+    return "";
+  }
+  try {
+    // Parse URL to strip query/hash and get clean pathname
+    const parsed = new URL(url, globalThis.location.origin);
+    const path = stripTrailingSlashes(parsed.pathname);
+    const parts = path.split("/").filter(Boolean);
+    const suffix = parts[parts.length - 1] || "";
+    return suffix ? `.../${suffix}` : ".../";
+  } catch {
+    // Fallback for invalid URLs - strip query/hash manually
+    const path = stripTrailingSlashes(url.split("?")[0].split("#")[0]);
+    const parts = path.split("/").filter(Boolean);
+    const suffix = parts[parts.length - 1] || "";
+    return suffix ? `.../${suffix}` : ".../";
+  }
+};
+
 const formatNumberWithCommas = (number) => {
   if (!number && number !== 0) {
     return null;
@@ -661,11 +690,15 @@ const formatTimeDisplay = (seconds) => {
     return "Expired";
   }
 
-  const hours = Math.floor(seconds / 3600);
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
 
   const parts = [];
+  if (days > 0) {
+    parts.push(`${days}d`);
+  }
   if (hours > 0) {
     parts.push(`${hours}h`);
   }
@@ -754,6 +787,7 @@ export {
   pollForCompletion,
   getDocIdFromKey,
   displayURL,
+  shortenApiEndpoint,
   formatNumberWithCommas,
   isValidJsonKey,
   PROMPT_RUN_TYPES,
