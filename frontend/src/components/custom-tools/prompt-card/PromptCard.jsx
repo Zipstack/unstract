@@ -90,7 +90,7 @@ const PromptCard = memo(
         message: msg?.message || "",
         level: msg?.level || "INFO",
       });
-    }, [messages]);
+    }, [messages, promptDetailsState?.prompt_id, promptKey, details?.tool_id]);
 
     useEffect(() => {
       setSelectedLlmProfileId(

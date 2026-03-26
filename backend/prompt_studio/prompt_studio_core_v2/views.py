@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -402,20 +403,28 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
 
-        task = dispatcher.dispatch_with_callback(
-            context,
-            on_success=signature(
-                "ide_index_complete",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            on_error=signature(
-                "ide_index_error",
-                kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
-            ),
-            task_id=executor_task_id,
-        )
+        try:
+            task = dispatcher.dispatch_with_callback(
+                context,
+                on_success=signature(
+                    "ide_index_complete",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                on_error=signature(
+                    "ide_index_error",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="prompt_studio_callback",
+                ),
+                task_id=executor_task_id,
+            )
+        except Exception:
+            DocumentIndexingService.remove_document_indexing(
+                org_id=cb_kwargs["org_id"],
+                user_id=cb_kwargs["user_id"],
+                doc_id_key=cb_kwargs["doc_id_key"],
+            )
+            raise
         return Response(
             {"task_id": task.id, "run_id": run_id, "status": "accepted"},
             status=status.HTTP_202_ACCEPTED,
@@ -447,8 +456,19 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
 
-        # Resolve prompt
-        prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
+        # Resolve prompt — guard against missing / stale prompt_id
+        if not prompt_id:
+            return Response(
+                {"error": "prompt id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
+        except ToolStudioPrompt.DoesNotExist:
+            return Response(
+                {"error": f"Prompt {prompt_id} not found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         # Build file path
         doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
@@ -476,10 +496,110 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if context is None:
             return Response(cb_kwargs, status=status.HTTP_200_OK)
 
+        # Capture HubSpot first-run state before dispatch so the callback
+        # can fire the PROMPT_RUN analytics event on success.
+        from prompt_studio.prompt_studio_output_manager_v2.models import (
+            PromptStudioOutputManager,
+        )
+
+        cb_kwargs["hubspot_user_id"] = request.user.pk
+        cb_kwargs["is_first_prompt_run"] = not PromptStudioOutputManager.objects.filter(
+            tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
+        ).exists()
+
         dispatcher = PromptStudioHelper._get_dispatcher()
 
         executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
+        cb_kwargs["dispatch_time"] = time.time()
+
+        task = dispatcher.dispatch_with_callback(
+            context,
+            on_success=signature(
+                "ide_prompt_complete",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            on_error=signature(
+                "ide_prompt_error",
+                kwargs={"callback_kwargs": cb_kwargs},
+                queue="prompt_studio_callback",
+            ),
+            task_id=executor_task_id,
+        )
+        return Response(
+            {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+    @action(detail=True, methods=["post"])
+    def bulk_fetch_response(self, request: HttpRequest, pk: Any = None) -> Response:
+        """Bulk fetch_response: accept multiple prompt IDs, extract and index
+        once, then dispatch a single executor task for all prompts.
+
+        Prevents the "Document being indexed" race when the frontend fires
+        N individual fetch_response requests concurrently on an unindexed
+        document.
+        """
+        custom_tool = self.get_object()
+        prompt_ids = request.data.get("prompt_ids", [])
+        document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
+        run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        profile_manager_id: str = request.data.get(
+            ToolStudioPromptKeys.PROFILE_MANAGER_ID
+        )
+        if not run_id:
+            run_id = CommonUtils.generate_uuid()
+
+        org_id = UserSessionUtils.get_organization_id(request)
+        user_id = custom_tool.created_by.user_id
+
+        prompts = list(
+            ToolStudioPrompt.objects.filter(prompt_id__in=prompt_ids).order_by(
+                "sequence_number"
+            )
+        )
+
+        doc_path = PromptStudioFileHelper.get_or_create_prompt_studio_subdirectory(
+            org_id,
+            is_create=False,
+            user_id=user_id,
+            tool_id=str(custom_tool.tool_id),
+        )
+        document: DocumentManager = DocumentManager.objects.get(pk=document_id)
+        doc_path = str(Path(doc_path) / document.document_name)
+
+        context, cb_kwargs = PromptStudioHelper.build_bulk_fetch_response_payload(
+            tool=custom_tool,
+            doc_path=doc_path,
+            doc_name=document.document_name,
+            prompts=prompts,
+            org_id=org_id,
+            user_id=user_id,
+            document_id=document_id,
+            run_id=run_id,
+            profile_manager_id=profile_manager_id,
+        )
+
+        if context is None:
+            return Response(cb_kwargs, status=status.HTTP_200_OK)
+
+        # Capture HubSpot first-run state before dispatch so the callback
+        # can fire the PROMPT_RUN analytics event on success.
+        from prompt_studio.prompt_studio_output_manager_v2.models import (
+            PromptStudioOutputManager,
+        )
+
+        cb_kwargs["hubspot_user_id"] = request.user.pk
+        cb_kwargs["is_first_prompt_run"] = not PromptStudioOutputManager.objects.filter(
+            tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
+        ).exists()
+
+        dispatcher = PromptStudioHelper._get_dispatcher()
+
+        executor_task_id = str(uuid.uuid4())
+        cb_kwargs["executor_task_id"] = executor_task_id
+        cb_kwargs["dispatch_time"] = time.time()
 
         task = dispatcher.dispatch_with_callback(
             context,
@@ -569,6 +689,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
+        cb_kwargs["dispatch_time"] = time.time()
 
         task = dispatcher.dispatch_with_callback(
             context,
@@ -619,7 +740,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             return Response({"task_id": task_id, "status": "processing"})
         if result.successful():
             return Response(
-                {"task_id": task_id, "status": "completed", "result": result.result}
+                {"task_id": task_id, "status": "completed"}
             )
         return Response(
             {"task_id": task_id, "status": "failed", "error": str(result.result)},

@@ -66,11 +66,13 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
         # For compound operations, extract nested params for log
         # correlation.
         if context.operation == "ide_index":
+            index_params = params.get("index_params", {})
             extract_params = params.get("extract_params", {})
+            usage_kwargs = extract_params.get("usage_kwargs", {})
             context._log_component = {
-                "tool_id": extract_params.get("tool_id", ""),
+                "tool_id": index_params.get("tool_id", ""),
                 "run_id": context.run_id,
-                "doc_name": str(extract_params.get("file_name", "")),
+                "doc_name": str(usage_kwargs.get("file_name", "")),
                 "operation": context.operation,
             }
         elif context.operation == "structure_pipeline":

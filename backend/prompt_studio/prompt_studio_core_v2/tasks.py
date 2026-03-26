@@ -1,5 +1,6 @@
 import json
 import logging
+import time
 import uuid
 from datetime import date, datetime
 from typing import Any
@@ -53,21 +54,25 @@ def _emit_result(
     task_id: str,
     operation: str,
     result: dict[str, Any],
+    tool_id: str = "",
+    extra: dict[str, Any] | None = None,
 ) -> None:
     """Push a success event to the frontend via Socket.IO."""
     from utils.log_events import _emit_websocket_event
 
+    payload: dict[str, Any] = {
+        "task_id": task_id,
+        "status": "completed",
+        "operation": operation,
+        "result": result,
+        "tool_id": tool_id,
+    }
+    if extra:
+        payload.update(extra)
     _emit_websocket_event(
         room=log_events_id,
         event=PROMPT_STUDIO_RESULT_EVENT,
-        data=_json_safe(
-            {
-                "task_id": task_id,
-                "status": "completed",
-                "operation": operation,
-                "result": result,
-            }
-        ),
+        data=_json_safe(payload),
     )
 
 
@@ -77,6 +82,7 @@ def _emit_error(
     operation: str,
     error: str,
     extra: dict[str, Any] | None = None,
+    tool_id: str = "",
 ) -> None:
     """Push a failure event to the frontend via Socket.IO."""
     from utils.log_events import _emit_websocket_event
@@ -86,6 +92,7 @@ def _emit_error(
         "status": "failed",
         "operation": operation,
         "error": error,
+        "tool_id": tool_id,
     }
     if extra:
         data.update(extra)
@@ -133,6 +140,7 @@ def ide_index_complete(
     doc_id_key = cb.get("doc_id_key", "")
     profile_manager_id = cb.get("profile_manager_id")
     executor_task_id = cb.get("executor_task_id", "")
+    tool_id = cb.get("tool_id", "")
 
     try:
         _setup_state_store(log_events_id, request_id, org_id)
@@ -150,6 +158,7 @@ def ide_index_complete(
                 "index_document",
                 error_msg,
                 extra={"document_id": document_id},
+                tool_id=tool_id,
             )
             return {"status": "failed", "error": error_msg}
 
@@ -225,12 +234,21 @@ def ide_index_complete(
                 logger.warning(
                     "Summary profile %s not found", summary_profile_id
                 )
+            except Exception:
+                logger.exception(
+                    "Failed to update summary index manager for document %s; "
+                    "primary indexing succeeded.",
+                    document_id,
+                )
 
         result: dict[str, Any] = {
             "message": "Document indexed successfully.",
             "document_id": document_id,
         }
-        _emit_result(log_events_id, executor_task_id, "index_document", result)
+        _emit_result(
+            log_events_id, executor_task_id, "index_document", result,
+            tool_id=tool_id,
+        )
         return result
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
@@ -240,6 +258,7 @@ def ide_index_complete(
             "index_document",
             str(e),
             extra={"document_id": document_id},
+            tool_id=tool_id,
         )
         raise
     finally:
@@ -270,6 +289,7 @@ def ide_index_error(
     document_id = cb.get("document_id", "")
     doc_id_key = cb.get("doc_id_key", "")
     executor_task_id = cb.get("executor_task_id", "")
+    tool_id = cb.get("tool_id", "")
 
     try:
         _setup_state_store(log_events_id, request_id, org_id)
@@ -297,6 +317,7 @@ def ide_index_error(
             "index_document",
             error_msg,
             extra={"document_id": document_id},
+            tool_id=tool_id,
         )
     except Exception:
         logger.exception("ide_index_error callback failed")
@@ -331,6 +352,8 @@ def ide_prompt_complete(
     profile_manager_id = cb.get("profile_manager_id")
     is_single_pass = cb.get("is_single_pass", False)
     executor_task_id = cb.get("executor_task_id", "")
+    tool_id = cb.get("tool_id", "")
+    dispatch_time = cb.get("dispatch_time", 0)
 
     try:
         _setup_state_store(log_events_id, request_id, org_id)
@@ -349,6 +372,7 @@ def ide_prompt_complete(
                     "document_id": document_id,
                     "profile_manager_id": profile_manager_id,
                 },
+                tool_id=tool_id,
             )
             return {"status": "failed", "error": error_msg}
 
@@ -377,7 +401,37 @@ def ide_prompt_complete(
             metadata=metadata,
         )
 
-        _emit_result(log_events_id, executor_task_id, operation, response)
+        # Fire HubSpot PROMPT_RUN event if this is the first prompt run
+        hubspot_user_id = cb.get("hubspot_user_id")
+        if hubspot_user_id:
+            try:
+                from django.contrib.auth import get_user_model
+
+                from utils.hubspot_notify import notify_hubspot_event
+
+                User = get_user_model()
+                user = User.objects.get(pk=hubspot_user_id)
+                notify_hubspot_event(
+                    user=user,
+                    event_name="PROMPT_RUN",
+                    is_first_for_org=cb.get("is_first_prompt_run", False),
+                    action_label="prompt run",
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to send HubSpot PROMPT_RUN event", exc_info=True
+                )
+
+        _emit_result(
+            log_events_id, executor_task_id, operation, response,
+            tool_id=tool_id,
+            extra={
+                "prompt_ids": prompt_ids,
+                "document_id": document_id,
+                "profile_manager_id": profile_manager_id,
+                "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
+            },
+        )
         # Return minimal status — full data is sent via websocket above.
         # Returning the full response would cause Celery to log sensitive
         # extracted data in its "Task succeeded" message.
@@ -394,6 +448,7 @@ def ide_prompt_complete(
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,
             },
+            tool_id=tool_id,
         )
         raise
     finally:
@@ -418,6 +473,7 @@ def ide_prompt_error(
     org_id = cb.get("org_id", "")
     operation = cb.get("operation", "fetch_response")
     executor_task_id = cb.get("executor_task_id", "")
+    tool_id = cb.get("tool_id", "")
 
     try:
         _setup_state_store(log_events_id, request_id, org_id)
@@ -442,6 +498,7 @@ def ide_prompt_error(
                 "document_id": cb.get("document_id", ""),
                 "profile_manager_id": cb.get("profile_manager_id"),
             },
+            tool_id=tool_id,
         )
     except Exception:
         logger.exception("ide_prompt_error callback failed")
@@ -484,7 +541,10 @@ def run_index_document(
             "message": "Document indexed successfully.",
             "document_id": document_id,
         }
-        _emit_result(log_events_id, self.request.id, "index_document", result)
+        _emit_result(
+            log_events_id, self.request.id, "index_document", result,
+            tool_id=tool_id,
+        )
         return result
     except Exception as e:
         logger.exception("run_index_document failed")
@@ -494,6 +554,7 @@ def run_index_document(
             "index_document",
             str(e),
             extra={"document_id": document_id},
+            tool_id=tool_id,
         )
         raise
     finally:
@@ -528,12 +589,18 @@ def run_fetch_response(
             run_id=run_id,
             profile_manager_id=profile_manager_id,
         )
-        _emit_result(log_events_id, self.request.id, "fetch_response", response)
+        _emit_result(
+            log_events_id, self.request.id, "fetch_response", response,
+            tool_id=tool_id,
+        )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": "fetch_response"}
     except Exception as e:
         logger.exception("run_fetch_response failed")
-        _emit_error(log_events_id, self.request.id, "fetch_response", str(e))
+        _emit_error(
+            log_events_id, self.request.id, "fetch_response", str(e),
+            tool_id=tool_id,
+        )
         raise
     finally:
         _clear_state_store()
@@ -563,12 +630,18 @@ def run_single_pass_extraction(
             document_id=document_id,
             run_id=run_id,
         )
-        _emit_result(log_events_id, self.request.id, "single_pass_extraction", response)
+        _emit_result(
+            log_events_id, self.request.id, "single_pass_extraction", response,
+            tool_id=tool_id,
+        )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": "single_pass_extraction"}
     except Exception as e:
         logger.exception("run_single_pass_extraction failed")
-        _emit_error(log_events_id, self.request.id, "single_pass_extraction", str(e))
+        _emit_error(
+            log_events_id, self.request.id, "single_pass_extraction", str(e),
+            tool_id=tool_id,
+        )
         raise
     finally:
         _clear_state_store()

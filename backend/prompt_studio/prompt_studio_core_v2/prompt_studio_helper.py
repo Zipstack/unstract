@@ -11,7 +11,6 @@ from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys
 from adapter_processor_v2.models import AdapterInstance
 from django.conf import settings
-from django.db import transaction
 from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.request import Request
@@ -490,11 +489,15 @@ class PromptStudioHelper:
             monitor_llm = str(monitor_llm_instance.id)
         else:
             dp = ProfileManager.get_default_llm_profile(tool)
+            if not dp:
+                raise DefaultProfileError()
             monitor_llm = str(dp.llm.id)
         if challenge_llm_instance:
             challenge_llm = str(challenge_llm_instance.id)
         else:
             dp = ProfileManager.get_default_llm_profile(tool)
+            if not dp:
+                raise DefaultProfileError()
             challenge_llm = str(dp.llm.id)
         return monitor_llm, challenge_llm
 
@@ -534,10 +537,10 @@ class PromptStudioHelper:
                 profile_manager_id=profile_manager_id
             )
 
-        monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
-
         if not profile_manager:
             raise DefaultProfileError()
+
+        monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
 
         PromptStudioHelper.validate_adapter_status(profile_manager)
         PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
@@ -723,6 +726,229 @@ class PromptStudioHelper:
         return context, cb_kwargs
 
     @staticmethod
+    def build_bulk_fetch_response_payload(
+        tool: CustomTool,
+        doc_path: str,
+        doc_name: str,
+        prompts: list[ToolStudioPrompt],
+        org_id: str,
+        user_id: str,
+        document_id: str,
+        run_id: str,
+        profile_manager_id: str | None = None,
+    ) -> tuple[ExecutionContext | None, dict[str, Any]]:
+        """Build answer_prompt payload for multiple prompts in one task.
+
+        Does ORM work, extraction, and indexing synchronously once for
+        all prompts.  Only the LLM answer_prompt call is dispatched
+        asynchronously with all prompts in the outputs list.
+
+        Returns:
+            (context, cb_kwargs) or (None, pending_response_dict)
+        """
+        profile_manager = (
+            ProfileManagerHelper.get_profile_manager(profile_manager_id)
+            if profile_manager_id
+            else None
+        )
+        if not profile_manager:
+            profile_manager = ProfileManager.get_default_llm_profile(tool)
+        if not profile_manager:
+            raise DefaultProfileError()
+
+        PromptStudioHelper.validate_adapter_status(profile_manager)
+        PromptStudioHelper.validate_profile_manager_owner_access(profile_manager)
+
+        monitor_llm, challenge_llm = PromptStudioHelper._resolve_llm_ids(tool)
+
+        vector_db = str(profile_manager.vector_store.id)
+        embedding_model = str(profile_manager.embedding_model.id)
+        llm = str(profile_manager.llm.id)
+        x2text = str(profile_manager.x2text.id)
+
+        fs_instance = EnvHelper.get_storage(
+            storage_type=StorageType.PERMANENT,
+            env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+        )
+        util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
+        file_path = doc_path
+        directory, filename = os.path.split(doc_path)
+        extract_path = os.path.join(
+            directory, "extract", os.path.splitext(filename)[0] + ".txt"
+        )
+
+        doc_id = IndexingUtils.generate_index_key(
+            vector_db=vector_db,
+            embedding=embedding_model,
+            x2text=x2text,
+            chunk_size=str(profile_manager.chunk_size),
+            chunk_overlap=str(profile_manager.chunk_overlap),
+            file_path=file_path,
+            file_hash=None,
+            fs=fs_instance,
+            tool=util,
+        )
+
+        # Extract ONCE (blocking, usually cached)
+        extracted_text = PromptStudioHelper.dynamic_extractor(
+            profile_manager=profile_manager,
+            file_path=file_path,
+            org_id=org_id,
+            document_id=document_id,
+            run_id=run_id,
+            enable_highlight=tool.enable_highlight,
+        )
+
+        is_summary = tool.summarize_as_source
+        if is_summary:
+            profile_manager.chunk_size = 0
+            p = Path(extract_path)
+            extract_path = str(p.parent.parent / "summarize" / (p.stem + ".txt"))
+
+        # Index ONCE (blocking, usually cached)
+        index_result = PromptStudioHelper.dynamic_indexer(
+            profile_manager=profile_manager,
+            tool_id=str(tool.tool_id),
+            file_path=file_path,
+            org_id=org_id,
+            document_id=document_id,
+            run_id=run_id,
+            user_id=user_id,
+            enable_highlight=tool.enable_highlight,
+            extracted_text=extracted_text,
+            doc_id_key=doc_id,
+        )
+
+        if index_result.get("status") == IndexingStatus.PENDING_STATUS.value:
+            return None, {
+                "status": IndexingStatus.PENDING_STATUS.value,
+                "message": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+            }
+
+        # Per-prompt output building
+        tool_id = str(tool.tool_id)
+        grammar_list = PromptStudioHelper._build_grammar_list(tool.prompt_grammer)
+        outputs: list[dict[str, Any]] = []
+
+        for prompt in prompts:
+            output: dict[str, Any] = {}
+            output[TSPKeys.PROMPT] = prompt.prompt
+            output[TSPKeys.ACTIVE] = prompt.active
+            output[TSPKeys.REQUIRED] = prompt.required
+            output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
+            output[TSPKeys.VECTOR_DB] = vector_db
+            output[TSPKeys.EMBEDDING] = embedding_model
+            output[TSPKeys.CHUNK_OVERLAP] = profile_manager.chunk_overlap
+            output[TSPKeys.LLM] = llm
+            output[TSPKeys.TYPE] = prompt.enforce_type
+            output[TSPKeys.NAME] = prompt.prompt_key
+            output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
+            output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
+            output[TSPKeys.SECTION] = profile_manager.section
+            output[TSPKeys.X2TEXT_ADAPTER] = x2text
+
+            webhook_enabled = bool(prompt.enable_postprocessing_webhook)
+            webhook_url = (prompt.postprocessing_webhook_url or "").strip()
+            if webhook_enabled and not webhook_url:
+                webhook_enabled = False
+            output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
+            if webhook_enabled:
+                output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
+
+            output[TSPKeys.EVAL_SETTINGS] = {}
+            output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = (
+                prompt.evaluate
+            )
+            output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [
+                monitor_llm
+            ]
+            output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED] = (
+                tool.exclude_failed
+            )
+            for attr in dir(prompt):
+                if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
+                    output[TSPKeys.EVAL_SETTINGS][attr] = getattr(prompt, attr)
+
+            output = PromptStudioHelper.fetch_table_settings_if_enabled(
+                doc_name, prompt, org_id, user_id, tool_id, output
+            )
+            variable_map = (
+                PromptStudioVariableService.frame_variable_replacement_map(
+                    doc_id=document_id, prompt_object=prompt
+                )
+            )
+            if variable_map:
+                output[TSPKeys.VARIABLE_MAP] = variable_map
+            outputs.append(output)
+
+        tool_settings: dict[str, Any] = {}
+        tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
+        tool_settings[TSPKeys.CHALLENGE_LLM] = challenge_llm
+        tool_settings[TSPKeys.SINGLE_PASS_EXTRACTION_MODE] = (
+            tool.single_pass_extraction_mode
+        )
+        tool_settings[TSPKeys.SUMMARIZE_AS_SOURCE] = tool.summarize_as_source
+        tool_settings[TSPKeys.PREAMBLE] = tool.preamble
+        tool_settings[TSPKeys.POSTAMBLE] = tool.postamble
+        tool_settings[TSPKeys.GRAMMAR] = grammar_list
+        tool_settings[TSPKeys.ENABLE_HIGHLIGHT] = tool.enable_highlight
+        tool_settings[TSPKeys.ENABLE_WORD_CONFIDENCE] = tool.enable_word_confidence
+        tool_settings[TSPKeys.PLATFORM_POSTAMBLE] = getattr(
+            settings, TSPKeys.PLATFORM_POSTAMBLE.upper(), ""
+        )
+        tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
+            settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
+        )
+
+        file_hash = fs_instance.get_hash_from_file(path=extract_path)
+
+        payload: dict[str, Any] = {
+            TSPKeys.TOOL_SETTINGS: tool_settings,
+            TSPKeys.OUTPUTS: outputs,
+            TSPKeys.TOOL_ID: tool_id,
+            TSPKeys.RUN_ID: run_id,
+            TSPKeys.FILE_NAME: doc_name,
+            TSPKeys.FILE_HASH: file_hash,
+            TSPKeys.FILE_PATH: extract_path,
+            Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
+            TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
+            TSPKeys.CUSTOM_DATA: tool.custom_data,
+        }
+
+        platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
+        payload[ToolStudioKeys.PLATFORM_SERVICE_API_KEY] = platform_api_key
+        payload[TSPKeys.INCLUDE_METADATA] = True
+
+        log_events_id = StateStore.get(Common.LOG_EVENTS_ID) or ""
+        request_id = StateStore.get(Common.REQUEST_ID) or ""
+
+        context = ExecutionContext(
+            executor_name="legacy",
+            operation="answer_prompt",
+            run_id=run_id,
+            execution_source="ide",
+            organization_id=org_id,
+            executor_params=payload,
+            request_id=request_id,
+            log_events_id=log_events_id,
+        )
+
+        cb_kwargs = {
+            "log_events_id": log_events_id,
+            "request_id": request_id,
+            "org_id": org_id,
+            "operation": "fetch_response",
+            "run_id": run_id,
+            "document_id": document_id,
+            "tool_id": tool_id,
+            "prompt_ids": [str(p.prompt_id) for p in prompts],
+            "profile_manager_id": profile_manager_id,
+            "is_single_pass": False,
+        }
+
+        return context, cb_kwargs
+
+    @staticmethod
     def build_single_pass_payload(
         tool: CustomTool,
         doc_path: str,
@@ -871,6 +1097,7 @@ class PromptStudioHelper:
             "document_id": document_id,
             "tool_id": tool_id,
             "prompt_ids": [str(p.prompt_id) for p in prompts],
+            "profile_manager_id": str(default_profile.profile_id),
             "is_single_pass": True,
         }
 

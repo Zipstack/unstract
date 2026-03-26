@@ -415,6 +415,8 @@ class LegacyExecutor(BaseExecutor):
                 if not summarize_result.success:
                     return summarize_result
 
+                summarize_dir = str(Path(summarize_file_path).parent)
+                fs.mkdir(summarize_dir, create_parents=True)
                 fs.write(
                     path=summarize_file_path,
                     mode="w",
