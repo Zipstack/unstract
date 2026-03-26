@@ -61,6 +61,10 @@ function ToolsMain() {
   ];
 
   useEffect(() => {
+    const { isSinglePassExtractLoading } = useCustomToolStore.getState();
+    if (isSinglePassExtractLoading) {
+      return;
+    }
     promptOutputApi(
       details?.tool_id,
       selectedDoc?.document_id,

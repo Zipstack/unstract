@@ -260,7 +260,7 @@ class TestBaseRetriever:
         assert r.prompt == "my prompt"
         assert r.doc_id == "doc-99"
         assert r.top_k == 3
-        assert r.llm is llm
+        assert r._llm is llm
 
     def test_constructor_llm_defaults_to_none(self):
         """When llm not provided, it defaults to None."""
@@ -273,3 +273,33 @@ class TestBaseRetriever:
             top_k=5,
         )
         assert r.llm is None
+
+    def test_llm_property_returns_retriever_llm(self):
+        """When llm is set, the property returns a RetrieverLLM wrapper."""
+        from executor.executors.retrievers.base_retriever import BaseRetriever
+        from executor.executors.retrievers.retriever_llm import RetrieverLLM
+
+        llm = MagicMock(name="llm")
+        with patch.object(RetrieverLLM, "__init__", return_value=None):
+            r = BaseRetriever(
+                vector_db=MagicMock(),
+                prompt="test",
+                doc_id="doc-1",
+                top_k=5,
+                llm=llm,
+            )
+            result = r.llm
+            assert isinstance(result, RetrieverLLM)
+
+    def test_require_llm_raises_without_llm(self):
+        """require_llm() raises ValueError when no LLM is configured."""
+        from executor.executors.retrievers.base_retriever import BaseRetriever
+
+        r = BaseRetriever(
+            vector_db=MagicMock(),
+            prompt="test",
+            doc_id="doc-1",
+            top_k=5,
+        )
+        with pytest.raises(ValueError, match="requires an LLM"):
+            r.require_llm()

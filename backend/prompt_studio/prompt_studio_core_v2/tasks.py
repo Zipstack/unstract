@@ -382,6 +382,16 @@ def ide_prompt_complete(
         outputs = _json_safe(data.get("output", {}))
         metadata = _json_safe(data.get("metadata", {}))
 
+        logger.info(
+            "ide_prompt_complete: operation=%s output_keys=%s prompt_ids=%s "
+            "doc=%s profile=%s",
+            operation,
+            list(outputs.keys()) if isinstance(outputs, dict) else type(outputs).__name__,
+            prompt_ids,
+            document_id,
+            profile_manager_id,
+        )
+
         # Re-fetch prompt ORM objects for OutputManagerHelper
         prompts = list(
             ToolStudioPrompt.objects.filter(prompt_id__in=prompt_ids).order_by(

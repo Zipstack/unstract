@@ -68,6 +68,21 @@ const PromptCard = memo(
       setIsPromptDetailsStateUpdated(true);
     }, [promptDetails]);
 
+    // Initialize promptKey from props so the message filter can match
+    // per-prompt PROGRESS messages (executor sends component.prompt_key).
+    useEffect(() => {
+      if (promptDetailsState?.prompt_key && !promptKey) {
+        setPromptKey(promptDetailsState.prompt_key);
+      }
+    }, [promptDetailsState?.prompt_key]);
+
+    // Clear stale progress text when execution finishes.
+    useEffect(() => {
+      if (!isCoverageLoading) {
+        setProgressMsg({});
+      }
+    }, [isCoverageLoading]);
+
     useEffect(() => {
       // Find the latest message that matches the criteria
       const msg = [...messages]

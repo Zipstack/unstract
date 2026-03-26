@@ -26,21 +26,23 @@ class RouterRetriever(BaseRetriever):
             ],
         )
 
-    def _create_base_query_engine(self, vector_store_index, filters):
+    def _create_base_query_engine(self, vector_store_index, filters, llm):
         """Create the base vector query engine."""
         return vector_store_index.as_query_engine(
             similarity_top_k=self.top_k,
             filters=filters,
-            llm=self.llm,
+            llm=llm,
         )
 
-    def _add_keyword_search_tool(self, query_engine_tools, vector_store_index, filters):
+    def _add_keyword_search_tool(
+        self, query_engine_tools, vector_store_index, filters, llm
+    ):
         """Add keyword search tool to query engine tools list."""
         try:
             keyword_query_engine = vector_store_index.as_query_engine(
                 similarity_top_k=self.top_k * 2,
                 filters=filters,
-                llm=self.llm,
+                llm=llm,
             )
             query_engine_tools.append(
                 QueryEngineTool(
@@ -57,13 +59,13 @@ class RouterRetriever(BaseRetriever):
         except Exception as e:
             logger.debug(f"Could not create keyword search engine: {e}")
 
-    def _add_broad_search_tool(self, query_engine_tools, vector_store_index, filters):
+    def _add_broad_search_tool(self, query_engine_tools, vector_store_index, filters, llm):
         """Add broad search tool to query engine tools list."""
         try:
             broad_query_engine = vector_store_index.as_query_engine(
                 similarity_top_k=self.top_k * 3,
                 filters=filters,
-                llm=self.llm,
+                llm=llm,
             )
             query_engine_tools.append(
                 QueryEngineTool(
@@ -105,14 +107,13 @@ class RouterRetriever(BaseRetriever):
                 f"Retrieving chunks for {self.doc_id} using LlamaIndex RouterQueryEngine."
             )
 
+            llm = self.require_llm()
+
             vector_store_index: VectorStoreIndex = self.vector_db.get_vector_store_index()
             filters = self._create_metadata_filters()
             vector_query_engine = self._create_base_query_engine(
-                vector_store_index, filters
+                vector_store_index, filters, llm
             )
-
-            if not self.llm:
-                return set()
 
             # Create base query engine tools
             query_engine_tools = [
@@ -129,15 +130,19 @@ class RouterRetriever(BaseRetriever):
             ]
 
             # Add additional search strategies
-            self._add_keyword_search_tool(query_engine_tools, vector_store_index, filters)
-            self._add_broad_search_tool(query_engine_tools, vector_store_index, filters)
+            self._add_keyword_search_tool(
+                query_engine_tools, vector_store_index, filters, llm
+            )
+            self._add_broad_search_tool(
+                query_engine_tools, vector_store_index, filters, llm
+            )
 
             # Create and execute router query
             router_query_engine = RouterQueryEngine.from_defaults(
-                selector=LLMSingleSelector.from_defaults(llm=self.llm),
+                selector=LLMSingleSelector.from_defaults(llm=llm),
                 query_engine_tools=query_engine_tools,
                 verbose=True,
-                llm=self.llm,
+                llm=llm,
             )
 
             response = router_query_engine.query(self.prompt)

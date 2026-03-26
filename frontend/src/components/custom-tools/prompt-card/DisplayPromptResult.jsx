@@ -82,7 +82,7 @@ function DisplayPromptResult({
     );
   }
 
-  if (output === undefined) {
+  if (output === undefined || output === null) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>

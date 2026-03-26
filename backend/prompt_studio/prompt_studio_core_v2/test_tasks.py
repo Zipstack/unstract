@@ -23,6 +23,7 @@ from utils.local_context import StateStore  # noqa: E402
 
 from prompt_studio.prompt_studio_core_v2.tasks import (  # noqa: E402
     PROMPT_STUDIO_RESULT_EVENT,
+    ide_prompt_complete,
     run_fetch_response,
     run_index_document,
     run_single_pass_extraction,
@@ -71,7 +72,7 @@ class TestTaskNames:
 
 
 class TestRunIndexDocument:
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_result(self, mock_helper, mock_emit):
         mock_helper.index_document.return_value = "unique-id-123"
@@ -79,7 +80,7 @@ class TestRunIndexDocument:
             kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}
         ).get()
 
-        assert result == {"message": "Document indexed successfully."}
+        assert result == {"message": "Document indexed successfully.", "document_id": "doc-abc"}
         mock_helper.index_document.assert_called_once_with(
             tool_id="tool-123",
             file_name="test.pdf",
@@ -89,7 +90,7 @@ class TestRunIndexDocument:
             run_id="run-def",
         )
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_emits_completed_event(self, mock_helper, mock_emit):
         mock_helper.index_document.return_value = "unique-id-123"
@@ -101,10 +102,10 @@ class TestRunIndexDocument:
         assert kwargs["event"] == PROMPT_STUDIO_RESULT_EVENT
         assert kwargs["data"]["status"] == "completed"
         assert kwargs["data"]["operation"] == "index_document"
-        assert kwargs["data"]["result"] == {"message": "Document indexed successfully."}
+        assert kwargs["data"]["result"] == {"message": "Document indexed successfully.", "document_id": "doc-abc"}
         assert "task_id" in kwargs["data"]
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_failure_emits_error_and_reraises(self, mock_helper, mock_emit):
         mock_helper.index_document.side_effect = RuntimeError("index boom")
@@ -118,7 +119,7 @@ class TestRunIndexDocument:
         assert mock_emit.call_args.kwargs["data"]["status"] == "failed"
         assert "index boom" in mock_emit.call_args.kwargs["data"]["error"]
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared_on_success(self, mock_helper, mock_emit):
         mock_helper.index_document.return_value = "ok"
@@ -127,7 +128,7 @@ class TestRunIndexDocument:
         assert StateStore.get(Common.LOG_EVENTS_ID) is None
         assert StateStore.get(Common.REQUEST_ID) is None
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared_on_failure(self, mock_helper, mock_emit):
         mock_helper.index_document.side_effect = RuntimeError("fail")
@@ -139,7 +140,7 @@ class TestRunIndexDocument:
         assert StateStore.get(Common.LOG_EVENTS_ID) is None
         assert StateStore.get(Common.REQUEST_ID) is None
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_set_during_execution(self, mock_helper, mock_emit):
         """Verify StateStore has the right values while the helper runs."""
@@ -160,11 +161,10 @@ class TestRunIndexDocument:
 
 
 class TestRunFetchResponse:
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_response(self, mock_helper, mock_emit):
-        expected = {"output": {"field": "value"}, "metadata": {"tokens": 42}}
-        mock_helper.prompt_responder.return_value = expected
+        mock_helper.prompt_responder.return_value = {"output": {"field": "value"}, "metadata": {"tokens": 42}}
 
         result = run_fetch_response.apply(
             kwargs={
@@ -174,7 +174,7 @@ class TestRunFetchResponse:
             }
         ).get()
 
-        assert result == expected
+        assert result == {"status": "completed", "operation": "fetch_response"}
         mock_helper.prompt_responder.assert_called_once_with(
             id="prompt-1",
             tool_id="tool-123",
@@ -185,7 +185,7 @@ class TestRunFetchResponse:
             profile_manager_id="pm-1",
         )
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_emits_fetch_response_event(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {"output": "data"}
@@ -197,7 +197,7 @@ class TestRunFetchResponse:
         assert data["status"] == "completed"
         assert data["operation"] == "fetch_response"
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_failure_emits_error(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.side_effect = ValueError("prompt fail")
@@ -209,7 +209,7 @@ class TestRunFetchResponse:
         assert data["status"] == "failed"
         assert "prompt fail" in data["error"]
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_optional_params_default_none(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {}
@@ -225,7 +225,7 @@ class TestRunFetchResponse:
             profile_manager_id=None,
         )
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {}
@@ -234,15 +234,14 @@ class TestRunFetchResponse:
 
 
 class TestRunSinglePassExtraction:
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_response(self, mock_helper, mock_emit):
-        expected = {"output": {"key": "val"}}
-        mock_helper.prompt_responder.return_value = expected
+        mock_helper.prompt_responder.return_value = {"output": {"key": "val"}}
 
         result = run_single_pass_extraction.apply(kwargs=COMMON_KWARGS).get()
 
-        assert result == expected
+        assert result == {"status": "completed", "operation": "single_pass_extraction"}
         mock_helper.prompt_responder.assert_called_once_with(
             tool_id="tool-123",
             org_id="org-456",
@@ -251,7 +250,7 @@ class TestRunSinglePassExtraction:
             run_id="run-def",
         )
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_emits_single_pass_event(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {"data": "ok"}
@@ -261,7 +260,7 @@ class TestRunSinglePassExtraction:
         assert data["status"] == "completed"
         assert data["operation"] == "single_pass_extraction"
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_failure_emits_error(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.side_effect = TypeError("single pass fail")
@@ -272,7 +271,7 @@ class TestRunSinglePassExtraction:
         data = mock_emit.call_args.kwargs["data"]
         assert data["status"] == "failed"
 
-    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_websocket_event")
+    @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_state_store_cleared(self, mock_helper, mock_emit):
         mock_helper.prompt_responder.return_value = {}
@@ -284,39 +283,42 @@ class TestRunSinglePassExtraction:
 # Phase 8: View dispatch tests
 # ===================================================================
 class TestViewsDispatchTasks:
-    """Verify the three views no longer call helpers directly."""
+    """Verify the three views use dispatch_with_callback, not direct helpers."""
 
-    def test_index_document_view_has_no_blocking_call(self):
+    def test_index_document_view_dispatches_with_callback(self):
         import inspect
 
         from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 
         source = inspect.getsource(PromptStudioCoreView.index_document)
-        assert "run_index_document.apply_async" in source
+        assert "dispatch_with_callback" in source
+        assert "ide_index_complete" in source
         assert "PromptStudioHelper.index_document(" not in source
         assert "HTTP_202_ACCEPTED" in source
 
-    def test_fetch_response_view_has_no_blocking_call(self):
+    def test_fetch_response_view_dispatches_with_callback(self):
         import inspect
 
         from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 
         source = inspect.getsource(PromptStudioCoreView.fetch_response)
-        assert "run_fetch_response.apply_async" in source
+        assert "dispatch_with_callback" in source
+        assert "ide_prompt_complete" in source
         assert "PromptStudioHelper.prompt_responder(" not in source
         assert "HTTP_202_ACCEPTED" in source
 
-    def test_single_pass_view_has_no_blocking_call(self):
+    def test_single_pass_view_dispatches_with_callback(self):
         import inspect
 
         from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 
         source = inspect.getsource(PromptStudioCoreView.single_pass_extraction)
-        assert "run_single_pass_extraction.apply_async" in source
+        assert "dispatch_with_callback" in source
+        assert "ide_prompt_complete" in source
         assert "PromptStudioHelper.prompt_responder(" not in source
         assert "HTTP_202_ACCEPTED" in source
 
-    def test_views_capture_state_store_context(self):
+    def test_views_pass_callback_kwargs(self):
         import inspect
 
         from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
@@ -328,11 +330,11 @@ class TestViewsDispatchTasks:
         ]:
             source = inspect.getsource(getattr(PromptStudioCoreView, method_name))
             assert (
-                "StateStore.get(Common.LOG_EVENTS_ID)" in source
-            ), f"{method_name} missing LOG_EVENTS_ID capture"
+                "callback_kwargs" in source
+            ), f"{method_name} missing callback_kwargs"
             assert (
-                "StateStore.get(Common.REQUEST_ID)" in source
-            ), f"{method_name} missing REQUEST_ID capture"
+                "executor_task_id" in source
+            ), f"{method_name} missing executor_task_id"
 
 
 # ===================================================================
@@ -394,24 +396,95 @@ class TestTaskStatusAction:
 
 
 # ===================================================================
-# Phase 6: Config tests
+# Phase 10: ide_prompt_complete callback tests
 # ===================================================================
-class TestCeleryConfig:
-    def test_task_routes_defined(self):
-        from backend.celery_config import CeleryConfig
+class TestIdePromptComplete:
+    """Tests for the new ide_prompt_complete Celery callback task."""
 
-        assert hasattr(CeleryConfig, "task_routes")
+    CALLBACK_KWARGS = {
+        "log_events_id": "session-room-xyz",
+        "request_id": "req-001",
+        "org_id": "org-456",
+        "operation": "fetch_response",
+        "run_id": "run-def",
+        "document_id": "doc-abc",
+        "prompt_ids": ["p1", "p2"],
+        "profile_manager_id": "pm-1",
+        "is_single_pass": False,
+        "executor_task_id": "exec-task-1",
+        "tool_id": "tool-123",
+        "dispatch_time": 0,
+    }
 
-    def test_all_three_tasks_routed(self):
-        from backend.celery_config import CeleryConfig
+    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_result")
+    @patch(
+        "prompt_studio.prompt_studio_output_manager_v2.output_manager_helper"
+        ".OutputManagerHelper.handle_prompt_output_update"
+    )
+    @patch("prompt_studio.prompt_studio_v2.models.ToolStudioPrompt")
+    def test_success_logs_output_keys(
+        self, mock_model, mock_output_helper, mock_emit, caplog
+    ):
+        """Verifies Fix 4: ide_prompt_complete logs output_keys on success."""
+        mock_model.objects.filter.return_value.order_by.return_value = []
+        mock_output_helper.return_value = {"some": "response"}
 
-        routes = CeleryConfig.task_routes
-        assert routes["prompt_studio_index_document"] == {"queue": "celery_prompt_studio"}
-        assert routes["prompt_studio_fetch_response"] == {"queue": "celery_prompt_studio"}
-        assert routes["prompt_studio_single_pass"] == {"queue": "celery_prompt_studio"}
+        result_dict = {
+            "success": True,
+            "data": {
+                "output": {"field_a": "val1", "field_b": "val2"},
+                "metadata": {},
+            },
+        }
 
-    def test_celery_app_loads_routes(self):
-        from backend.celery_service import app
+        import logging
 
-        assert app.conf.task_routes is not None
-        assert "prompt_studio_index_document" in app.conf.task_routes
+        with caplog.at_level(logging.INFO):
+            result = ide_prompt_complete(
+                result_dict, callback_kwargs=self.CALLBACK_KWARGS
+            )
+
+        assert result["status"] == "completed"
+        assert any("ide_prompt_complete" in msg for msg in caplog.messages)
+        assert any("output_keys" in msg for msg in caplog.messages)
+        mock_emit.assert_called_once()
+
+    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_error")
+    def test_executor_failure_emits_error(self, mock_emit_error):
+        """When executor reports failure, emit error and return failed status."""
+        result_dict = {
+            "success": False,
+            "error": "LLM timeout",
+        }
+
+        result = ide_prompt_complete(
+            result_dict, callback_kwargs=self.CALLBACK_KWARGS
+        )
+
+        assert result == {"status": "failed", "error": "LLM timeout"}
+        mock_emit_error.assert_called_once()
+        call_args = mock_emit_error.call_args
+        assert call_args[0][3] == "LLM timeout"  # error message arg
+
+    @patch("prompt_studio.prompt_studio_core_v2.tasks._emit_result")
+    @patch(
+        "prompt_studio.prompt_studio_output_manager_v2.output_manager_helper"
+        ".OutputManagerHelper.handle_prompt_output_update"
+    )
+    @patch("prompt_studio.prompt_studio_v2.models.ToolStudioPrompt")
+    def test_state_store_cleared_after_success(
+        self, mock_model, mock_output_helper, mock_emit
+    ):
+        """StateStore should be cleaned up after callback completes."""
+        mock_model.objects.filter.return_value.order_by.return_value = []
+        mock_output_helper.return_value = {}
+
+        result_dict = {
+            "success": True,
+            "data": {"output": {}, "metadata": {}},
+        }
+
+        ide_prompt_complete(result_dict, callback_kwargs=self.CALLBACK_KWARGS)
+
+        assert StateStore.get(Common.LOG_EVENTS_ID) is None
+        assert StateStore.get(Common.REQUEST_ID) is None

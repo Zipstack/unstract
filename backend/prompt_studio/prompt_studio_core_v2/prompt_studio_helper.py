@@ -1934,14 +1934,50 @@ class PromptStudioHelper:
                         "status": IndexingStatus.COMPLETED_STATUS.value,
                         "output": indexed_doc_id,
                     }
-                # Polling if document is already being indexed
+                # Wait for in-progress indexing instead of returning PENDING
                 if DocumentIndexingService.is_document_indexing(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
                 ):
-                    return {
-                        "status": IndexingStatus.PENDING_STATUS.value,
-                        "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-                    }
+                    logger.info(
+                        "Document %s is already being indexed; "
+                        "waiting for completion before proceeding.",
+                        doc_id_key,
+                    )
+                    poll_interval = 2  # seconds
+                    max_wait = 300  # 5 minutes
+                    elapsed = 0
+                    while elapsed < max_wait:
+                        time.sleep(poll_interval)
+                        elapsed += poll_interval
+                        # Check if indexing completed (cache holds doc_id)
+                        indexed_doc_id = (
+                            DocumentIndexingService.get_indexed_document_id(
+                                org_id=org_id,
+                                user_id=user_id,
+                                doc_id_key=doc_id_key,
+                            )
+                        )
+                        if indexed_doc_id:
+                            return {
+                                "status": IndexingStatus.COMPLETED_STATUS.value,
+                                "output": indexed_doc_id,
+                            }
+                        # Check if indexing flag was cleared (other request
+                        # failed) — break out to re-index ourselves
+                        if not DocumentIndexingService.is_document_indexing(
+                            org_id=org_id,
+                            user_id=user_id,
+                            doc_id_key=doc_id_key,
+                        ):
+                            break
+                    else:
+                        # Timed out — return PENDING as safety net
+                        return {
+                            "status": IndexingStatus.PENDING_STATUS.value,
+                            "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+                        }
+                    # Indexing failed in other request; fall through to
+                    # re-index below
 
             # Set the document as being indexed
             DocumentIndexingService.set_document_indexing(
