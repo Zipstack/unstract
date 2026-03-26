@@ -184,4 +184,5 @@ CardsList.propTypes = {
   activeTool: PropTypes.string.isRequired,
   moveItem: PropTypes.func.isRequired,
 };
+
 export { CardsList };

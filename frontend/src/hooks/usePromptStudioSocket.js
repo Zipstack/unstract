@@ -43,7 +43,9 @@ const usePromptStudioSocket = () => {
         const data = Array.isArray(result) ? result : [];
         updatePromptOutputState(data, false, extra?.elapsed || 0);
         clearPromptStatuses(
-          extra?.prompt_ids, extra?.document_id, extra?.profile_manager_id,
+          extra?.prompt_ids,
+          extra?.document_id,
+          extra?.profile_manager_id,
         );
         setAlertDetails({
           type: "success",
@@ -54,7 +56,9 @@ const usePromptStudioSocket = () => {
         updatePromptOutputState(data, false, extra?.elapsed || 0);
         updateCustomTool({ isSinglePassExtractLoading: false });
         clearPromptStatuses(
-          extra?.prompt_ids, extra?.document_id, extra?.profile_manager_id,
+          extra?.prompt_ids,
+          extra?.document_id,
+          extra?.profile_manager_id,
         );
         setAlertDetails({
           type: "success",

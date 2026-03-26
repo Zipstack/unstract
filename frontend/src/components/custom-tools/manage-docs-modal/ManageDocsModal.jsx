@@ -834,4 +834,5 @@ ManageDocsModal.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   handleDocChange: PropTypes.func.isRequired,
 };
+
 export { ManageDocsModal };

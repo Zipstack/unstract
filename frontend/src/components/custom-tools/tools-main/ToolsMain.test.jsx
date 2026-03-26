@@ -13,6 +13,8 @@ describe("ToolsMain source-text checks", () => {
   });
 
   it("guards promptOutputApi behind isSinglePassExtractLoading check", () => {
-    expect(source).toContain("if (isSinglePassExtractLoading) {\n      return;\n    }");
+    expect(source).toContain(
+      "if (isSinglePassExtractLoading) {\n      return;\n    }",
+    );
   });
 });

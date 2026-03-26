@@ -146,8 +146,7 @@ const usePromptRun = () => {
           promptIds.forEach((promptId) => {
             const nonceKey = `${promptId}__${statusKey}`;
             if (runNonceMap.get(nonceKey) !== nonces[promptId]) return;
-            const current =
-              usePromptRunStatusStore.getState().promptRunStatus;
+            const current = usePromptRunStatusStore.getState().promptRunStatus;
             if (
               current?.[promptId]?.[statusKey] ===
               PROMPT_RUN_API_STATUSES.RUNNING
