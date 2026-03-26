@@ -366,9 +366,7 @@ class PromptStudioHelper:
             prompts = PromptStudioHelper.fetch_prompt_from_tool(tool.tool_id)
             prompt_keys = [p.prompt_key for p in prompts]
 
-            summarize_file_path = os.path.join(
-                directory, "summarize", stem + ".txt"
-            )
+            summarize_file_path = os.path.join(directory, "summarize", stem + ".txt")
 
             summarize_params = {
                 "llm_adapter_instance_id": llm_adapter_id,
@@ -471,9 +469,7 @@ class PromptStudioHelper:
             "x2text_config_hash": x2text_config_hash,
             "enable_highlight": tool.enable_highlight,
             "summary_profile_id": (
-                str(summary_profile.profile_id)
-                if tool.summarize_context
-                else ""
+                str(summary_profile.profile_id) if tool.summarize_context else ""
             ),
             "summarize_file_path": summarize_file_path,
         }
@@ -872,10 +868,8 @@ class PromptStudioHelper:
             output = PromptStudioHelper.fetch_table_settings_if_enabled(
                 doc_name, prompt, org_id, user_id, tool_id, output
             )
-            variable_map = (
-                PromptStudioVariableService.frame_variable_replacement_map(
-                    doc_id=document_id, prompt_object=prompt
-                )
+            variable_map = PromptStudioVariableService.frame_variable_replacement_map(
+                doc_id=document_id, prompt_object=prompt
             )
             if variable_map:
                 output[TSPKeys.VARIABLE_MAP] = variable_map

@@ -377,9 +377,7 @@ class LegacyExecutor(BaseExecutor):
             summarize_prompt = summarize_params.get("summarize_prompt", "")
             prompt_keys = summarize_params.get("prompt_keys", [])
 
-            fs = FileUtils.get_fs_instance(
-                execution_source=context.execution_source
-            )
+            fs = FileUtils.get_fs_instance(execution_source=context.execution_source)
 
             # Check cache — skip if summary already exists
             cached = False
@@ -1770,8 +1768,7 @@ class LegacyExecutor(BaseExecutor):
 
             executor = ExecutorRegistry.get("single_pass_extraction")
             logger.info(
-                "Delegating single_pass_extraction to cloud plugin "
-                "(run_id=%s)",
+                "Delegating single_pass_extraction to cloud plugin " "(run_id=%s)",
                 context.run_id,
             )
             return executor.execute(context)
@@ -1839,7 +1836,10 @@ class LegacyExecutor(BaseExecutor):
             log_events_id=self._log_events_id,
             component=self._log_component,
         )
-        usage_kwargs = {"run_id": context.run_id, PSKeys.LLM_USAGE_REASON: PSKeys.SUMMARIZE}
+        usage_kwargs = {
+            "run_id": context.run_id,
+            PSKeys.LLM_USAGE_REASON: PSKeys.SUMMARIZE,
+        }
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
 

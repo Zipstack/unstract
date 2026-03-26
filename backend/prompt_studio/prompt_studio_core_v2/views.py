@@ -739,9 +739,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         if not result.ready():
             return Response({"task_id": task_id, "status": "processing"})
         if result.successful():
-            return Response(
-                {"task_id": task_id, "status": "completed"}
-            )
+            return Response({"task_id": task_id, "status": "completed"})
         return Response(
             {"task_id": task_id, "status": "failed", "error": str(result.result)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

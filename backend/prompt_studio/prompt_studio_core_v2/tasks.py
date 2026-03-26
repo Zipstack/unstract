@@ -9,6 +9,7 @@ from account_v2.constants import Common
 from celery import shared_task
 from utils.constants import Account
 from utils.local_context import StateStore
+
 logger = logging.getLogger(__name__)
 
 PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result"
@@ -194,26 +195,22 @@ def ide_index_complete(
 
         if summary_profile_id and summarize_file_path:
             try:
-                from unstract.sdk1.constants import LogLevel
-                from unstract.sdk1.file_storage.constants import StorageType
-                from unstract.sdk1.file_storage.env_helper import EnvHelper
-                from unstract.sdk1.utils.indexing import IndexingUtils
                 from utils.file_storage.constants import FileStorageKeys
 
                 from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
                     PromptIdeBaseTool,
                 )
+                from unstract.sdk1.constants import LogLevel
+                from unstract.sdk1.file_storage.constants import StorageType
+                from unstract.sdk1.file_storage.env_helper import EnvHelper
+                from unstract.sdk1.utils.indexing import IndexingUtils
 
-                summary_profile = ProfileManager.objects.get(
-                    pk=summary_profile_id
-                )
+                summary_profile = ProfileManager.objects.get(pk=summary_profile_id)
                 fs_instance = EnvHelper.get_storage(
                     storage_type=StorageType.PERMANENT,
                     env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
                 )
-                util = PromptIdeBaseTool(
-                    log_level=LogLevel.INFO, org_id=org_id
-                )
+                util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
                 summarize_doc_id = IndexingUtils.generate_index_key(
                     vector_db=str(summary_profile.vector_store.id),
                     embedding=str(summary_profile.embedding_model.id),
@@ -231,9 +228,7 @@ def ide_index_complete(
                     doc_id=summarize_doc_id,
                 )
             except ProfileManager.DoesNotExist:
-                logger.warning(
-                    "Summary profile %s not found", summary_profile_id
-                )
+                logger.warning("Summary profile %s not found", summary_profile_id)
             except Exception:
                 logger.exception(
                     "Failed to update summary index manager for document %s; "
@@ -246,7 +241,10 @@ def ide_index_complete(
             "document_id": document_id,
         }
         _emit_result(
-            log_events_id, executor_task_id, "index_document", result,
+            log_events_id,
+            executor_task_id,
+            "index_document",
+            result,
             tool_id=tool_id,
         )
         return result
@@ -406,7 +404,6 @@ def ide_prompt_complete(
         if hubspot_user_id:
             try:
                 from django.contrib.auth import get_user_model
-
                 from utils.hubspot_notify import notify_hubspot_event
 
                 User = get_user_model()
@@ -418,12 +415,13 @@ def ide_prompt_complete(
                     action_label="prompt run",
                 )
             except Exception:
-                logger.warning(
-                    "Failed to send HubSpot PROMPT_RUN event", exc_info=True
-                )
+                logger.warning("Failed to send HubSpot PROMPT_RUN event", exc_info=True)
 
         _emit_result(
-            log_events_id, executor_task_id, operation, response,
+            log_events_id,
+            executor_task_id,
+            operation,
+            response,
             tool_id=tool_id,
             extra={
                 "prompt_ids": prompt_ids,
@@ -542,7 +540,10 @@ def run_index_document(
             "document_id": document_id,
         }
         _emit_result(
-            log_events_id, self.request.id, "index_document", result,
+            log_events_id,
+            self.request.id,
+            "index_document",
+            result,
             tool_id=tool_id,
         )
         return result
@@ -590,7 +591,10 @@ def run_fetch_response(
             profile_manager_id=profile_manager_id,
         )
         _emit_result(
-            log_events_id, self.request.id, "fetch_response", response,
+            log_events_id,
+            self.request.id,
+            "fetch_response",
+            response,
             tool_id=tool_id,
         )
         # Return minimal status to avoid logging sensitive extracted data
@@ -598,7 +602,10 @@ def run_fetch_response(
     except Exception as e:
         logger.exception("run_fetch_response failed")
         _emit_error(
-            log_events_id, self.request.id, "fetch_response", str(e),
+            log_events_id,
+            self.request.id,
+            "fetch_response",
+            str(e),
             tool_id=tool_id,
         )
         raise
@@ -631,7 +638,10 @@ def run_single_pass_extraction(
             run_id=run_id,
         )
         _emit_result(
-            log_events_id, self.request.id, "single_pass_extraction", response,
+            log_events_id,
+            self.request.id,
+            "single_pass_extraction",
+            response,
             tool_id=tool_id,
         )
         # Return minimal status to avoid logging sensitive extracted data
@@ -639,7 +649,10 @@ def run_single_pass_extraction(
     except Exception as e:
         logger.exception("run_single_pass_extraction failed")
         _emit_error(
-            log_events_id, self.request.id, "single_pass_extraction", str(e),
+            log_events_id,
+            self.request.id,
+            "single_pass_extraction",
+            str(e),
             tool_id=tool_id,
         )
         raise
