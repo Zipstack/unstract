@@ -80,7 +80,10 @@ class TestRunIndexDocument:
             kwargs={**COMMON_KWARGS, "file_name": "test.pdf"}
         ).get()
 
-        assert result == {"message": "Document indexed successfully.", "document_id": "doc-abc"}
+        assert result == {
+            "message": "Document indexed successfully.",
+            "document_id": "doc-abc",
+        }
         mock_helper.index_document.assert_called_once_with(
             tool_id="tool-123",
             file_name="test.pdf",
@@ -102,7 +105,10 @@ class TestRunIndexDocument:
         assert kwargs["event"] == PROMPT_STUDIO_RESULT_EVENT
         assert kwargs["data"]["status"] == "completed"
         assert kwargs["data"]["operation"] == "index_document"
-        assert kwargs["data"]["result"] == {"message": "Document indexed successfully.", "document_id": "doc-abc"}
+        assert kwargs["data"]["result"] == {
+            "message": "Document indexed successfully.",
+            "document_id": "doc-abc",
+        }
         assert "task_id" in kwargs["data"]
 
     @patch("utils.log_events._emit_websocket_event")
@@ -164,7 +170,10 @@ class TestRunFetchResponse:
     @patch("utils.log_events._emit_websocket_event")
     @patch("prompt_studio.prompt_studio_core_v2.prompt_studio_helper.PromptStudioHelper")
     def test_success_returns_response(self, mock_helper, mock_emit):
-        mock_helper.prompt_responder.return_value = {"output": {"field": "value"}, "metadata": {"tokens": 42}}
+        mock_helper.prompt_responder.return_value = {
+            "output": {"field": "value"},
+            "metadata": {"tokens": 42},
+        }
 
         result = run_fetch_response.apply(
             kwargs={
@@ -329,12 +338,8 @@ class TestViewsDispatchTasks:
             "single_pass_extraction",
         ]:
             source = inspect.getsource(getattr(PromptStudioCoreView, method_name))
-            assert (
-                "callback_kwargs" in source
-            ), f"{method_name} missing callback_kwargs"
-            assert (
-                "executor_task_id" in source
-            ), f"{method_name} missing executor_task_id"
+            assert "callback_kwargs" in source, f"{method_name} missing callback_kwargs"
+            assert "executor_task_id" in source, f"{method_name} missing executor_task_id"
 
 
 # ===================================================================
@@ -457,9 +462,7 @@ class TestIdePromptComplete:
             "error": "LLM timeout",
         }
 
-        result = ide_prompt_complete(
-            result_dict, callback_kwargs=self.CALLBACK_KWARGS
-        )
+        result = ide_prompt_complete(result_dict, callback_kwargs=self.CALLBACK_KWARGS)
 
         assert result == {"status": "failed", "error": "LLM timeout"}
         mock_emit_error.assert_called_once()

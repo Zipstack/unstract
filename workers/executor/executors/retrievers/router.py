@@ -59,7 +59,9 @@ class RouterRetriever(BaseRetriever):
         except Exception as e:
             logger.debug(f"Could not create keyword search engine: {e}")
 
-    def _add_broad_search_tool(self, query_engine_tools, vector_store_index, filters, llm):
+    def _add_broad_search_tool(
+        self, query_engine_tools, vector_store_index, filters, llm
+    ):
         """Add broad search tool to query engine tools list."""
         try:
             broad_query_engine = vector_store_index.as_query_engine(

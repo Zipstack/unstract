@@ -1950,12 +1950,10 @@ class PromptStudioHelper:
                         time.sleep(poll_interval)
                         elapsed += poll_interval
                         # Check if indexing completed (cache holds doc_id)
-                        indexed_doc_id = (
-                            DocumentIndexingService.get_indexed_document_id(
-                                org_id=org_id,
-                                user_id=user_id,
-                                doc_id_key=doc_id_key,
-                            )
+                        indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
+                            org_id=org_id,
+                            user_id=user_id,
+                            doc_id_key=doc_id_key,
                         )
                         if indexed_doc_id:
                             return {
