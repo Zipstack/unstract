@@ -24,6 +24,8 @@ class QuoteStyle(Enum):
 
 # Allowlist patterns for SQL identifiers.
 # Permits: letters, digits, underscores, hyphens (common in table names).
+# Intentionally excludes $ (Oracle/PG), # (MSSQL temp tables), and spaces
+# to keep the strictest safe default. Extend if a deployment needs them.
 _IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_-]*$")
 
 
