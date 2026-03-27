@@ -1,10 +1,8 @@
 # Unified Worker Dockerfile - Optimized for fast builds
 FROM python:3.12.9-slim AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Unified Worker Container for All Worker Types" \
-    version="${VERSION}"
+    description="Unified Worker Container for All Worker Types"
 
 # Set environment variables (CRITICAL: PYTHONPATH makes paths work!)
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -24,6 +22,7 @@ RUN apt-get update \
        build-essential \
        curl \
        gcc \
+       git \
        libmagic-dev \
        libssl-dev \
        pkg-config \
@@ -86,6 +85,10 @@ RUN uv sync --group deploy --locked && \
 # Switch to worker user
 USER worker
 
+
+# Capture build version at the very end so it doesn't affect layer caching
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 # Default command - runs the Docker-optimized worker script
 ENTRYPOINT ["/app/run-worker-docker.sh"]
