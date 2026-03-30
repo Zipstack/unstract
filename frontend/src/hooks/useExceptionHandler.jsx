@@ -18,7 +18,7 @@ const useExceptionHandler = () => {
     }
     return message.replace(
       /\[([^\]]+)\]\(\/((?!\/)[^)]+)\)/g,
-      `[$1](/${orgName}/$2)`,
+      (_, text, path) => `[${text}](/${orgName}/${path})`,
     );
   };
 
