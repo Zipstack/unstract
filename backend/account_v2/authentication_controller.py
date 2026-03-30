@@ -213,6 +213,13 @@ class AuthenticationController:
                 logger.info(
                     f"New organization created with Id {organization_id}",
                 )
+            else:
+                try:
+                    self.auth_service.setup_default_adapters_for_user(
+                        organization=organization, user=user
+                    )
+                except MethodNotImplemented:
+                    pass
 
             user_info: UserInfo | None = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
