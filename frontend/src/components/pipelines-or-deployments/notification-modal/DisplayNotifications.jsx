@@ -48,10 +48,9 @@ function DisplayNotifications({
               <Button
                 type="text"
                 size="small"
+                icon={<EditOutlined />}
                 onClick={() => handleEdit(record)}
-              >
-                <EditOutlined />
-              </Button>
+              />
             </Tooltip>
           </Space>
           <Space className="actions">
@@ -60,9 +59,7 @@ function DisplayNotifications({
                 handleConfirm={() => handleDelete(record?.id, record?.name)}
                 content="Are you sure you want to delete?"
               >
-                <Button type="text" size="small">
-                  <DeleteOutlined />
-                </Button>
+                <Button type="text" size="small" icon={<DeleteOutlined />} />
               </ConfirmModal>
             </Tooltip>
           </Space>

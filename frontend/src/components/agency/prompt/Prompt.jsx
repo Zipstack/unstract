@@ -88,10 +88,9 @@ function Prompt() {
               <Button
                 size="small"
                 type="text"
+                icon={<MinusOutlined />}
                 onClick={() => setIsPromptOpen(false)}
-              >
-                <MinusOutlined />
-              </Button>
+              />
             </div>
           </div>
           <div className="wf-prompt-textarea">
@@ -122,10 +121,9 @@ function Prompt() {
             <Button
               size="small"
               type="text"
+              icon={<EditOutlined />}
               onClick={() => setIsPromptOpen(true)}
-            >
-              <EditOutlined />
-            </Button>
+            />
           </div>
         </div>
       )}
