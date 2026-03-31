@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
+import logging
 import os
+import time
 from typing import TYPE_CHECKING
 
 import litellm
@@ -14,9 +17,12 @@ from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.utils.callback_manager import CallbackManager
+from unstract.sdk1.utils.retry_utils import calculate_delay, is_retryable_litellm_error
 
 if TYPE_CHECKING:
     from unstract.sdk1.tool.base import BaseTool
+
+logger = logging.getLogger(__name__)
 
 litellm.drop_params = True
 
@@ -110,13 +116,70 @@ class Embedding:
             return f"{self._adapter_name} ({name})"
         return name
 
+    def _embedding_with_retry(  # noqa: ANN401
+        self, model: str, input_data: list[str], **kwargs: object
+    ) -> object:
+        """Call litellm.embedding with retry on transient errors.
+
+        litellm has no wrapper-level retry for embeddings (unlike completion).
+        Only SDK-based providers (OpenAI/Azure) honour max_retries natively;
+        httpx-based providers silently ignore it. This method provides uniform
+        retry across all providers.
+        """
+        max_retries = kwargs.pop("max_retries", None) or 0
+        # Prevent SDK-level retry so we don't double-retry for OpenAI/Azure
+        kwargs["max_retries"] = 0
+
+        for attempt in range(max_retries + 1):
+            try:
+                return litellm.embedding(model=model, input=input_data, **kwargs)
+            except Exception as e:
+                if attempt < max_retries and is_retryable_litellm_error(e):
+                    delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
+                    logger.warning(
+                        "Embedding retry %d/%d for %s: %s (waiting %.1fs)",
+                        attempt + 1,
+                        max_retries,
+                        self._get_adapter_info(),
+                        e,
+                        delay,
+                    )
+                    time.sleep(delay)
+                else:
+                    raise
+
+    async def _aembedding_with_retry(  # noqa: ANN401
+        self, model: str, input_data: list[str], **kwargs: object
+    ) -> object:
+        """Async version of _embedding_with_retry."""
+        max_retries = kwargs.pop("max_retries", None) or 0
+        kwargs["max_retries"] = 0
+
+        for attempt in range(max_retries + 1):
+            try:
+                return await litellm.aembedding(model=model, input=input_data, **kwargs)
+            except Exception as e:
+                if attempt < max_retries and is_retryable_litellm_error(e):
+                    delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
+                    logger.warning(
+                        "Embedding retry %d/%d for %s: %s (waiting %.1fs)",
+                        attempt + 1,
+                        max_retries,
+                        self._get_adapter_info(),
+                        e,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    raise
+
     def get_embedding(self, text: str) -> list[float]:
         """Return embedding vector for query string."""
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
 
-            resp = litellm.embedding(model=model, input=[text], **kwargs)
+            resp = self._embedding_with_retry(model=model, input_data=[text], **kwargs)
 
             return resp["data"][0]["embedding"]
         except Exception as e:
@@ -128,7 +191,7 @@ class Embedding:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
 
-            resp = litellm.embedding(model=model, input=texts, **kwargs)
+            resp = self._embedding_with_retry(model=model, input_data=texts, **kwargs)
 
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
@@ -140,12 +203,13 @@ class Embedding:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
 
-            resp = await litellm.aembedding(model=model, input=[text], **kwargs)
+            resp = await self._aembedding_with_retry(
+                model=model, input_data=[text], **kwargs
+            )
 
             return resp["data"][0]["embedding"]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     async def get_aembeddings(self, texts: list[str]) -> list[list[float]]:
         """Return async embedding vectors for list of query strings."""
@@ -153,12 +217,13 @@ class Embedding:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
 
-            resp = await litellm.aembedding(model=model, input=texts, **kwargs)
+            resp = await self._aembedding_with_retry(
+                model=model, input_data=texts, **kwargs
+            )
 
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     def test_connection(self) -> bool:
         """Test connection to the embedding provider."""

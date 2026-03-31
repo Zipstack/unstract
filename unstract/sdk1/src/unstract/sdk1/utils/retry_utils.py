@@ -13,6 +13,45 @@ from requests.exceptions import ConnectionError, HTTPError, Timeout
 
 logger = logging.getLogger(__name__)
 
+# HTTP status codes that indicate transient server-side failures worth retrying.
+RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
+
+# Exception class names (from litellm, openai, httpx) that indicate transient
+# connection/timeout failures. Resolved via duck-typing to avoid importing
+# litellm in this utility module.
+_RETRYABLE_ERROR_NAMES = frozenset(
+    {
+        "APIConnectionError",
+        "Timeout",
+        "ConnectTimeout",
+        "ReadTimeout",
+    }
+)
+
+
+def is_retryable_litellm_error(error: Exception) -> bool:
+    """Check if a litellm/provider API error should trigger a retry.
+
+    Uses duck-typing (status_code attribute, class name) so this module
+    doesn't need to import litellm or openai directly.
+    """
+    # Python built-in connection / timeout base classes
+    if isinstance(error, ConnectionError | TimeoutError):
+        return True
+
+    # litellm/openai/httpx exception types that don't inherit from the
+    # built-ins above but still represent transient network failures.
+    if type(error).__name__ in _RETRYABLE_ERROR_NAMES:
+        return True
+
+    # Status-code check covers litellm.RateLimitError (429),
+    # InternalServerError (500), ServiceUnavailableError (503), etc.
+    status_code = getattr(error, "status_code", None)
+    if status_code is not None and status_code in RETRYABLE_STATUS_CODES:
+        return True
+
+    return False
+
 
 def is_retryable_error(error: Exception) -> bool:
     """Check if an error is retryable.
