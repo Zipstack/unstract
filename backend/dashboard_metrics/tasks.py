@@ -227,8 +227,8 @@ def _acquire_aggregation_lock() -> bool:
     # Lock exists — check if it's stale (previous run died without releasing)
     lock_value = cache.get(AGGREGATION_LOCK_KEY)
     if lock_value is None:
-        # Expired between our check and get — race is fine, next run will pick up
-        return False
+        # Expired between our check and get — lock is now free, try to acquire it
+        return cache.add(AGGREGATION_LOCK_KEY, str(now), AGGREGATION_LOCK_TIMEOUT)
 
     try:
         lock_time = float(lock_value)
