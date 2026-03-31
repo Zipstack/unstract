@@ -357,7 +357,6 @@ def on_worker_process_init(**kwargs):
        connections from the parent process.
     """
     import gc
-    import signal
 
     # Ignore SIGTERM in child workers - let MainProcess handle shutdown
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
