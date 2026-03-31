@@ -122,20 +122,16 @@ function ManageLlmProfiles() {
             <Tooltip title="Copy Profile ID">
               <Button
                 size="small"
-                className="display-flex-align-center"
+                icon={<CopyOutlined />}
                 onClick={() => copyProfileId(item?.profile_id)}
-              >
-                <CopyOutlined classID="manage-llm-pro-icon" />
-              </Button>
+              />
             </Tooltip>
             <Button
               size="small"
-              className="display-flex-align-center"
+              icon={<EditOutlined />}
               disabled={isPublicSource}
               onClick={() => handleEdit(item?.profile_id)}
-            >
-              <EditOutlined classID="manage-llm-pro-icon" />
-            </Button>
+            />
             <ConfirmModal
               handleConfirm={() => handleDelete(item?.profile_id)}
               content="The LLM profile will be permanently deleted."
@@ -148,13 +144,11 @@ function ManageLlmProfiles() {
               >
                 <Button
                   size="small"
-                  className="display-flex-align-center"
+                  icon={<DeleteOutlined />}
                   disabled={
                     isPublicSource || defaultLlmProfile === item?.profile_id
                   }
-                >
-                  <DeleteOutlined classID="manage-llm-pro-icon" />
-                </Button>
+                />
               </Tooltip>
             </ConfirmModal>
           </div>

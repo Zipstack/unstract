@@ -1,9 +1,5 @@
 /* Styles for ManageLlmProfiles */
 
-.manage-llm-pro-icon {
-  font-size: 10px;
-}
-
 .action-buttons-container {
   display: flex;
   align-items: center;

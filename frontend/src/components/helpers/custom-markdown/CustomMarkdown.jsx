@@ -1,6 +1,7 @@
 import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useMemo } from "react";
+import { Link as RouterLink } from "react-router-dom";
 
 const { Text, Link, Paragraph } = Typography;
 
@@ -48,12 +49,17 @@ const CustomMarkdown = ({
             {content}
           </Text>
         );
-      case "link":
+      case "link": {
+        const isInternal = url?.startsWith("/");
+        if (isInternal) {
+          return <RouterLink to={url}>{content}</RouterLink>;
+        }
         return (
           <Link href={url} target="_blank" rel="noopener noreferrer">
             {content}
           </Link>
         );
+      }
       case "newline":
         return renderNewLines ? <br /> : "\n";
       default:
