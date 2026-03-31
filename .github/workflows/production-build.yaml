@@ -37,13 +37,13 @@ jobs:
     steps:
       - name: Checkout code for release
         if: github.event_name == 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU

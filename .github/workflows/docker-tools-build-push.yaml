@@ -33,7 +33,7 @@ jobs:
         run: echo "${{ toJSON(github.event.inputs) }}"
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
