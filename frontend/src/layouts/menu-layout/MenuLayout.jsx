@@ -71,6 +71,9 @@ function MenuLayout({ children }) {
   }, [projectName, details, editForm]);
 
   const handleEditSubmit = useCallback(async () => {
+    if (!projectId) {
+      return;
+    }
     try {
       const values = await editForm.validateFields();
       await wfService.editProject(
@@ -88,14 +91,7 @@ function MenuLayout({ children }) {
       if (err?.errorFields) return;
       setAlertDetails(handleException(err, "Failed to update workflow"));
     }
-  }, [
-    editForm,
-    wfService,
-    projectId,
-    details,
-    setAlertDetails,
-    handleException,
-  ]);
+  }, [editForm, projectId, details, setAlertDetails, handleException]);
 
   const RightButtons = useCallback(
     () => (
@@ -117,7 +113,7 @@ function MenuLayout({ children }) {
     <>
       <ToolNavBar
         title={projectName || "Name of the project"}
-        subtitle={details?.description || ""}
+        subtitle={details?.description}
         onNavigateBack={handleNavigateBack}
         onEditTitle={handleOpenEditModal}
         CustomButtons={RightButtons}

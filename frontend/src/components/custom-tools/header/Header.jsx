@@ -1,13 +1,5 @@
 import { SettingOutlined } from "@ant-design/icons";
-import {
-  Button,
-  Dropdown,
-  Form,
-  Input,
-  Modal,
-  Tooltip,
-  Typography,
-} from "antd";
+import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useCallback, useState } from "react";
 import { ExportToolIcon } from "../../../assets";
