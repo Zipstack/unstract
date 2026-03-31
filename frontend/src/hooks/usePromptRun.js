@@ -143,11 +143,12 @@ const usePromptRun = () => {
 
         // Timeout safety net: clear stale status if socket event never arrives.
         // Only clears if this is still the latest run for each prompt combo.
-        setTimeout(() => {
+        const clearStaleStatuses = () => {
           promptIds.forEach((promptId) => {
             const nonceKey = `${promptId}__${statusKey}`;
             if (runNonceMap.get(nonceKey) !== nonces[promptId]) return;
-            const current = usePromptRunStatusStore.getState().promptRunStatus;
+            const current =
+              usePromptRunStatusStore.getState().promptRunStatus;
             if (
               current?.[promptId]?.[statusKey] ===
               PROMPT_RUN_API_STATUSES.RUNNING
@@ -156,7 +157,8 @@ const usePromptRun = () => {
             }
             runNonceMap.delete(nonceKey);
           });
-        }, SOCKET_TIMEOUT_MS);
+        };
+        setTimeout(clearStaleStatuses, SOCKET_TIMEOUT_MS);
       })
       .catch((err) => {
         setAlertDetails(

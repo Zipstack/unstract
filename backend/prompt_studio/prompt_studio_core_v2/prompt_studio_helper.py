@@ -298,6 +298,169 @@ class PromptStudioHelper:
             )
         return str(platform_key.key)
 
+    @staticmethod
+    def _build_summarize_params(
+        tool: "CustomTool",
+        default_profile: "ProfileManager",
+        directory: str,
+        stem: str,
+        extract_file_path: str,
+        platform_api_key: str,
+    ) -> tuple[dict[str, Any] | None, str]:
+        """Build summarize_params dict if summarization is enabled.
+
+        Returns:
+            (summarize_params or None, summarize_file_path).
+        """
+        if not tool.summarize_context:
+            return None, ""
+
+        SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
+        summary_profile = default_profile
+        if not tool.summarize_llm_adapter:
+            try:
+                sp = ProfileManager.objects.get(
+                    prompt_studio_tool=tool, is_summarize_llm=True
+                )
+                sp.chunk_size = 0
+                summary_profile = sp
+            except ProfileManager.DoesNotExist:
+                pass
+
+        if summary_profile != default_profile:
+            PromptStudioHelper.validate_adapter_status(summary_profile)
+            PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
+
+        llm_adapter_id = (
+            str(tool.summarize_llm_adapter.id)
+            if tool.summarize_llm_adapter
+            else str(summary_profile.llm.id)
+        )
+
+        prompts = PromptStudioHelper.fetch_prompt_from_tool(tool.tool_id)
+        prompt_keys = [p.prompt_key for p in prompts]
+
+        summarize_file_path = os.path.join(directory, "summarize", stem + ".txt")
+
+        summarize_params = {
+            "llm_adapter_instance_id": llm_adapter_id,
+            "summarize_prompt": tool.summarize_prompt or "",
+            "extract_file_path": extract_file_path,
+            "summarize_file_path": summarize_file_path,
+            "platform_api_key": platform_api_key,
+            "prompt_keys": prompt_keys,
+        }
+        return summarize_params, summarize_file_path
+
+    @staticmethod
+    def _build_prompt_output(
+        prompt: "ToolStudioPrompt",
+        profile_manager: "ProfileManager",
+        vector_db: str,
+        embedding_model: str,
+        llm: str,
+        x2text: str,
+        monitor_llm: str,
+        tool: "CustomTool",
+        doc_name: str,
+        org_id: str,
+        user_id: str,
+        tool_id: str,
+        document_id: str,
+    ) -> dict[str, Any]:
+        """Build the output dict for a single prompt in bulk fetch."""
+        output: dict[str, Any] = {}
+        output[TSPKeys.PROMPT] = prompt.prompt
+        output[TSPKeys.ACTIVE] = prompt.active
+        output[TSPKeys.REQUIRED] = prompt.required
+        output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
+        output[TSPKeys.VECTOR_DB] = vector_db
+        output[TSPKeys.EMBEDDING] = embedding_model
+        output[TSPKeys.CHUNK_OVERLAP] = profile_manager.chunk_overlap
+        output[TSPKeys.LLM] = llm
+        output[TSPKeys.TYPE] = prompt.enforce_type
+        output[TSPKeys.NAME] = prompt.prompt_key
+        output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
+        output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
+        output[TSPKeys.SECTION] = profile_manager.section
+        output[TSPKeys.X2TEXT_ADAPTER] = x2text
+
+        webhook_enabled = bool(prompt.enable_postprocessing_webhook)
+        webhook_url = (prompt.postprocessing_webhook_url or "").strip()
+        if webhook_enabled and not webhook_url:
+            webhook_enabled = False
+        output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
+        if webhook_enabled:
+            output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
+
+        output[TSPKeys.EVAL_SETTINGS] = {}
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = (
+            prompt.evaluate
+        )
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [
+            monitor_llm
+        ]
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED] = (
+            tool.exclude_failed
+        )
+        for attr in dir(prompt):
+            if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
+                output[TSPKeys.EVAL_SETTINGS][attr] = getattr(prompt, attr)
+
+        output = PromptStudioHelper.fetch_table_settings_if_enabled(
+            doc_name, prompt, org_id, user_id, tool_id, output
+        )
+        variable_map = PromptStudioVariableService.frame_variable_replacement_map(
+            doc_id=document_id, prompt_object=prompt
+        )
+        if variable_map:
+            output[TSPKeys.VARIABLE_MAP] = variable_map
+        return output
+
+    @staticmethod
+    def _wait_for_indexing(
+        org_id: str, user_id: str, doc_id_key: str
+    ) -> dict[str, str] | None:
+        """Poll until an in-progress indexing completes or times out.
+
+        Returns:
+            Completed/pending result dict, or ``None`` if indexing failed
+            and the caller should re-index.
+        """
+        if not DocumentIndexingService.is_document_indexing(
+            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+        ):
+            return None
+
+        logger.info(
+            "Document %s is already being indexed; "
+            "waiting for completion before proceeding.",
+            doc_id_key,
+        )
+        poll_interval = 2  # seconds
+        max_wait = 300  # 5 minutes
+        elapsed = 0
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            )
+            if indexed_doc_id:
+                return {
+                    "status": IndexingStatus.COMPLETED_STATUS.value,
+                    "output": indexed_doc_id,
+                }
+            if not DocumentIndexingService.is_document_indexing(
+                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
+            ):
+                return None
+        # Timed out — return PENDING as safety net
+        return {
+            "status": IndexingStatus.PENDING_STATUS.value,
+            "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
+        }
+
     # ------------------------------------------------------------------
     # Phase 5B — Payload builders for fire-and-forget dispatch
     # ------------------------------------------------------------------
@@ -340,44 +503,12 @@ class PromptStudioHelper:
         platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
 
         # Build summarize_params for executor (summarization runs in worker)
-        summarize_params = None
-        summary_profile = default_profile
-        summarize_file_path = ""
-        if tool.summarize_context:
-            SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
-            if not tool.summarize_llm_adapter:
-                try:
-                    sp = ProfileManager.objects.get(
-                        prompt_studio_tool=tool, is_summarize_llm=True
-                    )
-                    sp.chunk_size = 0
-                    summary_profile = sp
-                except ProfileManager.DoesNotExist:
-                    pass
-
-            if summary_profile != default_profile:
-                PromptStudioHelper.validate_adapter_status(summary_profile)
-                PromptStudioHelper.validate_profile_manager_owner_access(summary_profile)
-
-            llm_adapter_id = (
-                str(tool.summarize_llm_adapter.id)
-                if tool.summarize_llm_adapter
-                else str(summary_profile.llm.id)
+        summarize_params, summarize_file_path = (
+            PromptStudioHelper._build_summarize_params(
+                tool, default_profile, directory, stem,
+                extract_file_path, platform_api_key,
             )
-
-            prompts = PromptStudioHelper.fetch_prompt_from_tool(tool.tool_id)
-            prompt_keys = [p.prompt_key for p in prompts]
-
-            summarize_file_path = os.path.join(directory, "summarize", stem + ".txt")
-
-            summarize_params = {
-                "llm_adapter_instance_id": llm_adapter_id,
-                "summarize_prompt": tool.summarize_prompt or "",
-                "extract_file_path": extract_file_path,
-                "summarize_file_path": summarize_file_path,
-                "platform_api_key": platform_api_key,
-                "prompt_keys": prompt_keys,
-            }
+        )
 
         # Generate doc_id for indexing tracking
         fs_instance = EnvHelper.get_storage(
@@ -819,56 +950,24 @@ class PromptStudioHelper:
         # Per-prompt output building
         tool_id = str(tool.tool_id)
         grammar_list = PromptStudioHelper._build_grammar_list(tool.prompt_grammer)
-        outputs: list[dict[str, Any]] = []
-
-        for prompt in prompts:
-            output: dict[str, Any] = {}
-            output[TSPKeys.PROMPT] = prompt.prompt
-            output[TSPKeys.ACTIVE] = prompt.active
-            output[TSPKeys.REQUIRED] = prompt.required
-            output[TSPKeys.CHUNK_SIZE] = profile_manager.chunk_size
-            output[TSPKeys.VECTOR_DB] = vector_db
-            output[TSPKeys.EMBEDDING] = embedding_model
-            output[TSPKeys.CHUNK_OVERLAP] = profile_manager.chunk_overlap
-            output[TSPKeys.LLM] = llm
-            output[TSPKeys.TYPE] = prompt.enforce_type
-            output[TSPKeys.NAME] = prompt.prompt_key
-            output[TSPKeys.RETRIEVAL_STRATEGY] = profile_manager.retrieval_strategy
-            output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
-            output[TSPKeys.SECTION] = profile_manager.section
-            output[TSPKeys.X2TEXT_ADAPTER] = x2text
-
-            webhook_enabled = bool(prompt.enable_postprocessing_webhook)
-            webhook_url = (prompt.postprocessing_webhook_url or "").strip()
-            if webhook_enabled and not webhook_url:
-                webhook_enabled = False
-            output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
-            if webhook_enabled:
-                output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
-
-            output[TSPKeys.EVAL_SETTINGS] = {}
-            output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = (
-                prompt.evaluate
+        outputs: list[dict[str, Any]] = [
+            PromptStudioHelper._build_prompt_output(
+                prompt=prompt,
+                profile_manager=profile_manager,
+                vector_db=vector_db,
+                embedding_model=embedding_model,
+                llm=llm,
+                x2text=x2text,
+                monitor_llm=monitor_llm,
+                tool=tool,
+                doc_name=doc_name,
+                org_id=org_id,
+                user_id=user_id,
+                tool_id=tool_id,
+                document_id=document_id,
             )
-            output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [
-                monitor_llm
-            ]
-            output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED] = (
-                tool.exclude_failed
-            )
-            for attr in dir(prompt):
-                if attr.startswith(TSPKeys.EVAL_METRIC_PREFIX):
-                    output[TSPKeys.EVAL_SETTINGS][attr] = getattr(prompt, attr)
-
-            output = PromptStudioHelper.fetch_table_settings_if_enabled(
-                doc_name, prompt, org_id, user_id, tool_id, output
-            )
-            variable_map = PromptStudioVariableService.frame_variable_replacement_map(
-                doc_id=document_id, prompt_object=prompt
-            )
-            if variable_map:
-                output[TSPKeys.VARIABLE_MAP] = variable_map
-            outputs.append(output)
+            for prompt in prompts
+        ]
 
         tool_settings: dict[str, Any] = {}
         tool_settings[TSPKeys.ENABLE_CHALLENGE] = tool.enable_challenge
@@ -1932,47 +2031,13 @@ class PromptStudioHelper:
                         "output": indexed_doc_id,
                     }
                 # Wait for in-progress indexing instead of returning PENDING
-                if DocumentIndexingService.is_document_indexing(
+                wait_result = PromptStudioHelper._wait_for_indexing(
                     org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-                ):
-                    logger.info(
-                        "Document %s is already being indexed; "
-                        "waiting for completion before proceeding.",
-                        doc_id_key,
-                    )
-                    poll_interval = 2  # seconds
-                    max_wait = 300  # 5 minutes
-                    elapsed = 0
-                    while elapsed < max_wait:
-                        time.sleep(poll_interval)
-                        elapsed += poll_interval
-                        # Check if indexing completed (cache holds doc_id)
-                        indexed_doc_id = DocumentIndexingService.get_indexed_document_id(
-                            org_id=org_id,
-                            user_id=user_id,
-                            doc_id_key=doc_id_key,
-                        )
-                        if indexed_doc_id:
-                            return {
-                                "status": IndexingStatus.COMPLETED_STATUS.value,
-                                "output": indexed_doc_id,
-                            }
-                        # Check if indexing flag was cleared (other request
-                        # failed) — break out to re-index ourselves
-                        if not DocumentIndexingService.is_document_indexing(
-                            org_id=org_id,
-                            user_id=user_id,
-                            doc_id_key=doc_id_key,
-                        ):
-                            break
-                    else:
-                        # Timed out — return PENDING as safety net
-                        return {
-                            "status": IndexingStatus.PENDING_STATUS.value,
-                            "output": IndexingStatus.DOCUMENT_BEING_INDEXED.value,
-                        }
-                    # Indexing failed in other request; fall through to
-                    # re-index below
+                )
+                if wait_result is not None:
+                    return wait_result
+                # wait_result is None → indexing failed; fall through to
+                # re-index below
 
             # Set the document as being indexed
             DocumentIndexingService.set_document_indexing(

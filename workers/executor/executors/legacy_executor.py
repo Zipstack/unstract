@@ -314,6 +314,65 @@ class LegacyExecutor(BaseExecutor):
 
         return Index, EmbeddingCompat, VectorDB
 
+    def _run_summarize_step(
+        self, summarize_params: dict, context: ExecutionContext
+    ) -> ExecutionResult | None:
+        """Run summarization if not already cached.
+
+        Returns:
+            ``None`` on success (summary written or cached), or an
+            ``ExecutionResult`` failure to propagate to the caller.
+        """
+        extract_file_path = summarize_params.get("extract_file_path", "")
+        summarize_file_path = summarize_params.get("summarize_file_path", "")
+        platform_api_key = summarize_params.get("platform_api_key", "")
+        llm_adapter_id = summarize_params.get("llm_adapter_instance_id", "")
+        summarize_prompt = summarize_params.get("summarize_prompt", "")
+        prompt_keys = summarize_params.get("prompt_keys", [])
+
+        fs = FileUtils.get_fs_instance(execution_source=context.execution_source)
+
+        # Check cache — skip if summary already exists
+        if fs.exists(summarize_file_path):
+            existing = fs.read(path=summarize_file_path, mode="r")
+            if existing:
+                return None
+
+        doc_context = fs.read(path=extract_file_path, mode="r")
+        if not doc_context:
+            return ExecutionResult.failure(
+                error="No extracted text found for summarization"
+            )
+
+        summarize_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.SUMMARIZE.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+            executor_params={
+                "llm_adapter_instance_id": llm_adapter_id,
+                "summarize_prompt": summarize_prompt,
+                "context": doc_context,
+                "prompt_keys": prompt_keys,
+                "PLATFORM_SERVICE_API_KEY": platform_api_key,
+            },
+        )
+        summarize_result = self._handle_summarize(summarize_ctx)
+        if not summarize_result.success:
+            return summarize_result
+
+        summarize_dir = str(Path(summarize_file_path).parent)
+        fs.mkdir(summarize_dir, create_parents=True)
+        fs.write(
+            path=summarize_file_path,
+            mode="w",
+            data=summarize_result.data.get("data", ""),
+        )
+        return None
+
     # ------------------------------------------------------------------
     # Phase 5C — Compound IDE index handler (extract + index)
     # ------------------------------------------------------------------
@@ -368,56 +427,10 @@ class LegacyExecutor(BaseExecutor):
         summarize_params = params.get("summarize_params")
         summarize_file_path = ""
         if summarize_params:
-            extract_file_path = summarize_params.get("extract_file_path", "")
             summarize_file_path = summarize_params.get("summarize_file_path", "")
-            platform_api_key = summarize_params.get("platform_api_key", "")
-            llm_adapter_id = summarize_params.get("llm_adapter_instance_id", "")
-            summarize_prompt = summarize_params.get("summarize_prompt", "")
-            prompt_keys = summarize_params.get("prompt_keys", [])
-
-            fs = FileUtils.get_fs_instance(execution_source=context.execution_source)
-
-            # Check cache — skip if summary already exists
-            cached = False
-            if fs.exists(summarize_file_path):
-                existing = fs.read(path=summarize_file_path, mode="r")
-                if existing:
-                    cached = True
-
-            if not cached:
-                doc_context = fs.read(path=extract_file_path, mode="r")
-                if not doc_context:
-                    return ExecutionResult.failure(
-                        error="No extracted text found for summarization"
-                    )
-
-                summarize_ctx = ExecutionContext(
-                    executor_name=context.executor_name,
-                    operation=Operation.SUMMARIZE.value,
-                    run_id=context.run_id,
-                    execution_source=context.execution_source,
-                    organization_id=context.organization_id,
-                    request_id=context.request_id,
-                    log_events_id=context.log_events_id,
-                    executor_params={
-                        "llm_adapter_instance_id": llm_adapter_id,
-                        "summarize_prompt": summarize_prompt,
-                        "context": doc_context,
-                        "prompt_keys": prompt_keys,
-                        "PLATFORM_SERVICE_API_KEY": platform_api_key,
-                    },
-                )
-                summarize_result = self._handle_summarize(summarize_ctx)
-                if not summarize_result.success:
-                    return summarize_result
-
-                summarize_dir = str(Path(summarize_file_path).parent)
-                fs.mkdir(summarize_dir, create_parents=True)
-                fs.write(
-                    path=summarize_file_path,
-                    mode="w",
-                    data=summarize_result.data.get("data", ""),
-                )
+            result = self._run_summarize_step(summarize_params, context)
+            if result is not None:
+                return result
 
         # Step 3: Index — inject extracted text
         extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
@@ -1765,7 +1778,7 @@ class LegacyExecutor(BaseExecutor):
 
             executor = ExecutorRegistry.get("single_pass_extraction")
             logger.info(
-                "Delegating single_pass_extraction to cloud plugin " "(run_id=%s)",
+                "Delegating single_pass_extraction to cloud plugin (run_id=%s)",
                 context.run_id,
             )
             return executor.execute(context)
