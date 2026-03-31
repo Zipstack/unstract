@@ -7,6 +7,11 @@ from psycopg2.extensions import connection
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -58,7 +63,11 @@ class Redshift(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.DOUBLE_QUOTE
+
     def get_engine(self) -> connection:
+        validate_identifier(self.schema)
         return psycopg2.connect(
             host=self.host,
             port=self.port,
@@ -96,8 +105,9 @@ class Redshift(UnstractDB, PsycoPgHandler):
         return str(mapping.get(data_type, DatabaseTypeConstants.REDSHIFT_VARCHAR))
 
     def get_create_table_base_query(self, table: str) -> str:
+        quoted_table = safe_identifier(table, QuoteStyle.DOUBLE_QUOTE)
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE IF NOT EXISTS {quoted_table} "
             f"(id VARCHAR(65535) ,"
             f"created_by VARCHAR(65535), created_at TIMESTAMP, "
             f"metadata SUPER, "
@@ -125,14 +135,16 @@ class Redshift(UnstractDB, PsycoPgHandler):
             or use dynamic SQL to make these operations idempotent.
         """
         # Return one ALTER statement per column for Redshift compatibility
+        qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
+        qc = safe_identifier(f"{column_name}_v2", QuoteStyle.DOUBLE_QUOTE)
         return [
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name}_v2 SUPER;",
-            f"ALTER TABLE {table_name} ADD COLUMN metadata SUPER;",
-            f"ALTER TABLE {table_name} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE;",
-            f"ALTER TABLE {table_name} ADD COLUMN user_field_2 INTEGER DEFAULT 0;",
-            f"ALTER TABLE {table_name} ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL;",
-            f"ALTER TABLE {table_name} ADD COLUMN status VARCHAR(256);",
-            f"ALTER TABLE {table_name} ADD COLUMN error_message VARCHAR(65535);",
+            f"ALTER TABLE {qt} ADD COLUMN {qc} SUPER;",
+            f"ALTER TABLE {qt} ADD COLUMN metadata SUPER;",
+            f"ALTER TABLE {qt} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE;",
+            f"ALTER TABLE {qt} ADD COLUMN user_field_2 INTEGER DEFAULT 0;",
+            f"ALTER TABLE {qt} ADD COLUMN user_field_3 VARCHAR(65535) DEFAULT NULL;",
+            f"ALTER TABLE {qt} ADD COLUMN status VARCHAR(256);",
+            f"ALTER TABLE {qt} ADD COLUMN error_message VARCHAR(65535);",
         ]
 
     def execute_query(

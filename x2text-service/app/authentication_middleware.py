@@ -28,8 +28,8 @@ class AuthenticationMiddleware:
                 current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
             platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
-            query = f"SELECT * FROM {platform_key_table} WHERE key = '{token}'"
-            cursor = be_db.execute_sql(query)
+            query = f"SELECT * FROM {platform_key_table} WHERE key = %s"
+            cursor = be_db.execute_sql(query, (token,))
             result_row = cursor.fetchone()
             cursor.close()
             if not result_row or len(result_row) == 0:

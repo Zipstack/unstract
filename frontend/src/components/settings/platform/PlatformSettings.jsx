@@ -317,11 +317,10 @@ function PlatformSettings() {
                               >
                                 <Button
                                   size="small"
+                                  icon={<DeleteOutlined />}
                                   disabled={keyDetails?.id === null}
                                   loading={isDeletingIndex === keyIndex}
-                                >
-                                  <DeleteOutlined />
-                                </Button>
+                                />
                               </ConfirmModal>
                             </Col>
                           </Row>

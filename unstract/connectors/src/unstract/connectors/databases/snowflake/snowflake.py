@@ -8,6 +8,11 @@ from typing import Any
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import SnowflakeProgrammingException
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
 
@@ -61,6 +66,9 @@ class SnowflakeDB(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.DOUBLE_QUOTE
+
     def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
@@ -103,8 +111,9 @@ class SnowflakeDB(UnstractDB):
         return con
 
     def get_create_table_base_query(self, table: str) -> str:
+        qt = safe_identifier(table, QuoteStyle.DOUBLE_QUOTE)
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE IF NOT EXISTS {qt} "
             f"(id TEXT ,"
             f"created_by TEXT, created_at TIMESTAMP, "
             f"metadata VARIANT, "
@@ -122,14 +131,16 @@ class SnowflakeDB(UnstractDB):
         Snowflake doesn't support multiple ADD COLUMN clauses in a single statement,
         so we return a list of individual ALTER TABLE statements.
         """
+        qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
+        qc = safe_identifier(f"{column_name}_v2", QuoteStyle.DOUBLE_QUOTE)
         sql_statements = [
-            f"ALTER TABLE {table_name} ADD COLUMN {column_name}_v2 VARIANT",
-            f"ALTER TABLE {table_name} ADD COLUMN metadata VARIANT",
-            f"ALTER TABLE {table_name} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE",
-            f"ALTER TABLE {table_name} ADD COLUMN user_field_2 INT DEFAULT 0",
-            f"ALTER TABLE {table_name} ADD COLUMN user_field_3 TEXT DEFAULT NULL",
-            f"ALTER TABLE {table_name} ADD COLUMN status VARCHAR",
-            f"ALTER TABLE {table_name} ADD COLUMN error_message VARCHAR",
+            f"ALTER TABLE {qt} ADD COLUMN {qc} VARIANT",
+            f"ALTER TABLE {qt} ADD COLUMN metadata VARIANT",
+            f"ALTER TABLE {qt} ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE",
+            f"ALTER TABLE {qt} ADD COLUMN user_field_2 INT DEFAULT 0",
+            f"ALTER TABLE {qt} ADD COLUMN user_field_3 TEXT DEFAULT NULL",
+            f"ALTER TABLE {qt} ADD COLUMN status VARCHAR",
+            f"ALTER TABLE {qt} ADD COLUMN error_message VARCHAR",
         ]
         return sql_statements
 
@@ -166,7 +177,7 @@ class SnowflakeDB(UnstractDB):
             logger.error(f"SQL Query: {sql_query}")
             logger.error(f"SQL Values: {sql_values}")
             raise SnowflakeProgrammingException(
-                detail=f"{e.msg} | SQL: {sql_query} | Values: {sql_values}",
+                detail=e.msg,
                 database=self.database,
                 schema=self.schema,
                 table_name=table_name,
@@ -175,7 +186,8 @@ class SnowflakeDB(UnstractDB):
     def get_information_schema(self, table_name: str) -> dict[str, str]:
         import snowflake.connector.errors as SnowflakeError
 
-        query = f"describe table {table_name}"
+        qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE, allow_dots=True)
+        query = f"describe table {qt}"
         column_types: dict[str, str] = {}
         try:
             results = self.execute(query=query)
@@ -320,7 +332,7 @@ class SnowflakeDB(UnstractDB):
         return sql_values
 
     def get_sql_insert_query(
-        self, table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Generate SQL insert query for Snowflake with special handling for VARIANT columns.
 
@@ -332,6 +344,11 @@ class SnowflakeDB(UnstractDB):
         Returns:
             str: Complete SQL insert query with VARIANT columns handled appropriately
         """
+        qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
+        # Validate column names but don't quote — Snowflake normalizes
+        # unquoted to UPPERCASE, matching existing table schemas.
+        for k in sql_keys:
+            validate_identifier(k)
         keys_str = ",".join(sql_keys)
 
         if sql_values:
@@ -345,8 +362,8 @@ class SnowflakeDB(UnstractDB):
             if has_sql_fragments:
                 # Build complete SQL with SELECT format for VARIANT columns
                 values_str = ",".join(str(v) for v in sql_values)
-                return f"INSERT INTO {table_name} ({keys_str}) SELECT {values_str}"
+                return f"INSERT INTO {qt} ({keys_str}) SELECT {values_str}"
 
         # Fall back to parameterized format for standard queries
         values_placeholder = ",".join(["%s" for _ in sql_keys])
-        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
+        return f"INSERT INTO {qt} ({keys_str}) VALUES ({values_placeholder})"
