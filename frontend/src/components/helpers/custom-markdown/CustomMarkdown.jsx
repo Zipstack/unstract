@@ -3,6 +3,8 @@ import PropTypes from "prop-types";
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
 
+import { useSessionStore } from "../../../store/session-store";
+
 const { Text, Link, Paragraph } = Typography;
 
 const CustomMarkdown = ({
@@ -11,6 +13,8 @@ const CustomMarkdown = ({
   isSecondary = false,
   styleClassName,
 }) => {
+  const { sessionDetails } = useSessionStore();
+  const orgName = sessionDetails?.orgName;
   const textType = isSecondary ? "secondary" : undefined;
 
   /*
@@ -52,7 +56,8 @@ const CustomMarkdown = ({
       case "link": {
         const isInternal = url?.startsWith("/");
         if (isInternal) {
-          return <RouterLink to={url}>{content}</RouterLink>;
+          const resolvedUrl = orgName ? `/${orgName}${url}` : url;
+          return <RouterLink to={resolvedUrl}>{content}</RouterLink>;
         }
         return (
           <Link href={url} target="_blank" rel="noopener noreferrer">
@@ -99,7 +104,7 @@ const CustomMarkdown = ({
     });
 
     return elements;
-  }, [text, renderNewLines, textType]);
+  }, [text, renderNewLines, textType, orgName]);
 
   return (
     <Text type={textType} className={styleClassName}>
