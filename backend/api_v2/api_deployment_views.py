@@ -74,7 +74,12 @@ class DeploymentExecution(views.APIView):
         organization = api.organization
 
         serializer = ExecutionRequestSerializer(
-            data=request.data, context={"api": api, "api_key": api_key}
+            data=request.data,
+            context={
+                "api": api,
+                "api_key": api_key,
+                "is_global_key": deployment_execution_dto.is_global_key,
+            },
         )
         serializer.is_valid(raise_exception=True)
         file_objs = serializer.validated_data.get(ApiExecution.FILES_FORM_DATA, [])

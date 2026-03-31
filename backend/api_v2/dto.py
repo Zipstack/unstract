@@ -9,3 +9,4 @@ class DeploymentExecutionDTO:
 
     api: APIDeployment
     api_key: str
+    is_global_key: bool = False

@@ -11,6 +11,7 @@ import { AgencyPage } from "../pages/AgencyPage.jsx";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
 import { CustomTools } from "../pages/CustomTools.jsx";
 import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
+import { GlobalApiDeploymentKeysPage } from "../pages/GlobalApiDeploymentKeysPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
 import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
@@ -214,6 +215,10 @@ function useMainAppRoutes() {
             element={<PlatformApiKeysPage />}
           />
         </Route>
+        <Route
+          path="settings/global-api-deployment-keys"
+          element={<GlobalApiDeploymentKeysPage />}
+        />
         <Route path="settings/triad" element={<DefaultTriad />} />
         {RequirePlatformAdmin && PlatformAdminPage && (
           <Route element={<RequirePlatformAdmin />}>

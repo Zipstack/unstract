@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.12.*"
 
 [manifest]
@@ -795,7 +795,7 @@ wheels = [
 
 [[package]]
 name = "django-celery-beat"
-version = "2.5.0"
+version = "2.6.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "celery" },
@@ -805,10 +805,7 @@ dependencies = [
     { name = "python-crontab" },
     { name = "tzdata" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/0b/97/ca63898f76dd43fc91f4791b05dbbecb60dc99215f16b270e9b1e29af974/django-celery-beat-2.5.0.tar.gz", hash = "sha256:cd0a47f5958402f51ac0c715bc942ae33d7b50b4e48cba91bc3f2712be505df1", size = 159635, upload-time = "2023-03-14T10:02:10.9Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/c5/92/fa53396870566276357bb81e3fece5b7f8a00f99c91689ff777c481d40e0/django_celery_beat-2.5.0-py3-none-any.whl", hash = "sha256:ae460faa5ea142fba0875409095d22f6bd7bcc7377889b85e8cab5c0dfb781fe", size = 97223, upload-time = "2023-03-14T10:02:00.093Z" },
-]
+sdist = { url = "https://files.pythonhosted.org/packages/1b/ce/308fdad8c073051c0a1e494939d5c304b4efbbeb4bee1115495a60c139e8/django-celery-beat-2.6.0.tar.gz", hash = "sha256:f75b2d129731f1214be8383e18fae6bfeacdb55dffb2116ce849222c0106f9ad", size = 160452, upload-time = "2024-03-03T17:07:03.864Z" }
 
 [[package]]
 name = "django-cors-headers"
@@ -3754,7 +3751,7 @@ requires-dist = [
     { name = "croniter", specifier = ">=3.0.3" },
     { name = "cryptography", specifier = ">=41.0.7" },
     { name = "django", specifier = "==4.2.1" },
-    { name = "django-celery-beat", specifier = "==2.5.0" },
+    { name = "django-celery-beat", specifier = "==2.6.0" },
     { name = "django-cors-headers", specifier = "==4.3.1" },
     { name = "django-filter", specifier = ">=24.3" },
     { name = "django-log-request-id", specifier = ">=2.1.0" },
