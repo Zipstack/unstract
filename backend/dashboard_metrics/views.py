@@ -73,6 +73,7 @@ def _build_error_entry(metric_name: str) -> dict:
     """Build an error series entry for a failed metric."""
     return {
         "metric_name": metric_name,
+        "metric_type": _metric_type(metric_name),
         "error": "unavailable",
         "data": [],
         "total_value": 0,
@@ -783,7 +784,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             end_date: End of date range (ISO 8601)
 
         Returns:
-            Summary totals for all 9 metrics from live data.
+            Summary totals for all metrics from live data.
         """
         query_serializer = MetricsQuerySerializer(data=request.query_params)
         query_serializer.is_valid(raise_exception=True)
@@ -857,6 +858,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             "prompt_executions": MetricsQueryService.get_prompt_executions,
             "hitl_reviews": MetricsQueryService.get_hitl_reviews,
             "hitl_completions": MetricsQueryService.get_hitl_completions,
+            "failed_pages": MetricsQueryService.get_failed_pages,
         }
 
         series, errors = _fetch_live_series(
