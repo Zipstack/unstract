@@ -7,6 +7,11 @@ import oracledb
 from oracledb.connection import Connection
 
 from unstract.connectors.constants import DatabaseTypeConstants
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)
@@ -63,6 +68,9 @@ class OracleDB(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.DOUBLE_QUOTE
+
     def get_engine(self) -> Connection:
         con = oracledb.connect(
             config_dir=self.config_dir,
@@ -108,8 +116,9 @@ class OracleDB(UnstractDB):
         Returns:
             str: generates a create sql base query with the constant columns
         """
+        qt = safe_identifier(table, QuoteStyle.DOUBLE_QUOTE)
         sql_query = (
-            f"CREATE TABLE {table} "
+            f"CREATE TABLE {qt} "
             f"(id VARCHAR2(32767) , "
             f"created_by VARCHAR2(32767), created_at TIMESTAMP, "
             f"metadata CLOB, "
@@ -136,19 +145,20 @@ class OracleDB(UnstractDB):
             Each column addition requires a separate ALTER TABLE statement.
         """
         # Return one ALTER statement per column for Oracle compatibility
+        qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
+        qc = safe_identifier(f"{column_name}_v2", QuoteStyle.DOUBLE_QUOTE)
         return [
-            f"ALTER TABLE {table_name} ADD {column_name}_v2 CLOB",
-            f"ALTER TABLE {table_name} ADD metadata CLOB",
-            f"ALTER TABLE {table_name} ADD user_field_1 NUMBER(1) DEFAULT 0",
-            f"ALTER TABLE {table_name} ADD user_field_2 NUMBER DEFAULT 0",
-            f"ALTER TABLE {table_name} ADD user_field_3 VARCHAR2(32767) DEFAULT NULL",
-            f"ALTER TABLE {table_name} ADD status VARCHAR2(10)",
-            f"ALTER TABLE {table_name} ADD error_message VARCHAR2(32767)",
+            f"ALTER TABLE {qt} ADD {qc} CLOB",
+            f"ALTER TABLE {qt} ADD metadata CLOB",
+            f"ALTER TABLE {qt} ADD user_field_1 NUMBER(1) DEFAULT 0",
+            f"ALTER TABLE {qt} ADD user_field_2 NUMBER DEFAULT 0",
+            f"ALTER TABLE {qt} ADD user_field_3 VARCHAR2(32767) DEFAULT NULL",
+            f"ALTER TABLE {qt} ADD status VARCHAR2(10)",
+            f"ALTER TABLE {qt} ADD error_message VARCHAR2(32767)",
         ]
 
-    @staticmethod
     def get_sql_insert_query(
-        table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
@@ -160,6 +170,11 @@ class OracleDB(UnstractDB):
         Returns:
             str: returns a string with parameterised insert sql query
         """
+        qt = safe_identifier(table_name, QuoteStyle.DOUBLE_QUOTE)
+        # Validate column names but don't quote — Oracle normalizes
+        # unquoted to UPPERCASE, matching existing table schemas.
+        for k in sql_keys:
+            validate_identifier(k)
         columns = ", ".join(sql_keys)
         values = []
         for key in sql_keys:
@@ -167,7 +182,7 @@ class OracleDB(UnstractDB):
                 values.append("TO_TIMESTAMP(:created_at, 'YYYY-MM-DD HH24:MI:SS.FF')")
             else:
                 values.append(f":{key}")
-        return f"INSERT INTO {table_name} ({columns}) VALUES ({', '.join(values)})"
+        return f"INSERT INTO {qt} ({columns}) VALUES ({', '.join(values)})"
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
@@ -208,9 +223,9 @@ class OracleDB(UnstractDB):
         query = (
             "SELECT column_name, data_type FROM "
             "user_tab_columns WHERE "
-            f"table_name = UPPER('{table_name}')"
+            "table_name = UPPER(:table_name)"
         )
-        results = self.execute(query=query)
+        results = self.execute(query=query, params={"table_name": table_name})
         column_types: dict[str, str] = self.get_db_column_types(
             columns_with_types=results
         )

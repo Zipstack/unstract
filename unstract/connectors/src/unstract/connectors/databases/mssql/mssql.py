@@ -13,6 +13,10 @@ from unstract.connectors.databases.exceptions import (
     InvalidSyntaxException,
 )
 from unstract.connectors.databases.exceptions_helper import ExceptionHelper
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 logger = logging.getLogger(__name__)
@@ -63,6 +67,9 @@ class MSSQL(UnstractDB):
     def can_read() -> bool:
         return True
 
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.SQUARE_BRACKET
+
     def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
@@ -105,29 +112,40 @@ class MSSQL(UnstractDB):
         Returns:
             str: generates a create sql base query with the constant columns
         """
-        # Parse schema and table name for existence check
+        # Parse schema and table name for existence check.
+        # validate_identifier() is called by safe_identifier() and rejects any
+        # SQL metacharacters, so the values used in WHERE are safe.
         if "." in table:
             # Handle schema.table format like "[schema].[table]"
             parts = table.rsplit(".", 1)
             schema_name, table_name = parts[0], parts[1]
+            safe_schema = safe_identifier(schema_name, QuoteStyle.SQUARE_BRACKET)
+            safe_table = safe_identifier(table_name, QuoteStyle.SQUARE_BRACKET)
+            # schema_name/table_name are validated by safe_identifier above
             existence_check = (
                 f"IF NOT EXISTS ("
                 f"SELECT * FROM INFORMATION_SCHEMA.TABLES "
-                f"WHERE TABLE_SCHEMA = '{schema_name}' AND TABLE_NAME = '{table_name}'"
+                f"WHERE TABLE_SCHEMA = '{schema_name}' "
+                f"AND TABLE_NAME = '{table_name}'"
                 f")"
             )
+            quoted_full_table = f"{safe_schema}.{safe_table}"
         else:
             # Handle unqualified table names (default to dbo schema)
+            safe_table = safe_identifier(table, QuoteStyle.SQUARE_BRACKET)
+            # table is validated by safe_identifier above
             existence_check = (
                 f"IF NOT EXISTS ("
                 f"SELECT * FROM INFORMATION_SCHEMA.TABLES "
-                f"WHERE TABLE_SCHEMA = 'dbo' AND TABLE_NAME = '{table}'"
+                f"WHERE TABLE_SCHEMA = 'dbo' "
+                f"AND TABLE_NAME = '{table}'"
                 f")"
             )
+            quoted_full_table = safe_table
 
         sql_query = (
             f"{existence_check} "
-            f" CREATE TABLE {table} "
+            f" CREATE TABLE {quoted_full_table} "
             f"(id NVARCHAR(MAX), "
             f"created_by NVARCHAR(MAX), created_at DATETIMEOFFSET, "
             f"metadata NVARCHAR(MAX), "
@@ -147,14 +165,16 @@ class MSSQL(UnstractDB):
         MSSQL doesn't support adding multiple columns in a single ALTER TABLE statement,
         so we return a list of individual statements like Snowflake.
         """
+        qt = safe_identifier(table_name, QuoteStyle.SQUARE_BRACKET, allow_dots=True)
+        qc = safe_identifier(f"{column_name}_v2", QuoteStyle.SQUARE_BRACKET)
         sql_statements = [
-            f"ALTER TABLE {table_name} ADD {column_name}_v2 NVARCHAR(MAX)",
-            f"ALTER TABLE {table_name} ADD metadata NVARCHAR(MAX)",
-            f"ALTER TABLE {table_name} ADD user_field_1 BIT DEFAULT 0",
-            f"ALTER TABLE {table_name} ADD user_field_2 INT DEFAULT 0",
-            f"ALTER TABLE {table_name} ADD user_field_3 NVARCHAR(MAX) DEFAULT NULL",
-            f"ALTER TABLE {table_name} ADD status NVARCHAR(10)",
-            f"ALTER TABLE {table_name} ADD error_message NVARCHAR(MAX)",
+            f"ALTER TABLE {qt} ADD {qc} NVARCHAR(MAX)",
+            f"ALTER TABLE {qt} ADD metadata NVARCHAR(MAX)",
+            f"ALTER TABLE {qt} ADD user_field_1 BIT DEFAULT 0",
+            f"ALTER TABLE {qt} ADD user_field_2 INT DEFAULT 0",
+            f"ALTER TABLE {qt} ADD user_field_3 NVARCHAR(MAX) DEFAULT NULL",
+            f"ALTER TABLE {qt} ADD status NVARCHAR(10)",
+            f"ALTER TABLE {qt} ADD error_message NVARCHAR(MAX)",
         ]
         return sql_statements
 
@@ -214,19 +234,19 @@ class MSSQL(UnstractDB):
             parts = table_name.rsplit(".", 1)
             schema_name, table_only = parts[0], parts[1]
             query = (
-                f"SELECT column_name, data_type FROM "
-                f"information_schema.columns WHERE "
-                f"table_schema = '{schema_name}' AND table_name = '{table_only}'"
+                "SELECT column_name, data_type FROM "
+                "information_schema.columns WHERE "
+                "table_schema = %s AND table_name = %s"
             )
+            results = self.execute(query=query, params=(schema_name, table_only))
         else:
             # Handle unqualified table names (default to dbo)
             query = (
-                f"SELECT column_name, data_type FROM "
-                f"information_schema.columns WHERE "
-                f"table_schema = 'dbo' AND table_name = '{table_name}'"
+                "SELECT column_name, data_type FROM "
+                "information_schema.columns WHERE "
+                "table_schema = 'dbo' AND table_name = %s"
             )
-
-        results = self.execute(query=query)
+            results = self.execute(query=query, params=(table_name,))
         column_types: dict[str, str] = self.get_db_column_types(
             columns_with_types=results
         )
