@@ -71,9 +71,6 @@ function MenuLayout({ children }) {
   }, [projectName, details, editForm]);
 
   const handleEditSubmit = useCallback(async () => {
-    if (!projectId) {
-      return;
-    }
     try {
       const values = await editForm.validateFields();
       await wfService.editProject(
@@ -81,14 +78,17 @@ function MenuLayout({ children }) {
         values.description,
         projectId,
       );
-      useWorkflowStore.getState().updateWorkflow({
+      // Use Zustand's setState directly for correct shallow merge
+      useWorkflowStore.setState({
         projectName: values.workflow_name,
         details: { ...details, description: values.description },
       });
       setEditModalOpen(false);
       setAlertDetails({ type: "success", content: "Updated successfully" });
     } catch (err) {
-      if (err?.errorFields) return;
+      if (err?.errorFields) {
+        return;
+      }
       setAlertDetails(handleException(err, "Failed to update workflow"));
     }
   }, [editForm, projectId, details, setAlertDetails, handleException]);
@@ -115,13 +115,14 @@ function MenuLayout({ children }) {
         title={projectName || "Name of the project"}
         subtitle={details?.description}
         onNavigateBack={handleNavigateBack}
-        onEditTitle={handleOpenEditModal}
+        onEditTitle={projectId ? handleOpenEditModal : undefined}
         CustomButtons={RightButtons}
       />
       <Modal
         title="Edit Workflow"
         open={editModalOpen}
         onOk={handleEditSubmit}
+        okButtonProps={{ disabled: !projectId }}
         onCancel={() => setEditModalOpen(false)}
         okText="Save"
         centered

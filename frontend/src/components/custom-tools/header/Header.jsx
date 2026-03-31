@@ -426,9 +426,13 @@ function Header({
         title={details?.tool_name || ""}
         subtitle={isPublicSource ? undefined : details?.description || ""}
         previousRoute={
-          isPublicSource ? undefined : `/${sessionDetails?.orgName}/tools`
+          isPublicSource || !sessionDetails?.orgName
+            ? undefined
+            : `/${sessionDetails.orgName}/tools`
         }
-        onEditTitle={isPublicSource ? undefined : handleOpenEditModal}
+        onEditTitle={
+          isPublicSource || !details?.tool_id ? undefined : handleOpenEditModal
+        }
         CustomButtons={ActionButtons}
       />
       <Modal
