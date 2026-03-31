@@ -308,14 +308,14 @@ class PromptStudioHelper:
         stem: str,
         extract_file_path: str,
         platform_api_key: str,
-    ) -> tuple[dict[str, Any] | None, str]:
+    ) -> tuple[dict[str, Any] | None, str, "ProfileManager"]:
         """Build summarize_params dict if summarization is enabled.
 
         Returns:
-            (summarize_params or None, summarize_file_path).
+            (summarize_params or None, summarize_file_path, summary_profile).
         """
         if not tool.summarize_context:
-            return None, ""
+            return None, "", default_profile
 
         SummarizeMigrationUtils.migrate_tool_to_adapter_based(tool)
         summary_profile = default_profile
@@ -352,7 +352,7 @@ class PromptStudioHelper:
             "platform_api_key": platform_api_key,
             "prompt_keys": prompt_keys,
         }
-        return summarize_params, summarize_file_path
+        return summarize_params, summarize_file_path, summary_profile
 
     @staticmethod
     def _build_prompt_output(
@@ -501,7 +501,7 @@ class PromptStudioHelper:
         platform_api_key = PromptStudioHelper._get_platform_api_key(org_id)
 
         # Build summarize_params for executor (summarization runs in worker)
-        summarize_params, summarize_file_path = (
+        summarize_params, summarize_file_path, summary_profile = (
             PromptStudioHelper._build_summarize_params(
                 tool,
                 default_profile,
