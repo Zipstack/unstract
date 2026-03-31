@@ -36,6 +36,7 @@ CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && bun run start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
+ARG BUILD_CONTEXT_PATH
 ENV VITE_BACKEND_URL=""
 
 # Copy package files and install dependencies
