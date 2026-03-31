@@ -72,17 +72,15 @@
   max-width: min(600px, 45vw);
 }
 
-/* Edit icon: hidden by default, appears on title-area hover */
-.tool-nav-bar__edit-icon {
-  font-size: 16px;
-  color: var(--ant-color-text-secondary, #8c8c8c);
-  cursor: pointer;
+/* Edit button: hidden by default, appears on title-area hover */
+.tool-nav-bar__edit-icon.ant-btn {
   opacity: 0;
+  color: var(--ant-color-text-secondary, #8c8c8c);
   transition:
     opacity 0.15s,
     color 0.15s;
 }
 
-.tool-nav-bar__edit-icon:hover {
+.tool-nav-bar__edit-icon.ant-btn:hover {
   color: var(--ant-color-primary, #1677ff);
 }

@@ -54,9 +54,13 @@ function ToolNavBar({
                   {title}
                 </Typography.Text>
                 {onEditTitle && (
-                  <EditOutlined
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<EditOutlined />}
                     className="tool-nav-bar__edit-icon"
                     onClick={onEditTitle}
+                    aria-label="Edit title"
                   />
                 )}
               </div>
