@@ -278,13 +278,14 @@ class PromptStudioHelper:
         Uses the RabbitMQ-backed Celery app (not the Django Redis one)
         so tasks reach the worker-v2 executor worker.
         """
-        from backend.worker_celery import get_worker_celery_app
+        from backend.worker_celery import get_worker_celery_app  # Lazy import: avoids Django/Celery circular init
 
         return ExecutionDispatcher(celery_app=get_worker_celery_app())
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
         """Get the platform API key for the given organization."""
+        # Lazy import: avoids Django app registry init order
         from platform_settings_v2.platform_auth_service import (
             PlatformAuthenticationService,
         )
@@ -396,15 +397,7 @@ class PromptStudioHelper:
             tool=util,
         )
 
-        # Mark as indexing in progress
-        DocumentIndexingService.set_document_indexing(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key
-        )
         usage_kwargs = {"run_id": run_id, "file_name": filename}
-
-        from prompt_studio.prompt_studio_core_v2.constants import (
-            IndexingConstants as IKeys,
-        )
 
         extract_params = {
             IKeys.X2TEXT_INSTANCE_ID: str(default_profile.x2text.id),
@@ -711,6 +704,7 @@ class PromptStudioHelper:
             "log_events_id": log_events_id,
             "request_id": request_id,
             "org_id": org_id,
+            "user_id": user_id,
             "operation": "fetch_response",
             "run_id": run_id,
             "document_id": document_id,
@@ -932,6 +926,7 @@ class PromptStudioHelper:
             "log_events_id": log_events_id,
             "request_id": request_id,
             "org_id": org_id,
+            "user_id": user_id,
             "operation": "fetch_response",
             "run_id": run_id,
             "document_id": document_id,
@@ -950,6 +945,7 @@ class PromptStudioHelper:
         doc_name: str,
         prompts: list[ToolStudioPrompt],
         org_id: str,
+        user_id: str,
         document_id: str,
         run_id: str,
     ) -> tuple[ExecutionContext, dict[str, Any]]:
@@ -1087,6 +1083,7 @@ class PromptStudioHelper:
             "log_events_id": log_events_id,
             "request_id": request_id,
             "org_id": org_id,
+            "user_id": user_id,
             "operation": "single_pass_extraction",
             "run_id": run_id,
             "document_id": document_id,
@@ -1105,9 +1102,8 @@ class PromptStudioHelper:
         Returns:
             dict[str, Any]: Dict for dropdown data
         """
-        f = open(f"{os.path.dirname(__file__)}{CHOICES_JSON}")
-        choices = f.read()
-        f.close()
+        with open(f"{os.path.dirname(__file__)}{CHOICES_JSON}") as f:
+            choices = f.read()
         response: dict[str, Any] = json.loads(choices)
         # Update select choices with payload modifier plugin if available
         payload_modifier_plugin = get_plugin("payload_modifier")

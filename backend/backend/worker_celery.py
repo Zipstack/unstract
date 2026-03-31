@@ -37,6 +37,10 @@ class _WorkerDispatchCelery(Celery):
     The connection methods are the actual points where Celery opens
     AMQP/Redis connections, so overriding them is both sufficient
     and safe.
+
+    NOTE: ``connection_for_write`` / ``connection_for_read`` are Celery
+    internals, not public API.  Verified against celery>=5.3.4 (see
+    backend/pyproject.toml).  Re-verify on major Celery upgrades.
     """
 
     _explicit_broker: str | None = None

@@ -24,6 +24,7 @@ class WorkerType(str, Enum):
     LOG_CONSUMER = "log_consumer"
     SCHEDULER = "scheduler"
     EXECUTOR = "executor"
+    IDE_CALLBACK = "ide_callback"
 
     @classmethod
     def from_directory_name(cls, name: str) -> "WorkerType":
@@ -112,6 +113,7 @@ class WorkerType(str, Enum):
             WorkerType.LOG_CONSUMER: 8086,
             WorkerType.SCHEDULER: 8087,
             WorkerType.EXECUTOR: 8088,
+            WorkerType.IDE_CALLBACK: 8089,
         }
         return port_mapping.get(self, 8080)
 
@@ -153,6 +155,9 @@ class QueueName(str, Enum):
     # The dispatcher derives queue names as ``celery_executor_{executor_name}``.
     # The "legacy" executor is the default OSS executor.
     EXECUTOR = "celery_executor_legacy"
+
+    # IDE callback queue (prompt studio post-execution callbacks)
+    IDE_CALLBACK = "ide_callback"
 
     def to_env_var_name(self) -> str:
         """Convert queue name to environment variable name.

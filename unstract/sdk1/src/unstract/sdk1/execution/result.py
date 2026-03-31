@@ -36,6 +36,8 @@ class ExecutionResult:
         """Validate result consistency after initialization."""
         if not self.success and not self.error:
             raise ValueError("error message is required when success is False")
+        if self.success and self.error:
+            raise ValueError("error must be None when success is True")
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to a JSON-compatible dict for Celery."""
@@ -44,8 +46,7 @@ class ExecutionResult:
             "data": self.data,
             "metadata": self.metadata,
         }
-        if self.error is not None:
-            result["error"] = self.error
+        result["error"] = self.error
         return result
 
     @classmethod

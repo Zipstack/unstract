@@ -403,18 +403,26 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         executor_task_id = str(uuid.uuid4())
         cb_kwargs["executor_task_id"] = executor_task_id
 
+        # Mark as indexing in progress — placed here so the except block
+        # below can clean up the lock if dispatch_with_callback fails.
+        DocumentIndexingService.set_document_indexing(
+            org_id=cb_kwargs["org_id"],
+            user_id=cb_kwargs["user_id"],
+            doc_id_key=cb_kwargs["doc_id_key"],
+        )
+
         try:
             task = dispatcher.dispatch_with_callback(
                 context,
                 on_success=signature(
                     "ide_index_complete",
                     kwargs={"callback_kwargs": cb_kwargs},
-                    queue="prompt_studio_callback",
+                    queue="ide_callback",
                 ),
                 on_error=signature(
                     "ide_index_error",
                     kwargs={"callback_kwargs": cb_kwargs},
-                    queue="prompt_studio_callback",
+                    queue="ide_callback",
                 ),
                 task_id=executor_task_id,
             )
@@ -494,7 +502,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # If document is being indexed, return pending status
         if context is None:
-            return Response(cb_kwargs, status=status.HTTP_200_OK)
+            return Response(cb_kwargs, status=status.HTTP_202_ACCEPTED)
 
         # Capture HubSpot first-run state before dispatch so the callback
         # can fire the PROMPT_RUN analytics event on success.
@@ -518,12 +526,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             on_success=signature(
                 "ide_prompt_complete",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
+                queue="ide_callback",
             ),
             on_error=signature(
                 "ide_prompt_error",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
+                queue="ide_callback",
             ),
             task_id=executor_task_id,
         )
@@ -603,7 +611,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         )
 
         if context is None:
-            return Response(cb_kwargs, status=status.HTTP_200_OK)
+            return Response(cb_kwargs, status=status.HTTP_202_ACCEPTED)
 
         # Capture HubSpot first-run state before dispatch so the callback
         # can fire the PROMPT_RUN analytics event on success.
@@ -627,12 +635,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             on_success=signature(
                 "ide_prompt_complete",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
+                queue="ide_callback",
             ),
             on_error=signature(
                 "ide_prompt_error",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
+                queue="ide_callback",
             ),
             task_id=executor_task_id,
         )
@@ -702,6 +710,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             doc_name=document.document_name,
             prompts=prompts,
             org_id=org_id,
+            user_id=user_id,
             document_id=document_id,
             run_id=run_id,
         )
@@ -717,12 +726,12 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             on_success=signature(
                 "ide_prompt_complete",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
+                queue="ide_callback",
             ),
             on_error=signature(
                 "ide_prompt_error",
                 kwargs={"callback_kwargs": cb_kwargs},
-                queue="prompt_studio_callback",
+                queue="ide_callback",
             ),
             task_id=executor_task_id,
         )
@@ -749,9 +758,9 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response with {task_id, status} and optionally result or error
         """
-        from celery.result import AsyncResult
+        from celery.result import AsyncResult  # Lazy import: Celery not needed for non-async views
 
-        from backend.worker_celery import get_worker_celery_app
+        from backend.worker_celery import get_worker_celery_app  # Lazy import: avoids Celery init on module load
 
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()

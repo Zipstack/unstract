@@ -1,10 +1,8 @@
-"""Legacy executor — migrates the prompt-service pipeline.
+"""Legacy executor — wraps the full prompt-service extraction pipeline.
 
-Phase 2A scaffolds the class with operation routing.
-Phase 2B implements ``_handle_extract`` (text extraction via x2text).
-Phase 2C implements ``_handle_index`` (vector DB indexing).
-Remaining handler methods raise ``NotImplementedError`` and are filled
-in by phases 2D–2H.
+Routes ``ExecutionContext`` requests to handler methods for text
+extraction, indexing, retrieval, prompt answering, single-pass
+extraction, summarisation, and usage tracking.
 """
 
 import logging
@@ -193,7 +191,7 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
-        logger.info(
+        logger.debug(
             "HIGHLIGHT_DEBUG _handle_extract: enable_highlight=%s x2text_type=%s file=%s run_id=%s",
             enable_highlight,
             type(x2text.x2text_instance).__name__,
@@ -235,7 +233,7 @@ class LegacyExecutor(BaseExecutor):
                 process_response.extraction_metadata
                 and process_response.extraction_metadata.line_metadata
             )
-            logger.info(
+            logger.debug(
                 "HIGHLIGHT_DEBUG extraction result: has_line_metadata=%s "
                 "whisper_hash=%s run_id=%s",
                 has_metadata,
@@ -1035,7 +1033,6 @@ class LegacyExecutor(BaseExecutor):
             VectorDB,
         )
 
-    @staticmethod
     @staticmethod
     def _sanitize_dict_values(d: dict[str, Any]) -> None:
         """Replace 'NA' string values with None inside a dict in-place."""

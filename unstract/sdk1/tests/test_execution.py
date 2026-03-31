@@ -219,6 +219,11 @@ class TestExecutionResult:
         result = ExecutionResult(success=True)
         assert result.error is None
 
+    def test_success_rejects_error(self: Self) -> None:
+        """success=True with error string raises ValueError."""
+        with pytest.raises(ValueError, match="error must be None when success is True"):
+            ExecutionResult(success=True, error="should not be here")
+
     def test_failure_factory(self: Self) -> None:
         """ExecutionResult.failure() convenience constructor."""
         result = ExecutionResult.failure(
@@ -235,11 +240,12 @@ class TestExecutionResult:
         result = ExecutionResult.failure(error="Oops")
         assert result.metadata == {}
 
-    def test_error_not_in_success_dict(self: Self) -> None:
-        """Successful result dict omits error key."""
+    def test_error_none_in_success_dict(self: Self) -> None:
+        """Successful result dict always includes error key (None on success)."""
         result = ExecutionResult(success=True, data={"k": "v"})
         d = result.to_dict()
-        assert "error" not in d
+        assert "error" in d
+        assert d["error"] is None
 
     def test_error_in_failure_dict(self: Self) -> None:
         """Failed result dict includes error key."""

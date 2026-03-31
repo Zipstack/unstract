@@ -16,6 +16,7 @@ import usePromptOutput from "./usePromptOutput";
 // Tracks the latest run nonce per (promptId, statusKey) so stale timeouts
 // from a previous run don't falsely cancel a newer run of the same combo.
 const runNonceMap = new Map();
+const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
 const usePromptRun = () => {
   const { pushPromptRunApi, freeActiveApi } = usePromptRunQueueStore();
@@ -28,8 +29,6 @@ const usePromptRun = () => {
   const handleException = useExceptionHandler();
 
   const makeApiRequest = (requestOptions) => axiosPrivate(requestOptions);
-
-  const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   const runPromptApi = (api) => {
     const [promptId, docId, profileId] = api.split("__");
@@ -85,6 +84,7 @@ const usePromptRun = () => {
               content: "Prompt execution timed out. Please try again.",
             });
           }
+          runNonceMap.delete(nonceKey);
         }, SOCKET_TIMEOUT_MS);
       })
       .catch((err) => {
@@ -92,6 +92,7 @@ const usePromptRun = () => {
           handleException(err, "Failed to generate prompt output"),
         );
         removePromptStatus(promptId, statusKey);
+        runNonceMap.delete(nonceKey);
       })
       .finally(() => {
         freeActiveApi();
@@ -153,6 +154,7 @@ const usePromptRun = () => {
             ) {
               removePromptStatus(promptId, statusKey);
             }
+            runNonceMap.delete(nonceKey);
           });
         }, SOCKET_TIMEOUT_MS);
       })
@@ -161,8 +163,13 @@ const usePromptRun = () => {
           handleException(err, "Failed to generate prompt output"),
         );
         promptIds.forEach((promptId) => {
+          const nonceKey = `${promptId}__${statusKey}`;
           removePromptStatus(promptId, statusKey);
+          runNonceMap.delete(nonceKey);
         });
+      })
+      .finally(() => {
+        freeActiveApi();
       });
   };
 
