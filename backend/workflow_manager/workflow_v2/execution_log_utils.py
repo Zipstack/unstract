@@ -4,7 +4,7 @@ from collections import defaultdict
 
 from celery import shared_task
 from django.db import IntegrityError
-from django.db.utils import ProgrammingError
+from django.db.utils import OperationalError, ProgrammingError
 from django_celery_beat.models import IntervalSchedule, PeriodicTask
 from utils.cache_service import CacheService
 from utils.constants import ExecutionLogConstants
@@ -139,14 +139,20 @@ def create_log_consumer_scheduler_if_not_exists() -> None:
             every=ExecutionLogConstants.CONSUMER_INTERVAL,
             period=IntervalSchedule.SECONDS,
         )
-    except ProgrammingError as error:
-        logger.warning(
-            "ProgrammingError occurred while creating "
-            "log consumer scheduler. If you are currently running "
-            "migrations for new environment, you can ignore this warning"
+    except (ProgrammingError, OperationalError) as error:
+        is_expected = any(
+            arg in sys.argv for arg in ("migrate", "makemigrations", "test", "pytest")
         )
-        if all(arg not in sys.argv for arg in ("migrate", "makemigrations")):
-            logger.warning(f"ProgrammingError details: {error}")
+        if is_expected:
+            logger.warning(
+                "Database error while creating log consumer scheduler. "
+                "Expected during migrations/tests."
+            )
+        else:
+            logger.warning(
+                "Database error while creating log consumer scheduler: %s",
+                error,
+            )
         return
     except IntervalSchedule.MultipleObjectsReturned as error:
         logger.error(f"Error occurred while getting interval schedule: {error}")

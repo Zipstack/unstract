@@ -574,6 +574,7 @@ REST_FRAMEWORK = {
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
+        "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
