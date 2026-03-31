@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
 FROM python:3.12-slim-trixie AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Runner Service Container" \
-    version="${VERSION}"
+    description="Runner Service Container"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -82,5 +80,8 @@ RUN if [ -f cloud_requirements.txt ]; then \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 EXPOSE 5002
+
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 CMD [ "./entrypoint.sh" ]

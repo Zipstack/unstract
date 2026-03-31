@@ -79,6 +79,7 @@ from .serializers import (
     FileUploadIdeSerializer,
     PromptStudioIndexSerializer,
     SharedUserListSerializer,
+    SyncPromptsSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -718,7 +719,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ExportToolRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         is_shared_with_org: bool = serializer.validated_data.get("is_shared_with_org")
-        user_ids = set(serializer.validated_data.get("user_id"))
+        user_ids = set(serializer.validated_data.get("user_id") or [])
         force_export = serializer.validated_data.get("force_export")
 
         # Check registry count before export for HubSpot notification
@@ -851,6 +852,59 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 {"error": "Failed to import project"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @action(detail=True, methods=["post"])
+    def sync_prompts(self, request: Request, pk: Any = None) -> Response:
+        """Sync prompts from export JSON into an existing project.
+
+        Rip-and-replace: deletes all existing prompts and creates new ones
+        from the export data. Tool settings are also updated.
+        Profiles and adapters are left untouched.
+
+        Request body:
+            data (dict): The export JSON containing "prompts" key
+            create_copy (bool): If true, clone the project before syncing
+        """
+        tool = self.get_object()
+
+        serializer = SyncPromptsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        import_data = serializer.validated_data["data"]
+        create_copy = serializer.validated_data["create_copy"]
+
+        response_data = {}
+
+        # Create a backup copy if requested
+        if create_copy:
+            organization = UserContext.get_organization()
+            export_data = PromptStudioHelper.export_project_settings(tool)
+            backup_name = PromptStudioHelper.generate_unique_tool_name(
+                f"{tool.tool_name} (backup)", organization
+            )
+            backup_tool = PromptStudioHelper.create_tool_from_import_data(
+                export_data, backup_name, organization, request.user
+            )
+            # Copy profiles from original to backup
+            for profile in ProfileManager.objects.filter(prompt_studio_tool=tool):
+                profile.pk = None
+                profile.prompt_studio_tool = backup_tool
+                profile.save()
+
+            PromptStudioHelper.import_prompts(
+                export_data["prompts"], backup_tool, request.user
+            )
+            response_data["backup_tool_id"] = str(backup_tool.tool_id)
+            response_data["backup_tool_name"] = backup_name
+
+        # Sync prompts into the target tool
+        sync_result = PromptStudioHelper.sync_prompts(tool, import_data, request.user)
+        response_data.update(sync_result)
+        response_data["message"] = (
+            f"Synced {sync_result['prompts_created']} prompts " f"into '{tool.tool_name}'"
+        )
+
+        return Response(response_data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=["get"])
     def check_deployment_usage(self, request: Request, pk: Any = None) -> Response:

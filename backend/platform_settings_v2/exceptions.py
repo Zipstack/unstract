@@ -25,7 +25,10 @@ class FoundActiveKey(APIException):
 
 class ActiveKeyNotFound(APIException):
     status_code = 404
-    default_detail = "At least one active platform key should be available"
+    default_detail = (
+        "An active platform key is required to perform this action. "
+        "Configure one in [Platform Keys](/settings/platform) under Settings."
+    )
 
 
 class InvalidRequest(APIException):

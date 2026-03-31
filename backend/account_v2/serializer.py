@@ -1,6 +1,7 @@
 import re
 
 from rest_framework import serializers
+from utils.input_sanitizer import validate_name_field
 
 from account_v2.models import Organization, User
 
@@ -9,6 +10,12 @@ class OrganizationSignupSerializer(serializers.Serializer):
     name = serializers.CharField(required=True, max_length=150)
     display_name = serializers.CharField(required=True, max_length=150)
     organization_id = serializers.CharField(required=True, max_length=30)
+
+    def validate_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Organization name")
+
+    def validate_display_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Display name")
 
     def validate_organization_id(self, value):  # type: ignore
         if not re.match(r"^[a-z0-9_-]+$", value):

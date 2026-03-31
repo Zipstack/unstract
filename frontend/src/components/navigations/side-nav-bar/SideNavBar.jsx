@@ -97,12 +97,21 @@ try {
   // Plugin unavailable
 }
 
-const getSettingsMenuItems = (orgName) => [
+const getSettingsMenuItems = (orgName, isAdmin) => [
   {
     key: "platform",
     label: "Platform Settings",
     path: `/${orgName}/settings/platform`,
   },
+  ...(isAdmin
+    ? [
+        {
+          key: "platformApiKeys",
+          label: "Platform API Keys",
+          path: `/${orgName}/settings/platform-api-keys`,
+        },
+      ]
+    : []),
   {
     key: "users",
     label: "User Management",
@@ -126,6 +135,9 @@ const getSettingsMenuItems = (orgName) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
+  if (currentPath.includes("/settings/platform-api-keys")) {
+    return "platformApiKeys";
+  }
   if (currentPath.includes("/settings/platform")) {
     return "platform";
   }
@@ -141,8 +153,8 @@ const getActiveSettingsKey = () => {
   return "platform";
 };
 
-const SettingsPopoverContent = ({ orgName, navigate }) => {
-  const settingsMenuItems = getSettingsMenuItems(orgName);
+const SettingsPopoverContent = ({ orgName, navigate, isAdmin }) => {
+  const settingsMenuItems = getSettingsMenuItems(orgName, isAdmin);
   const currentActiveKey = getActiveSettingsKey();
 
   const handleMenuClick = (path) => {
@@ -170,6 +182,7 @@ const SettingsPopoverContent = ({ orgName, navigate }) => {
 SettingsPopoverContent.propTypes = {
   orgName: PropTypes.string.isRequired,
   navigate: PropTypes.func.isRequired,
+  isAdmin: PropTypes.bool,
 };
 
 const HITL_MENU_ITEMS = [
@@ -442,6 +455,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           active:
             globalThis.location.pathname === `/${orgName}/settings` ||
             globalThis.location.pathname === `/${orgName}/settings/platform` ||
+            globalThis.location.pathname ===
+              `/${orgName}/settings/platform-api-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
             globalThis.location.pathname === `/${orgName}/users`,
@@ -672,6 +687,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             <SettingsPopoverContent
                               orgName={orgName}
                               navigate={navigate}
+                              isAdmin={sessionDetails?.isAdmin}
                             />
                           }
                           trigger="hover"

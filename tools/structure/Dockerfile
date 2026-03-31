@@ -25,7 +25,7 @@ ENV \
 # Install system dependencies in one layer
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    ffmpeg libsm6 libxext6 libmagic-dev poppler-utils \
+    ffmpeg git libsm6 libxext6 libmagic-dev poppler-utils \
     libreoffice freetds-dev freetds-bin dumb-init && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
