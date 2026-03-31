@@ -24,7 +24,9 @@ function DisplayPromptResult({
   confidenceData,
   wordConfidenceData,
   isTable = false,
-  setOpenExpandModal = () => {},
+  setOpenExpandModal = () => {
+    // No-op default
+  },
   progressMsg,
 }) {
   const [isLoading, setIsLoading] = useState(false);

@@ -8,10 +8,16 @@ const { TextArea } = Input;
 function NewWorkflow({
   name = "",
   description = "",
-  onDone = () => {},
-  onClose = () => {},
+  onDone = () => {
+    // No-op default
+  },
+  onClose = () => {
+    // No-op default
+  },
   loading = {},
-  toggleModal = () => {},
+  toggleModal = () => {
+    // No-op default
+  },
   openModal = {},
   backendErrors,
   setBackendErrors,

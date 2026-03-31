@@ -73,7 +73,9 @@ const usePromptRun = () => {
         // Timeout safety net: clear stale status if socket event never arrives.
         // Only clears if this is still the latest run for this combo.
         setTimeout(() => {
-          if (runNonceMap.get(nonceKey) !== nonce) return;
+          if (runNonceMap.get(nonceKey) !== nonce) {
+            return;
+          }
           const current = usePromptRunStatusStore.getState().promptRunStatus;
           if (
             current?.[promptId]?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING
@@ -127,6 +129,24 @@ const usePromptRun = () => {
       runNonceMap.set(nonceKey, nonce);
     });
 
+    // Timeout safety net: clear stale status if socket event never arrives.
+    // Only clears if this is still the latest run for each prompt combo.
+    const clearStaleStatuses = () => {
+      promptIds.forEach((promptId) => {
+        const nonceKey = `${promptId}__${statusKey}`;
+        if (runNonceMap.get(nonceKey) !== nonces[promptId]) {
+          return;
+        }
+        const current = usePromptRunStatusStore.getState().promptRunStatus;
+        if (
+          current?.[promptId]?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING
+        ) {
+          removePromptStatus(promptId, statusKey);
+        }
+        runNonceMap.delete(nonceKey);
+      });
+    };
+
     makeApiRequest(requestOptions)
       .then((res) => {
         if (res?.data?.status === "pending") {
@@ -141,23 +161,6 @@ const usePromptRun = () => {
           return;
         }
 
-        // Timeout safety net: clear stale status if socket event never arrives.
-        // Only clears if this is still the latest run for each prompt combo.
-        const clearStaleStatuses = () => {
-          promptIds.forEach((promptId) => {
-            const nonceKey = `${promptId}__${statusKey}`;
-            if (runNonceMap.get(nonceKey) !== nonces[promptId]) return;
-            const current =
-              usePromptRunStatusStore.getState().promptRunStatus;
-            if (
-              current?.[promptId]?.[statusKey] ===
-              PROMPT_RUN_API_STATUSES.RUNNING
-            ) {
-              removePromptStatus(promptId, statusKey);
-            }
-            runNonceMap.delete(nonceKey);
-          });
-        };
         setTimeout(clearStaleStatuses, SOCKET_TIMEOUT_MS);
       })
       .catch((err) => {

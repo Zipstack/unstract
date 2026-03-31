@@ -561,7 +561,9 @@ const CreateApiDeploymentFromPromptStudio = ({
           formData={toolSettings}
           setFormData={handleToolSettingsChange}
           isLoading={false}
-          validateAndSubmit={() => {}}
+          validateAndSubmit={() => {
+            // No-op: validation not required for read-only display
+          }}
           isStateUpdateRequired={true}
         />
       );

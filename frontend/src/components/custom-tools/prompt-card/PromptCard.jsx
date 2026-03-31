@@ -196,17 +196,17 @@ const PromptCard = memo(
 
     const processNestedArray = (nestedValue, flattened) => {
       if (Array.isArray(nestedValue)) {
-        nestedValue.forEach((coords) =>
-          addCoordsToFlattened(coords, flattened),
-        );
+        nestedValue.forEach((coords) => {
+          addCoordsToFlattened(coords, flattened);
+        });
       }
     };
 
     const processObjectValues = (item, flattened) => {
       if (typeof item === "object" && !Array.isArray(item)) {
-        Object.values(item).forEach((value) =>
-          processNestedArray(value, flattened),
-        );
+        Object.values(item).forEach((value) => {
+          processNestedArray(value, flattened);
+        });
       }
     };
 
@@ -226,7 +226,9 @@ const PromptCard = memo(
       const flattened = [];
       Object.values(data).forEach((value) => {
         if (Array.isArray(value)) {
-          value.forEach((item) => processArrayItem(item, flattened));
+          value.forEach((item) => {
+            processArrayItem(item, flattened);
+          });
         }
       });
       return flattened;

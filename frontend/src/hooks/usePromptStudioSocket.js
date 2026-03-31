@@ -28,7 +28,9 @@ const usePromptStudioSocket = () => {
 
   const clearPromptStatuses = useCallback(
     (promptIds, docId, profileId) => {
-      if (!docId || !profileId) return;
+      if (!docId || !profileId) {
+        return;
+      }
       const statusKey = generateApiRunStatusId(docId, profileId);
       (promptIds || []).forEach((promptId) => {
         removePromptStatus(promptId, statusKey);
