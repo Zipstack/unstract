@@ -54,7 +54,7 @@ jobs:
           fi
 
       - name: Render lint report to PR
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
         if: always() && hashFiles('frontend/biome-report.md') != '' && github.event.pull_request.head.repo.fork == false
         with:
           header: frontend-lint-results
