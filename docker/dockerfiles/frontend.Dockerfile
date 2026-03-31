@@ -15,7 +15,7 @@ ARG BUILD_CONTEXT_PATH
 
 # Copy only package files for dependency caching
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/bun.lock ./
-RUN bun install --ignore-scripts
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ /app/
@@ -36,11 +36,12 @@ CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && bun run start"]
 ### FOR PRODUCTION ###
 # Builder stage for production build
 FROM base AS builder
+ARG BUILD_CONTEXT_PATH
 ENV VITE_BACKEND_URL=""
 
 # Copy package files and install dependencies
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/bun.lock ./
-RUN bun install --ignore-scripts
+RUN bun install --frozen-lockfile --ignore-scripts
 
 # Copy the rest of the application files
 COPY ${BUILD_CONTEXT_PATH}/ .
