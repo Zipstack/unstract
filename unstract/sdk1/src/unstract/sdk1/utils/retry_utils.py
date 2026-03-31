@@ -1,11 +1,12 @@
 """Generic retry utilities with custom exponential backoff implementation."""
 
+import asyncio
 import errno
 import logging
 import os
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from functools import wraps
 from typing import Any
 
@@ -51,6 +52,114 @@ def is_retryable_litellm_error(error: Exception) -> bool:
         return True
 
     return False
+
+
+# ── Generic retry wrappers ──────────────────────────────────────────────────
+# Unlike the decorator-based retry_with_exponential_backoff (env-var configured,
+# sync-only), these accept max_retries at call time and support async + generators.
+
+
+def call_with_retry(
+    fn: Callable[[], object],
+    *,
+    max_retries: int,
+    retry_predicate: Callable[[Exception], bool],
+    description: str = "",
+    logger_instance: logging.Logger | None = None,
+) -> object:
+    """Execute fn() with retry on transient errors.
+
+    Args:
+        fn: Zero-arg callable to invoke (use a lambda to bind args).
+        max_retries: Maximum retry attempts (0 = no retry).
+        retry_predicate: Returns True if the exception should trigger a retry.
+        description: Label for log messages (e.g. adapter name).
+        logger_instance: Logger; defaults to module logger.
+    """
+    log = logger_instance or logger
+    for attempt in range(max_retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            if attempt < max_retries and retry_predicate(e):
+                delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
+                log.warning(
+                    "Retry %d/%d for %s: %s (waiting %.1fs)",
+                    attempt + 1,
+                    max_retries,
+                    description,
+                    e,
+                    delay,
+                )
+                time.sleep(delay)
+            else:
+                raise
+
+
+async def acall_with_retry(
+    fn: Callable[[], object],
+    *,
+    max_retries: int,
+    retry_predicate: Callable[[Exception], bool],
+    description: str = "",
+    logger_instance: logging.Logger | None = None,
+) -> object:
+    """Async version of call_with_retry — awaits fn()."""
+    log = logger_instance or logger
+    for attempt in range(max_retries + 1):
+        try:
+            return await fn()
+        except Exception as e:
+            if attempt < max_retries and retry_predicate(e):
+                delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
+                log.warning(
+                    "Retry %d/%d for %s: %s (waiting %.1fs)",
+                    attempt + 1,
+                    max_retries,
+                    description,
+                    e,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            else:
+                raise
+
+
+def iter_with_retry(
+    fn: Callable[[], object],
+    *,
+    max_retries: int,
+    retry_predicate: Callable[[Exception], bool],
+    description: str = "",
+    logger_instance: logging.Logger | None = None,
+) -> Generator:
+    """Yield from fn() with retry. Only retries before the first yield.
+
+    Once items have been yielded to the caller a mid-iteration failure is
+    raised immediately — partial output can't be un-yielded.
+    """
+    log = logger_instance or logger
+    for attempt in range(max_retries + 1):
+        has_yielded = False
+        try:
+            for item in fn():
+                has_yielded = True
+                yield item
+            return
+        except Exception as e:
+            if not has_yielded and attempt < max_retries and retry_predicate(e):
+                delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
+                log.warning(
+                    "Retry %d/%d for %s: %s (waiting %.1fs)",
+                    attempt + 1,
+                    max_retries,
+                    description,
+                    e,
+                    delay,
+                )
+                time.sleep(delay)
+            else:
+                raise
 
 
 def is_retryable_error(error: Exception) -> bool:

@@ -1,8 +1,6 @@
-import asyncio
 import logging
 import os
 import re
-import time
 from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
@@ -26,7 +24,12 @@ from unstract.sdk1.utils.common import (
     TokenCounterCompat,
     capture_metrics,
 )
-from unstract.sdk1.utils.retry_utils import calculate_delay, is_retryable_litellm_error
+from unstract.sdk1.utils.retry_utils import (
+    acall_with_retry,
+    call_with_retry,
+    is_retryable_litellm_error,
+    iter_with_retry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -288,8 +291,12 @@ class LLM:
             # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
             #     completion_kwargs["temperature"] = 1
 
-            response: dict[str, object] = self._completion_with_retry(
-                messages, completion_kwargs
+            max_retries = self._disable_litellm_retry(completion_kwargs)
+            response: dict[str, object] = call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -375,8 +382,19 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
+            max_retries = self._disable_litellm_retry(completion_kwargs)
             has_yielded_content = False
-            for chunk in self._stream_completion_with_retry(messages, completion_kwargs):
+            for chunk in iter_with_retry(
+                lambda: litellm.completion(
+                    messages=messages,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **completion_kwargs,
+                ),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            ):
                 if chunk.get("usage"):
                     self._record_usage(
                         self._cost_model or self.kwargs["model"],
@@ -432,7 +450,13 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
-            response = await self._acompletion_with_retry(messages, completion_kwargs)
+            max_retries = self._disable_litellm_retry(completion_kwargs)
+            response = await acall_with_retry(
+                lambda: litellm.acompletion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
 
@@ -536,108 +560,6 @@ class LLM:
         # Prevent litellm wrapper retry (completion_with_retries)
         kwargs["num_retries"] = 0
         return max_retries
-
-    def _completion_with_retry(
-        self,
-        messages: list[dict[str, str]],
-        completion_kwargs: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Call litellm.completion with retry on transient errors.
-
-        litellm's wrapper retry (completion_with_retries) only activates via
-        num_retries and only works for SDK-based providers. This method
-        provides uniform retry across all providers by managing retries
-        ourselves and disabling litellm's own retry entirely.
-        """
-        max_retries = self._disable_litellm_retry(completion_kwargs)
-
-        for attempt in range(max_retries + 1):
-            try:
-                return litellm.completion(messages=messages, **completion_kwargs)
-            except Exception as e:
-                if attempt < max_retries and is_retryable_litellm_error(e):
-                    delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
-                    logger.warning(
-                        "LLM retry %d/%d for %s: %s (waiting %.1fs)",
-                        attempt + 1,
-                        max_retries,
-                        self._get_adapter_info(),
-                        e,
-                        delay,
-                    )
-                    time.sleep(delay)
-                else:
-                    raise
-
-    def _stream_completion_with_retry(
-        self,
-        messages: list[dict[str, str]],
-        completion_kwargs: dict[str, Any],
-    ) -> Generator[dict[str, Any], None, None]:
-        """Yield raw chunks from litellm.completion(stream=True) with retry.
-
-        Only retries if the error occurs before any chunks have been yielded.
-        Once content has been yielded to the caller, a mid-stream failure
-        is raised immediately (partial data can't be un-yielded).
-        """
-        max_retries = self._disable_litellm_retry(completion_kwargs)
-
-        for attempt in range(max_retries + 1):
-            has_yielded = False
-            try:
-                for chunk in litellm.completion(
-                    messages=messages,
-                    stream=True,
-                    stream_options={"include_usage": True},
-                    **completion_kwargs,
-                ):
-                    has_yielded = True
-                    yield chunk
-                return
-            except Exception as e:
-                if (
-                    not has_yielded
-                    and attempt < max_retries
-                    and is_retryable_litellm_error(e)
-                ):
-                    delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
-                    logger.warning(
-                        "LLM stream retry %d/%d for %s: %s (waiting %.1fs)",
-                        attempt + 1,
-                        max_retries,
-                        self._get_adapter_info(),
-                        e,
-                        delay,
-                    )
-                    time.sleep(delay)
-                else:
-                    raise
-
-    async def _acompletion_with_retry(
-        self,
-        messages: list[dict[str, str]],
-        completion_kwargs: dict[str, Any],
-    ) -> dict[str, Any]:
-        """Async version of _completion_with_retry."""
-        max_retries = self._disable_litellm_retry(completion_kwargs)
-
-        for attempt in range(max_retries + 1):
-            try:
-                return await litellm.acompletion(messages=messages, **completion_kwargs)
-            except Exception as e:
-                if attempt < max_retries and is_retryable_litellm_error(e):
-                    delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
-                    logger.warning(
-                        "LLM async retry %d/%d for %s: %s (waiting %.1fs)",
-                        attempt + 1,
-                        max_retries,
-                        self._get_adapter_info(),
-                        e,
-                        delay,
-                    )
-                    await asyncio.sleep(delay)
-                else:
-                    raise
 
     def _record_usage(
         self,
