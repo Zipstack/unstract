@@ -559,7 +559,7 @@ def _run_aggregation() -> dict[str, Any]:
 
             stats["orgs_processed"] += 1
 
-        except Exception as e:
+        except Exception:
             logger.exception("Error processing org %s", org_id)
             stats["errors"] += 1
 
