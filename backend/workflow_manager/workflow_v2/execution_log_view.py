@@ -2,10 +2,9 @@ import logging
 
 from django.db.models import Q
 from django.db.models.query import QuerySet
-from django_filters.rest_framework import DjangoFilterBackend
 from permissions.permission import IsOwner
 from rest_framework import viewsets
-from rest_framework.filters import OrderingFilter
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.versioning import URLPathVersioning
 from utils.pagination import CustomPagination
 
@@ -18,21 +17,18 @@ logger = logging.getLogger(__name__)
 
 class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
-    permission_classes = [IsOwner]
+    permission_classes = [IsAuthenticated, IsOwner]
     serializer_class = WorkflowExecutionLogSerializer
     pagination_class = CustomPagination
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
     ordering_fields = ["event_time"]
     ordering = ["event_time"]
     filterset_class = ExecutionLogFilter
 
     def get_queryset(self) -> QuerySet:
-        # Get the execution_id:pk from the URL path
         execution_id = self.kwargs.get("pk")
 
-        # Query by execution_id for backward compatiblity
+        # Query by execution_id for backward compatibility
         # Remove filter after execution_id is removed
-        queryset = ExecutionLog.objects.filter(
+        return ExecutionLog.objects.filter(
             Q(wf_execution_id=execution_id) | Q(execution_id=execution_id)
         )
-        return queryset
