@@ -282,7 +282,7 @@ class TestIdeIndexError:
         mock_async_result = MagicMock()
         mock_async_result.result = ValueError("Index OOM")
 
-        with patch(_PATCH_ASYNC_RESULT, return_value=mock_async_result) as mock_ar_cls:
+        with patch(_PATCH_ASYNC_RESULT, return_value=mock_async_result):
             self._call("failed-task-id-1", base_index_kwargs)
 
         mock_api.remove_document_indexing.assert_called_once_with(

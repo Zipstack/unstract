@@ -4,6 +4,11 @@ These endpoints are called by the ide_callback worker (via InternalAPIClient)
 to perform Django ORM operations that were previously done directly in the
 backend callback tasks. Moving these behind HTTP keeps the worker image
 free of Django dependencies.
+
+Security note: @csrf_exempt is safe here because these endpoints are
+internal-only (called by backend workers via service-to-service HTTP,
+not by browsers). They are bound to the internal URL namespace and are
+not exposed to end users.
 """
 
 import json
@@ -15,6 +20,19 @@ from django.views.decorators.http import require_http_methods
 from rest_framework import status
 
 logger = logging.getLogger(__name__)
+
+_ERR_INVALID_JSON = "Invalid JSON"
+
+
+def _parse_json_body(request):
+    """Parse JSON from request body, returning (data, None) or (None, JsonResponse)."""
+    try:
+        return json.loads(request.body), None
+    except json.JSONDecodeError:
+        return None, JsonResponse(
+            {"success": False, "error": _ERR_INVALID_JSON},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 @csrf_exempt
@@ -33,13 +51,9 @@ def prompt_output(request):
         "metadata": dict
     }
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "error": "Invalid JSON"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    data, err = _parse_json_body(request)
+    if err:
+        return err
 
     run_id = data.get("run_id", "")
     prompt_ids = data.get("prompt_ids", [])
@@ -99,13 +113,9 @@ def index_update(request):
         "is_summary": bool (optional, default false)
     }
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "error": "Invalid JSON"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    data, err = _parse_json_body(request)
+    if err:
+        return err
 
     document_id = data.get("document_id", "")
     profile_manager_id = data.get("profile_manager_id", "")
@@ -158,13 +168,9 @@ def indexing_status(request):
         "doc_id": str (required when action == "mark_indexed")
     }
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "error": "Invalid JSON"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    data, err = _parse_json_body(request)
+    if err:
+        return err
 
     action = data.get("action", "")
     org_id = data.get("org_id", "")
@@ -260,13 +266,9 @@ def hubspot_notify(request):
         "action_label": str
     }
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "error": "Invalid JSON"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    data, err = _parse_json_body(request)
+    if err:
+        return err
 
     user_id = data.get("user_id", "")
     event_name = data.get("event_name", "")
@@ -283,8 +285,8 @@ def hubspot_notify(request):
         from django.contrib.auth import get_user_model
         from utils.hubspot_notify import notify_hubspot_event
 
-        User = get_user_model()
-        user = User.objects.get(pk=user_id)
+        user_model = get_user_model()
+        user = user_model.objects.get(pk=user_id)
         notify_hubspot_event(
             user=user,
             event_name=event_name,
@@ -316,13 +318,9 @@ def summary_index_key(request):
         "org_id": str
     }
     """
-    try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return JsonResponse(
-            {"success": False, "error": "Invalid JSON"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    data, err = _parse_json_body(request)
+    if err:
+        return err
 
     summary_profile_id = data.get("summary_profile_id", "")
     summarize_file_path = data.get("summarize_file_path", "")

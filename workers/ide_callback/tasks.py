@@ -60,22 +60,26 @@ def _emit_websocket(
         logger.error("Failed to emit WebSocket event: %s", e)
 
 
-def _emit_result(
+def _emit_event(
     api_client: PromptStudioAPIClient,
     log_events_id: str,
     task_id: str,
     operation: str,
-    result: dict[str, Any],
     tool_id: str = "",
     extra: dict[str, Any] | None = None,
+    **event_fields: Any,
 ) -> None:
-    """Push a success event to the frontend via Socket.IO."""
+    """Push a Socket.IO event (success or failure) to the frontend.
+
+    Common fields (task_id, operation, tool_id) are always included.
+    Pass ``status="completed", result=...`` for success events, or
+    ``status="failed", error=...`` for failure events via *event_fields*.
+    """
     payload: dict[str, Any] = {
         "task_id": task_id,
-        "status": "completed",
         "operation": operation,
-        "result": result,
         "tool_id": tool_id,
+        **event_fields,
     }
     if extra:
         payload.update(extra)
@@ -87,31 +91,17 @@ def _emit_result(
     )
 
 
-def _emit_error(
-    api_client: PromptStudioAPIClient,
-    log_events_id: str,
-    task_id: str,
-    operation: str,
-    error: str,
-    extra: dict[str, Any] | None = None,
-    tool_id: str = "",
-) -> None:
-    """Push a failure event to the frontend via Socket.IO."""
-    data: dict[str, Any] = {
-        "task_id": task_id,
-        "status": "failed",
-        "operation": operation,
-        "error": error,
-        "tool_id": tool_id,
-    }
-    if extra:
-        data.update(extra)
-    _emit_websocket(
-        api_client,
-        room=log_events_id,
-        event=PROMPT_STUDIO_RESULT_EVENT,
-        data=data,
-    )
+def _get_task_error(failed_task_id: str, default: str) -> str:
+    """Retrieve the error message from a failed Celery task's result backend."""
+    try:
+        from celery.result import AsyncResult
+
+        res = AsyncResult(failed_task_id, app=app)
+        if res.result:
+            return str(res.result)
+    except Exception:
+        pass
+    return default
 
 
 # ------------------------------------------------------------------
@@ -156,14 +146,15 @@ def ide_index_complete(
                 doc_id_key=doc_id_key,
                 organization_id=org_id,
             )
-            _emit_error(
+            _emit_event(
                 api,
                 log_events_id,
                 executor_task_id,
                 "index_document",
-                error_msg,
-                extra={"document_id": document_id},
                 tool_id=tool_id,
+                extra={"document_id": document_id},
+                status="failed",
+                error=error_msg,
             )
             return {"status": "failed", "error": error_msg}
 
@@ -227,26 +218,28 @@ def ide_index_complete(
             "message": "Document indexed successfully.",
             "document_id": document_id,
         }
-        _emit_result(
+        _emit_event(
             api,
             log_events_id,
             executor_task_id,
             "index_document",
-            result,
             tool_id=tool_id,
+            status="completed",
+            result=result,
         )
         return result
 
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
-        _emit_error(
+        _emit_event(
             api,
             log_events_id,
             executor_task_id,
             "index_document",
-            str(e),
-            extra={"document_id": document_id},
             tool_id=tool_id,
+            extra={"document_id": document_id},
+            status="failed",
+            error=str(e),
         )
         raise
 
@@ -272,16 +265,7 @@ def ide_index_error(
     api = _get_api_client()
 
     try:
-        # Attempt to retrieve the actual exception from the result backend
-        error_msg = "Indexing failed"
-        try:
-            from celery.result import AsyncResult
-
-            res = AsyncResult(failed_task_id, app=app)
-            if res.result:
-                error_msg = str(res.result)
-        except Exception:
-            pass
+        error_msg = _get_task_error(failed_task_id, default="Indexing failed")
 
         # Clean up the indexing-in-progress flag
         if doc_id_key:
@@ -292,14 +276,15 @@ def ide_index_error(
                 organization_id=org_id,
             )
 
-        _emit_error(
+        _emit_event(
             api,
             log_events_id,
             executor_task_id,
             "index_document",
-            error_msg,
-            extra={"document_id": document_id},
             tool_id=tool_id,
+            extra={"document_id": document_id},
+            status="failed",
+            error=error_msg,
         )
     except Exception:
         logger.exception("ide_index_error callback failed")
@@ -334,18 +319,19 @@ def ide_prompt_complete(
         if not result_dict.get("success", False):
             error_msg = result_dict.get("error", "Unknown executor error")
             logger.error("ide_prompt executor reported failure: %s", error_msg)
-            _emit_error(
+            _emit_event(
                 api,
                 log_events_id,
                 executor_task_id,
                 operation,
-                error_msg,
+                tool_id=tool_id,
                 extra={
                     "prompt_ids": prompt_ids,
                     "document_id": document_id,
                     "profile_manager_id": profile_manager_id,
                 },
-                tool_id=tool_id,
+                status="failed",
+                error=error_msg,
             )
             return {"status": "failed", "error": error_msg}
 
@@ -390,12 +376,11 @@ def ide_prompt_complete(
             except Exception:
                 logger.warning("Failed to send HubSpot PROMPT_RUN event", exc_info=True)
 
-        _emit_result(
+        _emit_event(
             api,
             log_events_id,
             executor_task_id,
             operation,
-            response,
             tool_id=tool_id,
             extra={
                 "prompt_ids": prompt_ids,
@@ -403,24 +388,27 @@ def ide_prompt_complete(
                 "profile_manager_id": profile_manager_id,
                 "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
             },
+            status="completed",
+            result=response,
         )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": operation}
 
     except Exception as e:
         logger.exception("ide_prompt_complete callback failed")
-        _emit_error(
+        _emit_event(
             api,
             log_events_id,
             executor_task_id,
             operation,
-            str(e),
+            tool_id=tool_id,
             extra={
                 "prompt_ids": prompt_ids,
                 "document_id": document_id,
                 "profile_manager_id": profile_manager_id,
             },
-            tool_id=tool_id,
+            status="failed",
+            error=str(e),
         )
         raise
 
@@ -443,28 +431,21 @@ def ide_prompt_error(
     api = _get_api_client()
 
     try:
-        error_msg = "Prompt execution failed"
-        try:
-            from celery.result import AsyncResult
+        error_msg = _get_task_error(failed_task_id, default="Prompt execution failed")
 
-            res = AsyncResult(failed_task_id, app=app)
-            if res.result:
-                error_msg = str(res.result)
-        except Exception:
-            pass
-
-        _emit_error(
+        _emit_event(
             api,
             log_events_id,
             executor_task_id,
             operation,
-            error_msg,
+            tool_id=tool_id,
             extra={
                 "prompt_ids": cb.get("prompt_ids", []),
                 "document_id": cb.get("document_id", ""),
                 "profile_manager_id": cb.get("profile_manager_id"),
             },
-            tool_id=tool_id,
+            status="failed",
+            error=error_msg,
         )
     except Exception:
         logger.exception("ide_prompt_error callback failed")
