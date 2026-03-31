@@ -15,9 +15,7 @@ from datetime import date, datetime
 from typing import Any
 
 from celery import current_app as app
-
 from shared.clients.prompt_studio_client import PromptStudioAPIClient
-from shared.infrastructure.config import WorkerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -153,12 +151,19 @@ def ide_index_complete(
             error_msg = result_dict.get("error", "Unknown executor error")
             logger.error("ide_index executor reported failure: %s", error_msg)
             api.remove_document_indexing(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key,
+                org_id=org_id,
+                user_id=user_id,
+                doc_id_key=doc_id_key,
                 organization_id=org_id,
             )
             _emit_error(
-                api, log_events_id, executor_task_id, "index_document",
-                error_msg, extra={"document_id": document_id}, tool_id=tool_id,
+                api,
+                log_events_id,
+                executor_task_id,
+                "index_document",
+                error_msg,
+                extra={"document_id": document_id},
+                tool_id=tool_id,
             )
             return {"status": "failed", "error": error_msg}
 
@@ -166,8 +171,11 @@ def ide_index_complete(
 
         # Mark document as indexed in cache
         api.mark_document_indexed(
-            org_id=org_id, user_id=user_id, doc_id_key=doc_id_key,
-            doc_id=doc_id, organization_id=org_id,
+            org_id=org_id,
+            user_id=user_id,
+            doc_id_key=doc_id_key,
+            doc_id=doc_id,
+            organization_id=org_id,
         )
 
         # Update index manager ORM record
@@ -220,16 +228,25 @@ def ide_index_complete(
             "document_id": document_id,
         }
         _emit_result(
-            api, log_events_id, executor_task_id, "index_document",
-            result, tool_id=tool_id,
+            api,
+            log_events_id,
+            executor_task_id,
+            "index_document",
+            result,
+            tool_id=tool_id,
         )
         return result
 
     except Exception as e:
         logger.exception("ide_index_complete callback failed")
         _emit_error(
-            api, log_events_id, executor_task_id, "index_document",
-            str(e), extra={"document_id": document_id}, tool_id=tool_id,
+            api,
+            log_events_id,
+            executor_task_id,
+            "index_document",
+            str(e),
+            extra={"document_id": document_id},
+            tool_id=tool_id,
         )
         raise
 
@@ -269,13 +286,20 @@ def ide_index_error(
         # Clean up the indexing-in-progress flag
         if doc_id_key:
             api.remove_document_indexing(
-                org_id=org_id, user_id=user_id, doc_id_key=doc_id_key,
+                org_id=org_id,
+                user_id=user_id,
+                doc_id_key=doc_id_key,
                 organization_id=org_id,
             )
 
         _emit_error(
-            api, log_events_id, executor_task_id, "index_document",
-            error_msg, extra={"document_id": document_id}, tool_id=tool_id,
+            api,
+            log_events_id,
+            executor_task_id,
+            "index_document",
+            error_msg,
+            extra={"document_id": document_id},
+            tool_id=tool_id,
         )
     except Exception:
         logger.exception("ide_index_error callback failed")
@@ -311,7 +335,10 @@ def ide_prompt_complete(
             error_msg = result_dict.get("error", "Unknown executor error")
             logger.error("ide_prompt executor reported failure: %s", error_msg)
             _emit_error(
-                api, log_events_id, executor_task_id, operation,
+                api,
+                log_events_id,
+                executor_task_id,
+                operation,
                 error_msg,
                 extra={
                     "prompt_ids": prompt_ids,
@@ -364,8 +391,12 @@ def ide_prompt_complete(
                 logger.warning("Failed to send HubSpot PROMPT_RUN event", exc_info=True)
 
         _emit_result(
-            api, log_events_id, executor_task_id, operation,
-            response, tool_id=tool_id,
+            api,
+            log_events_id,
+            executor_task_id,
+            operation,
+            response,
+            tool_id=tool_id,
             extra={
                 "prompt_ids": prompt_ids,
                 "document_id": document_id,
@@ -379,7 +410,10 @@ def ide_prompt_complete(
     except Exception as e:
         logger.exception("ide_prompt_complete callback failed")
         _emit_error(
-            api, log_events_id, executor_task_id, operation,
+            api,
+            log_events_id,
+            executor_task_id,
+            operation,
             str(e),
             extra={
                 "prompt_ids": prompt_ids,
@@ -420,7 +454,10 @@ def ide_prompt_error(
             pass
 
         _emit_error(
-            api, log_events_id, executor_task_id, operation,
+            api,
+            log_events_id,
+            executor_task_id,
+            operation,
             error_msg,
             extra={
                 "prompt_ids": cb.get("prompt_ids", []),

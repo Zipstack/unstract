@@ -58,7 +58,9 @@ def _emit_result(
     extra: dict[str, Any] | None = None,
 ) -> None:
     """Push a success event to the frontend via Socket.IO."""
-    from utils.log_events import _emit_websocket_event  # Lazy import: task module loaded before Django apps ready
+    from utils.log_events import (
+        _emit_websocket_event,  # Lazy import: task module loaded before Django apps ready
+    )
 
     payload: dict[str, Any] = {
         "task_id": task_id,
@@ -85,7 +87,9 @@ def _emit_error(
     tool_id: str = "",
 ) -> None:
     """Push a failure event to the frontend via Socket.IO."""
-    from utils.log_events import _emit_websocket_event  # Lazy import: task module loaded before Django apps ready
+    from utils.log_events import (
+        _emit_websocket_event,  # Lazy import: task module loaded before Django apps ready
+    )
 
     data: dict[str, Any] = {
         "task_id": task_id,

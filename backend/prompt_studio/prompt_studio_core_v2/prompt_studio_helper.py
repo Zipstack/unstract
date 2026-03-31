@@ -278,7 +278,9 @@ class PromptStudioHelper:
         Uses the RabbitMQ-backed Celery app (not the Django Redis one)
         so tasks reach the worker-v2 executor worker.
         """
-        from backend.worker_celery import get_worker_celery_app  # Lazy import: avoids Django/Celery circular init
+        from backend.worker_celery import (
+            get_worker_celery_app,  # Lazy import: avoids Django/Celery circular init
+        )
 
         return ExecutionDispatcher(celery_app=get_worker_celery_app())
 
@@ -394,12 +396,8 @@ class PromptStudioHelper:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
         output[TSPKeys.EVAL_SETTINGS] = {}
-        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = (
-            prompt.evaluate
-        )
-        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [
-            monitor_llm
-        ]
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
+        output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [monitor_llm]
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EXCLUDE_FAILED] = (
             tool.exclude_failed
         )
@@ -505,8 +503,12 @@ class PromptStudioHelper:
         # Build summarize_params for executor (summarization runs in worker)
         summarize_params, summarize_file_path = (
             PromptStudioHelper._build_summarize_params(
-                tool, default_profile, directory, stem,
-                extract_file_path, platform_api_key,
+                tool,
+                default_profile,
+                directory,
+                stem,
+                extract_file_path,
+                platform_api_key,
             )
         )
 

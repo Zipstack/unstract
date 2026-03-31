@@ -758,9 +758,13 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response with {task_id, status} and optionally result or error
         """
-        from celery.result import AsyncResult  # Lazy import: Celery not needed for non-async views
+        from celery.result import (
+            AsyncResult,  # Lazy import: Celery not needed for non-async views
+        )
 
-        from backend.worker_celery import get_worker_celery_app  # Lazy import: avoids Celery init on module load
+        from backend.worker_celery import (
+            get_worker_celery_app,  # Lazy import: avoids Celery init on module load
+        )
 
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()

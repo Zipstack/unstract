@@ -37,7 +37,8 @@ def prompt_output(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse(
-            {"success": False, "error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST
+            {"success": False, "error": "Invalid JSON"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     run_id = data.get("run_id", "")
@@ -102,7 +103,8 @@ def index_update(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse(
-            {"success": False, "error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST
+            {"success": False, "error": "Invalid JSON"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     document_id = data.get("document_id", "")
@@ -160,7 +162,8 @@ def indexing_status(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse(
-            {"success": False, "error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST
+            {"success": False, "error": "Invalid JSON"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     action = data.get("action", "")
@@ -170,7 +173,10 @@ def indexing_status(request):
 
     if not action or not org_id or not user_id or not doc_id_key:
         return JsonResponse(
-            {"success": False, "error": "action, org_id, user_id, doc_id_key are required"},
+            {
+                "success": False,
+                "error": "action, org_id, user_id, doc_id_key are required",
+            },
             status=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -258,7 +264,8 @@ def hubspot_notify(request):
         data = json.loads(request.body)
     except json.JSONDecodeError:
         return JsonResponse(
-            {"success": False, "error": "Invalid JSON"}, status=status.HTTP_400_BAD_REQUEST
+            {"success": False, "error": "Invalid JSON"},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     user_id = data.get("user_id", "")
@@ -274,7 +281,6 @@ def hubspot_notify(request):
 
     try:
         from django.contrib.auth import get_user_model
-
         from utils.hubspot_notify import notify_hubspot_event
 
         User = get_user_model()
@@ -332,6 +338,8 @@ def summary_index_key(request):
         )
 
     try:
+        from utils.file_storage.constants import FileStorageKeys
+
         from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
         from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
             PromptIdeBaseTool,
@@ -340,7 +348,6 @@ def summary_index_key(request):
         from unstract.sdk1.file_storage.constants import StorageType
         from unstract.sdk1.file_storage.env_helper import EnvHelper
         from unstract.sdk1.utils.indexing import IndexingUtils
-        from utils.file_storage.constants import FileStorageKeys
 
         profile = ProfileManager.objects.get(pk=summary_profile_id)
         fs_instance = EnvHelper.get_storage(
