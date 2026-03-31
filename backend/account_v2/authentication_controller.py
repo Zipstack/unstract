@@ -219,7 +219,7 @@ class AuthenticationController:
                         organization=organization, user=user
                     )
                 except MethodNotImplemented:
-                    pass
+                    logger.info("setup_default_adapters_for_user not implemented")
 
             user_info: UserInfo | None = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
