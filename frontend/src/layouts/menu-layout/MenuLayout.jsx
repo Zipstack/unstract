@@ -1,7 +1,7 @@
 import { QuestionCircleOutlined } from "@ant-design/icons";
 import { Button, Form, Input, Modal, Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { ToolNavBar } from "../../components/navigations/tool-nav-bar/ToolNavBar";
@@ -57,7 +57,7 @@ function MenuLayout({ children }) {
       } else {
         navigate(from, { state: nextState });
       }
-    } else {
+    } else if (sessionDetails?.orgName) {
       navigate(`/${sessionDetails.orgName}/workflows`);
     }
   }, [location.state, sessionDetails.orgName, navigate]);
@@ -93,7 +93,7 @@ function MenuLayout({ children }) {
     }
   }, [editForm, projectId, details, setAlertDetails, handleException]);
 
-  const RightButtons = useCallback(
+  const rightButtons = useMemo(
     () => (
       <Space>
         <Button
@@ -116,7 +116,7 @@ function MenuLayout({ children }) {
         subtitle={details?.description}
         onNavigateBack={handleNavigateBack}
         onEditTitle={projectId ? handleOpenEditModal : undefined}
-        CustomButtons={RightButtons}
+        customButtons={rightButtons}
       />
       <Modal
         title="Edit Workflow"

@@ -12,7 +12,7 @@ function ToolNavBar({
   subtitle,
   onEditTitle,
   enableSearch,
-  CustomButtons,
+  customButtons,
   setSearchList,
   previousRoute,
   previousRouteState,
@@ -94,7 +94,7 @@ function ToolNavBar({
             allowClear
           />
         )}
-        {CustomButtons && <CustomButtons />}
+        {customButtons}
       </div>
     </div>
   );
@@ -105,7 +105,7 @@ ToolNavBar.propTypes = {
   subtitle: PropTypes.string,
   onEditTitle: PropTypes.func,
   enableSearch: PropTypes.bool,
-  CustomButtons: PropTypes.func,
+  customButtons: PropTypes.node,
   setSearchList: PropTypes.func,
   previousRoute: PropTypes.string,
   previousRouteState: PropTypes.object,

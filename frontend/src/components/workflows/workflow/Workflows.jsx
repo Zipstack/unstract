@@ -289,17 +289,15 @@ function Workflows() {
     }
   };
 
-  const CustomButtons = () => {
-    return (
-      <CustomButton
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleNewWorkflowBtnClick}
-      >
-        New Workflow
-      </CustomButton>
-    );
-  };
+  const newWorkflowButton = (
+    <CustomButton
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={handleNewWorkflowBtnClick}
+    >
+      New Workflow
+    </CustomButton>
+  );
 
   // Using the custom hook to manage modal state
   const { showModal, handleModalClose } = usePromptStudioModal(
@@ -318,7 +316,7 @@ function Workflows() {
         enableSearch
         searchList={projectList}
         setSearchList={setProjectList}
-        CustomButtons={CustomButtons}
+        customButtons={newWorkflowButton}
         onSearch={onSearch}
       />
       <div className="workflows-pg-layout">

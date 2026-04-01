@@ -1,7 +1,7 @@
 import { SettingOutlined } from "@ant-design/icons";
 import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -310,9 +310,7 @@ function Header({
       const res = await handleUpdateTool(values);
       const updatedData = res?.data;
       if (updatedData) {
-        useCustomToolStore
-          .getState()
-          .updateCustomTool({ details: updatedData });
+        useCustomToolStore.setState({ details: updatedData });
       }
       setEditModalOpen(false);
       setAlertDetails({ type: "success", content: "Updated successfully" });
@@ -322,7 +320,7 @@ function Header({
     }
   }, [editForm, handleUpdateTool, setAlertDetails, handleException]);
 
-  const ActionButtons = useCallback(
+  const actionButtons = useMemo(
     () => (
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
@@ -424,7 +422,7 @@ function Header({
     <>
       <ToolNavBar
         title={details?.tool_name || ""}
-        subtitle={isPublicSource ? undefined : details?.description || ""}
+        subtitle={isPublicSource ? undefined : details?.description}
         previousRoute={
           isPublicSource || !sessionDetails?.orgName
             ? undefined
@@ -433,7 +431,7 @@ function Header({
         onEditTitle={
           isPublicSource || !details?.tool_id ? undefined : handleOpenEditModal
         }
-        CustomButtons={ActionButtons}
+        customButtons={actionButtons}
       />
       <Modal
         title="Edit Project"
