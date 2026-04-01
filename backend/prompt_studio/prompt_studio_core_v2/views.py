@@ -8,7 +8,7 @@ import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
@@ -74,6 +74,7 @@ from unstract.sdk1.utils.common import Utils as CommonUtils
 
 from .models import CustomTool
 from .serializers import (
+    CustomToolListSerializer,
     CustomToolSerializer,
     FileInfoIdeSerializer,
     FileUploadIdeSerializer,
@@ -92,6 +93,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
     serializer_class = CustomToolSerializer
 
+    def get_serializer_class(self):
+        if self.action == "list":
+            return CustomToolListSerializer
+        return CustomToolSerializer
+
     def get_permissions(self) -> list[Any]:
         if self.action == "destroy":
             return [IsOwner()]
@@ -99,7 +105,20 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        return CustomTool.objects.for_user(self.request.user)
+        qs = CustomTool.objects.for_user(self.request.user)
+        if self.action == "list":
+            # Subquery avoids conflict with distinct("tool_id") from for_user()
+            prompt_count_sq = (
+                ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
+                .order_by()
+                .values("tool_id")
+                .annotate(cnt=Count("*"))
+                .values("cnt")
+            )
+            qs = qs.select_related("created_by").annotate(
+                _prompt_count=Subquery(prompt_count_sq)
+            )
+        return qs
 
     def get_object(self):
         """Override get_object to trigger lazy migration when accessing tools."""
