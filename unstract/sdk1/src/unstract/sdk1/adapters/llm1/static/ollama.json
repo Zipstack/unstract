@@ -53,7 +53,7 @@
       "minimum": 0,
       "multipleOf": 1,
       "title": "Max Retries",
-      "default": 5,
+      "default": 3,
       "description": "The maximum number of times to retry a request if it fails."
     },
     "request_timeout": {
