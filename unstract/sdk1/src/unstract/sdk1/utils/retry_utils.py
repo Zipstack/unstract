@@ -1,6 +1,7 @@
 """Generic retry utilities with custom exponential backoff implementation."""
 
 import asyncio
+import builtins
 import errno
 import logging
 import os
@@ -10,7 +11,8 @@ from collections.abc import Callable, Generator
 from functools import wraps
 from typing import Any
 
-from requests.exceptions import ConnectionError, HTTPError, Timeout
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import HTTPError, Timeout
 
 logger = logging.getLogger(__name__)
 
@@ -39,13 +41,14 @@ def is_retryable_litellm_error(error: Exception) -> bool:
     on the exception itself, and class names like APIConnectionError don't inherit
     from the requests types. Uses duck-typing to avoid importing litellm directly.
     """
-    # Python built-in connection / timeout base classes
-    if isinstance(error, ConnectionError | TimeoutError):
+    # Python built-in connection / timeout base classes (not requests.ConnectionError)
+    if isinstance(error, builtins.ConnectionError | builtins.TimeoutError):
         return True
 
     # litellm/openai/httpx exception types that don't inherit from the
     # built-ins above but still represent transient network failures.
-    if type(error).__name__ in _RETRYABLE_ERROR_NAMES:
+    # Check MRO to also catch subclasses of these error types.
+    if any(cls.__name__ in _RETRYABLE_ERROR_NAMES for cls in type(error).__mro__):
         return True
 
     # Status-code check covers litellm.RateLimitError (429),
@@ -195,7 +198,7 @@ def is_retryable_error(error: Exception) -> bool:
     (e.g. error.status_code vs error.response.status_code).
     """
     # Requests connection and timeout errors
-    if isinstance(error, ConnectionError | Timeout):
+    if isinstance(error, RequestsConnectionError | Timeout):
         return True
 
     # HTTP errors with specific status codes
@@ -332,7 +335,7 @@ def create_retry_decorator(
     Args:
         prefix: Environment variable prefix for configuration
         exceptions: Tuple of exception types to retry on.
-                   Defaults to (ConnectionError, HTTPError, Timeout, OSError)
+                   Defaults to (RequestsConnectionError, HTTPError, Timeout, OSError)
         retry_predicate: Optional callable to determine if exception should trigger retry.
                         If only exceptions list provided, retry on those exceptions.
                         If only predicate provided, use predicate (catch all exceptions).
@@ -351,7 +354,7 @@ def create_retry_decorator(
     # Handle different combinations of exceptions and predicate
     if exceptions is None and retry_predicate is None:
         # Default case: use specific exceptions with is_retryable_error predicate
-        exceptions = (ConnectionError, HTTPError, Timeout, OSError)
+        exceptions = (RequestsConnectionError, HTTPError, Timeout, OSError)
         retry_predicate = is_retryable_error
     elif exceptions is None and retry_predicate is not None:
         # Only predicate provided: catch all exceptions and use predicate
