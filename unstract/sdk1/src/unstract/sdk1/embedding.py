@@ -122,6 +122,13 @@ class Embedding:
         """Extract max_retries and disable litellm's SDK-level retry."""
         max_retries = kwargs.pop("max_retries", None) or 0
         kwargs["max_retries"] = 0
+        kwargs["num_retries"] = 0
+        logger.debug(
+            "Embedding: extracted max_retries=%d, "
+            "disabled litellm retry (max_retries=0, num_retries=0) for %s",
+            max_retries,
+            self._get_adapter_info(),
+        )
         return max_retries
 
     def get_embedding(self, text: str) -> list[float]:

@@ -559,6 +559,11 @@ class LLM:
         kwargs["max_retries"] = 0
         # Prevent litellm wrapper retry (completion_with_retries)
         kwargs["num_retries"] = 0
+        logger.debug(
+            "LLM: extracted max_retries=%d, "
+            "disabled litellm retry (max_retries=0, num_retries=0)",
+            max_retries,
+        )
         return max_retries
 
     def _record_usage(

@@ -33,8 +33,11 @@ _RETRYABLE_ERROR_NAMES = frozenset(
 def is_retryable_litellm_error(error: Exception) -> bool:
     """Check if a litellm/provider API error should trigger a retry.
 
-    Uses duck-typing (status_code attribute, class name) so this module
-    doesn't need to import litellm or openai directly.
+    Distinct from is_retryable_error() which handles requests-library exceptions
+    (requests.ConnectionError, requests.HTTPError.response.status_code, OSError).
+    litellm/openai/httpx have a separate exception hierarchy: status_code lives
+    on the exception itself, and class names like APIConnectionError don't inherit
+    from the requests types. Uses duck-typing to avoid importing litellm directly.
     """
     # Python built-in connection / timeout base classes
     if isinstance(error, ConnectionError | TimeoutError):
@@ -54,9 +57,57 @@ def is_retryable_litellm_error(error: Exception) -> bool:
     return False
 
 
+# ── Shared retry decision ───────────────────────────────────────────────────
+
+
+def _get_retry_delay(
+    error: Exception,
+    attempt: int,
+    max_retries: int,
+    retry_predicate: Callable[[Exception], bool] | None,
+    description: str,
+    logger_instance: logging.Logger,
+    base_delay: float = 1.0,
+    multiplier: float = 2.0,
+    max_delay: float = 60.0,
+    jitter: bool = True,
+) -> float | None:
+    """Decide whether to retry and compute the backoff delay.
+
+    Returns delay in seconds if the error is retryable, None otherwise.
+    The caller is responsible for sleeping (sync or async) and re-raising
+    when None is returned.
+    """
+    should_retry = retry_predicate(error) if retry_predicate is not None else True
+
+    logger_instance.debug(
+        "Retry decision: attempt=%d/%d error=%s retryable=%s description=%s",
+        attempt + 1,
+        max_retries + 1,
+        type(error).__name__,
+        should_retry,
+        description,
+    )
+
+    if not should_retry or attempt >= max_retries:
+        return None
+
+    delay = calculate_delay(attempt, base_delay, multiplier, max_delay, jitter)
+    logger_instance.warning(
+        "Retry %d/%d for %s: %s (waiting %.1fs)",
+        attempt + 1,
+        max_retries,
+        description,
+        error,
+        delay,
+    )
+    return delay
+
+
 # ── Generic retry wrappers ──────────────────────────────────────────────────
 # Unlike the decorator-based retry_with_exponential_backoff (env-var configured,
 # sync-only), these accept max_retries at call time and support async + generators.
+# All delegate retry decisions to _get_retry_delay above.
 
 
 def call_with_retry(
@@ -67,33 +118,18 @@ def call_with_retry(
     description: str = "",
     logger_instance: logging.Logger | None = None,
 ) -> object:
-    """Execute fn() with retry on transient errors.
-
-    Args:
-        fn: Zero-arg callable to invoke (use a lambda to bind args).
-        max_retries: Maximum retry attempts (0 = no retry).
-        retry_predicate: Returns True if the exception should trigger a retry.
-        description: Label for log messages (e.g. adapter name).
-        logger_instance: Logger; defaults to module logger.
-    """
+    """Execute fn() with retry on transient errors."""
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
         try:
             return fn()
         except Exception as e:
-            if attempt < max_retries and retry_predicate(e):
-                delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
-                log.warning(
-                    "Retry %d/%d for %s: %s (waiting %.1fs)",
-                    attempt + 1,
-                    max_retries,
-                    description,
-                    e,
-                    delay,
-                )
-                time.sleep(delay)
-            else:
+            delay = _get_retry_delay(
+                e, attempt, max_retries, retry_predicate, description, log
+            )
+            if delay is None:
                 raise
+            time.sleep(delay)
 
 
 async def acall_with_retry(
@@ -110,19 +146,12 @@ async def acall_with_retry(
         try:
             return await fn()
         except Exception as e:
-            if attempt < max_retries and retry_predicate(e):
-                delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
-                log.warning(
-                    "Retry %d/%d for %s: %s (waiting %.1fs)",
-                    attempt + 1,
-                    max_retries,
-                    description,
-                    e,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-            else:
+            delay = _get_retry_delay(
+                e, attempt, max_retries, retry_predicate, description, log
+            )
+            if delay is None:
                 raise
+            await asyncio.sleep(delay)
 
 
 def iter_with_retry(
@@ -147,34 +176,23 @@ def iter_with_retry(
                 yield item
             return
         except Exception as e:
-            if not has_yielded and attempt < max_retries and retry_predicate(e):
-                delay = calculate_delay(attempt, 1.0, 2.0, 60.0)
-                log.warning(
-                    "Retry %d/%d for %s: %s (waiting %.1fs)",
-                    attempt + 1,
-                    max_retries,
-                    description,
-                    e,
-                    delay,
-                )
-                time.sleep(delay)
-            else:
+            if has_yielded:
                 raise
+            delay = _get_retry_delay(
+                e, attempt, max_retries, retry_predicate, description, log
+            )
+            if delay is None:
+                raise
+            time.sleep(delay)
 
 
 def is_retryable_error(error: Exception) -> bool:
-    """Check if an error is retryable.
+    """Check if a requests-library HTTP error should trigger a retry.
 
-    Handles:
-    - ConnectionError and Timeout from requests
-    - HTTPError with status codes 502, 503, 504
-    - OSError with specific errno codes (ECONNREFUSED, ECONNRESET, etc.)
-
-    Args:
-        error: The exception to check
-
-    Returns:
-        True if the error should trigger a retry
+    For retrying internal service calls (platform-service, prompt-service) that
+    use the requests library. Distinct from is_retryable_litellm_error() which
+    handles litellm/openai/httpx exceptions with different class hierarchies
+    (e.g. error.status_code vs error.response.status_code).
     """
     # Requests connection and timeout errors
     if isinstance(error, ConnectionError | Timeout):
@@ -233,7 +251,7 @@ def calculate_delay(
     return min(delay, max_delay)
 
 
-def retry_with_exponential_backoff(  # noqa: C901
+def retry_with_exponential_backoff(
     max_retries: int,
     base_delay: float,
     multiplier: float,
@@ -259,38 +277,33 @@ def retry_with_exponential_backoff(  # noqa: C901
         Decorator function
     """
 
-    def decorator(func: Callable) -> Callable:  # noqa: C901
+    def decorator(func: Callable) -> Callable:
         @wraps(func)
-        def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: C901, ANN401
-            last_exception = None
-
-            for attempt in range(max_retries + 1):  # +1 for initial attempt
+        def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
+            for attempt in range(max_retries + 1):
                 try:
-                    # Try to execute the function
                     result = func(*args, **kwargs)
-
-                    # If successful and we had retried, log success
                     if attempt > 0:
                         logger_instance.info(
                             "Successfully completed '%s' after %d retry attempt(s)",
                             func.__name__,
                             attempt,
                         )
-
                     return result
-
                 except exceptions as e:
-                    last_exception = e
-
-                    # Check if the error should trigger a retry
-                    # First check if it's in the allowed exception types (already caught)
-                    # Then check using the predicate if provided
-                    should_retry = True
-                    if retry_predicate is not None:
-                        should_retry = retry_predicate(e)
-
-                    # If not retryable or last attempt, raise the error
-                    if not should_retry or attempt == max_retries:
+                    delay = _get_retry_delay(
+                        e,
+                        attempt,
+                        max_retries,
+                        retry_predicate,
+                        prefix,
+                        logger_instance,
+                        base_delay,
+                        multiplier,
+                        60.0,
+                        jitter,
+                    )
+                    if delay is None:
                         if attempt > 0:
                             logger_instance.exception(
                                 "Giving up '%s' after %d attempt(s) for %s",
@@ -299,31 +312,9 @@ def retry_with_exponential_backoff(  # noqa: C901
                                 prefix,
                             )
                         raise
-
-                    # Calculate delay for next retry (capped at 60s)
-                    delay = calculate_delay(attempt, base_delay, multiplier, 60.0, jitter)
-
-                    # Log retry attempt
-                    logger_instance.warning(
-                        "Retry %d/%d for %s: %s (waiting %.1fs)",
-                        attempt + 1,
-                        max_retries,
-                        prefix,
-                        e,
-                        delay,
-                    )
-
-                    # Wait before retrying
                     time.sleep(delay)
-
-                except Exception as e:
-                    # Exception not in the exceptions tuple - don't retry
-                    last_exception = e
+                except Exception:
                     raise
-
-            # This should never be reached, but just in case
-            if last_exception:
-                raise last_exception
 
         return wrapper
 
