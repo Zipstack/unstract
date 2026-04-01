@@ -214,11 +214,11 @@ function useMainAppRoutes() {
             path="settings/platform-api-keys"
             element={<PlatformApiKeysPage />}
           />
+          <Route
+            path="settings/global-api-deployment-keys"
+            element={<GlobalApiDeploymentKeysPage />}
+          />
         </Route>
-        <Route
-          path="settings/global-api-deployment-keys"
-          element={<GlobalApiDeploymentKeysPage />}
-        />
         <Route path="settings/triad" element={<DefaultTriad />} />
         {RequirePlatformAdmin && PlatformAdminPage && (
           <Route element={<RequirePlatformAdmin />}>

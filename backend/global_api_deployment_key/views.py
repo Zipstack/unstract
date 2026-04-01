@@ -46,7 +46,7 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
-        serializer = GlobalApiDeploymentKeyListSerializer(instance)
+        serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(serializer.data)
 
     def partial_update(self, request, *args, **kwargs):
@@ -68,7 +68,7 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         instance = self.get_object()
         instance.key = uuid.uuid4()
         instance.modified_by = request.user
-        instance.save(update_fields=["key", "modified_by"])
+        instance.save(update_fields=["key", "modified_by", "modified_at"])
         response_serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(response_serializer.data)
 

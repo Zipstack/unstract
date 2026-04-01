@@ -70,12 +70,19 @@ class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
 class GlobalApiDeploymentKeyCreateSerializer(AuditSerializer):
     description = serializers.CharField(required=True, max_length=512)
     api_deployments = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=APIDeployment.objects.all(), required=False
+        many=True, queryset=APIDeployment.objects.none(), required=False
     )
 
     class Meta:
         model = GlobalApiDeploymentKey
         fields = ["name", "description", "allow_all_deployments", "api_deployments"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        organization = UserContext.get_organization()
+        self.fields["api_deployments"].queryset = APIDeployment.objects.filter(
+            organization=organization
+        )
 
     def validate_name(self, value):
         value = validate_safe_text(value)
@@ -94,8 +101,15 @@ class GlobalApiDeploymentKeyCreateSerializer(AuditSerializer):
 
 class GlobalApiDeploymentKeyUpdateSerializer(AuditSerializer):
     api_deployments = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=APIDeployment.objects.all(), required=False
+        many=True, queryset=APIDeployment.objects.none(), required=False
     )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        organization = UserContext.get_organization()
+        self.fields["api_deployments"].queryset = APIDeployment.objects.filter(
+            organization=organization
+        )
 
     class Meta:
         model = GlobalApiDeploymentKey

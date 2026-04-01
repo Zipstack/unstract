@@ -134,5 +134,5 @@ def handle_user_logs(room: str, event: str, message: dict[str, Any]) -> None:
 
 
 def start_server(django_app: WSGIHandler, namespace: str) -> WSGIHandler:
-    # django_app = socketio.WSGIApp(sio, django_app, socketio_path=namespace)
+    django_app = socketio.WSGIApp(sio, django_app, socketio_path=namespace)
     return django_app

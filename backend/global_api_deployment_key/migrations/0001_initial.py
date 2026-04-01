@@ -39,7 +39,7 @@ class Migration(migrations.Migration):
                     "allow_all_deployments",
                     models.BooleanField(
                         db_comment="If True, this key can authenticate any API deployment in the org",
-                        default=True,
+                        default=False,
                     ),
                 ),
                 (

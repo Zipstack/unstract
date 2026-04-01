@@ -14,7 +14,7 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
     allow_all_deployments = models.BooleanField(
-        default=True,
+        default=False,
         db_comment="If True, this key can authenticate any API deployment in the org",
     )
     api_deployments = models.ManyToManyField(
