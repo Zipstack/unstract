@@ -25,6 +25,7 @@ RETRYABLE_STATUS_CODES = frozenset({408, 429, 500, 502, 503, 504})
 _RETRYABLE_ERROR_NAMES = frozenset(
     {
         "APIConnectionError",
+        "APITimeoutError",
         "Timeout",
         "ConnectTimeout",
         "ReadTimeout",
@@ -113,6 +114,11 @@ def _get_retry_delay(
 # All delegate retry decisions to _get_retry_delay above.
 
 
+def _validate_max_retries(max_retries: int) -> None:
+    if max_retries < 0:
+        raise ValueError(f"max_retries must be >= 0, got {max_retries}")
+
+
 def call_with_retry(
     fn: Callable[[], object],
     *,
@@ -122,6 +128,7 @@ def call_with_retry(
     logger_instance: logging.Logger | None = None,
 ) -> object:
     """Execute fn() with retry on transient errors."""
+    _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
         try:
@@ -144,6 +151,7 @@ async def acall_with_retry(
     logger_instance: logging.Logger | None = None,
 ) -> object:
     """Async version of call_with_retry — awaits fn()."""
+    _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
         try:
@@ -170,6 +178,7 @@ def iter_with_retry(
     Once items have been yielded to the caller a mid-iteration failure is
     raised immediately — partial output can't be un-yielded.
     """
+    _validate_max_retries(max_retries)
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
         has_yielded = False
