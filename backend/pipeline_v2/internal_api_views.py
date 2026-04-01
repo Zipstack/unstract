@@ -13,6 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class PipelineInternalViewSet(ViewSet):
+    # Backward compat: remove once all workers pass X-Organization-ID.
+    skip_org_filter = True
+
     def retrieve(self, request, pk=None):
         logger.info(f"[PipelineInternalViewSet] Retrieving data for ID: {pk}")
 
