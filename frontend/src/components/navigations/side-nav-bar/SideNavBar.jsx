@@ -89,6 +89,14 @@ try {
   // Plugin unavailable
 }
 
+let lookupStudioEnabled = false;
+try {
+  await import("../../../plugins/lookup-studio");
+  lookupStudioEnabled = true;
+} catch {
+  // Plugin unavailable
+}
+
 let manualReviewSettingsEnabled = false;
 try {
   await import("../../../plugins/manual-review/settings/Settings.jsx");
@@ -255,6 +263,45 @@ const HITLPopoverContent = ({ orgName, role, navigate }) => {
 HITLPopoverContent.propTypes = {
   orgName: PropTypes.string.isRequired,
   role: PropTypes.string.isRequired,
+  navigate: PropTypes.func.isRequired,
+};
+
+const PROMPT_STUDIO_MENU_ITEMS = [
+  { key: "projects", label: "Projects", subPath: "/tools" },
+  { key: "lookups", label: "Look-Ups", subPath: "/lookups" },
+];
+
+const getActivePromptStudioKey = (orgName) => {
+  const currentPath = globalThis.location.pathname;
+  if (currentPath.startsWith(`/${orgName}/lookups`)) {
+    return "lookups";
+  }
+  return "projects";
+};
+
+const PromptStudioPopoverContent = ({ orgName, navigate }) => {
+  const activeKey = getActivePromptStudioKey(orgName);
+
+  return (
+    <nav className="settings-sidebar-popover">
+      {PROMPT_STUDIO_MENU_ITEMS.map((menuItem) => (
+        <button
+          key={menuItem.key}
+          type="button"
+          className={`settings-menu-item ${
+            activeKey === menuItem.key ? "active" : ""
+          }`}
+          onClick={() => navigate(`/${orgName}${menuItem.subPath}`)}
+        >
+          {menuItem.label}
+        </button>
+      ))}
+    </nav>
+  );
+};
+
+PromptStudioPopoverContent.propTypes = {
+  orgName: PropTypes.string.isRequired,
   navigate: PropTypes.func.isRequired,
 };
 
@@ -506,6 +553,14 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     });
   }
 
+  // Mark Prompt Studio item for popover rendering when lookups plugin is available
+  if (lookupStudioEnabled && isUnstract) {
+    const psItem = data[0]?.subMenu?.find((el) => el.id === 1.1);
+    if (psItem) {
+      psItem.hasLookupPopover = true;
+    }
+  }
+
   // Add HITL Review section if plugin is available and user has HITL role
   const isHITLRole = [
     "unstract_reviewer",
@@ -696,6 +751,69 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                           overlayClassName="settings-popover-overlay"
                         >
                           {platformContent}
+                        </Popover>
+                      );
+                    }
+
+                    // Prompt Studio with Look-Ups popover
+                    if (el.hasLookupPopover) {
+                      const psContent = (
+                        <Tooltip title={collapsed ? el.title : ""}>
+                          <Space
+                            className={`space-styles ${
+                              el.active ||
+                              globalThis.location.pathname.startsWith(
+                                `/${orgName}/lookups`,
+                              )
+                                ? "space-styles-active"
+                                : ""
+                            } ${el.disable ? "space-styles-disable" : ""}`}
+                            onClick={() => {
+                              if (!el.disable) {
+                                navigate(el.path);
+                              }
+                            }}
+                            data-testid="sidebar-prompt-studio"
+                          >
+                            <Image
+                              src={el.image}
+                              alt="side_icon"
+                              className="menu-item-icon"
+                              preview={false}
+                            />
+                            {!collapsed && (
+                              <div>
+                                <Typography className="sidebar-item-text fs-14">
+                                  {el.title}
+                                </Typography>
+                                <Typography className="sidebar-item-text fs-11">
+                                  {el.description}
+                                </Typography>
+                              </div>
+                            )}
+                          </Space>
+                        </Tooltip>
+                      );
+
+                      if (el.disable) {
+                        return <div key={el.id}>{psContent}</div>;
+                      }
+
+                      return (
+                        <Popover
+                          key={el.id}
+                          content={
+                            <PromptStudioPopoverContent
+                              orgName={orgName}
+                              navigate={navigate}
+                            />
+                          }
+                          trigger="hover"
+                          placement="rightTop"
+                          arrow={false}
+                          overlayClassName="settings-popover-overlay"
+                        >
+                          {psContent}
                         </Popover>
                       );
                     }
