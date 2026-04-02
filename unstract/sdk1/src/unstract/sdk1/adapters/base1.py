@@ -639,6 +639,25 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
             return f"anthropic/{model}"
 
 
+class GeminiLLMParameters(BaseChatCompletionParameters):
+    """See https://docs.litellm.ai/docs/providers/gemini."""
+
+    api_key: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = GeminiLLMParameters.validate_model(adapter_metadata)
+        return GeminiLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = adapter_metadata.get("model", "")
+        if model.startswith("gemini/"):
+            return model
+        else:
+            return f"gemini/{model}"
+
+
 class AnyscaleLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/anyscale."""
 

@@ -1,0 +1,56 @@
+{
+  "title": "Gemini LLM",
+  "type": "object",
+  "required": ["adapter_name", "api_key", "model"],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: gemini-group-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "default": "",
+      "description": "Google AI Studio API key",
+      "format": "password"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "gemini/gemini-1.5-flash",
+      "description": "LiteLLM model string. Supported: gemini-1.5-flash, gemini-1.5-pro, gemini-2.0-flash, gemini-2.5-pro. The gemini/ prefix will be added automatically if omitted."
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "title": "Temperature",
+      "default": 0.1,
+      "description": "Sampling temperature between 0 and 2"
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to limit LLM replies, the maximum possible differs from model to model."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 600,
+      "description": "Timeout in seconds"
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "description": "Maximum number of retries"
+    }
+  }
+}
