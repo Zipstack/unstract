@@ -126,7 +126,7 @@ function PlatformSettings() {
           info: "API Key has been generated",
         });
       }
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 

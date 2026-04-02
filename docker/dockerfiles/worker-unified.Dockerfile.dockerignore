@@ -51,7 +51,6 @@ Thumbs.db
 
 # Documentation
 **/docs/
-**/*.md
 !README.md
 !unstract
 !unstract/**

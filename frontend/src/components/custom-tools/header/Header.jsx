@@ -135,7 +135,7 @@ function Header({
         info: `Clicked on the 'Export' button`,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -201,7 +201,7 @@ function Header({
         tool_id: details?.tool_id,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -262,7 +262,7 @@ function Header({
         tool_id: details?.tool_id,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 

@@ -330,7 +330,7 @@ function AddLlmProfile({
         setPostHogCustomEvent("intent_success_ps_new_llm_profile", {
           info: "Clicked on 'Add' button",
         });
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
     }

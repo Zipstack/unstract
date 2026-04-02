@@ -147,4 +147,4 @@ function checkIsToday(isoDate) {
   }
 }
 
-export { formatCompactDate, formatSmartDate, formatFullDate, checkIsToday };
+export { checkIsToday, formatCompactDate, formatFullDate, formatSmartDate };

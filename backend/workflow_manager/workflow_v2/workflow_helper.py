@@ -596,6 +596,46 @@ class WorkflowHelper:
             )
 
     @staticmethod
+    @celery_app.task(
+        name="async_execute_bin",
+        autoretry_for=(Exception,),
+        max_retries=0,
+        retry_backoff=True,
+        retry_backoff_max=500,
+        retry_jitter=True,
+    )
+    def execute_bin(
+        schema_name: str,
+        workflow_id: str,
+        execution_id: str,
+        hash_values_of_files: dict[str, dict[str, Any]],
+        scheduled: bool = False,
+        execution_mode: tuple[str, str] | None = None,
+        pipeline_id: str | None = None,
+        use_file_history: bool = True,
+        **kwargs: dict[str, Any],
+    ) -> list[Any] | None:
+        """Celery task entry point for async workflow execution.
+
+        Dispatches to execute_workflow which builds and sends the
+        chord to v2 file_processing / callback workers.
+        """
+        task_id = current_task.request.id
+        StateStore.set(Account.ORGANIZATION_ID, schema_name)
+        return WorkflowHelper.execute_workflow(
+            organization_id=schema_name,
+            task_id=task_id,
+            workflow_id=workflow_id,
+            execution_id=execution_id,
+            hash_values_of_files=hash_values_of_files,
+            scheduled=scheduled,
+            execution_mode=execution_mode,
+            pipeline_id=pipeline_id,
+            use_file_history=use_file_history,
+            **kwargs,
+        )
+
+    @staticmethod
     def execute_workflow(
         organization_id: str,
         task_id: str,

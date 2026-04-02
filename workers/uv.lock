@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.14'",
@@ -3090,7 +3090,7 @@ dependencies = [
     { name = "pinecone-plugin-interface" },
     { name = "python-dateutil" },
     { name = "typing-extensions" },
-    { name = "urllib3", marker = "python_full_version < '4.0'" },
+    { name = "urllib3", marker = "python_full_version < '4'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/bc/9d/07a7f2136ce04cabd21d69c057dc2915867082b0047e6873e424388d4475/pinecone-7.0.1.tar.gz", hash = "sha256:49ff7b0f5be4a2ddec5aaa709758a9f2df56baa58ad46507d081409e246a81ec", size = 207930, upload-time = "2025-05-21T19:39:01.218Z" }
 wheels = [

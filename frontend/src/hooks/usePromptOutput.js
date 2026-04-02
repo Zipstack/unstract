@@ -27,8 +27,7 @@ const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
   const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
   const { setPromptOutput, updatePromptOutput } = usePromptOutputStore();
-  const { isSimplePromptStudio, isPublicSource, selectedDoc } =
-    useCustomToolStore();
+  const { isSimplePromptStudio, isPublicSource } = useCustomToolStore();
   const axiosPrivate = useAxiosPrivate();
   const { id } = useParams();
 
@@ -126,8 +125,9 @@ const usePromptOutput = () => {
         wordConfidenceData: item?.word_confidence_data,
       };
 
-      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded)
+      if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded) {
         return;
+      }
 
       if (item?.is_single_pass_extract) {
         const tokenUsageId = generatePromptOutputKeyForSinglePass(
@@ -165,13 +165,14 @@ const usePromptOutput = () => {
   };
 
   const updateCoverage = (promptOutputs, outputs) => {
+    const currentSelectedDoc = useCustomToolStore.getState().selectedDoc;
     let updatedPromptOutputs = promptOutputs;
     Object.keys(outputs).forEach((key) => {
       const [keyPromptId, keyDoctId, , keyIsSinglePass] = key.split("__");
       // only add output of selected document
-      if (keyDoctId === selectedDoc?.document_id) {
+      if (keyDoctId === currentSelectedDoc?.document_id) {
         const currentOutput = { [key]: outputs[key] };
-        updatedPromptOutputs = { ...promptOutputs, ...currentOutput };
+        updatedPromptOutputs = { ...updatedPromptOutputs, ...currentOutput };
       }
       Object.keys(updatedPromptOutputs).forEach((innerKey) => {
         const [existingPromptId, , , existingIsSinglePass] =
