@@ -60,6 +60,7 @@ class PromptServiceConstants:
     CONTEXT = "context"
     INCLUDE_METADATA = "include_metadata"
     TABLE = "table"
+    AGENTIC_TABLE = "agentic_table"
     TABLE_SETTINGS = "table_settings"
     EPILOGUE = "epilogue"
     PLATFORM_POSTAMBLE = "platform_postamble"

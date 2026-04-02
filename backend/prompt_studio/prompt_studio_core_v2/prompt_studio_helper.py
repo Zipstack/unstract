@@ -369,6 +369,7 @@ class PromptStudioHelper:
         user_id: str,
         tool_id: str,
         document_id: str,
+        source_file_path: str = "",
     ) -> dict[str, Any]:
         """Build the output dict for a single prompt in bulk fetch."""
         output: dict[str, Any] = {}
@@ -406,7 +407,8 @@ class PromptStudioHelper:
                 output[TSPKeys.EVAL_SETTINGS][attr] = getattr(prompt, attr)
 
         output = PromptStudioHelper.fetch_table_settings_if_enabled(
-            doc_name, prompt, org_id, user_id, tool_id, output
+            doc_name, prompt, org_id, user_id, tool_id, output,
+            source_file_path=source_file_path,
         )
         variable_map = PromptStudioVariableService.frame_variable_replacement_map(
             doc_id=document_id, prompt_object=prompt
@@ -772,7 +774,8 @@ class PromptStudioHelper:
                 output[TSPKeys.EVAL_SETTINGS][attr] = getattr(prompt, attr)
 
         output = PromptStudioHelper.fetch_table_settings_if_enabled(
-            doc_name, prompt, org_id, user_id, tool_id, output
+            doc_name, prompt, org_id, user_id, tool_id, output,
+            source_file_path=file_path,
         )
         variable_map = PromptStudioVariableService.frame_variable_replacement_map(
             doc_id=document_id, prompt_object=prompt
@@ -967,6 +970,7 @@ class PromptStudioHelper:
                 user_id=user_id,
                 tool_id=tool_id,
                 document_id=document_id,
+                source_file_path=file_path,
             )
             for prompt in prompts
         ]
@@ -1896,7 +1900,8 @@ class PromptStudioHelper:
                 output[TSPKeys.EVAL_SETTINGS][attr] = attr_val
 
         output = PromptStudioHelper.fetch_table_settings_if_enabled(
-            doc_name, prompt, org_id, user_id, tool_id, output
+            doc_name, prompt, org_id, user_id, tool_id, output,
+            source_file_path=file_path,
         )
         variable_map = PromptStudioVariableService.frame_variable_replacement_map(
             doc_id=document_id, prompt_object=prompt
@@ -1970,6 +1975,7 @@ class PromptStudioHelper:
         user_id: str,
         tool_id: str,
         output: dict[str, Any],
+        source_file_path: str = "",
     ) -> dict[str, Any]:
         if prompt.enforce_type == TSPKeys.TABLE or prompt.enforce_type == TSPKeys.RECORD:
             extract_doc_path: str = (
@@ -1988,6 +1994,17 @@ class PromptStudioHelper:
                     prompt=prompt.prompt,
                     input_file=extract_doc_path,
                     clean_pages=True,
+                )
+        elif prompt.enforce_type == TSPKeys.AGENTIC_TABLE:
+            payload_modifier_plugin = get_plugin("payload_modifier")
+            if payload_modifier_plugin:
+                modifier_service = payload_modifier_plugin["service_class"]()
+                output = modifier_service.update_agentic_table(
+                    output=output,
+                    tool_id=tool_id,
+                    prompt_id=str(prompt.prompt_id),
+                    prompt=prompt.prompt,
+                    input_file=source_file_path,
                 )
 
         return output

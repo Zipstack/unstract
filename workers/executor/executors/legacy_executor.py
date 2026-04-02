@@ -1442,6 +1442,23 @@ class LegacyExecutor(BaseExecutor):
             file_path=file_path,
         )
 
+        if output.get(PSKeys.TYPE) == PSKeys.AGENTIC_TABLE:
+            self._run_agentic_table_extraction(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metrics=metrics,
+                run_id=run_id,
+                execution_id=execution_id,
+                execution_source=execution_source,
+                platform_api_key=platform_api_key,
+                tool_id=tool_id,
+                doc_name=doc_name,
+                prompt_name=prompt_name,
+                shim=shim,
+            )
+            return
+
         if output.get(PSKeys.TYPE) in (PSKeys.TABLE, PSKeys.RECORD):
             self._run_table_extraction(
                 output=output,
@@ -1663,6 +1680,78 @@ class LegacyExecutor(BaseExecutor):
                 "TABLE extraction failed for prompt=%s: %s",
                 prompt_name,
                 table_result.error,
+            )
+        shim.stream_log(f"Completed prompt: {prompt_name}")
+
+    def _run_agentic_table_extraction(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metrics: dict[str, Any],
+        run_id: str,
+        execution_id: str,
+        execution_source: str,
+        platform_api_key: str,
+        tool_id: str,
+        doc_name: str,
+        prompt_name: str,
+        shim: Any,
+    ) -> None:
+        """Delegate agentic_table prompt to the agentic table executor plugin."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        try:
+            agentic_executor = ExecutorRegistry.get("agentic_table")
+        except KeyError:
+            raise LegacyExecutorError(
+                message=(
+                    "Agentic table extraction requires the agentic table "
+                    "executor plugin. Install the agentic_table plugin."
+                )
+            )
+        agentic_ctx = ExecutionContext(
+            executor_name="agentic_table",
+            operation="table_extract",
+            run_id=run_id,
+            execution_source=execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            executor_params={
+                "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
+                "lite_llm_adapter_instance_id": output.get(
+                    "lite_llm_adapter_instance_id", ""
+                ),
+                "x2text_adapter_instance_id": output.get(
+                    PSKeys.X2TEXT_ADAPTER, ""
+                ),
+                "target_table": output.get("target_table", ""),
+                "json_structure": output.get("json_structure"),
+                "instructions": output.get("instructions", ""),
+                "starting_page": output.get("starting_page", 1),
+                "ending_page": output.get("ending_page"),
+                "parallel_pages": output.get("parallel_pages", 4),
+                "enable_highlight": output.get("enable_highlight", False),
+                "input_file": output.get("input_file", ""),
+                "execution_id": execution_id,
+                "PLATFORM_SERVICE_API_KEY": platform_api_key,
+            },
+        )
+        agentic_ctx._log_component = self._log_component
+        agentic_ctx.log_events_id = self._log_events_id
+
+        shim.stream_log(f"Running agentic table extraction for: {prompt_name}")
+        result = agentic_executor.execute(agentic_ctx)
+
+        if result.success:
+            tables = result.data.get("output", {}).get("tables", [])
+            structured_output[prompt_name] = tables
+        else:
+            structured_output[prompt_name] = ""
+            logger.error(
+                "Agentic table extraction failed for prompt=%s: %s",
+                prompt_name,
+                result.error,
             )
         shim.stream_log(f"Completed prompt: {prompt_name}")
 
