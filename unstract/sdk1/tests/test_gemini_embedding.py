@@ -1,0 +1,87 @@
+import json
+
+from unstract.sdk1.adapters.embedding1.gemini import GeminiEmbeddingAdapter
+from unstract.sdk1.adapters.enums import AdapterTypes
+
+
+class TestGeminiEmbeddingAdapter:
+    def test_adapter_registration(self) -> None:
+        from unstract.sdk1.adapters.embedding1 import adapters
+
+        gemini_ids = [k for k in adapters if "gemini" in k.lower()]
+        assert len(gemini_ids) == 1
+
+    def test_get_id_format(self) -> None:
+        adapter_id = GeminiEmbeddingAdapter.get_id()
+        assert adapter_id.startswith("gemini|")
+        # UUID part should be 36 chars
+        uuid_part = adapter_id.split("|")[1]
+        assert len(uuid_part) == 36
+
+    def test_get_adapter_type(self) -> None:
+        assert GeminiEmbeddingAdapter.get_adapter_type() == AdapterTypes.EMBEDDING
+
+    def test_get_name(self) -> None:
+        assert GeminiEmbeddingAdapter.get_name() == "Gemini"
+
+    def test_get_provider(self) -> None:
+        assert GeminiEmbeddingAdapter.get_provider() == "gemini"
+
+    def test_json_schema_loads(self) -> None:
+        schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
+        assert isinstance(schema, dict)
+        assert "title" in schema
+        assert "properties" in schema
+        assert schema["title"] == "Gemini Embedding"
+
+    def test_json_schema_required_fields(self) -> None:
+        schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
+        assert set(schema["required"]) == {"adapter_name", "api_key", "model"}
+
+    def test_json_schema_no_batch_size_default(self) -> None:
+        schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
+        assert "default" not in schema["properties"]["embed_batch_size"]
+
+    def test_json_schema_api_key_password_format(self) -> None:
+        schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
+        assert schema["properties"]["api_key"]["format"] == "password"
+
+    def test_json_schema_model_default(self) -> None:
+        schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
+        assert schema["properties"]["model"]["default"] == "gemini/text-embedding-004"
+
+    def test_validate_model_adds_prefix(self) -> None:
+        meta = {"model": "text-embedding-004", "api_key": "test"}
+        result = GeminiEmbeddingAdapter.validate_model(meta)
+        assert result == "gemini/text-embedding-004"
+        assert meta["model"] == "gemini/text-embedding-004"
+
+    def test_validate_model_idempotent(self) -> None:
+        meta = {"model": "gemini/text-embedding-004", "api_key": "test"}
+        result = GeminiEmbeddingAdapter.validate_model(meta)
+        assert result == "gemini/text-embedding-004"
+
+    def test_validate_calls_validate_model(self) -> None:
+        meta = {"model": "text-embedding-004", "api_key": "test-key"}
+        validated = GeminiEmbeddingAdapter.validate(meta)
+        assert validated["model"] == "gemini/text-embedding-004"
+
+    def test_validate_embed_batch_size_none_by_default(self) -> None:
+        meta = {"model": "gemini/text-embedding-004", "api_key": "test-key"}
+        validated = GeminiEmbeddingAdapter.validate(meta)
+        assert validated["embed_batch_size"] is None
+
+    def test_validate_embed_batch_size_preserved(self) -> None:
+        meta = {
+            "model": "gemini/text-embedding-004",
+            "api_key": "test-key",
+            "embed_batch_size": 50,
+        }
+        validated = GeminiEmbeddingAdapter.validate(meta)
+        assert validated["embed_batch_size"] == 50
+
+    def test_metadata(self) -> None:
+        metadata = GeminiEmbeddingAdapter.get_metadata()
+        assert metadata["name"] == "Gemini"
+        assert metadata["is_active"] is True
+        assert metadata["adapter"] is GeminiEmbeddingAdapter
