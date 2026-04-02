@@ -646,12 +646,15 @@ class GeminiLLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        adapter_metadata["model"] = GeminiLLMParameters.validate_model(adapter_metadata)
-        return GeminiLLMParameters(**adapter_metadata).model_dump()
+        result_metadata = adapter_metadata.copy()
+        result_metadata["model"] = GeminiLLMParameters.validate_model(adapter_metadata)
+        return GeminiLLMParameters(**result_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = adapter_metadata.get("model", "")
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required")
         if model.startswith("gemini/"):
             return model
         else:
