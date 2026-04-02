@@ -4,7 +4,6 @@ import logging
 import os
 from typing import Any
 
-from deprecated import deprecated
 from unstract.sdk1.constants import Command, LogLevel, LogStage, ToolEnv
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.utils.common import Utils
@@ -95,14 +94,17 @@ class StreamMixin:
         Returns:
             None
         """
-        levels = [
-            LogLevel.DEBUG,
-            LogLevel.INFO,
-            LogLevel.WARN,
-            LogLevel.ERROR,
-            LogLevel.FATAL,
-        ]
-        if levels.index(level) < levels.index(self.log_level):
+        # Use string values for comparison to avoid enum instance mismatch issues
+        level_order = ["DEBUG", "INFO", "WARN", "ERROR", "FATAL"]
+
+        # Convert level and self.log_level to strings for comparison
+        level_value = level.value if hasattr(level, 'value') else str(level)
+        self_log_level_value = self.log_level.value if hasattr(self.log_level, 'value') else str(self.log_level)
+
+        if level_value not in level_order or self_log_level_value not in level_order:
+            # If invalid level, default to logging it
+            pass
+        elif level_order.index(level_value) < level_order.index(self_log_level_value):
             return
 
         record = {
@@ -231,27 +233,6 @@ class StreamMixin:
             "type": "UPDATE",
             "state": state,
             "message": message,
-            "emitted_at": datetime.datetime.now().isoformat(),
-            **kwargs,
-        }
-        print(json.dumps(record))
-
-    @staticmethod
-    @deprecated(version="0.4.4", reason="Use `BaseTool.write_to_result()` instead")
-    def stream_result(result: dict[Any, Any], **kwargs: dict[str, Any]) -> None:
-        """Streams tool result (review if required).
-
-        Args:
-            result (dict): The result of the tool. Refer to the
-                Unstract protocol for the format of the result.
-            **kwargs: Additional keyword arguments to include in the record.
-
-        Returns:
-            None
-        """
-        record = {
-            "type": "RESULT",
-            "result": result,
             "emitted_at": datetime.datetime.now().isoformat(),
             **kwargs,
         }

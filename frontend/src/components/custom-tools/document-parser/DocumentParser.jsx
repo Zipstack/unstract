@@ -64,7 +64,12 @@ function DocumentParser({
   useEffect(() => {
     const outputTypeData = getDropdownItems("output_type") || {};
     const dropdownList1 = Object.keys(outputTypeData)?.map((item) => {
-      return { value: outputTypeData[item] };
+      const value = outputTypeData[item];
+      const label = value
+        .split(/[-_]/)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+      return { value, label };
     });
     setEnforceTypeList(dropdownList1);
     setIsChallenge(isChallengeEnabled);

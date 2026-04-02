@@ -103,6 +103,7 @@ class ToolStudioPromptKeys:
     REQUIRED = "required"
     EXECUTION_SOURCE = "execution_source"
     LINE_ITEM = "line-item"
+    AGENTIC_TABLE = "agentic_table"
     CUSTOM_DATA = "custom_data"
     # Webhook postprocessing settings
     ENABLE_POSTPROCESSING_WEBHOOK = "enable_postprocessing_webhook"

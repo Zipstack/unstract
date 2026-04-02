@@ -15,7 +15,7 @@ import { useEffect, useRef, useState } from "react";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { TABLE } from "./constants";
+import { TABLE, AGENTIC_TABLE } from "./constants";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
@@ -28,6 +28,14 @@ try {
   TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
 } catch {
   // The component will remain null of it is not available
+}
+
+let AgenticTableChecklist;
+try {
+  AgenticTableChecklist =
+    require("../../../plugins/prompt-card/AgenticTableChecklist").AgenticTableChecklist;
+} catch {
+  // The component will remain null if it is not available
 }
 
 function PromptCardItems({
@@ -221,6 +229,12 @@ function PromptCardItems({
         activeKey={expandCard && "1"}
       >
         <Collapse.Panel key={"1"} showArrow={false}>
+          {enforceType === AGENTIC_TABLE && AgenticTableChecklist && (
+            <AgenticTableChecklist
+              promptId={promptDetails?.prompt_id}
+              promptText={promptText}
+            />
+          )}
           <div className="prompt-card-div-body">
             <EditableText
               isEditing={isEditingPrompt}
@@ -278,13 +292,14 @@ function PromptCardItems({
                         )}
                     </Space>
                     <Space>
-                      {enforceType === TABLE && TableExtractionSettingsBtn && (
-                        <TableExtractionSettingsBtn
-                          promptId={promptDetails?.prompt_id}
-                          enforceType={enforceType}
-                          setAllTableSettings={setAllTableSettings}
-                        />
-                      )}
+                      {[TABLE, AGENTIC_TABLE].includes(enforceType) &&
+                        TableExtractionSettingsBtn && (
+                          <TableExtractionSettingsBtn
+                            promptId={promptDetails?.prompt_id}
+                            enforceType={enforceType}
+                            setAllTableSettings={setAllTableSettings}
+                          />
+                        )}
                       <Select
                         className="prompt-card-select-type"
                         size="small"

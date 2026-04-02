@@ -7,7 +7,6 @@ from requests import RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
 from unstract.sdk1.constants import (
     AdapterKeys,
-    Common,
     LogLevel,
     MimeType,
     PromptStudioKeys,
@@ -17,7 +16,6 @@ from unstract.sdk1.constants import (
 )
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.base import BaseTool
-from unstract.sdk1.tool.stream import StreamMixin
 from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.retry_utils import retry_platform_service_call
 
@@ -101,7 +99,7 @@ class PlatformHelper:
     @retry_platform_service_call
     def _get_adapter_configuration(
         cls: type[Self],
-        tool: BaseTool | StreamMixin,
+        tool: BaseTool,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
         """Get Adapter.
@@ -112,6 +110,7 @@ class PlatformHelper:
 
         Retry behavior is configurable via environment variables:
         - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
+        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
         - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
         - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
         - PLATFORM_SERVICE_JITTER (default: true)
@@ -140,13 +139,10 @@ class PlatformHelper:
             adapter_name = adapter_data.pop("adapter_name", "")
             adapter_type = adapter_data.pop("adapter_type", "")
             provider = adapter_data.get("adapter_id", "").split("|")[0]
-            # Store adapter name under a private key for use in error messages.
-            # This key is stripped before hashing in index key generation.
-            adapter_data[Common.ADAPTER_NAME] = adapter_name
             # TODO: Print metadata after redacting sensitive information
             tool.stream_log(
-                f"Retrieved adapter config — name: '{adapter_name}', "
-                f"type: '{adapter_type}', provider: '{provider}'",
+                f"Retrieved config for '{adapter_instance_id}', type: "
+                f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
                 level=LogLevel.DEBUG,
             )
         except HTTPError as e:
@@ -168,7 +164,7 @@ class PlatformHelper:
 
     @classmethod
     def get_adapter_config(
-        cls: type[Self], tool: BaseTool | StreamMixin, adapter_instance_id: str
+        cls: type[Self], tool: BaseTool, adapter_instance_id: str
     ) -> dict[str, Any] | None:
         """Get adapter spec by the help of unstract DB tool.
 
@@ -193,7 +189,7 @@ class PlatformHelper:
             return adapter_metadata
 
         tool.stream_log(
-            "Retrieving adapter configuration from platform service",
+            f"Retrieving config from DB for '{adapter_instance_id}'",
             level=LogLevel.DEBUG,
         )
 
@@ -234,6 +230,7 @@ class PlatformHelper:
 
         Retry behavior is configurable via environment variables:
         - PLATFORM_SERVICE_MAX_RETRIES (default: 3)
+        - PLATFORM_SERVICE_MAX_TIME (default: 60s)
         - PLATFORM_SERVICE_BASE_DELAY (default: 1.0s)
         - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
         - PLATFORM_SERVICE_JITTER (default: true)
@@ -287,17 +284,6 @@ class PlatformHelper:
                     error_message = response_json["error"]
             elif response.text:
                 error_message = response.text
-
-            # For 404 errors on tool lookups, raise exception to allow fallback
-            # For other errors, exit immediately (existing behavior)
-            if response.status_code == 404 and url_path in [
-                "custom_tool_instance",
-                "agentic_tool_instance",
-            ]:
-                raise RequestException(
-                    f"Error from platform service. {error_message}"
-                ) from e
-
             self.tool.stream_error_and_exit(
                 f"Error from platform service. {error_message}"
             )

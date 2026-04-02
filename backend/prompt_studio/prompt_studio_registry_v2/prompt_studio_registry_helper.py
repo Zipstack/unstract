@@ -371,6 +371,22 @@ class PromptStudioRegistryHelper:
                         prompt_id=prompt.prompt_id,
                         prompt=prompt.prompt,
                     )
+            elif (
+                prompt.enforce_type == PromptStudioRegistryKeys.AGENTIC_TABLE
+            ):
+                for modifier_plugin in modifier_plugins:
+                    cls = modifier_plugin[ModifierConfig.METADATA][
+                        ModifierConfig.METADATA_SERVICE_CLASS
+                    ]
+                    export_fn = getattr(
+                        cls, "export_agentic_table_settings", None
+                    )
+                    if export_fn:
+                        output = export_fn(
+                            output=output,
+                            tool_id=tool.tool_id,
+                            prompt_id=prompt.prompt_id,
+                        )
 
             outputs.append(output)
             output = {}

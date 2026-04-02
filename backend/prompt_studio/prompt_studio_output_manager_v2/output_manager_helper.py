@@ -170,7 +170,9 @@ class OutputManagerHelper:
 
             # TODO: use enums here
             output = outputs.get(prompt.prompt_key)
-            if prompt.enforce_type in {"json", "table", "record", "line-item"}:
+            if prompt.enforce_type in {
+                "json", "table", "record", "line-item", "agentic_table",
+            }:
                 output = json.dumps(output)
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
             profile_manager = default_profile

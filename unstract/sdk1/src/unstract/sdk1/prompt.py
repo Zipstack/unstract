@@ -173,6 +173,7 @@ class PromptTool:
 
     @log_elapsed(operation="AGENTIC_EXTRACTION")
     @handle_service_exceptions("executing agentic extraction")
+    @retry_prompt_service_call
     def agentic_extraction(
         self,
         payload: dict[str, Any],
@@ -191,7 +192,7 @@ class PromptTool:
             dict: Extraction results with data, metadata, and metrics
         """
         return self._call_service(
-            url_path="agentic/extract",
+            url_path="agentic-extraction",
             payload=payload,
             params=params,
             headers=headers,
@@ -230,6 +231,7 @@ class PromptTool:
 
         Retry behavior is configurable via environment variables:
         - PROMPT_SERVICE_MAX_RETRIES (default: 3)
+        - PROMPT_SERVICE_MAX_TIME (default: 60s)
         - PROMPT_SERVICE_BASE_DELAY (default: 1.0s)
         - PROMPT_SERVICE_MULTIPLIER (default: 2.0)
         - PROMPT_SERVICE_JITTER (default: true)

@@ -1503,12 +1503,38 @@ class PromptStudioHelper:
         # Check if payload modifier plugin is available for table/record operations
         payload_modifier_plugin = get_plugin("payload_modifier")
         if (
-            prompt_instance.enforce_type == TSPKeys.TABLE
-            or prompt_instance.enforce_type == TSPKeys.RECORD
+            prompt_instance.enforce_type
+            in (TSPKeys.TABLE, TSPKeys.RECORD, TSPKeys.AGENTIC_TABLE)
         ) and not payload_modifier_plugin:
             raise OperationNotSupported()
 
         prompt_name = prompt_instance.prompt_key
+        prompts = [prompt_instance]
+
+        # Agentic table extraction: dispatched via modifier plugin
+        # (bypasses prompt service, routes to agentic_table executor)
+        if prompt_instance.enforce_type == TSPKeys.AGENTIC_TABLE:
+            cls = payload_modifier_plugin["service_class"]
+            response = cls.execute_agentic_table(
+                tool_id=tool_id,
+                prompt_id=str(prompt_instance.prompt_id),
+                prompt_key=prompt_name,
+                prompt=prompt_instance.prompt,
+                doc_path=doc_path,
+                doc_name=doc_name,
+                org_id=org_id,
+                user_id=user_id,
+                run_id=run_id,
+            )
+            return PromptStudioHelper._handle_response(
+                response=response,
+                run_id=run_id,
+                prompts=prompts,
+                document_id=document_id,
+                is_single_pass=False,
+                profile_manager_id=profile_manager_id,
+            )
+
         PromptStudioHelper._publish_log(
             {
                 "tool_id": tool_id,
@@ -1520,7 +1546,6 @@ class PromptStudioHelper:
             LogLevels.RUN,
             "Executing single prompt",
         )
-        prompts = [prompt_instance]
         tool = prompt_instance.tool_id
 
         PromptStudioHelper._publish_log(
