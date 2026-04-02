@@ -1,7 +1,11 @@
+import logging
+
 from rest_framework.exceptions import APIException
 
 from adapter_processor_v2.constants import AdapterKeys
 from unstract.sdk1.exceptions import SdkError
+
+logger = logging.getLogger(__name__)
 
 
 class IdIsMandatory(APIException):
@@ -59,7 +63,14 @@ class TestAdapterError(APIException):
         adapter_name: str | None = None,
     ):
         if sdk_err.status_code:
-            self.status_code = sdk_err.status_code
+            # Provider 401 (e.g. bad API key for OpenAI) must not be
+            # forwarded — the frontend treats 401 as session expiry
+            # and logs the user out.
+            if sdk_err.status_code == 401:
+                logger.info("Remapping provider status code 401 to 400")
+                self.status_code = 400
+            else:
+                self.status_code = sdk_err.status_code
         if detail is None:
             adapter_name = f"'{adapter_name}'" if adapter_name else "adapter"
             detail = f"Error testing {adapter_name}. {str(sdk_err)}"

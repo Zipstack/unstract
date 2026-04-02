@@ -233,7 +233,10 @@ class WorkflowHelper:
             result = chord(batch_tasks)(
                 celery_app.signature(
                     "process_batch_callback",
-                    kwargs={"execution_id": str(workflow_execution.id)},
+                    kwargs={
+                        "execution_id": str(workflow_execution.id),
+                        "organization_id": str(organization_id),
+                    },
                     queue=file_processing_callback_queue,
                 )
             )
