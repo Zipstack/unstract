@@ -489,8 +489,10 @@ class CallbackTaskData:
 
     def __post_init__(self):
         self.execution_id = validate_uuid(self.execution_id)
-        # organization_id is a string identifier (e.g. "org_xxx"), not a UUID
-        self.organization_id = str(self.organization_id) if self.organization_id else None
+        # organization_id is a required string identifier (e.g. "org_xxx"), not a UUID
+        if not self.organization_id:
+            raise ValueError("organization_id is required for CallbackTaskData")
+        self.organization_id = str(self.organization_id)
         self.pipeline_id = validate_uuid(self.pipeline_id)
 
     def to_dict(self) -> dict[str, Any]:
