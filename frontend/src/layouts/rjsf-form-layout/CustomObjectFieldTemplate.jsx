@@ -1,4 +1,4 @@
-import { Row, Col } from "antd";
+import { Col, Row } from "antd";
 import PropTypes from "prop-types";
 import "./CustomFieldTemplate.css";
 
@@ -17,6 +17,7 @@ const CustomObjectFieldTemplate = (props) => {
     "processSubDirectories",
     "fileExtensions",
     "maxFiles",
+    "fileProcessingOrder",
     "fileReprocessingHandling",
     // Conditional fields at bottom:
     "reprocessInterval",
@@ -38,7 +39,9 @@ const CustomObjectFieldTemplate = (props) => {
 
       {fieldOrder.map((fieldName) => {
         const property = propertyMap[fieldName];
-        if (!property) return null;
+        if (!property) {
+          return null;
+        }
 
         // Skip conditional fields when they shouldn't be shown
         if (

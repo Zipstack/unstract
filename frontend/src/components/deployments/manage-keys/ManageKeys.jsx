@@ -360,7 +360,7 @@ ManageKeys.propTypes = {
   apiKeys: PropTypes.array.isRequired,
   setApiKeys: PropTypes.func.isRequired,
   selectedApiRow: PropTypes.object.isRequired,
-  apiService: PropTypes.func.isRequired,
+  apiService: PropTypes.object.isRequired,
   type: PropTypes.string.isRequired,
 };
 

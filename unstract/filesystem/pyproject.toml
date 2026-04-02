@@ -6,7 +6,10 @@ authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
 
-dependencies = ["unstract-sdk~=0.77.1"]
+dependencies = ["unstract-sdk1"]
+
+[tool.uv.sources]
+unstract-sdk1 = { path = "../sdk1", editable = true }
 
 # [tool.uv.sources]
 # unstract-sdk = { git = "https://github.com/Zipstack/unstract-sdk", branch = "python-upgrade" }

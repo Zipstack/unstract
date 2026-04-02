@@ -190,10 +190,9 @@ setup_env() {
   DEFAULT_AUTH_KEY="unstract"
 
   for service in "${services[@]}"; do
-    # Skip services that are spawned at runtime
-    for ignore_service in "${spawned_services[@]}"; do
+    for ignore_service in "${ignore_services[@]}"; do
       if [[ "$service" == "$ignore_service" ]]; then
-        echo -e "Skipped env for ${blue_text}$service${default_text} as it's generated at runtime"
+        echo -e "Skipped env for ignored service ${blue_text}$service${default_text}"
         continue 2
       fi
     done
@@ -209,24 +208,24 @@ setup_env() {
       if [[ "$service" == "backend" || "$service" == "platform-service" ]]; then
         echo -e "$blue_text""Adding encryption secret to $service""$default_text"
         if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" $env_path
+          sed -i '' "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" "$env_path"
         else
-          sed -i "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" $env_path
+          sed -i "s/ENCRYPTION_KEY.*/ENCRYPTION_KEY=\"$ENCRYPTION_KEY\"/" "$env_path"
         fi
       fi
       # Add default auth and system admin credentials for backend.
       if [ "$service" == "backend" ]; then
         echo -e "$blue_text""Adding default auth and system admin credentials to $service""$default_text"
         if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i '' "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          sed -i '' "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          sed -i '' "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          sed -i '' "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i '' "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i '' "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
         else
-          sed -i "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          sed -i "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" $env_path
-          # sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" $env_path
+          sed -i "s/DEFAULT_AUTH_USERNAME.*/DEFAULT_AUTH_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          sed -i "s/DEFAULT_AUTH_PASSWORD.*/DEFAULT_AUTH_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i "s/SYSTEM_ADMIN_USERNAME.*/SYSTEM_ADMIN_USERNAME=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
+          # sed -i "s/SYSTEM_ADMIN_PASSWORD.*/SYSTEM_ADMIN_PASSWORD=\"$DEFAULT_AUTH_KEY\"/" "$env_path"
         fi
       fi
       echo -e "Created env for ""$blue_text""$service""$default_text" at ""$blue_text""$env_path""$default_text"."
@@ -295,6 +294,7 @@ run_services() {
     python3 "$script_dir/docker/scripts/release-notes/print_release_notes.py" "$current_version" "$target_branch"
   fi
   echo -e "\nOnce the services are up, visit ""$blue_text""http://frontend.unstract.localhost""$default_text"" in your browser."
+  echo -e "The async executor worker is included — Prompt Studio IDE runs are non-blocking."
   echo -e "\nSee logs with:"
   echo -e "    ""$blue_text""$docker_compose_cmd -f docker/docker-compose.yaml logs -f""$default_text"
   echo -e "Configure services by updating corresponding ""$yellow_text""<service>/.env""$default_text"" files."
@@ -331,7 +331,9 @@ script_dir=$(dirname "$(readlink -f "$BASH_SOURCE")")
 first_setup=false
 # Extract service names from docker compose file
 services=($(VERSION=$opt_version $docker_compose_cmd -f "$script_dir/docker/docker-compose.build.yaml" config --services))
-spawned_services=("tool-structure" "tool-sidecar")
+# Add workers manually for env setup
+services+=("workers")
+ignore_services=("tool-structure" "tool-sidecar" "tool-classifier" "tool-text_extractor" "worker-unified")
 current_version=""
 target_branch=""
 

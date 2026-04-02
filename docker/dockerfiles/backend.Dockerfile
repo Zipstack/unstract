@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Backend Service Container" \
-    version="${VERSION}"
+    description="Backend Service Container"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -22,13 +20,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies
 RUN apt-get update \
     && apt-get --no-install-recommends install -y \
-       build-essential \
-       freetds-dev \
-       git \
-       libkrb5-dev \
-       libmagic-dev \
-       libssl-dev \
-       pkg-config \
+    build-essential \
+    freetds-dev \
+    git \
+    libkrb5-dev \
+    libmagic-dev \
+    libssl-dev \
+    pkg-config \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*
 # Install uv package manager
@@ -48,6 +46,9 @@ COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_
 # Copy local package dependencies
 COPY ${BUILD_PACKAGES_PATH}/ /unstract/
 
+# Increase timeout for large packages (flipt-client is ~45MB)
+ENV UV_HTTP_TIMEOUT=120
+
 # Install external dependencies from pyproject.toml
 RUN uv sync --group deploy --locked --no-install-project --no-dev
 
@@ -65,8 +66,20 @@ COPY ${BUILD_CONTEXT_PATH}/ ./
 # Install the application
 RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement - && \
+    # Use OpenTelemetry v1 - v2 breaks LiteLLM with instrumentation enabled
+    uv pip uninstall opentelemetry-instrumentation-openai-v2 && \
+    uv pip install opentelemetry-instrumentation-openai && \
     chmod +x ./entrypoint.sh
 
+# Install additional requirements if present
+RUN if [ -f requirements.txt ]; then \
+    uv pip install -r requirements.txt; \
+    fi
+
 EXPOSE 8000
+
+# Capture build version at the very end so it doesn't affect layer caching
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 ENTRYPOINT [ "./entrypoint.sh" ]

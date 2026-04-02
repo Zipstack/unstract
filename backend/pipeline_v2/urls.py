@@ -31,6 +31,12 @@ download_postman_collection = PipelineViewSet.as_view(
     }
 )
 
+list_shared_users = PipelineViewSet.as_view(
+    {
+        "get": PipelineViewSet.list_of_shared_users.__name__,
+    }
+)
+
 pipeline_execute = PipelineViewSet.as_view({"post": "execute"})
 
 
@@ -44,6 +50,11 @@ urlpatterns = format_suffix_patterns(
             name=PipelineURL.EXECUTIONS,
         ),
         path("pipeline/execute/", pipeline_execute, name=PipelineURL.EXECUTE),
+        path(
+            "pipeline/<uuid:pk>/users/",
+            list_shared_users,
+            name="pipeline-shared-users",
+        ),
         path(
             "pipeline/api/postman_collection/<uuid:pk>/",
             download_postman_collection,

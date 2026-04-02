@@ -68,9 +68,79 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
+    getFileHistories: (workflowId, params = {}) => {
+      options = {
+        url: `${path}/workflow/${workflowId}/file-histories/`,
+        method: "GET",
+        params: params,
+      };
+      return axiosPrivate(options);
+    },
+    deleteFileHistory: (workflowId, fileHistoryId) => {
+      options = {
+        url: `${path}/workflow/${workflowId}/file-histories/${fileHistoryId}/`,
+        method: "DELETE",
+        headers: {
+          "X-CSRFToken": csrfToken,
+        },
+      };
+      return axiosPrivate(options);
+    },
+    bulkClearFileHistories: (workflowId, filters) => {
+      options = {
+        url: `${path}/workflow/${workflowId}/file-histories/clear/`,
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: filters,
+      };
+      return axiosPrivate(options);
+    },
+    bulkDeleteFileHistoriesByIds: (workflowId, ids) => {
+      options = {
+        url: `${path}/workflow/${workflowId}/file-histories/clear/`,
+        method: "POST",
+        headers: {
+          "X-CSRFToken": csrfToken,
+          "Content-Type": "application/json",
+        },
+        data: { ids },
+      };
+      return axiosPrivate(options);
+    },
     canUpdate: (id) => {
       options = {
         url: `${path}/workflow/${id}/can-update`,
+        method: "GET",
+      };
+      return axiosPrivate(options);
+    },
+    getSharedUsers: (id) => {
+      options = {
+        url: `${path}/workflow/${id}/users/`,
+        method: "GET",
+      };
+      return axiosPrivate(options);
+    },
+    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+      options = {
+        url: `${path}/workflow/${id}/`,
+        method: "PATCH",
+        headers: {
+          "X-CSRFToken": csrfToken,
+        },
+        data: {
+          shared_users: sharedUsers,
+          shared_to_org: shareWithEveryone,
+        },
+      };
+      return axiosPrivate(options);
+    },
+    getAllUsers: () => {
+      options = {
+        url: `${path}/users/`,
         method: "GET",
       };
       return axiosPrivate(options);

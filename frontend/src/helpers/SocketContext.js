@@ -10,17 +10,15 @@ const SocketProvider = ({ children }) => {
   const [socket, setSocket] = useState(null);
 
   useEffect(() => {
-    let baseUrl = "";
-    const body = {
+    // Always connect to the same origin as the page.
+    // - Dev: CRA proxy (ws: true in setupProxy.js) forwards to the backend.
+    // - Prod: Traefik routes /api/v1/socket to the backend.
+    // This ensures session cookies are sent (same-origin) and avoids
+    // cross-origin WebSocket issues.
+    const newSocket = io(getBaseUrl(), {
       transports: ["websocket"],
       path: "/api/v1/socket",
-    };
-    if (!process.env.NODE_ENV || process.env.NODE_ENV === "development") {
-      baseUrl = process.env.REACT_APP_BACKEND_URL;
-    } else {
-      baseUrl = getBaseUrl();
-    }
-    const newSocket = io(baseUrl, body);
+    });
     setSocket(newSocket);
     // Clean up the socket connection on browser unload
     window.onbeforeunload = () => {

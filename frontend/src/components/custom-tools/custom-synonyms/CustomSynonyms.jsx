@@ -45,11 +45,19 @@ function CustomSynonyms() {
   const [rows, setRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { details, isPublicSource } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+
+  // Reset state on tool switch
+  useEffect(() => {
+    setHasChanges(false);
+    setIsSaved(false);
+  }, [details?.tool_id]);
 
   useEffect(() => {
     const promptGrammar = details?.prompt_grammer;
@@ -121,6 +129,8 @@ function CustomSynonyms() {
     const updatedSynonyms = [...synonyms];
     updatedSynonyms[index][propertyName] = value;
     setSynonyms(updatedSynonyms);
+    setHasChanges(true);
+    setIsSaved(false);
   };
 
   const handleAddRow = () => {
@@ -137,6 +147,8 @@ function CustomSynonyms() {
     const updatedSynonyms = [...synonyms];
     updatedSynonyms.push(data);
     setSynonyms(updatedSynonyms);
+    setHasChanges(true);
+    setIsSaved(false);
 
     const newPage = updatedSynonyms?.length / PAGE_SIZE;
     if (newPage + 1 > currentPage) {
@@ -163,15 +175,10 @@ function CustomSynonyms() {
       promptGrammar[item.word] = item.synonyms || [];
     });
 
-    let successMsg = "";
-    let failureMsg = "";
-    if (actionType === actionTypes.save) {
-      successMsg = "Saved synonyms successfully";
-      failureMsg = "Failed to save synonyms";
-    } else {
-      successMsg = "Deleted synonyms successfully";
-      failureMsg = "Failed to delete synonyms";
-    }
+    const failureMsg =
+      actionType === actionTypes.save
+        ? "Failed to save synonyms"
+        : "Failed to delete synonyms";
 
     const body = {
       prompt_grammer: promptGrammar,
@@ -193,10 +200,10 @@ function CustomSynonyms() {
         if (actionType === actionTypes.delete) {
           setSynonyms(listOfSynonyms);
         }
-        setAlertDetails({
-          type: "success",
-          content: successMsg,
-        });
+        setHasChanges(false);
+        if (actionType === actionTypes.save) {
+          setIsSaved(true);
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err, failureMsg));
@@ -245,9 +252,9 @@ function CustomSynonyms() {
               type="primary"
               onClick={() => updateSynonyms(synonyms, actionTypes.save)}
               loading={isLoading}
-              disabled={isPublicSource}
+              disabled={isPublicSource || !hasChanges}
             >
-              Save
+              {isSaved ? "Saved" : "Save"}
             </CustomButton>
           </Space>
         </div>

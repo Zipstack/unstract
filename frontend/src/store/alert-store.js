@@ -1,9 +1,10 @@
-import { create } from "zustand";
 import { uniqueId } from "lodash";
+import { create } from "zustand";
 
 import { isNonNegativeNumber } from "../helpers/GetStaticData";
 
 const DEFAULT_DURATION = 6;
+const SUCCESS_DURATION = 2;
 
 const STORE_VARIABLES = {
   alertDetails: {
@@ -18,15 +19,19 @@ const STORE_VARIABLES = {
 const useAlertStore = create((setState) => ({
   ...STORE_VARIABLES,
   setAlertDetails: (details) => {
-    if (!details) return STORE_VARIABLES;
+    if (!details) {
+      return STORE_VARIABLES;
+    }
 
     const isErrorType = details?.type === "error";
+    const isSuccessType = details?.type === "success";
+    const defaultDuration = isSuccessType ? SUCCESS_DURATION : DEFAULT_DURATION;
     const updatedDetails = {
       ...details,
       title: details.title || (isErrorType ? "Failed" : "Success"),
       duration: isNonNegativeNumber(details.duration)
         ? details.duration
-        : DEFAULT_DURATION,
+        : defaultDuration,
       key: `open${Date.now()}-${uniqueId()}`,
     };
 

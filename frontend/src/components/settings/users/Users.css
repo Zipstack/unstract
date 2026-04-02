@@ -3,15 +3,15 @@
   height: 100%;
 }
 
-.user-table{
+.user-table {
   padding: 15px;
   overflow-y: auto;
 }
 
-.user-reload-button{
+.user-reload-button {
   font-size: 16px;
 }
 
-.delete-user-modal{
+.delete-user-modal {
   width: 400px;
 }

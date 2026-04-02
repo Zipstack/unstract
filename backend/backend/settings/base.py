@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 import httpx
 from dotenv import find_dotenv, load_dotenv
@@ -108,6 +108,29 @@ API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
     os.environ.get("API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB", 20)
 )
 
+# API Deployment Rate Limiting
+API_DEPLOYMENT_DEFAULT_RATE_LIMIT = int(
+    os.environ.get("API_DEPLOYMENT_DEFAULT_RATE_LIMIT", 20)
+)
+API_DEPLOYMENT_GLOBAL_RATE_LIMIT = int(
+    os.environ.get("API_DEPLOYMENT_GLOBAL_RATE_LIMIT", 100)
+)
+API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS", 6)
+)
+# Cache TTL for organization rate limits (in seconds)
+API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_CACHE_TTL", 600)
+)
+# Redis lock timeouts for rate limiting (in seconds)
+API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_TIMEOUT", 2)
+)
+API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
+    os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
+)
+
+
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
 DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
@@ -160,6 +183,10 @@ FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
     os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
 )  # 10 minutes
 
+FILE_ACTIVE_CACHE_REDIS_DB = int(
+    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", 0)
+)  # Redis DB for active file cache tracking
+
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
 )  # 5 minutes
@@ -174,8 +201,10 @@ MAX_PARALLEL_FILE_BATCHES = int(os.environ.get("MAX_PARALLEL_FILE_BATCHES", 1))
 MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
     os.environ.get("MAX_PARALLEL_FILE_BATCHES_MAX_VALUE", 100)
 )
+# Maximum number of times a file can be executed in a workflow
+MAX_FILE_EXECUTION_COUNT = int(os.environ.get("MAX_FILE_EXECUTION_COUNT", 3))
 
-CELERY_RESULT_CHORD_RETRY_INTERVAL = int(
+CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
 )
 
@@ -282,7 +311,7 @@ SHARED_APPS = (
     "drf_yasg",
     "docs",
     # Plugins
-    "plugins",
+    "plugins.apps.PluginsConfig",
     "feature_flag",
     "django_celery_beat",
     # For additional helper commands
@@ -314,6 +343,8 @@ SHARED_APPS = (
     "prompt_studio.prompt_studio_index_manager_v2",
     "tags",
     "configuration",
+    "dashboard_metrics",
+    "platform_api",
 )
 TENANT_APPS = []
 
@@ -322,10 +353,12 @@ INSTALLED_APPS = list(SHARED_APPS) + [
 ]
 DEFAULT_MODEL_BACKEND = "django.contrib.auth.backends.ModelBackend"
 GOOGLE_MODEL_BACKEND = "social_core.backends.google.GoogleOAuth2"
+AZUREAD_TENANT_MODEL_BACKEND = "social_core.backends.azuread_tenant.AzureADTenantOAuth2"
 
 AUTHENTICATION_BACKENDS = (
     DEFAULT_MODEL_BACKEND,
     GOOGLE_MODEL_BACKEND,
+    AZUREAD_TENANT_MODEL_BACKEND,
 )
 
 PUBLIC_ORG_ID = "public"
@@ -373,6 +406,7 @@ MIDDLEWARE = [
     "middleware.request_id.CustomRequestIDMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     TENANT_MIDDLEWARE,
+    "middleware.internal_api_auth.InternalAPIAuthMiddleware",  # Added to handle X-Organization-ID header from workers
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -385,6 +419,7 @@ MIDDLEWARE = [
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
     "middleware.cache_control.CacheControlMiddleware",
+    "middleware.content_security_policy.ContentSecurityPolicyMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
@@ -408,23 +443,77 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "backend.wsgi.application"
 
-# SocketIO connection manager
-SOCKET_IO_MANAGER_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
+# Redis Sentinel HA Configuration (LLMW pattern)
+# Single boolean flag; in Sentinel mode REDIS_HOST/PORT point to the Sentinel service
+REDIS_SENTINEL_MODE = (
+    os.environ.get("REDIS_SENTINEL_MODE", "False").strip().lower() == "true"
+)
 
-CACHES = {
-    "default": {
-        "BACKEND": "django_redis.cache.RedisCache",
-        "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
-        "OPTIONS": {
-            "CLIENT_CLASS": "django_redis.client.DefaultClient",
-            "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-            "DB": REDIS_DB,
-            "USERNAME": REDIS_USER,
-            "PASSWORD": REDIS_PASSWORD,
-        },
-        "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+
+if REDIS_SENTINEL_MODE:
+    _sentinel_kwargs = {}
+    if REDIS_PASSWORD:
+        _sentinel_kwargs["password"] = REDIS_PASSWORD
+    if REDIS_USER:
+        _sentinel_kwargs["username"] = REDIS_USER
+
+    _redis_db = REDIS_DB or "0"
+
+    # SocketIO connection manager (Kombu Sentinel URL format)
+    _cred_prefix = ""
+    if REDIS_USER and REDIS_PASSWORD:
+        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    elif REDIS_PASSWORD:
+        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
+    SOCKET_IO_MANAGER_URL = (
+        f"sentinel://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}/{_redis_db}"
+    )
+    SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": REDIS_SENTINEL_MASTER_NAME}
+
+    # django-redis expects username in the LOCATION URL for ACL auth
+    _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"redis://{_user_prefix}{REDIS_SENTINEL_MASTER_NAME}/{_redis_db}",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.SentinelClient",
+                "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
+                "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
+                "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
+                "SENTINEL_KWARGS": _sentinel_kwargs,
+                "DB": int(_redis_db),
+                "PASSWORD": REDIS_PASSWORD,
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+            },
+            "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+        }
     }
-}
+else:
+    # SocketIO connection manager (standalone)
+    _cred_prefix = ""
+    if REDIS_USER and REDIS_PASSWORD:
+        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    elif REDIS_PASSWORD:
+        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
+    SOCKET_IO_MANAGER_URL = f"redis://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}"
+    SOCKET_IO_TRANSPORT_OPTIONS = {}
+
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
+            "OPTIONS": {
+                "CLIENT_CLASS": "django_redis.client.DefaultClient",
+                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+                "DB": int(REDIS_DB) if REDIS_DB else 0,
+                "USERNAME": REDIS_USER,
+                "PASSWORD": REDIS_PASSWORD,
+            },
+            "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
+        }
+    }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
 
@@ -485,6 +574,7 @@ REST_FRAMEWORK = {
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
+        "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
@@ -535,6 +625,9 @@ SOCIAL_AUTH_TRAILING_SLASH = False
 for key in [
     "GOOGLE_OAUTH2_KEY",
     "GOOGLE_OAUTH2_SECRET",
+    "AZUREAD_TENANT_OAUTH2_KEY",
+    "AZUREAD_TENANT_OAUTH2_SECRET",
+    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
@@ -562,6 +655,33 @@ SOCIAL_AUTH_GOOGLE_OAUTH2_AUTH_EXTRA_ARGUMENTS = {
 }
 SOCIAL_AUTH_GOOGLE_OAUTH2_USE_UNIQUE_USER_ID = True
 
+# Social Auth: Azure AD Tenant OAuth2 (SharePoint/OneDrive)
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_RESOURCE = "https://graph.microsoft.com/"
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SCOPE = [
+    "openid",
+    "profile",
+    "offline_access",
+    "https://graph.microsoft.com/Files.ReadWrite.All",
+    "https://graph.microsoft.com/Sites.ReadWrite.All",
+]
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_AUTH_EXTRA_ARGUMENTS: dict[str, str] = {}
+
+# Dashboard Metrics Cache TTLs (in seconds)
+DASHBOARD_CACHE_TTL_CURRENT_BUCKET = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_CURRENT_BUCKET", 60)
+)
+DASHBOARD_CACHE_TTL_HISTORICAL = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_HISTORICAL", 28800)
+)
+DASHBOARD_CACHE_TTL_OVERVIEW = int(os.environ.get("DASHBOARD_CACHE_TTL_OVERVIEW", 300))
+DASHBOARD_CACHE_TTL_SUMMARY = int(os.environ.get("DASHBOARD_CACHE_TTL_SUMMARY", 900))
+DASHBOARD_CACHE_TTL_SERIES = int(os.environ.get("DASHBOARD_CACHE_TTL_SERIES", 1800))
+DASHBOARD_CACHE_TTL_WORKFLOW_USAGE = int(
+    os.environ.get("DASHBOARD_CACHE_TTL_WORKFLOW_USAGE", 3600)
+)
+DASHBOARD_BUCKET_CACHE_ENABLED = (
+    os.environ.get("DASHBOARD_BUCKET_CACHE_ENABLED", "true").lower() == "true"
+)
 
 # Always keep this line at the bottom of the file.
 if missing_settings:

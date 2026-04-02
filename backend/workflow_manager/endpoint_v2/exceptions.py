@@ -96,17 +96,21 @@ class BigQueryTableNotFound(APIException):
 class UnstractDBException(APIException):
     default_detail = "Error creating/inserting to database. "
 
-    def __init__(self, detail: str = default_detail) -> None:
-        status_code = 500
-        super().__init__(detail=detail, code=status_code)
+    def __init__(
+        self, detail: str = default_detail, status_code: int | None = None
+    ) -> None:
+        self.status_code = status_code or 500
+        super().__init__(detail=detail, code=self.status_code)
 
 
 class UnstractQueueException(APIException):
     default_detail = "Error creating/inserting to Queue. "
 
-    def __init__(self, detail: str = default_detail) -> None:
-        status_code = 500
-        super().__init__(detail=detail, code=status_code)
+    def __init__(
+        self, detail: str = default_detail, status_code: int | None = None
+    ) -> None:
+        self.status_code = status_code or 500
+        super().__init__(detail=detail, code=self.status_code)
 
 
 class SourceFileOrInfilePathNotFound(APIException):

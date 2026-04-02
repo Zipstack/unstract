@@ -1,19 +1,20 @@
+import throttle from "lodash/throttle";
 import {
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
-  useCallback,
-  useMemo,
 } from "react";
-import throttle from "lodash/throttle";
 
 import { SocketContext } from "../../../helpers/SocketContext";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
+import { useSessionStore } from "../../../store/session-store";
+import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useSocketLogsStore } from "../../../store/socket-logs-store";
 import { useSocketMessagesStore } from "../../../store/socket-messages-store";
-import { useSessionStore } from "../../../store/session-store";
 import { useUsageStore } from "../../../store/usage-store";
 
 const THROTTLE_DELAY = 2000;
@@ -28,6 +29,7 @@ function SocketMessages() {
     setPointer,
   } = useSocketMessagesStore();
   const { pushLogMessages } = useSocketLogsStore();
+  const { updateCusToolMessages } = useSocketCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const socket = useContext(SocketContext);
   const { setAlertDetails } = useAlertStore();
@@ -45,11 +47,13 @@ function SocketMessages() {
   const logMessagesThrottledUpdate = useMemo(
     () =>
       throttle((logsBatch) => {
-        if (!logsBatch.length) return;
+        if (!logsBatch.length) {
+          return;
+        }
         pushLogMessages(logsBatch);
         logBufferRef.current = [];
       }, THROTTLE_DELAY),
-    [pushLogMessages]
+    [pushLogMessages],
   );
 
   // Clean up throttling on unmount
@@ -63,7 +67,7 @@ function SocketMessages() {
       logBufferRef.current = [...logBufferRef.current, msg];
       logMessagesThrottledUpdate(logBufferRef.current);
     },
-    [logMessagesThrottledUpdate]
+    [logMessagesThrottledUpdate],
   );
 
   // Socket message handler
@@ -89,6 +93,8 @@ function SocketMessages() {
           pushStagedMessage(msg);
         } else if (msg?.type === "LOG" && msg?.service === "prompt") {
           handleLogMessages(msg);
+        } else if (msg?.type === "PROGRESS") {
+          updateCusToolMessages([msg]);
         }
 
         if (msg?.type === "LOG" && msg?.service === "usage") {
@@ -98,27 +104,31 @@ function SocketMessages() {
         }
       } catch (err) {
         setAlertDetails(
-          handleException(err, "Failed to process socket message")
+          handleException(err, "Failed to process socket message"),
         );
       }
     },
-    [handleLogMessages, pushStagedMessage]
+    [handleLogMessages, pushStagedMessage, updateCusToolMessages],
   );
 
   // Subscribe/unsubscribe to the socket channel
   useEffect(() => {
-    if (!logId) return;
+    if (!logId) {
+      return;
+    }
 
     const channel = `logs:${logId}`;
-    socket.on(channel, onMessage);
+    socket?.on(channel, onMessage);
     return () => {
-      socket.off(channel, onMessage);
+      socket?.off(channel, onMessage);
     };
   }, [socket, logId, onMessage]);
 
   // Process staged messages sequentially
   useEffect(() => {
-    if (pointer > stagedMessages?.length - 1) return;
+    if (pointer > stagedMessages?.length - 1) {
+      return;
+    }
 
     const stagedMsg = stagedMessages[pointer];
     const timer = setTimeout(() => {

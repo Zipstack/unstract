@@ -2,17 +2,35 @@ import base64
 import json
 import logging
 import os
+import threading
+from datetime import UTC, datetime
 from typing import Any
 
-from gcsfs import GCSFileSystem
+from fsspec import AbstractFileSystem
 
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 logger = logging.getLogger(__name__)
 
+# Global lock for thread-safe Google Cloud Storage initialization
+# Prevents deadlock when multiple threads simultaneously create GCS clients
+# (GCSFileSystem uses gRPC which has internal locks)
+_GCS_INIT_LOCK = threading.Lock()
+
 
 class GoogleCloudStorageFS(UnstractFileSystem):
+    """Fork-safe and thread-safe Google Cloud Storage filesystem connector.
+
+    IMPORTANT: This class ensures safety across ALL Celery pool types:
+    - Thread pool: Global lock prevents gRPC deadlock
+    - Prefork pool: Lazy initialization prevents SIGSEGV
+    - Gevent pool: threading.Lock is gevent-compatible
+
+    GCS filesystem client is NOT created in __init__ to avoid creating
+    gRPC connections before fork, which would cause SIGSEGV in child processes.
+    """
+
     def __init__(self, settings: dict[str, Any]):
         """Initializing gcs
 
@@ -22,24 +40,16 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             ConnectorError: Error raised when connection initialization fails
         """
         super().__init__("GoogleCloudStorage")
-        project_id = settings.get("project_id", "")
-        json_credentials_str = settings.get("json_credentials", "{}")
-        try:
-            json_credentials = json.loads(json_credentials_str)
-            self.gcs_fs = GCSFileSystem(
-                token=json_credentials,
-                project=project_id,
-                cache_timeout=0,
-                use_listings_cache=False,
-            )
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse JSON credentials: {str(e)}")
-            error_msg = (
-                "Failed to connect to Google Cloud Storage. \n"
-                "GCS credentials are not in proper JSON format. \n"
-                f"Error: \n```\n{str(e)}\n```"
-            )
-            raise ConnectorError(error_msg) from e
+
+        # Store connection settings WITHOUT creating GCSFileSystem
+        # GCSFileSystem uses gRPC which is NOT fork-safe!
+        # The filesystem will be created lazily in get_fsspec_fs() AFTER fork
+        self._project_id = settings.get("project_id", "")
+        self._json_credentials_str = settings.get("json_credentials", "{}")
+
+        # Lazy initialization - create GCS client only when needed (after fork)
+        # This prevents SIGSEGV crashes in Celery ForkPoolWorker processes from gRPC calls
+        self._gcs_fs = None
 
     @staticmethod
     def get_id() -> str:
@@ -80,8 +90,59 @@ class GoogleCloudStorageFS(UnstractFileSystem):
     def can_read() -> bool:
         return True
 
-    def get_fsspec_fs(self) -> GCSFileSystem:
-        return self.gcs_fs
+    def get_fsspec_fs(self) -> AbstractFileSystem:
+        """Get GCS filesystem with lazy initialization (fork-safe and thread-safe).
+
+        This method creates the GCS filesystem client on first access,
+        ensuring it's created AFTER Celery fork to avoid SIGSEGV crashes.
+
+        GCSFileSystem uses gRPC for Google Cloud API communication. Creating it
+        in __init__ causes it to be created in the parent process before fork(),
+        resulting in stale gRPC connections in child processes that trigger
+        segmentation faults when the child tries to use the filesystem.
+
+        The lazy initialization pattern ensures that gRPC-based Google Cloud
+        clients are created in the child process after fork(), not in the
+        parent process before fork().
+
+        Thread-safe: Uses global lock to prevent gRPC deadlock when multiple
+        threads create GCS clients simultaneously.
+
+        Returns:
+            GCSFileSystem: The initialized Google Cloud Storage filesystem client
+
+        Raises:
+            ConnectorError: If GCS credentials are invalid or connection fails
+        """
+        if self._gcs_fs is None:
+            # Use global lock to serialize GCS client creation
+            # This prevents deadlock when multiple threads hit this simultaneously
+            with _GCS_INIT_LOCK:
+                # Double-check pattern for thread safety
+                if self._gcs_fs is None:
+                    logger.info("Initializing GCS client (lazy init after fork)")
+                    try:
+                        from gcsfs import GCSFileSystem
+
+                        # Parse credentials and create GCS filesystem AFTER fork
+                        json_credentials = json.loads(self._json_credentials_str)
+                        self._gcs_fs = GCSFileSystem(
+                            token=json_credentials,
+                            project=self._project_id,
+                            cache_timeout=0,
+                            use_listings_cache=False,
+                        )
+                        logger.info("GCS client initialized successfully")
+                    except json.JSONDecodeError as e:
+                        logger.error(f"Failed to parse JSON credentials: {str(e)}")
+                        error_msg = (
+                            "Failed to connect to Google Cloud Storage. \n"
+                            "GCS credentials are not in proper JSON format. \n"
+                            f"Error: \n```\n{str(e)}\n```"
+                        )
+                        raise ConnectorError(error_msg) from e
+
+        return self._gcs_fs
 
     def extract_metadata_file_hash(self, metadata: dict[str, Any]) -> str | None:
         """Extracts a unique file hash from metadata.
@@ -108,8 +169,86 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         Returns:
             bool: True if the path is a directory, False otherwise.
         """
-        # Note: Here Metadata type seems to be always "file" even for directories
-        return metadata.get("type") == "directory"
+        # Primary check: Standard directory type
+        if metadata.get("type") == "directory":
+            return True
+
+        # GCS-specific directory detection
+        # In GCS, folders are represented as objects with specific characteristics
+        object_name = metadata.get("name", "")
+        size = metadata.get("size", 0)
+        content_type = metadata.get("contentType", "")
+
+        # GCS folder indicators:
+        # 1. Object name ends with "/" (most reliable indicator)
+        if object_name.endswith("/"):
+            logger.debug(
+                f"[GCS Directory Check] '{object_name}' identified as directory: name ends with '/'"
+            )
+            return True
+
+        # 2. Zero-size object with text/plain content type (common for GCS folders)
+        if size == 0 and content_type == "text/plain":
+            logger.debug(
+                f"[GCS Directory Check] '{object_name}' identified as directory: zero-size with text/plain content type"
+            )
+            return True
+
+        # 3. Check for GCS-specific folder metadata
+        # Some GCS folder objects have no contentType or have application/x-www-form-urlencoded
+        if size == 0 and (
+            not content_type
+            or content_type
+            in ["application/x-www-form-urlencoded", "binary/octet-stream"]
+        ):
+            # Additional validation: check if this looks like a folder path
+            if "/" in object_name and not object_name.split("/")[-1]:  # Path ends with /
+                logger.debug(
+                    f"[GCS Directory Check] '{object_name}' identified as directory: zero-size folder-like object"
+                )
+                return True
+
+        return False
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from GCS metadata.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            datetime object or None if not available
+        """
+        # Prefer explicit presence check so falsy values like 0 are not skipped.
+        updated = (
+            metadata.get("updated") if "updated" in metadata else metadata.get("mtime")
+        )
+        if isinstance(updated, datetime):
+            # Normalize to timezone-aware (UTC) to avoid naive/aware comparison errors.
+            if updated.tzinfo is None:
+                logger.debug("[GCS] Naive datetime encountered; assuming UTC.")
+                return updated.replace(tzinfo=UTC)
+            return updated.astimezone(UTC)
+        elif isinstance(updated, (int, float)):
+            # Epoch in seconds, milliseconds, or microseconds -> normalize to seconds.
+            ts = float(updated)
+            if ts > 1e14:  # microseconds since epoch
+                ts /= 1e6
+            elif ts > 1e11:  # milliseconds since epoch
+                ts /= 1e3
+            return datetime.fromtimestamp(ts, tz=UTC)
+        elif isinstance(updated, str):
+            # ISO8601 string (e.g., 2023-01-01T00:00:00Z)
+            try:
+                dt = datetime.fromisoformat(updated.strip().replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    return dt.replace(tzinfo=UTC)
+                return dt.astimezone(UTC)
+            except ValueError:
+                logger.warning(f"[GCS] Invalid datetime format: {updated}")
+                return None
+        logger.debug(f"[GCS] No modified date found in metadata: {metadata}")
+        return None
 
     def test_credentials(self) -> bool:
         """Test Google Cloud Storage credentials by accessing the root path info.

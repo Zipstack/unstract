@@ -1,11 +1,11 @@
-import { useMemo, useEffect, useRef } from "react";
-import PropTypes from "prop-types";
 import { Table } from "antd";
 import { uniqueId } from "lodash";
+import PropTypes from "prop-types";
+import { useEffect, useMemo, useRef } from "react";
 import { useSocketLogsStore } from "../../store/socket-logs-store";
 import "./DisplayLogsAndNotifications.css";
-import CustomMarkdown from "../helpers/custom-markdown/CustomMarkdown";
 import { getDateTimeString } from "../../helpers/GetStaticData";
+import CustomMarkdown from "../helpers/custom-markdown/CustomMarkdown";
 
 function LogsAndNotificationsTable({ errorCount, setErrorCount, isMinimized }) {
   const tableRef = useRef(null);
@@ -98,7 +98,7 @@ function LogsAndNotificationsTable({ errorCount, setErrorCount, isMinimized }) {
         key: "message",
       },
     ],
-    []
+    [],
   );
 
   useEffect(() => {

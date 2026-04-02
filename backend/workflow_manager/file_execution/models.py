@@ -120,32 +120,30 @@ class WorkflowFileExecution(BaseModel):
 
     def update_status(
         self,
-        status: ExecutionStatus,
+        status: ExecutionStatus | str,
         execution_error: str = None,
+        execution_time: float = None,
     ) -> None:
         """Updates the status and execution details of an input file.
 
         Args:
         execution_file: The `WorkflowExecutionFile` object to update
-        status: The new status of the file
-        execution_time: The execution time for processing the file
+        status: The new status of the file (ExecutionStatus enum or string)
+        execution_time: The execution time for processing the file (optional)
         execution_error: (Optional) Error message if processing failed
 
         Return:
             The updated `WorkflowExecutionInputFile` object
         """
-        self.status = status
-
-        if (
-            status
-            in [
-                ExecutionStatus.COMPLETED,
-                ExecutionStatus.ERROR,
-                ExecutionStatus.STOPPED,
-            ]
-            and not self.execution_time
-        ):
-            self.execution_time = CommonUtils.time_since(self.created_at)
+        # Set execution_time if provided, otherwise calculate it for final states
+        status = ExecutionStatus(status)
+        self.status = status.value
+        if status in [
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.ERROR,
+            ExecutionStatus.STOPPED,
+        ]:
+            self.execution_time = CommonUtils.time_since(self.created_at, 3)
 
         self.execution_error = execution_error
         self.save()
@@ -219,17 +217,20 @@ class WorkflowFileExecution(BaseModel):
         Returns:
             bool: True if the execution status is completed, False otherwise.
         """
-        return self.status is not None and self.status == ExecutionStatus.COMPLETED
+        return self.status is not None and self.status == ExecutionStatus.COMPLETED.value
 
     def update(
         self,
         file_hash: str = None,
         fs_metadata: dict[str, Any] = None,
+        mime_type: str = None,
     ) -> None:
         """Updates the file execution details.
 
         Args:
             file_hash: (Optional) Hash of the file content
+            fs_metadata: (Optional) File system metadata
+            mime_type: (Optional) MIME type of the file
 
         Returns:
             None
@@ -242,5 +243,8 @@ class WorkflowFileExecution(BaseModel):
         if fs_metadata is not None:
             self.fs_metadata = fs_metadata
             update_fields.append("fs_metadata")
+        if mime_type is not None:
+            self.mime_type = mime_type
+            update_fields.append("mime_type")
         if update_fields:  # Save only if there's an actual update
             self.save(update_fields=update_fields)

@@ -48,7 +48,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to delete the tool instance")
+          handleException(err, "Failed to delete the tool instance"),
         );
       });
   };
@@ -184,4 +184,5 @@ CardsList.propTypes = {
   activeTool: PropTypes.string.isRequired,
   moveItem: PropTypes.func.isRequired,
 };
+
 export { CardsList };

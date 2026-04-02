@@ -4,6 +4,7 @@ from collections import OrderedDict
 from typing import Any
 from urllib.parse import urlparse
 
+from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -16,10 +17,12 @@ from rest_framework.serializers import (
     ListField,
     ModelSerializer,
     Serializer,
+    SerializerMethodField,
     URLField,
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
@@ -59,6 +62,14 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         )
         api_name_validator(value)
         return value
+
+    def validate_display_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Display name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""
@@ -195,23 +206,23 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
     Attributes:
-        timeout (int): Timeout for the API deployment, maximum value can be 300s.
-            If -1 it corresponds to async execution. Defaults to -1
-        include_metadata (bool): Flag to include metadata in API response
-        include_metrics (bool): Flag to include metrics in API response
-        use_file_history (bool): Flag to use FileHistory to save and retrieve
-            responses quickly. This is undocumented to the user and can be
-            helpful for demos.
-        tags (str): Comma-separated List of tags to associate with the execution.
-            e.g:'tag1,tag2-name,tag3_name'
-        llm_profile_id (str): UUID of the LLM profile to override the default profile.
-            If not provided, the default profile will be used.
-        hitl_queue_name (str, optional): Document class name for manual review queue.
-            If not provided, uses API name as document class.
-        presigned_urls (list): List of presigned URLs to fetch files from.
-            URLs are validated for HTTPS and S3 endpoint requirements.
-        user_data (dict, optional): User-provided data for variable replacement in prompts.
-            Can be accessed in prompts using {{user_data.key}} syntax for dot notation traversal.
+            timeout (int): Timeout for the API deployment, maximum value can be 300s.
+                If -1 it corresponds to async execution. Defaults to -1
+            include_metadata (bool): Flag to include metadata in API response
+            include_metrics (bool): Flag to include metrics in API response
+            use_file_history (bool): Flag to use FileHistory to save and retrieve
+                responses quickly. This is undocumented to the user and can be
+                helpful for demos.
+            tags (str): Comma-separated List of tags to associate with the execution.
+                e.g:'tag1,tag2-name,tag3_name'
+            llm_profile_id (str): UUID of the LLM profile to override the default profile.
+                If not provided, the default profile will be used.
+            hitl_queue_name (str, optional): Document class name for manual review queue.
+                If not provided, uses API name as document class.
+            presigned_urls (list): List of presigned URLs to fetch files from.
+                URLs are validated for HTTPS and S3 endpoint requirements.
+            custom_data (dict, optional): User-provided data for variable replacement in prompts.
+                Can be accessed in prompts using {{custom_data.key}} syntax for dot notation traversal.
     """
 
     MAX_FILES_ALLOWED = 32
@@ -226,7 +237,8 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)
     hitl_queue_name = CharField(required=False, allow_null=True, allow_blank=True)
-    user_data = JSONField(required=False, allow_null=True)
+    hitl_packet_id = CharField(required=False, allow_null=True, allow_blank=True)
+    custom_data = JSONField(required=False, allow_null=True)
 
     def validate_hitl_queue_name(self, value: str | None) -> str | None:
         """Validate queue name format using enterprise validation if available."""
@@ -247,13 +259,43 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             )
         return value
 
-    def validate_user_data(self, value):
-        """Validate user_data is a valid JSON object."""
+    def validate_hitl_packet_id(self, value: str | None) -> str | None:
+        """Validate packet ID format using enterprise validation if available."""
+        if not value:
+            return value
+
+        # Check if HITL feature is available
+        if not apps.is_installed("pluggable_apps.manual_review_v2"):
+            raise ValidationError(
+                "Packet-based HITL processing requires Unstract Enterprise. "
+                "This advanced workflow feature is available in our enterprise version. "
+                "Learn more at https://docs.unstract.com/unstract/unstract_platform/features/workflows/hqr_deployment_workflows/ or "
+                "contact our sales team at https://unstract.com/contact/"
+            )
+
+        # Validate packet ID format (alphanumeric string, typically 8-character hex)
+        value = value.strip()
+        if not value:
+            raise ValidationError("Packet ID cannot be empty or whitespace only.")
+
+        # Basic format validation: alphanumeric, reasonable length
+        if not re.match(r"^[a-zA-Z0-9_-]+$", value):
+            raise ValidationError(
+                "Invalid packet ID format. Packet ID must contain only letters, numbers, hyphens, or underscores."
+            )
+
+        if len(value) > 16:  # Reasonable max length
+            raise ValidationError("Packet ID is too long (maximum 100 characters).")
+
+        return value
+
+    def validate_custom_data(self, value):
+        """Validate custom_data is a valid JSON object."""
         if value is None:
             return value
 
         if not isinstance(value, dict):
-            raise ValidationError("user_data must be a JSON object")
+            raise ValidationError("custom_data must be a JSON object")
 
         return value
 
@@ -391,6 +433,10 @@ class ExecutionQuerySerializer(Serializer):
 
 class APIDeploymentListSerializer(ModelSerializer):
     workflow_name = CharField(source="workflow.workflow_name", read_only=True)
+    created_by_email = SerializerMethodField()
+    last_5_run_statuses = SerializerMethodField()
+    run_count = SerializerMethodField()
+    last_run_time = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -404,7 +450,32 @@ class APIDeploymentListSerializer(ModelSerializer):
             "api_endpoint",
             "api_name",
             "created_by",
+            "created_by_email",
+            "last_5_run_statuses",
+            "run_count",
+            "last_run_time",
         ]
+
+    def get_created_by_email(self, obj):
+        """Get the email of the creator."""
+        return obj.created_by.email if obj.created_by else None
+
+    def get_run_count(self, instance) -> int:
+        """Get total execution count for this API deployment."""
+        return WorkflowExecution.objects.filter(pipeline_id=instance.id).count()
+
+    def get_last_run_time(self, instance) -> str | None:
+        """Get the timestamp of the most recent execution."""
+        last_execution = (
+            WorkflowExecution.objects.filter(pipeline_id=instance.id)
+            .order_by("-created_at")
+            .first()
+        )
+        return last_execution.created_at.isoformat() if last_execution else None
+
+    def get_last_5_run_statuses(self, instance) -> list[dict]:
+        """Fetch the last 5 execution statuses with timestamps for this API deployment."""
+        return WorkflowExecution.get_last_run_statuses(instance.id, limit=5)
 
 
 class APIKeyListSerializer(ModelSerializer):
@@ -437,3 +508,27 @@ class APIExecutionResponseSerializer(Serializer):
     status_api = CharField()
     error = CharField()
     result = JSONField()
+
+
+class SharedUserListSerializer(ModelSerializer):
+    """Serializer for returning API deployment with shared user details."""
+
+    shared_users = SerializerMethodField()
+    created_by = SerializerMethodField()
+
+    class Meta:
+        model = APIDeployment
+        fields = ["id", "display_name", "shared_users", "shared_to_org", "created_by"]
+
+    def get_shared_users(self, obj):
+        """Return list of shared users with id and email."""
+        return [
+            {"id": user.id, "email": user.email}
+            for user in obj.shared_users.filter(is_service_account=False)
+        ]
+
+    def get_created_by(self, obj):
+        """Return creator details."""
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None

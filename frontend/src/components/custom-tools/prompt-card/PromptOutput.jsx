@@ -1,12 +1,9 @@
 import {
-  CheckCircleOutlined,
   DatabaseOutlined,
-  ExclamationCircleFilled,
   InfoCircleOutlined,
   PlayCircleFilled,
   PlayCircleOutlined,
 } from "@ant-design/icons";
-import PropTypes from "prop-types";
 import {
   Button,
   Col,
@@ -17,8 +14,9 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { motion, AnimatePresence } from "framer-motion";
-import CheckableTag from "antd/es/tag/CheckableTag";
+import { AnimatePresence, motion } from "framer-motion";
+import PropTypes from "prop-types";
+import { useState } from "react";
 
 import {
   displayPromptResult,
@@ -26,29 +24,29 @@ import {
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
 } from "../../../helpers/GetStaticData";
-import { TokenUsage } from "../token-usage/TokenUsage";
-import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
-import { TABLE } from "./constants";
-import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
-import { useAlertStore } from "../../../store/alert-store";
-import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
-import { DisplayPromptResult } from "./DisplayPromptResult";
 import usePromptOutput from "../../../hooks/usePromptOutput";
-import { PromptRunTimer } from "./PromptRunTimer";
+import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
+import { useAlertStore } from "../../../store/alert-store";
+import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { TokenUsage } from "../token-usage/TokenUsage";
+import { CopyPromptOutputBtn } from "./CopyPromptOutputBtn";
+import { TABLE } from "./constants";
+import { DisplayPromptResult } from "./DisplayPromptResult";
+import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
-import { useState } from "react";
+import { PromptRunTimer } from "./PromptRunTimer";
 
 let TableOutput;
 try {
-  TableOutput = require("../../../plugins/prompt-card/TableOutput").TableOutput;
+  const mod = await import("../../../plugins/prompt-card/TableOutput");
+  TableOutput = mod.TableOutput;
 } catch {
   // The component will remain null of it is not available
 }
 let ChallengeModal;
 try {
-  ChallengeModal =
-    require("../../../plugins/challenge-modal/ChallengeModal").ChallengeModal;
+  const mod = await import("../../../plugins/challenge-modal/ChallengeModal");
+  ChallengeModal = mod.ChallengeModal;
 } catch {
   // The component will remain null of it is not available
 }
@@ -60,8 +58,6 @@ function PromptOutput({
   handleSelectDefaultLLM,
   llmProfileDetails,
   setOpenIndexProfile,
-  enabledProfiles,
-  setEnabledProfiles,
   isNotSingleLlmProfile,
   setIsIndexOpen,
   enforceType,
@@ -70,6 +66,7 @@ function PromptOutput({
   promptRunStatus,
   isChallenge,
   handleSelectHighlight,
+  progressMsg,
 }) {
   const [openExpandModal, setOpenExpandModal] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
@@ -97,18 +94,8 @@ function PromptOutput({
     </div>
   );
 
-  const handleTagChange = (checked, profileId) => {
-    setEnabledProfiles((prevState) =>
-      checked
-        ? [...prevState, profileId]
-        : prevState.filter((id) => id !== profileId)
-    );
-  };
-
   const handleTable = (profileId, promptOutputData) => {
-    if (tableSettings?.document_type !== "rent_rolls")
-      return <TableOutput output={promptOutputData?.output} />;
-    else
+    if (tableSettings?.document_type === "rent_rolls") {
       return (
         <>
           <DisplayPromptResult
@@ -119,21 +106,25 @@ function PromptOutput({
             handleSelectHighlight={handleSelectHighlight}
             highlightData={promptOutputData?.highlightData}
             confidenceData={promptOutputData?.confidenceData}
+            wordConfidenceData={promptOutputData?.wordConfidenceData}
             promptDetails={promptDetails}
             isTable={true}
             setOpenExpandModal={setOpenExpandModal}
+            progressMsg={progressMsg}
           />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               copyToClipboard={() =>
                 copyOutputToClipboard(
-                  displayPromptResult(promptOutputData?.output, true)
+                  displayPromptResult(promptOutputData?.output, true),
                 )
               }
             />
           </div>
         </>
       );
+    }
+    return <TableOutput output={promptOutputData?.output} />;
   };
 
   const getColSpan = () => (componentWidth < 1200 ? 24 : 6);
@@ -170,7 +161,7 @@ function PromptOutput({
       docId,
       defaultLlmProfile,
       singlePassExtractMode,
-      true
+      true,
     );
 
     const promptOutput = promptOutputs[promptOutputKey]?.output;
@@ -182,7 +173,7 @@ function PromptOutput({
         docId,
         defaultLlmProfile,
         singlePassExtractMode,
-        true
+        true,
       );
       if (promptOutputs[promptOutputKey] !== undefined) {
         promptOutputData = promptOutputs[promptOutputKey];
@@ -211,6 +202,10 @@ function PromptOutput({
             confidenceData={
               promptOutputData?.confidenceData?.[promptDetails.prompt_key]
             }
+            wordConfidenceData={
+              promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
+            }
+            progressMsg={progressMsg}
           />
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
@@ -220,8 +215,8 @@ function PromptOutput({
                   displayPromptResult(
                     promptOutput,
                     true,
-                    promptDetails?.enable_highlight
-                  )
+                    promptDetails?.enable_highlight,
+                  ),
                 )
               }
             />
@@ -250,7 +245,6 @@ function PromptOutput({
           const promptId = promptDetails?.prompt_id;
           const docId = selectedDoc?.document_id;
           const profileId = profile?.profile_id;
-          const isChecked = enabledProfiles.includes(profileId);
           const tokenUsageId = promptId + "__" + docId + "__" + profileId;
           let promptOutputData = {};
           if (promptOutputs && Object.keys(promptOutputs)) {
@@ -259,7 +253,7 @@ function PromptOutput({
               docId,
               profileId,
               singlePassExtractMode,
-              true
+              true,
             );
             if (promptOutputs[promptOutputKey] !== undefined) {
               promptOutputData = promptOutputs[promptOutputKey];
@@ -300,7 +294,7 @@ function PromptOutput({
                         promptOutputData?.highlightData,
                         promptId,
                         profileId,
-                        promptOutputData?.confidenceData
+                        promptOutputData?.confidenceData,
                       );
                   }}
                 >
@@ -379,77 +373,53 @@ function PromptOutput({
                     </Typography.Text>
                   </div>
                   <div className="prompt-info">
-                    <div>
-                      <CheckableTag
-                        checked={isChecked}
-                        onChange={(checked) =>
-                          handleTagChange(checked, profileId)
+                    <Tooltip title="Run LLM for current document">
+                      <Button
+                        size="small"
+                        type="text"
+                        className="prompt-card-action-button"
+                        onClick={() =>
+                          handleRun(
+                            PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
+                            promptDetails?.prompt_id,
+                            profileId,
+                            selectedDoc?.document_id,
+                          )
                         }
-                        disabled={isPublicSource}
-                        className={isChecked ? "checked" : "unchecked"}
+                        disabled={isPromptLoading || isPublicSource}
                       >
-                        {isChecked ? (
-                          <span>
-                            Enabled
-                            <CheckCircleOutlined className="prompt-output-icon-enabled" />
-                          </span>
-                        ) : (
-                          <span>
-                            Disabled
-                            <ExclamationCircleFilled className="prompt-output-icon-disabled" />
-                          </span>
-                        )}
-                      </CheckableTag>
-                    </div>
-                    <div>
-                      <Tooltip title="Run LLM for current document">
-                        <Button
-                          size="small"
-                          type="text"
-                          className="prompt-card-action-button"
-                          onClick={() =>
-                            handleRun(
-                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ONE_DOC,
-                              promptDetails?.prompt_id,
-                              profileId,
-                              selectedDoc?.document_id
-                            )
-                          }
-                          disabled={isPromptLoading || isPublicSource}
-                        >
-                          <PlayCircleOutlined className="prompt-card-actions-head" />
-                        </Button>
-                      </Tooltip>
-                      <Tooltip title="Run LLM for all documents">
-                        <Button
-                          size="small"
-                          type="text"
-                          className="prompt-card-action-button"
-                          onClick={() =>
-                            handleRun(
-                              PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
-                              promptDetails?.prompt_id,
-                              profileId,
-                              null
-                            )
-                          }
-                          disabled={isPromptLoading || isPublicSource}
-                        >
-                          <PlayCircleFilled className="prompt-card-actions-head" />
-                        </Button>
-                      </Tooltip>
-                      <PromptOutputExpandBtn
-                        promptId={promptDetails?.prompt_id}
-                        llmProfiles={llmProfileDetails}
-                        enforceType={enforceType}
-                        tableSettings={tableSettings}
-                        displayLlmProfile={true}
-                        promptOutputs={promptOutputs}
-                        promptRunStatus={promptRunStatus}
-                        openExpandModal={openExpandModal}
-                        setOpenExpandModal={setOpenExpandModal}
-                      />
-                    </div>
+                        <PlayCircleOutlined className="prompt-card-actions-head" />
+                      </Button>
+                    </Tooltip>
+                    <Tooltip title="Run LLM for all documents">
+                      <Button
+                        size="small"
+                        type="text"
+                        className="prompt-card-action-button"
+                        onClick={() =>
+                          handleRun(
+                            PROMPT_RUN_TYPES.RUN_ONE_PROMPT_ONE_LLM_ALL_DOCS,
+                            promptDetails?.prompt_id,
+                            profileId,
+                            null,
+                          )
+                        }
+                        disabled={isPromptLoading || isPublicSource}
+                      >
+                        <PlayCircleFilled className="prompt-card-actions-head" />
+                      </Button>
+                    </Tooltip>
+                    <PromptOutputExpandBtn
+                      promptId={promptDetails?.prompt_id}
+                      llmProfiles={llmProfileDetails}
+                      enforceType={enforceType}
+                      tableSettings={tableSettings}
+                      displayLlmProfile={true}
+                      promptOutputs={promptOutputs}
+                      promptRunStatus={promptRunStatus}
+                      openExpandModal={openExpandModal}
+                      setOpenExpandModal={setOpenExpandModal}
+                    />
                   </div>
                 </Space>
                 <>
@@ -467,7 +437,11 @@ function PromptOutput({
                           handleSelectHighlight={handleSelectHighlight}
                           highlightData={promptOutputData?.highlightData}
                           confidenceData={promptOutputData?.confidenceData}
+                          wordConfidenceData={
+                            promptOutputData?.wordConfidenceData
+                          }
                           promptDetails={promptDetails}
+                          progressMsg={progressMsg}
                         />
                         <div className="prompt-profile-run">
                           <CopyPromptOutputBtn
@@ -476,8 +450,8 @@ function PromptOutput({
                               copyOutputToClipboard(
                                 displayPromptResult(
                                   promptOutputData?.output,
-                                  true
-                                )
+                                  true,
+                                ),
                               )
                             }
                           />
@@ -501,8 +475,6 @@ PromptOutput.propTypes = {
   selectedLlmProfileId: PropTypes.string,
   llmProfileDetails: PropTypes.array.isRequired,
   setOpenIndexProfile: PropTypes.func.isRequired,
-  enabledProfiles: PropTypes.array.isRequired,
-  setEnabledProfiles: PropTypes.func.isRequired,
   isNotSingleLlmProfile: PropTypes.bool.isRequired,
   setIsIndexOpen: PropTypes.func.isRequired,
   enforceType: PropTypes.string,
@@ -511,6 +483,7 @@ PromptOutput.propTypes = {
   promptRunStatus: PropTypes.object.isRequired,
   isChallenge: PropTypes.bool,
   handleSelectHighlight: PropTypes.func.isRequired,
+  progressMsg: PropTypes.object,
 };
 
 export { PromptOutput };

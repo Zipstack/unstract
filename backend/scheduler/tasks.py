@@ -3,7 +3,6 @@ import logging
 import traceback
 from typing import Any
 
-from account_v2.subscription_loader import load_plugins, validate_etl_run
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from pipeline_v2.models import Pipeline
@@ -12,7 +11,6 @@ from utils.user_context import UserContext
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
-subscription_loader = load_plugins()
 
 
 def create_or_update_periodic_task(
@@ -95,20 +93,25 @@ def execute_pipeline_task_v2(
             f"Executing pipeline: {pipeline_id}, "
             f"workflow: {workflow}, pipeline name: {pipeline_name}"
         )
-        if (
-            subscription_loader
-            and subscription_loader[0]
-            and not validate_etl_run(organization_id)
-        ):
-            try:
-                logger.info(
-                    f"Subscription expired for '{organization_id}', "
-                    f"disabling pipeline: {pipeline_id}"
-                )
-                disable_task(pipeline_id)
-            except Exception as e:
-                logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
-            return
+        # Check subscription status before ETL run (cloud-specific)
+        try:
+            from pluggable_apps.subscription_v2.subscription_helper import (
+                SubscriptionHelper,
+            )
+
+            if not SubscriptionHelper.validate_etl_run(organization_id):
+                try:
+                    logger.info(
+                        f"Subscription expired for '{organization_id}', "
+                        f"disabling pipeline: {pipeline_id}"
+                    )
+                    disable_task(pipeline_id)
+                except Exception as e:
+                    logger.warning(f"Failed to disable task: {pipeline_id}. Error: {e}")
+                return
+        except ModuleNotFoundError:
+            # Subscription module not available (OSS deployment), skip validation
+            pass
         PipelineProcessor.update_pipeline(pipeline_id, Pipeline.PipelineStatus.INPROGRESS)
         # Mark the File in file history to avoid duplicate execution
         # only for ETL and TASK execution

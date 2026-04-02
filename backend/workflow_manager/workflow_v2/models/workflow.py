@@ -1,6 +1,8 @@
 import uuid
 
 from account_v2.models import User
+from django.conf import settings
+from django.core.validators import MinValueValidator
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -14,7 +16,23 @@ WORKFLOW_NAME_SIZE = 128
 
 
 class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
-    pass
+    def for_user(self, user):
+        """Filter workflows that the user can access:
+        - Workflows created by the user
+        - Workflows shared with the user
+        - Workflows shared with the entire organization
+        - Service accounts see all org resources
+        """
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
+        from django.db.models import Q
+
+        return self.filter(
+            Q(created_by=user)  # Owned by user
+            | Q(shared_users=user)  # Shared with user
+            | Q(shared_to_org=True)  # Shared to entire organization
+        ).distinct()
 
 
 class Workflow(DefaultOrganizationMixin, BaseModel):
@@ -55,6 +73,12 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
     destination_settings = models.JSONField(
         null=True, db_comment="Settings for the Destination module"
     )
+    max_file_execution_count = models.IntegerField(
+        null=True,
+        blank=True,
+        validators=[MinValueValidator(1)],
+        db_comment="Maximum times a file can be executed. null=use org/global default. Only enforced for ETL/TASK workflows.",
+    )
 
     created_by = models.ForeignKey(
         User,
@@ -71,11 +95,35 @@ class Workflow(DefaultOrganizationMixin, BaseModel):
         blank=True,
     )
 
+    # Sharing fields
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_workflows", blank=True
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Whether this workflow is shared with the entire organization",
+    )
+
     # Manager
     objects = WorkflowModelManager()
 
     def __str__(self) -> str:
         return f"{self.id}, name: {self.workflow_name}"
+
+    def get_max_execution_count(self) -> int:
+        """Get maximum execution count from configuration hierarchy.
+
+        Priority: workflow setting > organization setting > global Django setting
+
+        Returns:
+            int: Maximum execution count limit.
+        """
+        # Check workflow-level setting first
+        if self.max_file_execution_count is not None:
+            return self.max_file_execution_count
+
+        # Fall back to global Django setting (from backend.settings.execution_config)
+        return settings.MAX_FILE_EXECUTION_COUNT
 
     class Meta:
         verbose_name = "Workflow"

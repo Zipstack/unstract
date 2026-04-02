@@ -57,6 +57,9 @@ frontend
 !platform-service
 prompt-service
 tools
-!unstract
+unstract
+!unstract/core
+!unstract/flags
+!unstract/sdk1
 runner
 x2text-service

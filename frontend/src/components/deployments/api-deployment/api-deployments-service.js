@@ -15,10 +15,18 @@ function apiDeploymentsService() {
   };
 
   return {
-    getApiDeploymentsList: () => {
+    getApiDeploymentsList: (page = 1, pageSize = 10, search = "") => {
+      const params = {
+        page,
+        page_size: pageSize,
+      };
+      if (search) {
+        params.search = search;
+      }
       options = {
         url: `${path}/api/deployment/`,
         method: "GET",
+        params,
       };
       return axiosPrivate(options);
     },
@@ -93,6 +101,32 @@ function apiDeploymentsService() {
       options = {
         method: "GET",
         url: `${path}/api/deployment/?workflow=${workflowId}`,
+      };
+      return axiosPrivate(options);
+    },
+    getSharedUsers: (id) => {
+      options = {
+        method: "GET",
+        url: `${path}/api/deployment/${id}/users/`,
+      };
+      return axiosPrivate(options);
+    },
+    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+      options = {
+        method: "PATCH",
+        url: `${path}/api/deployment/${id}/`,
+        headers: requestHeaders,
+        data: {
+          shared_users: sharedUsers,
+          shared_to_org: shareWithEveryone,
+        },
+      };
+      return axiosPrivate(options);
+    },
+    getAllUsers: () => {
+      options = {
+        method: "GET",
+        url: `${path}/users/`,
       };
       return axiosPrivate(options);
     },

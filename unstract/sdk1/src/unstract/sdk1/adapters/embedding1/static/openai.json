@@ -1,0 +1,56 @@
+{
+  "title": "OpenAI Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: openai-emb-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "text-embedding-3-small",
+      "description": "Provide the name of the model. Recommended: text-embedding-3-small, text-embedding-3-large"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "default": "",
+      "format": "password"
+    },
+    "api_base": {
+      "type": "string",
+      "title": "API Base",
+      "format": "uri",
+      "default": "https://api.openai.com/v1/"
+    },
+    "dimensions": {
+      "type": "number",
+      "minimum": 1,
+      "multipleOf": 1,
+      "title": "Dimensions",
+      "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions (1536 for small, 3072 for large)."
+    },
+    "embed_batch_size": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Embed Batch Size",
+      "default": 10
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 240,
+      "description": "Timeout in seconds"
+    }
+  }
+}

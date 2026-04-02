@@ -2,9 +2,11 @@ import logging
 from datetime import timedelta
 from typing import Any
 
-from django.db.models import Q
+from django.conf import settings
+from django.db.models import F, Q
 from django.db.utils import IntegrityError
 from django.utils import timezone
+from utils.cache_service import CacheService
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -237,6 +239,62 @@ class FileHistoryHelper:
             return None
 
     @staticmethod
+    def _safe_str(value: Any) -> str:
+        """Convert value to string, return empty string if None.
+
+        Args:
+            value: Value to convert
+
+        Returns:
+            str: String representation or empty string
+        """
+        return "" if value is None else str(value)
+
+    @staticmethod
+    def _truncate_hash(file_hash: str | None) -> str:
+        """Truncate hash for logging purposes.
+
+        Args:
+            file_hash: Hash string to truncate
+
+        Returns:
+            str: Truncated hash (first 16 chars) or 'None' if missing
+        """
+        return file_hash[:16] if file_hash else "None"
+
+    @staticmethod
+    def _increment_file_history(
+        file_history: FileHistory,
+        status: ExecutionStatus,
+        result: Any,
+        metadata: str | None,
+        error: str | None,
+    ) -> FileHistory:
+        """Update existing file history with incremented execution count.
+
+        Args:
+            file_history: FileHistory instance to update
+            status: New execution status
+            result: Execution result
+            metadata: Execution metadata
+            error: Error message if any
+
+        Returns:
+            FileHistory: Updated file history instance
+        """
+        FileHistory.objects.filter(id=file_history.id).update(
+            execution_count=F("execution_count") + 1,
+            status=status,
+            result=str(result),
+            metadata=FileHistoryHelper._safe_str(metadata),
+            error=FileHistoryHelper._safe_str(error),
+            modified_at=timezone.now(),
+        )
+        # Refresh from DB to get updated values
+        file_history.refresh_from_db()
+        return file_history
+
+    @staticmethod
     def create_file_history(
         file_hash: FileHash,
         workflow: Workflow,
@@ -245,8 +303,12 @@ class FileHistoryHelper:
         metadata: str | None,
         error: str | None = None,
         is_api: bool = False,
-    ) -> None:
-        """Create a new file history record.
+    ) -> FileHistory:
+        """Create a new file history record or increment existing one's execution count.
+
+        This method implements execution count tracking:
+        - If file history exists: increments execution_count atomically
+        - If file history is new: creates with execution_count=1
 
         Args:
             file_hash (FileHash): The file hash for the file.
@@ -255,35 +317,116 @@ class FileHistoryHelper:
             result (Any): The result from the execution.
             metadata (str | None): The metadata from the execution.
             error (str | None): The error from the execution.
-            is_api (bool): Whether this is an API call.
-        """
-        try:
-            file_path = file_hash.file_path if not is_api else None
+            is_api (bool): Whether this is for API workflow (affects file_path handling).
 
-            FileHistory.objects.create(
+        Returns:
+            FileHistory: Either newly created or updated file history record.
+        """
+        file_path = file_hash.file_path if not is_api else None
+
+        # Check if file history already exists
+        existing_history = FileHistoryHelper.get_file_history(
+            workflow=workflow,
+            cache_key=file_hash.file_hash,
+            provider_file_uuid=file_hash.provider_file_uuid,
+            file_path=file_path,
+        )
+
+        if existing_history:
+            # File history exists - increment execution count atomically
+            updated_history = FileHistoryHelper._increment_file_history(
+                existing_history, status, result, metadata, error
+            )
+            logger.info(
+                f"Updated FileHistory record (execution_count: {updated_history.execution_count}) - "
+                f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
+                f"file_hash='{FileHistoryHelper._truncate_hash(file_hash.file_hash)}', "
+                f"workflow={workflow}"
+            )
+            return updated_history
+
+        # File history doesn't exist - create new record with execution_count=1
+        create_data = {
+            "workflow": workflow,
+            "cache_key": file_hash.file_hash,
+            "provider_file_uuid": file_hash.provider_file_uuid,
+            "status": status,
+            "result": str(result),
+            "metadata": FileHistoryHelper._safe_str(metadata),
+            "error": FileHistoryHelper._safe_str(error),
+            "file_path": file_path,
+            "execution_count": 1,
+        }
+
+        try:
+            file_history = FileHistory.objects.create(**create_data)
+            logger.info(
+                f"Created new FileHistory record (execution_count: 1) - "
+                f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
+                f"file_hash='{FileHistoryHelper._truncate_hash(file_hash.file_hash)}', "
+                f"workflow={workflow}"
+            )
+            return file_history
+
+        except IntegrityError as e:
+            # Race condition: another worker created the record between our check and create
+            logger.info(
+                f"FileHistory constraint violation (race condition) - "
+                f"file_name='{file_hash.file_name}', file_path='{file_hash.file_path}', "
+                f"file_hash='{FileHistoryHelper._truncate_hash(file_hash.file_hash)}', "
+                f"workflow={workflow}. Error: {e!s}"
+            )
+
+            # Retrieve the record created by another worker and increment it
+            existing_record = FileHistoryHelper.get_file_history(
                 workflow=workflow,
                 cache_key=file_hash.file_hash,
                 provider_file_uuid=file_hash.provider_file_uuid,
-                status=status,
-                result=str(result),
-                metadata=str(metadata) if metadata else "",
-                error=str(error) if error else "",
                 file_path=file_path,
             )
-        except IntegrityError as e:
-            # TODO: Need to find why duplicate insert is coming
-            logger.warning(
-                f"Trying to insert duplication data for filename {file_hash.file_name} "
-                f"for workflow {workflow}. Error: {str(e)} with metadata {metadata}",
+
+            if existing_record:
+                # Increment the existing record
+                updated_record = FileHistoryHelper._increment_file_history(
+                    existing_record, status, result, metadata, error
+                )
+                logger.info(
+                    f"Retrieved and updated existing FileHistory record (execution_count: {updated_record.execution_count}) - "
+                    f"ID: {updated_record.id}, workflow={workflow}"
+                )
+                return updated_record
+
+            # This should rarely happen - existing record not found after IntegrityError
+            logger.exception(
+                f"Failed to retrieve existing FileHistory record after constraint violation - "
+                f"file_name='{file_hash.file_name}', workflow={workflow}"
             )
+            raise
 
     @staticmethod
     def clear_history_for_workflow(
         workflow: Workflow,
     ) -> None:
-        """Clear all file history records associated with a workflow.
+        """Clear all file history records and Redis caches associated with a workflow.
 
         Args:
             workflow (Workflow): The workflow to clear the history for.
         """
+        # Clear database records
         FileHistory.objects.filter(workflow=workflow).delete()
+        logger.info(f"Cleared database records for workflow {workflow.id}")
+
+        # Clear Redis caches for file_active entries
+        pattern = f"file_active:{workflow.id}:*"
+
+        try:
+            # Workers store file_active:* cache in Redis DB (FILE_ACTIVE_CACHE_REDIS_DB)
+            DB = settings.FILE_ACTIVE_CACHE_REDIS_DB
+            CacheService.clear_cache_optimized(pattern, db=DB)
+            logger.info(
+                f"Cleared Redis cache entries (DB {DB}) for workflow {workflow.id} with pattern: {pattern}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to clear Redis caches for workflow {workflow.id}: {str(e)}"
+            )

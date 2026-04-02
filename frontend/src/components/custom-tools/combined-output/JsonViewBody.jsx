@@ -1,7 +1,6 @@
 import PropTypes from "prop-types";
-
-import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
 function JsonViewBody({
   activeKey,
@@ -35,7 +34,7 @@ function JsonViewBody({
 JsonViewBody.propTypes = {
   activeKey: PropTypes.string.isRequired,
   selectedProfile: PropTypes.string,
-  llmProfiles: PropTypes.string,
+  llmProfiles: PropTypes.array,
   combinedOutput: PropTypes.object,
   isLoading: PropTypes.bool.isRequired,
 };

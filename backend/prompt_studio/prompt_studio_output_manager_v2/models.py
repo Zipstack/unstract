@@ -37,6 +37,12 @@ class PromptStudioOutputManager(BaseModel):
         null=True,
         blank=True,
     )
+    word_confidence_data = models.JSONField(
+        db_comment="Field to store word-level confidence data",
+        editable=True,
+        null=True,
+        blank=True,
+    )
     eval_metrics = models.JSONField(
         db_column="eval_metrics",
         null=False,

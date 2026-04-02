@@ -7,6 +7,25 @@
   overflow-y: auto;
 }
 
+.list-of-tools-tabs {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.list-of-tools-tabs .ant-tabs-content-holder {
+  flex: 1;
+  overflow: hidden;
+}
+
+.list-of-tools-tabs .ant-tabs-content {
+  height: 100%;
+}
+
+.list-of-tools-tabs .ant-tabs-tabpane {
+  height: 100%;
+}
+
 .list-of-tools-island {
   background-color: var(--page-bg-1);
   height: 100%;

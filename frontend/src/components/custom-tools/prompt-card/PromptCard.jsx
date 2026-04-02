@@ -5,11 +5,11 @@ import {
   PROMPT_RUN_API_STATUSES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { OutputForDocModal } from "../output-for-doc-modal/OutputForDocModal";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
@@ -61,11 +61,27 @@ const PromptCard = memo(
       if (
         isPromptDetailsStateUpdated ||
         !Object.keys(promptDetails || {})?.length
-      )
+      ) {
         return;
+      }
       setPromptDetailsState(promptDetails);
       setIsPromptDetailsStateUpdated(true);
     }, [promptDetails]);
+
+    // Initialize promptKey from props so the message filter can match
+    // per-prompt PROGRESS messages (executor sends component.prompt_key).
+    useEffect(() => {
+      if (promptDetailsState?.prompt_key && !promptKey) {
+        setPromptKey(promptDetailsState.prompt_key);
+      }
+    }, [promptDetailsState?.prompt_key]);
+
+    // Clear stale progress text when execution finishes.
+    useEffect(() => {
+      if (!isCoverageLoading) {
+        setProgressMsg({});
+      }
+    }, [isCoverageLoading]);
 
     useEffect(() => {
       // Find the latest message that matches the criteria
@@ -74,8 +90,9 @@ const PromptCard = memo(
         .find(
           (item) =>
             (item?.component?.prompt_id === promptDetailsState?.prompt_id ||
-              item?.component?.prompt_key === promptKey) &&
-            (item?.level === "INFO" || item?.level === "ERROR")
+              item?.component?.prompt_key === promptKey ||
+              item?.component?.tool_id === details?.tool_id) &&
+            (item?.level === "INFO" || item?.level === "ERROR"),
         );
 
       // If no matching message is found, return early
@@ -88,11 +105,11 @@ const PromptCard = memo(
         message: msg?.message || "",
         level: msg?.level || "INFO",
       });
-    }, [messages]);
+    }, [messages, promptDetailsState?.prompt_id, promptKey, details?.tool_id]);
 
     useEffect(() => {
       setSelectedLlmProfileId(
-        promptDetailsState?.profile_manager || llmProfiles[0]?.profile_id
+        promptDetailsState?.profile_manager || llmProfiles[0]?.profile_id,
       );
     }, [promptDetailsState]);
 
@@ -100,7 +117,7 @@ const PromptCard = memo(
       const promptRunStatusKeys = Object.keys(promptRunStatus);
 
       const coverageLoading = promptRunStatusKeys.some(
-        (key) => promptRunStatus[key] === PROMPT_RUN_API_STATUSES.RUNNING
+        (key) => promptRunStatus[key] === PROMPT_RUN_API_STATUSES.RUNNING,
       );
       setIsCoverageLoading(coverageLoading);
     }, [promptRunStatus]);
@@ -109,7 +126,7 @@ const PromptCard = memo(
       event,
       promptId,
       dropdownItem,
-      isUpdateStatus = false
+      isUpdateStatus = false,
     ) => {
       let name = "";
       let value = "";
@@ -130,7 +147,7 @@ const PromptCard = memo(
         isUpdateStatus,
         promptId,
         promptStudioUpdateStatus.isUpdating,
-        setUpdateStatus
+        setUpdateStatus,
       );
       setPromptDetailsState(updatedPromptDetailsState);
       return handleChangePromptCard(name, value, promptId)
@@ -144,7 +161,7 @@ const PromptCard = memo(
             isUpdateStatus,
             promptId,
             promptStudioUpdateStatus.done,
-            setUpdateStatus
+            setUpdateStatus,
           );
         })
         .catch(() => {
@@ -165,29 +182,31 @@ const PromptCard = memo(
       handleChange(
         llmProfileId,
         promptDetailsState?.prompt_id,
-        "profile_manager"
+        "profile_manager",
       );
     };
 
     const addCoordsToFlattened = (coords, flattened) => {
       if (Array.isArray(coords)) {
-        flattened.push(coords);
+        // Strip 5th element (confidence) if present, keep only first 4 elements
+        const coordsOnly = coords.length >= 5 ? coords.slice(0, 4) : coords;
+        flattened.push(coordsOnly);
       }
     };
 
     const processNestedArray = (nestedValue, flattened) => {
       if (Array.isArray(nestedValue)) {
-        nestedValue.forEach((coords) =>
-          addCoordsToFlattened(coords, flattened)
-        );
+        nestedValue.forEach((coords) => {
+          addCoordsToFlattened(coords, flattened);
+        });
       }
     };
 
     const processObjectValues = (item, flattened) => {
       if (typeof item === "object" && !Array.isArray(item)) {
-        Object.values(item).forEach((value) =>
-          processNestedArray(value, flattened)
-        );
+        Object.values(item).forEach((value) => {
+          processNestedArray(value, flattened);
+        });
       }
     };
 
@@ -200,12 +219,16 @@ const PromptCard = memo(
     };
 
     const flattenHighlightData = (data) => {
-      if (!data || typeof data !== "object") return data;
+      if (!data || typeof data !== "object") {
+        return data;
+      }
 
       const flattened = [];
       Object.values(data).forEach((value) => {
         if (Array.isArray(value)) {
-          value.forEach((item) => processArrayItem(item, flattened));
+          value.forEach((item) => {
+            processArrayItem(item, flattened);
+          });
         }
       });
       return flattened;
@@ -215,7 +238,7 @@ const PromptCard = memo(
       highlightData,
       highlightedPrompt,
       highlightedProfile,
-      confidenceData
+      confidenceData,
     ) => {
       if (details?.enable_highlight) {
         const processedHighlight =
@@ -224,6 +247,7 @@ const PromptCard = memo(
           !Array.isArray(highlightData)
             ? flattenHighlightData(highlightData)
             : highlightData;
+
         updateCustomTool({
           selectedHighlight: {
             highlight: processedHighlight,
@@ -252,8 +276,8 @@ const PromptCard = memo(
         setPostHogCustomEvent("ps_prompt_run", {
           info: "Click on 'Run Prompt' button (Multi Pass)",
         });
-      } catch (err) {
-        // If an error occurs while setting custom posthog event, ignore it and continue
+      } catch {
+        // Analytics failure should not block prompt execution
       }
 
       const validateInputs = () => {
@@ -290,7 +314,7 @@ const PromptCard = memo(
 
       const docId = selectedDoc?.document_id;
       const isSummaryIndexed = [...summarizeIndexStatus].find(
-        (item) => item?.docId === docId && item?.isIndexed === true
+        (item) => item?.docId === docId && item?.isIndexed === true,
       );
 
       if (
@@ -348,7 +372,7 @@ const PromptCard = memo(
         />
       </>
     );
-  }
+  },
 );
 
 PromptCard.displayName = "PromptCard";
@@ -365,7 +389,7 @@ PromptCard.propTypes = {
   setUpdatedPromptsCopy: PropTypes.func.isRequired,
   handlePromptRunRequest: PropTypes.func.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
-  coverageCountData: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.array,
   isChallenge: PropTypes.bool.isRequired,
 };
 

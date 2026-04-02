@@ -5,12 +5,12 @@ from typing import Any
 from flask import Blueprint, request
 from flask import current_app as app
 
+from unstract.core.flask import PluginManager
 from unstract.core.flask.exceptions import APIError
 from unstract.prompt_service.constants import PromptServiceConstants as PSKeys
 from unstract.prompt_service.constants import RetrievalStrategy, RunLevel
 from unstract.prompt_service.exceptions import BadRequest
 from unstract.prompt_service.helpers.auth import AuthHelper
-from unstract.prompt_service.helpers.plugin import PluginManager
 from unstract.prompt_service.helpers.prompt_ide_base_tool import PromptServiceBaseTool
 from unstract.prompt_service.helpers.usage import UsageHelper
 from unstract.prompt_service.services.answer_prompt import AnswerPromptService
@@ -23,14 +23,13 @@ from unstract.prompt_service.services.variable_replacement import (
 )
 from unstract.prompt_service.utils.file_utils import FileUtils
 from unstract.prompt_service.utils.log import publish_log
-from unstract.sdk.adapter import ToolAdapter
-from unstract.sdk.adapters.llm.no_op.src.no_op_custom_llm import NoOpCustomLLM
-from unstract.sdk.constants import LogLevel
-from unstract.sdk.embedding import Embedding
-from unstract.sdk.exceptions import SdkError
-from unstract.sdk.index import Index
-from unstract.sdk.llm import LLM
-from unstract.sdk.vector_db import VectorDB
+from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.embedding import EmbeddingCompat
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.index import Index
+from unstract.sdk1.llm import LLM
+from unstract.sdk1.platform import PlatformHelper as ToolAdapter
+from unstract.sdk1.vector_db import VectorDB
 
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
@@ -53,7 +52,7 @@ def prompt_processor() -> Any:
     file_path = payload.get(PSKeys.FILE_PATH)
     doc_name = str(payload.get(PSKeys.FILE_NAME, ""))
     log_events_id: str = payload.get(PSKeys.LOG_EVENTS_ID, "")
-    user_data: dict[str, Any] = payload.get(PSKeys.USER_DATA, {})
+    custom_data: dict[str, Any] = payload.get(PSKeys.CUSTOM_DATA, {})
     structured_output: dict[str, Any] = {}
     metadata: dict[str, Any] = {
         PSKeys.RUN_ID: run_id,
@@ -88,6 +87,8 @@ def prompt_processor() -> Any:
         util = PromptServiceBaseTool(platform_key=platform_key)
         index = Index(tool=util, run_id=run_id, capture_metrics=True)
         if VariableReplacementService.is_variables_present(prompt_text=prompt_text):
+            # Determine if this is from IDE (Prompt Studio) or API deployment
+            is_ide = execution_source == "ide"
             prompt_text = VariableReplacementService.replace_variables_in_prompt(
                 prompt=output,
                 structured_output=structured_output,
@@ -95,7 +96,8 @@ def prompt_processor() -> Any:
                 tool_id=tool_id,
                 prompt_name=prompt_name,
                 doc_name=doc_name,
-                user_data=user_data,
+                custom_data=custom_data,
+                is_ide=is_ide,
             )
 
         app.logger.info(f"[{tool_id}] Executing prompt: '{prompt_name}'")
@@ -140,10 +142,9 @@ def prompt_processor() -> Any:
 
         try:
             usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
-            adapter_instance_id = output[PSKeys.LLM]
             llm = LLM(
+                adapter_instance_id=output[PSKeys.LLM],
                 tool=util,
-                adapter_instance_id=adapter_instance_id,
                 usage_kwargs={
                     **usage_kwargs,
                     PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION,
@@ -151,17 +152,24 @@ def prompt_processor() -> Any:
                 capture_metrics=True,
             )
 
-            embedding = Embedding(
-                tool=util,
-                adapter_instance_id=output[PSKeys.EMBEDDING],
-                usage_kwargs=usage_kwargs.copy(),
-            )
+            # Only create embedding and vector_db if chunk_size > 0
+            # When chunk_size is 0, we read the complete file without embeddings
+            embedding = None
+            vector_db = None
+            if chunk_size > 0:
+                embedding = EmbeddingCompat(
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=util,
+                    kwargs={
+                        **usage_kwargs,
+                    },
+                )
 
-            vector_db = VectorDB(
-                tool=util,
-                adapter_instance_id=output[PSKeys.VECTOR_DB],
-                embedding=embedding,
-            )
+                vector_db = VectorDB(
+                    tool=util,
+                    adapter_instance_id=output[PSKeys.VECTOR_DB],
+                    embedding=embedding,
+                )
         except SdkError as e:
             msg = f"Couldn't fetch adapter. {e}"
             app.logger.error(msg)
@@ -176,14 +184,16 @@ def prompt_processor() -> Any:
                 RunLevel.RUN,
                 "Unable to obtain LLM / embedding / vectorDB",
             )
-            raise APIError(message=msg)
+            # Preserve the status code from the SDK error
+            status_code = getattr(e, "status_code", None) or 500
+            raise APIError(message=msg, code=status_code) from e
 
         if output[PSKeys.TYPE] == PSKeys.TABLE:
             adapter_parent_data = ToolAdapter.get_adapter_config(util, output[PSKeys.LLM])
             llm_config = adapter_parent_data.get("adapter_metadata")
             adapter_id = adapter_parent_data.get("adapter_id")
             adapter_prefix = adapter_id.split("|")[0]
-            llm_provider = llm._usage_kwargs.get("provider")
+            llm_provider = llm.kwargs.get("provider")
             llm_adapter_config = {"adapter_id": adapter_prefix}
             llm_adapter_config["provider"] = llm_provider
             if adapter_prefix == "azureopenai":
@@ -245,7 +255,7 @@ def prompt_processor() -> Any:
 
                     # Track token usage by sending to the audit service
                     try:
-                        from unstract.sdk.utils.token_counter import TokenCounter
+                        from unstract.sdk1.utils.token_counter import TokenCounter
 
                         # Get metrics from the extraction result
                         metrics = extraction_result.get("metrics", {})
@@ -384,7 +394,7 @@ def prompt_processor() -> Any:
                     output=output,
                     doc_id=doc_id,
                     llm=llm,
-                    vector_db=vector_db,
+                    vector_db=vector_db,  # This will be None when chunk_size is 0
                     retrieval_type=retrieval_strategy,
                     metadata=metadata,
                     chunk_size=chunk_size,
@@ -450,17 +460,6 @@ def prompt_processor() -> Any:
                             LogLevel.ERROR,
                         )
                         structured_output[output[PSKeys.NAME]] = None
-                        # No-op adapter always returns a string data and
-                        # to keep this response uniform
-                        # through all enforce types
-                        # we add this check, if not for this,
-                        # type casting to float raises
-                        # an error and we return None.
-                        if isinstance(
-                            llm.get_llm(adapter_instance_id=adapter_instance_id),
-                            NoOpCustomLLM,
-                        ):
-                            structured_output[output[PSKeys.NAME]] = answer
             elif output[PSKeys.TYPE] == PSKeys.EMAIL:
                 if answer.lower() == "na":
                     structured_output[output[PSKeys.NAME]] = None
@@ -513,6 +512,9 @@ def prompt_processor() -> Any:
                     doc_name=doc_name,
                     llm=llm,
                     enable_highlight=tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False),
+                    enable_word_confidence=tool_settings.get(
+                        PSKeys.ENABLE_WORD_CONFIDENCE, False
+                    ),
                     execution_source=execution_source,
                     metadata=metadata,
                     file_path=file_path,
@@ -545,8 +547,8 @@ def prompt_processor() -> Any:
                             "Challenging response",
                         )
                         challenge_llm = LLM(
-                            tool=util,
                             adapter_instance_id=tool_settings[PSKeys.CHALLENGE_LLM],
+                            tool=util,
                             usage_kwargs={
                                 **usage_kwargs,
                                 PSKeys.LLM_USAGE_REASON: PSKeys.CHALLENGE,
@@ -665,7 +667,9 @@ def prompt_processor() -> Any:
                     **challenge_metrics,
                 }
             )
-            vector_db.close()
+            # Only close vector_db if it was created (chunk_size > 0)
+            if vector_db:
+                vector_db.close()
     publish_log(
         log_events_id,
         {"tool_id": tool_id, "doc_name": doc_name},

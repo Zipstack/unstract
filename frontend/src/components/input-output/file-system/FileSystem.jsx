@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { Document, Folder } from "../../../assets";
 import { formatBytes } from "../../../helpers/GetStaticData";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 import "./FileSystem.css";
 
@@ -64,7 +64,9 @@ function FileExplorer({
         .then(() => {
           resolve();
         })
-        .catch(() => {});
+        .catch(() => {
+          // Intentionally empty: errors handled upstream
+        });
     });
   }
 
@@ -87,7 +89,7 @@ function FileExplorer({
       .catch((err) => {
         const errorDetails = handleException(
           err,
-          `Error loading files from "${path || "root"}"`
+          `Error loading files from "${path || "root"}"`,
         );
         if (setError) {
           setError(errorDetails.content);

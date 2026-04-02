@@ -1,39 +1,44 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Button, Modal, Tooltip, Typography, Dropdown } from "antd";
+import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useState } from "react";
-
-import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
+import { useCallback, useMemo, useState } from "react";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
+import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
-import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import "./Header.css";
 
 let SinglePassToggleSwitch;
 let CloneButton;
 let PromptShareButton;
 try {
-  SinglePassToggleSwitch =
-    require("../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch").SinglePassToggleSwitch;
+  const mod = await import(
+    "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
+  );
+  SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
 try {
-  PromptShareButton =
-    require("../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx").PromptShareButton;
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx"
+  );
+  PromptShareButton = mod.PromptShareButton;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
 try {
-  CloneButton =
-    require("../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx").CloneButton;
+  const mod = await import(
+    "../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx"
+  );
+  CloneButton = mod.CloneButton;
 } catch {
   // The variable will remain undefined if the component is not available.
 }
@@ -44,7 +49,8 @@ function Header({
   setOpenCloneModal,
 }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
-  const { details, isPublicSource } = useCustomToolStore();
+  const { details, isPublicSource, markChangesAsExported } =
+    useCustomToolStore();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
@@ -64,12 +70,14 @@ function Header({
   ] = useState(false);
   const [existingApiDeployments, setExistingApiDeployments] = useState([]);
   const [isApiDeploymentLoading, setIsApiDeploymentLoading] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm] = Form.useForm();
 
   const handleExport = (
     selectedUsers,
     toolDetail,
     isSharedWithEveryone,
-    forcedExport = false
+    forcedExport = false,
   ) => {
     const body = {
       is_shared_with_org: isSharedWithEveryone,
@@ -92,6 +100,8 @@ function Header({
           type: "success",
           content: "Custom tool exported successfully",
         });
+        // Clear the export reminder after successful export
+        markChangesAsExported();
       })
       .catch((err) => {
         if (err?.response?.data?.errors[0]?.code === "warning") {
@@ -117,7 +127,7 @@ function Header({
 
     handleExport(selectedUsers, toolDetail, isSharedWithEveryone, true);
     setConfirmModalVisible(false);
-  }, [lastExportParams]);
+  }, [lastExportParams, handleExport]);
 
   const handleShare = (isEdit) => {
     try {
@@ -125,7 +135,7 @@ function Header({
         info: `Clicked on the 'Export' button`,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -170,7 +180,7 @@ function Header({
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
         return users;
       })
@@ -191,7 +201,7 @@ function Header({
         tool_id: details?.tool_id,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -252,7 +262,7 @@ function Header({
         tool_id: details?.tool_id,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -271,7 +281,7 @@ function Header({
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to check existing deployments")
+          handleException(err, "Failed to check existing deployments"),
         );
         // If check fails, still allow proceeding
         setOpenCreateApiDeploymentModal(true);
@@ -286,17 +296,32 @@ function Header({
     setOpenCreateApiDeploymentModal(true);
   }, []);
 
-  return (
-    <div className="custom-tools-header-layout">
-      {isPublicSource ? (
-        <div>
-          <Typography.Text className="custom-tools-name" strong>
-            {details?.tool_name}
-          </Typography.Text>
-        </div>
-      ) : (
-        <HeaderTitle />
-      )}
+  const handleOpenEditModal = useCallback(() => {
+    editForm.setFieldsValue({
+      tool_name: details?.tool_name || "",
+      description: details?.description || "",
+    });
+    setEditModalOpen(true);
+  }, [details, editForm]);
+
+  const handleEditSubmit = useCallback(async () => {
+    try {
+      const values = await editForm.validateFields();
+      const res = await handleUpdateTool(values);
+      const updatedData = res?.data;
+      if (updatedData) {
+        useCustomToolStore.setState({ details: updatedData });
+      }
+      setEditModalOpen(false);
+      setAlertDetails({ type: "success", content: "Updated successfully" });
+    } catch (err) {
+      if (err?.errorFields) return;
+      setAlertDetails(handleException(err, "Failed to update"));
+    }
+  }, [editForm, handleUpdateTool, setAlertDetails, handleException]);
+
+  const actionButtons = useMemo(
+    () => (
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
           <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
@@ -376,6 +401,60 @@ function Header({
           />
         )}
       </div>
+    ),
+    [
+      handleUpdateTool,
+      setOpenSettings,
+      setOpenCloneModal,
+      setOpenShareModal,
+      isPublicSource,
+      isExportLoading,
+      isApiDeploymentLoading,
+      userList,
+      openExportToolModal,
+      toolDetails,
+      details,
+      openCreateApiDeploymentModal,
+    ],
+  );
+
+  return (
+    <>
+      <ToolNavBar
+        title={details?.tool_name || ""}
+        subtitle={isPublicSource ? undefined : details?.description}
+        previousRoute={
+          isPublicSource || !sessionDetails?.orgName
+            ? undefined
+            : `/${sessionDetails.orgName}/tools`
+        }
+        onEditTitle={
+          isPublicSource || !details?.tool_id ? undefined : handleOpenEditModal
+        }
+        customButtons={actionButtons}
+      />
+      <Modal
+        title="Edit Project"
+        open={editModalOpen}
+        onOk={handleEditSubmit}
+        onCancel={() => setEditModalOpen(false)}
+        okText="Save"
+        centered
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical">
+          <Form.Item
+            name="tool_name"
+            label="Project Name"
+            rules={[{ required: true, message: "Name is required" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
       <Modal
         onOk={handleConfirmForceExport} // Pass the confirm action
         onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
@@ -437,7 +516,7 @@ function Header({
         )}
         <p>Do you want to proceed with creating the API deployment?</p>
       </Modal>
-    </div>
+    </>
   );
 }
 

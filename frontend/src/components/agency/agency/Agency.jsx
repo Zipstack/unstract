@@ -1,47 +1,49 @@
 import {
-  Button,
-  Row,
-  Col,
-  Typography,
-  Progress,
-  Dropdown,
-  Select,
-  Alert,
-} from "antd";
-import {
   BugOutlined,
-  SettingOutlined,
-  PlayCircleOutlined,
   HistoryOutlined,
   LoadingOutlined,
+  PlayCircleOutlined,
+  SettingOutlined,
 } from "@ant-design/icons";
+import {
+  Alert,
+  Button,
+  Col,
+  Dropdown,
+  Progress,
+  Row,
+  Select,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
 import "./Agency.css";
-import { useSocketMessagesStore } from "../../../store/socket-messages-store";
-import { useWorkflowStore } from "../../../store/workflow-store";
-import { useToolSettingsStore } from "../../../store/tool-settings";
-import { SidePanel } from "../side-panel/SidePanel";
-import { PageTitle } from "../../widgets/page-title/PageTitle";
-import { WorkflowCard } from "../workflow-card/WorkflowCard";
 import { sourceTypes, wfExecutionTypes } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import useClearFileHistory from "../../../hooks/useClearFileHistory";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import useRequestUrl from "../../../hooks/useRequestUrl";
+import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import useRequestUrl from "../../../hooks/useRequestUrl";
-import useClearFileHistory from "../../../hooks/useClearFileHistory";
+import { useSocketMessagesStore } from "../../../store/socket-messages-store";
+import { useToolSettingsStore } from "../../../store/tool-settings";
+import { useWorkflowStore } from "../../../store/workflow-store";
+import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
 import { CreateApiDeploymentModal } from "../../deployments/create-api-deployment-modal/CreateApiDeploymentModal.jsx";
 import { EtlTaskDeploy } from "../../pipelines-or-deployments/etl-task-deploy/EtlTaskDeploy.jsx";
-import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
-import FileUpload from "../file-upload/FileUpload.jsx";
-import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
-import { apiDeploymentsService } from "../../deployments/api-deployment/api-deployments-service.js";
+import FileHistoryModal from "../../pipelines-or-deployments/file-history-modal/FileHistoryModal.jsx";
 import { pipelineService } from "../../pipelines-or-deployments/pipeline-service.js";
-import { InputOutput } from "../input-output/InputOutput";
-import { ToolSelectionSidebar } from "../tool-selection-sidebar/ToolSelectionSidebar.jsx";
+import { PageTitle } from "../../widgets/page-title/PageTitle";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
+import FileUpload from "../file-upload/FileUpload.jsx";
+import { InputOutput } from "../input-output/InputOutput";
+import { SidePanel } from "../side-panel/SidePanel";
+import { ToolSelectionSidebar } from "../tool-selection-sidebar/ToolSelectionSidebar.jsx";
+import { WorkflowCard } from "../workflow-card/WorkflowCard";
+
 function Agency() {
   const [steps, setSteps] = useState([]);
   const [workflowProgress, setWorkflowProgress] = useState(0);
@@ -96,6 +98,7 @@ function Agency() {
   const [openFileUploadModal, setOpenFileUploadModal] = useState(false);
   const [fileList, setFileList] = useState([]);
   const [wfExecutionParams, setWfExecutionParams] = useState([]);
+  const [fileHistoryModalOpen, setFileHistoryModalOpen] = useState(false);
 
   const { setPostHogCustomEvent } = usePostHogEvents();
 
@@ -178,7 +181,7 @@ function Agency() {
     setCanAddTaskPipeline(
       destination?.connection_type === "FILESYSTEM" &&
         source?.connector_instance &&
-        destination?.connector_instance
+        destination?.connector_instance,
     );
     // Enable Deploy as ETL Pipeline only when
     // destination connection_type is DATABASE and Source & Destination are Configured
@@ -186,7 +189,7 @@ function Agency() {
       source?.connector_instance &&
         ((destination?.connection_type === "DATABASE" &&
           destination?.connector_instance) ||
-          destination?.connection_type === "MANUALREVIEW")
+          destination?.connection_type === "MANUALREVIEW"),
     );
   }, [source, destination]);
 
@@ -201,10 +204,10 @@ function Agency() {
         if (!signal?.aborted) {
           const data = res?.data || [];
           const sourceDetails = data.find(
-            (item) => item?.endpoint_type === "SOURCE"
+            (item) => item?.endpoint_type === "SOURCE",
           );
           const destDetails = data.find(
-            (item) => item?.endpoint_type === "DESTINATION"
+            (item) => item?.endpoint_type === "DESTINATION",
           );
           const body = {
             source: sourceDetails,
@@ -240,7 +243,7 @@ function Agency() {
       .catch((err) => {
         if (!signal?.aborted) {
           setAlertDetails(
-            handleException(err, "Failed to get can update status")
+            handleException(err, "Failed to get can update status"),
           );
         }
         throw err;
@@ -265,8 +268,8 @@ function Agency() {
           setAlertDetails(
             handleException(
               err,
-              "Failed to get exported Prompt Studio projects"
-            )
+              "Failed to get exported Prompt Studio projects",
+            ),
           );
         }
         throw err;
@@ -303,7 +306,7 @@ function Agency() {
       const promises = [];
       if (shouldFetchApiDeployments) {
         promises.push(
-          apiDeploymentService.getDeploymentsByWorkflowId(projectId)
+          apiDeploymentService.getDeploymentsByWorkflowId(projectId),
         );
       } else {
         promises.push(Promise.resolve({ data: [] }));
@@ -311,7 +314,7 @@ function Agency() {
 
       if (shouldFetchPipelines) {
         promises.push(
-          pipelineServiceInstance.getPipelinesByWorkflowId(projectId)
+          pipelineServiceInstance.getPipelinesByWorkflowId(projectId),
         );
       } else {
         promises.push(Promise.resolve({ data: [] }));
@@ -324,13 +327,14 @@ function Agency() {
         return;
       }
 
-      const apiDeploymentData = apiDeployments?.data || [];
-      const pipelineData = pipelines?.data || [];
+      const apiDeploymentData =
+        apiDeployments?.data?.results || apiDeployments?.data || [];
+      const pipelineData = pipelines?.data?.results || pipelines?.data || [];
 
-      // Find active deployments
-      const activeApiDeployment = apiDeploymentData.find(
-        (deployment) => deployment.is_active
-      );
+      // Show banner for any API deployment linked to this workflow, prefer active one
+      const apiDeployment =
+        apiDeploymentData.find((deployment) => deployment.is_active) ||
+        apiDeploymentData[0];
 
       // For pipelines, any pipeline associated with this workflow is considered a deployment
       // regardless of active status, since workflows can only have one deployment
@@ -338,19 +342,19 @@ function Agency() {
 
       // Set deployment info
       let deploymentInfo = null;
-      if (activeApiDeployment) {
+      if (apiDeployment) {
         deploymentInfo = {
           type: "API",
-          name: activeApiDeployment.display_name,
-          id: activeApiDeployment.id,
+          name: apiDeployment.display_name,
+          id: apiDeployment.id,
         };
       } else if (workflowPipelines.length > 0) {
         // If multiple pipelines, prioritize by type: ETL > TASK
         const etlPipeline = workflowPipelines.find(
-          (p) => p.pipeline_type === "ETL"
+          (p) => p.pipeline_type === "ETL",
         );
         const taskPipeline = workflowPipelines.find(
-          (p) => p.pipeline_type === "TASK"
+          (p) => p.pipeline_type === "TASK",
         );
         const pipeline = etlPipeline || taskPipeline || workflowPipelines[0];
 
@@ -364,7 +368,7 @@ function Agency() {
       if (!signal?.aborted) {
         setDeploymentInfo(deploymentInfo);
       }
-    } catch (err) {
+    } catch (_err) {
       // Don't show alert for this as it's not critical
       // Also check if error is due to abort
       if (signal?.aborted) {
@@ -429,7 +433,7 @@ function Agency() {
         info: `Clicked on 'Deploy as ${deployType}' button`,
         workflow_name: projectName,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -756,7 +760,7 @@ function Agency() {
   const handleInitialExecution = async (
     body,
     isStepExecution,
-    executionAction
+    executionAction,
   ) => {
     initializeWfComp();
     if (isStepExecution) {
@@ -853,7 +857,7 @@ function Agency() {
   const handleWfExecution = async (
     isInitial,
     isStepExecution,
-    executionAction
+    executionAction,
   ) => {
     try {
       if (isStepExecution) {
@@ -865,7 +869,7 @@ function Agency() {
           info: "Clicked on 'Run Workflow' button (Normal Execution)",
         });
       }
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
     const workflowId = details?.id;
@@ -889,7 +893,9 @@ function Agency() {
       body["execution_action"] = wfExecutionTypes[executionAction];
 
       handleWfExecutionApi(body)
-        .then(() => {})
+        .then(() => {
+          // Intentionally empty: fire-and-forget
+        })
         .catch((err) => {
           setAlertDetails(handleException(err));
         });
@@ -984,7 +990,7 @@ function Agency() {
         });
       } catch (err) {
         setAlertDetails(
-          handleException(err, "Failed to update Prompt Studio project")
+          handleException(err, "Failed to update Prompt Studio project"),
         );
       }
     }
@@ -1002,6 +1008,9 @@ function Agency() {
       case "run-workflow":
         handleRunWorkflow();
         break;
+      case "view-file-history":
+        setFileHistoryModalOpen(true);
+        break;
       case "clear-history":
         handleClearFileMarker();
         break;
@@ -1015,6 +1024,12 @@ function Agency() {
       key: "run-workflow",
       label: "Run Workflow",
       icon: <PlayCircleOutlined />,
+      disabled: isClearingFileHistory || loadingType === "EXECUTE",
+    },
+    {
+      key: "view-file-history",
+      label: "View File History",
+      icon: <HistoryOutlined />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
@@ -1084,7 +1099,7 @@ function Agency() {
                 number={(() => {
                   const status = getConnectorStatus(
                     source,
-                    !allowChangeEndpoint
+                    !allowChangeEndpoint,
                   );
                   return status?.configured ? "✓" : "1";
                 })()}
@@ -1102,7 +1117,7 @@ function Agency() {
                 number={(() => {
                   const status = getConnectorStatus(
                     destination,
-                    !allowChangeEndpoint
+                    !allowChangeEndpoint,
                   );
                   return status?.configured ? "✓" : "2";
                 })()}
@@ -1125,7 +1140,7 @@ function Agency() {
                         <div className="selected-tool-info">
                           <span className="selected-tool-name">
                             {exportedTools.find(
-                              (t) => t.function_name === selectedTool
+                              (t) => t.function_name === selectedTool,
                             )?.name || selectedTool}
                           </span>
                           <Button
@@ -1317,6 +1332,14 @@ function Agency() {
           selectedTool={selectedTool}
           onToolSelect={handleToolSelection}
           onSave={() => setShowToolSelectionSidebar(false)}
+        />
+
+        {/* File History Modal */}
+        <FileHistoryModal
+          open={fileHistoryModalOpen}
+          setOpen={setFileHistoryModalOpen}
+          workflowId={details?.id}
+          workflowName={projectName}
         />
       </div>
     </IslandLayout>

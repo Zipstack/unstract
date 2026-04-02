@@ -1,5 +1,4 @@
 import PropTypes from "prop-types";
-import { Typography } from "antd";
 
 import { ListView } from "../../widgets/list-view/ListView";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
@@ -44,13 +43,7 @@ function ViewTools({
   }
 
   if (!listOfTools?.length) {
-    return (
-      <div className="center">
-        <Typography.Title level={5}>
-          No results found for this search
-        </Typography.Title>
-      </div>
-    );
+    return <EmptyState text="No results found for this search" />;
   }
 
   return (

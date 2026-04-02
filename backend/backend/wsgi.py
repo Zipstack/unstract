@@ -9,12 +9,24 @@ https://docs.djangoproject.com/en/4.2/howto/deployment/wsgi/
 import logging
 import os
 import time
+import warnings
 
 from django.conf import settings
 from django.core.wsgi import get_wsgi_application
 from utils.log_events import start_server
 
 logger = logging.getLogger(__name__)
+
+# Suppress OpenTelemetry EventLogger LogRecord deprecation warning
+# This is a bug in OpenTelemetry SDK 1.37.0 where EventLogger.emit() still uses
+# deprecated trace_id/span_id/trace_flags parameters instead of context parameter.
+# See: https://github.com/open-telemetry/opentelemetry-python/issues/4328
+# TODO: Remove this suppression once OpenTelemetry fixes EventLogger.emit()
+warnings.filterwarnings(
+    "ignore",
+    message="LogRecord init with.*trace_id.*span_id.*trace_flags.*deprecated",
+    category=UserWarning,
+)
 
 os.environ.setdefault(
     "DJANGO_SETTINGS_MODULE",

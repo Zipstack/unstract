@@ -1,0 +1,18 @@
+.logs-refresh-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logs-auto-refresh-label {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.logs-refresh-btn {
+  height: 30px;
+}
+
+.logs-refresh-controls.disabled .logs-auto-refresh-label {
+  color: #bfbfbf;
+}

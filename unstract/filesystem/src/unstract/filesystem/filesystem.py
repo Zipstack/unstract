@@ -1,7 +1,7 @@
 import logging
 
 from unstract.filesystem.file_storage_types import FileStorageType
-from unstract.sdk.file_storage import EnvHelper, FileStorage
+from unstract.sdk1.file_storage import EnvHelper, FileStorage
 
 from .file_storage_config import (
     FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING,

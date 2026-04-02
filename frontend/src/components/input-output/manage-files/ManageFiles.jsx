@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
-
+import { useEffect, useState } from "react";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { inputService } from "../../input-output/input-output/input-service.js";
 import { FileExplorer } from "../file-system/FileSystem.jsx";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 function ManageFiles({
   selectedConnector,
@@ -20,23 +19,31 @@ function ManageFiles({
   useEffect(() => {
     setFiles([]);
     setError("");
-    if (!selectedConnector) return;
+    if (!selectedConnector) {
+      return;
+    }
     setLoadingData(true);
     let cancelled = false;
     inpService
       .getFileList(selectedConnector)
       .then((res) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setFiles(res.data);
         setError("");
       })
       .catch((err) => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         const errorDetails = handleException(err, "Error loading files");
         setError(errorDetails.content);
       })
       .finally(() => {
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         setLoadingData(false);
       });
     return () => {

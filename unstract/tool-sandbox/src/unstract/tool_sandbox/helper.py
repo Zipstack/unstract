@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import requests
+from celery.exceptions import SoftTimeLimitExceeded
 from requests import Response
 from requests.exceptions import ConnectionError, RequestException
 
@@ -23,14 +24,19 @@ from unstract.core.tool_execution_status import (
     ToolExecutionStatus,
     ToolExecutionTracker,
 )
-from unstract.core.utilities import UnstractUtils
+from unstract.core.utilities import UnstractUtils, _safe_get_env_int
 from unstract.tool_sandbox.constants import UnstractRunner
 from unstract.tool_sandbox.dto import (
     RunnerContainerRunResponse,
     RunnerContainerRunStatus,
 )
+from unstract.tool_sandbox.exceptions import ToolNotFoundInRegistryError
 
 logger = logging.getLogger(__name__)
+
+# Polling grace period to tolerate NOT_FOUND status during container startup
+# During this period, NOT_FOUND status doesn't immediately mean container failed
+POLL_NOT_FOUND_GRACE_PERIOD = _safe_get_env_int("POLL_NOT_FOUND_GRACE_PERIOD", 40, logger)
 
 COMPLETED_FINAL_STATUSES = {
     ContainerStatus.EXITED.value,
@@ -132,12 +138,91 @@ class ToolSandboxHelper:
         end_time = start_time + timedelta(seconds=max_wait_seconds)
         response: RunnerContainerRunResponse | None = None
 
+        # Track when NOT_FOUND status first seen for grace period handling
+        not_found_first_seen: datetime | None = None
+
         while datetime.now(UTC) < end_time:
             status = self._check_tool_run_status(file_execution_data.tool_container_name)
             elapsed = (datetime.now(UTC) - start_time).total_seconds()
             logger.info(
                 f"Tool status {status} for execution_id: {self.execution_id} and file_execution_id: {file_execution_id} - elapsed: {elapsed:.2f}s"
             )
+
+            # Special handling for NOT_FOUND status to avoid race conditions during container startup
+            if status and status.get("status") == ContainerStatus.NOT_FOUND.value:
+                if not_found_first_seen is None:
+                    not_found_first_seen = datetime.now(UTC)
+                    logger.info(
+                        f"Container NOT_FOUND detected - starting {POLL_NOT_FOUND_GRACE_PERIOD}s polling grace period "
+                        f"for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+
+                not_found_duration = (
+                    datetime.now(UTC) - not_found_first_seen
+                ).total_seconds()
+
+                if not_found_duration < POLL_NOT_FOUND_GRACE_PERIOD:
+                    # RACE CONDITION OPTIMIZATION: Check if another worker completed this file
+                    # This avoids waiting full grace period when work is already done
+                    tracker = FileExecutionStatusTracker()
+                    current_tracker_data = tracker.get_data(
+                        self.execution_id, file_execution_id
+                    )
+                    # Check if already at FINALIZATION or COMPLETED (tool execution done)
+                    if (
+                        current_tracker_data
+                        and current_tracker_data.stage_status.stage
+                        in [
+                            FileExecutionStage.FINALIZATION,
+                            FileExecutionStage.COMPLETED,
+                        ]
+                    ):
+                        stage = current_tracker_data.stage_status.stage
+                        status = current_tracker_data.stage_status.status
+                        logger.warning(
+                            f"File execution already at {stage}:{status} by another worker "
+                            f"during NOT_FOUND grace period - duplicate run detected after {not_found_duration:.1f}s "
+                            f"for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                        )
+                        # Break with ERROR to stop further processing (destination, finalization)
+                        # This is not a real error - the file was already processed by another worker
+                        response = self._create_run_response(
+                            status=RunnerContainerRunStatus.ERROR,
+                            error=f"File already processed by another worker (stage: {stage}:{status}, duplicate run avoided)",
+                        )
+                        break
+
+                    logger.debug(
+                        f"Within polling grace period ({not_found_duration:.1f}s/{POLL_NOT_FOUND_GRACE_PERIOD}s) - "
+                        f"continuing poll for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+                    time.sleep(interval_seconds)
+                    continue  # Don't treat as completed yet, continue polling
+                else:
+                    logger.warning(
+                        f"Polling grace period exceeded ({not_found_duration:.1f}s) - "
+                        f"treating NOT_FOUND as completed for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+                    # Fall through to existing completion handling below
+            elif not_found_first_seen is not None:
+                # Grace period was active, check if status actually changed
+                if status is None:
+                    # Transient fetch failure - don't reset grace period
+                    logger.warning(
+                        f"Transient status fetch failure during grace period for "
+                        f"execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+                    time.sleep(interval_seconds)
+                    continue
+                else:
+                    # Status changed from NOT_FOUND to something else
+                    new_status = status.get("status", "UNKNOWN")
+                    logger.info(
+                        f"Status changed from NOT_FOUND to {new_status} - "
+                        f"resetting grace period tracking for execution_id: {self.execution_id}, file_execution_id: {file_execution_id}"
+                    )
+                    not_found_first_seen = None
+
             if status and status.get("status") in COMPLETED_FINAL_STATUSES:
                 error = self._handle_tool_execution_status(
                     execution_id=self.execution_id,
@@ -201,9 +286,7 @@ class ToolSandboxHelper:
                 f"File execution data not found for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
             )
             file_execution_tracker.set_data(
-                execution_id=self.execution_id,
-                file_execution_id=file_execution_id,
-                file_execution_data=FileExecutionData(
+                data=FileExecutionData(
                     execution_id=self.execution_id,
                     file_execution_id=file_execution_id,
                     organization_id=self.organization_id,
@@ -249,11 +332,6 @@ class ToolSandboxHelper:
                     file_execution_data=file_execution_data,
                 )
                 self._update_stage_status_for_tool_execution(file_execution_id, response)
-                self._update_stage_status(
-                    status=FileExecutionStageStatus.IN_PROGRESS,
-                    stage=FileExecutionStage.FINALIZATION,
-                    file_execution_id=file_execution_id,
-                )
             elif stage.is_before(FileExecutionStage.TOOL_EXECUTION):
                 self._update_stage_status(
                     status=FileExecutionStageStatus.SUCCESS,
@@ -268,11 +346,6 @@ class ToolSandboxHelper:
                     retry_count=retry_count,
                 )
                 self._update_stage_status_for_tool_execution(file_execution_id, response)
-                self._update_stage_status(
-                    status=FileExecutionStageStatus.IN_PROGRESS,
-                    stage=FileExecutionStage.FINALIZATION,
-                    file_execution_id=file_execution_id,
-                )
             else:
                 logger.warning(
                     f"File execution data stage {file_execution_data.stage_status.stage} is after tool execution for execution_id: {self.execution_id} and file_execution_id: {file_execution_id}"
@@ -294,30 +367,68 @@ class ToolSandboxHelper:
         settings: dict[str, Any],
         retry_count: int | None = None,
     ) -> RunnerContainerRunResponse:
-        logger.info(
-            f"Calling runner to run tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
-        )
-        response = self.run_tool_container(
-            file_execution_id=file_execution_id,
-            image_name=image_name,
-            image_tag=image_tag,
-            settings=settings,
-            retry_count=retry_count,
-        )
-        logger.info(
-            f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
-        )
+        """Run container and poll for completion with guaranteed cleanup.
 
-        if response.status == RunnerContainerRunStatus.RUNNING:
+        This method ensures container cleanup happens even if exceptions occur
+        (including SoftTimeLimitExceeded from Celery timeouts).
+        """
+        cleanup_performed = False
+
+        try:
             logger.info(
-                f"Polling tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
+                f"Calling runner to run tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
             )
-            return self.poll_tool_status(file_execution_id)
+            response = self.run_tool_container(
+                file_execution_id=file_execution_id,
+                image_name=image_name,
+                image_tag=image_tag,
+                settings=settings,
+                retry_count=retry_count,
+            )
+            logger.info(
+                f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
+            )
 
-        logger.info(
-            f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
-        )
-        return response
+            if response.status == RunnerContainerRunStatus.RUNNING:
+                logger.info(
+                    f"Polling tool container for execution_id={self.execution_id}, file_execution_id={file_execution_id}"
+                )
+                # poll_tool_status handles its own cleanup on normal completion
+                poll_response = self.poll_tool_status(file_execution_id)
+                cleanup_performed = True
+                return poll_response
+
+            logger.info(
+                f"Tool container run for execution_id={self.execution_id}, file_execution_id={file_execution_id} completed with status {response.status}"
+            )
+            return response
+
+        except SoftTimeLimitExceeded:
+            logger.exception(
+                f"SoftTimeLimitExceeded during tool execution for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}. "
+                f"Attempting container cleanup before re-raising."
+            )
+            raise
+
+        except Exception:
+            logger.exception(
+                f"Exception during tool execution for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}. "
+                f"Attempting container cleanup before re-raising."
+            )
+            raise
+
+        finally:
+            if not cleanup_performed:
+                container_name = self._get_container_name_for_cleanup(
+                    file_execution_id=file_execution_id,
+                )
+                self._safe_cleanup_container(
+                    container_name=container_name,
+                    file_execution_id=file_execution_id,
+                    reason="exception_cleanup",
+                )
 
     def cleanup_tool_container(
         self,
@@ -339,6 +450,76 @@ class ToolSandboxHelper:
                 f"Error while calling tool {container_name} reason: {response.reason}"
             )
         return response.json()
+
+    def _get_container_name_for_cleanup(
+        self,
+        file_execution_id: str,
+    ) -> str | None:
+        """Retrieve container name for cleanup from Redis tracker.
+
+        Args:
+            file_execution_id: The file execution ID
+
+        Returns:
+            Container name or None if not available
+        """
+        try:
+            file_execution_tracker = FileExecutionStatusTracker()
+            file_execution_data = file_execution_tracker.get_data(
+                execution_id=self.execution_id,
+                file_execution_id=file_execution_id,
+            )
+            if file_execution_data and file_execution_data.tool_container_name:
+                return file_execution_data.tool_container_name
+        except Exception as e:
+            logger.warning(
+                f"Failed to retrieve container name from tracker for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}: {e}"
+            )
+
+        return None
+
+    def _safe_cleanup_container(
+        self,
+        container_name: str | None,
+        file_execution_id: str,
+        reason: str = "cleanup",
+    ) -> None:
+        """Safely attempt container cleanup, handling all failure cases gracefully.
+
+        Args:
+            container_name: Name of container to clean up (can be None)
+            file_execution_id: File execution ID for logging
+            reason: Reason for cleanup (for logging)
+        """
+        if not container_name:
+            logger.warning(
+                f"Cannot cleanup container - name not available for "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
+                f"reason={reason}"
+            )
+            return
+
+        try:
+            logger.info(
+                f"Attempting container cleanup for container={container_name}, "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
+                f"reason={reason}"
+            )
+            self.cleanup_tool_container(
+                container_name=container_name,
+                file_execution_id=file_execution_id,
+            )
+            logger.info(
+                f"Container cleanup completed for container={container_name}, "
+                f"reason={reason}"
+            )
+        except Exception as cleanup_error:
+            logger.error(
+                f"Container cleanup failed for container={container_name}, "
+                f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
+                f"reason={reason}, error={cleanup_error}"
+            )
 
     def _update_stage_status(
         self,
@@ -429,16 +610,29 @@ class ToolSandboxHelper:
             raise ToolSanboxError(msg) from connect_err
         except RequestException as e:
             error_message = str(e)
+            error_code = None
             content_type = response.headers.get("Content-Type", "").lower()
             if "application/json" in content_type:
                 response_json = response.json()
                 if "error" in response_json:
                     error_message = response_json["error"]
+                error_code = response_json.get("error_code")
             elif response.text:
                 error_message = response.text
             logger.error(f"Error from runner: {error_message}")
+            # Check for tool image not found error
+            if error_code == ToolNotFoundInRegistryError.ERROR_CODE:
+                raise ToolNotFoundInRegistryError(error_message) from e
             raise ToolSanboxError(error_message) from e
-        return RunnerContainerRunResponse.from_dict(response.json())
+
+        # Parse response and check for tool image not found error
+        result = RunnerContainerRunResponse.from_dict(response.json())
+        if (
+            result.status == RunnerContainerRunStatus.ERROR
+            and result.error_code == ToolNotFoundInRegistryError.ERROR_CODE
+        ):
+            raise ToolNotFoundInRegistryError(result.error or "Tool image not found")
+        return result
 
     def create_tool_request_data(
         self,
@@ -526,32 +720,36 @@ class ToolSandboxHelper:
                 tool_execution_data
             )
             if not tool_execution_status_data:
-                logger.warning(
-                    f"Execution ID: {execution_id}, docker "
-                    f"container: {container_name} - failed to fetch execution status"
+                error_msg = (
+                    f"Container {container_name} failed to write execution status data. "
+                    f"Container may have crashed during startup or tool execution failed before writing status."
                 )
-                return error
+                logger.error(
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker container: {container_name} - "
+                    f"failed to fetch execution status. {error_msg}"
+                )
+                return error_msg
             status = tool_execution_status_data.status
             error = tool_execution_status_data.error
             if status == ToolExecutionStatus.FAILED:
                 logger.error(
-                    f"Execution ID: {execution_id}, docker "
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                     f"container: {container_name} - tool run failed. Error: {error}"
                 )
             elif status == ToolExecutionStatus.SUCCESS:
                 logger.info(
-                    f"Execution ID: {execution_id}, docker "
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                     f"container: {container_name} - tool execution completed successfully"
                 )
             else:
                 logger.warning(
-                    f"Execution ID: {execution_id}, docker "
+                    f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                     f"container: {container_name} - unexpected tool status: {status}"
                 )
             return error
         except Exception as error:
             logger.error(
-                f"Execution ID: {execution_id}, docker "
+                f"Execution ID: {execution_id}, file execution ID: {file_execution_id}, docker "
                 f"container: {container_name} - failed to fetch execution status. Error: {error}",
                 exc_info=True,
             )

@@ -8,16 +8,21 @@ from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.endpoint_v2.serializers import WorkflowEndpointSerializer
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
 class WorkflowEndpointViewSet(viewsets.ModelViewSet):
     serializer_class = WorkflowEndpointSerializer
 
     def get_queryset(self) -> QuerySet:
+        # Get workflows accessible to the user (owned or shared)
+        accessible_workflows = Workflow.objects.for_user(self.request.user)
+
+        # Get endpoints for those workflows
         queryset = (
             WorkflowEndpoint.objects.all()
             .select_related("workflow")
-            .filter(workflow__created_by=self.request.user)
+            .filter(workflow__in=accessible_workflows)
         )
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:

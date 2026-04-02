@@ -1,17 +1,19 @@
-import { Modal, Table, Tooltip } from "antd";
-import { useEffect, useState } from "react";
+import { CopyOutlined } from "@ant-design/icons";
+import { Button, Modal, Table, Tooltip } from "antd";
 import PropTypes from "prop-types";
+import { useEffect, useState } from "react";
 
 import "./LogModal.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { useAlertStore } from "../../../store/alert-store";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import {
   formattedDateTime,
   formattedDateTimeWithSeconds,
 } from "../../../helpers/GetStaticData";
-import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useAlertStore } from "../../../store/alert-store";
+import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
 
 function LogModal({
   executionId,
@@ -24,6 +26,8 @@ function LogModal({
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+  const copyToClipboard = useCopyToClipboard();
+  const displayId = fileId || executionId;
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -150,7 +154,19 @@ function LogModal({
   }, [logDescModalOpen, pagination.current, selectedLogLevel, ordering]);
   return (
     <Modal
-      title={`Execution Log Details - ${fileId || executionId}`}
+      title={
+        <span className="log-modal-title">
+          File Execution ID {displayId}
+          {displayId && (
+            <Button
+              className="copy-btn-outlined"
+              icon={<CopyOutlined />}
+              aria-label="Copy execution ID"
+              onClick={() => copyToClipboard(displayId, "File Execution ID")}
+            />
+          )}
+        </span>
+      }
       centered
       open={logDescModalOpen}
       onCancel={handleClose}

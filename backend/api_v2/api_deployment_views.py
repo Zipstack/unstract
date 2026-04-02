@@ -1,11 +1,12 @@
 import json
 import logging
+import uuid
 from typing import Any
 
-from configuration.models import Configuration
-from django.db.models import QuerySet
+from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
 from rest_framework.decorators import action
@@ -14,21 +15,34 @@ from rest_framework.response import Response
 from rest_framework.serializers import Serializer
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
+from utils.hubspot_notify import notify_hubspot_event
+from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
-from api_v2.exceptions import NoActiveAPIKeyError
+from api_v2.exceptions import (
+    NoActiveAPIKeyError,
+    RateLimitExceeded,
+    contains_tool_not_found_error,
+)
 from api_v2.models import APIDeployment
+from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
+    SharedUserListSerializer,
 )
+
+notification_plugin = get_plugin("notification")
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +70,7 @@ class DeploymentExecution(views.APIView):
     ) -> Response:
         api: APIDeployment = deployment_execution_dto.api
         api_key: str = deployment_execution_dto.api_key
+        organization = api.organization
 
         serializer = ExecutionRequestSerializer(
             data=request.data, context={"api": api, "api_key": api_key}
@@ -70,31 +85,76 @@ class DeploymentExecution(views.APIView):
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
         hitl_queue_name = serializer.validated_data.get(ApiExecution.HITL_QUEUE_NAME)
-        user_data = serializer.validated_data.get(ApiExecution.USER_DATA)
+        hitl_packet_id = serializer.validated_data.get(ApiExecution.HITL_PACKET_ID)
+        custom_data = serializer.validated_data.get(ApiExecution.CUSTOM_DATA)
 
         if presigned_urls:
             DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
 
-        response = DeploymentHelper.execute_workflow(
-            organization_name=org_name,
-            api=api,
-            file_objs=file_objs,
-            timeout=timeout,
-            include_metadata=include_metadata,
-            include_metrics=include_metrics,
-            use_file_history=use_file_history,
-            tag_names=tag_names,
-            llm_profile_id=llm_profile_id,
-            hitl_queue_name=hitl_queue_name,
-            user_data=user_data,
-            request_headers=dict(request.headers),
+        # Generate execution ID for rate limiting
+        execution_id = str(uuid.uuid4())
+
+        # Check and acquire rate limit slot
+        can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
+            organization, execution_id
         )
-        if "error" in response and response["error"]:
+        if not can_proceed:
+            logger.warning(
+                f"Rate limit exceeded for org {organization.organization_id}: {limit_info}"
+            )
+            raise RateLimitExceeded(
+                current_usage=limit_info["current_usage"],
+                limit=limit_info["limit"],
+                limit_type=limit_info["limit_type"],
+            )
+
+        # Execute workflow with blanket exception handling
+        try:
+            response = DeploymentHelper.execute_workflow(
+                organization_name=org_name,
+                api=api,
+                file_objs=file_objs,
+                timeout=timeout,
+                include_metadata=include_metadata,
+                include_metrics=include_metrics,
+                use_file_history=use_file_history,
+                tag_names=tag_names,
+                llm_profile_id=llm_profile_id,
+                hitl_queue_name=hitl_queue_name,
+                hitl_packet_id=hitl_packet_id,
+                custom_data=custom_data,
+                request_headers=dict(request.headers),
+                execution_id=execution_id,
+            )
+        except Exception as error:
+            # Release slot on any failure during workflow setup/execution
+            APIDeploymentRateLimiter.release_slot(organization, execution_id)
+            logger.exception(f"Workflow execution failed: {error}")
+            raise
+
+        # Determine response status based on execution result
+        execution_status = response.get("execution_status", "")
+        has_error = response.get("error") or execution_status == "ERROR"
+
+        if has_error:
+            # Check for tool not found in registry error - return 500 Internal Server Error
+            # This is a server-side deployment state issue, not a client-actionable error
+            if contains_tool_not_found_error(response):
+                logger.error(
+                    "API deployment failed: Tool not found in container registry"
+                )
+                return Response(
+                    {"message": response},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            # Other errors - return 422 Unprocessable Entity
             logger.error("API deployment execution failed")
             return Response(
                 {"message": response},
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
+
+        # Success
         return Response({"message": response}, status=status.HTTP_200_OK)
 
     @DeploymentHelper.validate_api_key
@@ -114,34 +174,51 @@ class DeploymentExecution(views.APIView):
 
         # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
-        # Determine response status
-        response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
-        if response.execution_status == CeleryTaskState.COMPLETED.value:
-            response_status = status.HTTP_200_OK
-            # Check if highlight data should be removed using configuration registry
-            api_deployment = deployment_execution_dto.api
-            organization = api_deployment.organization if api_deployment else None
-            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
-            # Check if the configuration key exists (Cloud deployment) or use settings (OSS)
-            from configuration.config_registry import ConfigurationRegistry
 
-            if ConfigurationRegistry.is_config_key_available(
-                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
-            ):
-                enable_highlight = Configuration.get_value_by_organization(
-                    config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
-                    organization=organization,
-                )
-            if not enable_highlight:
-                response.remove_result_metadata_keys(["highlight_data"])
-                response.remove_result_metadata_keys(["extracted_text"])
-            if not include_metadata:
-                response.remove_result_metadata_keys()
-            if not include_metrics:
-                response.remove_result_metrics()
+        # Handle result already acknowledged
         if response.result_acknowledged:
-            response_status = status.HTTP_406_NOT_ACCEPTABLE
-            response.result = "Result already acknowledged"
+            return Response(
+                data={
+                    "status": response.execution_status,
+                    "message": "Result already acknowledged",
+                },
+                status=status.HTTP_406_NOT_ACCEPTABLE,
+            )
+
+        # Determine response status based on execution state
+        execution_status_value = response.execution_status
+
+        # Check for tool not found in registry error - return 500 Internal Server Error
+        # This is a server-side deployment state issue, not a client-actionable error
+        if contains_tool_not_found_error(response):
+            logger.error("Execution failed: Tool not found in container registry")
+            return Response(
+                data={
+                    "status": execution_status_value,
+                    "message": response.result,
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        # Check for ERROR status - return 422 Unprocessable Entity
+        if execution_status_value == "ERROR":
+            return Response(
+                data={
+                    "status": execution_status_value,
+                    "message": response.result,
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
+        if execution_status_value == CeleryTaskState.COMPLETED.value:
+            response_status = status.HTTP_200_OK
+            DeploymentHelper.process_completed_execution(
+                response=response,
+                deployment_execution_dto=deployment_execution_dto,
+                include_metadata=include_metadata,
+                include_metrics=include_metrics,
+            )
         return Response(
             data={
                 "status": response.execution_status,
@@ -152,15 +229,36 @@ class DeploymentExecution(views.APIView):
 
 
 class APIDeploymentViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsOwner]
+    pagination_class = CustomPagination
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ["destroy", "partial_update", "update"]:
+            return [IsOwner()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = APIDeployment.objects.filter(created_by=self.request.user)
+        # Subquery to get last run time for ordering
+        last_run_subquery = (
+            WorkflowExecution.objects.filter(pipeline_id=OuterRef("id"))
+            .order_by("-created_at")
+            .values("created_at")[:1]
+        )
+
+        queryset = (
+            APIDeployment.objects.for_user(self.request.user)
+            .annotate(last_run_time_annotated=Subquery(last_run_subquery))
+            .order_by(F("last_run_time_annotated").desc(nulls_last=True))
+        )
 
         # Filter by workflow ID if provided
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:
             queryset = queryset.filter(workflow_id=workflow_filter)
+
+        # Search by display name
+        search = self.request.query_params.get("search", None)
+        if search:
+            queryset = queryset.filter(display_name__icontains=search)
 
         return queryset
 
@@ -179,12 +277,23 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
     def create(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
+        # Check deployment count before create for HubSpot notification
+        deployment_count_before = APIDeployment.objects.count()
+
         serializer: Serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
+        )
+
+        # Notify HubSpot about first API deployment
+        notify_hubspot_event(
+            user=request.user,
+            event_name="API_DEPLOY",
+            is_first_for_org=deployment_count_before == 0,
+            action_label="API deployment",
         )
 
         headers = self.get_success_headers(serializer.data)
@@ -251,4 +360,48 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = (
             f'attachment; filename="{instance.display_name}.json"'
         )
+        return response
+
+    @action(detail=True, methods=["get"], permission_classes=[IsOwner])
+    def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
+        """List users who have access to this API deployment."""
+        instance = self.get_object()
+        serializer = SharedUserListSerializer(instance)
+        return Response(serializer.data)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override partial_update to handle sharing notifications."""
+        # Get current instance and shared users
+        instance = self.get_object()
+        current_shared_users = set(instance.shared_users.all())
+
+        # Perform the update
+        response = super().partial_update(request, *args, **kwargs)
+
+        # If successful and shared_users changed, send notifications
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and notification_plugin
+        ):
+            try:
+                instance.refresh_from_db()
+                new_shared_users = set(instance.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if newly_shared_users:
+                    # Get notification service from plugin
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
+                    notification_service.send_sharing_notification(
+                        resource_type=ResourceType.API_DEPLOYMENT.value,
+                        resource_name=instance.display_name,
+                        resource_id=str(instance.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=instance,
+                    )
+            except Exception as e:
+                logger.exception(f"Failed to send sharing notification: {e}")
+
         return response

@@ -1,6 +1,6 @@
+import { InfoCircleFilled } from "@ant-design/icons";
 import { Space, Spin, Typography } from "antd";
 import PropTypes from "prop-types";
-import { InfoCircleFilled } from "@ant-design/icons";
 import { useEffect, useState } from "react";
 
 import {
@@ -22,8 +22,12 @@ function DisplayPromptResult({
   highlightData,
   promptDetails,
   confidenceData,
+  wordConfidenceData,
   isTable = false,
-  setOpenExpandModal = () => {},
+  setOpenExpandModal = () => {
+    // No-op default
+  },
+  progressMsg,
 }) {
   const [isLoading, setIsLoading] = useState(false);
   const [parsedOutput, setParsedOutput] = useState(null);
@@ -53,8 +57,8 @@ function DisplayPromptResult({
       displayPromptResult(
         output,
         isFormattingRequired,
-        details?.enable_highlight
-      )
+        details?.enable_highlight,
+      ),
     );
   }, [
     promptRunStatus,
@@ -65,10 +69,22 @@ function DisplayPromptResult({
   ]);
 
   if (isLoading) {
-    return <Spin indicator={<SpinnerLoader size="small" />} />;
+    return (
+      <div className="prompt-loading-container">
+        <Spin indicator={<SpinnerLoader size="small" />} />
+        {progressMsg?.message && (
+          <Typography.Text
+            className="prompt-progress-msg"
+            type={progressMsg?.level === "ERROR" ? "danger" : "secondary"}
+          >
+            {progressMsg.message}
+          </Typography.Text>
+        )}
+      </div>
+    );
   }
 
-  if (output === undefined) {
+  if (output === undefined || output === null) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>
@@ -79,13 +95,102 @@ function DisplayPromptResult({
     );
   }
 
-  const handleClick = (highlightData, confidenceData, key, keyPath) => {
+  // Extract confidence from 5th element of highlight data coordinate arrays
+  const extractConfidenceFromHighlightData = (data) => {
+    if (!data) {
+      return null;
+    }
+
+    const confidenceValues = [];
+
+    const extractFromArray = (arr) => {
+      if (Array.isArray(arr)) {
+        for (const item of arr) {
+          if (Array.isArray(item)) {
+            // Check if this is a coordinate array with 5 elements
+            if (item.length >= 5 && typeof item[4] === "number") {
+              confidenceValues.push(item[4]);
+            } else {
+              // Recursively check nested arrays
+              extractFromArray(item);
+            }
+          } else if (typeof item === "object" && item !== null) {
+            // Recursively check objects
+            for (const val of Object.values(item)) {
+              extractFromArray(val);
+            }
+          }
+        }
+      } else if (typeof arr === "object" && arr !== null) {
+        for (const val of Object.values(arr)) {
+          extractFromArray(val);
+        }
+      }
+    };
+
+    extractFromArray(data);
+
+    // Calculate average confidence if we found any values
+    if (confidenceValues.length > 0) {
+      const sum = confidenceValues.reduce((acc, val) => acc + val, 0);
+      return sum / confidenceValues.length;
+    }
+
+    return null;
+  };
+
+  const handleClick = (
+    highlightData,
+    confidenceData,
+    wordConfidenceData,
+    key,
+    keyPath,
+  ) => {
     if (highlightData?.[key]) {
+      const shouldUseWordConfidence =
+        details?.enable_highlight && details?.enable_word_confidence;
+
+      const getNestedValue = (obj, path) => {
+        if (!obj || !path) {
+          return undefined;
+        }
+        const normalized = path.replace(/\[(\d+)\]/g, ".$1");
+        const parts = normalized.split(".").filter((p) => p !== "");
+        return parts.reduce((acc, part) => {
+          if (acc === undefined || acc === null) {
+            return undefined;
+          }
+          const maybeIndex = /^\d+$/.test(part) ? Number(part) : part;
+          return acc[maybeIndex];
+        }, obj);
+      };
+
+      let confidence;
+      if (shouldUseWordConfidence && wordConfidenceData) {
+        const wordConfidence = getNestedValue(wordConfidenceData, key);
+        if (wordConfidence && typeof wordConfidence === "object") {
+          const values = Object.values(wordConfidence).filter(
+            (v) => typeof v === "number",
+          );
+          if (values.length > 0) {
+            const sum = values.reduce((acc, val) => acc + val, 0);
+            confidence = sum / values.length;
+          }
+        }
+      }
+
+      if (confidence === undefined) {
+        const extractedConfidence = extractConfidenceFromHighlightData(
+          highlightData[key],
+        );
+        confidence = extractedConfidence ?? confidenceData?.[key];
+      }
+
       handleSelectHighlight(
         highlightData[key],
         promptDetails?.prompt_id,
         profileId,
-        confidenceData?.[key]
+        confidence,
       );
       setSelectedKey(keyPath);
     }
@@ -98,9 +203,10 @@ function DisplayPromptResult({
     data,
     highlightData,
     confidenceData,
+    wordConfidenceData,
     indent = 0,
     path = "",
-    isTable = false
+    isTable = false,
   ) => {
     if (isTable) {
       const stringData =
@@ -146,9 +252,10 @@ function DisplayPromptResult({
                   item,
                   highlightData?.[index],
                   confidenceData?.[index],
+                  wordConfidenceData?.[index],
                   indent + 1,
                   `${path}[${index}]`,
-                  isTable
+                  isTable,
                 )}
                 {index < data.length - 1 ? "," : ""}
               </div>
@@ -183,8 +290,9 @@ function DisplayPromptResult({
                         handleClick(
                           highlightData,
                           confidenceData,
+                          wordConfidenceData,
                           key,
-                          newPath
+                          newPath,
                         );
                       }
                     }}
@@ -193,9 +301,10 @@ function DisplayPromptResult({
                       value,
                       highlightData?.[key],
                       confidenceData?.[key],
+                      wordConfidenceData?.[key],
                       indent + 1,
                       newPath,
-                      isTable
+                      isTable,
                     )}
                   </Typography.Text>
                   {index < array.length - 1 ? "," : ""}
@@ -214,14 +323,22 @@ function DisplayPromptResult({
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(parsedOutput, highlightData, confidenceData, 0, "", isTable)
+        renderJson(
+          parsedOutput,
+          highlightData,
+          confidenceData,
+          wordConfidenceData,
+          0,
+          "",
+          isTable,
+        )
       ) : (
         <TextResult
           enableHighlight={details?.enable_highlight}
           highlightData={highlightData}
           promptId={promptDetails?.prompt_id}
           profileId={profileId}
-          confidenceData={confidenceData}
+          wordConfidenceData={wordConfidenceData}
           selectedHighlight={selectedHighlight}
           parsedOutput={parsedOutput}
           onSelectHighlight={handleSelectHighlight}
@@ -236,16 +353,67 @@ const TextResult = ({
   highlightData,
   promptId,
   profileId,
-  confidenceData,
+  wordConfidenceData,
   selectedHighlight,
   parsedOutput,
   onSelectHighlight,
 }) => {
+  const getConfidenceForText = () => {
+    // Try word confidence first
+    if (wordConfidenceData && typeof wordConfidenceData === "object") {
+      const values = Object.values(wordConfidenceData).filter(
+        (v) => typeof v === "number",
+      );
+      if (values.length > 0) {
+        const sum = values.reduce((acc, val) => acc + val, 0);
+        return sum / values.length;
+      }
+    }
+
+    // Fallback to extracting from highlight data
+    if (highlightData) {
+      const confidenceValues = [];
+
+      const extractConfidenceFromHighlightData = (data) => {
+        if (Array.isArray(data)) {
+          for (const item of data) {
+            if (Array.isArray(item)) {
+              if (item.length >= 5 && typeof item[4] === "number") {
+                confidenceValues.push(item[4]);
+              } else {
+                extractConfidenceFromHighlightData(item);
+              }
+            } else if (typeof item === "object" && item !== null) {
+              for (const val of Object.values(item)) {
+                extractConfidenceFromHighlightData(val);
+              }
+            }
+          }
+        } else if (typeof data === "object" && data !== null) {
+          for (const val of Object.values(data)) {
+            extractConfidenceFromHighlightData(val);
+          }
+        }
+      };
+
+      extractConfidenceFromHighlightData(highlightData);
+
+      if (confidenceValues.length > 0) {
+        const sum = confidenceValues.reduce((acc, val) => acc + val, 0);
+        return sum / confidenceValues.length;
+      }
+    }
+
+    return undefined;
+  };
+
+  const confidence = getConfidenceForText();
+
   return enableHighlight ? (
     <Typography.Text
       wrap
       onClick={() =>
-        onSelectHighlight(highlightData, promptId, profileId, confidenceData)
+        onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
         highlightData ? "clickable" : ""
@@ -263,7 +431,7 @@ TextResult.propTypes = {
   highlightData: PropTypes.any,
   promptId: PropTypes.string,
   profileId: PropTypes.string,
-  confidenceData: PropTypes.any,
+  wordConfidenceData: PropTypes.any,
   selectedHighlight: PropTypes.object,
   parsedOutput: PropTypes.any,
   onSelectHighlight: PropTypes.func.isRequired,
@@ -274,11 +442,13 @@ DisplayPromptResult.propTypes = {
   docId: PropTypes.string,
   promptRunStatus: PropTypes.object,
   handleSelectHighlight: PropTypes.func,
-  highlightData: PropTypes.object,
+  highlightData: PropTypes.oneOfType([PropTypes.object, PropTypes.array]),
   promptDetails: PropTypes.object,
   confidenceData: PropTypes.object,
+  wordConfidenceData: PropTypes.object,
   isTable: PropTypes.bool,
   setOpenExpandModal: PropTypes.func,
+  progressMsg: PropTypes.object,
 };
 
 export { DisplayPromptResult };

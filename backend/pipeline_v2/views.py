@@ -1,20 +1,24 @@
 import json
 import logging
+from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.exceptions import NoActiveAPIKeyError
 from api_v2.key_helper import KeyHelper
 from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import F, QuerySet
 from django.http import HttpResponse
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.filters import OrderingFilter
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
+from utils.pagination import CustomPagination
 
 from pipeline_v2.constants import (
     PipelineConstants,
@@ -29,6 +33,11 @@ from pipeline_v2.serializers.crud import PipelineSerializer
 from pipeline_v2.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
 )
+from pipeline_v2.serializers.sharing import SharedUserListSerializer
+
+notification_plugin = get_plugin("notification")
+if notification_plugin:
+    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +45,22 @@ logger = logging.getLogger(__name__)
 class PipelineViewSet(viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
-    permission_classes = [IsOwner]
+    pagination_class = CustomPagination
+    filter_backends = [OrderingFilter]
+    ordering_fields = ["created_at", "last_run_time", "pipeline_name", "run_count"]
+    # Note: Default ordering with nulls_last is applied in get_queryset()
+    # DRF's ordering attribute doesn't support nulls_last natively
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ["destroy", "partial_update", "update"]:
+            return [IsOwner()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
+
     serializer_class = PipelineSerializer
 
     def get_queryset(self) -> QuerySet:
-        queryset = Pipeline.objects.filter(created_by=self.request.user)
+        # Use for_user manager method to include shared pipelines
+        queryset = Pipeline.objects.for_user(self.request.user)
 
         # Apply type filter if specified
         pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
@@ -51,6 +71,18 @@ class PipelineViewSet(viewsets.ModelViewSet):
         workflow_filter = self.request.query_params.get("workflow", None)
         if workflow_filter:
             queryset = queryset.filter(workflow_id=workflow_filter)
+
+        # Search by pipeline name
+        search = self.request.query_params.get("search", None)
+        if search:
+            queryset = queryset.filter(pipeline_name__icontains=search)
+
+        # Apply default ordering: last_run_time desc (nulls last), then created_at desc
+        # This ensures pipelines with recent runs appear first, never-run pipelines at end
+        queryset = queryset.order_by(
+            F("last_run_time").desc(nulls_last=True),
+            F("created_at").desc(),
+        )
 
         return queryset
 
@@ -100,6 +132,61 @@ class PipelineViewSet(viewsets.ModelViewSet):
         pipeline_to_remove = str(instance.pk)
         super().perform_destroy(instance)
         return SchedulerHelper.remove_job(pipeline_to_remove)
+
+    @action(detail=True, methods=["get"], url_path="users", permission_classes=[IsOwner])
+    def list_of_shared_users(self, request: Request, pk: str | None = None) -> Response:
+        """Returns the list of users the pipeline is shared with."""
+        pipeline = self.get_object()
+        serializer = SharedUserListSerializer(pipeline)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        """Override to handle sharing notifications."""
+        instance = self.get_object()
+        current_shared_users = set(instance.shared_users.all())
+
+        response = super().partial_update(request, *args, **kwargs)
+
+        if (
+            response.status_code == 200
+            and "shared_users" in request.data
+            and notification_plugin
+        ):
+            try:
+                instance.refresh_from_db()
+                new_shared_users = set(instance.shared_users.all())
+                newly_shared_users = new_shared_users - current_shared_users
+
+                if ResourceType.ETL.value == instance.pipeline_type:
+                    resource_type = ResourceType.ETL.value
+                elif ResourceType.TASK.value == instance.pipeline_type:
+                    resource_type = ResourceType.TASK.value
+
+                if newly_shared_users:
+                    # Get notification service from plugin and send notification
+                    service_class = notification_plugin["service_class"]
+                    notification_service = service_class()
+                    notification_service.send_sharing_notification(
+                        resource_type=resource_type,
+                        resource_name=instance.pipeline_name,
+                        resource_id=str(instance.id),
+                        shared_by=request.user,
+                        shared_to=list(newly_shared_users),
+                        resource_instance=instance,
+                    )
+
+                    logger.info(
+                        f"Sent sharing notifications for {instance.pipeline_type} "
+                        f"to {len(newly_shared_users)} users"
+                    )
+
+            except Exception as e:
+                # Log error but don't fail the update operation
+                logger.exception(
+                    f"Failed to send sharing notification, continuing update though: {str(e)}"
+                )
+
+        return response
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(

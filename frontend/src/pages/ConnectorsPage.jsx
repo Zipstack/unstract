@@ -1,20 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
-import { Button } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import { Button } from "antd";
+import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
-import { useSessionStore } from "../store/session-store";
-import { useAlertStore } from "../store/alert-store";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
+import { useListSearch } from "../hooks/useListSearch";
 import useRequestUrl from "../hooks/useRequestUrl";
+import { useAlertStore } from "../store/alert-store";
+import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
-import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
-import { SharePermission } from "../components/widgets/share-permission/SharePermission";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
+import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
+import { SharePermission } from "../components/widgets/share-permission/SharePermission";
 
 function ConnectorsPage() {
-  const [connectors, setConnectors] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingConnector, setEditingConnector] = useState(null);
@@ -29,6 +29,8 @@ function ConnectorsPage() {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { getUrl } = useRequestUrl();
+  const { listRef, displayList, setDisplayList, setMasterList, onSearch } =
+    useListSearch("connector_name");
 
   useEffect(() => {
     fetchConnectors();
@@ -39,7 +41,7 @@ function ConnectorsPage() {
     setLoading(true);
     try {
       const response = await axiosPrivate.get(getUrl("connector/"));
-      setConnectors(response.data || []);
+      setMasterList(response.data || []);
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load connectors"));
     } finally {
@@ -57,7 +59,7 @@ function ConnectorsPage() {
           .map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
       );
     } catch (error) {
       setAlertDetails(handleException(error, "Failed to load users"));
@@ -112,7 +114,7 @@ function ConnectorsPage() {
           headers: {
             "X-CSRFToken": sessionDetails?.csrfToken,
           },
-        }
+        },
       );
       setShareModalVisible(false);
       setAlertDetails({
@@ -138,29 +140,29 @@ function ConnectorsPage() {
     });
   };
 
-  const renderCreateConnectorButtons = useCallback(
-    () => (
-      <Button
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleCreateConnector}
-      >
-        New Connector
-      </Button>
-    ),
-    []
+  const newConnectorButton = (
+    <Button
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={handleCreateConnector}
+    >
+      New Connector
+    </Button>
   );
 
   return (
     <div className="connectors-layout">
       <ToolNavBar
         title="Connectors"
-        CustomButtons={renderCreateConnectorButtons}
+        enableSearch
+        setSearchList={setDisplayList}
+        onSearch={onSearch}
+        customButtons={newConnectorButton}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">
           <ViewTools
-            listOfTools={connectors}
+            listOfTools={displayList}
             isLoading={loading}
             handleDelete={handleDeleteConnector}
             handleEdit={handleEditConnector}
@@ -172,7 +174,7 @@ function ConnectorsPage() {
             iconProp="icon"
             showOwner={true}
             type="Connector"
-            isEmpty={!connectors.length}
+            isEmpty={!listRef.current.length}
             centered
             isClickable={false}
           />

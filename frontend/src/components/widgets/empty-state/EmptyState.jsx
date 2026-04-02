@@ -1,6 +1,6 @@
-import PropTypes from "prop-types";
-import { Button, Space, Typography } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
+import { Button, Space, Typography } from "antd";
+import PropTypes from "prop-types";
 
 import { EmptyPlaceholder } from "../../../assets";
 

@@ -9,6 +9,8 @@ from drf_standardized_errors.handler import exception_handler
 from rest_framework.request import Request
 from rest_framework.response import Response
 
+from unstract.sdk1.exceptions import SdkError
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,6 +33,19 @@ def drf_logging_exc_handler(exc: Exception, context: Any) -> Response | None:
             handled by another method in the middleware
     """
     request = context.get("request")
+
+    # Handle SdkError exceptions and preserve their status codes
+    if isinstance(exc, SdkError):
+        status_code = exc.status_code or 500
+        response = Response(
+            {"error": str(exc), "type": "sdk_error"},
+            status=status_code,
+        )
+        ExceptionLoggingMiddleware.format_exc_and_log(
+            request=request, response=response, exception=exc
+        )
+        return response
+
     response: Response | None = exception_handler(exc=exc, context=context)
     ExceptionLoggingMiddleware.format_exc_and_log(
         request=request, response=response, exception=exc

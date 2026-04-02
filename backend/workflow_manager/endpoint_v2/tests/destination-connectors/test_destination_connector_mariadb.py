@@ -22,6 +22,7 @@ class TestDestinationConnectorMariaDB(TestCase):
             "MARIADB_DATABASE",
             "MARIADB_USER",
             "MARIADB_PASSWORD",
+            "MARIADB_SSL_ENABLED",
         ]
 
         # Check if all required environment variables are set
@@ -37,8 +38,8 @@ class TestDestinationConnectorMariaDB(TestCase):
             "database": os.getenv("MARIADB_DATABASE"),
             "user": os.getenv("MARIADB_USER"),
             "password": os.getenv("MARIADB_PASSWORD"),
+            "sslEnabled": os.getenv("MARIADB_SSL_ENABLED", False),
         }
-
         # Test data that will be inserted into the database
         self.test_data = {"key": "value", "result": "test_result", "status": "success"}
         self.test_metadata = {

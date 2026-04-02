@@ -36,24 +36,30 @@ import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
 let SummarizeStatusTitle = null;
 try {
-  SummarizeStatusTitle =
-    require("../../../plugins/summarize-status-title/SummarizeStatusTitle").SummarizeStatusTitle;
+  const mod = await import(
+    "../../../plugins/summarize-status-title/SummarizeStatusTitle"
+  );
+  SummarizeStatusTitle = mod.SummarizeStatusTitle;
 } catch {
   // The component will remain null if it is not available
 }
 
 let publicIndexApi = null;
 try {
-  publicIndexApi =
-    require("../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").publicIndexApi;
+  const mod = await import(
+    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+  );
+  publicIndexApi = mod.publicIndexApi;
 } catch {
   // The component will remain null if it is not available
 }
 
 let ConfirmMultiDoc = null;
 try {
-  ConfirmMultiDoc =
-    require("../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc").ConfirmMultiDoc;
+  const mod = await import(
+    "../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc"
+  );
+  ConfirmMultiDoc = mod.ConfirmMultiDoc;
 } catch {
   // The component will remain null if it is not available
 }
@@ -164,7 +170,7 @@ function ManageDocsModal({
       details?.summarize_llm_adapter?.adapter_id ??
         details?.summarize_llm_adapter?.id ??
         details?.summarize_llm_adapter ??
-        null
+        null,
     );
   }, [defaultLlmProfile, details]);
 
@@ -205,7 +211,7 @@ function ManageDocsModal({
 
     // Get the index of the last message received before the last update
     const lastIndex = [...newMessages].findIndex(
-      (item) => item?.timestamp === lastMessagesUpdate
+      (item) => item?.timestamp === lastMessagesUpdate,
     );
 
     // If the last update's message is found, keep only the new messages
@@ -213,9 +219,13 @@ function ManageDocsModal({
       newMessages = newMessages.slice(0, lastIndex);
     }
 
-    // Filter only INFO and ERROR logs
+    // Filter only INFO and ERROR logs that are NOT from answer_prompt.
+    // Answer prompt messages carry a prompt_key in their component;
+    // indexing messages do not.
     newMessages = newMessages.filter(
-      (item) => item?.level === "INFO" || item?.level === "ERROR"
+      (item) =>
+        (item?.level === "INFO" || item?.level === "ERROR") &&
+        !item?.component?.prompt_key,
     );
 
     // If there are no new INFO or ERROR messages, return early
@@ -317,7 +327,7 @@ function ManageDocsModal({
 
   const getLlmProfileName = (llmProfile) => {
     const llmProfileName = llmProfiles.find(
-      (item) => item?.profile_id === llmProfile
+      (item) => item?.profile_id === llmProfile,
     );
 
     return llmProfileName?.profile_name || "No LLM Profile Selected";
@@ -334,12 +344,12 @@ function ManageDocsModal({
     if (summarizeLlmAdapter) {
       const selectedAdapterId =
         typeof summarizeLlmAdapter === "object"
-          ? summarizeLlmAdapter?.adapter_id ?? summarizeLlmAdapter?.id
+          ? (summarizeLlmAdapter?.adapter_id ?? summarizeLlmAdapter?.id)
           : summarizeLlmAdapter;
       const adapter = adapters?.find(
         (item) =>
           item?.adapter_id === selectedAdapterId ||
-          item?.id === selectedAdapterId
+          item?.id === selectedAdapterId,
       );
       return adapter?.adapter_name || adapter?.name || "No adapter selected";
     }
@@ -376,19 +386,14 @@ function ManageDocsModal({
       title: "Actions",
       dataIndex: "reindex",
       key: "reindex",
-      width: 200,
+      width: 120,
     },
     {
-      title: "",
-      dataIndex: "delete",
-      key: "delete",
-      width: 30,
-    },
-    {
-      title: "",
+      title: "Select Default",
       dataIndex: "select",
       key: "select",
-      width: 30,
+      align: "center",
+      width: 120,
     },
   ];
 
@@ -453,7 +458,7 @@ function ManageDocsModal({
         info: "Clicked on index button",
         document_name: item?.document_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -490,32 +495,28 @@ function ManageDocsModal({
                 </Tooltip>
               )}
             </div>
+            <ConfirmModal
+              handleConfirm={() => handleDelete(item?.document_id)}
+              content="The document will be permanently deleted."
+            >
+              <Tooltip title="Delete">
+                <Button
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  disabled={
+                    isMultiPassExtractLoading ||
+                    isSinglePassExtractLoading ||
+                    indexDocs.includes(item?.document_id) ||
+                    isUploading ||
+                    isPublicSource
+                  }
+                />
+              </Tooltip>
+            </ConfirmModal>
             <div className="center">
               {infoIndex(indexMessages?.[item?.document_name])}
             </div>
           </Space>
-        ),
-        delete: (
-          <ConfirmModal
-            handleConfirm={() => handleDelete(item?.document_id)}
-            content="The document will be permanently deleted."
-          >
-            <Tooltip title="Delete">
-              <Button
-                size="small"
-                className="display-flex-align-center"
-                disabled={
-                  isMultiPassExtractLoading ||
-                  isSinglePassExtractLoading ||
-                  indexDocs.includes(item?.document_id) ||
-                  isUploading ||
-                  isPublicSource
-                }
-              >
-                <DeleteOutlined className="manage-llm-pro-icon" />
-              </Button>
-            </Tooltip>
-          </ConfirmModal>
         ),
         select: (
           <Radio
@@ -553,7 +554,7 @@ function ManageDocsModal({
       setPostHogCustomEvent("ps_uploaded_file", {
         info: "Clicked on '+ Upload New File' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -563,7 +564,7 @@ function ManageDocsModal({
       return [...listOfDocs]?.find(
         (item) =>
           item?.document_name?.replace(/\.[^/.]+$/, "") ===
-          fileNameWithoutExtension
+          fileNameWithoutExtension,
       );
     };
 
@@ -589,8 +590,18 @@ function ManageDocsModal({
           return; // Stop further execution
         }
 
-        // If the file is not a PDF, show the modal for confirmation
-        if (fileType !== "application/pdf") {
+        // File types that can be uploaded directly without conversion
+        const DIRECT_UPLOAD_TYPES = new Set([
+          "application/pdf",
+          "text/plain",
+          "text/csv",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "application/vnd.ms-excel.sheet.macroenabled.12",
+        ]);
+
+        if (!DIRECT_UPLOAD_TYPES.has(fileType)) {
+          // Non-direct types: show ConfirmMultiDoc modal or error
           if (!ConfirmMultiDoc) {
             setAlertDetails({
               type: "error",
@@ -600,7 +611,7 @@ function ManageDocsModal({
           setFileToUpload(file); // Store the file to be uploaded
           setIsModalVisible(true); // Show the modal
         } else {
-          // If the file is a PDF, proceed with the upload immediately
+          // PDF, CSV, TXT, Excel — proceed with the upload immediately
           resolve(file);
         }
       };
@@ -677,7 +688,7 @@ function ManageDocsModal({
     axiosPrivate(requestOptions)
       .then(() => {
         const newListOfDocs = [...listOfDocs].filter(
-          (item) => item?.document_id !== docId
+          (item) => item?.document_id !== docId,
         );
         updateCustomTool({ listOfDocs: newListOfDocs });
 
@@ -688,7 +699,7 @@ function ManageDocsModal({
         const updatedPromptDetails = removeIdFromCoverage(details, docId);
         const updatedPromptOutput = removeIdFromCoverageOfPromptOutput(
           promptOutputs,
-          docId
+          docId,
         );
         updateCustomTool({ details: updatedPromptDetails });
         updatePromptOutput(updatedPromptOutput);
@@ -814,4 +825,5 @@ ManageDocsModal.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   handleDocChange: PropTypes.func.isRequired,
 };
+
 export { ManageDocsModal };

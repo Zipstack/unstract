@@ -107,17 +107,37 @@ function ListView({
           onClick={(event) => event.stopPropagation()}
           role="none"
         >
-          <EditOutlined
-            key={`${item.id}-edit`}
-            onClick={(event) => handleEdit(event, item)}
-            className="action-icon-buttons edit-icon"
-          />
-          {handleShare && (
-            <ShareAltOutlined
-              key={`${item.id}-share`}
-              className="action-icon-buttons share-icon"
-              onClick={(event) => handleShareClick(event, item, true)}
+          <Tooltip
+            title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+          >
+            <EditOutlined
+              key={`${item.id}-edit`}
+              onClick={(event) => handleEdit(event, item)}
+              className={`action-icon-buttons edit-icon ${
+                item?.is_deprecated ? "disabled-icon" : ""
+              }`}
+              style={{
+                cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+                opacity: item?.is_deprecated ? 0.4 : 1,
+              }}
             />
+          </Tooltip>
+          {handleShare && (
+            <Tooltip
+              title={item?.is_deprecated ? "This adapter is deprecated" : ""}
+            >
+              <ShareAltOutlined
+                key={`${item.id}-share`}
+                className={`action-icon-buttons share-icon ${
+                  item?.is_deprecated ? "disabled-icon" : ""
+                }`}
+                onClick={(event) => handleShareClick(event, item, true)}
+                style={{
+                  cursor: item?.is_deprecated ? "not-allowed" : "pointer",
+                  opacity: item?.is_deprecated ? 0.4 : 1,
+                }}
+              />
+            </Tooltip>
           )}
           <Popconfirm
             key={`${item.id}-delete`}
@@ -165,11 +185,15 @@ function ListView({
               className="list-item-desc"
               title={renderTitle(item)}
               description={
-                <Typography.Text type="secondary" ellipsis>
-                  <Tooltip title={item[descriptionProp]}>
+                item[descriptionProp] ? (
+                  <Typography.Paragraph
+                    type="secondary"
+                    ellipsis={{ rows: 1, tooltip: true }}
+                    className="list-view-description"
+                  >
                     {item[descriptionProp]}
-                  </Tooltip>
-                </Typography.Text>
+                  </Typography.Paragraph>
+                ) : null
               }
             ></List.Item.Meta>
           </List.Item>

@@ -1,18 +1,20 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import {
   getOrgNameFromPathname,
   homePagePath,
   onboardCompleted,
 } from "../../../helpers/GetStaticData";
-import { useSessionStore } from "../../../store/session-store";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { useSessionStore } from "../../../store/session-store";
 
 let ProductFruitsManager;
 try {
-  ProductFruitsManager =
-    require("../../../plugins/product-fruits/ProductFruitsManager").ProductFruitsManager;
+  const mod = await import(
+    "../../../plugins/product-fruits/ProductFruitsManager"
+  );
+  ProductFruitsManager = mod.ProductFruitsManager;
 } catch {
   // The component will remain null of it is not available
 }
@@ -20,7 +22,9 @@ let selectedProductStore;
 let isLlmWhisperer;
 let isVerticals;
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import(
+    "../../../plugins/store/select-product-store.js"
+  );
 } catch {
   // do nothing
 }
@@ -36,23 +40,23 @@ const RequireAuth = () => {
   try {
     isLlmWhisperer =
       selectedProductStore.useSelectedProductStore(
-        (state) => state?.selectedProduct
+        (state) => state?.selectedProduct,
       ) === "llm-whisperer";
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
   try {
     isVerticals =
       selectedProductStore.useSelectedProductStore(
-        (state) => state?.selectedProduct
+        (state) => state?.selectedProduct,
       ) === "verticals";
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 
   const currOrgName = getOrgNameFromPathname(
     pathname,
-    isLlmWhisperer || isVerticals
+    isLlmWhisperer || isVerticals,
   );
   useEffect(() => {
     if (!sessionDetails?.isLoggedIn) {

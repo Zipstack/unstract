@@ -1,20 +1,24 @@
 import http
-import json
 import logging
 import os
 from typing import Any
 
-import redis
 import socketio
 from django.conf import settings
 from django.core.wsgi import WSGIHandler
 
-from unstract.core.constants import LogFieldName
-from unstract.workflow_execution.enums import LogType
+from unstract.core.cache.redis_client import create_redis_client
+from unstract.core.data_models import LogDataDTO
+from unstract.core.log_utils import get_validated_log_data, store_execution_log
 from utils.constants import ExecutionLogConstants
-from utils.dto import LogDataDTO
 
 logger = logging.getLogger(__name__)
+
+_kombu_kwargs: dict[str, Any] = {"url": settings.SOCKET_IO_MANAGER_URL}
+if getattr(settings, "SOCKET_IO_TRANSPORT_OPTIONS", None):
+    _kombu_kwargs["connection_options"] = {
+        "transport_options": settings.SOCKET_IO_TRANSPORT_OPTIONS
+    }
 
 sio = socketio.Server(
     # Allowed values: {threading, eventlet, gevent, gevent_uwsgi}
@@ -23,15 +27,17 @@ sio = socketio.Server(
     logger=False,
     engineio_logger=False,
     always_connect=True,
-    client_manager=socketio.KombuManager(url=settings.SOCKET_IO_MANAGER_URL),
+    client_manager=socketio.KombuManager(**_kombu_kwargs),
 )
 
-redis_conn = redis.Redis(
-    host=settings.REDIS_HOST,
-    port=int(settings.REDIS_PORT),
-    username=settings.REDIS_USER,
-    password=settings.REDIS_PASSWORD,
-)
+_redis_conn = None
+
+
+def _get_redis_conn():
+    global _redis_conn
+    if _redis_conn is None:
+        _redis_conn = create_redis_client(decode_responses=False)
+    return _redis_conn
 
 
 @sio.event
@@ -79,71 +85,23 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
     return session_id.value
 
 
+# Functions moved to unstract.core.log_utils for sharing with workers
+# Keep these as wrapper functions for backward compatibility
+
+
 def _get_validated_log_data(json_data: Any) -> LogDataDTO | None:
-    """Validate log data to persist history. This function takes log data in
-    JSON format, validates it, and returns a `LogDataDTO` object if the data is
-    valid. The validation process includes decoding bytes to string, parsing
-    the string as JSON, and checking for required fields and log type.
-
-    Args:
-        json_data (Any): Log data in JSON format
-    Returns:
-        Optional[LogDataDTO]: Log data DTO object
-    """
-    if isinstance(json_data, bytes):
-        json_data = json_data.decode("utf-8")
-
-    if isinstance(json_data, str):
-        try:
-            # Parse the string as JSON
-            json_data = json.loads(json_data)
-        except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON data while validating {json_data}")
-            return
-
-    if not isinstance(json_data, dict):
-        logger.warning(f"Getting invalid data type while validating {json_data}")
-        return
-
-    # Extract required fields from the JSON data
-    execution_id = json_data.get(LogFieldName.EXECUTION_ID)
-    organization_id = json_data.get(LogFieldName.ORGANIZATION_ID)
-    timestamp = json_data.get(LogFieldName.TIMESTAMP)
-    log_type = json_data.get(LogFieldName.TYPE)
-    file_execution_id = json_data.get(LogFieldName.FILE_EXECUTION_ID)
-
-    # Ensure the log type is LogType.LOG
-    if log_type != LogType.LOG.value:
-        return
-
-    # Check if all required fields are present
-    if not all((execution_id, organization_id, timestamp)):
-        logger.debug(f"Missing required fields while validating {json_data}")
-        return
-
-    return LogDataDTO(
-        execution_id=execution_id,
-        file_execution_id=file_execution_id,
-        organization_id=organization_id,
-        timestamp=timestamp,
-        log_type=log_type,
-        data=json_data,
-    )
+    """Validate log data to persist history (backward compatibility wrapper)."""
+    return get_validated_log_data(json_data)
 
 
 def _store_execution_log(data: dict[str, Any]) -> None:
-    """Store execution log in database
-    Args:
-        data (dict[str, Any]): Execution log data
-    """
-    if not ExecutionLogConstants.IS_ENABLED:
-        return
-    try:
-        log_data = _get_validated_log_data(json_data=data)
-        if log_data:
-            redis_conn.rpush(ExecutionLogConstants.LOG_QUEUE_NAME, log_data.to_json())
-    except Exception as e:
-        logger.error(f"Error storing execution log: {e}")
+    """Store execution log in database (backward compatibility wrapper)."""
+    store_execution_log(
+        data=data,
+        redis_client=_get_redis_conn(),
+        log_queue_name=ExecutionLogConstants.LOG_QUEUE_NAME,
+        is_enabled=ExecutionLogConstants.IS_ENABLED,
+    )
 
 
 def _emit_websocket_event(room: str, event: str, data: dict[str, Any]) -> None:

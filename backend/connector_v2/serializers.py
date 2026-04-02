@@ -9,6 +9,7 @@ from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
+from utils.input_sanitizer import validate_name_field
 
 from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -28,13 +29,23 @@ class ConnectorInstanceSerializer(AuditSerializer):
         model = ConnectorInstance
         fields = "__all__"
 
+    def validate_connector_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Connector name")
+
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None
         connector_id: str = kwargs[CIKey.CONNECTOR_ID]
         connector_oauth: ConnectorAuth | None = None
+        # Check if OAuth tokens are actually present in metadata
+        connector_metadata = kwargs.get(CIKey.CONNECTOR_METADATA) or {}
+        has_oauth_tokens = bool(
+            connector_metadata.get("access_token")
+            or connector_metadata.get("refresh_token")
+        )
         if (
             ConnectorInstance.supportsOAuth(connector_id=connector_id)
             and CIKey.CONNECTOR_METADATA in kwargs
+            and has_oauth_tokens
         ):
             try:
                 connector_oauth = ConnectorAuthHelper.get_or_create_connector_auth(

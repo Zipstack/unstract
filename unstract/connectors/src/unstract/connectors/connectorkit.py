@@ -3,9 +3,8 @@ from typing import Any
 
 from singleton_decorator import singleton
 
-from unstract.connectors import ConnectorDict  # type: ignore
 from unstract.connectors.base import UnstractConnector
-from unstract.connectors.constants import Common
+from unstract.connectors.constants import Common, ConnectorDict
 from unstract.connectors.databases import connectors as db_connectors
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.filesystems import connectors as fs_connectors
@@ -109,6 +108,7 @@ class Connectorkit:
                     "can_write": can_write,
                     "json_schema": json_schema,
                     "connector_mode": connector_mode,
+                    "doc_url": m.get_doc_url(),
                 }
             )
         return connectors

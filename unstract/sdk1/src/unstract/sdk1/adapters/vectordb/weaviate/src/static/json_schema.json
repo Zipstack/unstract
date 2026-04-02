@@ -1,0 +1,29 @@
+{
+  "title": "Weaviate Vector DB",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "url"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: weaviate-vdb-1"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "default": "",
+      "format": "uri",
+      "description": "The URL of the Vector DB instance. Example: https://<your-instance>.weaviate.network"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "Api Key",
+      "deafult": "",
+      "format": "password"
+    }
+  }
+}

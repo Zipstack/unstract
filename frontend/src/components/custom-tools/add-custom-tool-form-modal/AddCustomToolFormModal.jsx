@@ -1,14 +1,15 @@
-import { useState } from "react";
-import { Form, Input, Modal, Popover, Button } from "antd";
-import PropTypes from "prop-types";
+import { Button, Form, Input, Modal, Popover } from "antd";
 import EmojiPicker from "emoji-picker-react";
+import PropTypes from "prop-types";
+import { useState } from "react";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
 import { useAlertStore } from "../../../store/alert-store";
 import "./AddCustomToolFormModal.css";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 
 import { useNavigate } from "react-router-dom";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+
 const defaultFromDetails = {
   tool_name: "",
   author: "",
@@ -29,7 +30,7 @@ function AddCustomToolFormModal({
   const handleException = useExceptionHandler();
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [formDetails, setFormDetails] = useState(
-    isEdit ? { ...editItem } : { ...defaultFromDetails }
+    isEdit ? { ...editItem } : { ...defaultFromDetails },
   );
   const [icon, setIcon] = useState(isEdit ? formDetails.icon : "");
   const [backendErrors, setBackendErrors] = useState(null);
@@ -55,7 +56,7 @@ function AddCustomToolFormModal({
     setBackendErrors((prevErrors) => {
       if (prevErrors) {
         const updatedErrors = prevErrors.errors.filter(
-          (error) => error.attr !== changedFieldName
+          (error) => error.attr !== changedFieldName,
         );
         return { ...prevErrors, errors: updatedErrors };
       }

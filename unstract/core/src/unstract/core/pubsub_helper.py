@@ -7,26 +7,27 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-import redis
 from kombu import Connection
 
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 
 
 class LogPublisher:
     broker_url = str(
         httpx.URL(os.getenv("CELERY_BROKER_BASE_URL", "amqp://")).copy_with(
-            username=os.getenv("CELERY_BROKER_USER"),
-            password=os.getenv("CELERY_BROKER_PASS"),
+            username=os.getenv("CELERY_BROKER_USER") or None,
+            password=os.getenv("CELERY_BROKER_PASS") or None,
         )
     )
     kombu_conn = Connection(broker_url)
-    r = redis.Redis(
-        host=os.environ.get("REDIS_HOST"),
-        port=os.environ.get("REDIS_PORT", 6379),
-        username=os.environ.get("REDIS_USER"),
-        password=os.environ.get("REDIS_PASSWORD"),
-    )
+    _redis_client: Any = None
+
+    @classmethod
+    def _get_redis_client(cls) -> Any:
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=False)
+        return cls._redis_client
 
     @staticmethod
     def log_usage(
@@ -87,6 +88,29 @@ class LogPublisher:
             "timestamp": datetime.now(UTC).timestamp(),
             "type": "UPDATE",
             "component": component,
+            "state": state,
+            "message": message,
+        }
+
+    @staticmethod
+    def log_progress(
+        component: dict[str, str],
+        level: str,
+        state: str,
+        message: str,
+    ) -> dict[str, str]:
+        """Build a progress log message for streaming to the frontend.
+
+        Same structure as ``log_prompt()`` but uses ``type: "PROGRESS"``
+        so the frontend can distinguish executor progress from regular
+        log messages.
+        """
+        return {
+            "timestamp": datetime.now(UTC).timestamp(),
+            "type": "PROGRESS",
+            "service": "prompt",
+            "component": component,
+            "level": level,
             "state": state,
             "message": message,
         }
@@ -178,12 +202,12 @@ class LogPublisher:
         """
         try:
             logs_expiration = os.environ.get(
-                "LOGS_EXPIRATION_TIME_IN_SECOND", "86400"
-            )  # Defaults to 1 day
+                "LOGS_EXPIRATION_TIME_IN_SECOND", "3600"
+            )  # Defaults to 1 hour
             timestamp = payload.get("timestamp", round(time.time(), 6))
             redis_key = f"{event}:{timestamp}"
             log_data = json.dumps(payload)
-            cls.r.setex(redis_key, logs_expiration, log_data)
+            cls._get_redis_client().setex(redis_key, logs_expiration, log_data)
         except Exception as e:
             logging.error(
                 f"Failed to store unified notification log for '{event}' "

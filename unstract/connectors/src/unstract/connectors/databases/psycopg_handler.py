@@ -15,6 +15,29 @@ from unstract.connectors.databases.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+CREATE_TABLE_IF_NOT_EXISTS = "CREATE TABLE IF NOT EXISTS"
+
+
+def _is_create_table_if_not_exists(sql_query: str) -> bool:
+    """Check if query is a CREATE TABLE IF NOT EXISTS statement."""
+    return sql_query.strip().upper().startswith(CREATE_TABLE_IF_NOT_EXISTS)
+
+
+def _is_pg_type_race_condition(sql_query: str, constraint: str | None) -> bool:
+    """Check if UniqueViolation is due to pg_type race during concurrent table creation.
+
+    Args:
+        sql_query: The SQL query that caused the error.
+        constraint: The constraint name from the exception diagnostics.
+
+    Returns:
+        True if this is the pg_type race condition that should be suppressed.
+    """
+    return (
+        _is_create_table_if_not_exists(sql_query)
+        and constraint == "pg_type_typname_nsp_index"
+    )
+
 
 class PsycoPgHandler:
     @staticmethod
@@ -33,6 +56,29 @@ class PsycoPgHandler:
                 else:
                     cursor.execute(sql_query)
             engine.commit()
+        except PsycopgError.DuplicateTable as e:
+            engine.rollback()  # Always rollback - transaction is in failed state
+            if _is_create_table_if_not_exists(sql_query):
+                logger.info(
+                    f"Table '{table_name}' was created by concurrent process. "
+                    f"Continuing with existing table. (pg_type race condition)"
+                )
+                return
+            logger.exception(f"DuplicateTable error: {e.pgerror}")
+            raise
+        except PsycopgError.UniqueViolation as e:
+            engine.rollback()  # Always rollback - transaction is in failed state
+            constraint = getattr(getattr(e, "diag", None), "constraint_name", None)
+            if _is_pg_type_race_condition(sql_query, constraint):
+                logger.info(
+                    f"Table '{table_name}' race condition detected (UniqueViolation, "
+                    f"constraint={constraint}). Continuing with existing table."
+                )
+                return
+            logger.exception(
+                f"UniqueViolation error (constraint={constraint}): {e.pgerror}"
+            )
+            raise
         except PsycopgError.InvalidSchemaName as e:
             logger.error(f"Invalid schema in creating table: {e.pgerror}")
             raise InvalidSchemaException(detail=e.pgerror, database=database) from e

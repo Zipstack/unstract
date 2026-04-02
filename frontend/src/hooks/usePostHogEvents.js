@@ -80,8 +80,12 @@ const usePostHogEvents = () => {
     posthog.identify(distinctId, optionalParams);
   };
 
-  const setPostHogCustomEvent = (distinctId, optionalParams) => {
-    posthog.capture(distinctId, optionalParams);
+  const setPostHogCustomEvent = (eventName, properties) => {
+    try {
+      posthog.capture(eventName, properties);
+    } catch {
+      // PostHog tracking is non-critical, safe to ignore
+    }
   };
 
   return {

@@ -6,15 +6,19 @@ import uuid
 from enum import Enum
 from typing import Any
 
-import google.api_core.exceptions
-from google.cloud import bigquery
-from google.cloud.bigquery import Client
-
+# DO NOT import Google API libraries at module level!
+# These imports initialize gRPC state before Celery fork, causing SIGSEGV.
+# Import them INSIDE methods where they're used (after fork).
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.exceptions import (
     BigQueryForbiddenException,
     BigQueryNotFoundException,
     ColumnMissingException,
+)
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
@@ -28,6 +32,9 @@ BIG_QUERY_TABLE_SIZE = 3
 class BigQuery(UnstractDB):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("BigQuery")
+        from google.cloud import bigquery
+
+        self.bigquery = bigquery
         self.json_credentials = json.loads(settings.get("json_credentials", "{}"))
         self.big_query_table_size = BIG_QUERY_TABLE_SIZE
 
@@ -48,6 +55,10 @@ class BigQuery(UnstractDB):
         return "/icons/connector-icons/Bigquery.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/databases/bigquery_database/"
+
+    @staticmethod
     def get_json_schema() -> str:
         f = open(f"{os.path.dirname(__file__)}/static/json_schema.json")
         schema = f.read()
@@ -62,12 +73,60 @@ class BigQuery(UnstractDB):
     def can_read() -> bool:
         return True
 
-    def get_engine(self) -> Client:
-        return bigquery.Client.from_service_account_info(  # type: ignore
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.BACKTICK
+
+    @staticmethod
+    def _sanitize_for_bigquery(data: Any) -> Any:
+        """BigQuery-specific float sanitization for PARSE_JSON compatibility.
+
+        BigQuery's PARSE_JSON() requires floats that can "round-trip" through
+        string representation. This method limits total significant figures to 15
+        (IEEE 754 double precision safe zone) to ensure clean binary representation.
+
+        Args:
+            data: The data structure to sanitize (dict, list, or primitive)
+
+        Returns:
+            Sanitized data compatible with BigQuery's PARSE_JSON
+
+        Example:
+            >>> BigQuery._sanitize_for_bigquery({"time": 1760509016.282637})
+            {'time': 1760509016.28264}  # Limited to 15 significant figures
+
+            >>> BigQuery._sanitize_for_bigquery({"cost": 0.001228})
+            {'cost': 0.001228}  # Unchanged (only 4 significant figures)
+        """
+        import math
+
+        if isinstance(data, float):
+            # Handle special values that BigQuery can't store in JSON
+            if math.isnan(data) or math.isinf(data):
+                return None
+            if data == 0:
+                return 0.0
+
+            # Limit total significant figures to 15 for IEEE 754 compatibility
+            # BigQuery PARSE_JSON requires values that round-trip cleanly
+            # For large numbers (like Unix timestamps), this reduces decimal precision
+            # For small numbers (like costs), full precision is preserved
+            magnitude = math.floor(math.log10(abs(data))) + 1
+            safe_decimals = max(0, 15 - magnitude)
+            return float(f"{data:.{safe_decimals}f}")
+
+        elif isinstance(data, dict):
+            return {k: BigQuery._sanitize_for_bigquery(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [BigQuery._sanitize_for_bigquery(item) for item in data]
+        else:
+            return data
+
+    def get_engine(self) -> Any:
+        return self.bigquery.Client.from_service_account_info(  # type: ignore
             info=self.json_credentials
         )
 
-    def execute(self, query: str) -> Any:
+    def execute(self, query: str, params: Any = None) -> Any:
         try:
             query_job = self.get_engine().query(query)
             return query_job.result()
@@ -118,8 +177,9 @@ class BigQuery(UnstractDB):
                 "Please ensure the BigQuery table is in the form of "
                 "{project}.{dataset}.{table}."
             )
+        qt = safe_identifier(table, QuoteStyle.BACKTICK, allow_dots=True)
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE IF NOT EXISTS {qt} "
             f"(id STRING,"
             f"created_by STRING, created_at TIMESTAMP, "
             f"metadata JSON, "
@@ -132,9 +192,11 @@ class BigQuery(UnstractDB):
         return sql_query
 
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        qt = safe_identifier(table_name, QuoteStyle.BACKTICK, allow_dots=True)
+        qc = safe_identifier(f"{column_name}_v2", QuoteStyle.BACKTICK)
         sql_query = (
-            f"ALTER TABLE {table_name} "
-            f"ADD COLUMN {column_name}_v2 JSON, "
+            f"ALTER TABLE {qt} "
+            f"ADD COLUMN {qc} JSON, "
             f"ADD COLUMN metadata JSON, "
             f"ADD COLUMN user_field_1 BOOL, "
             f"ADD COLUMN user_field_2 INT64, "
@@ -144,9 +206,8 @@ class BigQuery(UnstractDB):
         )
         return sql_query
 
-    @staticmethod
     def get_sql_insert_query(
-        table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
@@ -158,15 +219,16 @@ class BigQuery(UnstractDB):
         Returns:
             str: returns a string with parameterised insert sql query
         """
+        qt = safe_identifier(table_name, QuoteStyle.BACKTICK, allow_dots=True)
         # BigQuery uses @ parameterization, ignore sql_values for now
         # Escape column names with backticks to handle special characters like underscores
-        escaped_keys = [f"`{key}`" for key in sql_keys]
+        escaped_keys = [safe_identifier(key, QuoteStyle.BACKTICK) for key in sql_keys]
         keys_str = ",".join(escaped_keys)
 
-        # Also escape parameter names with backticks to handle underscores in parameter names
+        # safe_identifier above already validates each key
         escaped_params = [f"@`{key}`" for key in sql_keys]
         values_placeholder = ",".join(escaped_params)
-        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
+        return f"INSERT INTO {qt} ({keys_str}) VALUES ({values_placeholder})"
 
     def execute_query(
         self, engine: Any, sql_query: str, sql_values: Any, **kwargs: Any
@@ -183,6 +245,9 @@ class BigQuery(UnstractDB):
             BigQueryNotFoundException: raised due to unavailable resource
             ColumnMissingException: raised due to missing columns in table query
         """
+        # Import INSIDE method to avoid module-level gRPC initialization
+        import google.api_core.exceptions
+
         table_name = kwargs.get("table_name", None)
         if table_name is None:
             raise ValueError("Please enter a valid table_name to to create/insert table")
@@ -201,28 +266,42 @@ class BigQuery(UnstractDB):
 
                     if isinstance(value, (dict, list)) and column_type == "JSON":
                         # For JSON objects in JSON columns, convert to string and use PARSE_JSON
-                        json_str = json.dumps(value) if value else None
+                        # Sanitize floats before serialization to ensure clean JSON for PARSE_JSON
+                        sanitized_value = BigQuery._sanitize_for_bigquery(value)
+                        json_str = (
+                            json.dumps(sanitized_value)
+                            if sanitized_value is not None
+                            else None
+                        )
                         if json_str:
                             # Replace @`key` with PARSE_JSON(@`key`) in the SQL query
                             modified_sql = modified_sql.replace(
                                 f"@`{key}`", f"PARSE_JSON(@`{key}`)"
                             )
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )
                     elif isinstance(value, (dict, list)):
                         # For dict/list values in STRING columns, serialize to JSON string
-                        json_str = json.dumps(value) if value else None
+                        # Sanitize floats before serialization to ensure clean JSON
+                        sanitized_value = BigQuery._sanitize_for_bigquery(value)
+                        json_str = (
+                            json.dumps(sanitized_value)
+                            if sanitized_value is not None
+                            else None
+                        )
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", json_str)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", json_str)
                         )
                     else:
                         # For other values, use STRING as before
                         query_parameters.append(
-                            bigquery.ScalarQueryParameter(key, "STRING", value)
+                            self.bigquery.ScalarQueryParameter(key, "STRING", value)
                         )
 
-                query_params = bigquery.QueryJobConfig(query_parameters=query_parameters)
+                query_params = self.bigquery.QueryJobConfig(
+                    query_parameters=query_parameters
+                )
                 query_job = engine.query(modified_sql, job_config=query_params)
             else:
                 query_job = engine.query(sql_query)
@@ -271,12 +350,27 @@ class BigQuery(UnstractDB):
         project = bigquery_table_parts[0].lower()
         dataset = bigquery_table_parts[1]
         table = bigquery_table_parts[2]
+        # Validate identifier parts to prevent injection in schema path
+        validate_identifier(project)
+        validate_identifier(dataset)
+        validate_identifier(table)
         query = (
             "SELECT column_name, data_type FROM "
-            f"{project}.{dataset}.INFORMATION_SCHEMA.COLUMNS WHERE "
-            f"table_name = '{table}'"
+            f"`{project}`.`{dataset}`.INFORMATION_SCHEMA.COLUMNS WHERE "
+            "table_name = @table_name"
         )
-        results = self.execute(query=query)
+        from google.cloud import bigquery as bq_module
+
+        job_config = bq_module.QueryJobConfig(
+            query_parameters=[
+                bq_module.ScalarQueryParameter("table_name", "STRING", table)
+            ]
+        )
+        try:
+            query_job = self.get_engine().query(query, job_config=job_config)
+            results = query_job.result()
+        except Exception as e:
+            raise ConnectorError(str(e))
 
         # If table doesn't exist, execute returns None
         if results is None:
@@ -311,7 +405,10 @@ class BigQuery(UnstractDB):
                 # Try to parse JSON strings back to objects for BigQuery
                 try:
                     parsed_value = json.loads(value)
-                    sql_values[column] = parsed_value
+                    # Sanitize floats after parsing to prevent precision issues
+                    # json.loads() creates new float objects that may have binary precision problems
+                    sanitized_value = BigQuery._sanitize_for_bigquery(parsed_value)
+                    sql_values[column] = sanitized_value
                 except (TypeError, ValueError, json.JSONDecodeError):
                     # Not a JSON string, keep as string
                     sql_values[column] = f"{value}"

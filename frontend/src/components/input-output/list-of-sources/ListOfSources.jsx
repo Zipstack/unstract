@@ -1,8 +1,8 @@
 import { SearchOutlined } from "@ant-design/icons";
 import { Input, List, Segmented } from "antd";
+import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-import debounce from "lodash/debounce";
 
 import { DataSourceCard } from "../data-source-card/DataSourceCard";
 import "./ListOfSources.css";
@@ -47,7 +47,9 @@ function ListOfSources({
   }, 300);
 
   const renderModeFilters = () => {
-    if (!isConnector || connectorMode) return null;
+    if (!isConnector || connectorMode) {
+      return null;
+    }
 
     return (
       <Segmented
@@ -89,14 +91,14 @@ function ListOfSources({
                       : "Databases"
                   }`
                 : searchText
-                ? `No sources found matching "${searchText}"`
-                : localModeFilter
-                ? `No ${
-                    localModeFilter === "FILESYSTEM"
-                      ? "File System"
-                      : "Database"
-                  } connectors available`
-                : "No sources available"}
+                  ? `No sources found matching "${searchText}"`
+                  : localModeFilter
+                    ? `No ${
+                        localModeFilter === "FILESYSTEM"
+                          ? "File System"
+                          : "Database"
+                      } connectors available`
+                    : "No sources available"}
             </p>
             {localModeFilter && (
               <p className="filter-hint">
@@ -127,7 +129,7 @@ function ListOfSources({
 ListOfSources.propTypes = {
   setSelectedSourceId: PropTypes.func.isRequired,
   sourcesList: PropTypes.array,
-  type: PropTypes.string.isRequired,
+  type: PropTypes.string,
   isConnector: PropTypes.bool,
   connectorMode: PropTypes.string,
 };

@@ -1,16 +1,19 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import {
-  publicRoutes,
-  onboardCompleted,
   homePagePath,
+  onboardCompleted,
+  publicRoutes,
 } from "../../../helpers/GetStaticData";
 import { useSessionStore } from "../../../store/session-store";
+
 let selectedProductStore;
 let isLlmWhisperer;
 let isVerticals;
 try {
-  selectedProductStore = require("../../../plugins/store/select-product-store.js");
+  selectedProductStore = await import(
+    "../../../plugins/store/select-product-store.js"
+  );
 } catch {
   // do nothing
 }
@@ -23,17 +26,17 @@ const RequireGuest = () => {
   try {
     isLlmWhisperer =
       selectedProductStore.useSelectedProductStore(
-        (state) => state?.selectedProduct
+        (state) => state?.selectedProduct,
       ) === "llm-whisperer";
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
   try {
     isVerticals =
       selectedProductStore.useSelectedProductStore(
-        (state) => state?.selectedProduct
+        (state) => state?.selectedProduct,
       ) === "verticals";
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 

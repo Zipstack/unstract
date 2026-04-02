@@ -6,7 +6,7 @@ authors = [{ name = "Zipstack Inc.", email = "devsupport@zipstack.com" }]
 requires-python = ">=3.12,<3.13"
 readme = "README.md"
 #license = {text = "MIT"}
-dependencies = ["grpcio-tools<=1.60.0", "grpcio<=1.60.0"]
+dependencies = ["grpcio>=1.60.0", "grpcio-tools>=1.60.0", "protobuf>=4.25.0"]
 
 # [build-system]
 # requires = ["hatchling"]

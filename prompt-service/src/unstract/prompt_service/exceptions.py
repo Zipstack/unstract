@@ -30,3 +30,27 @@ class RetrievalError(APIError):
 
 class ExtractionError(APIError):
     DEFAULT_MESSAGE = "Error while extracting from a document"
+
+
+class UnprocessableEntity(APIError):
+    code = 422
+    message = "Unprocessable Entity"
+
+
+class CustomDataError(APIError):
+    """Custom exception raised for errors with custom_data variables."""
+
+    code = 400
+
+    def __init__(self, variable: str, reason: str, is_ide: bool = True):
+        if is_ide:
+            help_text = "Please define this key in Prompt Studio Settings > Custom Data."
+        else:
+            help_text = (
+                "Please include this key in the 'custom_data' field of your API request."
+            )
+        variable_display = "{{custom_data." + variable + "}}"
+        message = (
+            f"Custom data error for variable '{variable_display}': {reason} {help_text}"
+        )
+        super().__init__(message=message)

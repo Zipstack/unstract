@@ -6,11 +6,12 @@ from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
 
-from workflow_manager.endpoint_v2.constants import TableColumns
-from workflow_manager.endpoint_v2.exceptions import UnstractDBException
-
 from unstract.connectors.base import UnstractConnector
-from unstract.connectors.databases.exceptions import UnstractDBConnectorException
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
+)
 from unstract.connectors.enums import ConnectorMode
 from unstract.connectors.exceptions import ConnectorError
 
@@ -72,6 +73,15 @@ class UnstractDB(UnstractConnector, ABC):
     def get_engine(self) -> Any:
         pass
 
+    @abstractmethod
+    def get_quote_style(self) -> QuoteStyle:
+        """Return the identifier quoting style for this database.
+
+        Returns:
+            QuoteStyle: The quoting convention used by this database engine.
+        """
+        pass
+
     def test_credentials(self) -> bool:
         """To test credentials for a DB connector."""
         try:
@@ -80,10 +90,13 @@ class UnstractDB(UnstractConnector, ABC):
             raise ConnectorError(f"Error while connecting to DB: {str(e)}") from e
         return True
 
-    def execute(self, query: str) -> Any:
+    def execute(self, query: str, params: Any = None) -> Any:
         try:
             with self.get_engine().cursor() as cursor:
-                cursor.execute(query)
+                if params is not None:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
                 return cursor.fetchall()
         except Exception as e:
             raise ConnectorError(str(e)) from e
@@ -130,17 +143,24 @@ class UnstractDB(UnstractConnector, ABC):
             str: generates a create sql base query with the constant columns
         """
 
-    def create_table_query(self, table: str, database_entry: dict[str, Any]) -> Any:
+    def create_table_query(
+        self, table: str, database_entry: dict[str, Any], permanent_columns: list[str]
+    ) -> Any:
         """Function to create a create table sql query.
 
         Args:
             table (str): db-connector table name
             database_entry (dict[str, Any]): a dictionary of column name and types
+            permanent_columns (list[str]): list of permanent column names to exclude
+                from dynamic column creation. These columns are already defined in the
+                base table schema (e.g., 'id', 'created_by', 'created_at', 'metadata',
+                'status', 'error_message', etc.) and should not be added again during
+                table creation to avoid duplication.
 
         Returns:
             Any: generates a create sql query for all the columns
         """
-        PERMANENT_COLUMNS = TableColumns.PERMANENT_COLUMNS
+        PERMANENT_COLUMNS = permanent_columns
 
         sql_query = ""
         create_table_query = self.get_create_table_base_query(table=table)
@@ -151,13 +171,17 @@ class UnstractDB(UnstractConnector, ABC):
         for key, val in database_entry.items():
             if key not in PERMANENT_COLUMNS:
                 sql_type = self.sql_to_db_mapping(val, column_name=key)
+                # Validate column name to block injection but don't quote —
+                # databases like Snowflake/Oracle normalize unquoted to
+                # UPPERCASE, and quoting would preserve lowercase, causing
+                # a mismatch with existing table schemas.
+                validate_identifier(key)
                 sql_query += f"{key} {sql_type}, "
 
         return sql_query.rstrip(", ") + ")"
 
-    @staticmethod
     def get_sql_insert_query(
-        table_name: str, sql_keys: list[str], sql_values: list[str] = None
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
     ) -> str:
         """Function to generate parameterised insert sql query.
 
@@ -169,10 +193,17 @@ class UnstractDB(UnstractConnector, ABC):
         Returns:
             str: returns a string with parameterised insert sql query
         """
-        # Base implementation ignores sql_values and returns parameterized query
+        style = self.get_quote_style()
+        quoted_table = safe_identifier(table_name, style, allow_dots=True)
+        # Validate column names to block injection but don't quote —
+        # databases like Snowflake/Oracle normalize unquoted to UPPERCASE,
+        # and quoting would preserve lowercase, causing a mismatch with
+        # existing table schemas where columns were created unquoted.
+        for k in sql_keys:
+            validate_identifier(k)
         keys_str = ",".join(sql_keys)
         values_placeholder = ",".join(["%s" for _ in sql_keys])
-        return f"INSERT INTO {table_name} ({keys_str}) VALUES ({values_placeholder})"
+        return f"INSERT INTO {quoted_table} ({keys_str}) VALUES ({values_placeholder})"
 
     @abstractmethod
     def execute_query(
@@ -201,9 +232,9 @@ class UnstractDB(UnstractConnector, ABC):
         query = (
             "SELECT column_name, data_type FROM "
             "information_schema.columns WHERE "
-            f"table_name = '{table_name}'"
+            "table_name = %s"
         )
-        results = self.execute(query=query)
+        results = self.execute(query=query, params=(table_name,))
         column_types: dict[str, str] = self.get_db_column_types(
             columns_with_types=results
         )
@@ -251,8 +282,6 @@ class UnstractDB(UnstractConnector, ABC):
             column_name (str): _description_
             engine (Any): _description_
 
-        Raises:
-            UnstractDBException: _description_
 
         Returns:
             dict[str, str]: _description_
@@ -266,30 +295,27 @@ class UnstractDB(UnstractConnector, ABC):
             sql_query_or_list,
         )
 
-        try:
-            if isinstance(sql_query_or_list, list):
-                for sql_query in sql_query_or_list:
-                    self.execute_query(
-                        engine=engine,
-                        sql_query=sql_query,
-                        sql_values=None,
-                        table_name=table_name,
-                    )
-            else:
+        if isinstance(sql_query_or_list, list):
+            for sql_query in sql_query_or_list:
                 self.execute_query(
                     engine=engine,
-                    sql_query=sql_query_or_list,
+                    sql_query=sql_query,
                     sql_values=None,
                     table_name=table_name,
                 )
-                logger.info(
-                    "successfully migrated table %s with: %s query",
-                    table_name,
-                    sql_query_or_list,
-                )
-            return self.get_information_schema(table_name=table_name)
-        except UnstractDBConnectorException as e:
-            raise UnstractDBException(detail=e.detail) from e
+        else:
+            self.execute_query(
+                engine=engine,
+                sql_query=sql_query_or_list,
+                sql_values=None,
+                table_name=table_name,
+            )
+        logger.info(
+            "successfully migrated table %s with: %s query",
+            table_name,
+            sql_query_or_list,
+        )
+        return self.get_information_schema(table_name=table_name)
 
     def get_sql_values_for_query(
         self, values: dict[str, Any], column_types: dict[str, str]

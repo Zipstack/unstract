@@ -5,13 +5,13 @@ from dataclasses import asdict, dataclass
 from enum import Enum
 from typing import Any
 
-import redis
-
+from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.exceptions import (
     FileExecutionStageException,
     FileExecutionTrackerNotFound,
     FileExecutionTrackerValueException,
 )
+from unstract.core.utilities import retry_on_redis_error
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +20,7 @@ class FileExecutionStage(Enum):
     INITIALIZATION = "INITIALIZATION"
     TOOL_EXECUTION = "TOOL_EXECUTION"
     FINALIZATION = "FINALIZATION"
+    DESTINATION_PROCESSING = "DESTINATION_PROCESSING"
     COMPLETED = "COMPLETED"
 
     @property
@@ -42,8 +43,9 @@ class FileExecutionStage(Enum):
 FILE_EXECUTION_STAGE_ORDER = {
     FileExecutionStage.INITIALIZATION: 0,
     FileExecutionStage.TOOL_EXECUTION: 1,
-    FileExecutionStage.FINALIZATION: 2,
-    FileExecutionStage.COMPLETED: 3,
+    FileExecutionStage.DESTINATION_PROCESSING: 2,
+    FileExecutionStage.FINALIZATION: 3,
+    FileExecutionStage.COMPLETED: 4,
 }
 
 
@@ -153,14 +155,17 @@ class FileExecutionStatusTracker:
         os.environ.get("FILE_EXECUTION_TRACKER_TTL_IN_SECOND", 60 * 60 * 24)
     )
 
+    # Lazy singleton — avoids per-instance Sentinel discovery + retry overhead
+    _redis_client = None
+
+    @classmethod
+    def _get_redis_client(cls):
+        if cls._redis_client is None:
+            cls._redis_client = create_redis_client(decode_responses=True)
+        return cls._redis_client
+
     def __init__(self):
-        self.redis_client = redis.Redis(
-            host=os.environ.get("REDIS_HOST"),
-            port=int(os.environ.get("REDIS_PORT", 6379)),
-            username=os.environ.get("REDIS_USER"),
-            password=os.environ.get("REDIS_PASSWORD"),
-            decode_responses=True,  # ensures hgetall returns str instead of bytes
-        )
+        self.redis_client = self._get_redis_client()
 
     def _resolve_field(
         self,
@@ -187,6 +192,10 @@ class FileExecutionStatusTracker:
 
     def get_cache_key(self, execution_id: str, file_execution_id: str) -> str:
         return f"file_execution:{execution_id}:{file_execution_id}"
+
+    def get_destination_lock_key(self, execution_id: str, file_execution_id: str) -> str:
+        """Get the Redis key for destination processing lock."""
+        return f"file_execution:{execution_id}:{file_execution_id}:destination_lock"
 
     def set_data(self, data: FileExecutionData, ttl_in_second: int | None = None) -> None:
         data.validate()
@@ -280,10 +289,15 @@ class FileExecutionStatusTracker:
             pipe.expire(key, self.CACHE_TTL_IN_SECOND)
             pipe.execute()
 
+    @retry_on_redis_error(retry_logger=logger)
     def get_data(
         self, execution_id: str, file_execution_id: str
     ) -> FileExecutionData | None:
         """Get the status of a file execution.
+
+        This method includes automatic retry logic for transient Redis connection errors.
+        Retry behavior is configurable via REDIS_RETRY_MAX_ATTEMPTS and
+        REDIS_RETRY_BACKOFF_FACTOR environment variables (defaults: 5 retries, 0.5s backoff).
 
         Args:
             execution_id (str): Execution id of the file execution
@@ -298,8 +312,10 @@ class FileExecutionStatusTracker:
         if not data:
             return None
 
-        stage_status_dict = json.loads(data.get(FileExecutionField.STAGE_STATUS, {}))
-        status_history_list = json.loads(data.get(FileExecutionField.STATUS_HISTORY, []))
+        stage_status_raw = data.get(FileExecutionField.STAGE_STATUS) or "{}"
+        status_history_raw = data.get(FileExecutionField.STATUS_HISTORY) or "[]"
+        stage_status_dict = json.loads(stage_status_raw)
+        status_history_list = json.loads(status_history_raw)
         return FileExecutionData(
             execution_id=execution_id,
             organization_id=data.get(FileExecutionField.ORGANIZATION_ID),

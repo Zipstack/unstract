@@ -1,13 +1,13 @@
 /* Styles for CustomButton */
 
 .custom-button-primary {
-    background-color: #092C4C;
-    border-color: #092C4C;
-    color: #FFFFFF;
+  background-color: #092c4c;
+  border-color: #092c4c;
+  color: #ffffff;
 }
 
 .custom-button-primary:not([disabled]):hover {
-    background-color: #0e4274 !important;
-    border-color: #0e4274;
-    color: #FFFFFF;
+  background-color: #0e4274 !important;
+  border-color: #0e4274;
+  color: #ffffff;
 }

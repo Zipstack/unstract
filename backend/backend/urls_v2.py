@@ -63,4 +63,6 @@ urlpatterns = [
     path("tags/", include("tags.urls")),
     path("execution/", include("workflow_manager.execution.urls")),
     path("execution/", include("workflow_manager.file_execution.urls")),
+    path("metrics/", include("dashboard_metrics.urls")),
+    path("platform-api/", include("platform_api.urls")),
 ]

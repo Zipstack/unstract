@@ -1,4 +1,3 @@
-import PropTypes from "prop-types";
 import { SearchOutlined } from "@ant-design/icons";
 import {
   Button,
@@ -11,20 +10,22 @@ import {
   Tag,
   Typography,
 } from "antd";
+import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
-
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { TABLE } from "./constants";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
-import { TABLE } from "./constants";
 
 let TableExtractionSettingsBtn;
 try {
-  TableExtractionSettingsBtn =
-    require("../../../plugins/prompt-card/TableExtractionSettingsBtn").TableExtractionSettingsBtn;
+  const mod = await import(
+    "../../../plugins/prompt-card/TableExtractionSettingsBtn"
+  );
+  TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
 } catch {
   // The component will remain null of it is not available
 }
@@ -76,9 +77,6 @@ function PromptCardItems({
   const [expandCard, setExpandCard] = useState(true);
   const [llmProfileDetails, setLlmProfileDetails] = useState([]);
   const [openIndexProfile, setOpenIndexProfile] = useState(null);
-  const [enabledProfiles, setEnabledProfiles] = useState(
-    llmProfiles.map((profile) => profile.profile_id)
-  );
   const [isIndexOpen, setIsIndexOpen] = useState(false);
   const isNotSingleLlmProfile = llmProfiles.length > 1;
   const divRef = useRef(null);
@@ -94,7 +92,7 @@ function PromptCardItems({
 
   useEffect(() => {
     setTableSettings(
-      allTableSettings.find((item) => item.prompt_id === promptId) || {}
+      allTableSettings.find((item) => item.prompt_id === promptId) || {},
     );
   }, [allTableSettings]);
 
@@ -110,12 +108,14 @@ function PromptCardItems({
     keys.forEach((key) => {
       const adapterName = profile[key.key];
       const adapter = adapters?.find(
-        (adapter) => adapter?.adapter_name === adapterName
+        (adapter) => adapter?.adapter_name === adapterName,
       );
       if (adapter) {
         result.conf[key.label] =
           adapter?.model || adapter?.adapter_id?.split("|")[0];
-        if (adapter?.adapter_type === "LLM") result.icon = adapter?.icon;
+        if (adapter?.adapter_type === "LLM") {
+          result.icon = adapter?.icon;
+        }
         result.conf["Profile Name"] = profile?.profile_name;
       }
     });
@@ -163,15 +163,16 @@ function PromptCardItems({
         .map((profile) => ({
           ...profile,
           isDefault: profile?.profile_id === selectedLlmProfileId,
-          isEnabled: enabledProfiles.includes(profile?.profile_id),
         }))
         .sort((a, b) => {
-          if (a?.isDefault) return -1; // Default profile comes first
-          if (b?.isDefault) return 1;
-          if (a?.isEnabled && !b?.isEnabled) return -1; // Enabled profiles come before disabled
-          if (!a?.isEnabled && b?.isEnabled) return 1;
+          if (a?.isDefault) {
+            return -1; // Default profile comes first
+          }
+          if (b?.isDefault) {
+            return 1;
+          }
           return 0;
-        })
+        }),
     );
   };
 
@@ -181,7 +182,7 @@ function PromptCardItems({
 
   useEffect(() => {
     getAdapterInfo(adapters);
-  }, [llmProfiles, selectedLlmProfileId, enabledProfiles]);
+  }, [llmProfiles, selectedLlmProfileId]);
 
   return (
     <Card
@@ -208,7 +209,6 @@ function PromptCardItems({
             setIsEditingTitle={setIsEditingTitle}
             expandCard={expandCard}
             setExpandCard={setExpandCard}
-            enabledProfiles={enabledProfiles}
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
             enforceType={enforceType}
@@ -315,8 +315,6 @@ function PromptCardItems({
               spsLoading={spsLoading}
               llmProfileDetails={llmProfileDetails}
               setOpenIndexProfile={setOpenIndexProfile}
-              enabledProfiles={enabledProfiles}
-              setEnabledProfiles={setEnabledProfiles}
               isNotSingleLlmProfile={isNotSingleLlmProfile}
               setIsIndexOpen={setIsIndexOpen}
               enforceType={enforceType}
@@ -325,6 +323,7 @@ function PromptCardItems({
               promptRunStatus={promptRunStatus}
               isChallenge={isChallenge}
               handleSelectHighlight={handleSelectHighlight}
+              progressMsg={progressMsg}
             />
           </Row>
         </Collapse.Panel>
@@ -343,9 +342,9 @@ PromptCardItems.propTypes = {
   enforceTypeList: PropTypes.array,
   allTableSettings: PropTypes.array,
   setAllTableSettings: PropTypes.func,
-  promptKey: PropTypes.text,
+  promptKey: PropTypes.string,
   setPromptKey: PropTypes.func.isRequired,
-  promptText: PropTypes.text,
+  promptText: PropTypes.string,
   setPromptText: PropTypes.func.isRequired,
   progressMsg: PropTypes.object.isRequired,
   handleRun: PropTypes.func.isRequired,
@@ -362,7 +361,7 @@ PromptCardItems.propTypes = {
   handleSpsLoading: PropTypes.func.isRequired,
   promptOutputs: PropTypes.object.isRequired,
   promptRunStatus: PropTypes.object.isRequired,
-  coverageCountData: PropTypes.object.isRequired,
+  coverageCountData: PropTypes.array,
   isChallenge: PropTypes.bool.isRequired,
   handleSelectHighlight: PropTypes.func.isRequired,
 };

@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
-FROM python:3.12.9-slim AS base
+FROM python:3.12-slim-trixie  AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="X2Text Service Container" \
-    version="${VERSION}"
+    description="X2Text Service Container"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -21,10 +19,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install system dependencies and create user in a single layer
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-       build-essential \
-       libmagic-dev \
-       pkg-config \
-       git \
+    build-essential \
+    libmagic-dev \
+    pkg-config \
+    git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/* \
     && adduser --uid 5678 --disabled-password --gecos "" ${APP_USER} \
@@ -69,6 +67,9 @@ RUN uv sync --group deploy --locked && \
     uv run opentelemetry-bootstrap -a requirements | uv pip install --requirement -
 
 EXPOSE 3004
+
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 # During debugging, this entry point will be overridden.
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3004", "--timeout", "300", "run:app"]

@@ -7,14 +7,15 @@ import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceMod
 import "../../input-output/data-source-card/DataSourceCard.css";
 import "./ToolSettings.css";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
+import { useListSearch } from "../../../hooks/useListSearch";
+import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
-import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
+import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
-import usePostHogEvents from "../../../hooks/usePostHogEvents";
 
 const titles = {
   llm: "LLMs",
@@ -33,7 +34,6 @@ const btnText = {
 };
 
 function ToolSettings({ type }) {
-  const [tableRows, setTableRows] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [adapterDetails, setAdapterDetails] = useState(null);
@@ -48,9 +48,19 @@ function ToolSettings({ type }) {
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const { posthogEventText, setPostHogCustomEvent } = usePostHogEvents();
+  const {
+    listRef,
+    displayList,
+    setDisplayList,
+    setMasterList,
+    updateMasterList,
+    onSearch,
+    clearSearch,
+  } = useListSearch("adapter_name");
 
   useEffect(() => {
-    setTableRows([]);
+    clearSearch();
+    setMasterList([]);
     if (!type) {
       return;
     }
@@ -67,7 +77,7 @@ function ToolSettings({ type }) {
     setIsLoading(true);
     axiosPrivate(requestOptions)
       .then((res) => {
-        setTableRows(res?.data);
+        setMasterList(res?.data || []);
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
@@ -79,19 +89,23 @@ function ToolSettings({ type }) {
 
   const addNewItem = (row, isEdit) => {
     if (isEdit) {
-      const rowsModified = [...tableRows].map((tableRow) => {
-        if (tableRow?.id !== row?.id) {
-          return tableRow;
-        }
-        tableRow["adapter_name"] = row?.adapter_name;
-        return tableRow;
-      });
-      setTableRows(rowsModified);
+      updateMasterList((currentList) =>
+        currentList.map((tableRow) => {
+          if (tableRow?.id !== row?.id) {
+            return tableRow;
+          }
+          return { ...tableRow, adapter_name: row?.adapter_name };
+        }),
+      );
     } else {
-      const rowsModified = [...tableRows];
-      rowsModified.push(row);
-      setTableRows(rowsModified);
+      updateMasterList((currentList) => [...currentList, row]);
     }
+  };
+
+  const handleDeleteSuccess = (adapterId) => {
+    updateMasterList((currentList) =>
+      currentList.filter((row) => row?.id !== adapterId),
+    );
   };
 
   const handleDelete = (_event, adapter) => {
@@ -105,23 +119,22 @@ function ToolSettings({ type }) {
 
     setIsLoading(true);
     axiosPrivate(requestOptions)
-      .then((res) => {
-        const filteredList = tableRows.filter((row) => row?.id !== adapter?.id);
-        setTableRows(filteredList);
-        setAlertDetails({
-          type: "success",
-          content: "Successfully deleted",
-        });
-      })
-      .catch((err) => {
-        setAlertDetails(handleException(err));
-      })
-      .finally(() => {
-        setIsLoading(false);
-      });
+      .then(() => handleDeleteSuccess(adapter?.id))
+      .catch((err) => setAlertDetails(handleException(err)))
+      .finally(() => setIsLoading(false));
   };
 
   const handleShare = (_event, adapter, isEdit) => {
+    // Check if adapter is deprecated
+    if (adapter?.is_deprecated) {
+      setAlertDetails({
+        type: "error",
+        content:
+          "This adapter has been deprecated and cannot be shared. Please remove it or use an alternative adapter.",
+      });
+      return;
+    }
+
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
@@ -159,7 +172,7 @@ function ToolSettings({ type }) {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
-          }))
+          })),
         );
       })
       .catch((err) => {
@@ -170,21 +183,24 @@ function ToolSettings({ type }) {
       });
   };
 
-  const onShare = (userIds, adapter) => {
+  const onShare = (userIds, adapter, shareWithEveryone) => {
     const requestOptions = {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
-      data: { shared_users: userIds },
+      data: {
+        shared_users: userIds,
+        shared_to_org: shareWithEveryone || false,
+      },
     };
     axiosPrivate(requestOptions)
       .then((response) => {
         setOpenSharePermissionModal(false);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err, "Failed to load"));
+        setAlertDetails(handleException(err, "Failed to update sharing"));
       });
   };
 
@@ -195,7 +211,7 @@ function ToolSettings({ type }) {
       setPostHogCustomEvent(posthogEventText[type], {
         info: `Clicked on '+ ${btnText[type]}' button`,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -204,32 +220,45 @@ function ToolSettings({ type }) {
     <div className="plt-tool-settings-layout">
       <ToolNavBar
         title={titles[type]}
-        CustomButtons={() => {
-          return (
-            <CustomButton
-              type="primary"
-              onClick={handleOpenAddSourceModal}
-              icon={<PlusOutlined />}
-            >
-              {btnText[type]}
-            </CustomButton>
-          );
-        }}
+        enableSearch
+        searchKey={type}
+        setSearchList={setDisplayList}
+        onSearch={onSearch}
+        customButtons={
+          <CustomButton
+            type="primary"
+            onClick={handleOpenAddSourceModal}
+            icon={<PlusOutlined />}
+          >
+            {btnText[type]}
+          </CustomButton>
+        }
       />
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">
           <div className="plt-tool-settings-body">
             <ViewTools
-              listOfTools={tableRows}
+              listOfTools={displayList}
               isLoading={isLoading}
               handleDelete={handleDelete}
               setOpenAddTool={setOpenAddSourcesModal}
-              handleEdit={(_event, item) => setEditItemId(item?.id)}
+              handleEdit={(_event, item) => {
+                // Check if adapter is deprecated
+                if (item?.is_deprecated) {
+                  setAlertDetails({
+                    type: "error",
+                    content:
+                      "This adapter has been deprecated and cannot be edited. Please remove it or use an alternative adapter.",
+                  });
+                  return;
+                }
+                setEditItemId(item?.id);
+              }}
               idProp="id"
               titleProp="adapter_name"
               descriptionProp="description"
               iconProp="icon"
-              isEmpty={!tableRows?.length}
+              isEmpty={!listRef.current.length}
               centered
               isClickable={false}
               handleShare={handleShare}
@@ -255,6 +284,7 @@ function ToolSettings({ type }) {
         loading={isShareLoading}
         allUsers={userList}
         onApply={onShare}
+        isSharableToOrg={true}
       />
     </div>
   );

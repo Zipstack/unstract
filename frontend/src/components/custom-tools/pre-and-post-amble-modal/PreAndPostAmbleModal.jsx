@@ -1,13 +1,13 @@
-import { Button, Input, Space, Typography, Modal } from "antd";
-import PropTypes from "prop-types";
-import { useEffect, useState, useRef } from "react";
 import { ExpandOutlined } from "@ant-design/icons";
+import { Button, Input, Modal, Space, Typography } from "antd";
+import PropTypes from "prop-types";
+import { useEffect, useRef, useState } from "react";
 import "./PreAndPostAmbleModal.css";
 
+import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
-import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 
 import DefaultPrompts from "./DefaultPrompts.json";
@@ -21,6 +21,9 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [expandModalVisible, setExpandModalVisible] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const textAreaRef = useRef(null);
   const { details, updateCustomTool, isPublicSource } = useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
@@ -34,7 +37,13 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
       setTitle("Postamble Settings");
       setText(details?.postamble || "");
     }
+    setHasChanges(false);
   }, [type, details]);
+
+  // Reset isSaved on tool switch (separate from text initialization)
+  useEffect(() => {
+    setIsSaved(false);
+  }, [details?.tool_id]);
 
   const setDefaultPrompt = () => {
     if (type === fieldNames.preamble) {
@@ -42,10 +51,14 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     } else if (type === fieldNames.postamble) {
       setText(DefaultPrompts.postamble);
     }
+    setHasChanges(true);
+    setIsSaved(false);
   };
 
   const handleTextChange = (e) => {
     setText(e.target.value);
+    setHasChanges(true);
+    setIsSaved(false);
   };
 
   const toggleExpandModal = () => {
@@ -61,6 +74,7 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
     if (type === fieldNames.postamble) {
       body["postamble"] = text;
     }
+    setIsLoading(true);
     handleUpdateTool(body)
       .then((res) => {
         const data = res?.data;
@@ -70,13 +84,14 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
         };
         const updatedDetails = { ...details, ...updatedData };
         updateCustomTool({ details: updatedDetails });
-        setAlertDetails({
-          type: "success",
-          content: "Saved successfully",
-        });
+        setHasChanges(false);
+        setIsSaved(true);
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update."));
+      })
+      .finally(() => {
+        setIsLoading(false);
       });
   };
 
@@ -149,9 +164,10 @@ function PreAndPostAmbleModal({ type, handleUpdateTool }) {
             <CustomButton
               type="primary"
               onClick={handleSave}
-              disabled={isPublicSource}
+              loading={isLoading}
+              disabled={isPublicSource || !hasChanges}
             >
-              Save
+              {isSaved ? "Saved" : "Save"}
             </CustomButton>
           </Space>
         </div>

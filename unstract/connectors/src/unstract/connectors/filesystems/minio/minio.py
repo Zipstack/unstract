@@ -1,5 +1,7 @@
 import logging
 import os
+from datetime import UTC, datetime
+from email.utils import parsedate_to_datetime
 from typing import Any
 
 from s3fs.core import S3FileSystem
@@ -14,21 +16,28 @@ logger = logging.getLogger(__name__)
 class MinioFS(UnstractFileSystem):
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MinioFS/S3")
-        key = settings.get("key", "")
-        secret = settings.get("secret", "")
-        endpoint_url = settings.get("endpoint_url", "")
+        key = (settings.get("key") or "").strip()
+        secret = (settings.get("secret") or "").strip()
+        endpoint_url = (settings.get("endpoint_url") or "").strip()
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}
+
+        creds: dict[str, str] = {}
+        if key and secret:
+            creds["key"] = key
+            creds["secret"] = secret
+        if endpoint_url:
+            creds["endpoint_url"] = endpoint_url
+
         self.s3 = S3FileSystem(
             anon=False,
-            key=key,
-            secret=secret,
+            use_listings_cache=False,
             default_fill_cache=False,
             default_cache_type="none",
             skip_instance_cache=True,
-            endpoint_url=endpoint_url,
             client_kwargs=client_kwargs,
+            **creds,
         )
 
     @staticmethod
@@ -46,6 +55,10 @@ class MinioFS(UnstractFileSystem):
     @staticmethod
     def get_icon() -> str:
         return "/icons/connector-icons/S3.png"
+
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/s3_minio_filesystem/"
 
     @staticmethod
     def get_json_schema() -> str:
@@ -80,17 +93,18 @@ class MinioFS(UnstractFileSystem):
             Optional[str]: The file hash in hexadecimal format or None if not found.
         """
         # Extracts ETag for MinIO
-        file_hash = metadata.get("ETag")
+        file_hash: str | None = metadata.get("ETag")
         if file_hash:
             file_hash = file_hash.strip('"')
             if "-" in file_hash:
                 logger.warning(
-                    f"[S3/MinIO] Multipart upload detected. ETag may not be an "
-                    f"MD5 hash. Full metadata: {metadata}"
+                    "[S3/MinIO] Multipart upload detected. ETag may not be an "
+                    "MD5 hash. Full metadata: %s",
+                    metadata,
                 )
                 return None
             return file_hash
-        logger.error(f"[MinIO] File hash not found for the metadata: {metadata}")
+        logger.error("[MinIO] File hash not found for the metadata: %s", metadata)
         return None
 
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
@@ -103,6 +117,87 @@ class MinioFS(UnstractFileSystem):
             bool: True if the path is a directory, False otherwise.
         """
         return metadata.get("type") == "directory"
+
+    def _find_modified_date_value(self, metadata: dict[str, Any]) -> Any | None:
+        """Find the modified date value from metadata using common keys."""
+        for key in ["LastModified", "last_modified", "modified", "mtime"]:
+            last_modified = metadata.get(key)
+            if last_modified is not None:
+                return last_modified
+
+        logger.debug(
+            "[S3/MinIO] No modified date found in metadata keys: %s",
+            list(metadata.keys()),
+        )
+        return None
+
+    def _normalize_datetime_to_utc(self, dt: datetime) -> datetime:
+        """Normalize datetime object to timezone-aware UTC."""
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=UTC)
+        return dt.astimezone(UTC)
+
+    def _parse_string_datetime(
+        self, date_str: str, metadata_keys: list[str]
+    ) -> datetime | None:
+        """Parse string datetime using multiple formats."""
+        # Try ISO-8601 format first
+        try:
+            dt = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
+            return self._normalize_datetime_to_utc(dt)
+        except ValueError:
+            pass
+
+        # Fall back to RFC 1123 format
+        try:
+            dt = parsedate_to_datetime(date_str)
+            return dt.astimezone(UTC)
+        except (ValueError, TypeError):
+            logger.warning(
+                "[S3/MinIO] Failed to parse datetime '%s' from metadata keys: %s",
+                date_str,
+                metadata_keys,
+            )
+            return None
+
+    def _parse_numeric_timestamp(self, timestamp: float) -> datetime | None:
+        """Parse numeric epoch timestamp."""
+        try:
+            return datetime.fromtimestamp(timestamp, tz=UTC)
+        except (ValueError, OSError):
+            logger.warning("[S3/MinIO] Invalid epoch timestamp: %s", timestamp)
+            return None
+
+    def extract_modified_date(self, metadata: dict[str, Any]) -> datetime | None:
+        """Extract the last modified date from S3/MinIO metadata.
+
+        Accepts multiple date formats and ensures timezone-aware UTC datetime.
+
+        Args:
+            metadata: File metadata dictionary from fsspec
+
+        Returns:
+            timezone-aware UTC datetime object or None if not available
+        """
+        last_modified = self._find_modified_date_value(metadata)
+        if last_modified is None:
+            return None
+
+        if isinstance(last_modified, datetime):
+            return self._normalize_datetime_to_utc(last_modified)
+
+        if isinstance(last_modified, str):
+            return self._parse_string_datetime(last_modified, list(metadata.keys()))
+
+        if isinstance(last_modified, (int, float)):
+            return self._parse_numeric_timestamp(last_modified)
+
+        logger.debug(
+            "[S3/MinIO] Unsupported datetime type '%s' in metadata keys: %s",
+            type(last_modified),
+            list(metadata.keys()),
+        )
+        return None
 
     def get_fsspec_fs(self) -> S3FileSystem:
         return self.s3

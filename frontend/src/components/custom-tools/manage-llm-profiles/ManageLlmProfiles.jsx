@@ -1,4 +1,4 @@
-import { DeleteOutlined, EditOutlined, CopyOutlined } from "@ant-design/icons";
+import { CopyOutlined, DeleteOutlined, EditOutlined } from "@ant-design/icons";
 import { Button, Radio, Table, Tooltip, Typography } from "antd";
 import { useEffect, useState } from "react";
 
@@ -77,7 +77,7 @@ function ManageLlmProfiles() {
       setPostHogCustomEvent("ps_profile_changed_per_prompt", {
         info: "Selected default LLM profile",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -102,10 +102,6 @@ function ManageLlmProfiles() {
           defaultLlmProfile: data?.default_profile,
         };
         updateCustomTool(updatedState);
-        setAlertDetails({
-          type: "success",
-          content: "Default LLM Profile updated successfully",
-        });
       })
       .catch((err) => {
         handleException(err, "Failed to set default LLM Profile");
@@ -126,20 +122,16 @@ function ManageLlmProfiles() {
             <Tooltip title="Copy Profile ID">
               <Button
                 size="small"
-                className="display-flex-align-center"
+                icon={<CopyOutlined />}
                 onClick={() => copyProfileId(item?.profile_id)}
-              >
-                <CopyOutlined classID="manage-llm-pro-icon" />
-              </Button>
+              />
             </Tooltip>
             <Button
               size="small"
-              className="display-flex-align-center"
+              icon={<EditOutlined />}
               disabled={isPublicSource}
               onClick={() => handleEdit(item?.profile_id)}
-            >
-              <EditOutlined classID="manage-llm-pro-icon" />
-            </Button>
+            />
             <ConfirmModal
               handleConfirm={() => handleDelete(item?.profile_id)}
               content="The LLM profile will be permanently deleted."
@@ -152,13 +144,11 @@ function ManageLlmProfiles() {
               >
                 <Button
                   size="small"
-                  className="display-flex-align-center"
+                  icon={<DeleteOutlined />}
                   disabled={
                     isPublicSource || defaultLlmProfile === item?.profile_id
                   }
-                >
-                  <DeleteOutlined classID="manage-llm-pro-icon" />
-                </Button>
+                />
               </Tooltip>
             </ConfirmModal>
           </div>
@@ -182,7 +172,7 @@ function ManageLlmProfiles() {
       setPostHogCustomEvent("intent_ps_new_llm_profile", {
         info: "Clicked on 'Add New LLM Profile' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -212,7 +202,7 @@ function ManageLlmProfiles() {
     axiosPrivate(requestOptions)
       .then(() => {
         const modifiedLlmProfiles = [...llmProfiles].filter(
-          (item) => item?.profile_id !== profileId
+          (item) => item?.profile_id !== profileId,
         );
         const body = {
           llmProfiles: modifiedLlmProfiles,

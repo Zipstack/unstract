@@ -3,10 +3,16 @@ import os
 from typing import Any
 
 import psycopg2
+from psycopg2 import sql as psycopg2_sql
 from psycopg2.extensions import connection
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -54,6 +60,10 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         return "/icons/connector-icons/Postgresql.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/databases/postgresql_database/"
+
+    @staticmethod
     def get_json_schema() -> str:
         f = open(f"{os.path.dirname(__file__)}/static/json_schema.json")
         schema = f.read()
@@ -67,6 +77,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     @staticmethod
     def can_read() -> bool:
         return True
+
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.DOUBLE_QUOTE
 
     def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
@@ -130,8 +143,13 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
         # Set schema explicitly only if schema is specified (avoids PgBouncer issues)
         if self.schema:
+            validate_identifier(self.schema)
             with con.cursor() as cur:
-                cur.execute(f"SET search_path TO {self.schema};")
+                cur.execute(
+                    psycopg2_sql.SQL("SET search_path TO {}").format(
+                        psycopg2_sql.Identifier(self.schema)
+                    )
+                )
 
         return con
 
@@ -144,8 +162,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         Returns:
             str: generates a create sql base query with the constant columns
         """
+        quoted_table = self._quote_identifier(table)
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE IF NOT EXISTS {quoted_table} "
             f"(id TEXT, "
             f"created_by TEXT, created_at TIMESTAMP, "
             f"metadata JSONB, "
@@ -158,9 +177,11 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         return sql_query
 
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        quoted_table = self._quote_identifier(table_name)
+        quoted_col_v2 = safe_identifier(f"{column_name}_v2", QuoteStyle.DOUBLE_QUOTE)
         sql_query = (
-            f"ALTER TABLE {table_name} "
-            f"ADD COLUMN {column_name}_v2 JSONB, "
+            f"ALTER TABLE {quoted_table} "
+            f"ADD COLUMN {quoted_col_v2} JSONB, "
             f"ADD COLUMN metadata JSONB, "
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
@@ -182,3 +203,40 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             schema=self.schema,
             table_name=table_name,
         )
+
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        """Quote PostgreSQL identifier to handle special characters like hyphens.
+
+        PostgreSQL identifiers with special characters must be enclosed in double quotes.
+        This method adds proper quoting for table names containing hyphens, spaces,
+        or other special characters. Embedded double quotes are escaped.
+
+        Args:
+            identifier (str): Table name or column name to quote
+
+        Returns:
+            str: Properly quoted identifier safe for PostgreSQL
+        """
+        return safe_identifier(identifier, QuoteStyle.DOUBLE_QUOTE)
+
+    def get_sql_insert_query(
+        self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
+    ) -> str:
+        """Override base method to add PostgreSQL-specific table name quoting.
+
+        Generates INSERT query with properly quoted table name for PostgreSQL.
+
+        Args:
+            table_name (str): Name of the table
+            sql_keys (list[str]): List of column names
+            sql_values (list[str], optional): SQL values for database-specific handling (ignored for PostgreSQL)
+
+        Returns:
+            str: INSERT query with properly quoted table name
+        """
+        quoted_table = self._quote_identifier(table_name)
+        quoted_keys = [safe_identifier(k, QuoteStyle.DOUBLE_QUOTE) for k in sql_keys]
+        keys_str = ", ".join(quoted_keys)
+        values_placeholder = ", ".join(["%s"] * len(sql_keys))
+        return f"INSERT INTO {quoted_table} ({keys_str}) VALUES ({values_placeholder})"

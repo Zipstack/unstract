@@ -1,0 +1,27 @@
+{
+  "title": "Qdrant Vector DB",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "url"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: qdrant-vdb-1"
+    },
+    "url": {
+      "type": "string",
+      "title": "URL",
+      "pattern": "(http|https)?[\\w\\d\\-\\.:]+"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "default": "",
+      "format": "password"
+    }
+  }
+}

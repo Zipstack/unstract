@@ -1,5 +1,5 @@
-import { create } from "zustand";
 import axios from "axios";
+import { create } from "zustand";
 
 import { useSessionStore } from "./session-store";
 
@@ -46,7 +46,9 @@ const useSocketLogsStore = create((setState, getState) => ({
           },
           data: { log: JSON.stringify(newLog) },
         };
-        axios(requestOptions).catch((err) => {});
+        axios(requestOptions).catch(() => {
+          // Intentionally empty: best-effort log persistence
+        });
       }
     });
 

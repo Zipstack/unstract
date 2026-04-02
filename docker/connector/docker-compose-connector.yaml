@@ -22,7 +22,7 @@ services:
       - mysql_data:/var/lib/mysql
 
   mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mcr.microsoft.com/mssql/server:latest
     container_name: unstract-mssql
     user: "0:0"
     env_file:

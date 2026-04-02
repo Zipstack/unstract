@@ -10,7 +10,6 @@ class SettingsKeys:
     ACTIVE = "active"
     PROMPT = "prompt"
     CHUNK_SIZE = "chunk-size"
-    PROMPTX = "promptx"
     VECTOR_DB = "vector-db"
     EMBEDDING = "embedding"
     X2TEXT_ADAPTER = "x2text_adapter"
@@ -64,6 +63,7 @@ class SettingsKeys:
     FILE_NAME = "file_name"
     FILE_HASH = "file_hash"
     ENABLE_HIGHLIGHT = "enable_highlight"
+    ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     NAME = "name"
     INCLUDE_METADATA = "include_metadata"
     TABLE_SETTINGS = "table_settings"
@@ -80,7 +80,8 @@ class SettingsKeys:
     EXECUTION_ID = "execution_id"
     IS_DIRECTORY_MODE = "is_directory_mode"
     LLM_PROFILE_ID = "llm_profile_id"
-    USER_DATA = "user_data"
+    CUSTOM_DATA = "custom_data"
+    OUTPUT = "output"  # For API deployment response format compatibility
 
 
 class IndexingConstants:

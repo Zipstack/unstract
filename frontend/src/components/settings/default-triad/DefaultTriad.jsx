@@ -12,7 +12,9 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./DefaultTriad.css";
+import "../settings/Settings.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
+import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 
 const { Option } = Select;
 
@@ -70,7 +72,7 @@ function DefaultTriad() {
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to get the adapters list")
+          handleException(err, "Failed to get the adapters list"),
         );
       });
   };
@@ -126,7 +128,7 @@ function DefaultTriad() {
         info: "Selected default triad",
         adapter_name: adapterType,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -142,8 +144,8 @@ function DefaultTriad() {
     // Filter out null or blank values
     body = Object.fromEntries(
       Object.entries(body).filter(
-        ([key, value]) => value !== null && value !== ""
-      )
+        ([key, value]) => value !== null && value !== "",
+      ),
     );
 
     const header = {
@@ -158,24 +160,24 @@ function DefaultTriad() {
     };
     axiosPrivate(requestOptions)
       .then((res) => {
-        setAlertDetails({
-          type: "success",
-          content: "Default triad setting saved successfully",
-        });
         fetchData();
         setIsSubmitEnabled(false);
       })
       .catch((err) => {
         setAlertDetails(
-          handleException(err, "Failed to update Default Triads")
+          handleException(err, "Failed to update Default Triads"),
         );
       });
   };
 
   return (
-    <>
+    <SettingsLayout>
       <div className="plt-set-head">
-        <Button size="small" type="text" onClick={() => navigate(-1)}>
+        <Button
+          size="small"
+          type="text"
+          onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
+        >
           <ArrowLeftOutlined />
         </Button>
         <Typography.Text className="plt-set-head-typo">
@@ -221,7 +223,7 @@ function DefaultTriad() {
           )}
         </IslandLayout>
       </div>
-    </>
+    </SettingsLayout>
   );
 }
 
