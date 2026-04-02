@@ -1,31 +1,86 @@
-/* Styles for ToolNavBar */
+/* ToolNavBar — top navigation bar for pages and detail views */
 
-.search-navbar-dp {
-  height: 25px;
-  width: 25px;
+.tool-nav-bar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  background-color: #184772;
-  border-radius: 5px;
-  cursor: pointer;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px 8px 20px;
+  background-color: var(--page-bg-1, #f5f7f9);
+  box-shadow: 0 1px 3px 0 rgba(24, 50, 71, 0.08);
+  border-bottom: 1px solid var(--border-color-1, #dce4e4);
 }
 
-.api-search-input {
+.tool-nav-bar__left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-nav-bar__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.tool-nav-bar__search {
   width: 250px;
-  margin-right: 10px;
 }
 
-.searchNav {
-  background-color: #f5f7f9;
-  padding-block: 12px;
-  padding-inline-start: 20px;
-  padding-inline-end: 12px;
-  height: 56px;
-  box-shadow: 0px 1px 3px 0px #18324714;
-  border: 1px solid #dce4e4;
+.tool-nav-bar__segment {
+  background-color: rgba(0, 0, 0, 0.06);
 }
 
-.tool-bar-segment {
-  background-color: #0000000f;
+/* Title area: hover reveals edit icon */
+.tool-nav-bar__title-area {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.tool-nav-bar__title-area:hover .tool-nav-bar__edit-icon {
+  opacity: 1;
+}
+
+/* Title + subtitle stacked, centered vertically within available height */
+.tool-nav-bar__title-group {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+/* Title text + edit icon inline */
+.tool-nav-bar__title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tool-nav-bar__title {
+  font-size: var(--font-size-16, 16px);
+}
+
+.tool-nav-bar .tool-nav-bar__subtitle {
+  font-size: var(--font-size-12, 12px);
+  line-height: 18px;
+  margin-bottom: 0;
+  max-width: min(600px, 45vw);
+}
+
+/* Edit button: hidden by default, appears on title-area hover */
+.tool-nav-bar__edit-icon.ant-btn {
+  opacity: 0;
+  color: var(--ant-color-text-secondary, #8c8c8c);
+  transition:
+    opacity 0.15s,
+    color 0.15s;
+}
+
+.tool-nav-bar__edit-icon.ant-btn:hover {
+  color: var(--ant-color-primary, #1677ff);
 }

@@ -13,6 +13,10 @@ from .serializers import NotificationSerializer
 
 class NotificationViewSet(viewsets.ModelViewSet):
     serializer_class = NotificationSerializer
+    org_filter_paths = [
+        "pipeline__workflow__organization",
+        "api__workflow__organization",
+    ]
 
     def get_queryset(self):
         queryset = Notification.objects.all()

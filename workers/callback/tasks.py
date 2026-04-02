@@ -1505,11 +1505,11 @@ def _process_batch_callback_core(
                 # Re-raise for Celery retry mechanism
                 raise
     finally:
-        if context.api_client is not None:
-            try:
+        try:
+            if context.api_client:
                 context.api_client.close()
-            except Exception as e:
-                logger.warning("api_client.close() failed during cleanup: %s", e)
+        except Exception as e:
+            logger.warning("api_client.close() failed during callback cleanup: %s", e)
 
 
 @app.task(

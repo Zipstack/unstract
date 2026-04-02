@@ -599,4 +599,5 @@ const DetailedLogs = () => {
     </div>
   );
 };
+
 export { DetailedLogs };

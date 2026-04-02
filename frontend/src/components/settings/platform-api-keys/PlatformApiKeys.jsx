@@ -57,7 +57,9 @@ function PlatformApiKeys() {
   const basePath = `/api/v1/unstract/${sessionDetails?.orgId}/platform-api`;
 
   const fetchKeys = useCallback(() => {
-    if (!sessionDetails?.orgId) return;
+    if (!sessionDetails?.orgId) {
+      return;
+    }
     setIsLoading(true);
     axiosPrivate({
       method: "GET",

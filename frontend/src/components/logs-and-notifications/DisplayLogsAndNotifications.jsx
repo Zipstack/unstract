@@ -108,7 +108,9 @@ export function DisplayLogsAndNotifications() {
 
   const onMouseMove = useCallback(
     (e) => {
-      if (!draggingRef.current) return;
+      if (!draggingRef.current) {
+        return;
+      }
       const diff = startYRef.current - e.clientY;
       const newHeight = startHeightRef.current + diff;
       const parentHeight = getParentHeight();

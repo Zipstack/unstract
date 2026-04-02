@@ -363,11 +363,11 @@ CardHeaderRow.propTypes = {
 };
 
 export {
-  CardActionBox,
-  OwnerFieldRow,
-  LastRunFieldRow,
-  Last5RunsFieldRow,
-  WorkflowFieldRow,
   ApiEndpointSection,
+  CardActionBox,
   CardHeaderRow,
+  Last5RunsFieldRow,
+  LastRunFieldRow,
+  OwnerFieldRow,
+  WorkflowFieldRow,
 };

@@ -1,11 +1,17 @@
 import logging
 
+from django.db.models import Q
 from rest_framework.filters import BaseFilterBackend
 
 from utils.models.org_path_discovery import get_org_path
 from utils.user_context import UserContext
 
 logger = logging.getLogger(__name__)
+
+# ViewSet attributes read by OrganizationFilterBackend.
+# Use these constants when setting attributes on ViewSets to avoid typos.
+SKIP_ORG_FILTER = "skip_org_filter"
+ORG_FILTER_PATHS = "org_filter_paths"
 
 
 class OrganizationFilterBackend(BaseFilterBackend):
@@ -24,10 +30,20 @@ class OrganizationFilterBackend(BaseFilterBackend):
     rather than replacing it.
 
     Opt-out: set skip_org_filter = True on the viewset.
+
+    For models with multiple nullable FK paths to Organization, set
+    org_filter_paths on the viewset to use OR filtering across all
+    paths (skips BFS):
+
+        class NotificationViewSet(viewsets.ModelViewSet):
+            org_filter_paths = [
+                "pipeline__workflow__organization",
+                "api__workflow__organization",
+            ]
     """
 
     def filter_queryset(self, request, queryset, view):
-        if getattr(view, "skip_org_filter", False):
+        if getattr(view, SKIP_ORG_FILTER, False):
             return queryset
 
         model = queryset.model
@@ -42,6 +58,15 @@ class OrganizationFilterBackend(BaseFilterBackend):
                 view.__class__.__name__,
             )
             return queryset.none()
+
+        # Use explicit paths if set on the viewset (for models with
+        # multiple nullable FK paths to Organization).
+        explicit_paths = getattr(view, ORG_FILTER_PATHS, None)
+        if explicit_paths:
+            q = Q()
+            for path in explicit_paths:
+                q |= Q(**{path: org})
+            return queryset.filter(q)
 
         path = get_org_path(model)
         if path:

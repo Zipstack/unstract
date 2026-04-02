@@ -33,6 +33,9 @@ prompt_studio_prompt_response = PromptStudioCoreView.as_view({"post": "fetch_res
 prompt_studio_adapter_choices = PromptStudioCoreView.as_view(
     {"get": "get_adapter_choices"}
 )
+prompt_studio_bulk_fetch_response = PromptStudioCoreView.as_view(
+    {"post": "bulk_fetch_response"}
+)
 prompt_studio_single_pass_extraction = PromptStudioCoreView.as_view(
     {"post": "single_pass_extraction"}
 )
@@ -60,6 +63,8 @@ prompt_studio_sync_prompts = PromptStudioCoreView.as_view({"post": "sync_prompts
 prompt_studio_deployment_usage = PromptStudioCoreView.as_view(
     {"get": "check_deployment_usage"}
 )
+
+prompt_studio_task_status = PromptStudioCoreView.as_view({"get": "task_status"})
 
 
 urlpatterns = format_suffix_patterns(
@@ -106,6 +111,11 @@ urlpatterns = format_suffix_patterns(
             name="prompt-studio-prompt-response",
         ),
         path(
+            "prompt-studio/bulk_fetch_response/<uuid:pk>",
+            prompt_studio_bulk_fetch_response,
+            name="prompt-studio-bulk-fetch-response",
+        ),
+        path(
             "prompt-studio/adapter-choices/",
             prompt_studio_adapter_choices,
             name="prompt-studio-adapter-choices",
@@ -149,6 +159,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/<uuid:pk>/check_deployment_usage/",
             prompt_studio_deployment_usage,
             name="prompt_studio_deployment_usage",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/task-status/<str:task_id>",
+            prompt_studio_task_status,
+            name="prompt-studio-task-status",
         ),
     ]
 )

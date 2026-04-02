@@ -532,4 +532,4 @@ HITLChart.propTypes = {
   loading: PropTypes.bool,
 };
 
-export { PagesChart, TrendAnalysisChart, HITLChart };
+export { HITLChart, PagesChart, TrendAnalysisChart };
