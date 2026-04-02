@@ -484,21 +484,21 @@ class CallbackTaskData:
     """Callback task data structure for worker callbacks."""
 
     execution_id: str | UUID
-    organization_id: str | UUID
+    organization_id: str
     pipeline_id: str | UUID | None = None
 
     def __post_init__(self):
-        # Validate and convert to UUID or None
         self.execution_id = validate_uuid(self.execution_id)
-        self.organization_id = validate_uuid(self.organization_id)
+        # organization_id is a required string identifier (e.g. "org_xxx"), not a UUID
+        if not self.organization_id:
+            raise ValueError("organization_id is required for CallbackTaskData")
+        self.organization_id = str(self.organization_id)
         self.pipeline_id = validate_uuid(self.pipeline_id)
 
     def to_dict(self) -> dict[str, Any]:
         data = {
             "execution_id": str(self.execution_id) if self.execution_id else None,
-            "organization_id": str(self.organization_id)
-            if self.organization_id
-            else None,
+            "organization_id": self.organization_id,
         }
         if self.pipeline_id:
             data["pipeline_id"] = str(self.pipeline_id)

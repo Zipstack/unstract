@@ -45,12 +45,10 @@
   align-self: center !important;
 }
 
-.cur-pointer .ant-list-item-meta-description {
-  -webkit-line-clamp: 2;
-  text-overflow: ellipsis;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
+.list-view-description {
+  font-size: 13px;
+  margin-bottom: 0;
+  max-width: 40%;
 }
 
 .list-view-divider {
