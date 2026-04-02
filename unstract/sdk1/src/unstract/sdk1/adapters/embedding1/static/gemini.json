@@ -17,7 +17,7 @@
       "type": "string",
       "title": "Model",
       "default": "gemini/text-embedding-004",
-      "description": "Provide the name of the model. Recommended: gemini/text-embedding-004"
+      "description": "Provide the name of the model. The gemini/ prefix will be added automatically if omitted. Recommended: gemini/text-embedding-004"
     },
     "api_key": {
       "type": "string",
@@ -30,7 +30,7 @@
       "minimum": 1,
       "multipleOf": 1,
       "title": "Embed Batch Size",
-      "description": "Number of texts to embed in a single batch. Leave empty for LiteLLM default."
+      "description": "Number of texts to embed in a single batch. Leave empty to use the system default."
     },
     "timeout": {
       "type": "number",

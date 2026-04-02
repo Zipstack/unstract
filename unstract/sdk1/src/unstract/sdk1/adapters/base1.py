@@ -949,16 +949,19 @@ class GeminiEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        adapter_metadata["model"] = GeminiEmbeddingParameters.validate_model(
-            adapter_metadata
-        )
+        metadata_copy = {**adapter_metadata}
+        metadata_copy["model"] = GeminiEmbeddingParameters.validate_model(metadata_copy)
 
-        return GeminiEmbeddingParameters(**adapter_metadata).model_dump()
+        return GeminiEmbeddingParameters(**metadata_copy).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = adapter_metadata.get("model", "gemini/text-embedding-004")
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError(
+                "The 'model' field is required for the Gemini embedding adapter. "
+                "Example: 'gemini/text-embedding-004'"
+            )
         if not model.startswith("gemini/"):
             model = f"gemini/{model}"
-        adapter_metadata["model"] = model
         return model
