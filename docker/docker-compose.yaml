@@ -64,7 +64,7 @@ services:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-ide-callback
     restart: unless-stopped
-    command: ["ide_callback"]
+    command: ["ide-callback"]
     env_file:
       - ../workers/.env
       - ./essentials.env

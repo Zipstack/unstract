@@ -39,6 +39,7 @@ declare -A WORKERS=(
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
+    ["ide-callback"]="ide_callback"
     ["all"]="all"
 )
 
@@ -56,6 +57,7 @@ declare -A WORKER_QUEUES=(
     ["log_consumer"]="celery_log_task_queue"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
+    ["ide_callback"]="ide_callback"
 )
 
 # Worker health ports
@@ -68,6 +70,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["notification"]="8085"
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
+    ["ide_callback"]="8089"
 )
 
 # Function to print colored output

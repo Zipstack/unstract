@@ -10,6 +10,7 @@ import magic
 from account_v2.custom_exceptions import DuplicateData
 from api_v2.models import APIDeployment
 from celery import signature
+from celery.result import AsyncResult
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest, HttpResponse
@@ -30,6 +31,7 @@ from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
+from backend.celery_service import app as celery_app
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -758,18 +760,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response with {task_id, status} and optionally result or error
         """
-        from celery.result import (
-            AsyncResult,  # Lazy import: Celery not needed for non-async views
-        )
-
-        from backend.worker_celery import (
-            get_worker_celery_app,  # Lazy import: avoids Celery init on module load
-        )
-
         # Verify the user has access to this tool (triggers permission check)
         self.get_object()
 
-        result = AsyncResult(task_id, app=get_worker_celery_app())
+        result = AsyncResult(task_id, app=celery_app)
         if not result.ready():
             return Response({"task_id": task_id, "status": "processing"})
         if result.successful():
