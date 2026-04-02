@@ -355,14 +355,12 @@ function ToolIde() {
           isExporting={isExporting}
         />
       )}
-      <div>
-        <Header
-          handleUpdateTool={handleUpdateTool}
-          setOpenSettings={setOpenSettings}
-          setOpenShareModal={setOpenShareModal}
-          setOpenCloneModal={setOpenCloneModal}
-        />
-      </div>
+      <Header
+        handleUpdateTool={handleUpdateTool}
+        setOpenSettings={setOpenSettings}
+        setOpenShareModal={setOpenShareModal}
+        setOpenCloneModal={setOpenCloneModal}
+      />
       <div
         className={isPublicSource ? "public-tool-ide-body" : "tool-ide-body"}
       >

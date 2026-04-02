@@ -185,11 +185,15 @@ function ListView({
               className="list-item-desc"
               title={renderTitle(item)}
               description={
-                <Typography.Text type="secondary" ellipsis>
-                  <Tooltip title={item[descriptionProp]}>
+                item[descriptionProp] ? (
+                  <Typography.Paragraph
+                    type="secondary"
+                    ellipsis={{ rows: 1, tooltip: true }}
+                    className="list-view-description"
+                  >
                     {item[descriptionProp]}
-                  </Tooltip>
-                </Typography.Text>
+                  </Typography.Paragraph>
+                ) : null
               }
             ></List.Item.Meta>
           </List.Item>
