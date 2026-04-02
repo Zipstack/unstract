@@ -1,12 +1,5 @@
 /* Styles for Header */
 
-.custom-tools-header-layout {
-  padding: 8px;
-  background-color: #f5f7f9;
-  display: flex;
-  align-items: center;
-}
-
 .custom-tools-header-btns {
   display: flex;
   justify-content: space-between;
@@ -15,14 +8,6 @@
 
 .custom-tools-header-btns > div {
   padding: 0px 5px;
-}
-
-.custom-tools-name {
-  padding: 0px 8px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-size: 16px;
 }
 
 .custom-tools-header-v-divider {

@@ -21,21 +21,20 @@ function Header({ type, openAddModal, enableSearch, onSearch, setSearchList }) {
     }
   };
 
-  const customButtons = () => {
-    return (
-      <CustomButton
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleOnClick}
-      >
-        {deploymentsStaticContent[type].addBtn}
-      </CustomButton>
-    );
-  };
+  const addButton = (
+    <CustomButton
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={handleOnClick}
+    >
+      {deploymentsStaticContent[type].addBtn}
+    </CustomButton>
+  );
+
   return (
     <ToolNavBar
       title={deploymentsStaticContent[type].title}
-      CustomButtons={customButtons}
+      customButtons={addButton}
       enableSearch={enableSearch}
       onSearch={onSearch}
       setSearchList={setSearchList}
