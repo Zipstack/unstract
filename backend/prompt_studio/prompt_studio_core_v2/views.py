@@ -824,9 +824,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
-        prompt_studio_tool = serializer.validated_data[
-            ProfileManagerKeys.PROMPT_STUDIO_TOOL
-        ]
+        prompt_studio_tool = (
+            serializer.validated_data.get(ProfileManagerKeys.PROMPT_STUDIO_TOOL)
+            or self.get_object()
+        )
         profile_count = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_studio_tool
         ).count()
