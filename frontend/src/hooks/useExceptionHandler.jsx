@@ -1,30 +1,12 @@
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
-import { useSessionStore } from "../store/session-store.js";
-
 const useExceptionHandler = () => {
   const navigate = useNavigate();
-  const { sessionDetails } = useSessionStore();
-
-  // Resolves relative markdown links [text](/path) to [text](/{orgName}/path)
-  const enrichMarkdownLinks = (message) => {
-    if (typeof message !== "string") {
-      return message;
-    }
-    const orgName = sessionDetails?.orgName;
-    if (!orgName) {
-      return message;
-    }
-    return message.replace(
-      /\[([^\]]+)\]\(\/((?!\/)[^)]+)\)/g,
-      (_, text, path) => `[${text}](/${orgName}/${path})`,
-    );
-  };
 
   const buildAlert = (content, title, duration) => ({
     type: "error",
-    content: enrichMarkdownLinks(content),
+    content,
     title,
     duration,
   });
