@@ -3,7 +3,6 @@ import logging
 import uuid
 from typing import Any
 
-from configuration.models import Configuration
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -211,31 +210,15 @@ class DeploymentExecution(views.APIView):
                 status=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
-        # Process completed execution
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if execution_status_value == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
-            # Check if highlight data should be removed using configuration registry
-            api_deployment = deployment_execution_dto.api
-            organization = api_deployment.organization if api_deployment else None
-            enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
-            # Check if the configuration key exists (Cloud deployment) or use settings (OSS)
-            from configuration.config_registry import ConfigurationRegistry
-
-            if ConfigurationRegistry.is_config_key_available(
-                "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
-            ):
-                enable_highlight = Configuration.get_value_by_organization(
-                    config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
-                    organization=organization,
-                )
-            if not enable_highlight:
-                response.remove_result_metadata_keys(["highlight_data"])
-                response.remove_result_metadata_keys(["extracted_text"])
-            if not include_metadata:
-                response.remove_result_metadata_keys()
-            if not include_metrics:
-                response.remove_result_metrics()
+            DeploymentHelper.process_completed_execution(
+                response=response,
+                deployment_execution_dto=deployment_execution_dto,
+                include_metadata=include_metadata,
+                include_metrics=include_metrics,
+            )
         return Response(
             data={
                 "status": response.execution_status,

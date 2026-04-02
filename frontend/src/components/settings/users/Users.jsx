@@ -176,7 +176,7 @@ function Users() {
       setPostHogCustomEvent("intent_add_user", {
         info: "Clicked on '+ Invite User' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };

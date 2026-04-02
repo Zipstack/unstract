@@ -64,7 +64,9 @@ function FileExplorer({
         .then(() => {
           resolve();
         })
-        .catch(() => {});
+        .catch(() => {
+          // Intentionally empty: errors handled upstream
+        });
     });
   }
 

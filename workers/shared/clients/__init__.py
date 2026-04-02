@@ -23,6 +23,7 @@ from .file_client import FileAPIClient
 # Manual review client - use null client as default, plugin registry handles dynamic loading
 from .manual_review_stub import ManualReviewNullClient as ManualReviewAPIClient
 from .organization_client import OrganizationAPIClient
+from .prompt_studio_client import PromptStudioAPIClient
 from .tool_client import ToolAPIClient
 from .usage_client import UsageAPIClient
 from .webhook_client import WebhookAPIClient
@@ -32,6 +33,7 @@ __all__ = [
     "BaseAPIClient",
     "ExecutionAPIClient",
     "FileAPIClient",
+    "PromptStudioAPIClient",
     "UsageAPIClient",
     "ManualReviewAPIClient",
     "WebhookAPIClient",

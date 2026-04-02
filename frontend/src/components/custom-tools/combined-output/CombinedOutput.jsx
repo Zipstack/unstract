@@ -74,7 +74,9 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const handleException = useExceptionHandler();
 
   useEffect(() => {
-    if (isSimplePromptStudio) return;
+    if (isSimplePromptStudio) {
+      return;
+    }
 
     const fetchAdapterInfo = async () => {
       let url = `/api/v1/unstract/${sessionDetails?.orgId}/adapter/?adapter_type=LLM`;
@@ -101,7 +103,9 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   }, [singlePassExtractMode]);
 
   useEffect(() => {
-    if (!docId || isSinglePassExtractLoading) return;
+    if (!docId || isSinglePassExtractLoading) {
+      return;
+    }
 
     const fetchCombinedOutput = async () => {
       setIsOutputLoading(true);

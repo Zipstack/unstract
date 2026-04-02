@@ -64,6 +64,12 @@ class WorkerRegistry:
         WorkerType.SCHEDULER: WorkerQueueConfig(
             primary_queue=QueueName.SCHEDULER, additional_queues=[QueueName.GENERAL]
         ),
+        WorkerType.EXECUTOR: WorkerQueueConfig(
+            primary_queue=QueueName.EXECUTOR,
+        ),
+        WorkerType.IDE_CALLBACK: WorkerQueueConfig(
+            primary_queue=QueueName.IDE_CALLBACK,
+        ),
     }
 
     # Pluggable worker configurations loaded dynamically
@@ -134,6 +140,23 @@ class WorkerRegistry:
                 TaskRoute("scheduler.tasks.*", QueueName.SCHEDULER),
             ],
         ),
+        WorkerType.EXECUTOR: WorkerTaskRouting(
+            worker_type=WorkerType.EXECUTOR,
+            routes=[
+                TaskRoute("execute_extraction", QueueName.EXECUTOR),
+                TaskRoute("executor.tasks.*", QueueName.EXECUTOR),
+            ],
+        ),
+        WorkerType.IDE_CALLBACK: WorkerTaskRouting(
+            worker_type=WorkerType.IDE_CALLBACK,
+            routes=[
+                TaskRoute("ide_index_complete", QueueName.IDE_CALLBACK),
+                TaskRoute("ide_index_error", QueueName.IDE_CALLBACK),
+                TaskRoute("ide_prompt_complete", QueueName.IDE_CALLBACK),
+                TaskRoute("ide_prompt_error", QueueName.IDE_CALLBACK),
+                TaskRoute("ide_callback.tasks.*", QueueName.IDE_CALLBACK),
+            ],
+        ),
     }
 
     # Pluggable worker task routes loaded dynamically
@@ -169,6 +192,12 @@ class WorkerRegistry:
             "log_level": "INFO",
         },
         WorkerType.SCHEDULER: {
+            "log_level": "INFO",
+        },
+        WorkerType.EXECUTOR: {
+            "log_level": "INFO",
+        },
+        WorkerType.IDE_CALLBACK: {
             "log_level": "INFO",
         },
     }

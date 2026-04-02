@@ -22,7 +22,9 @@ const CUSTOM_DATA_VARIABLE_REGEX = /\{\{custom_data\.([a-zA-Z0-9_.]+)\}\}/g;
 // Helper function to extract all custom_data variables from text
 const extractCustomDataVariables = (text) => {
   const variables = [];
-  if (!text) return variables;
+  if (!text) {
+    return variables;
+  }
 
   const matches = text.matchAll(CUSTOM_DATA_VARIABLE_REGEX);
   for (const match of matches) {
@@ -87,7 +89,9 @@ function CustomDataSettings() {
       ) {
         const promptText = prompt?.prompt || "";
         const foundVariables = extractCustomDataVariables(promptText);
-        foundVariables.forEach((v) => variables.add(v));
+        foundVariables.forEach((v) => {
+          variables.add(v);
+        });
       }
     });
 

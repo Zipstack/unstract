@@ -46,7 +46,9 @@ const useSocketLogsStore = create((setState, getState) => ({
           },
           data: { log: JSON.stringify(newLog) },
         };
-        axios(requestOptions).catch((err) => {});
+        axios(requestOptions).catch(() => {
+          // Intentionally empty: best-effort log persistence
+        });
       }
     });
 
