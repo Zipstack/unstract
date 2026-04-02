@@ -15,18 +15,20 @@ import {
   Dropdown,
   Input,
   Row,
+  Select,
   Tag,
   Tooltip,
 } from "antd";
 import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
-import { useEffect, useRef, useState } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
+import { useSessionStore } from "../../../store/session-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { ExpandCardBtn } from "./ExpandCardBtn";
@@ -69,12 +71,21 @@ function Header({
     isSimplePromptStudio,
     details,
   } = useCustomToolStore();
+  const axiosPrivate = useAxiosPrivate();
+  const { sessionDetails } = useSessionStore();
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
   const [required, setRequired] = useState(false);
   const [webhookEnabled, setWebhookEnabled] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState("");
+
+  // Lookup state
+  const [lookupEnabled, setLookupEnabled] = useState(false);
+  const [selectedLookup, setSelectedLookup] = useState(null);
+  const [availableLookups, setAvailableLookups] = useState([]);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupsFetched, setLookupsFetched] = useState(false);
 
   // Stable debounced functions using useRef
   const debouncedWebhookEnabledChangeRef = useRef(
@@ -153,12 +164,87 @@ function Header({
       setWebhookUrl,
     );
   };
+
+  // Fetch available lookup projects for this PS project (lazy load on dropdown open)
+  const fetchAvailableLookups = useCallback(async () => {
+    if (!details?.tool_id || !sessionDetails?.orgId) {
+      return;
+    }
+    if (lookupsFetched) {
+      return;
+    } // Already fetched, skip
+
+    setLookupLoading(true);
+    try {
+      const response = await axiosPrivate.get(
+        `/api/v1/unstract/${sessionDetails.orgId}/prompt-studio/prompt/available_lookups/`,
+        { params: { tool_id: details.tool_id } },
+      );
+      setAvailableLookups(response?.data || []);
+      setLookupsFetched(true);
+    } catch (error) {
+      console.error("Failed to fetch available lookups:", error);
+      setAvailableLookups([]);
+    } finally {
+      setLookupLoading(false);
+    }
+  }, [details?.tool_id, sessionDetails?.orgId, axiosPrivate, lookupsFetched]);
+
+  // Handle lookup enabled checkbox change
+  const handleLookupEnabledChange = (e) => {
+    const newValue = e.target.checked;
+    setLookupEnabled(newValue);
+    if (!newValue) {
+      // When disabling, clear the selected lookup
+      setSelectedLookup(null);
+      handleChange(
+        null,
+        promptDetails?.prompt_id,
+        "lookup_project",
+        true,
+        true,
+      ).catch(() => {
+        // Rollback on error
+        setLookupEnabled(true);
+        setSelectedLookup(promptDetails?.lookup_project || null);
+      });
+    }
+  };
+
+  // Handle lookup project selection change
+  const handleLookupChange = (value) => {
+    const newValue = value || null;
+    setSelectedLookup(newValue);
+    if (!newValue) {
+      // If clearing the selection, also disable lookup
+      setLookupEnabled(false);
+    }
+    handleChange(
+      newValue,
+      promptDetails?.prompt_id,
+      "lookup_project",
+      true,
+      true,
+    ).catch(() => {
+      // Rollback on error
+      setLookupEnabled(!!promptDetails?.lookup_project);
+      setSelectedLookup(promptDetails?.lookup_project || null);
+    });
+  };
+
   useEffect(() => {
     setIsDisablePrompt(promptDetails?.active);
     setRequired(promptDetails?.required);
     setWebhookEnabled(promptDetails?.enable_postprocessing_webhook || false);
     setWebhookUrl(promptDetails?.postprocessing_webhook_url || "");
+    setLookupEnabled(!!promptDetails?.lookup_project);
+    setSelectedLookup(promptDetails?.lookup_project || null);
   }, [promptDetails, details]);
+
+  // Reset lookupsFetched when tool changes so we refetch on next dropdown open
+  useEffect(() => {
+    setLookupsFetched(false);
+  }, [details?.tool_id]);
 
   useEffect(() => {
     const dropdownItems = [
@@ -252,6 +338,65 @@ function Header({
       },
       {
         label: (
+          <div>
+            <Checkbox
+              checked={lookupEnabled}
+              onChange={handleLookupEnabledChange}
+              onClick={(e) => e.stopPropagation()}
+              disabled={availableLookups.length === 0 && !lookupEnabled}
+            >
+              Enable Look-up{" "}
+              <Tooltip title="Enable lookup enrichment for this prompt. Only lookup projects linked at the project level can be selected.">
+                <InfoCircleOutlined />
+              </Tooltip>
+            </Checkbox>
+            {lookupEnabled && availableLookups.length > 0 && (
+              <div style={{ marginTop: "8px", marginLeft: "24px" }}>
+                <Select
+                  placeholder="Select Lookup Project"
+                  value={selectedLookup}
+                  onChange={handleLookupChange}
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  size="small"
+                  style={{ width: "100%" }}
+                  allowClear
+                  loading={lookupLoading}
+                >
+                  {availableLookups.map((lookup) => (
+                    <Select.Option
+                      key={lookup.id}
+                      value={lookup.id}
+                      disabled={!lookup.is_ready}
+                    >
+                      {lookup.name} {!lookup.is_ready && "(Not Ready)"}
+                    </Select.Option>
+                  ))}
+                </Select>
+              </div>
+            )}
+            {availableLookups.length === 0 && !lookupLoading && (
+              <div
+                style={{
+                  fontSize: "11px",
+                  color: "#999",
+                  marginTop: "4px",
+                }}
+              >
+                No lookup projects linked at project level.
+                <br />
+                Link lookups in Settings → Lookups first.
+              </div>
+            )}
+          </div>
+        ),
+        key: "lookup",
+      },
+      {
+        type: "divider",
+      },
+      {
+        label: (
           <ConfirmModal
             handleConfirm={() => handleDelete(promptDetails?.prompt_id)}
             content="The prompt will be permanently deleted."
@@ -272,7 +417,17 @@ function Header({
     }
 
     setItems(dropdownItems);
-  }, [isDisablePrompt, required, enforceType, webhookEnabled, webhookUrl]);
+  }, [
+    isDisablePrompt,
+    required,
+    enforceType,
+    webhookEnabled,
+    webhookUrl,
+    lookupEnabled,
+    selectedLookup,
+    availableLookups,
+    lookupLoading,
+  ]);
 
   return (
     <Row>
@@ -398,11 +553,22 @@ function Header({
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={() => {}}
+            handleGetOutput={() => {
+              /* noop */
+            }}
             promptDetails={promptDetails}
           />
         )}
-        <Dropdown menu={{ items }} trigger={["click"]} placement="bottomLeft">
+        <Dropdown
+          menu={{ items }}
+          trigger={["click"]}
+          placement="bottomLeft"
+          onOpenChange={(open) => {
+            if (open) {
+              fetchAvailableLookups();
+            }
+          }}
+        >
           <Button
             size="small"
             type="text"

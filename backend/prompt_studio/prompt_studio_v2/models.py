@@ -139,6 +139,16 @@ class ToolStudioPrompt(BaseModel):
     postprocessing_webhook_url = models.TextField(
         blank=True, null=True, db_comment="URL endpoint for postprocessing webhook"
     )
+    # Prompt-level lookup association
+    lookup_project = models.ForeignKey(
+        "lookup.LookupProject",
+        on_delete=models.SET_NULL,
+        related_name="linked_prompts",
+        null=True,
+        blank=True,
+        db_comment="Lookup project for this prompt's enrichment. "
+        "Must be linked at project level via PromptStudioLookupLink.",
+    )
     # Eval settings for the prompt
     # NOTE:
     # - Field name format is eval_<metric_type>_<metric_name>

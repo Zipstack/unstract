@@ -1,0 +1,57 @@
+/* DisplayLogs.css - Custom styles for display logs component */
+
+/* Row highlighting for lookup logs */
+.display-logs-row-lookup {
+  background-color: #f9f0ff;
+}
+
+.display-logs-row-lookup:hover {
+  background-color: #efdbff !important;
+}
+
+/* Stage tag styling */
+.display-logs-stage-tag {
+  font-size: 11px;
+  margin-right: 8px;
+}
+
+/* Stage-specific colors */
+.display-logs-stage-lookup {
+  border-color: #722ed1;
+}
+
+.display-logs-stage-run {
+  border-color: #1890ff;
+}
+
+.display-logs-stage-extract {
+  border-color: #52c41a;
+}
+
+.display-logs-stage-index {
+  border-color: #faad14;
+}
+
+/* Log message with stage indicator */
+.display-logs-message-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Icon styling for different stages */
+.display-logs-icon-lookup {
+  color: #722ed1;
+}
+
+.display-logs-icon-run {
+  color: #1890ff;
+}
+
+.display-logs-icon-extract {
+  color: #52c41a;
+}
+
+.display-logs-icon-index {
+  color: #faad14;
+}

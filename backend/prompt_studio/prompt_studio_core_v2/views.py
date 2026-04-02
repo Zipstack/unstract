@@ -414,6 +414,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         Returns:
             Response
         """
+        from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
+            LookupEnrichmentError,
+        )
+
         custom_tool = self.get_object()
         tool_id: str = str(custom_tool.tool_id)
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
@@ -431,15 +435,23 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
         ).count()
 
-        response: dict[str, Any] = PromptStudioHelper.prompt_responder(
-            id=id,
-            tool_id=tool_id,
-            org_id=UserSessionUtils.get_organization_id(request),
-            user_id=custom_tool.created_by.user_id,
-            document_id=document_id,
-            run_id=run_id,
-            profile_manager_id=profile_manager,
-        )
+        try:
+            response: dict[str, Any] = PromptStudioHelper.prompt_responder(
+                id=id,
+                tool_id=tool_id,
+                org_id=UserSessionUtils.get_organization_id(request),
+                user_id=custom_tool.created_by.user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager,
+            )
+        except LookupEnrichmentError as e:
+            error_response = {
+                "error": str(e),
+                "error_type": e.error_type,
+                **e.details,
+            }
+            return Response(error_response, status=status.HTTP_400_BAD_REQUEST)
 
         # Notify HubSpot about first prompt run
         notify_hubspot_event(

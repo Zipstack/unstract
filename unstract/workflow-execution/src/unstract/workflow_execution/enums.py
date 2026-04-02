@@ -27,6 +27,7 @@ class LogStage(Enum):
         SUCCESS (str): The state when the execution is successful.
         ERROR (str): The state when an error occurs in the workflow.
         MESSAGE (str): The state when a message is being logged.
+        LOOKUP (str): The state when Look-up enrichment is being executed.
     """
 
     COMPILE = "COMPILE"
@@ -38,6 +39,7 @@ class LogStage(Enum):
     INITIALIZE = "INITIALIZE"
     FINALIZE = "FINALIZE"
     PROCESSING = "PROCESSING"
+    LOOKUP = "LOOKUP"
 
 
 class LogState(Enum):
