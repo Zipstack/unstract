@@ -599,8 +599,6 @@ class WorkflowHelper:
         name="async_execute_bin",
         max_retries=0,
     )
-        retry_jitter=True,
-    )
     def execute_bin(
         schema_name: str,
         workflow_id: str,

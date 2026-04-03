@@ -418,8 +418,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         logger.info("Overwriting INFILE with structured output: %s", input_file_path)
         fs.json_dump(path=input_file_path, data=structured_output)
 
-        logger.info("Output written successfully to workflow storage")
-    except (OSError, json.JSONDecodeError) as e:
+        logger.info(
+            "Output files written — INFILE=%s, METADATA_DIR=%s",
+            input_file_path, execution_data_dir,
+        )
+    except Exception as e:
+        logger.error("Failed to write output files: %s", e, exc_info=True)
         return ExecutionResult.failure(error=f"Error writing output file: {e}").to_dict()
 
     # Write tool result + tool_metadata to METADATA.json
