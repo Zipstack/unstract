@@ -23,6 +23,16 @@ try {
   // The component will remain null of it is not available
 }
 
+let handleLookupOutput;
+try {
+  const mod = await import(
+    "../plugins/lookup-studio/prompt-card/handleLookupOutput"
+  );
+  handleLookupOutput = mod.handleLookupOutput;
+} catch {
+  // Not available in OSS
+}
+
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
   const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
@@ -124,6 +134,10 @@ const usePromptOutput = () => {
         confidenceData: item?.confidence_data,
         wordConfidenceData: item?.word_confidence_data,
       };
+
+      if (handleLookupOutput && item?.lookup_outputs) {
+        handleLookupOutput(item.prompt_output_id, item.lookup_outputs);
+      }
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded) {
         return;

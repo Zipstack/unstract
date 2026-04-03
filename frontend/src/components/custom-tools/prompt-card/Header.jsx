@@ -41,6 +41,16 @@ try {
   // The component will remain 'undefined' it is not available
 }
 
+let LookupMenuItem;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupMenuItem"
+  );
+  LookupMenuItem = mod.LookupMenuItem;
+} catch {
+  // Not available in OSS
+}
+
 function Header({
   promptDetails,
   promptKey,
@@ -267,6 +277,20 @@ function Header({
           isPublicSource,
       },
     ];
+    if (LookupMenuItem && !isSimplePromptStudio) {
+      dropdownItems.splice(
+        dropdownItems.length - 1,
+        0,
+        {
+          type: "divider",
+        },
+        {
+          label: <LookupMenuItem promptDetails={promptDetails} />,
+          key: "lookup",
+        },
+      );
+    }
+
     if (isSimplePromptStudio) {
       dropdownItems.splice(0, 1);
     }

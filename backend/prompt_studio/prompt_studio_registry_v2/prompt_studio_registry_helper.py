@@ -355,6 +355,17 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.POSTPROCESSING_WEBHOOK_URL] = (
                 prompt.postprocessing_webhook_url
             )
+            # Lookup config (cloud plugin hook)
+            try:
+                from pluggable_apps.lookup_v1.execution import (
+                    build_lookup_config_for_prompt,
+                )
+
+                lookup_config = build_lookup_config_for_prompt(prompt)
+                if lookup_config:
+                    output["lookup_config"] = lookup_config
+            except ImportError:
+                pass
             # Retaining the old fields in condition
             # for backward compatibility. To be removed in future.
             if (
