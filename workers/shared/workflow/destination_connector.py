@@ -658,18 +658,6 @@ class WorkerDestinationConnector:
     ):
         """Handle filesystem destination processing."""
         if not result.has_hitl:
-            if not result.tool_execution_result and not file_ctx.execution_error:
-                error_msg = (
-                    f"No tool execution result for file '{file_ctx.file_name}' "
-                    f"- filesystem copy skipped"
-                )
-                logger.error(error_msg)
-                log_file_error(
-                    exec_ctx.workflow_log,
-                    exec_ctx.file_execution_id,
-                    f"❌ {error_msg}",
-                )
-                raise RuntimeError(error_msg)
             log_file_info(
                 exec_ctx.workflow_log,
                 exec_ctx.file_execution_id,
@@ -708,17 +696,9 @@ class WorkerDestinationConnector:
                     api_client=exec_ctx.api_client,
                 )
             else:
-                error_msg = (
-                    f"No tool execution result for file '{file_ctx.file_name}' "
-                    f"- database insertion skipped"
+                logger.warning(
+                    f"No tool execution result or execution error found for file {file_ctx.file_name}, skipping database insertion"
                 )
-                logger.error(error_msg)
-                log_file_error(
-                    exec_ctx.workflow_log,
-                    exec_ctx.file_execution_id,
-                    f"❌ {error_msg}",
-                )
-                raise RuntimeError(error_msg)
         else:
             logger.info(
                 f"File '{file_ctx.file_name}' sent to HITL queue - DATABASE processing will be handled after review"
@@ -1423,18 +1403,9 @@ class WorkerDestinationConnector:
             file_storage = file_system.get_file_storage()
 
             if not metadata_file_path:
-                logger.warning(
-                    "No metadata_file_path (file_execution_id=%s, execution_dir=%s)",
-                    file_execution_id,
-                    file_handler.execution_dir,
-                )
                 return None
 
             if not file_storage.exists(metadata_file_path):
-                logger.warning(
-                    "METADATA.json not found at '%s'",
-                    metadata_file_path,
-                )
                 return None
 
             metadata_content = file_storage.read(path=metadata_file_path, mode="r")
@@ -1447,17 +1418,9 @@ class WorkerDestinationConnector:
             output_file_path = file_handler.infile
 
             if not output_file_path:
-                logger.warning(
-                    "No infile path (file_execution_id=%s)",
-                    file_execution_id,
-                )
                 return None
 
             if not file_storage.exists(output_file_path):
-                logger.warning(
-                    "INFILE not found at '%s'",
-                    output_file_path,
-                )
                 return None
 
             file_type = file_storage.mime_type(path=output_file_path)
