@@ -28,7 +28,6 @@ class WorkerType(str, Enum):
     IDE_CALLBACK = "ide_callback"
 
     @classmethod
-
     @classmethod
     def from_directory_name(cls, name: str) -> "WorkerType":
         """Convert directory name to enum value.
