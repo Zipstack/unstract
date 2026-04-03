@@ -49,3 +49,10 @@ class EvaluationProtocol(Protocol):
     """Legacy executor: prompt evaluation."""
 
     def run(self, **kwargs: Any) -> dict: ...
+
+
+@runtime_checkable
+class LookupEnrichmentProtocol(Protocol):
+    """Legacy executor: post-extraction lookup enrichment."""
+
+    def run(self) -> str | None: ...

@@ -170,6 +170,15 @@ class OutputManagerHelper:
 
             # TODO: use enums here
             output = outputs.get(prompt.prompt_key)
+
+            # If lookup enrichment ran, structured_output contains the enriched
+            # value. Restore the original raw LLM output for the prompt output
+            # table — the enriched value lives in LookupOutputResult instead.
+            lookup_outputs = metadata.get("lookup_outputs", {})
+            prompt_lookup = lookup_outputs.get(prompt.prompt_key)
+            if prompt_lookup and "original" in prompt_lookup:
+                output = prompt_lookup["original"]
+
             if prompt.enforce_type in {"json", "table", "record", "line-item"}:
                 output = json.dumps(output)
             eval_metrics = outputs.get(f"{prompt.prompt_key}__evaluation", [])
@@ -188,6 +197,32 @@ class OutputManagerHelper:
                 confidence_data=prompt_confidence_data,
                 word_confidence_data=prompt_word_confidence_data,
             )
+
+            # Persist lookup outputs if present (cloud plugin)
+            if prompt_lookup:
+                try:
+                    from pluggable_apps.lookup_v1.models import (
+                        LookupOutputResult,
+                    )
+
+                    lookup_meta = prompt_lookup.get("meta", {})
+                    lookup_id = lookup_meta.get("lookup_id")
+                    if lookup_id:
+                        LookupOutputResult.objects.update_or_create(
+                            prompt_output=prompt_output,
+                            defaults={
+                                "lookup_definition_id": lookup_id,
+                                "output": prompt_lookup.get("enriched", ""),
+                            },
+                        )
+                except ImportError:
+                    pass
+                except Exception:
+                    logger.warning(
+                        "Failed to persist lookup output for prompt %s",
+                        prompt.prompt_key,
+                        exc_info=True,
+                    )
 
             # Serialize the instance
             serializer = PromptStudioOutputSerializer(prompt_output)

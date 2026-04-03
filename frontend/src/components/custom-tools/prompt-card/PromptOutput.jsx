@@ -51,6 +51,16 @@ try {
   // The component will remain null of it is not available
 }
 
+let LookupOutputTabs;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupOutputTabs"
+  );
+  LookupOutputTabs = mod.LookupOutputTabs;
+} catch {
+  // Not available in OSS
+}
+
 function PromptOutput({
   promptDetails,
   handleRun,
@@ -193,20 +203,46 @@ function PromptOutput({
             "highlighted-prompt-cell"
           }`}
         >
-          <DisplayPromptResult
-            output={promptOutput}
-            highlightData={
-              promptOutputData?.highlightData?.[promptDetails.prompt_key]
-            }
-            handleSelectHighlight={handleSelectHighlight}
-            confidenceData={
-              promptOutputData?.confidenceData?.[promptDetails.prompt_key]
-            }
-            wordConfidenceData={
-              promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
-            }
-            progressMsg={progressMsg}
-          />
+          {LookupOutputTabs ? (
+            <LookupOutputTabs
+              promptId={promptId}
+              profileManagerId={defaultLlmProfile}
+              defaultLlmProfile={defaultLlmProfile}
+              promptOutputId={promptOutputData?.promptOutputId}
+            >
+              <DisplayPromptResult
+                output={promptOutput}
+                highlightData={
+                  promptOutputData?.highlightData?.[promptDetails.prompt_key]
+                }
+                handleSelectHighlight={handleSelectHighlight}
+                confidenceData={
+                  promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+                }
+                wordConfidenceData={
+                  promptOutputData?.wordConfidenceData?.[
+                    promptDetails.prompt_key
+                  ]
+                }
+                progressMsg={progressMsg}
+              />
+            </LookupOutputTabs>
+          ) : (
+            <DisplayPromptResult
+              output={promptOutput}
+              highlightData={
+                promptOutputData?.highlightData?.[promptDetails.prompt_key]
+              }
+              handleSelectHighlight={handleSelectHighlight}
+              confidenceData={
+                promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+              }
+              wordConfidenceData={
+                promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
+              }
+              progressMsg={progressMsg}
+            />
+          )}
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
@@ -429,20 +465,44 @@ function PromptOutput({
                       handleTable(profileId, promptOutputData)
                     ) : (
                       <>
-                        <DisplayPromptResult
-                          output={promptOutputData?.output}
-                          profileId={profileId}
-                          docId={selectedDoc?.document_id}
-                          promptRunStatus={promptRunStatus}
-                          handleSelectHighlight={handleSelectHighlight}
-                          highlightData={promptOutputData?.highlightData}
-                          confidenceData={promptOutputData?.confidenceData}
-                          wordConfidenceData={
-                            promptOutputData?.wordConfidenceData
-                          }
-                          promptDetails={promptDetails}
-                          progressMsg={progressMsg}
-                        />
+                        {LookupOutputTabs ? (
+                          <LookupOutputTabs
+                            promptId={promptId}
+                            profileManagerId={profileId}
+                            defaultLlmProfile={defaultLlmProfile}
+                            promptOutputId={promptOutputData?.promptOutputId}
+                          >
+                            <DisplayPromptResult
+                              output={promptOutputData?.output}
+                              profileId={profileId}
+                              docId={selectedDoc?.document_id}
+                              promptRunStatus={promptRunStatus}
+                              handleSelectHighlight={handleSelectHighlight}
+                              highlightData={promptOutputData?.highlightData}
+                              confidenceData={promptOutputData?.confidenceData}
+                              wordConfidenceData={
+                                promptOutputData?.wordConfidenceData
+                              }
+                              promptDetails={promptDetails}
+                              progressMsg={progressMsg}
+                            />
+                          </LookupOutputTabs>
+                        ) : (
+                          <DisplayPromptResult
+                            output={promptOutputData?.output}
+                            profileId={profileId}
+                            docId={selectedDoc?.document_id}
+                            promptRunStatus={promptRunStatus}
+                            handleSelectHighlight={handleSelectHighlight}
+                            highlightData={promptOutputData?.highlightData}
+                            confidenceData={promptOutputData?.confidenceData}
+                            wordConfidenceData={
+                              promptOutputData?.wordConfidenceData
+                            }
+                            promptDetails={promptDetails}
+                            progressMsg={progressMsg}
+                          />
+                        )}
                         <div className="prompt-profile-run">
                           <CopyPromptOutputBtn
                             isDisabled={isTableExtraction}

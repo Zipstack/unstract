@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import "./DocumentParser.css";
 import { promptType } from "../../../helpers/GetStaticData";
@@ -42,6 +43,7 @@ function DocumentParser({
   const [isChallenge, setIsChallenge] = useState(false);
   const [allTableSettings, setAllTableSettings] = useState([]);
   const bottomRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     details,
     isSimplePromptStudio,
@@ -107,6 +109,25 @@ function DocumentParser({
       setScrollToBottom(false);
     }
   }, [scrollToBottom]);
+
+  // Handle scrollTo query param for cross-linking from Lookup Studio
+  useEffect(() => {
+    const scrollToPromptId = searchParams.get("scrollTo");
+    if (!scrollToPromptId || !details?.prompts?.length) {
+      return;
+    }
+
+    const el = document.querySelector(`[data-prompt-id="${scrollToPromptId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("highlighted-prompt");
+      setTimeout(() => el.classList.remove("highlighted-prompt"), 2000);
+    }
+
+    // Clear the param so it doesn't re-trigger
+    searchParams.delete("scrollTo");
+    setSearchParams(searchParams, { replace: true });
+  }, [details?.prompts]);
 
   const promptUrl = (urlPath) => {
     return `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${urlPath}`;
@@ -242,7 +263,7 @@ function DocumentParser({
     <div className="doc-parser-layout">
       {details?.prompts?.map((item) => {
         return (
-          <div key={item.prompt_id}>
+          <div key={item.prompt_id} data-prompt-id={item.prompt_id}>
             <div className="doc-parser-pad-top" />
             <PromptCardWrapper
               item={item}
