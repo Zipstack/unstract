@@ -594,6 +594,7 @@ class WorkflowHelper:
                 ExecutionStatus.ERROR.value,
                 error=str(error),
             )
+
     @staticmethod
     @celery_app.task(
         name="async_execute_bin",

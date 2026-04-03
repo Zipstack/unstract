@@ -420,7 +420,8 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
         logger.info(
             "Output files written — INFILE=%s, METADATA_DIR=%s",
-            input_file_path, execution_data_dir,
+            input_file_path,
+            execution_data_dir,
         )
     except Exception as e:
         logger.error("Failed to write output files: %s", e, exc_info=True)

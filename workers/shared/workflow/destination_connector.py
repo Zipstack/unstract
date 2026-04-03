@@ -1425,13 +1425,15 @@ class WorkerDestinationConnector:
             if not metadata_file_path:
                 logger.warning(
                     "No metadata_file_path (file_execution_id=%s, execution_dir=%s)",
-                    file_execution_id, file_handler.execution_dir,
+                    file_execution_id,
+                    file_handler.execution_dir,
                 )
                 return None
 
             if not file_storage.exists(metadata_file_path):
                 logger.warning(
-                    "METADATA.json not found at '%s'", metadata_file_path,
+                    "METADATA.json not found at '%s'",
+                    metadata_file_path,
                 )
                 return None
 
@@ -1446,13 +1448,15 @@ class WorkerDestinationConnector:
 
             if not output_file_path:
                 logger.warning(
-                    "No infile path (file_execution_id=%s)", file_execution_id,
+                    "No infile path (file_execution_id=%s)",
+                    file_execution_id,
                 )
                 return None
 
             if not file_storage.exists(output_file_path):
                 logger.warning(
-                    "INFILE not found at '%s'", output_file_path,
+                    "INFILE not found at '%s'",
+                    output_file_path,
                 )
                 return None
 
