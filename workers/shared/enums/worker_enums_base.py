@@ -25,8 +25,9 @@ class WorkerType(str, Enum):
     SCHEDULER = "scheduler"
     EXECUTOR = "executor"
     IDE_CALLBACK = "ide_callback"
-    EXECUTOR = "executor"
     IDE_CALLBACK = "ide_callback"
+
+    @classmethod
 
     @classmethod
     def from_directory_name(cls, name: str) -> "WorkerType":
