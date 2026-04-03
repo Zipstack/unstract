@@ -956,7 +956,8 @@ class GeminiEmbeddingParameters(BaseEmbeddingParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = str(adapter_metadata.get("model", "")).strip()
+        raw_model = adapter_metadata.get("model")
+        model = raw_model.strip() if isinstance(raw_model, str) else ""
         if not model:
             raise ValueError(
                 "The 'model' field is required for the Gemini embedding adapter. "

@@ -82,6 +82,11 @@ class TestGeminiEmbeddingAdapter:
         with pytest.raises(ValueError, match="model.*required"):
             GeminiEmbeddingAdapter.validate_model(meta)
 
+    def test_validate_model_none_raises(self) -> None:
+        meta = {"model": None, "api_key": "test"}
+        with pytest.raises(ValueError, match="model.*required"):
+            GeminiEmbeddingAdapter.validate_model(meta)
+
     def test_validate_model_missing_key_raises(self) -> None:
         meta = {"api_key": "test"}
         with pytest.raises(ValueError, match="model.*required"):
