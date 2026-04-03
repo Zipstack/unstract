@@ -17,6 +17,7 @@ class LLMUsageReason(models.TextChoices):
     EXTRACTION = "extraction", "Extraction"
     CHALLENGE = "challenge", "Challenge"
     SUMMARIZE = "summarize", "Summarize"
+    LOOKUP = "lookup", "Lookup"
 
 
 class UsageModelManager(DefaultOrganizationManagerMixin, models.Manager):

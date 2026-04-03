@@ -20,6 +20,7 @@ from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFil
 from utils.local_context import StateStore
 
 from backend.celery_service import app as celery_app
+from prompt_studio.lookup_utils import get_lookup_config
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -387,17 +388,8 @@ class PromptStudioHelper:
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
-        # Lookup config (cloud plugin hook)
-        try:
-            from pluggable_apps.lookup_v1.execution import (
-                build_lookup_config_for_prompt,
-            )
-
-            lookup_config = build_lookup_config_for_prompt(prompt)
-            if lookup_config:
-                output["lookup_config"] = lookup_config
-        except ImportError:
-            pass
+        if lookup_config := get_lookup_config(prompt):
+            output["lookup_config"] = lookup_config
 
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -810,17 +802,8 @@ class PromptStudioHelper:
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
-        # Lookup config (cloud plugin hook)
-        try:
-            from pluggable_apps.lookup_v1.execution import (
-                build_lookup_config_for_prompt,
-            )
-
-            lookup_config = build_lookup_config_for_prompt(prompt)
-            if lookup_config:
-                output["lookup_config"] = lookup_config
-        except ImportError:
-            pass
+        if lookup_config := get_lookup_config(prompt):
+            output["lookup_config"] = lookup_config
 
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -1917,17 +1900,8 @@ class PromptStudioHelper:
         output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
-        # Lookup config (cloud plugin hook)
-        try:
-            from pluggable_apps.lookup_v1.execution import (
-                build_lookup_config_for_prompt,
-            )
-
-            lookup_config = build_lookup_config_for_prompt(prompt)
-            if lookup_config:
-                output["lookup_config"] = lookup_config
-        except ImportError:
-            pass
+        if lookup_config := get_lookup_config(prompt):
+            output["lookup_config"] = lookup_config
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
