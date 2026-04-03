@@ -25,6 +25,8 @@ class WorkerType(str, Enum):
     SCHEDULER = "scheduler"
     EXECUTOR = "executor"
     IDE_CALLBACK = "ide_callback"
+    EXECUTOR = "executor"
+    IDE_CALLBACK = "ide_callback"
 
     @classmethod
     def from_directory_name(cls, name: str) -> "WorkerType":
@@ -112,6 +114,8 @@ class WorkerType(str, Enum):
             WorkerType.NOTIFICATION: 8085,
             WorkerType.LOG_CONSUMER: 8086,
             WorkerType.SCHEDULER: 8087,
+            WorkerType.EXECUTOR: 8088,
+            WorkerType.IDE_CALLBACK: 8089,
             WorkerType.EXECUTOR: 8088,
             WorkerType.IDE_CALLBACK: 8089,
         }
