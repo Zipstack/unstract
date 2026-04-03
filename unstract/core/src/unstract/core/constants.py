@@ -52,10 +52,10 @@ class WorkerConstants:
     # Default retry attempts for worker operations
     DEFAULT_RETRY_ATTEMPTS = 3
 
-    # Default timeout for API calls
+    # Default timeout for API calls in seconds
     API_TIMEOUT = 30
 
-    # Health check interval
+    # Health check interval in seconds
     HEALTH_CHECK_INTERVAL = 30
 
 
