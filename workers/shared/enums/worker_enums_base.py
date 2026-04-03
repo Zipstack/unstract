@@ -155,6 +155,7 @@ class QueueName(str, Enum):
     # The dispatcher derives queue names as ``celery_executor_{executor_name}``.
     # The "legacy" executor is the default OSS executor.
     EXECUTOR = "celery_executor_legacy"
+    EXECUTOR_AGENTIC = "celery_executor_agentic"
 
     # IDE callback queue (prompt studio post-execution callbacks)
     IDE_CALLBACK = "ide_callback"

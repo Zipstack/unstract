@@ -64,7 +64,7 @@ services:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-ide-callback
     restart: unless-stopped
-    command: ["ide_callback"]
+    command: ["ide-callback"]
     env_file:
       - ../workers/.env
       - ./essentials.env
@@ -529,7 +529,7 @@ services:
       - EXECUTOR_METRICS_PORT=8088
       - HEALTH_PORT=8088
       # Configurable Celery options
-      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy}
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic}
       - CELERY_POOL=${WORKER_EXECUTOR_POOL:-prefork}
       - CELERY_PREFETCH_MULTIPLIER=${WORKER_EXECUTOR_PREFETCH_MULTIPLIER:-1}
       - CELERY_CONCURRENCY=${WORKER_EXECUTOR_CONCURRENCY:-2}

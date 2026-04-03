@@ -20,6 +20,7 @@ from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFil
 from utils.local_context import StateStore
 from utils.subscription_usage_decorator import track_subscription_usage_if_available
 
+from backend.celery_service import app as celery_app
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -273,16 +274,8 @@ class PromptStudioHelper:
 
     @staticmethod
     def _get_dispatcher() -> ExecutionDispatcher:
-        """Get an ExecutionDispatcher backed by the worker Celery app.
-
-        Uses the RabbitMQ-backed Celery app (not the Django Redis one)
-        so tasks reach the worker-v2 executor worker.
-        """
-        from backend.worker_celery import (
-            get_worker_celery_app,  # Lazy import: avoids Django/Celery circular init
-        )
-
-        return ExecutionDispatcher(celery_app=get_worker_celery_app())
+        """Get an ExecutionDispatcher for the executor worker."""
+        return ExecutionDispatcher(celery_app=celery_app)
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
