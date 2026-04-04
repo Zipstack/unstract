@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -223,6 +224,27 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
             return model
         else:
             return f"openai/{model}"
+
+
+class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
+    """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
+
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = OpenAICompatibleLLMParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = adapter_metadata.get("model", "")
+        if model.startswith("custom_openai/"):
+            return model
+        return f"custom_openai/{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):

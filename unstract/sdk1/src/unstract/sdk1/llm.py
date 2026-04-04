@@ -11,6 +11,7 @@ import litellm
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
 from pydantic import ValidationError
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -539,7 +540,16 @@ class LLM:
         usage: Mapping[str, int] | None,
         llm_api: str,
     ) -> None:
-        prompt_tokens = token_counter(model=model, messages=messages)
+        try:
+            prompt_tokens = token_counter(model=model, messages=messages)
+        except Exception as e:
+            prompt_tokens = 0
+            logger.warning(
+                "[sdk1][LLM][%s][%s] Failed to estimate prompt tokens: %s",
+                model,
+                llm_api,
+                e,
+            )
         usage_data: Mapping[str, int] = usage or {}
         all_tokens = TokenCounterCompat(
             prompt_tokens=usage_data.get("prompt_tokens", 0),
