@@ -40,7 +40,7 @@ def test_openai_compatible_validate_preserves_prefixed_model() -> None:
 def test_openai_compatible_schema_is_loadable() -> None:
     schema = OpenAICompatibleLLMAdapter.get_json_schema()
 
-    assert "\"title\": \"OpenAI Compatible LLM\"" in schema
+    assert '"title": "OpenAI Compatible LLM"' in schema
 
 
 def test_record_usage_tolerates_unmapped_models() -> None:
