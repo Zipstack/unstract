@@ -539,19 +539,21 @@ class LLM:
         usage: Mapping[str, int] | None,
         llm_api: str,
     ) -> None:
-        try:
-            prompt_tokens = token_counter(model=model, messages=messages)
-        except Exception as e:
-            prompt_tokens = 0
-            logger.warning(
-                "[sdk1][LLM][%s][%s] Failed to estimate prompt tokens: %s",
-                model,
-                llm_api,
-                e,
-            )
         usage_data: Mapping[str, int] = usage or {}
+        prompt_tokens = usage_data.get("prompt_tokens")
+        if prompt_tokens is None:
+            try:
+                prompt_tokens = token_counter(model=model, messages=messages)
+            except Exception as e:
+                prompt_tokens = 0
+                logger.warning(
+                    "[sdk1][LLM][%s][%s] Failed to estimate prompt tokens: %s",
+                    model,
+                    llm_api,
+                    e,
+                )
         all_tokens = TokenCounterCompat(
-            prompt_tokens=usage_data.get("prompt_tokens", 0),
+            prompt_tokens=usage_data.get("prompt_tokens", prompt_tokens or 0),
             completion_tokens=usage_data.get("completion_tokens", 0),
             total_tokens=usage_data.get("total_tokens", 0),
         )
