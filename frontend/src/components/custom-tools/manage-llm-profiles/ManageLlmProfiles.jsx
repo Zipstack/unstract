@@ -166,6 +166,7 @@ function ManageLlmProfiles() {
   }, [llmProfiles, defaultLlmProfile]);
 
   const handleAddNewLlmProfileBtnClick = () => {
+    setEditLlmProfileId(null);
     setIsAddLlm(true);
 
     try {
