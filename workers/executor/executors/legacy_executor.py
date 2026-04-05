@@ -1654,13 +1654,18 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Applied type conversion for: {prompt_name}")
 
-            self._run_post_extraction_pipeline(
+            self._run_lookup_enrichment(
                 output=output,
                 structured_output=structured_output,
                 metadata=metadata,
                 metrics=metrics,
                 shim=shim,
                 usage_kwargs=usage_kwargs,
+            )
+            self._run_webhook_postprocessing(
+                output=output,
+                structured_output=structured_output,
+                metadata=metadata,
             )
 
             self._run_challenge_if_enabled(
@@ -1853,7 +1858,7 @@ class LegacyExecutor(BaseExecutor):
                 level=LogLevel.ERROR,
             )
 
-    def _run_post_extraction_pipeline(
+    def _run_lookup_enrichment(
         self,
         output: dict[str, Any],
         structured_output: dict[str, Any],
@@ -1862,76 +1867,75 @@ class LegacyExecutor(BaseExecutor):
         shim: Any,
         usage_kwargs: dict[str, Any] | None = None,
     ) -> None:
-        """Post-extraction pipeline: lookup enrichment, webhook postprocessing.
-
-        Runs after type conversion, before challenge/evaluation.
-        """
-        from executor.executors.answer_prompt import AnswerPromptService
+        """Run lookup enrichment plugin if enabled and available."""
         from executor.executors.constants import PromptServiceConstants as PSKeys
         from executor.executors.plugins import ExecutorPluginLoader
 
         prompt_name = output[PSKeys.NAME]
         current_value = structured_output.get(prompt_name)
 
-        # Step 1: Lookup enrichment (cloud plugin)
         lookup_config = output.get("lookup_config")
         lookup_cls = ExecutorPluginLoader.get("lookup-enrichment")
-        if lookup_config and current_value is not None and lookup_cls:
-            _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
-            llm_adapter_id = lookup_config.get("llm_adapter_id", "")
-            llm = llm_cls(
-                adapter_instance_id=llm_adapter_id,
-                tool=shim,
-                usage_kwargs={
-                    **(usage_kwargs or {}),
-                    PSKeys.LLM_USAGE_REASON: "lookup",
-                },
-                capture_metrics=True,
-            )
+        if not (lookup_config and current_value is not None and lookup_cls):
+            return
 
-            enricher = lookup_cls(
-                current_value=current_value,
-                lookup_config=lookup_config,
-                structured_output=structured_output,
-                llm=llm,
-                shim=shim,
-            )
-            lookup_result = enricher.run()
+        _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
+        llm_adapter_id = lookup_config.get("llm_adapter_id", "")
+        llm = llm_cls(
+            adapter_instance_id=llm_adapter_id,
+            tool=shim,
+            usage_kwargs={
+                **(usage_kwargs or {}),
+                PSKeys.LLM_USAGE_REASON: "lookup",
+            },
+            capture_metrics=True,
+        )
 
-            if lookup_result is not None:
-                metadata.setdefault("lookup_outputs", {})[prompt_name] = {
-                    "original": str(current_value),
-                    "enriched": lookup_result,
-                    "meta": {
-                        "lookup_id": lookup_config.get("lookup_id", ""),
-                        "lookup_name": lookup_config.get("lookup_name", ""),
-                    },
-                }
-                structured_output[prompt_name] = lookup_result
-                shim.stream_log(f"Lookup enrichment complete for: {prompt_name}")
+        enricher = lookup_cls(
+            current_value=current_value,
+            lookup_config=lookup_config,
+            structured_output=structured_output,
+            llm=llm,
+            shim=shim,
+            metadata=metadata,
+            prompt_name=prompt_name,
+        )
+        enricher.run()
 
-            metrics.setdefault(prompt_name, {})[f"{llm.get_usage_reason()}_llm"] = (
-                llm.get_metrics()
-            )
+        metrics.setdefault(prompt_name, {})[f"{llm.get_usage_reason()}_llm"] = (
+            llm.get_metrics()
+        )
 
-        # Step 2: Webhook postprocessing (JSON only, moved from handle_json)
+    @staticmethod
+    def _run_webhook_postprocessing(
+        output: dict[str, Any],
+        structured_output: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> None:
+        """Run webhook postprocessing if enabled (JSON outputs only)."""
+        from executor.executors.answer_prompt import AnswerPromptService
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        prompt_name = output[PSKeys.NAME]
         output_type = output.get(PSKeys.TYPE, "")
         webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
-        if webhook_enabled and output_type == PSKeys.JSON:
-            webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
-            highlight_data = None
-            if metadata and PSKeys.HIGHLIGHT_DATA in metadata:
-                highlight_data = metadata.get(PSKeys.HIGHLIGHT_DATA, {}).get(prompt_name)
-            processed, updated_highlights = AnswerPromptService._run_webhook_postprocess(
-                parsed_data=structured_output.get(prompt_name),
-                webhook_url=webhook_url,
-                highlight_data=highlight_data,
+        if not (webhook_enabled and output_type == PSKeys.JSON):
+            return
+
+        webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
+        highlight_data = None
+        if metadata and PSKeys.HIGHLIGHT_DATA in metadata:
+            highlight_data = metadata.get(PSKeys.HIGHLIGHT_DATA, {}).get(prompt_name)
+        processed, updated_highlights = AnswerPromptService._run_webhook_postprocess(
+            parsed_data=structured_output.get(prompt_name),
+            webhook_url=webhook_url,
+            highlight_data=highlight_data,
+        )
+        structured_output[prompt_name] = processed
+        if updated_highlights is not None and metadata:
+            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_name] = (
+                updated_highlights
             )
-            structured_output[prompt_name] = processed
-            if updated_highlights is not None and metadata:
-                metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_name] = (
-                    updated_highlights
-                )
 
     @staticmethod
     def _apply_type_conversion(
