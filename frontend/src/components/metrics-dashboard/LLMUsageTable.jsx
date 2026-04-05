@@ -129,6 +129,11 @@ function DeploymentUsageTable({ startDate, endDate, refetchRef }) {
     if (refetchRef) {
       refetchRef.current = refetch;
     }
+    return () => {
+      if (refetchRef) {
+        refetchRef.current = null;
+      }
+    };
   }, [refetch, refetchRef]);
 
   const handleTabChange = (key) => {
@@ -239,7 +244,7 @@ function DeploymentUsageTable({ startDate, endDate, refetchRef }) {
 DeploymentUsageTable.propTypes = {
   startDate: PropTypes.string,
   endDate: PropTypes.string,
-  refetchRef: PropTypes.object,
+  refetchRef: PropTypes.shape({ current: PropTypes.func }),
 };
 
 DeploymentUsageTable.defaultProps = {
