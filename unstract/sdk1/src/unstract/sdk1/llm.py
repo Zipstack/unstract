@@ -211,6 +211,7 @@ class LLM:
         if capture_metrics_from_platform is not None:
             self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
+        self._last_usage: Mapping[str, int] = {}
 
     def _get_adapter_info(self) -> str:
         """Build a display string identifying this adapter for errors."""
@@ -552,6 +553,10 @@ class LLM:
     def get_metrics(self) -> dict[str, object]:
         return self._metrics
 
+    def get_last_usage(self) -> Mapping[str, int]:
+        """Token usage from the most recent complete() call."""
+        return self._last_usage
+
     def get_usage_reason(self) -> object:
         return self.platform_kwargs.get("llm_usage_reason")
 
@@ -572,6 +577,12 @@ class LLM:
 
         logger.info(f"[sdk1][LLM][{model}][{llm_api}] Prompt Tokens: {prompt_tokens}")
         logger.info(f"[sdk1][LLM][{model}][{llm_api}] LLM Usage: {all_tokens}")
+
+        self._last_usage = {
+            "prompt_tokens": all_tokens.prompt_llm_token_count,
+            "completion_tokens": all_tokens.completion_llm_token_count,
+            "total_tokens": all_tokens.total_llm_token_count,
+        }
 
         Audit().push_usage_data(
             platform_api_key=self._platform_api_key,
@@ -962,6 +973,10 @@ class LLMCompat:
     def get_metrics(self) -> dict[str, object]:
         """Get captured metrics."""
         return self._llm_instance.get_metrics()
+
+    def get_last_usage(self) -> Mapping[str, int]:
+        """Token usage from the most recent complete() call."""
+        return self._llm_instance.get_last_usage()
 
     def get_usage_reason(self) -> object:
         """Get usage reason from platform kwargs."""
