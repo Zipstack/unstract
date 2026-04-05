@@ -2,11 +2,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
-  ReloadOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
-  Button,
   Card,
   Empty,
   Spin,
@@ -17,7 +15,7 @@ import {
   Typography,
 } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";
@@ -110,12 +108,14 @@ const columns = [
     title: "Last Run",
     dataIndex: "last_execution_at",
     key: "last_execution_at",
+    sorter: (a, b) =>
+      (a.last_execution_at || "").localeCompare(b.last_execution_at || ""),
     render: (value) => (value ? value.split("T")[0] : "-"),
     width: 110,
   },
 ];
 
-function DeploymentUsageTable({ startDate, endDate }) {
+function DeploymentUsageTable({ startDate, endDate, refetchRef }) {
   const [activeType, setActiveType] = useState("API");
 
   const { data, loading, error, refetch } = useDeploymentUsage(
@@ -123,6 +123,13 @@ function DeploymentUsageTable({ startDate, endDate }) {
     startDate,
     endDate,
   );
+
+  // Expose refetch to parent via ref
+  useEffect(() => {
+    if (refetchRef) {
+      refetchRef.current = refetch;
+    }
+  }, [refetch, refetchRef]);
 
   const handleTabChange = (key) => {
     setActiveType(key);
@@ -166,17 +173,6 @@ function DeploymentUsageTable({ startDate, endDate }) {
       ),
     },
   ];
-
-  const refreshButton = (
-    <Tooltip title="Refresh (bypasses cache)">
-      <Button
-        icon={<ReloadOutlined />}
-        size="small"
-        onClick={refetch}
-        loading={loading}
-      />
-    </Tooltip>
-  );
 
   const renderContent = () => {
     if (loading) {
@@ -222,7 +218,6 @@ function DeploymentUsageTable({ startDate, endDate }) {
         <Text strong className="llm-usage-title">
           Usage by Deployment
         </Text>
-        {refreshButton}
       </div>
       <Tabs
         items={deploymentTabs}
@@ -244,11 +239,13 @@ function DeploymentUsageTable({ startDate, endDate }) {
 DeploymentUsageTable.propTypes = {
   startDate: PropTypes.string,
   endDate: PropTypes.string,
+  refetchRef: PropTypes.object,
 };
 
 DeploymentUsageTable.defaultProps = {
   startDate: null,
   endDate: null,
+  refetchRef: null,
 };
 
 export { DeploymentUsageTable };

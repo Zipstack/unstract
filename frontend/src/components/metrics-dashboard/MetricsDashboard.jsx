@@ -18,7 +18,7 @@ import {
   Typography,
 } from "antd";
 import dayjs from "dayjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { EmptyPlaceholder } from "../../assets";
@@ -119,6 +119,9 @@ function MetricsDashboard() {
     refetch: refetchSubscription,
   } = useSubscriptionUsage();
 
+  // Ref to deployment usage refetch (exposed by DeploymentUsageTable)
+  const deploymentRefetchRef = useRef(null);
+
   // Active tab (controls date picker visibility)
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -135,6 +138,7 @@ function MetricsDashboard() {
     refetchChart();
     refetchActivity();
     refetchSubscription();
+    deploymentRefetchRef.current?.();
   }, [refetchOverview, refetchChart, refetchActivity, refetchSubscription]);
 
   // Check if all data sources are empty (no activity at all)
@@ -218,6 +222,7 @@ function MetricsDashboard() {
             <DeploymentUsageTable
               startDate={dateRange[0]?.toISOString()}
               endDate={dateRange[1]?.toISOString()}
+              refetchRef={deploymentRefetchRef}
             />
           </Col>
         </Row>
