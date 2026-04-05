@@ -449,3 +449,162 @@ def ide_prompt_error(
         )
     except Exception:
         logger.exception("ide_prompt_error callback failed")
+
+
+# ------------------------------------------------------------------
+# Generic Text Extraction Callbacks
+#
+# Reusable extraction callbacks that route based on ``source`` in
+# callback_kwargs (e.g. "lookup", future "prompt_studio").
+# ------------------------------------------------------------------
+
+
+def _get_extraction_client():
+    from shared.clients.extraction_client import ExtractionAPIClient
+
+    return ExtractionAPIClient()
+
+
+@app.task(name="extraction_complete")
+def extraction_complete(
+    result_dict: dict[str, Any],
+    callback_kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Celery link callback after successful text extraction.
+
+    Computes token count from extracted text, persists result via
+    internal API, and emits a WebSocket event.
+    """
+    cb = callback_kwargs or {}
+    source = cb.get("source", "")
+    file_id = cb.get("file_id", "")
+    org_id = cb.get("org_id", "")
+    extracted_text_path = cb.get("extracted_text_path", "")
+    ws_room = cb.get("ws_room", "")
+    ws_event = cb.get("ws_event", "")
+
+    api = _get_extraction_client()
+    ps_api = _get_api_client()
+
+    try:
+        # Check executor-level failure
+        if not result_dict.get("success", False):
+            error_msg = result_dict.get("error", "Unknown executor error")
+            logger.error(
+                "extraction executor reported failure: source=%s file=%s error=%s",
+                source,
+                file_id,
+                error_msg,
+            )
+            api.mark_extraction_error(
+                source=source,
+                file_id=file_id,
+                error=error_msg,
+                organization_id=org_id,
+            )
+            if ws_room and ws_event:
+                _emit_websocket(
+                    ps_api,
+                    room=ws_room,
+                    event=ws_event,
+                    data={
+                        "file_id": file_id,
+                        "status": "ERROR",
+                        "error": error_msg[:500],
+                    },
+                )
+            return {"status": "failed", "error": error_msg}
+
+        extracted_text = result_dict.get("data", {}).get("extracted_text", "")
+        token_count = len(extracted_text) // 4
+
+        api.mark_extraction_complete(
+            source=source,
+            file_id=file_id,
+            token_count=token_count,
+            extracted_text_path=extracted_text_path,
+            organization_id=org_id,
+        )
+
+        if ws_room and ws_event:
+            _emit_websocket(
+                ps_api,
+                room=ws_room,
+                event=ws_event,
+                data={
+                    "file_id": file_id,
+                    "status": "COMPLETED",
+                    "token_count": token_count,
+                },
+            )
+
+        logger.info(
+            "Extraction completed: source=%s file=%s tokens=%d",
+            source,
+            file_id,
+            token_count,
+        )
+        return {"status": "completed", "file_id": file_id, "token_count": token_count}
+
+    except Exception as e:
+        logger.exception(
+            "extraction_complete callback failed: source=%s file=%s", source, file_id
+        )
+        if ws_room and ws_event:
+            try:
+                _emit_websocket(
+                    ps_api,
+                    room=ws_room,
+                    event=ws_event,
+                    data={
+                        "file_id": file_id,
+                        "status": "ERROR",
+                        "error": str(e)[:500],
+                    },
+                )
+            except Exception:
+                pass
+        raise
+
+
+@app.task(name="extraction_error")
+def extraction_error(
+    failed_task_id: str,
+    callback_kwargs: dict[str, Any] | None = None,
+) -> None:
+    """Celery link_error callback when an extraction task fails."""
+    cb = callback_kwargs or {}
+    source = cb.get("source", "")
+    file_id = cb.get("file_id", "")
+    org_id = cb.get("org_id", "")
+    ws_room = cb.get("ws_room", "")
+    ws_event = cb.get("ws_event", "")
+
+    api = _get_extraction_client()
+    ps_api = _get_api_client()
+
+    try:
+        error_msg = _get_task_error(failed_task_id, default="Text extraction failed")
+
+        api.mark_extraction_error(
+            source=source,
+            file_id=file_id,
+            error=error_msg,
+            organization_id=org_id,
+        )
+
+        if ws_room and ws_event:
+            _emit_websocket(
+                ps_api,
+                room=ws_room,
+                event=ws_event,
+                data={
+                    "file_id": file_id,
+                    "status": "ERROR",
+                    "error": error_msg[:500],
+                },
+            )
+    except Exception:
+        logger.exception(
+            "extraction_error callback failed: source=%s file=%s", source, file_id
+        )
