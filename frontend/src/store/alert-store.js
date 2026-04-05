@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { isNonNegativeNumber } from "../helpers/GetStaticData";
 
 const DEFAULT_DURATION = 6;
-const SUCCESS_DURATION = 1;
+const SUCCESS_DURATION = 2;
 
 const STORE_VARIABLES = {
   alertDetails: {
