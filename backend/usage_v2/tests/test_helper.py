@@ -81,7 +81,7 @@ class _StubQueryset:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
 
-    def values(self, *args: Any, **kwargs: Any) -> "_StubQueryset":
+    def values(self, *args: Any, **kwargs: Any) -> _StubQueryset:
         return self
 
     def annotate(self, *args: Any, **kwargs: Any) -> list[dict[str, Any]]:
