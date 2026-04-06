@@ -1939,9 +1939,7 @@ class LegacyExecutor(BaseExecutor):
 
         params = context.executor_params
         file_path = params.get(PSKeys.FILE_PATH)
-        execution_source = params.get(
-            PSKeys.EXECUTION_SOURCE, context.execution_source
-        )
+        execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
 
         if not file_path:
             return
@@ -1955,8 +1953,7 @@ class LegacyExecutor(BaseExecutor):
             elapsed = round(time.monotonic() - start, 4)
         except Exception:
             logger.warning(
-                "Could not measure context_retrieval time for "
-                "single_pass (run_id=%s)",
+                "Could not measure context_retrieval time for " "single_pass (run_id=%s)",
                 context.run_id,
             )
             return

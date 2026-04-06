@@ -106,7 +106,8 @@ def _get_task_error(failed_task_id: str, default: str) -> str:
 
 def _track_subscription_usage(org_id: str, run_id: str) -> None:
     """Commit deferred subscription usage for an IDE execution.
-    Non-blocking: errors are logged but do not fail the callback."""
+    Non-blocking: errors are logged but do not fail the callback.
+    """
     if not org_id or not run_id:
         return
     try:
@@ -119,9 +120,7 @@ def _track_subscription_usage(org_id: str, run_id: str) -> None:
             organization_id=org_id,
             file_execution_ids=[run_id],
         )
-        logger.info(
-            "IDE subscription usage committed for run_id=%s: %s", run_id, result
-        )
+        logger.info("IDE subscription usage committed for run_id=%s: %s", run_id, result)
     except Exception:
         logger.error(
             "Failed to commit IDE subscription usage for run_id=%s (continuing callback)",

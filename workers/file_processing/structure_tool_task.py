@@ -696,5 +696,7 @@ def _write_tool_result(
     except Exception as e:
         logger.error(
             "Failed to write tool result to METADATA.json at '%s': %s",
-            metadata_path, e, exc_info=True,
+            metadata_path,
+            e,
+            exc_info=True,
         )

@@ -1420,9 +1420,7 @@ class WorkerDestinationConnector:
                 return None
 
             if not file_storage.exists(metadata_file_path):
-                logger.warning(
-                    "METADATA.json not found at '%s'", metadata_file_path
-                )
+                logger.warning("METADATA.json not found at '%s'", metadata_file_path)
                 return None
 
             metadata_content = file_storage.read(path=metadata_file_path, mode="r")
