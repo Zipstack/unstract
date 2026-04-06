@@ -562,8 +562,8 @@ class TestHandleAnswerPromptRetrieval:
         )
         result = executor._handle_answer_prompt(ctx)
 
-        # Answer stays "NA" (top-level NA is preserved, not sanitized)
-        assert result.data[PSKeys.OUTPUT]["field_a"] == "NA"
+        # Answer stays "NA" which gets sanitized to None
+        assert result.data[PSKeys.OUTPUT]["field_a"] is None
 
 
 class TestHandleAnswerPromptMultiPrompt:
@@ -687,21 +687,21 @@ class TestHandleAnswerPromptMetrics:
 class TestNullSanitization:
     """Tests for _sanitize_null_values."""
 
-    def test_na_string_preserved(self):
-        """Top-level 'NA' string is preserved (not sanitized to None)."""
+    def test_na_string_becomes_none(self):
+        """Top-level 'NA' string → None."""
         from executor.executors.legacy_executor import LegacyExecutor
 
         output = {"field": "NA"}
         result = LegacyExecutor._sanitize_null_values(output)
-        assert result["field"] == "NA"
+        assert result["field"] is None
 
-    def test_na_case_insensitive_preserved(self):
-        """Top-level 'na' (lowercase) is preserved (not sanitized to None)."""
+    def test_na_case_insensitive(self):
+        """'na' (lowercase) → None."""
         from executor.executors.legacy_executor import LegacyExecutor
 
         output = {"field": "na"}
         result = LegacyExecutor._sanitize_null_values(output)
-        assert result["field"] == "na"
+        assert result["field"] is None
 
     def test_nested_list_na(self):
         """NA in nested list items → None."""
@@ -734,6 +734,50 @@ class TestNullSanitization:
         output = {"field": "hello", "num": 42, "flag": True}
         result = LegacyExecutor._sanitize_null_values(output)
         assert result == {"field": "hello", "num": 42, "flag": True}
+
+
+class TestConvertScalarAnswer:
+    """Tests for _convert_scalar_answer second-pass NA handling."""
+
+    def test_first_pass_na_returns_none(self):
+        """If the initial answer is 'na', return None without a second LLM call."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        mock_svc = MagicMock()
+        result = LegacyExecutor._convert_scalar_answer(
+            "NA", llm=MagicMock(), answer_prompt_svc=mock_svc, prompt="ignored"
+        )
+        assert result is None
+        mock_svc.run_completion.assert_not_called()
+
+    def test_second_pass_na_returns_none(self):
+        """If the LLM extraction also returns 'NA', return None."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        mock_svc = MagicMock()
+        mock_svc.run_completion.return_value = "NA"
+        result = LegacyExecutor._convert_scalar_answer(
+            "I do not see an email here.",
+            llm=MagicMock(),
+            answer_prompt_svc=mock_svc,
+            prompt="extract email",
+        )
+        assert result is None
+        mock_svc.run_completion.assert_called_once()
+
+    def test_successful_extraction_returns_value(self):
+        """If extraction yields a real value, return it."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        mock_svc = MagicMock()
+        mock_svc.run_completion.return_value = "alice@example.com"
+        result = LegacyExecutor._convert_scalar_answer(
+            "Contact: alice@example.com",
+            llm=MagicMock(),
+            answer_prompt_svc=mock_svc,
+            prompt="extract email",
+        )
+        assert result == "alice@example.com"
 
 
 class TestAnswerPromptServiceUnit:

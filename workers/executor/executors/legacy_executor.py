@@ -1071,18 +1071,25 @@ class LegacyExecutor(BaseExecutor):
     def _sanitize_dict_values(d: dict[str, Any]) -> None:
         """Replace 'NA' string values with None inside a dict in-place."""
         for k, v in d.items():
-            if isinstance(v, str) and v.lower() == "na":
+            if isinstance(v, str) and v.strip().lower() == "na":
                 d[k] = None
 
     @staticmethod
     def _sanitize_null_values(
         structured_output: dict[str, Any],
     ) -> dict[str, Any]:
-        """Replace 'NA' strings with None in structured output."""
+        """Replace 'NA' strings with None in structured output.
+
+        Top-level scalar 'NA' / 'na' strings are converted to None so
+        the FE can render them as a distinct null value (rather than the
+        literal string 'NA'). Nested lists and dicts are walked too.
+        """
         for k, v in structured_output.items():
-            if isinstance(v, list):
+            if isinstance(v, str) and v.strip().lower() == "na":
+                structured_output[k] = None
+            elif isinstance(v, list):
                 for i, item in enumerate(v):
-                    if isinstance(item, str) and item.lower() == "na":
+                    if isinstance(item, str) and item.strip().lower() == "na":
                         v[i] = None
                     elif isinstance(item, dict):
                         LegacyExecutor._sanitize_dict_values(item)
@@ -1285,10 +1292,18 @@ class LegacyExecutor(BaseExecutor):
     def _convert_scalar_answer(
         answer: str, llm: Any, answer_prompt_svc: Any, prompt: str
     ) -> str | None:
-        """Run LLM extraction for a scalar (email/date) and return result or None."""
-        if answer.lower() == "na":
+        """Run LLM extraction for a scalar (email/date) and return result or None.
+
+        Returns None when:
+          - the initial answer is already 'NA' (no second LLM call needed); or
+          - the second LLM call also returns 'NA' (extraction failed).
+        """
+        if answer.strip().lower() == "na":
             return None
-        return answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        result = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        if result is None or result.strip().lower() == "na":
+            return None
+        return result
 
     def _run_challenge_if_enabled(
         self,
@@ -1717,19 +1732,16 @@ class LegacyExecutor(BaseExecutor):
             )
 
         elif output_type == PSKeys.EMAIL:
-            if answer.lower() == "na":
-                structured_output[prompt_name] = answer
-            else:
-                email_prompt = (
-                    f"Extract the email from the following text:\n{answer}"
-                    f"\n\nOutput just the email. "
-                    f"The email should be directly assignable to a string "
-                    f"variable. No explanation is required. If you cannot "
-                    f'extract the email, output "NA".'
-                )
-                structured_output[prompt_name] = answer_prompt_svc.run_completion(
-                    llm=llm, prompt=email_prompt
-                )
+            email_prompt = (
+                f"Extract the email from the following text:\n{answer}"
+                f"\n\nOutput just the email. "
+                f"The email should be directly assignable to a string "
+                f"variable. No explanation is required. If you cannot "
+                f'extract the email, output "NA".'
+            )
+            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
+                answer, llm, answer_prompt_svc, email_prompt
+            )
 
         elif output_type == PSKeys.DATE:
             date_prompt = (

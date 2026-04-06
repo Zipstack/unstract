@@ -40,9 +40,10 @@ const baseProps = {
 };
 
 describe("DisplayPromptResult null/undefined guard", () => {
-  it("shows 'Yet to run' when output is null", () => {
+  it("shows 'null' literal when output is null (ran but produced no value)", () => {
     render(<DisplayPromptResult {...baseProps} output={null} />);
-    expect(screen.getByText(/Yet to run/)).toBeInTheDocument();
+    expect(screen.getByText("null")).toBeInTheDocument();
+    expect(screen.queryByText(/Yet to run/)).not.toBeInTheDocument();
   });
 
   it("shows 'Yet to run' when output is undefined", () => {
