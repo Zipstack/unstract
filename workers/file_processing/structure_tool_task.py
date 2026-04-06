@@ -660,9 +660,7 @@ def _write_pipeline_outputs(
         logger.info("Writing %s output to %s", label, output_path)
         fs.json_dump(path=output_path, data=structured_output)
 
-        logger.info(
-            "Overwriting INFILE with %s output: %s", label, input_file_path
-        )
+        logger.info("Overwriting INFILE with %s output: %s", label, input_file_path)
         fs.json_dump(path=input_file_path, data=structured_output)
 
         copy_to_folder = str(Path(execution_data_dir) / "COPY_TO_FOLDER")
