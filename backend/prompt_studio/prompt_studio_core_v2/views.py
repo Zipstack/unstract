@@ -115,7 +115,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 ToolStudioPrompt.objects.filter(tool_id=OuterRef("pk"))
                 .order_by()
                 .values("tool_id")
-                .annotate(cnt=Count("*"))
+                .annotate(cnt=Count("id"))
                 .values("cnt")
             )
             qs = qs.select_related("created_by").annotate(

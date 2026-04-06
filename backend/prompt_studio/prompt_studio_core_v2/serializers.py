@@ -66,6 +66,12 @@ class CustomToolListSerializer(serializers.ModelSerializer):
     def get_prompt_count(self, instance):
         if hasattr(instance, "_prompt_count"):
             return instance._prompt_count or 0
+        # Fallback triggers a per-instance query if annotation is missing
+        logger.warning(
+            "CustomToolListSerializer used without _prompt_count annotation "
+            "for tool %s — falling back to per-instance query",
+            instance.tool_id,
+        )
         return instance.mapped_prompt.count()
 
 
