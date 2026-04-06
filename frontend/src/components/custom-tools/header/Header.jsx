@@ -315,7 +315,9 @@ function Header({
       setEditModalOpen(false);
       setAlertDetails({ type: "success", content: "Updated successfully" });
     } catch (err) {
-      if (err?.errorFields) return;
+      if (err?.errorFields) {
+        return;
+      }
       setAlertDetails(handleException(err, "Failed to update"));
     }
   }, [editForm, handleUpdateTool, setAlertDetails, handleException]);
