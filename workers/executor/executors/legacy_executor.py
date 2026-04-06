@@ -562,6 +562,7 @@ class LegacyExecutor(BaseExecutor):
                 index_template=index_template,
                 answer_params=answer_params,
                 extracted_text=extracted_text,
+                usage_kwargs=extract_params.get("usage_kwargs", {}),
             )
 
         # ---- Step 4: Table settings injection ----
@@ -572,6 +573,15 @@ class LegacyExecutor(BaseExecutor):
                 skip_extraction=skip_extraction,
                 input_file_path=input_file_path,
             )
+
+        # ---- Step 4b: Force full-context retrieval for single pass ----
+        # Single pass reads the whole file in one LLM call; force
+        # chunk-size=0 so the fallback path (no cloud plugin) uses
+        # retrieve_complete_context instead of vector DB retrieval.
+        if is_single_pass:
+            for output in answer_params.get("outputs", []):
+                output["chunk-size"] = 0
+                output["chunk-overlap"] = 0
 
         # ---- Step 5: Answer prompt / Single pass ----
         mode_label = "single pass" if is_single_pass else "prompt"
@@ -739,8 +749,17 @@ class LegacyExecutor(BaseExecutor):
         index_template: dict,
         answer_params: dict,
         extracted_text: str,
+        usage_kwargs: dict | None = None,
     ) -> dict:
         """Run per-output indexing with dedup for the structure pipeline.
+
+        Args:
+            usage_kwargs: Audit-tracking kwargs (``run_id``,
+                ``execution_id``, ``file_name``) propagated to the
+                embedding adapter so its callback can record usage
+                rows against the correct file_execution_id. Without
+                this, embedding usage is missing from the API
+                deployment response metadata.
 
         Returns:
             Dict of index metrics keyed by output name.
@@ -754,6 +773,7 @@ class LegacyExecutor(BaseExecutor):
         is_highlight = index_template.get("is_highlight_enabled", False)
         platform_api_key = index_template.get("platform_api_key", "")
         extracted_file_path = index_template.get("extracted_file_path", "")
+        usage_kwargs = usage_kwargs or {}
 
         index_metrics: dict = {}
         seen_params: set = set()
@@ -805,6 +825,7 @@ class LegacyExecutor(BaseExecutor):
                         "enable_highlight": is_highlight,
                         "extracted_text": extracted_text,
                         "platform_api_key": platform_api_key,
+                        "usage_kwargs": usage_kwargs,
                     },
                 )
                 index_result = self._handle_index(index_ctx)
@@ -1050,18 +1071,25 @@ class LegacyExecutor(BaseExecutor):
     def _sanitize_dict_values(d: dict[str, Any]) -> None:
         """Replace 'NA' string values with None inside a dict in-place."""
         for k, v in d.items():
-            if isinstance(v, str) and v.lower() == "na":
+            if isinstance(v, str) and v.strip().lower() == "na":
                 d[k] = None
 
     @staticmethod
     def _sanitize_null_values(
         structured_output: dict[str, Any],
     ) -> dict[str, Any]:
-        """Replace 'NA' strings with None in structured output."""
+        """Replace 'NA' strings with None in structured output.
+
+        Top-level scalar 'NA' / 'na' strings are converted to None so
+        the FE can render them as a distinct null value (rather than the
+        literal string 'NA'). Nested lists and dicts are walked too.
+        """
         for k, v in structured_output.items():
-            if isinstance(v, list):
+            if isinstance(v, str) and v.strip().lower() == "na":
+                structured_output[k] = None
+            elif isinstance(v, list):
                 for i, item in enumerate(v):
-                    if isinstance(item, str) and item.lower() == "na":
+                    if isinstance(item, str) and item.strip().lower() == "na":
                         v[i] = None
                     elif isinstance(item, dict):
                         LegacyExecutor._sanitize_dict_values(item)
@@ -1264,10 +1292,18 @@ class LegacyExecutor(BaseExecutor):
     def _convert_scalar_answer(
         answer: str, llm: Any, answer_prompt_svc: Any, prompt: str
     ) -> str | None:
-        """Run LLM extraction for a scalar (email/date) and return result or None."""
-        if answer.lower() == "na":
+        """Run LLM extraction for a scalar (email/date) and return result or None.
+
+        Returns None when:
+          - the initial answer is already 'NA' (no second LLM call needed); or
+          - the second LLM call also returns 'NA' (extraction failed).
+        """
+        if answer.strip().lower() == "na":
             return None
-        return answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        result = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        if result is None or result.strip().lower() == "na":
+            return None
+        return result
 
     def _run_challenge_if_enabled(
         self,
@@ -1876,7 +1912,10 @@ class LegacyExecutor(BaseExecutor):
                 "Delegating single_pass_extraction to cloud plugin (run_id=%s)",
                 context.run_id,
             )
-            return executor.execute(context)
+            result = executor.execute(context)
+            if result.success:
+                self._inject_context_retrieval_metrics(result, context)
+            return result
         except KeyError:
             logger.info(
                 "No single_pass_extraction plugin; falling back to "
@@ -1884,6 +1923,58 @@ class LegacyExecutor(BaseExecutor):
                 context.run_id,
             )
             return self._handle_answer_prompt(context)
+
+    def _inject_context_retrieval_metrics(
+        self, result: ExecutionResult, context: ExecutionContext
+    ) -> None:
+        """Inject ``context_retrieval`` timing into single-pass metrics.
+
+        The cloud single_pass_extraction plugin handles retrieval
+        internally but does not report ``context_retrieval`` timing in
+        its returned metrics.  This method replicates the file-read
+        measurement from ``RetrievalService.retrieve_complete_context``
+        and injects it into ``result.data["metrics"]``.
+        """
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        params = context.executor_params
+        file_path = params.get(PSKeys.FILE_PATH)
+        execution_source = params.get(
+            PSKeys.EXECUTION_SOURCE, context.execution_source
+        )
+
+        if not file_path:
+            return
+
+        # Measure the file-read time (same operation as
+        # RetrievalService.retrieve_complete_context)
+        try:
+            fs = FileUtils.get_fs_instance(execution_source=execution_source)
+            start = time.monotonic()
+            fs.read(path=file_path, mode="r")
+            elapsed = round(time.monotonic() - start, 4)
+        except Exception:
+            logger.warning(
+                "Could not measure context_retrieval time for "
+                "single_pass (run_id=%s)",
+                context.run_id,
+            )
+            return
+
+        data = result.data or {}
+        metrics: dict[str, Any] = data.get(PSKeys.METRICS, {})
+        output: dict[str, Any] = data.get(PSKeys.OUTPUT, {})
+
+        # Inject per-prompt context_retrieval for every output field
+        for prompt_name in output:
+            prompt_metrics = metrics.setdefault(prompt_name, {})
+            if "context_retrieval" not in prompt_metrics:
+                prompt_metrics["context_retrieval"] = {
+                    "time_taken(s)": elapsed,
+                }
+
+        # Persist back (in case metrics dict was newly created)
+        data[PSKeys.METRICS] = metrics
 
     def _handle_summarize(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.SUMMARIZE`` — document summarization.

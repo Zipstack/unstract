@@ -418,8 +418,21 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         logger.info("Overwriting INFILE with structured output: %s", input_file_path)
         fs.json_dump(path=input_file_path, data=structured_output)
 
+        # Write to COPY_TO_FOLDER for FS destinations.
+        # The old Docker flow created this via ToolExecutor._setup_for_run();
+        # the destination connector expects output at
+        # {file_execution_dir}/COPY_TO_FOLDER/{filename}.json
+        copy_to_folder = str(Path(execution_data_dir) / "COPY_TO_FOLDER")
+        fs.mkdir(copy_to_folder)
+        copy_output_path = str(
+            Path(copy_to_folder) / f"{Path(source_file_name).stem}.json"
+        )
+        fs.json_dump(path=copy_output_path, data=structured_output)
+        logger.info("Output written to COPY_TO_FOLDER: %s", copy_output_path)
+
         logger.info("Output written successfully to workflow storage")
-    except (OSError, json.JSONDecodeError) as e:
+    except Exception as e:
+        logger.error("Failed to write output files: %s", e, exc_info=True)
         return ExecutionResult.failure(error=f"Error writing output file: {e}").to_dict()
 
     # Write tool result + tool_metadata to METADATA.json
@@ -615,7 +628,17 @@ def _run_agentic_extraction(
         # Overwrite INFILE with JSON output so destination connector reads JSON, not PDF
         logger.info("Overwriting INFILE with agentic output: %s", input_file_path)
         fs.json_dump(path=input_file_path, data=structured_output)
+
+        # Write to COPY_TO_FOLDER for FS destinations (same as regular pipeline)
+        copy_to_folder = str(Path(execution_data_dir) / "COPY_TO_FOLDER")
+        fs.mkdir(copy_to_folder)
+        copy_output_path = str(
+            Path(copy_to_folder) / f"{Path(source_file_name).stem}.json"
+        )
+        fs.json_dump(path=copy_output_path, data=structured_output)
+        logger.info("Agentic output written to COPY_TO_FOLDER: %s", copy_output_path)
     except Exception as e:
+        logger.error("Failed to write agentic output files: %s", e, exc_info=True)
         return ExecutionResult.failure(
             error=f"Error writing agentic output: {e}"
         ).to_dict()
@@ -671,4 +694,7 @@ def _write_tool_result(
             data=json.dumps(existing, indent=2),
         )
     except Exception as e:
-        logger.warning("Failed to write tool result to METADATA.json: %s", e)
+        logger.error(
+            "Failed to write tool result to METADATA.json at '%s': %s",
+            metadata_path, e, exc_info=True,
+        )

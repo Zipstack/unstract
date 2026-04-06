@@ -736,6 +736,50 @@ class TestNullSanitization:
         assert result == {"field": "hello", "num": 42, "flag": True}
 
 
+class TestConvertScalarAnswer:
+    """Tests for _convert_scalar_answer second-pass NA handling."""
+
+    def test_first_pass_na_returns_none(self):
+        """If the initial answer is 'na', return None without a second LLM call."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        mock_svc = MagicMock()
+        result = LegacyExecutor._convert_scalar_answer(
+            "NA", llm=MagicMock(), answer_prompt_svc=mock_svc, prompt="ignored"
+        )
+        assert result is None
+        mock_svc.run_completion.assert_not_called()
+
+    def test_second_pass_na_returns_none(self):
+        """If the LLM extraction also returns 'NA', return None."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        mock_svc = MagicMock()
+        mock_svc.run_completion.return_value = "NA"
+        result = LegacyExecutor._convert_scalar_answer(
+            "I do not see an email here.",
+            llm=MagicMock(),
+            answer_prompt_svc=mock_svc,
+            prompt="extract email",
+        )
+        assert result is None
+        mock_svc.run_completion.assert_called_once()
+
+    def test_successful_extraction_returns_value(self):
+        """If extraction yields a real value, return it."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        mock_svc = MagicMock()
+        mock_svc.run_completion.return_value = "alice@example.com"
+        result = LegacyExecutor._convert_scalar_answer(
+            "Contact: alice@example.com",
+            llm=MagicMock(),
+            answer_prompt_svc=mock_svc,
+            prompt="extract email",
+        )
+        assert result == "alice@example.com"
+
+
 class TestAnswerPromptServiceUnit:
     """Unit tests for AnswerPromptService methods."""
 
