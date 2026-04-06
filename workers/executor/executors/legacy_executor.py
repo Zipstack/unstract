@@ -574,37 +574,14 @@ class LegacyExecutor(BaseExecutor):
                 input_file_path=input_file_path,
             )
 
-        # ---- Step 4b: Force full-context retrieval for single pass ----
-        # Single pass reads the whole file in one LLM call; force
-        # chunk-size=0 so the fallback path (no cloud plugin) uses
-        # retrieve_complete_context instead of vector DB retrieval.
-        if is_single_pass:
-            for output in answer_params.get("outputs", []):
-                output["chunk-size"] = 0
-                output["chunk-overlap"] = 0
-
         # ---- Step 5: Answer prompt / Single pass ----
-        mode_label = "single pass" if is_single_pass else "prompt"
-        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
-        operation = (
-            Operation.SINGLE_PASS_EXTRACTION.value
-            if is_single_pass
-            else Operation.ANSWER_PROMPT.value
+        answer_result = self._run_pipeline_answer_step(
+            context=context,
+            answer_params=answer_params,
+            is_single_pass=is_single_pass,
+            shim=shim,
+            step=step,
         )
-        answer_ctx = ExecutionContext(
-            executor_name=context.executor_name,
-            operation=operation,
-            run_id=context.run_id,
-            execution_source=context.execution_source,
-            organization_id=context.organization_id,
-            executor_params=answer_params,
-            request_id=context.request_id,
-            log_events_id=context.log_events_id,
-        )
-        if is_single_pass:
-            answer_result = self._handle_single_pass_extraction(answer_ctx)
-        else:
-            answer_result = self._handle_answer_prompt(answer_ctx)
         if not answer_result.success:
             return answer_result
 
@@ -619,6 +596,48 @@ class LegacyExecutor(BaseExecutor):
 
         shim.stream_log("Pipeline completed successfully")
         return ExecutionResult(success=True, data=structured_output)
+
+    def _run_pipeline_answer_step(
+        self,
+        context: ExecutionContext,
+        answer_params: dict,
+        is_single_pass: bool,
+        shim: ExecutorToolShim,
+        step: int,
+    ) -> ExecutionResult:
+        """Run the answer-prompt step of the structure pipeline.
+
+        For single pass, forces ``chunk-size=0`` (full-context retrieval)
+        and dispatches ``_handle_single_pass_extraction``. Otherwise
+        dispatches ``_handle_answer_prompt``.
+        """
+        if is_single_pass:
+            # Single pass reads the whole file in one LLM call; force
+            # chunk-size=0 so the fallback path (no cloud plugin) uses
+            # retrieve_complete_context instead of vector DB retrieval.
+            for output in answer_params.get("outputs", []):
+                output["chunk-size"] = 0
+                output["chunk-overlap"] = 0
+            operation = Operation.SINGLE_PASS_EXTRACTION.value
+            mode_label = "single pass"
+        else:
+            operation = Operation.ANSWER_PROMPT.value
+            mode_label = "prompt"
+
+        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
+        answer_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=operation,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=answer_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        if is_single_pass:
+            return self._handle_single_pass_extraction(answer_ctx)
+        return self._handle_answer_prompt(answer_ctx)
 
     @staticmethod
     def _inject_table_settings(
@@ -1500,15 +1519,17 @@ class LegacyExecutor(BaseExecutor):
                 structured_output=structured_output,
                 metadata=metadata,
                 metrics=metrics,
-                run_id=run_id,
-                execution_id=execution_id,
-                execution_source=execution_source,
-                platform_api_key=platform_api_key,
-                tool_id=tool_id,
-                doc_name=doc_name,
-                prompt_name=prompt_name,
-                file_path=file_path,
-                tool_settings=tool_settings,
+                prompt_run_args={
+                    "run_id": run_id,
+                    "execution_id": execution_id,
+                    "execution_source": execution_source,
+                    "platform_api_key": platform_api_key,
+                    "tool_id": tool_id,
+                    "doc_name": doc_name,
+                    "prompt_name": prompt_name,
+                    "file_path": file_path,
+                    "tool_settings": tool_settings,
+                },
                 shim=shim,
             )
             return
@@ -1724,20 +1745,19 @@ class LegacyExecutor(BaseExecutor):
         structured_output: dict[str, Any],
         metadata: dict[str, Any],
         metrics: dict[str, Any],
-        run_id: str,
-        execution_id: str,
-        execution_source: str,
-        platform_api_key: str,
-        tool_id: str,
-        doc_name: str,
-        prompt_name: str,
-        file_path: str,
-        tool_settings: dict[str, Any],
+        prompt_run_args: dict[str, Any],
         shim: Any,
     ) -> None:
-        """Delegate LINE_ITEM prompt to the line_item executor plugin."""
+        """Delegate LINE_ITEM prompt to the line_item executor plugin.
+
+        ``prompt_run_args`` bundles the per-prompt scalars passed from
+        ``_handle_outputs``: ``run_id``, ``execution_id``,
+        ``execution_source``, ``platform_api_key``, ``tool_id``,
+        ``doc_name``, ``prompt_name``, ``file_path``, ``tool_settings``.
+        """
         from executor.executors.constants import PromptServiceConstants as PSKeys
 
+        prompt_name = prompt_run_args["prompt_name"]
         try:
             line_item_executor = ExecutorRegistry.get("line_item")
         except KeyError:
@@ -1750,20 +1770,20 @@ class LegacyExecutor(BaseExecutor):
         line_item_ctx = ExecutionContext(
             executor_name="line_item",
             operation="line_item_extract",
-            run_id=run_id,
-            execution_source=execution_source,
+            run_id=prompt_run_args["run_id"],
+            execution_source=prompt_run_args["execution_source"],
             organization_id=context.organization_id,
             request_id=context.request_id,
             executor_params={
                 "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
-                "tool_settings": tool_settings,
+                "tool_settings": prompt_run_args["tool_settings"],
                 "output": output,
                 "prompt": output.get(PSKeys.PROMPTX, ""),
-                "file_path": file_path,
-                "PLATFORM_SERVICE_API_KEY": platform_api_key,
-                "execution_id": execution_id,
-                "tool_id": tool_id,
-                "file_name": doc_name,
+                "file_path": prompt_run_args["file_path"],
+                "PLATFORM_SERVICE_API_KEY": prompt_run_args["platform_api_key"],
+                "execution_id": prompt_run_args["execution_id"],
+                "tool_id": prompt_run_args["tool_id"],
+                "file_name": prompt_run_args["doc_name"],
                 "prompt_name": prompt_name,
             },
         )
@@ -1953,7 +1973,7 @@ class LegacyExecutor(BaseExecutor):
             elapsed = round(time.monotonic() - start, 4)
         except Exception:
             logger.warning(
-                "Could not measure context_retrieval time for " "single_pass (run_id=%s)",
+                "Could not measure context_retrieval time for single_pass (run_id=%s)",
                 context.run_id,
             )
             return

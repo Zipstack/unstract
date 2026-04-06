@@ -111,7 +111,9 @@ class TestInjectContextRetrievalMetrics:
         executor._inject_context_retrieval_metrics(result, ctx)
 
         # field_a's existing timing preserved
-        assert result.data["metrics"]["field_a"]["context_retrieval"]["time_taken(s)"] == 0.999
+        assert result.data["metrics"]["field_a"]["context_retrieval"][
+            "time_taken(s)"
+        ] == pytest.approx(0.999)
         # field_b gets new timing
         assert "context_retrieval" in result.data["metrics"]["field_b"]
 
@@ -253,8 +255,6 @@ class TestSinglePassChunkSizeForcing:
         fs.exists.return_value = False
         mock_fs.return_value = fs
 
-        executor = _get_executor()
-
         # Build minimal answer_params with non-zero chunk-size
         outputs = [
             {
@@ -299,11 +299,10 @@ class TestSinglePassChunkSizeForcing:
         }
 
         # Apply the same logic as _handle_structure_pipeline step 4b
-        is_single_pass = True
-        if is_single_pass:
-            for output in answer_params.get("outputs", []):
-                output["chunk-size"] = 0
-                output["chunk-overlap"] = 0
+        # (single pass forces chunk-size=0 to use full-context retrieval)
+        for output in answer_params.get("outputs", []):
+            output["chunk-size"] = 0
+            output["chunk-overlap"] = 0
 
         # Verify outputs were modified
         for output in answer_params["outputs"]:
