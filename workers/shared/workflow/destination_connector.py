@@ -661,7 +661,7 @@ class WorkerDestinationConnector:
             if not result.tool_execution_result and not file_ctx.execution_error:
                 error_msg = (
                     f"No tool execution result for file '{file_ctx.file_name}' "
-                    f"- filesystem copy skipped"
+                    f"- failing filesystem copy"
                 )
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)
@@ -705,7 +705,7 @@ class WorkerDestinationConnector:
             else:
                 error_msg = (
                     f"No tool execution result for file '{file_ctx.file_name}' "
-                    f"- database insertion skipped"
+                    f"- database insertion failed"
                 )
                 logger.error(error_msg)
                 raise RuntimeError(error_msg)

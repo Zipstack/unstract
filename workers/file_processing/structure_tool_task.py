@@ -660,11 +660,11 @@ def _write_pipeline_outputs(
         logger.info("Writing %s output to %s", label, output_path)
         fs.json_dump(path=output_path, data=structured_output)
 
-        logger.info(
-            "Overwriting INFILE with %s output: %s", label, input_file_path
-        )
-        fs.json_dump(path=input_file_path, data=structured_output)
-
+        # Write COPY_TO_FOLDER copy BEFORE overwriting INFILE so that a
+        # failure here does not leave INFILE clobbered with a partial
+        # or empty JSON file. json_dump uses mode="w" (truncate in
+        # place), so the INFILE overwrite must be the last operation
+        # in this block.
         copy_to_folder = str(Path(execution_data_dir) / "COPY_TO_FOLDER")
         fs.mkdir(copy_to_folder)
         copy_output_path = str(Path(copy_to_folder) / f"{stem}.json")
@@ -674,6 +674,11 @@ def _write_pipeline_outputs(
             label.capitalize(),
             copy_output_path,
         )
+
+        logger.info(
+            "Overwriting INFILE with %s output: %s", label, input_file_path
+        )
+        fs.json_dump(path=input_file_path, data=structured_output)
 
         logger.info("Output written successfully to workflow storage")
         return None
@@ -692,6 +697,7 @@ def _write_tool_result(
       (destination connector reads output_type from here)
     - total_elapsed_time: cumulative elapsed time
     """
+    metadata_path: Path | None = None
     try:
         metadata_path = Path(execution_data_dir) / "METADATA.json"
 

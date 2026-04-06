@@ -1760,13 +1760,13 @@ class LegacyExecutor(BaseExecutor):
         prompt_name = prompt_run_args["prompt_name"]
         try:
             line_item_executor = ExecutorRegistry.get("line_item")
-        except KeyError:
+        except KeyError as e:
             raise LegacyExecutorError(
                 message=(
                     "LINE_ITEM extraction requires the line_item executor "
                     "plugin. Install the line_item_extractor plugin."
                 )
-            )
+            ) from e
         line_item_ctx = ExecutionContext(
             executor_name="line_item",
             operation="line_item_extract",

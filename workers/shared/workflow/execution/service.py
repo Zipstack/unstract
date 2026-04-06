@@ -1051,6 +1051,11 @@ class WorkerWorkflowExecutionService:
             "platform_service_api_key": platform_api_key,
             "input_file_path": str(file_handler.infile),
             "output_dir_path": str(file_handler.execution_dir),
+            # Use the real per-file name. file_handler.source_file is always
+            # {file_execution_dir}/SOURCE (a fixed local-copy sentinel), so
+            # os.path.basename(file_handler.source_file) would yield the
+            # literal "SOURCE" for every file and collide outputs in
+            # COPY_TO_FOLDER. See test_source_file_name_uses_real_filename_not_sentinel.
             "source_file_name": file_name,
             "execution_data_dir": str(file_handler.file_execution_dir),
             "messaging_channel": getattr(execution_service, "messaging_channel", ""),
