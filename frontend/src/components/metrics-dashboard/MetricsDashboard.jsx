@@ -252,103 +252,105 @@ function MetricsDashboard() {
 
   return (
     <div className="metrics-dashboard">
-      <div className="metrics-topbar">
-        <div className="metrics-topbar-left">
-          <Typography
-            style={{
-              fontWeight: 600,
-              fontSize: "16px",
-              display: "inline",
-              lineHeight: "24px",
-            }}
-          >
-            Dashboard
-          </Typography>
+      <div className="metrics-dashboard-container">
+        <div className="metrics-topbar">
+          <div className="metrics-topbar-left">
+            <Typography
+              style={{
+                fontWeight: 600,
+                fontSize: "16px",
+                display: "inline",
+                lineHeight: "24px",
+              }}
+            >
+              Dashboard
+            </Typography>
+          </div>
+
+          <Space className="metrics-topbar-right">
+            <Button
+              icon={<FileSearchOutlined />}
+              type="link"
+              onClick={() =>
+                window.open(
+                  "https://docs.unstract.com/unstract/index.html",
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+              className="metrics-header-button"
+            >
+              Documentation
+            </Button>
+            <Button
+              icon={<SlackOutlined />}
+              type="link"
+              onClick={() =>
+                window.open(
+                  "https://join-slack.unstract.com/",
+                  "_blank",
+                  "noopener,noreferrer",
+                )
+              }
+              className="metrics-header-button"
+            >
+              Slack Community
+            </Button>
+          </Space>
         </div>
 
-        <Space className="metrics-topbar-right">
-          <Button
-            icon={<FileSearchOutlined />}
-            type="link"
-            onClick={() =>
-              window.open(
-                "https://docs.unstract.com/unstract/index.html",
-                "_blank",
-                "noopener,noreferrer",
-              )
-            }
-            className="metrics-header-button"
-          >
-            Documentation
-          </Button>
-          <Button
-            icon={<SlackOutlined />}
-            type="link"
-            onClick={() =>
-              window.open(
-                "https://join-slack.unstract.com/",
-                "_blank",
-                "noopener,noreferrer",
-              )
-            }
-            className="metrics-header-button"
-          >
-            Slack Community
-          </Button>
-        </Space>
-      </div>
+        {PlanBanner && subscriptionData && <PlanBanner />}
 
-      {PlanBanner && subscriptionData && <PlanBanner />}
+        {overviewError && (
+          <Alert
+            message="Error loading metrics"
+            description={overviewError}
+            type="error"
+            showIcon
+            closable
+            className="metrics-error"
+          />
+        )}
 
-      {overviewError && (
-        <Alert
-          message="Error loading metrics"
-          description={overviewError}
-          type="error"
-          showIcon
-          closable
-          className="metrics-error"
+        <Tabs
+          items={tabItems}
+          activeKey={activeTab}
+          onChange={setActiveTab}
+          tabBarExtraContent={
+            <Space>
+              {activeTab !== "subscription" && (
+                <RangePicker
+                  value={dateRange}
+                  onChange={handleDateChange}
+                  disabledDate={(current) => current && current > dayjs()}
+                  allowClear={false}
+                  size="middle"
+                  presets={[
+                    {
+                      label: "Last 7 Days",
+                      value: [dayjs().subtract(7, "day"), dayjs()],
+                    },
+                    {
+                      label: "Last 30 Days",
+                      value: [dayjs().subtract(30, "day"), dayjs()],
+                    },
+                    // 90-day preset only for overview (deployment usage capped at 30 days)
+                    ...(activeTab === "llm-usage"
+                      ? []
+                      : [
+                          {
+                            label: "Last 90 Days",
+                            value: [dayjs().subtract(90, "day"), dayjs()],
+                          },
+                        ]),
+                  ]}
+                />
+              )}
+              <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+            </Space>
+          }
         />
-      )}
-
-      <Tabs
-        items={tabItems}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        tabBarExtraContent={
-          <Space>
-            {activeTab !== "subscription" && (
-              <RangePicker
-                value={dateRange}
-                onChange={handleDateChange}
-                disabledDate={(current) => current && current > dayjs()}
-                allowClear={false}
-                size="middle"
-                presets={[
-                  {
-                    label: "Last 7 Days",
-                    value: [dayjs().subtract(7, "day"), dayjs()],
-                  },
-                  {
-                    label: "Last 30 Days",
-                    value: [dayjs().subtract(30, "day"), dayjs()],
-                  },
-                  // 90-day preset only for overview (deployment usage capped at 30 days)
-                  ...(activeTab === "llm-usage"
-                    ? []
-                    : [
-                        {
-                          label: "Last 90 Days",
-                          value: [dayjs().subtract(90, "day"), dayjs()],
-                        },
-                      ]),
-                ]}
-              />
-            )}
-            <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
-          </Space>
-        }
-      />
+      </div>
     </div>
   );
 }
