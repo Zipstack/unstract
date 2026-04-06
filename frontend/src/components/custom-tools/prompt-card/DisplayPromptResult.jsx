@@ -97,9 +97,7 @@ function DisplayPromptResult({
 
   if (output === null) {
     return (
-      <Typography.Text className="prompt-output-result">
-        null
-      </Typography.Text>
+      <Typography.Text className="prompt-output-result">null</Typography.Text>
     );
   }
 
