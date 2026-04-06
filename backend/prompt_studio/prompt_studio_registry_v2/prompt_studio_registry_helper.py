@@ -7,7 +7,6 @@ from django.conf import settings
 from django.db import IntegrityError
 from plugins import get_plugin
 
-from prompt_studio.lookup_utils import get_lookup_config
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -298,6 +297,19 @@ class PromptStudioRegistryHelper:
             settings, JsonSchemaKey.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
 
+        # Validate lookup assignments (cloud-only, no-op in OSS)
+        lookup_configs = {}
+        try:
+            from pluggable_apps.lookup_v1.validation import (
+                validate_lookups_for_export,
+            )
+
+            lookup_configs, lookup_error = validate_lookups_for_export(prompts)
+            if lookup_error:
+                raise InValidCustomToolError(lookup_error)
+        except ImportError:
+            pass
+
         for prompt in prompts:
             if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:
                 continue
@@ -356,8 +368,9 @@ class PromptStudioRegistryHelper:
             output[JsonSchemaKey.POSTPROCESSING_WEBHOOK_URL] = (
                 prompt.postprocessing_webhook_url
             )
-            if lookup_config := get_lookup_config(prompt):
-                output["lookup_config"] = lookup_config
+            prompt_id_str = str(prompt.prompt_id)
+            if prompt_id_str in lookup_configs:
+                output["lookup_config"] = lookup_configs[prompt_id_str]
             # Retaining the old fields in condition
             # for backward compatibility. To be removed in future.
             if (
