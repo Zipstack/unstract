@@ -502,6 +502,24 @@
   margin-bottom: 12px;
 }
 
+/* Compact execution display */
+.execution-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.execution-success {
+  color: #52c41a;
+  font-size: 12px;
+}
+
+.execution-error {
+  color: #ff4d4f;
+  font-size: 12px;
+}
+
 /* Deployment Type Tabs */
 .deployment-type-tabs {
   padding-left: 24px;
