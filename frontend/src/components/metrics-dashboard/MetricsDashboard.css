@@ -51,6 +51,11 @@
   margin-bottom: 16px;
 }
 
+/* Tabs alignment */
+.metrics-dashboard .ant-tabs > .ant-tabs-nav {
+  padding: 0 14px;
+}
+
 /* Tab content padding */
 .metrics-dashboard .ant-tabs-content {
   padding: 16px;
