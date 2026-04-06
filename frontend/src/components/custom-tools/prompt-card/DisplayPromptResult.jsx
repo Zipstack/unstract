@@ -84,13 +84,21 @@ function DisplayPromptResult({
     );
   }
 
-  if (output === undefined || output === null) {
+  if (output === undefined) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>
           <InfoCircleFilled className="info-circle-colored" />
         </span>{" "}
         Yet to run
+      </Typography.Text>
+    );
+  }
+
+  if (output === null) {
+    return (
+      <Typography.Text className="prompt-output-result prompt-null-value">
+        null
       </Typography.Text>
     );
   }

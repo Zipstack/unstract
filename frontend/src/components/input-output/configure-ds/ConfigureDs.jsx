@@ -279,8 +279,8 @@ function ConfigureDs({
 
       url = getUrl("connector/");
 
-      const eventKey = `${type.toUpperCase()}`;
-      if (posthogConnectorAddedEventText[eventKey]) {
+      const eventKey = type?.toUpperCase();
+      if (eventKey && posthogConnectorAddedEventText[eventKey]) {
         setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
           info: `Clicked on 'Submit' button`,
           connector_name: selectedSourceName,

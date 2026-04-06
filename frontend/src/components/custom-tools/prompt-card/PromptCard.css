@@ -237,6 +237,12 @@
   font-size: 13px;
 }
 
+.prompt-null-value {
+  color: #888;
+  font-style: italic;
+  font-size: 13px;
+}
+
 .prompt-output-pad {
   padding: 0px 10px;
 }
