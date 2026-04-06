@@ -198,8 +198,8 @@ class TestStructureToolPipeline:
         assert result["success"] is True
         assert result["data"]["output"]["field_a"] == "$1M"
         assert result["data"]["metadata"]["file_name"] == "test.pdf"
-        # json_dump called twice: output file + INFILE overwrite
-        assert mock_fs.json_dump.call_count == 2
+        # json_dump called 3 times: output file + INFILE overwrite + COPY_TO_FOLDER
+        assert mock_fs.json_dump.call_count == 3
 
         # Single dispatch with structure_pipeline
         assert dispatcher_instance.dispatch.call_count == 1
@@ -668,8 +668,8 @@ class TestStructureToolOutputWritten:
 
         assert result["success"] is True
 
-        # json_dump called twice: once for output file, once for INFILE overwrite
-        assert mock_fs.json_dump.call_count == 2
+        # json_dump called 3 times: output file, INFILE overwrite, COPY_TO_FOLDER
+        assert mock_fs.json_dump.call_count == 3
 
         # First call: output file (execution_dir/{stem}.json)
         first_call = mock_fs.json_dump.call_args_list[0]
@@ -688,6 +688,16 @@ class TestStructureToolOutputWritten:
         if second_path is None:
             second_path = second_call[0][0] if second_call[0] else None
         assert str(second_path) == base_params["input_file_path"]
+
+        # Third call: COPY_TO_FOLDER/{stem}.json (for FS destinations)
+        third_call = mock_fs.json_dump.call_args_list[2]
+        third_path = third_call.kwargs.get(
+            "path", third_call[1].get("path") if len(third_call) > 1 else None
+        )
+        if third_path is None:
+            third_path = third_call[0][0] if third_call[0] else None
+        assert "COPY_TO_FOLDER" in str(third_path)
+        assert str(third_path).endswith("test.json")
 
 
 class TestStructureToolMetadataFileName:
