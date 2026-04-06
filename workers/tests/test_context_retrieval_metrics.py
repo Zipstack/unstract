@@ -309,3 +309,120 @@ class TestSinglePassChunkSizeForcing:
         for output in answer_params["outputs"]:
             assert output["chunk-size"] == 0
             assert output["chunk-overlap"] == 0
+
+
+class TestPipelineIndexUsageKwargsPropagation:
+    """Verify that _run_pipeline_index propagates usage_kwargs to INDEX ctx.
+
+    Without this propagation, the embedding adapter's UsageHandler callback
+    records audit rows without ``run_id``, so embedding usage is missing from
+    the API deployment response metadata when chunking is enabled.
+    """
+
+    def test_index_ctx_includes_usage_kwargs(self):
+        """The INDEX executor_params include usage_kwargs from extract_params."""
+        executor = _get_executor()
+
+        captured_ctx: dict = {}
+
+        def fake_handle_index(ctx):
+            captured_ctx["value"] = ctx
+            return ExecutionResult(success=True, data={})
+
+        executor._handle_index = fake_handle_index  # type: ignore[assignment]
+
+        index_template = {
+            "tool_id": "tool-1",
+            "file_hash": "hash-abc",
+            "is_highlight_enabled": False,
+            "platform_api_key": "pk-test",
+            "extracted_file_path": "/data/extract/doc.txt",
+        }
+        answer_params = {
+            "tool_settings": {
+                "vector-db": "vdb-1",
+                "embedding": "emb-1",
+                "x2text_adapter": "x2t-1",
+            },
+            "outputs": [
+                {
+                    "name": "field_a",
+                    "chunk-size": 512,
+                    "chunk-overlap": 64,
+                },
+            ],
+        }
+        usage_kwargs = {
+            "run_id": "file-exec-123",
+            "execution_id": "wf-exec-456",
+            "file_name": "doc.pdf",
+        }
+        ctx = ExecutionContext(
+            executor_name="legacy",
+            operation="structure_pipeline",
+            run_id="run-uk-1",
+            execution_source="tool",
+        )
+
+        executor._run_pipeline_index(
+            context=ctx,
+            index_template=index_template,
+            answer_params=answer_params,
+            extracted_text="extracted",
+            usage_kwargs=usage_kwargs,
+        )
+
+        index_ctx = captured_ctx["value"]
+        assert "usage_kwargs" in index_ctx.executor_params
+        assert index_ctx.executor_params["usage_kwargs"] == usage_kwargs
+        assert index_ctx.executor_params["usage_kwargs"]["run_id"] == "file-exec-123"
+
+    def test_index_ctx_defaults_to_empty_when_not_provided(self):
+        """Without usage_kwargs, INDEX executor_params get empty dict (no crash)."""
+        executor = _get_executor()
+
+        captured_ctx: dict = {}
+
+        def fake_handle_index(ctx):
+            captured_ctx["value"] = ctx
+            return ExecutionResult(success=True, data={})
+
+        executor._handle_index = fake_handle_index  # type: ignore[assignment]
+
+        index_template = {
+            "tool_id": "tool-1",
+            "file_hash": "hash-abc",
+            "is_highlight_enabled": False,
+            "platform_api_key": "pk-test",
+            "extracted_file_path": "/data/extract/doc.txt",
+        }
+        answer_params = {
+            "tool_settings": {
+                "vector-db": "vdb-1",
+                "embedding": "emb-1",
+                "x2text_adapter": "x2t-1",
+            },
+            "outputs": [
+                {
+                    "name": "field_a",
+                    "chunk-size": 512,
+                    "chunk-overlap": 64,
+                },
+            ],
+        }
+        ctx = ExecutionContext(
+            executor_name="legacy",
+            operation="structure_pipeline",
+            run_id="run-uk-2",
+            execution_source="tool",
+        )
+
+        executor._run_pipeline_index(
+            context=ctx,
+            index_template=index_template,
+            answer_params=answer_params,
+            extracted_text="extracted",
+        )
+
+        index_ctx = captured_ctx["value"]
+        assert index_ctx.executor_params["usage_kwargs"] == {}

@@ -562,6 +562,7 @@ class LegacyExecutor(BaseExecutor):
                 index_template=index_template,
                 answer_params=answer_params,
                 extracted_text=extracted_text,
+                usage_kwargs=extract_params.get("usage_kwargs", {}),
             )
 
         # ---- Step 4: Table settings injection ----
@@ -748,8 +749,17 @@ class LegacyExecutor(BaseExecutor):
         index_template: dict,
         answer_params: dict,
         extracted_text: str,
+        usage_kwargs: dict | None = None,
     ) -> dict:
         """Run per-output indexing with dedup for the structure pipeline.
+
+        Args:
+            usage_kwargs: Audit-tracking kwargs (``run_id``,
+                ``execution_id``, ``file_name``) propagated to the
+                embedding adapter so its callback can record usage
+                rows against the correct file_execution_id. Without
+                this, embedding usage is missing from the API
+                deployment response metadata.
 
         Returns:
             Dict of index metrics keyed by output name.
@@ -763,6 +773,7 @@ class LegacyExecutor(BaseExecutor):
         is_highlight = index_template.get("is_highlight_enabled", False)
         platform_api_key = index_template.get("platform_api_key", "")
         extracted_file_path = index_template.get("extracted_file_path", "")
+        usage_kwargs = usage_kwargs or {}
 
         index_metrics: dict = {}
         seen_params: set = set()
@@ -814,6 +825,7 @@ class LegacyExecutor(BaseExecutor):
                         "enable_highlight": is_highlight,
                         "extracted_text": extracted_text,
                         "platform_api_key": platform_api_key,
+                        "usage_kwargs": usage_kwargs,
                     },
                 )
                 index_result = self._handle_index(index_ctx)
