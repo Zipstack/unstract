@@ -914,6 +914,62 @@ class TestStructureToolParamsPassthrough:
             mock_exec_service, "test.pdf"
         )
 
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_get_platform_service_api_key",
+        return_value="sk-test",
+    )
+    @patch("file_processing.structure_tool_task.execute_structure_tool")
+    def test_source_file_name_uses_real_filename_not_sentinel(
+        self, mock_execute_struct, mock_get_key
+    ):
+        """Regression: params["source_file_name"] is the real file name,
+        not the literal "SOURCE" sentinel from file_handler.source_file.
+
+        Bug: previously the producer used
+        os.path.basename(file_handler.source_file), but
+        file_handler.source_file is always
+        {file_execution_dir}/SOURCE — a fixed local-copy sentinel — so
+        every per-file COPY_TO_FOLDER ended up with SOURCE.json and the
+        destination connector overwrote files at the destination.
+        """
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        service = WorkerWorkflowExecutionService()
+
+        # Mock execution_service / file_handler to recreate the buggy
+        # state: file_handler.source_file is the fixed "SOURCE" sentinel.
+        mock_exec_service = MagicMock()
+        mock_exec_service.organization_id = "org-test"
+        mock_exec_service.workflow_id = "wf-1"
+        mock_exec_service.execution_id = "exec-1"
+        mock_exec_service.file_execution_id = "fexec-1"
+        mock_exec_service.tool_instances = [MagicMock(metadata={})]
+
+        file_handler = MagicMock()
+        file_handler.source_file = "/data/exec/fexec-1/SOURCE"
+        file_handler.infile = "/data/exec/fexec-1/INFILE"
+        file_handler.execution_dir = "/data/exec"
+        file_handler.file_execution_dir = "/data/exec/fexec-1"
+        file_handler.get_workflow_metadata.return_value = {
+            "source_hash": "abc",
+        }
+        mock_exec_service.file_handler = file_handler
+
+        mock_execute_struct.return_value = {"success": True}
+
+        service._execute_structure_tool_workflow(
+            mock_exec_service, "invoice.pdf"
+        )
+
+        # The dispatched params dict must carry the real file name,
+        # not the "SOURCE" sentinel from file_handler.source_file.
+        params = mock_execute_struct.call_args[0][0]
+        assert params["source_file_name"] == "invoice.pdf"
+        assert params["source_file_name"] != "SOURCE"
+
 
 class TestHelperFunctions:
     """Test standalone helper functions."""

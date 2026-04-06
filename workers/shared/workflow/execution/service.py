@@ -1051,11 +1051,7 @@ class WorkerWorkflowExecutionService:
             "platform_service_api_key": platform_api_key,
             "input_file_path": str(file_handler.infile),
             "output_dir_path": str(file_handler.execution_dir),
-            "source_file_name": str(
-                os.path.basename(file_handler.source_file)
-                if file_handler.source_file
-                else file_name
-            ),
+            "source_file_name": file_name,
             "execution_data_dir": str(file_handler.file_execution_dir),
             "messaging_channel": getattr(execution_service, "messaging_channel", ""),
             "file_hash": metadata.get("source_hash", ""),

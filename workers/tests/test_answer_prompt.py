@@ -390,6 +390,36 @@ class TestHandleAnswerPromptTypes:
         "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
     )
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
+    def test_email_na_returns_none(self, mock_shim_cls, mock_deps):
+        """EMAIL type returns None when no email is found (not literal 'NA')."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        llm = _mock_llm()
+        response1 = MagicMock()
+        response1.text = "There is no email mentioned in the document."
+        response2 = MagicMock()
+        response2.text = "NA"
+        llm.complete.side_effect = [
+            {PSKeys.RESPONSE: response1, PSKeys.HIGHLIGHT_DATA: [],
+             PSKeys.CONFIDENCE_DATA: None, PSKeys.WORD_CONFIDENCE_DATA: None,
+             PSKeys.LINE_NUMBERS: [], PSKeys.WHISPER_HASH: ""},
+            {PSKeys.RESPONSE: response2, PSKeys.HIGHLIGHT_DATA: [],
+             PSKeys.CONFIDENCE_DATA: None, PSKeys.WORD_CONFIDENCE_DATA: None,
+             PSKeys.LINE_NUMBERS: [], PSKeys.WHISPER_HASH: ""},
+        ]
+        mock_deps.return_value = _mock_deps(llm)
+        mock_shim_cls.return_value = MagicMock()
+
+        executor = LegacyExecutor()
+        ctx = _make_context(prompts=[_make_prompt(output_type="email")])
+        result = executor._handle_answer_prompt(ctx)
+
+        assert result.data[PSKeys.OUTPUT]["field_a"] is None
+
+    @patch(
+        "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
+    )
+    @patch("executor.executors.legacy_executor.ExecutorToolShim")
     def test_date_type(self, mock_shim_cls, mock_deps):
         """DATE type extracts date in ISO format."""
         from executor.executors.legacy_executor import LegacyExecutor
@@ -415,6 +445,36 @@ class TestHandleAnswerPromptTypes:
         result = executor._handle_answer_prompt(ctx)
 
         assert result.data[PSKeys.OUTPUT]["field_a"] == "2024-01-15"
+
+    @patch(
+        "executor.executors.legacy_executor.LegacyExecutor._get_prompt_deps"
+    )
+    @patch("executor.executors.legacy_executor.ExecutorToolShim")
+    def test_date_na_returns_none(self, mock_shim_cls, mock_deps):
+        """DATE type returns None when no date is found (not literal 'NA')."""
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        llm = _mock_llm()
+        response1 = MagicMock()
+        response1.text = "No date is mentioned in the text."
+        response2 = MagicMock()
+        response2.text = "NA"
+        llm.complete.side_effect = [
+            {PSKeys.RESPONSE: response1, PSKeys.HIGHLIGHT_DATA: [],
+             PSKeys.CONFIDENCE_DATA: None, PSKeys.WORD_CONFIDENCE_DATA: None,
+             PSKeys.LINE_NUMBERS: [], PSKeys.WHISPER_HASH: ""},
+            {PSKeys.RESPONSE: response2, PSKeys.HIGHLIGHT_DATA: [],
+             PSKeys.CONFIDENCE_DATA: None, PSKeys.WORD_CONFIDENCE_DATA: None,
+             PSKeys.LINE_NUMBERS: [], PSKeys.WHISPER_HASH: ""},
+        ]
+        mock_deps.return_value = _mock_deps(llm)
+        mock_shim_cls.return_value = MagicMock()
+
+        executor = LegacyExecutor()
+        ctx = _make_context(prompts=[_make_prompt(output_type="date")])
+        result = executor._handle_answer_prompt(ctx)
+
+        assert result.data[PSKeys.OUTPUT]["field_a"] is None
 
 
 class TestHandleAnswerPromptJSON:
@@ -562,8 +622,8 @@ class TestHandleAnswerPromptRetrieval:
         )
         result = executor._handle_answer_prompt(ctx)
 
-        # Answer stays "NA" (top-level NA is preserved, not sanitized)
-        assert result.data[PSKeys.OUTPUT]["field_a"] == "NA"
+        # Answer stays "NA" which gets sanitized to None
+        assert result.data[PSKeys.OUTPUT]["field_a"] is None
 
 
 class TestHandleAnswerPromptMultiPrompt:
@@ -687,21 +747,21 @@ class TestHandleAnswerPromptMetrics:
 class TestNullSanitization:
     """Tests for _sanitize_null_values."""
 
-    def test_na_string_preserved(self):
-        """Top-level 'NA' string is preserved (not sanitized to None)."""
+    def test_na_string_becomes_none(self):
+        """Top-level 'NA' string → None."""
         from executor.executors.legacy_executor import LegacyExecutor
 
         output = {"field": "NA"}
         result = LegacyExecutor._sanitize_null_values(output)
-        assert result["field"] == "NA"
+        assert result["field"] is None
 
-    def test_na_case_insensitive_preserved(self):
-        """Top-level 'na' (lowercase) is preserved (not sanitized to None)."""
+    def test_na_case_insensitive(self):
+        """'na' (lowercase) → None."""
         from executor.executors.legacy_executor import LegacyExecutor
 
         output = {"field": "na"}
         result = LegacyExecutor._sanitize_null_values(output)
-        assert result["field"] == "na"
+        assert result["field"] is None
 
     def test_nested_list_na(self):
         """NA in nested list items → None."""
