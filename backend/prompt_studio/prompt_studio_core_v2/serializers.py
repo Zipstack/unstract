@@ -34,6 +34,41 @@ except ImportError:
     from file_management.constants import FileInformationKey as FileKey
 
 
+class CustomToolListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for the list endpoint.
+
+    Avoids the O(tools x prompts) queries that CustomToolSerializer.to_representation
+    causes by skipping profile lookups, prompt fetching, and coverage calculation.
+    """
+
+    created_by_email = serializers.SerializerMethodField()
+    prompt_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomTool
+        fields = [
+            "tool_id",
+            "tool_name",
+            "description",
+            "author",
+            "created_by",
+            "created_at",
+            "modified_at",
+            "shared_to_org",
+            "icon",
+            "created_by_email",
+            "prompt_count",
+        ]
+
+    def get_created_by_email(self, instance):
+        return instance.created_by.email if instance.created_by else ""
+
+    def get_prompt_count(self, instance):
+        if hasattr(instance, "_prompt_count"):
+            return instance._prompt_count or 0
+        return instance.mapped_prompt.count()
+
+
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_service_account=False),
