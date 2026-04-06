@@ -1458,7 +1458,24 @@ class LegacyExecutor(BaseExecutor):
             return
 
         if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
-            raise LegacyExecutorError(message="LINE_ITEM extraction is not supported.")
+            self._run_line_item_extraction(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metadata=metadata,
+                metrics=metrics,
+                run_id=run_id,
+                execution_id=execution_id,
+                execution_source=execution_source,
+                platform_api_key=platform_api_key,
+                tool_id=tool_id,
+                doc_name=doc_name,
+                prompt_name=prompt_name,
+                file_path=file_path,
+                tool_settings=tool_settings,
+                shim=shim,
+            )
+            return
 
         usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
         try:
@@ -1661,6 +1678,83 @@ class LegacyExecutor(BaseExecutor):
                 "TABLE extraction failed for prompt=%s: %s",
                 prompt_name,
                 table_result.error,
+            )
+        shim.stream_log(f"Completed prompt: {prompt_name}")
+
+    def _run_line_item_extraction(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metadata: dict[str, Any],
+        metrics: dict[str, Any],
+        run_id: str,
+        execution_id: str,
+        execution_source: str,
+        platform_api_key: str,
+        tool_id: str,
+        doc_name: str,
+        prompt_name: str,
+        file_path: str,
+        tool_settings: dict[str, Any],
+        shim: Any,
+    ) -> None:
+        """Delegate LINE_ITEM prompt to the line_item executor plugin."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        try:
+            line_item_executor = ExecutorRegistry.get("line_item")
+        except KeyError:
+            raise LegacyExecutorError(
+                message=(
+                    "LINE_ITEM extraction requires the line_item executor "
+                    "plugin. Install the line_item_extractor plugin."
+                )
+            )
+        line_item_ctx = ExecutionContext(
+            executor_name="line_item",
+            operation="line_item_extract",
+            run_id=run_id,
+            execution_source=execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            executor_params={
+                "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
+                "tool_settings": tool_settings,
+                "output": output,
+                "prompt": output.get(PSKeys.PROMPTX, ""),
+                "file_path": file_path,
+                "PLATFORM_SERVICE_API_KEY": platform_api_key,
+                "execution_id": execution_id,
+                "tool_id": tool_id,
+                "file_name": doc_name,
+                "prompt_name": prompt_name,
+            },
+        )
+        line_item_ctx._log_component = self._log_component
+        line_item_ctx.log_events_id = self._log_events_id
+
+        shim.stream_log(f"Running line-item extraction for: {prompt_name}")
+        line_item_result = line_item_executor.execute(line_item_ctx)
+
+        if line_item_result.success:
+            data = line_item_result.data or {}
+            structured_output[prompt_name] = data.get("output", "")
+            line_item_metrics = data.get("metadata", {}).get("metrics", {})
+            metrics.setdefault(prompt_name, {}).update(
+                {"line_item_extraction": line_item_metrics}
+            )
+            context_list = data.get("context")
+            if context_list:
+                metadata[PSKeys.CONTEXT][prompt_name] = context_list
+            shim.stream_log(f"Line-item extraction completed for: {prompt_name}")
+            logger.info("LINE_ITEM extraction completed: prompt=%s", prompt_name)
+        else:
+            structured_output[prompt_name] = ""
+            logger.error(
+                "LINE_ITEM extraction failed for prompt=%s: %s",
+                prompt_name,
+                line_item_result.error,
             )
         shim.stream_log(f"Completed prompt: {prompt_name}")
 
