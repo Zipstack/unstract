@@ -1826,16 +1826,19 @@ class LegacyExecutor(BaseExecutor):
             )
 
         elif output_type == PSKeys.EMAIL:
-            email_prompt = (
-                f"Extract the email from the following text:\n{answer}"
-                f"\n\nOutput just the email. "
-                f"The email should be directly assignable to a string "
-                f"variable. No explanation is required. If you cannot "
-                f'extract the email, output "NA".'
-            )
-            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
-                answer, llm, answer_prompt_svc, email_prompt
-            )
+            if answer.lower() == "na":
+                structured_output[prompt_name] = answer
+            else:
+                email_prompt = (
+                    f"Extract the email from the following text:\n{answer}"
+                    f"\n\nOutput just the email. "
+                    f"The email should be directly assignable to a string "
+                    f"variable. No explanation is required. If you cannot "
+                    f'extract the email, output "NA".'
+                )
+                structured_output[prompt_name] = answer_prompt_svc.run_completion(
+                    llm=llm, prompt=email_prompt
+                )
 
         elif output_type == PSKeys.DATE:
             date_prompt = (
