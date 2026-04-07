@@ -51,7 +51,6 @@
     "react-router-dom": "^6.11.2",
     "react-social-login-buttons": "^3.9.1",
     "react-syntax-highlighter": "^15.6.1",
-
     "recharts": "^3.5.1",
     "remark-gfm": "^3.0.1",
     "socket.io-client": "^4.7.2",
@@ -89,6 +88,8 @@
     "@biomejs/biome": "^2.3.13",
     "@vitejs/plugin-react": "^4.4.0",
     "baseline-browser-mapping": "^2.9.19",
+    "happy-dom": "^20.8.8",
+    "jsdom": "^27.0.1",
     "vite": "^7.0.0",
     "vite-plugin-svgr": "^4.5.0",
     "vitest": "^3.2.0"

@@ -28,7 +28,7 @@ const RequireGuest = () => {
       selectedProductStore.useSelectedProductStore(
         (state) => state?.selectedProduct,
       ) === "llm-whisperer";
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
   try {
@@ -36,7 +36,7 @@ const RequireGuest = () => {
       selectedProductStore.useSelectedProductStore(
         (state) => state?.selectedProduct,
       ) === "verticals";
-  } catch (error) {
+  } catch (_error) {
     // Do nothing
   }
 

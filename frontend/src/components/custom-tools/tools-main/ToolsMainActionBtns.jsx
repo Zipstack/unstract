@@ -77,7 +77,7 @@ function ToolsMainActionBtns() {
       setPostHogCustomEvent("ps_output_analyser_seen", {
         info: "Clicked on 'Output Analyzer' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom PostHog event, ignore it and continue
     }
   }, [navigate, setPostHogCustomEvent]);

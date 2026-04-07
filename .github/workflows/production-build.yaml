@@ -37,29 +37,29 @@ jobs:
     steps:
       - name: Checkout code for release
         if: github.event_name == 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/amd64,linux/arm64/v8
 
       # Set up Docker Buildx for better caching and multi-arch builds
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           platforms: linux/amd64,linux/arm64/v8
 
       # Log in to Docker Hub
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
@@ -91,7 +91,7 @@ jobs:
 
       # Build and push using Docker Bake
       - name: Build and push image
-        uses: docker/bake-action@v5
+        uses: docker/bake-action@v7
         env:
           VERSION: ${{ env.DOCKER_VERSION_TAG }}
         with:
@@ -123,7 +123,7 @@ jobs:
       # Upload status for summary job
       - name: Upload build status
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-status-${{ matrix.service_name }}
           path: build-status/${{ matrix.service_name }}.json
@@ -137,7 +137,7 @@ jobs:
     steps:
       # Download all build status artifacts
       - name: Download build statuses
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: build-status-*
           merge-multiple: true

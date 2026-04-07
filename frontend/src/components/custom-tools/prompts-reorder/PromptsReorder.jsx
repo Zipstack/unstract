@@ -39,7 +39,9 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
 
   const movePrompt = useCallback(
     (fromIndex, toIndex) => {
-      if (fromIndex === toIndex) return;
+      if (fromIndex === toIndex) {
+        return;
+      }
 
       // Store the previous state if not already stored
       if (!previousListOfPrompts.current?.length) {
@@ -92,7 +94,9 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
 
   const onDrop = useCallback(
     async (fromIndex, toIndex) => {
-      if (fromIndex === toIndex) return;
+      if (fromIndex === toIndex) {
+        return;
+      }
 
       updateReorderedStatus(true);
 

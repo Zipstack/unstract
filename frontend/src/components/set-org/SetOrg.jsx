@@ -33,7 +33,7 @@ function SetOrg() {
         if (state === null || signedInOrgId) {
           navigate("/");
         }
-      } catch (error) {
+      } catch (_error) {
         navigate("/");
       } finally {
         setLoading(false);

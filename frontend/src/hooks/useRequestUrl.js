@@ -4,7 +4,9 @@ const useRequestUrl = () => {
   const { sessionDetails } = useSessionStore();
 
   const getUrl = (url) => {
-    if (!url) return null;
+    if (!url) {
+      return null;
+    }
 
     const baseUrl = `/api/v1/unstract/${sessionDetails?.orgId}/`;
     return baseUrl + url.replace(/^\//, "");

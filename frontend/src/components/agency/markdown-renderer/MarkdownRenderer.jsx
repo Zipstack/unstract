@@ -4,7 +4,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 const MarkdownRenderer = memo(({ markdownText }) => {
-  if (!markdownText) return null;
+  if (!markdownText) {
+    return null;
+  }
 
   return (
     <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownText}</ReactMarkdown>

@@ -1,21 +1,24 @@
 /* Metrics Dashboard Styles */
 
 .metrics-dashboard {
-  padding: 24px;
+  padding: 12px;
   background: #f5f5f5;
   height: calc(100vh - 64px);
+}
+
+.metrics-dashboard-container {
+  background: #ffffff;
+  height: 100%;
   overflow-y: auto;
 }
 
-/* Topbar - Full width covering entire space */
+/* Topbar */
 .metrics-topbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin: -24px -24px 20px -24px;
-  padding: 12px 24px;
-  background: white;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  padding: 12px 14px;
+  border-bottom: 1px solid #f0f0f0;
 }
 
 .metrics-topbar-left {
@@ -46,6 +49,18 @@
 
 .metrics-error {
   margin-bottom: 16px;
+}
+
+/* Tabs alignment — direct child only to avoid nested deployment tabs */
+.metrics-dashboard-container > .ant-tabs > .ant-tabs-nav {
+  padding: 0 14px;
+}
+
+/* Tab content padding — direct child only */
+.metrics-dashboard-container > .ant-tabs
+  > .ant-tabs-content-holder
+  > .ant-tabs-content {
+  padding: 16px;
 }
 
 /* Summary Cards - Matching Reference Design */
@@ -228,8 +243,7 @@
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
-    margin: -16px -16px 16px -16px;
-    padding: 12px 16px;
+    padding: 12px 14px;
   }
 
   .metrics-topbar-left {
@@ -242,7 +256,7 @@
   }
 
   .metrics-dashboard {
-    padding: 16px;
+    padding: 12px;
   }
 }
 
@@ -320,7 +334,7 @@
   font-size: 12px;
 }
 
-/* Subscription Usage Tab */
+/* Subscription Usage Tab — Legacy */
 .subscription-usage-tab {
   max-width: 600px;
   margin: 0 auto;
@@ -348,8 +362,164 @@
   color: #595959;
 }
 
+/* Subscription Usage Tab — V2 */
+.subscription-usage-tab-v2 {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.subscription-loading {
+  display: flex;
+  justify-content: center;
+  padding: 60px;
+}
+
+.subscription-overdue-tag-v2 {
+  margin-bottom: 4px;
+}
+
+/* Plan Card V2 */
+.subscription-plan-card-v2 {
+  border-radius: 8px;
+}
+
+.subscription-plan-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.subscription-plan-total {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.subscription-plan-total-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #262626;
+  line-height: 1;
+}
+
+.subscription-plan-total-label {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+.subscription-plan-renewal {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #595959;
+}
+
+.subscription-upgrade-btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  color: #52c41a;
+  border-color: #52c41a;
+}
+
+.subscription-upgrade-btn:hover {
+  color: #389e0d;
+  border-color: #389e0d;
+}
+
+/* Stat cards inside plan card */
+.subscription-stat {
+  text-align: center;
+  padding: 12px 8px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.subscription-stat-icon {
+  font-size: 16px;
+  color: #1890ff;
+  margin-bottom: 6px;
+}
+
+.subscription-stat-value {
+  font-size: 20px;
+  font-weight: 600;
+  color: #262626;
+  line-height: 1.2;
+}
+
+.subscription-stat-label {
+  font-size: 11px;
+  color: #8c8c8c;
+  margin-top: 2px;
+}
+
+/* Chart & Table cards */
+.subscription-chart-card,
+.subscription-table-card {
+  border-radius: 8px;
+}
+
+.subscription-chart-card .ant-card-head-title,
+.subscription-table-card .ant-card-head-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Stat sub-label (e.g. peak date) */
+.subscription-stat-sub {
+  font-size: 10px;
+  color: #b0b0b0;
+  margin-top: 2px;
+}
+
+/* Window note on chart card */
+.subscription-window-note {
+  font-size: 12px;
+  color: #8c8c8c;
+  font-weight: 400;
+}
+
+/* Peak day row highlight in table */
+.subscription-peak-row td {
+  background: #fff7e6 !important;
+}
+
+.subscription-peak-row:hover td {
+  background: #fff1cc !important;
+}
+
+@media (max-width: 768px) {
+  .subscription-plan-total-value {
+    font-size: 24px;
+  }
+
+  .subscription-stat-value {
+    font-size: 16px;
+  }
+}
+
 .subscription-overdue-tag {
   margin-bottom: 12px;
+}
+
+/* Compact execution display */
+.execution-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.execution-success {
+  color: #52c41a;
+  font-size: 12px;
+}
+
+.execution-error {
+  color: #ff4d4f;
+  font-size: 12px;
 }
 
 /* Deployment Type Tabs */

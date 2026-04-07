@@ -164,16 +164,14 @@ function ExecutionLogs() {
     }
   };
 
-  const customButtons = () => {
-    return (
-      <Tabs
-        activeKey={activeTab}
-        items={items}
-        onChange={onChange}
-        className="log-tab"
-      />
-    );
-  };
+  const logTabs = (
+    <Tabs
+      activeKey={activeTab}
+      items={items}
+      onChange={onChange}
+      className="log-tab"
+    />
+  );
 
   useEffect(() => {
     if (!currentPath) {
@@ -220,7 +218,7 @@ function ExecutionLogs() {
     <>
       <ToolNavBar
         title={"Execution Logs"}
-        CustomButtons={customButtons}
+        customButtons={logTabs}
         enableSearch={false}
         previousRoute={backRoute}
         previousRouteState={backRouteState}

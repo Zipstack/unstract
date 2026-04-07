@@ -29,6 +29,32 @@ class ProvisionalWorkflow:
 
 @dataclass
 class ExecutionResponse:
+    """DTO representing the response from a workflow/tool execution.
+
+    Attributes:
+        workflow_id: UUID of the workflow that was executed.
+        execution_id: UUID of the specific execution run.
+        execution_status: Current status (e.g. "PENDING", "EXECUTING",
+            "COMPLETED", "ERROR").
+        log_id: Optional ID for the associated execution log stream.
+        status_api: Optional URL/path for polling execution status.
+        error: Human-readable error message if execution failed.
+        mode: Execution mode (e.g. "DEFAULT", "QUEUE").
+        result: Execution output — a list of per-file result dicts, each
+            containing:
+            - ``"file"`` (str): Source file identifier.
+            - ``"result"`` (dict): Extracted output with keys ``"output"``
+              (the structured extraction), ``"metadata"`` (highlight data,
+              per-model usage, confidence scores), and ``"metrics"``
+              (timing, token counts).
+            - ``"metadata"`` (dict): Workflow-level identifiers
+              (``source_name``, ``source_hash``, ``workflow_id``, etc.).
+            - ``"error"`` (str | None): Per-file error if extraction failed.
+        message: Optional human-readable status message.
+        result_acknowledged: Whether the caller has acknowledged/consumed
+            the result (used by async polling flows).
+    """
+
     workflow_id: str
     execution_id: str
     execution_status: str
@@ -48,6 +74,19 @@ class ExecutionResponse:
         self.message = self.message or None
         self.status_api = self.status_api or None
 
+    @staticmethod
+    def _remove_item_top_metadata(item: dict, keys_to_remove: list[str]) -> None:
+        """Remove metadata keys from top-level item['metadata']."""
+        if "metadata" not in item:
+            return
+        if keys_to_remove:
+            item_metadata = item["metadata"]
+            if isinstance(item_metadata, dict):
+                for key in keys_to_remove:
+                    item_metadata.pop(key, None)
+        else:
+            item.pop("metadata", None)
+
     def remove_result_metadata_keys(self, keys_to_remove: list[str] = []) -> None:
         """Removes specified keys from the 'metadata' dictionary within each
         'result' dictionary in the 'result' list attribute of the instance. If
@@ -61,13 +100,34 @@ class ExecutionResponse:
 
         for item in self.result:
             if not isinstance(item, dict):
-                break
+                continue
 
+            # Handle metadata nested inside item["result"]["metadata"]
             result = item.get("result")
-            if not isinstance(result, dict):
-                break
+            if isinstance(result, dict):
+                self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
 
-            self._remove_specific_keys(result=result, keys_to_remove=keys_to_remove)
+            # Handle top-level item["metadata"] (workers cache path)
+            self._remove_item_top_metadata(item, keys_to_remove)
+
+    def remove_inner_result_metadata(self) -> None:
+        """Removes only the inner item["result"]["metadata"] dict (extraction
+        metadata like highlight_data, per-model costs, etc.) while preserving
+        the outer item["metadata"] dict which contains workflow identification
+        keys (source_name, source_hash, workflow_id, etc.).
+
+        Use this instead of remove_result_metadata_keys() when you want to
+        strip extraction metadata but keep workflow identification metadata.
+        """
+        if not isinstance(self.result, list):
+            return
+
+        for item in self.result:
+            if not isinstance(item, dict):
+                continue
+            result = item.get("result")
+            if isinstance(result, dict):
+                result.pop("metadata", None)
 
     def remove_result_metrics(self) -> None:
         """Removes the 'metrics' key from the 'result' dictionary within each

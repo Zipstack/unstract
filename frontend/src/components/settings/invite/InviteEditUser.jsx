@@ -135,7 +135,7 @@ function InviteEditUser() {
         ? "Clicked on 'Invite' button"
         : "Clicked on 'Update' button";
       setPostHogCustomEvent("intent_success_add_user", { info });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };

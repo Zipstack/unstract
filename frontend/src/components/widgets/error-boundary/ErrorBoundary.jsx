@@ -40,7 +40,9 @@ ErrorBoundary.propTypes = {
 };
 
 ErrorBoundary.defaultProps = {
-  onError: () => {},
+  onError: () => {
+    // No-op default error handler
+  },
   fallbackComponent: <Text type="danger">There was an error</Text>,
 };
 

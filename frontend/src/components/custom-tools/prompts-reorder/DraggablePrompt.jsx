@@ -14,12 +14,16 @@ function DraggablePrompt({ prompt, index, movePrompt, onDrop, cancelDrag }) {
   const [{ handlerId }, drop] = useDrop({
     accept: ItemTypes.PROMPT,
     hover: (item, monitor) => {
-      if (!ref.current) return;
+      if (!ref.current) {
+        return;
+      }
 
       const dragIndex = item.index;
       const hoverIndex = index;
 
-      if (dragIndex === hoverIndex) return;
+      if (dragIndex === hoverIndex) {
+        return;
+      }
 
       // Move the item visually during drag
       movePrompt(dragIndex, hoverIndex);

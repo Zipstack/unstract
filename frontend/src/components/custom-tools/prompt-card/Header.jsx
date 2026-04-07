@@ -398,7 +398,9 @@ function Header({
           <PromptRunBtnSps
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
-            handleGetOutput={() => {}}
+            handleGetOutput={() => {
+              // No-op: output fetching handled elsewhere
+            }}
             promptDetails={promptDetails}
           />
         )}
