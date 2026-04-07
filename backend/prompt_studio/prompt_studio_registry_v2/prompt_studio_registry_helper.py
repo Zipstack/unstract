@@ -7,6 +7,7 @@ from django.conf import settings
 from django.db import IntegrityError
 from plugins import get_plugin
 
+from prompt_studio.lookup_utils import validate_lookups_for_export
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -298,17 +299,9 @@ class PromptStudioRegistryHelper:
         )
 
         # Validate lookup assignments (cloud-only, no-op in OSS)
-        lookup_configs = {}
-        try:
-            from pluggable_apps.lookup_v1.validation import (
-                validate_lookups_for_export,
-            )
-
-            lookup_configs, lookup_error = validate_lookups_for_export(prompts)
-            if lookup_error:
-                raise InValidCustomToolError(lookup_error)
-        except ImportError:
-            pass
+        lookup_configs, lookup_error = validate_lookups_for_export(prompts)
+        if lookup_error:
+            raise InValidCustomToolError(lookup_error)
 
         for prompt in prompts:
             if prompt.prompt_type == JsonSchemaKey.NOTES or not prompt.active:

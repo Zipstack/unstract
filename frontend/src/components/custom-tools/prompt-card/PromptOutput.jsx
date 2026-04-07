@@ -61,6 +61,15 @@ try {
   // Not available in OSS
 }
 
+// Wraps children in LookupOutputTabs when available (cloud),
+// passes through children directly in OSS.
+const renderWithLookupWrapper = (lookupProps, children) =>
+  LookupOutputTabs ? (
+    <LookupOutputTabs {...lookupProps}>{children}</LookupOutputTabs>
+  ) : (
+    children
+  );
+
 function PromptOutput({
   promptDetails,
   handleRun,
@@ -203,31 +212,13 @@ function PromptOutput({
             "highlighted-prompt-cell"
           }`}
         >
-          {LookupOutputTabs ? (
-            <LookupOutputTabs
-              promptId={promptId}
-              profileManagerId={defaultLlmProfile}
-              defaultLlmProfile={defaultLlmProfile}
-              promptOutputId={promptOutputData?.promptOutputId}
-            >
-              <DisplayPromptResult
-                output={promptOutput}
-                highlightData={
-                  promptOutputData?.highlightData?.[promptDetails.prompt_key]
-                }
-                handleSelectHighlight={handleSelectHighlight}
-                confidenceData={
-                  promptOutputData?.confidenceData?.[promptDetails.prompt_key]
-                }
-                wordConfidenceData={
-                  promptOutputData?.wordConfidenceData?.[
-                    promptDetails.prompt_key
-                  ]
-                }
-                progressMsg={progressMsg}
-              />
-            </LookupOutputTabs>
-          ) : (
+          {renderWithLookupWrapper(
+            {
+              promptId,
+              profileManagerId: defaultLlmProfile,
+              defaultLlmProfile,
+              promptOutputId: promptOutputData?.promptOutputId,
+            },
             <DisplayPromptResult
               output={promptOutput}
               highlightData={
@@ -241,7 +232,7 @@ function PromptOutput({
                 promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
               }
               progressMsg={progressMsg}
-            />
+            />,
           )}
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
@@ -465,29 +456,13 @@ function PromptOutput({
                       handleTable(profileId, promptOutputData)
                     ) : (
                       <>
-                        {LookupOutputTabs ? (
-                          <LookupOutputTabs
-                            promptId={promptId}
-                            profileManagerId={profileId}
-                            defaultLlmProfile={defaultLlmProfile}
-                            promptOutputId={promptOutputData?.promptOutputId}
-                          >
-                            <DisplayPromptResult
-                              output={promptOutputData?.output}
-                              profileId={profileId}
-                              docId={selectedDoc?.document_id}
-                              promptRunStatus={promptRunStatus}
-                              handleSelectHighlight={handleSelectHighlight}
-                              highlightData={promptOutputData?.highlightData}
-                              confidenceData={promptOutputData?.confidenceData}
-                              wordConfidenceData={
-                                promptOutputData?.wordConfidenceData
-                              }
-                              promptDetails={promptDetails}
-                              progressMsg={progressMsg}
-                            />
-                          </LookupOutputTabs>
-                        ) : (
+                        {renderWithLookupWrapper(
+                          {
+                            promptId,
+                            profileManagerId: profileId,
+                            defaultLlmProfile,
+                            promptOutputId: promptOutputData?.promptOutputId,
+                          },
                           <DisplayPromptResult
                             output={promptOutputData?.output}
                             profileId={profileId}
@@ -501,7 +476,7 @@ function PromptOutput({
                             }
                             promptDetails={promptDetails}
                             progressMsg={progressMsg}
-                          />
+                          />,
                         )}
                         <div className="prompt-profile-run">
                           <CopyPromptOutputBtn

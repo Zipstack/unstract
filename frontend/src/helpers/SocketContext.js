@@ -16,7 +16,7 @@ const SocketProvider = ({ children }) => {
     // This ensures session cookies are sent (same-origin) and avoids
     // cross-origin WebSocket issues.
     const newSocket = io(getBaseUrl(), {
-      transports: ["websocket", "polling"],
+      transports: ["websocket"],
       path: "/api/v1/socket",
     });
     setSocket(newSocket);
