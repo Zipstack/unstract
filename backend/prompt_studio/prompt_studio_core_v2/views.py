@@ -1215,7 +1215,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         sync_result = PromptStudioHelper.sync_prompts(tool, import_data, request.user)
         response_data.update(sync_result)
         response_data["message"] = (
-            f"Synced {sync_result['prompts_created']} prompts " f"into '{tool.tool_name}'"
+            f"Synced {sync_result['prompts_created']} prompts into '{tool.tool_name}'"
         )
 
         return Response(response_data, status=status.HTTP_200_OK)
