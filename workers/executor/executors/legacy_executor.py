@@ -1729,14 +1729,19 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Table extraction completed for: {prompt_name}")
             logger.info("TABLE extraction completed: prompt=%s", prompt_name)
+            shim.stream_log(f"Completed prompt: {prompt_name}")
         else:
             structured_output[prompt_name] = ""
+            error_msg = table_result.error or "unknown error"
             logger.error(
                 "TABLE extraction failed for prompt=%s: %s",
                 prompt_name,
-                table_result.error,
+                error_msg,
             )
-        shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(
+                f"Table extraction failed for {prompt_name}: {error_msg}",
+                level=LogLevel.ERROR,
+            )
 
     def _run_line_item_extraction(
         self,
@@ -1805,14 +1810,19 @@ class LegacyExecutor(BaseExecutor):
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
             shim.stream_log(f"Line-item extraction completed for: {prompt_name}")
             logger.info("LINE_ITEM extraction completed: prompt=%s", prompt_name)
+            shim.stream_log(f"Completed prompt: {prompt_name}")
         else:
             structured_output[prompt_name] = ""
+            error_msg = line_item_result.error or "unknown error"
             logger.error(
                 "LINE_ITEM extraction failed for prompt=%s: %s",
                 prompt_name,
-                line_item_result.error,
+                error_msg,
             )
-        shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(
+                f"Line-item extraction failed for {prompt_name}: {error_msg}",
+                level=LogLevel.ERROR,
+            )
 
     @staticmethod
     def _apply_type_conversion(
@@ -1919,6 +1929,16 @@ class LegacyExecutor(BaseExecutor):
         ONE LLM call).  Falls back to ``_handle_answer_prompt`` if the
         plugin is not installed.
 
+        Metrics contract: the cloud plugin is the source of the file
+        read for single-pass and is responsible for populating
+        ``context_retrieval`` in its returned ``result.data["metrics"]``
+        using the same per-prompt shape that
+        ``RetrievalService.retrieve_complete_context`` produces, namely
+        ``{prompt_name: {"context_retrieval": {"time_taken(s)": float}}}``.
+        LegacyExecutor does NOT re-measure the read here — measuring at
+        the source is the only way the reported timing can match the
+        plugin's actual retrieval cost.
+
         Returns:
             ExecutionResult with ``data`` containing::
 
@@ -1932,10 +1952,7 @@ class LegacyExecutor(BaseExecutor):
                 "Delegating single_pass_extraction to cloud plugin (run_id=%s)",
                 context.run_id,
             )
-            result = executor.execute(context)
-            if result.success:
-                self._inject_context_retrieval_metrics(result, context)
-            return result
+            return executor.execute(context)
         except KeyError:
             logger.info(
                 "No single_pass_extraction plugin; falling back to "
@@ -1943,55 +1960,6 @@ class LegacyExecutor(BaseExecutor):
                 context.run_id,
             )
             return self._handle_answer_prompt(context)
-
-    def _inject_context_retrieval_metrics(
-        self, result: ExecutionResult, context: ExecutionContext
-    ) -> None:
-        """Inject ``context_retrieval`` timing into single-pass metrics.
-
-        The cloud single_pass_extraction plugin handles retrieval
-        internally but does not report ``context_retrieval`` timing in
-        its returned metrics.  This method replicates the file-read
-        measurement from ``RetrievalService.retrieve_complete_context``
-        and injects it into ``result.data["metrics"]``.
-        """
-        from executor.executors.constants import PromptServiceConstants as PSKeys
-
-        params = context.executor_params
-        file_path = params.get(PSKeys.FILE_PATH)
-        execution_source = params.get(PSKeys.EXECUTION_SOURCE, context.execution_source)
-
-        if not file_path:
-            return
-
-        # Measure the file-read time (same operation as
-        # RetrievalService.retrieve_complete_context)
-        try:
-            fs = FileUtils.get_fs_instance(execution_source=execution_source)
-            start = time.monotonic()
-            fs.read(path=file_path, mode="r")
-            elapsed = round(time.monotonic() - start, 4)
-        except Exception:
-            logger.warning(
-                "Could not measure context_retrieval time for single_pass (run_id=%s)",
-                context.run_id,
-            )
-            return
-
-        data = result.data or {}
-        metrics: dict[str, Any] = data.get(PSKeys.METRICS, {})
-        output: dict[str, Any] = data.get(PSKeys.OUTPUT, {})
-
-        # Inject per-prompt context_retrieval for every output field
-        for prompt_name in output:
-            prompt_metrics = metrics.setdefault(prompt_name, {})
-            if "context_retrieval" not in prompt_metrics:
-                prompt_metrics["context_retrieval"] = {
-                    "time_taken(s)": elapsed,
-                }
-
-        # Persist back (in case metrics dict was newly created)
-        data[PSKeys.METRICS] = metrics
 
     def _handle_summarize(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.SUMMARIZE`` — document summarization.
