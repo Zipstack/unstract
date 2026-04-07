@@ -10,8 +10,8 @@ Browser → Django Backend → RabbitMQ → Executor Worker → Callback → Web
 
 1. User clicks "Run" in Prompt Studio IDE → Backend dispatches task to `celery_executor_legacy` queue
 2. Executor worker picks up task, runs LLM extraction
-3. Result triggers callback on `prompt_studio_callback` queue
-4. Callback worker saves results to DB and pushes via Socket.IO
+3. Result triggers callback on `ide_callback` queue
+4. IDE callback worker persists results via internal API and pushes via Socket.IO
 5. Browser receives result in real-time
 
 ## Services Involved
@@ -19,7 +19,7 @@ Browser → Django Backend → RabbitMQ → Executor Worker → Callback → Web
 | Service | Purpose |
 |---------|---------|
 | `worker-executor-v2` | Runs LLM extraction, indexing, prompts |
-| `worker-prompt-studio-callback` | Post-execution ORM writes + Socket.IO events |
+| `worker-ide-callback` | Post-execution callbacks via internal API + Socket.IO events |
 | `backend` | Django REST API + Socket.IO |
 | `platform-service` | Adapter credential management |
 | `prompt-service` | Prompt template service |

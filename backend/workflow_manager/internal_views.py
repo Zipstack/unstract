@@ -49,6 +49,11 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = WorkflowExecutionSerializer
     lookup_field = "id"
+    # Backward compat: workers may call without X-Organization-ID during
+    # rolling deployments. Safe because internal APIs require service API key
+    # and get_queryset() applies org filtering when header is present.
+    # Remove once all workers reliably pass X-Organization-ID.
+    skip_org_filter = True
 
     def get_queryset(self):
         """Get workflow executions filtered by organization context."""

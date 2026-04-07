@@ -64,10 +64,6 @@ function AddLlmProfile({
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
-
-    return () => {
-      setEditLlmProfileId(null);
-    };
   }, []);
 
   // Load retrieval strategies when tool_id is available (only once)
@@ -163,7 +159,7 @@ function AddLlmProfile({
 
   useEffect(() => {
     if (resetForm) {
-      form.resetFields();
+      form.setFieldsValue(formDetails);
       setResetForm(false);
     }
   }, [formDetails]);

@@ -1,10 +1,8 @@
-"""Legacy executor — migrates the prompt-service pipeline.
+"""Legacy executor — wraps the full prompt-service extraction pipeline.
 
-Phase 2A scaffolds the class with operation routing.
-Phase 2B implements ``_handle_extract`` (text extraction via x2text).
-Phase 2C implements ``_handle_index`` (vector DB indexing).
-Remaining handler methods raise ``NotImplementedError`` and are filled
-in by phases 2D–2H.
+Routes ``ExecutionContext`` requests to handler methods for text
+extraction, indexing, retrieval, prompt answering, single-pass
+extraction, summarisation, and usage tracking.
 """
 
 import logging
@@ -193,7 +191,7 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
-        logger.info(
+        logger.debug(
             "HIGHLIGHT_DEBUG _handle_extract: enable_highlight=%s x2text_type=%s file=%s run_id=%s",
             enable_highlight,
             type(x2text.x2text_instance).__name__,
@@ -235,7 +233,7 @@ class LegacyExecutor(BaseExecutor):
                 process_response.extraction_metadata
                 and process_response.extraction_metadata.line_metadata
             )
-            logger.info(
+            logger.debug(
                 "HIGHLIGHT_DEBUG extraction result: has_line_metadata=%s "
                 "whisper_hash=%s run_id=%s",
                 has_metadata,
@@ -316,6 +314,65 @@ class LegacyExecutor(BaseExecutor):
 
         return Index, EmbeddingCompat, VectorDB
 
+    def _run_summarize_step(
+        self, summarize_params: dict, context: ExecutionContext
+    ) -> ExecutionResult | None:
+        """Run summarization if not already cached.
+
+        Returns:
+            ``None`` on success (summary written or cached), or an
+            ``ExecutionResult`` failure to propagate to the caller.
+        """
+        extract_file_path = summarize_params.get("extract_file_path", "")
+        summarize_file_path = summarize_params.get("summarize_file_path", "")
+        platform_api_key = summarize_params.get("platform_api_key", "")
+        llm_adapter_id = summarize_params.get("llm_adapter_instance_id", "")
+        summarize_prompt = summarize_params.get("summarize_prompt", "")
+        prompt_keys = summarize_params.get("prompt_keys", [])
+
+        fs = FileUtils.get_fs_instance(execution_source=context.execution_source)
+
+        # Check cache — skip if summary already exists
+        if fs.exists(summarize_file_path):
+            existing = fs.read(path=summarize_file_path, mode="r")
+            if existing:
+                return None
+
+        doc_context = fs.read(path=extract_file_path, mode="r")
+        if not doc_context:
+            return ExecutionResult.failure(
+                error="No extracted text found for summarization"
+            )
+
+        summarize_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.SUMMARIZE.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+            executor_params={
+                "llm_adapter_instance_id": llm_adapter_id,
+                "summarize_prompt": summarize_prompt,
+                "context": doc_context,
+                "prompt_keys": prompt_keys,
+                "PLATFORM_SERVICE_API_KEY": platform_api_key,
+            },
+        )
+        summarize_result = self._handle_summarize(summarize_ctx)
+        if not summarize_result.success:
+            return summarize_result
+
+        summarize_dir = str(Path(summarize_file_path).parent)
+        fs.mkdir(summarize_dir, create_parents=True)
+        fs.write(
+            path=summarize_file_path,
+            mode="w",
+            data=summarize_result.data.get("data", ""),
+        )
+        return None
+
     # ------------------------------------------------------------------
     # Phase 5C — Compound IDE index handler (extract + index)
     # ------------------------------------------------------------------
@@ -366,7 +423,16 @@ class LegacyExecutor(BaseExecutor):
         if not extract_result.success:
             return extract_result
 
-        # Step 2: Index — inject extracted text
+        # Step 2: Optional summarize
+        summarize_params = params.get("summarize_params")
+        summarize_file_path = ""
+        if summarize_params:
+            summarize_file_path = summarize_params.get("summarize_file_path", "")
+            result = self._run_summarize_step(summarize_params, context)
+            if result is not None:
+                return result
+
+        # Step 3: Index — inject extracted text
         extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
         index_params[IKeys.EXTRACTED_TEXT] = extracted_text
 
@@ -388,6 +454,7 @@ class LegacyExecutor(BaseExecutor):
             success=True,
             data={
                 IKeys.DOC_ID: index_result.data.get(IKeys.DOC_ID, ""),
+                "summarize_file_path": summarize_file_path,
             },
         )
 
@@ -979,7 +1046,6 @@ class LegacyExecutor(BaseExecutor):
             VectorDB,
         )
 
-    @staticmethod
     @staticmethod
     def _sanitize_dict_values(d: dict[str, Any]) -> None:
         """Replace 'NA' string values with None inside a dict in-place."""
@@ -1712,8 +1778,7 @@ class LegacyExecutor(BaseExecutor):
 
             executor = ExecutorRegistry.get("single_pass_extraction")
             logger.info(
-                "Delegating single_pass_extraction to cloud plugin "
-                "(run_id=%s)",
+                "Delegating single_pass_extraction to cloud plugin (run_id=%s)",
                 context.run_id,
             )
             return executor.execute(context)
@@ -1781,7 +1846,10 @@ class LegacyExecutor(BaseExecutor):
             log_events_id=self._log_events_id,
             component=self._log_component,
         )
-        usage_kwargs = {"run_id": context.run_id, PSKeys.LLM_USAGE_REASON: PSKeys.SUMMARIZE}
+        usage_kwargs = {
+            "run_id": context.run_id,
+            PSKeys.LLM_USAGE_REASON: PSKeys.SUMMARIZE,
+        }
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
 

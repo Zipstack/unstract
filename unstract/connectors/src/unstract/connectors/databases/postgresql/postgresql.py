@@ -3,10 +3,16 @@ import os
 from typing import Any
 
 import psycopg2
+from psycopg2 import sql as psycopg2_sql
 from psycopg2.extensions import connection
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+    validate_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 
 
@@ -72,6 +78,9 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def can_read() -> bool:
         return True
 
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.DOUBLE_QUOTE
+
     def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         """Gets the python datatype of value and converts python datatype to
         corresponding DB datatype.
@@ -134,8 +143,13 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
         # Set schema explicitly only if schema is specified (avoids PgBouncer issues)
         if self.schema:
+            validate_identifier(self.schema)
             with con.cursor() as cur:
-                cur.execute(f"SET search_path TO {self.schema};")
+                cur.execute(
+                    psycopg2_sql.SQL("SET search_path TO {}").format(
+                        psycopg2_sql.Identifier(self.schema)
+                    )
+                )
 
         return con
 
@@ -164,9 +178,10 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
         quoted_table = self._quote_identifier(table_name)
+        quoted_col_v2 = safe_identifier(f"{column_name}_v2", QuoteStyle.DOUBLE_QUOTE)
         sql_query = (
             f"ALTER TABLE {quoted_table} "
-            f"ADD COLUMN {column_name}_v2 JSONB, "
+            f"ADD COLUMN {quoted_col_v2} JSONB, "
             f"ADD COLUMN metadata JSONB, "
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 INTEGER DEFAULT 0, "
@@ -195,7 +210,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
         PostgreSQL identifiers with special characters must be enclosed in double quotes.
         This method adds proper quoting for table names containing hyphens, spaces,
-        or other special characters.
+        or other special characters. Embedded double quotes are escaped.
 
         Args:
             identifier (str): Table name or column name to quote
@@ -203,9 +218,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         Returns:
             str: Properly quoted identifier safe for PostgreSQL
         """
-        # Always quote the identifier to handle special characters like hyphens
-        # This is safe even for valid identifiers and prevents SQL injection
-        return f'"{identifier}"'
+        return safe_identifier(identifier, QuoteStyle.DOUBLE_QUOTE)
 
     def get_sql_insert_query(
         self, table_name: str, sql_keys: list[str], sql_values: list[str] | None = None
@@ -223,6 +236,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             str: INSERT query with properly quoted table name
         """
         quoted_table = self._quote_identifier(table_name)
-        keys_str = ", ".join(sql_keys)
+        quoted_keys = [safe_identifier(k, QuoteStyle.DOUBLE_QUOTE) for k in sql_keys]
+        keys_str = ", ".join(quoted_keys)
         values_placeholder = ", ".join(["%s"] * len(sql_keys))
         return f"INSERT INTO {quoted_table} ({keys_str}) VALUES ({values_placeholder})"

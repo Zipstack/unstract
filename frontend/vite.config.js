@@ -123,7 +123,7 @@ export default defineConfig(({ mode }) => {
         port: Number(env.PORT) || 3000,
         clientPort: env.WDS_SOCKET_PORT
           ? Number(env.WDS_SOCKET_PORT)
-          : (Number(env.PORT) || 3000),
+          : Number(env.PORT) || 3000,
       },
       // Proxy configuration (similar to setupProxy.js in CRA)
       proxy:

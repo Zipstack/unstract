@@ -29,6 +29,32 @@ class ProvisionalWorkflow:
 
 @dataclass
 class ExecutionResponse:
+    """DTO representing the response from a workflow/tool execution.
+
+    Attributes:
+        workflow_id: UUID of the workflow that was executed.
+        execution_id: UUID of the specific execution run.
+        execution_status: Current status (e.g. "PENDING", "EXECUTING",
+            "COMPLETED", "ERROR").
+        log_id: Optional ID for the associated execution log stream.
+        status_api: Optional URL/path for polling execution status.
+        error: Human-readable error message if execution failed.
+        mode: Execution mode (e.g. "DEFAULT", "QUEUE").
+        result: Execution output — a list of per-file result dicts, each
+            containing:
+            - ``"file"`` (str): Source file identifier.
+            - ``"result"`` (dict): Extracted output with keys ``"output"``
+              (the structured extraction), ``"metadata"`` (highlight data,
+              per-model usage, confidence scores), and ``"metrics"``
+              (timing, token counts).
+            - ``"metadata"`` (dict): Workflow-level identifiers
+              (``source_name``, ``source_hash``, ``workflow_id``, etc.).
+            - ``"error"`` (str | None): Per-file error if extraction failed.
+        message: Optional human-readable status message.
+        result_acknowledged: Whether the caller has acknowledged/consumed
+            the result (used by async polling flows).
+    """
+
     workflow_id: str
     execution_id: str
     execution_status: str

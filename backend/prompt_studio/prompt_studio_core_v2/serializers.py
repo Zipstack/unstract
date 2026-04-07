@@ -8,6 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
@@ -33,6 +34,47 @@ except ImportError:
     from file_management.constants import FileInformationKey as FileKey
 
 
+class CustomToolListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for the list endpoint.
+
+    Avoids the O(tools x prompts) queries that CustomToolSerializer.to_representation
+    causes by skipping profile lookups, prompt fetching, and coverage calculation.
+    """
+
+    created_by_email = serializers.SerializerMethodField()
+    prompt_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomTool
+        fields = [
+            "tool_id",
+            "tool_name",
+            "description",
+            "author",
+            "created_by",
+            "created_at",
+            "modified_at",
+            "shared_to_org",
+            "icon",
+            "created_by_email",
+            "prompt_count",
+        ]
+
+    def get_created_by_email(self, instance):
+        return instance.created_by.email if instance.created_by else ""
+
+    def get_prompt_count(self, instance):
+        if hasattr(instance, "_prompt_count"):
+            return instance._prompt_count or 0
+        # Fallback triggers a per-instance query if annotation is missing
+        logger.warning(
+            "CustomToolListSerializer used without _prompt_count annotation "
+            "for tool %s — falling back to per-instance query",
+            instance.tool_id,
+        )
+        return instance.mapped_prompt.count()
+
+
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_service_account=False),
@@ -53,6 +95,14 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             ),
         }
     }
+
+    def validate_tool_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Tool name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""

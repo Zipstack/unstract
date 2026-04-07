@@ -1,6 +1,6 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useAxiosPrivate } from "../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../hooks/useExceptionHandler";
@@ -140,17 +140,14 @@ function ConnectorsPage() {
     });
   };
 
-  const renderCreateConnectorButtons = useCallback(
-    () => (
-      <Button
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleCreateConnector}
-      >
-        New Connector
-      </Button>
-    ),
-    [],
+  const newConnectorButton = (
+    <Button
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={handleCreateConnector}
+    >
+      New Connector
+    </Button>
   );
 
   return (
@@ -160,7 +157,7 @@ function ConnectorsPage() {
         enableSearch
         setSearchList={setDisplayList}
         onSearch={onSearch}
-        CustomButtons={renderCreateConnectorButtons}
+        customButtons={newConnectorButton}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">

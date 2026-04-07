@@ -1,7 +1,7 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -359,7 +359,7 @@ function ListOfTools() {
     </div>
   );
 
-  const CustomButtonsComponent = useCallback(
+  const customButtonsElement = useMemo(
     () => (
       <DefaultCustomButtons
         setOpenImportTool={setOpenImportTool}
@@ -378,7 +378,7 @@ function ListOfTools() {
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={CustomButtonsComponent}
+        customButtons={customButtonsElement}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>

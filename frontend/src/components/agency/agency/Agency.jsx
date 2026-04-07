@@ -893,7 +893,9 @@ function Agency() {
       body["execution_action"] = wfExecutionTypes[executionAction];
 
       handleWfExecutionApi(body)
-        .then(() => {})
+        .then(() => {
+          // Intentionally empty: fire-and-forget
+        })
         .catch((err) => {
           setAlertDetails(handleException(err));
         });

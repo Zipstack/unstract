@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from utils.input_sanitizer import validate_name_field
 
 from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification
@@ -109,6 +110,8 @@ class NotificationSerializer(serializers.ModelSerializer):
         """Check uniqueness of the name with respect to either 'api' or
         'pipeline'.
         """
+        value = validate_name_field(value, field_name="Notification name")
+
         api = self.initial_data.get("api", getattr(self.instance, "api", None))
         pipeline = self.initial_data.get(
             "pipeline", getattr(self.instance, "pipeline", None)

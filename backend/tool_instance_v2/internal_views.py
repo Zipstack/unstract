@@ -23,6 +23,8 @@ class ToolExecutionInternalViewSet(viewsets.ModelViewSet):
     """Internal API for tool execution operations used by lightweight workers."""
 
     serializer_class = ToolInstanceSerializer
+    # Backward compat: remove once all workers pass X-Organization-ID.
+    skip_org_filter = True
 
     def get_queryset(self):
         # Filter by organization context set by internal API middleware

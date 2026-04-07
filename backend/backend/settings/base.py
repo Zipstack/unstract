@@ -419,6 +419,7 @@ MIDDLEWARE = [
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
     "middleware.cache_control.CacheControlMiddleware",
+    "middleware.content_security_policy.ContentSecurityPolicyMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
@@ -573,6 +574,7 @@ REST_FRAMEWORK = {
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
+        "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],

@@ -5,6 +5,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import requests
+from configuration.config_registry import ConfigurationRegistry
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
@@ -13,6 +14,7 @@ from rest_framework.request import Request
 from rest_framework.serializers import Serializer
 from rest_framework.utils.serializer_helpers import ReturnDict
 from tags.models import Tag
+from usage_v2.helper import UsageHelper
 from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
@@ -264,8 +266,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
             cls._enrich_result_with_workflow_metadata(result, organization_id=org_id)
             # Check if highlight data should be removed using configuration registry
             enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
-            from configuration.config_registry import ConfigurationRegistry
-
             if ConfigurationRegistry.is_config_key_available(
                 "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
             ):
@@ -339,8 +339,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         if not isinstance(result.result, list):
             return
 
-        from usage_v2.helper import UsageHelper
-
         for item in result.result:
             if not isinstance(item, dict):
                 continue
@@ -393,8 +391,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         if not isinstance(result.result, list):
             return
 
-        from workflow_manager.file_execution.models import WorkflowFileExecution
-
         # 1. Collect file_execution_ids
         file_exec_ids = [
             item.get("file_execution_id")
@@ -405,6 +401,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
             return
 
         # 2. Batch query (single JOIN query for all file executions)
+        # Local import to avoid circular dependency:
+        # deployment_helper → file_execution.models → workflow_v2.models
+        #   → workflow_v2.models.execution → api_v2.models
+        from workflow_manager.file_execution.models import WorkflowFileExecution
+
         fe_lookup = {
             str(fe.id): fe
             for fe in WorkflowFileExecution.objects.filter(
@@ -459,8 +460,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         include_metrics: bool,
     ) -> None:
         """Enrich and clean up the response for a completed execution."""
-        from configuration.config_registry import ConfigurationRegistry
-
         api_deployment = deployment_execution_dto.api
         organization = api_deployment.organization if api_deployment else None
         org_id = str(organization.organization_id) if organization else ""
@@ -471,8 +470,6 @@ class DeploymentHelper(BaseAPIKeyValidator):
         if ConfigurationRegistry.is_config_key_available(
             "ENABLE_HIGHLIGHT_API_DEPLOYMENT"
         ):
-            from configuration.models import Configuration
-
             enable_highlight = Configuration.get_value_by_organization(
                 config_key="ENABLE_HIGHLIGHT_API_DEPLOYMENT",
                 organization=organization,

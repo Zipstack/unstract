@@ -627,7 +627,7 @@ def _run_agentic_extraction(
 
 
 def _write_tool_result(
-    fs: Any, execution_data_dir: str, data: dict, elapsed_time: float = 0.0
+    fs: Any, execution_data_dir: str, _data: dict, elapsed_time: float = 0.0
 ) -> None:
     """Write tool result and tool_metadata to METADATA.json.
 

@@ -19,6 +19,7 @@ class KeywordTableRetriever(BaseRetriever):
             set[str]: A set of text chunks retrieved from the database.
         """
         try:
+            llm = self.require_llm()
             logger.info(
                 f"Retrieving chunks for {self.doc_id} using LlamaIndex KeywordTableIndex."
             )
@@ -47,7 +48,7 @@ class KeywordTableRetriever(BaseRetriever):
             keyword_index = KeywordTableIndex(
                 nodes=[node.node for node in all_nodes],
                 show_progress=True,
-                llm=self.llm,  # Use the provided LLM instead of defaulting to OpenAI
+                llm=llm,  # Use the provided LLM instead of defaulting to OpenAI
             )
 
             # Create retriever from keyword index

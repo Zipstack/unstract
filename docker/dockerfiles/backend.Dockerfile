@@ -1,10 +1,8 @@
 # Use a specific version of Python slim image
 FROM python:3.12-slim-trixie AS base
 
-ARG VERSION=dev
 LABEL maintainer="Zipstack Inc." \
-    description="Backend Service Container" \
-    version="${VERSION}"
+    description="Backend Service Container"
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -79,5 +77,9 @@ RUN if [ -f requirements.txt ]; then \
     fi
 
 EXPOSE 8000
+
+# Capture build version at the very end so it doesn't affect layer caching
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 ENTRYPOINT [ "./entrypoint.sh" ]

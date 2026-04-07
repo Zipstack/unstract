@@ -23,10 +23,12 @@ from celery import bootsteps, signals  # noqa: E402
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Import the WorkerBuilder and WorkerType
+from shared.api.internal_client import InternalAPIClient  # noqa: E402
 from shared.enums.worker_enums import WorkerType  # noqa: E402
 from shared.infrastructure import initialize_worker_infrastructure  # noqa: E402
 from shared.infrastructure.config.builder import WorkerBuilder  # noqa: E402
 from shared.models.worker_models import get_celery_setting  # noqa: E402
+from shared.patterns.factory.client_factory import ClientFactory  # noqa: E402
 
 # Determine worker type from environment FIRST
 WORKER_TYPE = os.environ.get("WORKER_TYPE", "general")
@@ -335,35 +337,80 @@ app, config = WorkerBuilder.build_celery_app(worker_type)
 # ============= WORKER PROCESS INIT HOOK FOR GRPC FORK-SAFETY =============
 @signals.worker_process_init.connect
 def on_worker_process_init(**kwargs):
-    """Initialize worker process after fork to fix gRPC fork-safety issues.
+    """Initialize worker process after fork.
 
-    This signal handler runs in each forked worker process AFTER the fork,
-    ensuring that gRPC connections and Google API clients are created fresh
-    in the child process, not inherited from the parent.
+    This signal handler runs in each forked worker process AFTER the fork.
 
-    Without this, Google Cloud libraries (Drive, GCS, BigQuery, Secret Manager)
-    crash with SIGSEGV because they inherit stale gRPC connections from the
-    parent process.
+    1. SIGTERM immunity: Ignore SIGTERM in child workers so the MainProcess
+       can orchestrate graceful shutdown via pool.close()/pool.join().
+       Without this, container runtimes (e.g. containerd 2.0) that send
+       SIGTERM to all processes in the cgroup kill children immediately,
+       causing WorkerLostError and orphaned tool containers.
+       billiard's reset_signals() explicitly preserves SIG_IGN, so this
+       survives into task execution. SIGUSR1 (soft timeout) and SIGKILL
+       (hard timeout) are unaffected.
 
-    The GRPC_ENABLE_FORK_SUPPORT environment variable set at the top of this
-    file enables gRPC's experimental fork support, and this handler ensures
-    proper reinitialization after fork.
+    2. gRPC fork-safety: Ensure gRPC connections and Google API clients are
+       created fresh in the child process, not inherited from the parent.
+       Without this, Google Cloud libraries (Drive, GCS, BigQuery, Secret
+       Manager) crash with SIGSEGV because they inherit stale gRPC
+       connections from the parent process.
     """
     import gc
+    import signal
 
-    logger.info("🔄 Worker process initialized after fork (PID: %s)", os.getpid())
-    logger.info("🔒 gRPC fork support enabled: GRPC_ENABLE_FORK_SUPPORT=1")
+    # Ignore SIGTERM in child workers - let MainProcess handle shutdown
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
     logger.info(
-        "📡 gRPC poll strategy: %s", os.environ.get("GRPC_POLL_STRATEGY", "default")
+        "Worker process initialized after fork (PID: %s) - SIGTERM ignored, "
+        "gRPC fork support enabled",
+        os.getpid(),
     )
 
     # Force garbage collection to clean up any stale gRPC state from parent
     gc.collect()
 
-    logger.info("✅ Worker process ready for gRPC-based operations (Google APIs)")
-
 
 # ============= END OF WORKER PROCESS INIT HOOK =============
+
+
+# ============= WORKER PROCESS SHUTDOWN HOOK =============
+@signals.worker_process_shutdown.connect
+def on_worker_process_shutdown(**kwargs):
+    """Clean up HTTP sessions during worker shutdown."""
+    logger.info("Cleaning up API client resources (PID: %s)", os.getpid())
+    try:
+        InternalAPIClient.reset_singleton()
+    except Exception as e:
+        logger.warning(f"Failed to reset InternalAPIClient singleton: {e}")
+    try:
+        ClientFactory.reset_shared_state()
+    except Exception as e:
+        logger.warning(f"Failed to reset ClientFactory: {e}")
+
+
+# ============= END OF WORKER PROCESS SHUTDOWN HOOK =============
+
+
+# ============= TASK COMPLETION HOOK (SESSION LIFECYCLE SAFETY VALVE) =============
+@signals.task_postrun.connect
+def on_task_postrun(sender=None, task_id=None, **kwargs):
+    """Increment task counter for periodic singleton session reset (FR-3.2).
+
+    After WORKER_SINGLETON_RESET_THRESHOLD tasks (default: 1000), the singleton
+    session is closed and recreated. Skipped when singleton is disabled (default)
+    since the counter and reset would be no-ops.
+    """
+    if not config.enable_api_client_singleton:
+        return
+    try:
+        InternalAPIClient.increment_task_counter()
+    except Exception as e:
+        logger.warning(f"Failed to increment task counter: {e}")
+
+
+# ============= END OF TASK COMPLETION HOOK =============
 
 
 # ============= REGISTER HEARTBEATKEEPER HERE =============

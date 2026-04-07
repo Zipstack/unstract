@@ -89,7 +89,9 @@ function CustomDataSettings() {
       ) {
         const promptText = prompt?.prompt || "";
         const foundVariables = extractCustomDataVariables(promptText);
-        foundVariables.forEach((v) => variables.add(v));
+        foundVariables.forEach((v) => {
+          variables.add(v);
+        });
       }
     });
 

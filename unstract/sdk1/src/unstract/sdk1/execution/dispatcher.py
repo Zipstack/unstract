@@ -13,11 +13,17 @@ Three dispatch modes are available:
   / ``link_error`` callbacks for post-processing.
 """
 
+from __future__ import annotations
+
 import logging
 import os
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from unstract.sdk1.execution.context import ExecutionContext
+if TYPE_CHECKING:
+    from celery import Signature
+    from celery.result import AsyncResult
+    from unstract.sdk1.execution.context import ExecutionContext
+
 from unstract.sdk1.execution.result import ExecutionResult
 
 logger = logging.getLogger(__name__)
@@ -202,10 +208,10 @@ class ExecutionDispatcher:
     def dispatch_with_callback(
         self,
         context: ExecutionContext,
-        on_success: object | None = None,
-        on_error: object | None = None,
+        on_success: Signature | None = None,
+        on_error: Signature | None = None,
         task_id: str | None = None,
-    ) -> object:
+    ) -> AsyncResult:
         """Fire-and-forget dispatch with Celery link callbacks.
 
         Sends the task to the executor queue and returns immediately.

@@ -13,6 +13,11 @@ import { useAxiosPrivate } from "./useAxiosPrivate";
 import { useExceptionHandler } from "./useExceptionHandler";
 import usePromptOutput from "./usePromptOutput";
 
+// Tracks the latest run nonce per (promptId, statusKey) so stale timeouts
+// from a previous run don't falsely cancel a newer run of the same combo.
+const runNonceMap = new Map();
+const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
 const usePromptRun = () => {
   const { pushPromptRunApi, freeActiveApi } = usePromptRunQueueStore();
   const { generatePromptOutputKey } = usePromptOutput();
@@ -24,8 +29,6 @@ const usePromptRun = () => {
   const handleException = useExceptionHandler();
 
   const makeApiRequest = (requestOptions) => axiosPrivate(requestOptions);
-
-  const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 
   const runPromptApi = (api) => {
     const [promptId, docId, profileId] = api.split("__");
@@ -49,11 +52,15 @@ const usePromptRun = () => {
     };
 
     // Fire-and-forget: POST dispatches the Celery task, socket delivers result.
+    const statusKey = generateApiRunStatusId(docId, profileId);
+    const nonceKey = `${promptId}__${statusKey}`;
+    const nonce = generateUUID();
+    runNonceMap.set(nonceKey, nonce);
+
     makeApiRequest(requestOptions)
       .then((res) => {
         // Handle pending-indexing response: clear running status immediately
         if (res?.data?.status === "pending") {
-          const statusKey = generateApiRunStatusId(docId, profileId);
           removePromptStatus(promptId, statusKey);
           setAlertDetails({
             type: "info",
@@ -64,8 +71,11 @@ const usePromptRun = () => {
         }
 
         // Timeout safety net: clear stale status if socket event never arrives.
+        // Only clears if this is still the latest run for this combo.
         setTimeout(() => {
-          const statusKey = generateApiRunStatusId(docId, profileId);
+          if (runNonceMap.get(nonceKey) !== nonce) {
+            return;
+          }
           const current = usePromptRunStatusStore.getState().promptRunStatus;
           if (
             current?.[promptId]?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING
@@ -76,14 +86,92 @@ const usePromptRun = () => {
               content: "Prompt execution timed out. Please try again.",
             });
           }
+          runNonceMap.delete(nonceKey);
         }, SOCKET_TIMEOUT_MS);
       })
       .catch((err) => {
         setAlertDetails(
           handleException(err, "Failed to generate prompt output"),
         );
-        const statusKey = generateApiRunStatusId(docId, profileId);
         removePromptStatus(promptId, statusKey);
+        runNonceMap.delete(nonceKey);
+      })
+      .finally(() => {
+        freeActiveApi();
+      });
+  };
+
+  const runBulkPromptApi = (promptIds, docId, profileId) => {
+    const runId = generateUUID();
+    const body = {
+      prompt_ids: promptIds,
+      document_id: docId,
+      profile_manager: profileId,
+      run_id: runId,
+    };
+
+    const requestOptions = {
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/bulk_fetch_response/${details?.tool_id}`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: body,
+    };
+
+    const statusKey = generateApiRunStatusId(docId, profileId);
+    const nonces = {};
+    promptIds.forEach((promptId) => {
+      const nonceKey = `${promptId}__${statusKey}`;
+      const nonce = generateUUID();
+      nonces[promptId] = nonce;
+      runNonceMap.set(nonceKey, nonce);
+    });
+
+    // Timeout safety net: clear stale status if socket event never arrives.
+    // Only clears if this is still the latest run for each prompt combo.
+    const clearStaleStatuses = () => {
+      promptIds.forEach((promptId) => {
+        const nonceKey = `${promptId}__${statusKey}`;
+        if (runNonceMap.get(nonceKey) !== nonces[promptId]) {
+          return;
+        }
+        const current = usePromptRunStatusStore.getState().promptRunStatus;
+        if (
+          current?.[promptId]?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING
+        ) {
+          removePromptStatus(promptId, statusKey);
+        }
+        runNonceMap.delete(nonceKey);
+      });
+    };
+
+    makeApiRequest(requestOptions)
+      .then((res) => {
+        if (res?.data?.status === "pending") {
+          promptIds.forEach((promptId) => {
+            removePromptStatus(promptId, statusKey);
+          });
+          setAlertDetails({
+            type: "info",
+            content:
+              res?.data?.message || "Document is being indexed. Please wait.",
+          });
+          return;
+        }
+
+        setTimeout(clearStaleStatuses, SOCKET_TIMEOUT_MS);
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to generate prompt output"),
+        );
+        promptIds.forEach((promptId) => {
+          const nonceKey = `${promptId}__${statusKey}`;
+          removePromptStatus(promptId, statusKey);
+          runNonceMap.delete(nonceKey);
+        });
       })
       .finally(() => {
         freeActiveApi();
@@ -224,7 +312,19 @@ const usePromptRun = () => {
     ));
 
     addPromptStatus(promptRunApiStatus);
-    pushPromptRunApi(apiRequestsToQueue);
+
+    // Use bulk API when multiple prompts target the same (profile, doc) to
+    // prevent the "Document being indexed" race condition.
+    const isBulk = params.prompts.length > 1;
+    if (isBulk) {
+      for (const pId of params.profiles) {
+        for (const dId of params.docs) {
+          runBulkPromptApi(params.prompts, dId, pId);
+        }
+      }
+    } else {
+      pushPromptRunApi(apiRequestsToQueue);
+    }
   };
 
   return {

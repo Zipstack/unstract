@@ -6,6 +6,10 @@ import pymysql.err as MysqlError
 from pymysql.connections import Connection
 
 from unstract.connectors.databases.mysql_handler import MysqlHandler
+from unstract.connectors.databases.sql_safety import (
+    QuoteStyle,
+    safe_identifier,
+)
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
 
@@ -72,6 +76,9 @@ class MariaDB(UnstractDB, MysqlHandler):
             )
             raise ConnectorError(error_msg) from e
 
+    def get_quote_style(self) -> QuoteStyle:
+        return QuoteStyle.BACKTICK
+
     def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
         return str(MysqlHandler.sql_to_db_mapping(value=value, column_name=column_name))
 
@@ -97,8 +104,9 @@ class MariaDB(UnstractDB, MysqlHandler):
         Returns:
             str: generates a create sql base query with the constant columns
         """
+        qt = safe_identifier(table, QuoteStyle.BACKTICK)
         sql_query = (
-            f"CREATE TABLE IF NOT EXISTS {table} "
+            f"CREATE TABLE IF NOT EXISTS {qt} "
             f"(id LONGTEXT, "
             f"created_by LONGTEXT, created_at TIMESTAMP, "
             f"metadata JSON, "
@@ -115,18 +123,20 @@ class MariaDB(UnstractDB, MysqlHandler):
         query = (
             "SELECT column_name, data_type FROM "
             "information_schema.columns WHERE "
-            f"UPPER(table_name) = UPPER('{table_name}') AND table_schema = '{self.database}'"
+            "UPPER(table_name) = UPPER(%s) AND table_schema = %s"
         )
-        results = self.execute(query=query)
+        results = self.execute(query=query, params=(table_name, self.database))
         column_types: dict[str, str] = self.get_db_column_types(
             columns_with_types=results
         )
         return column_types
 
     def prepare_multi_column_migration(self, table_name: str, column_name: str) -> str:
+        qt = safe_identifier(table_name, QuoteStyle.BACKTICK)
+        qc = safe_identifier(f"{column_name}_v2", QuoteStyle.BACKTICK)
         sql_query = (
-            f"ALTER TABLE {table_name} "
-            f"ADD COLUMN {column_name}_v2 JSON, "
+            f"ALTER TABLE {qt} "
+            f"ADD COLUMN {qc} JSON, "
             f"ADD COLUMN metadata JSON, "
             f"ADD COLUMN user_field_1 BOOLEAN DEFAULT FALSE, "
             f"ADD COLUMN user_field_2 BIGINT DEFAULT 0, "

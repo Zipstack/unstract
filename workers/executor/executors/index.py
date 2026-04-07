@@ -27,6 +27,7 @@ from unstract.sdk1.file_storage.impl import FileStorage
 from unstract.sdk1.file_storage.provider import FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper as ToolAdapter
 from unstract.sdk1.tool.stream import StreamMixin
+from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.tool import ToolUtils
 
 if TYPE_CHECKING:
@@ -67,17 +68,21 @@ class Index:
         if not file_hash:
             file_hash = fs.get_hash_from_file(path=file_info.file_path)
 
+        vector_db_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.vector_db_instance_id
+        )
+        embedding_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.embedding_instance_id
+        )
+        x2text_config = ToolAdapter.get_adapter_config(
+            self.tool, self.instance_identifiers.x2text_instance_id
+        )
+        Utils.strip_adapter_name(vector_db_config, embedding_config, x2text_config)
         index_key = {
             "file_hash": file_hash,
-            "vector_db_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.vector_db_instance_id
-            ),
-            "embedding_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.embedding_instance_id
-            ),
-            "x2text_config": ToolAdapter.get_adapter_config(
-                self.tool, self.instance_identifiers.x2text_instance_id
-            ),
+            "vector_db_config": vector_db_config,
+            "embedding_config": embedding_config,
+            "x2text_config": x2text_config,
             "chunk_size": str(self.chunking_config.chunk_size),
             "chunk_overlap": str(self.chunking_config.chunk_overlap),
         }

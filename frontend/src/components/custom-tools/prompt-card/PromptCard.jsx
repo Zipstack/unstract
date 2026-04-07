@@ -68,6 +68,21 @@ const PromptCard = memo(
       setIsPromptDetailsStateUpdated(true);
     }, [promptDetails]);
 
+    // Initialize promptKey from props so the message filter can match
+    // per-prompt PROGRESS messages (executor sends component.prompt_key).
+    useEffect(() => {
+      if (promptDetailsState?.prompt_key && !promptKey) {
+        setPromptKey(promptDetailsState.prompt_key);
+      }
+    }, [promptDetailsState?.prompt_key]);
+
+    // Clear stale progress text when execution finishes.
+    useEffect(() => {
+      if (!isCoverageLoading) {
+        setProgressMsg({});
+      }
+    }, [isCoverageLoading]);
+
     useEffect(() => {
       // Find the latest message that matches the criteria
       const msg = [...messages]
@@ -90,7 +105,7 @@ const PromptCard = memo(
         message: msg?.message || "",
         level: msg?.level || "INFO",
       });
-    }, [messages]);
+    }, [messages, promptDetailsState?.prompt_id, promptKey, details?.tool_id]);
 
     useEffect(() => {
       setSelectedLlmProfileId(
@@ -181,17 +196,17 @@ const PromptCard = memo(
 
     const processNestedArray = (nestedValue, flattened) => {
       if (Array.isArray(nestedValue)) {
-        nestedValue.forEach((coords) =>
-          addCoordsToFlattened(coords, flattened),
-        );
+        nestedValue.forEach((coords) => {
+          addCoordsToFlattened(coords, flattened);
+        });
       }
     };
 
     const processObjectValues = (item, flattened) => {
       if (typeof item === "object" && !Array.isArray(item)) {
-        Object.values(item).forEach((value) =>
-          processNestedArray(value, flattened),
-        );
+        Object.values(item).forEach((value) => {
+          processNestedArray(value, flattened);
+        });
       }
     };
 
@@ -211,7 +226,9 @@ const PromptCard = memo(
       const flattened = [];
       Object.values(data).forEach((value) => {
         if (Array.isArray(value)) {
-          value.forEach((item) => processArrayItem(item, flattened));
+          value.forEach((item) => {
+            processArrayItem(item, flattened);
+          });
         }
       });
       return flattened;

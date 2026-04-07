@@ -740,7 +740,9 @@ function ConfigureConnectorModal({
           connectorMode={connMode}
           addNewItem={handleConnectorCreated}
           editItemId={null}
-          setEditItemId={() => {}}
+          setEditItemId={() => {
+            // No-op: editing not supported from this modal
+          }}
         />
       )}
 

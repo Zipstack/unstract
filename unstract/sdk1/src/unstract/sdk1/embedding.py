@@ -4,6 +4,7 @@ import os
 from typing import TYPE_CHECKING
 
 import litellm
+import unstract.sdk1.patches.litellm_cohere_timeout  # noqa: F401
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
@@ -16,6 +17,8 @@ from unstract.sdk1.utils.callback_manager import CallbackManager
 
 if TYPE_CHECKING:
     from unstract.sdk1.tool.base import BaseTool
+
+litellm.drop_params = True
 
 
 class Embedding:
@@ -112,8 +115,6 @@ class Embedding:
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
-
-            litellm.drop_params = True
 
             resp = litellm.embedding(model=model, input=[text], **kwargs)
 

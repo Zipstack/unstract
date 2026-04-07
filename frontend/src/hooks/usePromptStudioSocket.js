@@ -20,44 +20,48 @@ const usePromptStudioSocket = () => {
   const socket = useContext(SocketContext);
   const { removePromptStatus, clearPromptStatusById } =
     usePromptRunStatusStore();
-  const { updateCustomTool, deleteIndexDoc } = useCustomToolStore();
+  const { updateCustomTool, deleteIndexDoc, selectedDoc, details } =
+    useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updatePromptOutputState } = usePromptOutput();
 
-  const clearResultStatuses = useCallback(
-    (data) => {
-      if (!Array.isArray(data)) {
+  const clearPromptStatuses = useCallback(
+    (promptIds, docId, profileId) => {
+      if (!docId || !profileId) {
         return;
       }
-      data.forEach((item) => {
-        const promptId = item?.prompt_id;
-        const docId = item?.document_manager;
-        const profileId = item?.profile_manager;
-        if (promptId && docId && profileId) {
-          const statusKey = generateApiRunStatusId(docId, profileId);
-          removePromptStatus(promptId, statusKey);
-        }
+      const statusKey = generateApiRunStatusId(docId, profileId);
+      (promptIds || []).forEach((promptId) => {
+        removePromptStatus(promptId, statusKey);
       });
     },
     [removePromptStatus],
   );
 
   const handleCompleted = useCallback(
-    (operation, result) => {
+    (operation, result, extra) => {
       if (operation === "fetch_response") {
         const data = Array.isArray(result) ? result : [];
-        updatePromptOutputState(data, false);
-        clearResultStatuses(data);
+        updatePromptOutputState(data, false, extra?.elapsed || 0);
+        clearPromptStatuses(
+          extra?.prompt_ids,
+          extra?.document_id,
+          extra?.profile_manager_id,
+        );
         setAlertDetails({
           type: "success",
           content: "Prompt execution completed successfully.",
         });
       } else if (operation === "single_pass_extraction") {
         const data = Array.isArray(result) ? result : [];
-        updatePromptOutputState(data, false);
+        updatePromptOutputState(data, false, extra?.elapsed || 0);
         updateCustomTool({ isSinglePassExtractLoading: false });
-        clearResultStatuses(data);
+        clearPromptStatuses(
+          extra?.prompt_ids,
+          extra?.document_id,
+          extra?.profile_manager_id,
+        );
         setAlertDetails({
           type: "success",
           content: "Single pass extraction completed successfully.",
@@ -69,16 +73,17 @@ const usePromptStudioSocket = () => {
         }
         setAlertDetails({
           type: "success",
-          content: result?.message || "Document indexed successfully.",
+          content: `${selectedDoc?.document_name || "Document"} - Indexed successfully`,
         });
       }
     },
     [
       updatePromptOutputState,
-      clearResultStatuses,
+      clearPromptStatuses,
       updateCustomTool,
       setAlertDetails,
       deleteIndexDoc,
+      selectedDoc,
     ],
   );
 
@@ -132,10 +137,15 @@ const usePromptStudioSocket = () => {
     (payload) => {
       try {
         const msg = payload?.data || payload;
-        const { status, operation, result, error, ...extra } = msg;
+        const { status, operation, result, error, tool_id, ...extra } = msg;
+
+        // Ignore events belonging to a different tool (multi-tab safety)
+        if (tool_id && details?.tool_id && tool_id !== details.tool_id) {
+          return;
+        }
 
         if (status === "completed") {
-          handleCompleted(operation, result);
+          handleCompleted(operation, result, extra);
         } else if (status === "failed") {
           handleFailed(operation, error, extra);
         }
@@ -145,7 +155,7 @@ const usePromptStudioSocket = () => {
         );
       }
     },
-    [handleCompleted, handleFailed, setAlertDetails, handleException],
+    [handleCompleted, handleFailed, setAlertDetails, handleException, details],
   );
 
   useEffect(() => {

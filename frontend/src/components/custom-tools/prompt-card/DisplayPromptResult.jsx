@@ -24,7 +24,9 @@ function DisplayPromptResult({
   confidenceData,
   wordConfidenceData,
   isTable = false,
-  setOpenExpandModal = () => {},
+  setOpenExpandModal = () => {
+    // No-op default
+  },
   progressMsg,
 }) {
   const [isLoading, setIsLoading] = useState(false);
@@ -82,7 +84,7 @@ function DisplayPromptResult({
     );
   }
 
-  if (output === undefined) {
+  if (output === undefined || output === null) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>

@@ -61,6 +61,10 @@ function ToolsMain() {
   ];
 
   useEffect(() => {
+    const { isSinglePassExtractLoading } = useCustomToolStore.getState();
+    if (isSinglePassExtractLoading) {
+      return;
+    }
     promptOutputApi(
       details?.tool_id,
       selectedDoc?.document_id,
@@ -121,8 +125,9 @@ function ToolsMain() {
       setPostHogCustomEvent("ps_prompt_added", {
         info: `Clicked on + ${type} button`,
       });
-    } catch (_err) {
-      // If an error occurs while setting custom posthog event, ignore it and continue
+    } catch (err) {
+      // PostHog analytics failure should not block the user action
+      console.error("PostHog event failed", err);
     }
 
     let body = {};

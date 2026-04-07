@@ -386,19 +386,14 @@ function ManageDocsModal({
       title: "Actions",
       dataIndex: "reindex",
       key: "reindex",
-      width: 200,
+      width: 120,
     },
     {
-      title: "",
-      dataIndex: "delete",
-      key: "delete",
-      width: 30,
-    },
-    {
-      title: "",
+      title: "Select Default",
       dataIndex: "select",
       key: "select",
-      width: 30,
+      align: "center",
+      width: 120,
     },
   ];
 
@@ -500,32 +495,28 @@ function ManageDocsModal({
                 </Tooltip>
               )}
             </div>
+            <ConfirmModal
+              handleConfirm={() => handleDelete(item?.document_id)}
+              content="The document will be permanently deleted."
+            >
+              <Tooltip title="Delete">
+                <Button
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  disabled={
+                    isMultiPassExtractLoading ||
+                    isSinglePassExtractLoading ||
+                    indexDocs.includes(item?.document_id) ||
+                    isUploading ||
+                    isPublicSource
+                  }
+                />
+              </Tooltip>
+            </ConfirmModal>
             <div className="center">
               {infoIndex(indexMessages?.[item?.document_name])}
             </div>
           </Space>
-        ),
-        delete: (
-          <ConfirmModal
-            handleConfirm={() => handleDelete(item?.document_id)}
-            content="The document will be permanently deleted."
-          >
-            <Tooltip title="Delete">
-              <Button
-                size="small"
-                className="display-flex-align-center"
-                disabled={
-                  isMultiPassExtractLoading ||
-                  isSinglePassExtractLoading ||
-                  indexDocs.includes(item?.document_id) ||
-                  isUploading ||
-                  isPublicSource
-                }
-              >
-                <DeleteOutlined className="manage-llm-pro-icon" />
-              </Button>
-            </Tooltip>
-          </ConfirmModal>
         ),
         select: (
           <Radio
@@ -834,4 +825,5 @@ ManageDocsModal.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   handleDocChange: PropTypes.func.isRequired,
 };
+
 export { ManageDocsModal };
