@@ -90,11 +90,9 @@ try {
 }
 
 let lookupStudioEnabled = false;
-let PromptStudioPopoverContent = null;
 try {
-  const mod = await import("../../../plugins/lookup-studio");
+  await import("../../../plugins/lookup-studio");
   lookupStudioEnabled = true;
-  PromptStudioPopoverContent = mod.PromptStudioPopoverContent;
 } catch {
   // Plugin unavailable
 }
@@ -516,11 +514,13 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     });
   }
 
-  // Mark Prompt Studio item for popover rendering when lookups plugin is available
+  // Extend Prompt Studio active state to include /lookups paths
   if (lookupStudioEnabled && isUnstract) {
     const psItem = data[0]?.subMenu?.find((el) => el.id === 1.1);
     if (psItem) {
-      psItem.hasLookupPopover = true;
+      psItem.active =
+        psItem.active ||
+        globalThis.location.pathname.startsWith(`/${orgName}/lookups`);
     }
   }
 
@@ -714,69 +714,6 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                           overlayClassName="settings-popover-overlay"
                         >
                           {platformContent}
-                        </Popover>
-                      );
-                    }
-
-                    // Prompt Studio with Look-Ups popover
-                    if (el.hasLookupPopover) {
-                      const psContent = (
-                        <Tooltip title={collapsed ? el.title : ""}>
-                          <Space
-                            className={`space-styles ${
-                              el.active ||
-                              globalThis.location.pathname.startsWith(
-                                `/${orgName}/lookups`,
-                              )
-                                ? "space-styles-active"
-                                : ""
-                            } ${el.disable ? "space-styles-disable" : ""}`}
-                            onClick={() => {
-                              if (!el.disable) {
-                                navigate(el.path);
-                              }
-                            }}
-                            data-testid="sidebar-prompt-studio"
-                          >
-                            <Image
-                              src={el.image}
-                              alt="side_icon"
-                              className="menu-item-icon"
-                              preview={false}
-                            />
-                            {!collapsed && (
-                              <div>
-                                <Typography className="sidebar-item-text fs-14">
-                                  {el.title}
-                                </Typography>
-                                <Typography className="sidebar-item-text fs-11">
-                                  {el.description}
-                                </Typography>
-                              </div>
-                            )}
-                          </Space>
-                        </Tooltip>
-                      );
-
-                      if (el.disable) {
-                        return <div key={el.id}>{psContent}</div>;
-                      }
-
-                      return (
-                        <Popover
-                          key={el.id}
-                          content={
-                            <PromptStudioPopoverContent
-                              orgName={orgName}
-                              navigate={navigate}
-                            />
-                          }
-                          trigger="hover"
-                          placement="rightTop"
-                          arrow={false}
-                          overlayClassName="settings-popover-overlay"
-                        >
-                          {psContent}
                         </Popover>
                       );
                     }
