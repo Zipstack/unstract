@@ -111,9 +111,15 @@ function DocumentParser({
   }, [scrollToBottom]);
 
   // Handle scrollTo query param for cross-linking from Lookup Studio
+  const UUID_RE =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   useEffect(() => {
     const scrollToPromptId = searchParams.get("scrollTo");
-    if (!scrollToPromptId || !details?.prompts?.length) {
+    if (
+      !scrollToPromptId ||
+      !UUID_RE.test(scrollToPromptId) ||
+      !details?.prompts?.length
+    ) {
       return;
     }
 
@@ -127,7 +133,7 @@ function DocumentParser({
     // Clear the param so it doesn't re-trigger
     searchParams.delete("scrollTo");
     setSearchParams(searchParams, { replace: true });
-  }, [details?.prompts]);
+  }, [details?.prompts, searchParams]);
 
   const promptUrl = (urlPath) => {
     return `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${urlPath}`;

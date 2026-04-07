@@ -90,9 +90,11 @@ try {
 }
 
 let lookupStudioEnabled = false;
+let PromptStudioPopoverContent = null;
 try {
-  await import("../../../plugins/lookup-studio");
+  const mod = await import("../../../plugins/lookup-studio");
   lookupStudioEnabled = true;
+  PromptStudioPopoverContent = mod.PromptStudioPopoverContent;
 } catch {
   // Plugin unavailable
 }
@@ -263,45 +265,6 @@ const HITLPopoverContent = ({ orgName, role, navigate }) => {
 HITLPopoverContent.propTypes = {
   orgName: PropTypes.string.isRequired,
   role: PropTypes.string.isRequired,
-  navigate: PropTypes.func.isRequired,
-};
-
-const PROMPT_STUDIO_MENU_ITEMS = [
-  { key: "projects", label: "Projects", subPath: "/tools" },
-  { key: "lookups", label: "Look-Ups", subPath: "/lookups" },
-];
-
-const getActivePromptStudioKey = (orgName) => {
-  const currentPath = globalThis.location.pathname;
-  if (currentPath.startsWith(`/${orgName}/lookups`)) {
-    return "lookups";
-  }
-  return "projects";
-};
-
-const PromptStudioPopoverContent = ({ orgName, navigate }) => {
-  const activeKey = getActivePromptStudioKey(orgName);
-
-  return (
-    <nav className="settings-sidebar-popover">
-      {PROMPT_STUDIO_MENU_ITEMS.map((menuItem) => (
-        <button
-          key={menuItem.key}
-          type="button"
-          className={`settings-menu-item ${
-            activeKey === menuItem.key ? "active" : ""
-          }`}
-          onClick={() => navigate(`/${orgName}${menuItem.subPath}`)}
-        >
-          {menuItem.label}
-        </button>
-      ))}
-    </nav>
-  );
-};
-
-PromptStudioPopoverContent.propTypes = {
-  orgName: PropTypes.string.isRequired,
   navigate: PropTypes.func.isRequired,
 };
 

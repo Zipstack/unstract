@@ -4,6 +4,7 @@ from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
 
+from prompt_studio.lookup_utils import persist_lookup_output
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
@@ -198,25 +199,10 @@ class OutputManagerHelper:
                 word_confidence_data=prompt_word_confidence_data,
             )
 
-            # Persist lookup outputs if present (cloud plugin)
+            # Persist lookup outputs if present (cloud plugin, no-op in OSS)
             if prompt_lookup:
                 try:
-                    from pluggable_apps.lookup_v1.models import (
-                        LookupOutputResult,
-                    )
-
-                    lookup_meta = prompt_lookup.get("meta", {})
-                    lookup_id = lookup_meta.get("lookup_id")
-                    if lookup_id:
-                        LookupOutputResult.objects.update_or_create(
-                            prompt_output=prompt_output,
-                            defaults={
-                                "lookup_definition_id": lookup_id,
-                                "output": prompt_lookup.get("enriched", ""),
-                            },
-                        )
-                except ImportError:
-                    pass
+                    persist_lookup_output(prompt_output, prompt_lookup)
                 except Exception:
                     logger.warning(
                         "Failed to persist lookup output for prompt %s",
