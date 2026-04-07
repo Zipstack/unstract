@@ -19,6 +19,7 @@ function ToolNavBar({
   onNavigateBack,
   segmentFilter,
   segmentOptions,
+  segmentValue,
   onSearch,
   searchKey,
 }) {
@@ -79,6 +80,7 @@ function ToolNavBar({
         {segmentFilter && segmentOptions && (
           <Segmented
             options={segmentOptions}
+            value={segmentValue}
             onChange={segmentFilter}
             className="tool-nav-bar__segment"
           />
@@ -111,6 +113,7 @@ ToolNavBar.propTypes = {
   previousRouteState: PropTypes.object,
   onNavigateBack: PropTypes.func,
   segmentOptions: PropTypes.array,
+  segmentValue: PropTypes.string,
   segmentFilter: PropTypes.func,
   onSearch: PropTypes.func,
   searchKey: PropTypes.string,
