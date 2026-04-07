@@ -157,6 +157,7 @@ class AnswerPromptService:
             platform_postamble=platform_postamble,
             word_confidence_postamble=word_confidence_postamble,
             prompt_type=prompt_type,
+            signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
         return AnswerPromptService.run_completion(
@@ -190,6 +191,44 @@ class AnswerPromptService:
         return notes
 
     @staticmethod
+    def _format_signature_metadata(
+        signature_metadata: dict[str, list[Any]],
+    ) -> str:
+        """Format signature metadata as a human-readable context block.
+
+        Args:
+            signature_metadata: Dict keyed by page number (str) with lists
+                of signature entries, each having 'type', 'name', 'desc'.
+
+        Returns:
+            Formatted string for LLM context injection.
+        """
+        lines: list[str] = []
+        for page_num, signatures in sorted(
+            signature_metadata.items(), key=lambda x: int(x[0])
+        ):
+            if not signatures:
+                continue
+            for sig in signatures:
+                name = sig.get("name", "Unknown")
+                sig_type = sig.get("type", "signature")
+                desc = sig.get("desc", "")
+                page_display = int(page_num) + 1  # 0-indexed to 1-indexed
+                entry = f"- Page {page_display}: {name} ({sig_type})"
+                if desc:
+                    entry += f" — {desc}"
+                lines.append(entry)
+        if not lines:
+            return ""
+        header = (
+            "\n\n[Document Signature Information]\n"
+            "The following signatures were detected in this document. "
+            "Use this information to answer any questions about signatories, "
+            "signing parties, or document execution status.\n"
+        )
+        return header + "\n".join(lines)
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -199,6 +238,7 @@ class AnswerPromptService:
         platform_postamble: str,
         word_confidence_postamble: str,
         prompt_type: str = "text",
+        signature_metadata: dict[str, list[Any]] | None = None,
     ) -> str:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
@@ -212,8 +252,15 @@ class AnswerPromptService:
             platform_postamble += "\n\n"
             if word_confidence_postamble:
                 platform_postamble += f"{word_confidence_postamble}\n\n"
+        # Append signature metadata to context if present
+        signature_context = ""
+        if signature_metadata:
+            signature_context = AnswerPromptService._format_signature_metadata(
+                signature_metadata
+            )
         prompt += (
-            f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
+            f"\n\n{postamble}\n\nContext:\n---------------\n{context}"
+            f"{signature_context}\n"
             f"-----------------\n\n{platform_postamble}Answer:"
         )
         return prompt

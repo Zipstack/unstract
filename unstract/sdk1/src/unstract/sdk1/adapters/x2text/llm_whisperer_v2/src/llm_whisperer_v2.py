@@ -10,6 +10,8 @@ from unstract.sdk1.adapters.x2text.dto import (
     TextExtractionResult,
 )
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
+    Modes,
+    WhispererConfig,
     WhispererEndpoint,
 )
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
@@ -96,9 +98,22 @@ class LLMWhispererV2(X2TextAdapter):
             fs=fs,
             extra_params=extra_params,
         )
+        # Extract signature_metadata when using document_insights mode
+        signature_metadata = None
+        mode = self.config.get(WhispererConfig.MODE, Modes.FORM.value)
+        if mode == Modes.DOCUMENT_INSIGHTS.value:
+            response_metadata = response.get("metadata", {})
+            signature_metadata = {}
+            for page_num, page_data in response_metadata.items():
+                if isinstance(page_data, dict) and "signature_metadata" in page_data:
+                    signature_metadata[page_num] = page_data["signature_metadata"]
+            if not any(signature_metadata.values()):
+                signature_metadata = None
+
         metadata = TextExtractionMetadata(
             whisper_hash=response.get(X2TextConstants.WHISPER_HASH_V2, ""),
             line_metadata=response.get("line_metadata"),
+            signature_metadata=signature_metadata,
         )
 
         return TextExtractionResult(

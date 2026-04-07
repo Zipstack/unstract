@@ -261,6 +261,15 @@ class LegacyExecutor(BaseExecutor):
                 result_data["highlight_metadata"] = (
                     process_response.extraction_metadata.line_metadata
                 )
+            # Include signature metadata when available
+            # (from document_insights mode)
+            if (
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.signature_metadata
+            ):
+                result_data["signature_metadata"] = (
+                    process_response.extraction_metadata.signature_metadata
+                )
             return ExecutionResult(
                 success=True,
                 data=result_data,
@@ -535,6 +544,15 @@ class LegacyExecutor(BaseExecutor):
             if not extract_result.success:
                 return extract_result
             extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+
+            # Pass signature metadata to answer phase via tool_settings
+            from executor.executors.constants import PromptServiceConstants as PSKeys
+
+            signature_metadata = extract_result.data.get("signature_metadata")
+            if signature_metadata:
+                tool_settings = answer_params.get(PSKeys.TOOL_SETTINGS, {})
+                tool_settings[PSKeys.SIGNATURE_METADATA] = signature_metadata
+                answer_params[PSKeys.TOOL_SETTINGS] = tool_settings
 
         # ---- Step 2: Summarize (if enabled) ----
         if is_summarization:
