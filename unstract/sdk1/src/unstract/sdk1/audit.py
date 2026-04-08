@@ -88,6 +88,7 @@ class Audit(StreamMixin):
         input_tokens = prompt_tokens
         if event_type == "embedding":
             input_tokens = token_counter.total_embedding_token_count
+            completion_tokens = 0
 
         # Compute cost using the full model name (e.g. "azure/gpt-4o")
         # before stripping the provider prefix for DB storage.
