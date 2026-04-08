@@ -1026,9 +1026,20 @@ class LegacyExecutor(BaseExecutor):
                 doc_id_found,
                 reindex,
             )
+            if doc_id_found and not reindex:
+                shim.stream_log(
+                    "Document already indexed in vector store; skipping re-index."
+                )
+                logger.info(
+                    "Skipping re-index: doc_id=%s already in vector DB and "
+                    "reindex=False",
+                    doc_id,
+                )
+                return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+
             if doc_id_found and reindex:
                 shim.stream_log("Document already indexed, re-indexing...")
-            elif not doc_id_found:
+            else:
                 shim.stream_log("Indexing document for the first time...")
             shim.stream_log("Indexing document into vector store...")
             index.perform_indexing(

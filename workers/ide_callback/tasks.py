@@ -211,6 +211,31 @@ def ide_index_complete(
                     profile_manager_id,
                 )
 
+        # Mark extraction_status so subsequent Answer Prompt dispatches
+        # can short-circuit re-extraction. The Phase 4 backend payload
+        # already stashes x2text_config_hash and enable_highlight in
+        # cb_kwargs for exactly this purpose. Failure here is non-fatal:
+        # primary indexing already succeeded above.
+        x2text_config_hash = cb.get("x2text_config_hash", "")
+        enable_highlight = cb.get("enable_highlight", False)
+        if x2text_config_hash and profile_manager_id:
+            try:
+                api.mark_extraction_status(
+                    document_id=document_id,
+                    profile_manager_id=profile_manager_id,
+                    x2text_config_hash=x2text_config_hash,
+                    enable_highlight=enable_highlight,
+                    organization_id=org_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to mark extraction_status for document %s "
+                    "profile %s; primary indexing succeeded.",
+                    document_id,
+                    profile_manager_id,
+                    exc_info=True,
+                )
+
         # Handle summary index tracking via backend endpoint
         # (requires PromptIdeBaseTool + IndexingUtils which need Django ORM)
         summary_profile_id = cb.get("summary_profile_id", "")
