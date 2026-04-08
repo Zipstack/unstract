@@ -7,7 +7,7 @@ allowed-tools: Read Glob Grep Edit Write Bash(git:*) Bash(gh:*) Bash(find:*) Bas
 
 # Design Rules Skill
 
-A skill for managing and applying the version-controlled design rule system in this repo. The system has two layers: global rules in `design-rules/` and per-component `DESIGN_RULES.md` files inside each active Django app, each `unstract/` shared lib component, and each worker. The system is OSS-only — it must never reference cloud / enterprise / pluggable_apps / HITL / subscription / agentic / or any specific PR review tool.
+A skill for managing and applying the version-controlled design rule system in this repo. The system has two layers: global rules in `design-rules/` and per-component `DESIGN_RULES.md` files placed next to the code they govern, under `backend/`, `unstract/`, and `workers/` (where present). Coverage is rolled out incrementally — not every component has a file yet. The system is OSS-only — it must never reference cloud / enterprise / pluggable_apps / HITL / subscription / agentic / or any specific PR review tool.
 
 ---
 
@@ -98,13 +98,10 @@ Create a new rule, ADR, or per-component file.
 - Refinement of an existing principle → edit it in place; do not duplicate.
 
 ### Add an ADR
-1. `ls design-rules/adr/ADR-*.md` to find the next free number.
+1. `ls design-rules/adr/ADR-*.md` to find the next free number (the highest existing number plus one — never fill a gap).
 2. Create `design-rules/adr/ADR-NNN-<kebab-title>.md`:
-   ```
+   ```markdown
    # ADR-NNN: <title>
-
-   ## Status
-   Accepted
 
    ## Context
    <why this decision is needed; what's currently true>
@@ -115,8 +112,9 @@ Create a new rule, ADR, or per-component file.
    ## Consequences
    <what becomes easier / harder / required>
    ```
-3. Add a one-line entry to `design-rules/adr/README.md`.
-4. Cross-link from the relevant per-component `DESIGN_RULES.md` files in their "Read first" section.
+   There is no `Status` field — the merge IS the acceptance. See `design-rules/adr/README.md` for the full ADR format and the delete-on-supersession flow.
+3. Add a one-line entry to the Index table in `design-rules/adr/README.md`.
+4. Cross-link from the relevant per-component `DESIGN_RULES.md` files in their `Read first` section.
 
 ### Add a per-component `DESIGN_RULES.md`
 1. Verify the directory exists on disk and contains real source (not just `__pycache__`).
@@ -132,7 +130,7 @@ Apply new changes to existing rules. Triggered by "update design rule for X", "t
 
 1. Identify the affected files: principle file, ADR(s), per-component file(s).
 2. Make minimal edits in place. Never duplicate content between global and component files.
-3. If a previously-recorded rule is now wrong because the implementation changed, **update the rule, do not add a contradicting one**. If the change is significant enough to be a decision reversal, supersede the relevant ADR by adding a new ADR and marking the old one's Status as `Superseded by ADR-NNN` (the only allowed Status besides `Accepted`).
+3. If a previously-recorded rule is now wrong because the implementation changed, **update the rule, do not add a contradicting one**. If the change is significant enough to be a decision reversal, add a new ADR that overturns the prior decision and **delete** the old ADR in the same PR — update every reference to the old ADR ID repo-wide (M2). See `design-rules/adr/README.md` for the full supersession flow.
 4. If a per-component file is updated, also check whether the global ADR / principle / security standard it references still matches. Fix upstream first if both are wrong.
 
 ---
@@ -154,7 +152,7 @@ Check code or a diff against the design rules. Triggered by "review against desi
    |---|---|---|
    | Tenant isolation bypass | New model or queryset bypassing org scoping | `security/tenant-isolation.md` (Three-Layer Defense) |
    | SQL injection | String interpolation into SQL inside `unstract/connectors/.../databases/**` | inline SQL Safety Standard S1 in that directory's `DESIGN_RULES.md` |
-   | Missing auth | New endpoint without authentication | P8 fail-closed |
+   | Missing auth | New endpoint without authentication | P5 fail-closed |
    | Direct org FK on derived model | New model that doesn't inherit org through a parent | P6, ADR-002 |
    | Audit/billing CASCADE | New audit/billing record using FK CASCADE to parent | P4, ADR-003 |
    | Credential duplication | Storing the same credential twice instead of referencing | P2 |
@@ -199,6 +197,6 @@ The script checks: forbidden-word scan, compatibility-statement presence in ever
 | `design-rules/security/standards.md` | SQL Safety S1 + current protection patterns as rules. |
 | `design-rules/adr/ADR-*.md` | 8 accepted ADRs. |
 | `unstract/connectors/src/unstract/connectors/databases/DESIGN_RULES.md` | SQL Safety Standard S1 inlined for the 8 DB connectors. |
-| `backend/<app>/DESIGN_RULES.md` × 22 | Per-Django-app component files. |
-| `unstract/<component>/DESIGN_RULES.md` × 9 | Per-shared-lib component files. |
-| `workers/<component>/DESIGN_RULES.md` × 10 | Per-worker component files. |
+| `backend/**/DESIGN_RULES.md` | Per-Django-app component files (where present). |
+| `unstract/**/DESIGN_RULES.md` | Per-shared-lib component files (where present). |
+| `workers/**/DESIGN_RULES.md` | Per-worker component files (where present). |

@@ -53,7 +53,7 @@ This file follows the [per-component contract](../../design-rules/per-component-
 | **Severity** | MUST |
 | **Why** | Workers run in Docker images without a Django process. Importing `django.*`, Django models, or Django settings from `workers/shared` turns every worker into a Django dependency and defeats the whole purpose of the new workers architecture (the system must work with AND without the new workers). Data coming from the backend must be consumed as JSON payloads and mapped into local dataclasses. |
 | **Refs** | `principles.md#P6` · `CLAUDE.md` (architecture principles) |
-| **Enforced by** | not yet enforced — code review only (no import-linter wired in CI today) |
+| **Enforced by** | code review only |
 
 ### R4 — Celery task signatures are JSON-serializable only
 

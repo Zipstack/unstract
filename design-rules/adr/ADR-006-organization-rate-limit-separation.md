@@ -6,7 +6,7 @@ Per-organization configuration values are stored in `Configuration`. Rate limits
 
 ## Decision
 
-`OrganizationRateLimit` is a separate model from `Configuration`. It lives in the `configuration` app but is not stored as a `Configuration` row.
+`OrganizationRateLimit` is a separate model from `Configuration`. It is defined in `backend/api_v2/models.py` (the `api_v2` app) and is not stored as a `Configuration` row.
 
 ## Consequences
 

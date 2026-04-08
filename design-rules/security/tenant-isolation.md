@@ -9,8 +9,8 @@ Tenant isolation in this codebase is enforced by three independent layers in the
 |  |  |
 |---|---|
 | **Component** | `CustomAuthMiddleware` |
-| **Behaviour** | Validates that the authenticated user belongs to the organization addressed by the request and stores the resolved `org_id` in a thread-local `StateStore`. Downstream model managers and filter backends read the org id from this store. |
-| **Fail mode** | If the org cannot be resolved, the middleware fails closed (P5) and the request is rejected. |
+| **Behaviour** | Validates the request's identity, resolves the active organization from the session/platform key, and stores the resolved `org_id` in a thread-local `StateStore`. Downstream model managers and filter backends read the org id from this store. |
+| **Fail mode** | Rejects the request with 403 when the request targets a specific organization (`request.organization_id` is set on the URL) and the session cannot be resolved to that org. Requests that do not target a specific organization are allowed through with no org set in `StateStore`, and are then fail-closed at Layer 2/3 when they touch tenant data. Layer 1 is *identity-and-binding*, not the primary fail-closed boundary — that role belongs to Layer 3 below (P5). |
 
 ---
 
