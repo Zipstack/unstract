@@ -15,9 +15,11 @@ This nested-discovery pattern follows the [AGENTS.md](https://agents.md/) conven
 | [`principles.md`](principles.md) | Universal principles P1–P9 |
 | [`ai-review-checklist.md`](ai-review-checklist.md) | 9 questions to answer on every change |
 | [`lifecycle.md`](lifecycle.md) | Change lifecycle from design to monitoring |
+| [`per-component-contract.md`](per-component-contract.md) | Canonical shape for every per-component `DESIGN_RULES.md` file |
+| [`definition-of-done.md`](definition-of-done.md) | Per-component Definition of Done and severity vocabulary |
 | [`security/tenant-isolation.md`](security/tenant-isolation.md) | Three-Layer Defense |
 | [`security/standards.md`](security/standards.md) | SQL safety and current protection patterns |
-| [`adr/`](adr/) | Accepted Architecture Decision Records |
+| [`adr/`](adr/) | Active Architecture Decision Records |
 
 ---
 
@@ -47,12 +49,7 @@ If `per-component-contract.md` and an example file ever disagree, the contract w
 
 ## How to add an ADR
 
-| Step | Action |
-|---|---|
-| 1 | Pick the next free `ADR-NNN` number under `adr/`. |
-| 2 | Use the format: Status / Context / Decision / Consequences. |
-| 3 | Only ADRs with status "Accepted" land here. Proposals live elsewhere. |
-| 4 | Link the ADR from any per-component `DESIGN_RULES.md` it constrains. |
+See [`adr/README.md`](adr/README.md) for the ADR format, the numbering convention, and the supersession flow. Do not duplicate that guidance here.
 
 ---
 
