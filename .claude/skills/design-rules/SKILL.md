@@ -34,11 +34,11 @@ A skill for managing and applying the version-controlled design rule system in t
 | Mode | Output |
 |------|--------|
 | **list** | Compact text list (titles + numbers, no bodies) |
-| **get** | Deduped bundle: compatibility statement, relevant principles, AI Review Checklist, referenced ADRs, security standards, component Dos/Don'ts |
+| **get** | Deduped bundle: compatibility statement, relevant principles, AI Review Checklist, referenced ADRs, security standards, and the component's `## Rules` entries (`R1..Rn` with Severity / Why / Refs / Enforced by) |
 | **add** | New file written + cross-links updated; refused if content describes an aspiration rather than implemented behaviour |
 | **update** | Minimal in-place edit; ADR superseded with a new ADR if the change is a reversal |
 | **review** | Per-file findings table: file, line, principle/ADR violated, why, minimal fix |
-| **validate** | Pass/fail report from forbidden-word grep, compatibility-statement check, ADR-link resolution |
+| **validate** | Pass/fail report from forbidden-word scan, compatibility-statement presence check, and component-directory sanity check |
 
 ---
 
@@ -81,7 +81,7 @@ Fetch the rules that actually apply to a target.
    - AI Review Checklist (always)
    - ADRs referenced by any collected component file
    - Security standards referenced (e.g. `security/tenant-isolation.md`, `security/standards.md`, the inline SQL Safety Standard under `unstract/connectors/.../databases/`)
-   - The component-specific Dos / Don'ts / Acceptance criteria from each collected `DESIGN_RULES.md`
+   - The component-specific `## Rules` entries (`R1..Rn` with Severity / Why / Refs / Enforced by) from each collected `DESIGN_RULES.md`, plus any `## Known Exceptions` entries when present
 4. **Deduplicate.** Never show the same principle or ADR twice.
 5. If asked for "all" design rules, dump the global files (`design-rules/**`) without per-component noise.
 
@@ -120,7 +120,7 @@ Create a new rule, ADR, or per-component file.
 1. Verify the directory exists on disk and contains real source (not just `__pycache__`).
 2. Use the standard template from `design-rules/README.md`. Always include the verbatim compatibility statement.
 3. Include "Read first" links to `principles.md`, `ai-review-checklist.md`, and any relevant ADRs / security standards.
-4. If the component has no specific Dos / Don'ts in source material, write the boilerplate body with `No component-specific rules beyond the global principles.`
+4. If the component has no specific rules yet, use the canonical placeholder under `## Rules`: `No component-specific rules yet.` Do not invent Dos/Don'ts — the canonical format is `R1..Rn` entries with the full four-row table.
 
 ---
 
@@ -141,7 +141,7 @@ Check code or a diff against the design rules. Triggered by "review against desi
 
 1. **Determine the target.** Accept: a list of changed files, a PR number (use `gh pr diff <n> --name-only`), `git diff --name-only` for local changes, or a single file.
 2. **Run `get`** on those targets to collect all applicable rules.
-3. **For each changed file**, walk through the AI Review Checklist questions (`design-rules/ai-review-checklist.md`) and the component's Dos / Don'ts. For every violation, output:
+3. **For each changed file**, walk through the AI Review Checklist questions (`design-rules/ai-review-checklist.md`) and the component's `## Rules` entries (`R1..Rn`). For every violation, output:
    - File and line (when known)
    - Principle / ADR / security standard violated
    - Why it's a violation
