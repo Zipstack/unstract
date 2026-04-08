@@ -23,7 +23,7 @@ Every per-component `DESIGN_RULES.md` contains, in this order:
 | 5 | `## Scope` — two-row table with `**Covers**` and `**Excludes**` |
 | 6 | `## Read first` — table of files and why each binds here |
 | 7 | `## Rules` — `R1`..`Rn`, each rendered as an `### R<N> — <title>` heading followed by a 4-row table (Severity / Why / Refs / Enforced by). If the component has no rules yet, the section contains the single line `No component-specific rules yet.` |
-| 8 | `## Known Exceptions` — `### <descriptive title>` headings with a 3-row table (Rule / Why / Tracked in), OR the single line `None.` |
+| 8 | `## Known Exceptions` (optional) — present *only* when at least one intentional, accepted exception exists. Each entry is a `### <descriptive title>` heading with a 3-row table (Rule / Why / Tracked in). Omit the section entirely when there are none. |
 | 9 | `## Checklist` — single line linking to `definition-of-done.md` |
 
 Place a `---` horizontal rule between major content sections (after the Contract pointer, after `Read first`, after `Rules`). They create the visual breaks that make the file scannable in a github diff or markdown preview but are not themselves "sections."
@@ -119,11 +119,11 @@ A rule with `Enforced by: not yet enforced` is still a real rule, but it is hone
 | **Tracked in** | <issue tracker ID, ADR reference, or "permanent — see Why"> |
 ```
 
-Exceptions are temporary by definition — they exist to record an accepted current violation, and they are removed when the violation is fixed. They are not numbered: stable IDs are for things you cite from outside, and exceptions are referred to by their topic, not by an ID. When an exception is removed, the heading simply disappears.
+Exceptions are temporary by definition — they exist to record an accepted current violation, and they are removed when the violation is fixed. They are not numbered: stable IDs are for things you cite from outside, and exceptions are referred to by their topic, not by an ID. When an exception is removed, the heading simply disappears; when the last exception goes away, drop the whole `## Known Exceptions` section with it.
 
-If there are no known exceptions, the section contains the single line `None.`. The section is mandatory — its absence means the contract is not being followed.
+The section is **optional**. Include it only when at least one intentional, accepted exception exists. Absence of the section means "no known exceptions today" — do not write `None.` or a placeholder.
 
-A `## Known Exceptions` entry is the *only* legitimate way for code to violate a rule without changing the rule. If the deviation is permanent, say so explicitly under `Tracked in:`. If the deviation is temporary, the tracker entry must hold the plan to remove it.
+A `## Known Exceptions` entry is the *only* legitimate way for code to violate a rule without changing the rule. An entry documents an **evaluated, accepted** deviation, not "we discovered some drift we haven't decided about yet." Unevaluated drift belongs in the issue tracker, not here. If the deviation is permanent, say so explicitly under `Tracked in:`. If the deviation is temporary, the tracker entry must hold the plan to remove it.
 
 ---
 

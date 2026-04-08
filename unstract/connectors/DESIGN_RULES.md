@@ -74,10 +74,6 @@ This file follows the [per-component contract](../../design-rules/per-component-
 
 ---
 
-## Known Exceptions
-
-None.
-
 ## Checklist
 
 See [Definition of Done](../../design-rules/definition-of-done.md).
