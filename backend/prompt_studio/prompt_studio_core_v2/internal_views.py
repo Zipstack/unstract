@@ -156,6 +156,73 @@ def index_update(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def extraction_status(request):
+    """Mark IndexManager.extraction_status for a document+profile pair.
+
+    Called by the ide_callback worker after a successful ide_index run so
+    that subsequent Answer Prompt dispatches can short-circuit extraction
+    via PromptStudioIndexHelper.check_extraction_status.
+
+    Expected JSON payload:
+    {
+        "document_id": str,
+        "profile_manager_id": str,
+        "x2text_config_hash": str,
+        "enable_highlight": bool,
+        "extracted": bool (optional, default true),
+        "error_message": str | null (optional)
+    }
+    """
+    data, err = _parse_json_body(request)
+    if err:
+        return err
+
+    document_id = data.get("document_id", "")
+    profile_manager_id = data.get("profile_manager_id", "")
+    x2text_config_hash = data.get("x2text_config_hash", "")
+    enable_highlight = data.get("enable_highlight", False)
+    extracted = data.get("extracted", True)
+    error_message = data.get("error_message")
+
+    if not document_id or not profile_manager_id or not x2text_config_hash:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    "document_id, profile_manager_id, and x2text_config_hash "
+                    "are required"
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+        from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
+            PromptStudioIndexHelper,
+        )
+
+        profile_manager = ProfileManager.objects.get(pk=profile_manager_id)
+        success = PromptStudioIndexHelper.mark_extraction_status(
+            document_id=document_id,
+            profile_manager=profile_manager,
+            x2text_config_hash=x2text_config_hash,
+            enable_highlight=enable_highlight,
+            extracted=extracted,
+            error_message=error_message,
+        )
+        return JsonResponse({"success": success})
+
+    except Exception as e:
+        logger.exception("extraction_status internal API failed")
+        return JsonResponse(
+            {"success": False, "error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        )
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def indexing_status(request):
     """Update document indexing cache status (mark indexed or remove).
 
