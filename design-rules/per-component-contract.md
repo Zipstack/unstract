@@ -76,7 +76,7 @@ Every rule in the `## Rules` section uses this exact format — an `H3` heading 
 | **Enforced by** | <test path | middleware | CI check | code review only | not yet enforced — <ref>> |
 ```
 
-Every rule must have all four rows (Severity, Why, Refs, Enforced by). `validate.sh` checks the field presence, not the field content.
+Every rule must have all four rows (Severity, Why, Refs, Enforced by). Rule-field presence and checklist-section presence are checked at code review today — `validate.sh` does not yet parse rule tables; it currently only verifies the Compatibility blockquote substring, the forbidden-word list, and component-directory sanity. A future hardening pass may extend it to enforce the full rule format; until then, reviewers are the enforcement.
 
 The middle dot (`·`) is the canonical separator for multiple `Refs` entries — easier to scan than a comma in a table cell.
 
@@ -171,7 +171,7 @@ Why: a rule system that contradicts itself is no rule system at all. Reviewers c
 
 - Whenever a new active Django app is added under `backend/`, a new shared library directory is added under `unstract/`, or a new worker directory is added under `workers/`. M1 above.
 - Copy the structure from a real, current file — `backend/account_v2/DESIGN_RULES.md` is the canonical reference.
-- If the new component has no specific rules yet, the `## Rules` section contains a single line: `No component-specific rules yet.` The file is still mandatory, and the `## Known Exceptions` and `## Checklist` sections are still required.
+- If the new component has no specific rules yet, the `## Rules` section contains a single line: `No component-specific rules yet.` The file is still mandatory; keep `## Checklist`, and include `## Known Exceptions` only when at least one accepted exception exists.
 
 ---
 
@@ -189,7 +189,7 @@ Why: a rule system that contradicts itself is no rule system at all. Reviewers c
 If you change this contract, expect to:
 
 1. Update [`definition-of-done.md`](definition-of-done.md) if the change affects the checklist body, severity vocabulary, or M1/M2/M3 wording.
-2. Update `.claude/skills/design-rules/scripts/validate.sh` if any literal string the script greps for changes (the Compatibility blockquote, the `## Checklist` section header, or the rule field names).
+2. Update `.claude/skills/design-rules/scripts/validate.sh` if the Compatibility blockquote wording changes or the forbidden-word list needs adjusting — those are the literal strings the script currently greps for. (The script does not today enforce rule-format or section-header literals; if a future hardening pass adds those checks, list them here.)
 3. Update `.claude/skills/design-rules/SKILL.md` if the contract introduces a new section that the `get` or `review` commands must surface.
 4. Re-run `validate.sh` against every per-component file in the repo.
 5. If the section structure itself changes, the change touches every per-component file. That is intentional: a structural change is a real event and a 41-file diff is the right blast radius.

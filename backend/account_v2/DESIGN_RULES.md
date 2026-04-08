@@ -19,7 +19,7 @@ This file follows the [per-component contract](../../design-rules/per-component-
 
 | File | Why it binds here |
 |---|---|
-| [`principles.md`](../../design-rules/principles.md) | P1 (org scoping), P2 (credentials), P8 (fail-closed) |
+| [`principles.md`](../../design-rules/principles.md) | P1 (org scoping), P2 (credentials), P5 (fail-closed) |
 | [`ai-review-checklist.md`](../../design-rules/ai-review-checklist.md) | 9 questions every change must answer |
 | [`security/tenant-isolation.md`](../../design-rules/security/tenant-isolation.md) | Three-Layer Defense — `account_v2` owns Layer 1 (middleware) and is the root of Layer 3 (filter backend) |
 | [`adr/ADR-001`](../../design-rules/adr/ADR-001-org-scoping-query-layer.md) | Org scoping is enforced at the query layer, not via RLS |
@@ -43,7 +43,7 @@ This file follows the [per-component contract](../../design-rules/per-component-
 |---|---|
 | **Severity** | MUST |
 | **Why** | The middleware is Layer 1 of the Three-Layer Defense — it validates the user belongs to the org and stores `org_id` in the thread-local `StateStore`. Reading the org from a header, request param, or cookie directly bypasses validation and is a tenant boundary violation. |
-| **Refs** | `principles.md#P8` · `security/tenant-isolation.md` |
+| **Refs** | `principles.md#P5` · `security/tenant-isolation.md` |
 | **Enforced by** | `CustomAuthMiddleware` + code review |
 
 ### R3 — Org membership has exactly one source of truth: `OrganizationMember`
@@ -62,7 +62,7 @@ This file follows the [per-component contract](../../design-rules/per-component-
 | **Severity** | MUST |
 | **Why** | Duplicating a credential makes rotation impossible and leaves stale copies behind on member departure. `User`-owned credentials must be referenced by ID from anywhere that consumes them, never copied. |
 | **Refs** | `principles.md#P2` |
-| **Enforced by** | not yet enforced — see project issue tracker (credential lifecycle) |
+| **Enforced by** | code review only |
 
 ---
 

@@ -19,7 +19,7 @@ This file follows the [per-component contract](../../design-rules/per-component-
 
 | File | Why it binds here |
 |---|---|
-| [`principles.md`](../../design-rules/principles.md) | P2 (credentials), P8 (fail-closed) |
+| [`principles.md`](../../design-rules/principles.md) | P2 (credentials), P5 (fail-closed) |
 | [`ai-review-checklist.md`](../../design-rules/ai-review-checklist.md) | 9 questions every change must answer |
 | [`security/standards.md`](../../design-rules/security/standards.md) | `EncryptedBinaryField` on `ConnectorInstance.connector_metadata`, SQL Safety Standard (S1) for the databases subtree |
 
@@ -60,7 +60,7 @@ This file follows the [per-component contract](../../design-rules/per-component-
 |---|---|
 | **Severity** | MUST |
 | **Why** | Driver-level exceptions (`psycopg2.*`, `google.api_core.*`, `boto3.ClientError`, …) must be wrapped in the `unstract.connectors.exceptions` hierarchy before leaving the connector. Callers depend on a stable error contract to distinguish retryable, auth, and misconfiguration failures — leaking the raw driver exception couples callers to the driver and defeats retry/backoff policy. |
-| **Refs** | `principles.md#P8` |
+| **Refs** | `security/standards.md` |
 | **Enforced by** | code review only |
 
 ### R5 — Database connectors inherit the SQL Safety Standard from `databases/`

@@ -13,7 +13,7 @@ Principles are referenced from per-component files via `principles.md#PN` (e.g. 
 |  |  |
 |---|---|
 | **Rule** | Every model that holds tenant data must be reachable from `Organization` and must be filtered by the requesting user's organization on every read and write. |
-| **Implementation** | Use `DefaultOrganizationMixin` for direct FK ownership, and `OrgAwareManager` or `OrganizationFilterBackend` for indirect ownership through a parent FK chain. See [`security/tenant-isolation.md`](security/tenant-isolation.md) for the Three-Layer Defense. |
+| **Implementation** | Tenant models with a direct `organization` FK use `DefaultOrganizationMixin` (model mixin — adds the FK and auto-populates it on save) together with `DefaultOrganizationManagerMixin` (manager mixin — filters every queryset by the current org). Models that reach `Organization` only through a parent FK chain use `OrgAwareManager` or rely on `OrganizationFilterBackend` (the view-layer backend that BFS-walks the FK chain). See [`security/tenant-isolation.md`](security/tenant-isolation.md) for the full Three-Layer Defense. |
 | **Example** | A new model that stores documents must add a direct `organization` FK or a path that BFS-resolves to one. A new DRF view on a tenant model must inherit the project's filter backend so cross-org reads are impossible. |
 
 ---
