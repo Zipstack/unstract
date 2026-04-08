@@ -79,6 +79,7 @@ class LegacyExecutor(BaseExecutor):
         # Extract log streaming info (set by tasks.py for IDE sessions).
         self._log_events_id: str = context.log_events_id or ""
         self._log_component: dict[str, str] = getattr(context, "_log_component", {})
+        self._usage_records: list[dict[str, Any]] = []
 
         handler_name = self._OPERATION_MAP.get(context.operation)
         if handler_name is None:
@@ -107,6 +108,11 @@ class LegacyExecutor(BaseExecutor):
                 context.run_id,
                 result.success,
             )
+            # Attach collected usage records to the result metadata
+            if self._usage_records:
+                result.metadata.setdefault("usage_records", []).extend(
+                    self._usage_records
+                )
             return result
         except LegacyExecutorError as exc:
             elapsed = time.monotonic() - start
@@ -1390,6 +1396,7 @@ class LegacyExecutor(BaseExecutor):
             metadata=metadata,
         )
         challenger.run()
+        self._usage_records.extend(challenge_llm.flush_pending_usage())
         shim.stream_log(f"Challenge verification completed for: {prompt_name}")
         logger.info("Challenge completed: prompt=%s", prompt_name)
 
@@ -1702,6 +1709,15 @@ class LegacyExecutor(BaseExecutor):
                     f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
                 }
             )
+            self._usage_records.extend(llm.flush_pending_usage())
+            # Flush embedding usage from callback handlers
+            if chunk_size > 0:
+                try:
+                    for handler in embedding.callback_manager.handlers:
+                        if hasattr(handler, "flush_pending_usage"):
+                            self._usage_records.extend(handler.flush_pending_usage())
+                except Exception:
+                    pass
             if vector_db:
                 vector_db.close()
 
@@ -1901,6 +1917,7 @@ class LegacyExecutor(BaseExecutor):
             prompt_name=prompt_name,
         )
         enricher.run()
+        self._usage_records.extend(llm.flush_pending_usage())
 
         metrics.setdefault(prompt_name, {})[f"{llm.get_usage_reason()}_llm"] = (
             llm.get_metrics()
@@ -2150,6 +2167,7 @@ class LegacyExecutor(BaseExecutor):
 
             shim.stream_log("Running document summarization...")
             summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+            self._usage_records.extend(llm.flush_pending_usage())
             logger.info("Summarization completed: run_id=%s", context.run_id)
             shim.stream_log("Summarization completed")
             return ExecutionResult(

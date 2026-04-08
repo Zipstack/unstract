@@ -9,11 +9,10 @@ from typing import Any, NoReturn, cast
 import litellm
 
 # from litellm import get_supported_openai_params
-from litellm import get_max_tokens, token_counter
+from litellm import get_max_tokens
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
-from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
@@ -21,7 +20,6 @@ from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import (
     LLMResponseCompat,
-    TokenCounterCompat,
     capture_metrics,
 )
 from unstract.sdk1.utils.retry_utils import (
@@ -211,7 +209,7 @@ class LLM:
         if capture_metrics_from_platform is not None:
             self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
-        self._last_usage: Mapping[str, int] = {}
+        self._pending_usage: list[dict] = []
 
     def _get_adapter_info(self) -> str:
         """Build a display string identifying this adapter for errors."""
@@ -555,10 +553,26 @@ class LLM:
 
     def get_last_usage(self) -> Mapping[str, int]:
         """Token usage from the most recent complete() call."""
-        return self._last_usage
+        if not self._pending_usage:
+            return {}
+        last = self._pending_usage[-1]
+        return {
+            "prompt_tokens": last["prompt_tokens"],
+            "completion_tokens": last["completion_tokens"],
+            "total_tokens": last["total_tokens"],
+        }
 
     def get_usage_reason(self) -> object:
         return self.platform_kwargs.get("llm_usage_reason")
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Return and clear all pending usage records.
+
+        Called by the executor at finalization to collect records for batch write.
+        """
+        records = self._pending_usage
+        self._pending_usage = []
+        return records
 
     def _record_usage(
         self,
@@ -567,29 +581,52 @@ class LLM:
         usage: Mapping[str, int] | None,
         llm_api: str,
     ) -> None:
-        prompt_tokens = token_counter(model=model, messages=messages)
         usage_data: Mapping[str, int] = usage or {}
-        all_tokens = TokenCounterCompat(
-            prompt_tokens=usage_data.get("prompt_tokens", 0),
-            completion_tokens=usage_data.get("completion_tokens", 0),
-            total_tokens=usage_data.get("total_tokens", 0),
+        prompt_tokens = usage_data.get("prompt_tokens", 0)
+        completion_tokens = usage_data.get("completion_tokens", 0)
+        total_tokens = usage_data.get("total_tokens", 0)
+
+        logger.info(
+            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d",
+            model,
+            llm_api,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
         )
 
-        logger.info(f"[sdk1][LLM][{model}][{llm_api}] Prompt Tokens: {prompt_tokens}")
-        logger.info(f"[sdk1][LLM][{model}][{llm_api}] LLM Usage: {all_tokens}")
+        try:
+            prompt_cost, compl_cost = litellm.cost_per_token(
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+            cost = prompt_cost + compl_cost
+        except Exception:
+            cost = 0.0
 
-        self._last_usage = {
-            "prompt_tokens": all_tokens.prompt_llm_token_count,
-            "completion_tokens": all_tokens.completion_llm_token_count,
-            "total_tokens": all_tokens.total_llm_token_count,
-        }
+        # Strip provider prefix (e.g. "azure/gpt-4o" → "gpt-4o") for storage,
+        # matching the old Audit.push_usage_data() behavior.
+        display_model = model.split("/", 1)[-1] if model else model
 
-        Audit().push_usage_data(
-            platform_api_key=self._platform_api_key,
-            token_counter=all_tokens,
-            event_type="llm",
-            model_name=model,
-            kwargs={"provider": self.adapter.get_provider(), **self.platform_kwargs},
+        self._pending_usage.append(
+            {
+                "usage_type": "llm",
+                "model_name": display_model,
+                "provider": self.adapter.get_provider(),
+                "adapter_instance_id": self.platform_kwargs.get(
+                    "adapter_instance_id", ""
+                ),
+                "run_id": self.platform_kwargs.get("run_id", ""),
+                "execution_id": self.platform_kwargs.get("execution_id", ""),
+                "llm_usage_reason": self.platform_kwargs.get("llm_usage_reason", ""),
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "embedding_tokens": 0,
+                "cost_in_dollars": cost,
+                "status": "SUCCESS",
+            }
         )
 
     # Finish reasons indicating a safety/policy refusal across providers:
@@ -981,6 +1018,10 @@ class LLMCompat:
     def get_usage_reason(self) -> object:
         """Get usage reason from platform kwargs."""
         return self._llm_instance.get_usage_reason()
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Return and clear all pending usage records."""
+        return self._llm_instance.flush_pending_usage()
 
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""

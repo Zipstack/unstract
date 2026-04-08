@@ -250,6 +250,13 @@ def capture_metrics(func: object) -> object:
                     # If the key isn't in self._metrics, set it to new_metrics
                     self._metrics = new_metrics
 
+                # Stamp timing onto the most recent pending usage record
+                pending = getattr(self, "_pending_usage", [])
+                if pending:
+                    time_taken = new_metrics.get(time_taken_key)
+                    if time_taken is not None:
+                        pending[-1]["execution_time_ms"] = int(time_taken * 1000)
+
         return result
 
     return wrapper

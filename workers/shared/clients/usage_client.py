@@ -171,6 +171,31 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
                 message="Failed to retrieve usage data",
             )
 
+    def bulk_create_usage(
+        self, records: list[dict], organization_id: str | None = None
+    ) -> bool:
+        """Bulk create usage records at execution finalization.
+
+        Args:
+            records: List of usage record dicts to create.
+            organization_id: Optional organization ID override.
+
+        Returns:
+            True if records were created successfully.
+        """
+        if not records:
+            return True
+        try:
+            response = self.post(
+                "v1/usage/batch/",
+                data={"records": records},
+                organization_id=organization_id,
+            )
+            return response.get("success", False) or "created" in response
+        except Exception as e:
+            logger.error("Failed to bulk create usage records: %s", e)
+            return False
+
     def get_aggregated_pages_processed(
         self, file_execution_id: str | uuid.UUID, organization_id: str | None = None
     ) -> int | None:

@@ -6,10 +6,12 @@ from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.views import APIView
+from utils.user_context import UserContext
 
 from unstract.core.data_models import UsageResponseData
 
 from .helper import UsageHelper
+from .models import Usage
 
 logger = logging.getLogger(__name__)
 
@@ -133,3 +135,42 @@ class PagesProcessedInternalView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class UsageBatchCreateView(APIView):
+    """Bulk create usage records from worker finalization."""
+
+    def post(self, request: Request) -> JsonResponse:
+        records = request.data.get("records", [])
+        if not records:
+            return JsonResponse({"created": 0}, status=200)
+
+        # Resolved by InternalAPIAuthMiddleware via StateStore
+        organization = UserContext.get_organization()
+
+        usage_objects = []
+        for r in records:
+            usage_objects.append(
+                Usage(
+                    organization=organization,
+                    workflow_id=r.get("workflow_id", ""),
+                    execution_id=r.get("execution_id", ""),
+                    adapter_instance_id=r.get("adapter_instance_id", ""),
+                    run_id=r.get("run_id"),
+                    usage_type=r.get("usage_type", "llm"),
+                    llm_usage_reason=r.get("llm_usage_reason", ""),
+                    model_name=r.get("model_name", ""),
+                    embedding_tokens=r.get("embedding_tokens", 0),
+                    prompt_tokens=r.get("prompt_tokens", 0),
+                    completion_tokens=r.get("completion_tokens", 0),
+                    total_tokens=r.get("total_tokens", 0),
+                    cost_in_dollars=r.get("cost_in_dollars", 0.0),
+                    reference_id=r.get("reference_id"),
+                    reference_type=r.get("reference_type"),
+                    execution_time_ms=r.get("execution_time_ms"),
+                    status=r.get("status"),
+                    error_message=r.get("error_message"),
+                )
+            )
+        created = Usage.objects.bulk_create(usage_objects)
+        return JsonResponse({"created": len(created)}, status=201)

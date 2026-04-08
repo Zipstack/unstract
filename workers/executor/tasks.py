@@ -6,7 +6,9 @@ ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
 from celery import shared_task
+from shared.clients import UsageAPIClient
 from shared.enums.task_enums import TaskName
+from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 
 from unstract.sdk1.execution.context import ExecutionContext
@@ -96,6 +98,25 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
 
     orchestrator = ExecutionOrchestrator()
     result = orchestrator.execute(context)
+
+    # Batch write usage records collected during execution
+    usage_records = result.metadata.get("usage_records", [])
+    if usage_records:
+        try:
+            config = WorkerConfig()
+            with UsageAPIClient(config) as usage_client:
+                usage_client.set_organization_context(context.organization_id)
+                usage_client.bulk_create_usage(
+                    usage_records,
+                    organization_id=context.organization_id,
+                )
+        except Exception:
+            logger.warning(
+                "Failed to flush %d usage records for run_id=%s",
+                len(usage_records),
+                context.run_id,
+                exc_info=True,
+            )
 
     logger.info(
         "execute_extraction complete: celery_task_id=%s request_id=%s success=%s",
