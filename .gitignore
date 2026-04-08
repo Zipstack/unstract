@@ -693,6 +693,8 @@ CLAUDE.md
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/worktree/
+!.claude/skills/design-rules/
+!.claude/skills/design-rules/**
 CONTRIBUTION_GUIDE.md
 .mcp.json
 
