@@ -104,6 +104,31 @@ def _get_task_error(failed_task_id: str, default: str) -> str:
     return default
 
 
+def _track_subscription_usage(org_id: str, run_id: str) -> None:
+    """Commit deferred subscription usage for an IDE execution.
+    Non-blocking: errors are logged but do not fail the callback.
+    """
+    if not org_id or not run_id:
+        return
+    try:
+        from client_plugin_registry import get_client_plugin
+
+        subscription_plugin = get_client_plugin("subscription_usage")
+        if not subscription_plugin:
+            return
+        result = subscription_plugin.commit_batch_subscription_usage(
+            organization_id=org_id,
+            file_execution_ids=[run_id],
+        )
+        logger.info("IDE subscription usage committed for run_id=%s: %s", run_id, result)
+    except Exception:
+        logger.error(
+            "Failed to commit IDE subscription usage for run_id=%s (continuing callback)",
+            run_id,
+            exc_info=True,
+        )
+
+
 # ------------------------------------------------------------------
 # IDE Callback Tasks
 #
@@ -132,6 +157,7 @@ def ide_index_complete(
     profile_manager_id = cb.get("profile_manager_id")
     executor_task_id = cb.get("executor_task_id", "")
     tool_id = cb.get("tool_id", "")
+    run_id = cb.get("run_id", "")
 
     api = _get_api_client()
 
@@ -213,6 +239,8 @@ def ide_index_complete(
                     "primary indexing succeeded.",
                     document_id,
                 )
+
+        _track_subscription_usage(org_id, run_id)
 
         result: dict[str, Any] = {
             "message": "Document indexed successfully.",
@@ -361,6 +389,8 @@ def ide_prompt_complete(
             organization_id=org_id,
         )
         response = resp.get("data", []) if resp.get("success") else []
+
+        _track_subscription_usage(org_id, run_id)
 
         # Fire HubSpot event if applicable
         hubspot_user_id = cb.get("hubspot_user_id")

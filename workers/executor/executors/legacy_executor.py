@@ -562,6 +562,7 @@ class LegacyExecutor(BaseExecutor):
                 index_template=index_template,
                 answer_params=answer_params,
                 extracted_text=extracted_text,
+                usage_kwargs=extract_params.get("usage_kwargs", {}),
             )
 
         # ---- Step 4: Table settings injection ----
@@ -574,27 +575,13 @@ class LegacyExecutor(BaseExecutor):
             )
 
         # ---- Step 5: Answer prompt / Single pass ----
-        mode_label = "single pass" if is_single_pass else "prompt"
-        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
-        operation = (
-            Operation.SINGLE_PASS_EXTRACTION.value
-            if is_single_pass
-            else Operation.ANSWER_PROMPT.value
+        answer_result = self._run_pipeline_answer_step(
+            context=context,
+            answer_params=answer_params,
+            is_single_pass=is_single_pass,
+            shim=shim,
+            step=step,
         )
-        answer_ctx = ExecutionContext(
-            executor_name=context.executor_name,
-            operation=operation,
-            run_id=context.run_id,
-            execution_source=context.execution_source,
-            organization_id=context.organization_id,
-            executor_params=answer_params,
-            request_id=context.request_id,
-            log_events_id=context.log_events_id,
-        )
-        if is_single_pass:
-            answer_result = self._handle_single_pass_extraction(answer_ctx)
-        else:
-            answer_result = self._handle_answer_prompt(answer_ctx)
         if not answer_result.success:
             return answer_result
 
@@ -609,6 +596,48 @@ class LegacyExecutor(BaseExecutor):
 
         shim.stream_log("Pipeline completed successfully")
         return ExecutionResult(success=True, data=structured_output)
+
+    def _run_pipeline_answer_step(
+        self,
+        context: ExecutionContext,
+        answer_params: dict,
+        is_single_pass: bool,
+        shim: ExecutorToolShim,
+        step: int,
+    ) -> ExecutionResult:
+        """Run the answer-prompt step of the structure pipeline.
+
+        For single pass, forces ``chunk-size=0`` (full-context retrieval)
+        and dispatches ``_handle_single_pass_extraction``. Otherwise
+        dispatches ``_handle_answer_prompt``.
+        """
+        if is_single_pass:
+            # Single pass reads the whole file in one LLM call; force
+            # chunk-size=0 so the fallback path (no cloud plugin) uses
+            # retrieve_complete_context instead of vector DB retrieval.
+            for output in answer_params.get("outputs", []):
+                output["chunk-size"] = 0
+                output["chunk-overlap"] = 0
+            operation = Operation.SINGLE_PASS_EXTRACTION.value
+            mode_label = "single pass"
+        else:
+            operation = Operation.ANSWER_PROMPT.value
+            mode_label = "prompt"
+
+        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
+        answer_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=operation,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            executor_params=answer_params,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+        )
+        if is_single_pass:
+            return self._handle_single_pass_extraction(answer_ctx)
+        return self._handle_answer_prompt(answer_ctx)
 
     @staticmethod
     def _inject_table_settings(
@@ -739,8 +768,17 @@ class LegacyExecutor(BaseExecutor):
         index_template: dict,
         answer_params: dict,
         extracted_text: str,
+        usage_kwargs: dict | None = None,
     ) -> dict:
         """Run per-output indexing with dedup for the structure pipeline.
+
+        Args:
+            usage_kwargs: Audit-tracking kwargs (``run_id``,
+                ``execution_id``, ``file_name``) propagated to the
+                embedding adapter so its callback can record usage
+                rows against the correct file_execution_id. Without
+                this, embedding usage is missing from the API
+                deployment response metadata.
 
         Returns:
             Dict of index metrics keyed by output name.
@@ -754,6 +792,7 @@ class LegacyExecutor(BaseExecutor):
         is_highlight = index_template.get("is_highlight_enabled", False)
         platform_api_key = index_template.get("platform_api_key", "")
         extracted_file_path = index_template.get("extracted_file_path", "")
+        usage_kwargs = usage_kwargs or {}
 
         index_metrics: dict = {}
         seen_params: set = set()
@@ -805,6 +844,7 @@ class LegacyExecutor(BaseExecutor):
                         "enable_highlight": is_highlight,
                         "extracted_text": extracted_text,
                         "platform_api_key": platform_api_key,
+                        "usage_kwargs": usage_kwargs,
                     },
                 )
                 index_result = self._handle_index(index_ctx)
@@ -1050,18 +1090,25 @@ class LegacyExecutor(BaseExecutor):
     def _sanitize_dict_values(d: dict[str, Any]) -> None:
         """Replace 'NA' string values with None inside a dict in-place."""
         for k, v in d.items():
-            if isinstance(v, str) and v.lower() == "na":
+            if isinstance(v, str) and v.strip().lower() == "na":
                 d[k] = None
 
     @staticmethod
     def _sanitize_null_values(
         structured_output: dict[str, Any],
     ) -> dict[str, Any]:
-        """Replace 'NA' strings with None in structured output."""
+        """Replace 'NA' strings with None in structured output.
+
+        Top-level scalar 'NA' / 'na' strings are converted to None so
+        the FE can render them as a distinct null value (rather than the
+        literal string 'NA'). Nested lists and dicts are walked too.
+        """
         for k, v in structured_output.items():
-            if isinstance(v, list):
+            if isinstance(v, str) and v.strip().lower() == "na":
+                structured_output[k] = None
+            elif isinstance(v, list):
                 for i, item in enumerate(v):
-                    if isinstance(item, str) and item.lower() == "na":
+                    if isinstance(item, str) and item.strip().lower() == "na":
                         v[i] = None
                     elif isinstance(item, dict):
                         LegacyExecutor._sanitize_dict_values(item)
@@ -1264,10 +1311,18 @@ class LegacyExecutor(BaseExecutor):
     def _convert_scalar_answer(
         answer: str, llm: Any, answer_prompt_svc: Any, prompt: str
     ) -> str | None:
-        """Run LLM extraction for a scalar (email/date) and return result or None."""
-        if answer.lower() == "na":
+        """Run LLM extraction for a scalar (email/date) and return result or None.
+
+        Returns None when:
+          - the initial answer is already 'NA' (no second LLM call needed); or
+          - the second LLM call also returns 'NA' (extraction failed).
+        """
+        if answer.strip().lower() == "na":
             return None
-        return answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        result = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+        if result is None or result.strip().lower() == "na":
+            return None
+        return result
 
     def _run_challenge_if_enabled(
         self,
@@ -1458,7 +1513,26 @@ class LegacyExecutor(BaseExecutor):
             return
 
         if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
-            raise LegacyExecutorError(message="LINE_ITEM extraction is not supported.")
+            self._run_line_item_extraction(
+                output=output,
+                context=context,
+                structured_output=structured_output,
+                metadata=metadata,
+                metrics=metrics,
+                prompt_run_args={
+                    "run_id": run_id,
+                    "execution_id": execution_id,
+                    "execution_source": execution_source,
+                    "platform_api_key": platform_api_key,
+                    "tool_id": tool_id,
+                    "doc_name": doc_name,
+                    "prompt_name": prompt_name,
+                    "file_path": file_path,
+                    "tool_settings": tool_settings,
+                },
+                shim=shim,
+            )
+            return
 
         usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
         try:
@@ -1655,14 +1729,100 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Table extraction completed for: {prompt_name}")
             logger.info("TABLE extraction completed: prompt=%s", prompt_name)
+            shim.stream_log(f"Completed prompt: {prompt_name}")
         else:
             structured_output[prompt_name] = ""
+            error_msg = table_result.error or "unknown error"
             logger.error(
                 "TABLE extraction failed for prompt=%s: %s",
                 prompt_name,
-                table_result.error,
+                error_msg,
             )
-        shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(
+                f"Table extraction failed for {prompt_name}: {error_msg}",
+                level=LogLevel.ERROR,
+            )
+
+    def _run_line_item_extraction(
+        self,
+        output: dict[str, Any],
+        context: ExecutionContext,
+        structured_output: dict[str, Any],
+        metadata: dict[str, Any],
+        metrics: dict[str, Any],
+        prompt_run_args: dict[str, Any],
+        shim: Any,
+    ) -> None:
+        """Delegate LINE_ITEM prompt to the line_item executor plugin.
+
+        ``prompt_run_args`` bundles the per-prompt scalars passed from
+        ``_handle_outputs``: ``run_id``, ``execution_id``,
+        ``execution_source``, ``platform_api_key``, ``tool_id``,
+        ``doc_name``, ``prompt_name``, ``file_path``, ``tool_settings``.
+        """
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        prompt_name = prompt_run_args["prompt_name"]
+        try:
+            line_item_executor = ExecutorRegistry.get("line_item")
+        except KeyError as e:
+            raise LegacyExecutorError(
+                message=(
+                    "LINE_ITEM extraction requires the line_item executor "
+                    "plugin. Install the line_item_extractor plugin."
+                )
+            ) from e
+        line_item_ctx = ExecutionContext(
+            executor_name="line_item",
+            operation="line_item_extract",
+            run_id=prompt_run_args["run_id"],
+            execution_source=prompt_run_args["execution_source"],
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            executor_params={
+                "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
+                "tool_settings": prompt_run_args["tool_settings"],
+                "output": output,
+                "prompt": output.get(PSKeys.PROMPTX, ""),
+                "file_path": prompt_run_args["file_path"],
+                "PLATFORM_SERVICE_API_KEY": prompt_run_args["platform_api_key"],
+                "execution_id": prompt_run_args["execution_id"],
+                "tool_id": prompt_run_args["tool_id"],
+                "file_name": prompt_run_args["doc_name"],
+                "prompt_name": prompt_name,
+            },
+        )
+        line_item_ctx._log_component = self._log_component
+        line_item_ctx.log_events_id = self._log_events_id
+
+        shim.stream_log(f"Running line-item extraction for: {prompt_name}")
+        line_item_result = line_item_executor.execute(line_item_ctx)
+
+        if line_item_result.success:
+            data = line_item_result.data or {}
+            structured_output[prompt_name] = data.get("output", "")
+            line_item_metrics = data.get("metadata", {}).get("metrics", {})
+            metrics.setdefault(prompt_name, {}).update(
+                {"line_item_extraction": line_item_metrics}
+            )
+            context_list = data.get("context")
+            if context_list:
+                metadata[PSKeys.CONTEXT][prompt_name] = context_list
+            shim.stream_log(f"Line-item extraction completed for: {prompt_name}")
+            logger.info("LINE_ITEM extraction completed: prompt=%s", prompt_name)
+            shim.stream_log(f"Completed prompt: {prompt_name}")
+        else:
+            structured_output[prompt_name] = ""
+            error_msg = line_item_result.error or "unknown error"
+            logger.error(
+                "LINE_ITEM extraction failed for prompt=%s: %s",
+                prompt_name,
+                error_msg,
+            )
+            shim.stream_log(
+                f"Line-item extraction failed for {prompt_name}: {error_msg}",
+                level=LogLevel.ERROR,
+            )
 
     @staticmethod
     def _apply_type_conversion(
@@ -1768,6 +1928,16 @@ class LegacyExecutor(BaseExecutor):
         available (reads file ONCE, builds ONE combined prompt, makes
         ONE LLM call).  Falls back to ``_handle_answer_prompt`` if the
         plugin is not installed.
+
+        Metrics contract: the cloud plugin is the source of the file
+        read for single-pass and is responsible for populating
+        ``context_retrieval`` in its returned ``result.data["metrics"]``
+        using the same per-prompt shape that
+        ``RetrievalService.retrieve_complete_context`` produces, namely
+        ``{prompt_name: {"context_retrieval": {"time_taken(s)": float}}}``.
+        LegacyExecutor does NOT re-measure the read here — measuring at
+        the source is the only way the reported timing can match the
+        plugin's actual retrieval cost.
 
         Returns:
             ExecutionResult with ``data`` containing::

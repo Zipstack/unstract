@@ -133,6 +133,25 @@ class UsageHelper:
             for row in rows:
                 usage_type = row["usage_type"]
                 llm_reason = row["llm_usage_reason"]
+
+                # Drop unlabeled LLM rows entirely.  Per the Usage model
+                # contract (see usage_v2/models.py: llm_usage_reason
+                # db_comment), an empty reason is only valid when
+                # usage_type == "embedding".  An empty reason combined with
+                # usage_type == "llm" is a producer-side bug (an LLM call
+                # site forgot to pass llm_usage_reason in usage_kwargs).
+                # Without this guard the row would surface in API
+                # deployment responses as a malformed bare "llm" bucket
+                # with no token breakdown.
+                if usage_type == "llm" and not llm_reason:
+                    logger.warning(
+                        "Dropping unlabeled LLM usage row from per-model "
+                        "breakdown: model_name=%s run_id=%s",
+                        row["model_name"],
+                        run_id,
+                    )
+                    continue
+
                 cost_str = UsageHelper._format_float_positional(row["sum_cost"] or 0.0)
 
                 key = usage_type
