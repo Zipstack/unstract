@@ -648,7 +648,43 @@ class GeminiLLMParameters(BaseChatCompletionParameters):
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         result_metadata = adapter_metadata.copy()
         result_metadata["model"] = GeminiLLMParameters.validate_model(adapter_metadata)
-        return GeminiLLMParameters(**result_metadata).model_dump()
+
+        # Handle Gemini thinking configuration
+        enable_thinking = adapter_metadata.get("enable_thinking", False)
+
+        # If enable_thinking is not explicitly provided but thinking config is present,
+        # assume thinking was enabled in a previous validation
+        has_thinking_config = (
+            "thinking" in adapter_metadata
+            and adapter_metadata.get("thinking") is not None
+        )
+        if not enable_thinking and has_thinking_config:
+            enable_thinking = True
+
+        if enable_thinking:
+            if has_thinking_config:
+                result_metadata["thinking"] = adapter_metadata["thinking"]
+            else:
+                thinking_config: dict[str, "Any"] = {"type": "enabled"}
+                budget_tokens = adapter_metadata.get("budget_tokens")
+                if budget_tokens is not None:
+                    thinking_config["budget_tokens"] = budget_tokens
+                result_metadata["thinking"] = thinking_config
+            # Gemini thinking mode requires temperature=1
+            result_metadata["temperature"] = 1
+
+        # Exclude control fields from pydantic validation
+        exclude_fields = ("enable_thinking", "budget_tokens", "thinking")
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
+
+        validated = GeminiLLMParameters(**validation_metadata).model_dump()
+
+        if enable_thinking and "thinking" in result_metadata:
+            validated["thinking"] = result_metadata["thinking"]
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:

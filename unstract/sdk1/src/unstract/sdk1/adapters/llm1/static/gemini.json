@@ -53,6 +53,34 @@
       "default": 3,
       "title": "Max Retries",
       "description": "Maximum number of retries"
+    },
+    "enable_thinking": {
+      "type": "boolean",
+      "title": "Enable Thinking Mode",
+      "default": false,
+      "description": "Enable extended thinking for supported models. Thinking mode is only supported on: gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash-thinking-exp. When enabled, temperature is forced to 1."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_thinking": { "const": true }
+        },
+        "required": ["enable_thinking"]
+      },
+      "then": {
+        "required": ["budget_tokens"],
+        "properties": {
+          "budget_tokens": {
+            "type": "integer",
+            "minimum": 1024,
+            "default": 1024,
+            "title": "Budget Tokens",
+            "description": "Number of tokens allocated for the thinking process. Minimum: 1024."
+          }
+        }
+      }
+    }
+  ]
 }
