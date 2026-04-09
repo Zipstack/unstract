@@ -56,6 +56,59 @@ class LLMWhispererV2(X2TextAdapter):
     def get_icon() -> str:
         return "/icons/adapter-icons/LLMWhispererV2.png"
 
+    @staticmethod
+    def _build_signature_page_references(
+        signature_metadata: dict[str, list[Any]],
+        line_metadata: list[list[int]],
+    ) -> dict[str, Any] | None:
+        """Build page references for frontend navigation to signature pages.
+
+        For each page that has signatures, finds the first line_metadata
+        entry for that page and converts its index to a 1-indexed hex
+        value. This allows the frontend to jump to the correct page.
+
+        Args:
+            signature_metadata: Dict keyed by page number (str, 0-indexed)
+                with lists of signature entries.
+            line_metadata: List of [page, y_pos, height, page_height] arrays.
+
+        Returns:
+            Dict mapping page number to hex reference and signer names,
+            or None if no references could be built.
+        """
+        if not line_metadata:
+            return None
+
+        # Build a map of page number -> first line_metadata index
+        page_first_line: dict[int, int] = {}
+        for idx, entry in enumerate(line_metadata):
+            if isinstance(entry, list) and len(entry) >= 1:
+                page = entry[0]
+                if page not in page_first_line:
+                    page_first_line[page] = idx
+
+        references: dict[str, Any] = {}
+        for page_str, signatures in signature_metadata.items():
+            if not signatures:
+                continue
+            page_num = int(page_str)
+            if page_num not in page_first_line:
+                continue
+            line_index = page_first_line[page_num]
+            hex_value = f"0x{line_index + 1:02X}"  # 1-indexed hex
+            signers = [
+                sig.get("name", "Unknown")
+                for sig in signatures
+                if isinstance(sig, dict)
+            ]
+            references[page_str] = {
+                "hex": hex_value,
+                "line_metadata_index": line_index,
+                "signers": signers,
+            }
+
+        return references if references else None
+
     def test_connection(self) -> bool:
         LLMWhispererHelper.test_connection_request(
             config=self.config,
@@ -110,10 +163,21 @@ class LLMWhispererV2(X2TextAdapter):
             if not any(signature_metadata.values()):
                 signature_metadata = None
 
+        # Compute signature page references for frontend navigation
+        signature_page_references = None
+        if signature_metadata:
+            raw_line_metadata = response.get("line_metadata", [])
+            signature_page_references = (
+                LLMWhispererV2._build_signature_page_references(
+                    signature_metadata, raw_line_metadata
+                )
+            )
+
         metadata = TextExtractionMetadata(
             whisper_hash=response.get(X2TextConstants.WHISPER_HASH_V2, ""),
             line_metadata=response.get("line_metadata"),
             signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
         )
 
         return TextExtractionResult(
