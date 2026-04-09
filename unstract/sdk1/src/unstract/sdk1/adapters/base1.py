@@ -665,11 +665,19 @@ class GeminiLLMParameters(BaseChatCompletionParameters):
             if has_thinking_config:
                 result_metadata["thinking"] = adapter_metadata["thinking"]
             else:
-                thinking_config: dict[str, "Any"] = {"type": "enabled"}
                 budget_tokens = adapter_metadata.get("budget_tokens")
-                if budget_tokens is not None:
-                    thinking_config["budget_tokens"] = budget_tokens
-                result_metadata["thinking"] = thinking_config
+                if budget_tokens is None:
+                    raise ValueError(
+                        "budget_tokens is required when thinking mode is enabled"
+                    )
+                if not isinstance(budget_tokens, int) or budget_tokens < 1024:
+                    raise ValueError(
+                        f"budget_tokens must be an integer >= 1024, got {budget_tokens}"
+                    )
+                result_metadata["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget_tokens,
+                }
             # Gemini thinking mode requires temperature=1
             result_metadata["temperature"] = 1
 

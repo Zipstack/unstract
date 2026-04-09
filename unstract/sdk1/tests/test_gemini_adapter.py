@@ -71,10 +71,23 @@ def test_validate_thinking_overrides_user_temperature() -> None:
     assert result["temperature"] == 1
 
 
-def test_validate_thinking_enabled_without_budget() -> None:
-    result = GeminiLLMParameters.validate({**BASE_METADATA, "enable_thinking": True})
-    assert result["thinking"] == {"type": "enabled"}
-    assert result["temperature"] == 1
+def test_validate_thinking_enabled_without_budget_raises() -> None:
+    with pytest.raises(ValueError, match="budget_tokens is required"):
+        GeminiLLMParameters.validate({**BASE_METADATA, "enable_thinking": True})
+
+
+def test_validate_thinking_budget_tokens_invalid_type_raises() -> None:
+    with pytest.raises(ValueError, match="budget_tokens must be an integer >= 1024"):
+        GeminiLLMParameters.validate(
+            {**BASE_METADATA, "enable_thinking": True, "budget_tokens": "hello"}
+        )
+
+
+def test_validate_thinking_budget_tokens_too_small_raises() -> None:
+    with pytest.raises(ValueError, match="budget_tokens must be an integer >= 1024"):
+        GeminiLLMParameters.validate(
+            {**BASE_METADATA, "enable_thinking": True, "budget_tokens": 512}
+        )
 
 
 def test_validate_preserves_existing_thinking_config() -> None:
