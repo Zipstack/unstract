@@ -39,7 +39,7 @@ def test_validate_thinking_disabled_by_default() -> None:
     result = GeminiLLMParameters.validate({**BASE_METADATA, "temperature": 0.3})
     assert result["model"] == "gemini/gemini-2.5-flash"
     assert "thinking" not in result
-    assert result["temperature"] == 0.3
+    assert result["temperature"] == pytest.approx(0.3)
 
 
 def test_validate_excludes_control_fields_from_model() -> None:
