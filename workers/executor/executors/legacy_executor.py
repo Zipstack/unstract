@@ -412,8 +412,7 @@ class LegacyExecutor(BaseExecutor):
         pre_extracted_text = index_params.get(IKeys.EXTRACTED_TEXT, "") or ""
         if pre_extracted_text:
             logger.info(
-                "ide_index: marker hit, skipping extract step "
-                "(len=%d, run_id=%s)",
+                "ide_index: marker hit, skipping extract step " "(len=%d, run_id=%s)",
                 len(pre_extracted_text),
                 context.run_id,
             )
