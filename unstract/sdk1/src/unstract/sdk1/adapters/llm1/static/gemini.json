@@ -20,7 +20,7 @@
       "type": "string",
       "title": "Model",
       "default": "gemini-2.0-flash",
-      "description": "LiteLLM model string. Supported: gemini-2.0-flash, gemini-2.5-pro, gemini-1.5-pro, gemini-1.5-flash. The gemini/ prefix will be added automatically if omitted."
+      "description": "LiteLLM model string. Supported: gemini-2.0-flash, gemini-2.5-pro, gemini-2.5-flash, gemini-1.5-pro, gemini-1.5-flash. The gemini/ prefix will be added automatically if omitted."
     },
     "temperature": {
       "type": "number",
