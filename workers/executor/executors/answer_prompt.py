@@ -333,7 +333,7 @@ class AnswerPromptService:
             return
 
         parsed_data = repair_json_with_best_structure(answer)
-        if isinstance(parsed_data, str):
+        if not isinstance(parsed_data, (dict, list)):
             logger.error("Error parsing response to JSON")
             structured_output[prompt_key] = {}
             return
