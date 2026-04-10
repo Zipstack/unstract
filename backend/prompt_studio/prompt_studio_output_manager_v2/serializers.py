@@ -4,6 +4,7 @@ import logging
 from usage_v2.helper import UsageHelper
 
 from backend.serializers import AuditSerializer
+from prompt_studio.lookup_utils import enrich_prompt_output
 
 from .models import PromptStudioOutputManager
 from .output_manager_util import OutputManagerUtils
@@ -47,6 +48,8 @@ class PromptStudioOutputSerializer(AuditSerializer):
                 " | Process continued"
             )
             data["coverage"] = {}
+        data = enrich_prompt_output(instance, data)
+
         # Convert string to list
         try:
             context = data["context"]
