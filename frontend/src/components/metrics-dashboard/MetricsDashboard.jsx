@@ -61,6 +61,41 @@ try {
 
 const { RangePicker } = DatePicker;
 
+function DashboardButtons() {
+  return (
+    <Space>
+      <Button
+        icon={<FileSearchOutlined />}
+        type="link"
+        onClick={() =>
+          window.open(
+            "https://docs.unstract.com/unstract/index.html",
+            "_blank",
+            "noopener,noreferrer",
+          )
+        }
+        className="metrics-header-button"
+      >
+        Documentation
+      </Button>
+      <Button
+        icon={<SlackOutlined />}
+        type="link"
+        onClick={() =>
+          window.open(
+            "https://join-slack.unstract.com/",
+            "_blank",
+            "noopener,noreferrer",
+          )
+        }
+        className="metrics-header-button"
+      >
+        Slack Community
+      </Button>
+    </Space>
+  );
+}
+
 function MetricsDashboard() {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
@@ -250,39 +285,6 @@ function MetricsDashboard() {
       ),
     });
   }
-
-  const DashboardButtons = () => (
-    <Space>
-      <Button
-        icon={<FileSearchOutlined />}
-        type="link"
-        onClick={() =>
-          window.open(
-            "https://docs.unstract.com/unstract/index.html",
-            "_blank",
-            "noopener,noreferrer",
-          )
-        }
-        className="metrics-header-button"
-      >
-        Documentation
-      </Button>
-      <Button
-        icon={<SlackOutlined />}
-        type="link"
-        onClick={() =>
-          window.open(
-            "https://join-slack.unstract.com/",
-            "_blank",
-            "noopener,noreferrer",
-          )
-        }
-        className="metrics-header-button"
-      >
-        Slack Community
-      </Button>
-    </Space>
-  );
 
   return (
     <>
