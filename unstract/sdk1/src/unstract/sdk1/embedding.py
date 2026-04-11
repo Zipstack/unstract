@@ -94,7 +94,7 @@ class Embedding:
             self.platform_kwargs: dict[str, object] = kwargs
             self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
             self._cost_model: str | None = self.kwargs.pop("cost_model", None)
-        except ValidationError as e:
+        except (ValidationError, ValueError) as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
         # Test connection - wrap in error handling

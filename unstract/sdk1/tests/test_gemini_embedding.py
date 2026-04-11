@@ -92,6 +92,16 @@ class TestGeminiEmbeddingAdapter:
         with pytest.raises(ValueError, match="model.*required"):
             GeminiEmbeddingAdapter.validate_model(meta)
 
+    def test_validate_empty_model_raises(self) -> None:
+        meta = {"model": "", "api_key": "test-key"}
+        with pytest.raises(ValueError, match="model.*required"):
+            GeminiEmbeddingAdapter.validate(meta)
+
+    def test_validate_none_model_raises(self) -> None:
+        meta = {"model": None, "api_key": "test-key"}
+        with pytest.raises(ValueError, match="model.*required"):
+            GeminiEmbeddingAdapter.validate(meta)
+
     def test_validate_missing_api_key_raises(self) -> None:
         from pydantic import ValidationError
 
@@ -128,6 +138,12 @@ class TestGeminiEmbeddingAdapter:
         validated = GeminiEmbeddingAdapter.validate(meta)
         assert "adapter_name" not in validated
         assert "unknown_field" not in validated
+
+    def test_validate_includes_base_fields(self) -> None:
+        meta = {"model": "gemini/text-embedding-004", "api_key": "test-key"}
+        validated = GeminiEmbeddingAdapter.validate(meta)
+        assert "timeout" in validated
+        assert "max_retries" in validated
 
     def test_metadata(self) -> None:
         metadata = GeminiEmbeddingAdapter.get_metadata()
