@@ -5,6 +5,7 @@ Routes execute_extraction tasks to registered executors.
 """
 
 import logging
+import os
 
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
@@ -43,7 +44,9 @@ def check_executor_health():
                 "worker_type": "executor",
                 "registered_executors": executors,
                 "executor_count": len(executors),
-                "queues": ["celery_executor_legacy"],
+                "queues": os.environ.get(
+                    "CELERY_QUEUES_EXECUTOR", "celery_executor_legacy"
+                ).split(","),
             },
         )
 

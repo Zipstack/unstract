@@ -66,6 +66,7 @@ class WorkerRegistry:
         ),
         WorkerType.EXECUTOR: WorkerQueueConfig(
             primary_queue=QueueName.EXECUTOR,
+            additional_queues=[QueueName.EXECUTOR_AGENTIC],
         ),
         WorkerType.IDE_CALLBACK: WorkerQueueConfig(
             primary_queue=QueueName.IDE_CALLBACK,

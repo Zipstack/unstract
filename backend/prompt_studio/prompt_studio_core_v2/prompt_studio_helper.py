@@ -18,8 +18,8 @@ from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
-from utils.subscription_usage_decorator import track_subscription_usage_if_available
 
+from backend.celery_service import app as celery_app
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -273,16 +273,8 @@ class PromptStudioHelper:
 
     @staticmethod
     def _get_dispatcher() -> ExecutionDispatcher:
-        """Get an ExecutionDispatcher backed by the worker Celery app.
-
-        Uses the RabbitMQ-backed Celery app (not the Django Redis one)
-        so tasks reach the worker-v2 executor worker.
-        """
-        from backend.worker_celery import (
-            get_worker_celery_app,  # Lazy import: avoids Django/Celery circular init
-        )
-
-        return ExecutionDispatcher(celery_app=get_worker_celery_app())
+        """Get an ExecutionDispatcher for the executor worker."""
+        return ExecutionDispatcher(celery_app=celery_app)
 
     @staticmethod
     def _get_platform_api_key(org_id: str) -> str:
@@ -517,6 +509,49 @@ class PromptStudioHelper:
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
         )
+
+        # Compute x2text_config_hash early so the marker check below (and the
+        # post-success callback) can both consume the same value.
+        x2text_metadata = default_profile.x2text.metadata or {}
+        x2text_config_hash = ToolUtils.hash_str(
+            json.dumps(x2text_metadata, sort_keys=True)
+        )
+
+        # Manage Documents → Index: mirror the pre-async dynamic_extractor
+        # behaviour.  If the extraction marker says this x2text_config_hash +
+        # enable_highlight combination is already extracted, read the existing
+        # extract file from disk and reuse it so the executor can skip the
+        # extract step.  Any failure here falls back to full extraction.
+        reused_extracted_text: str | None = None
+        try:
+            already_extracted = PromptStudioIndexHelper.check_extraction_status(
+                document_id=document_id,
+                profile_manager=default_profile,
+                x2text_config_hash=x2text_config_hash,
+                enable_highlight=tool.enable_highlight,
+            )
+            if already_extracted:
+                try:
+                    reused_extracted_text = fs_instance.read(
+                        path=extract_file_path, mode="r"
+                    )
+                    logger.info(
+                        "Manage Documents index: marker valid, reusing existing "
+                        "extract file for document=%s",
+                        document_id,
+                    )
+                except FileNotFoundError:
+                    logger.warning(
+                        "Marker says extracted but extract file missing: %s. "
+                        "Will re-extract.",
+                        extract_file_path,
+                    )
+        except Exception:
+            logger.warning(
+                "check_extraction_status raised; falling back to full extraction",
+                exc_info=True,
+            )
+
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         doc_id_key = IndexingUtils.generate_index_key(
             vector_db=str(default_profile.vector_store.id),
@@ -558,6 +593,11 @@ class PromptStudioHelper:
             "platform_api_key": platform_api_key,
         }
 
+        # On marker-hit, pre-populate the extracted text so the executor's
+        # _handle_ide_index skips the extract step entirely.
+        if reused_extracted_text:
+            index_params[IKeys.EXTRACTED_TEXT] = reused_extracted_text
+
         log_events_id = StateStore.get(Common.LOG_EVENTS_ID) or ""
         request_id = StateStore.get(Common.REQUEST_ID) or ""
 
@@ -576,12 +616,9 @@ class PromptStudioHelper:
             log_events_id=log_events_id,
         )
 
-        # x2text config hash for extraction status tracking in callback
-        x2text_metadata = default_profile.x2text.metadata or {}
-        x2text_config_hash = ToolUtils.hash_str(
-            json.dumps(x2text_metadata, sort_keys=True)
-        )
-
+        # x2text_config_hash (computed above) is forwarded to the callback so
+        # ide_index_complete can refresh the extraction marker via
+        # mark_extraction_status.
         cb_kwargs = {
             "log_events_id": log_events_id,
             "request_id": request_id,
@@ -1242,7 +1279,6 @@ class PromptStudioHelper:
         return prompt_instances
 
     @staticmethod
-    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def index_document(
         tool_id: str,
         file_name: str,
@@ -1431,7 +1467,6 @@ class PromptStudioHelper:
             return summarize_file_path
 
     @staticmethod
-    @track_subscription_usage_if_available(file_execution_id_param="run_id")
     def prompt_responder(
         tool_id: str,
         org_id: str,
