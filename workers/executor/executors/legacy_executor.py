@@ -1903,6 +1903,7 @@ class LegacyExecutor(BaseExecutor):
             usage_kwargs={
                 **(usage_kwargs or {}),
                 PSKeys.LLM_USAGE_REASON: "lookup",
+                **lookup_config.get("usage_kwargs_extra", {}),
             },
             capture_metrics=True,
         )
@@ -1916,12 +1917,30 @@ class LegacyExecutor(BaseExecutor):
             metadata=metadata,
             prompt_name=prompt_name,
         )
-        enricher.run()
-        self._usage_records.extend(llm.flush_pending_usage())
-
-        metrics.setdefault(prompt_name, {})[f"{llm.get_usage_reason()}_llm"] = (
-            llm.get_metrics()
-        )
+        try:
+            enricher.run()
+        except Exception as e:
+            logger.warning("Lookup enrichment failed for %s: %s", prompt_name, e)
+            error_record = {
+                "usage_type": "llm",
+                "llm_usage_reason": "lookup",
+                "model_name": lookup_config.get("llm_adapter_id", "unknown"),
+                "status": "ERROR",
+                "error_message": str(e)[:2000],
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "total_tokens": 0,
+                "embedding_tokens": 0,
+                "cost_in_dollars": 0.0,
+                **(usage_kwargs or {}),
+                **lookup_config.get("usage_kwargs_extra", {}),
+            }
+            self._usage_records.append(error_record)
+        finally:
+            self._usage_records.extend(llm.flush_pending_usage())
+            metrics.setdefault(prompt_name, {})[f"{llm.get_usage_reason()}_llm"] = (
+                llm.get_metrics()
+            )
 
     @staticmethod
     def _run_webhook_postprocessing(

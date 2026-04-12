@@ -626,6 +626,7 @@ class LLM:
                 "embedding_tokens": 0,
                 "cost_in_dollars": cost,
                 "status": "SUCCESS",
+                **self._usage_kwargs,
             }
         )
 
