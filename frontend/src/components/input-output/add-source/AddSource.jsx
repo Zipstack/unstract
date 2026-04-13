@@ -154,7 +154,7 @@ function AddSource({
       .finally(() => {
         setIsLoading(false);
       });
-  }, [selectedSourceId]);
+  }, [selectedSourceId, isLLMWPaidSchema]);
 
   useEffect(() => {
     if (editItemId?.length && metadata && Object.keys(metadata)?.length) {
