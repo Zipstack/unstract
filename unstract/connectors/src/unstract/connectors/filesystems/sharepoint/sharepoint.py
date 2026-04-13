@@ -170,9 +170,11 @@ class SharePointFileSystem(AbstractFileSystem):
         if self.client_secret:
             if not self.user_email:
                 error_msg = (
-                    "OneDrive client credentials require user email. Provide either \n"
-                    "- user_email (e.g., user@company.onmicrosoft.com) \n"
-                    "- OR use OAuth with access_token instead."
+                    "No Site URL provided. "
+                    "To access a SharePoint site, provide the Site URL "
+                    "(e.g., https://contoso.sharepoint.com/sites/mysite). "
+                    "To access OneDrive, provide the User Email "
+                    "(e.g., user@company.onmicrosoft.com)."
                 )
                 raise ConnectorError(
                     error_msg,
