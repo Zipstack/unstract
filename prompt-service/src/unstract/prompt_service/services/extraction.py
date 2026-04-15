@@ -1,5 +1,8 @@
+import logging
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from unstract.prompt_service.constants import ExecutionSource
 from unstract.prompt_service.constants import IndexingConstants as IKeys
@@ -72,6 +75,11 @@ class ExtractionService:
             ):
                 signature_metadata = (
                     process_response.extraction_metadata.signature_metadata
+                )
+                logger.info(
+                    "DOC_INSIGHTS extraction: signature_metadata found "
+                    "for pages: %s",
+                    list(signature_metadata.keys()),
                 )
             return {
                 "extracted_text": extracted_text,

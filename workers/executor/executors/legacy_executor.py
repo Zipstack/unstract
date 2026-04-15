@@ -270,6 +270,26 @@ class LegacyExecutor(BaseExecutor):
                 result_data["signature_metadata"] = (
                     process_response.extraction_metadata.signature_metadata
                 )
+                logger.info(
+                    "DOC_INSIGHTS _handle_extract: signature_metadata found "
+                    "for pages: %s",
+                    list(process_response.extraction_metadata
+                         .signature_metadata.keys()),
+                )
+            if (
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.signature_page_references
+            ):
+                result_data["signature_page_references"] = (
+                    process_response.extraction_metadata
+                    .signature_page_references
+                )
+                logger.info(
+                    "DOC_INSIGHTS _handle_extract: "
+                    "signature_page_references=%s",
+                    process_response.extraction_metadata
+                    .signature_page_references,
+                )
             return ExecutionResult(
                 success=True,
                 data=result_data,
@@ -553,6 +573,11 @@ class LegacyExecutor(BaseExecutor):
                 tool_settings = answer_params.get(PSKeys.TOOL_SETTINGS, {})
                 tool_settings[PSKeys.SIGNATURE_METADATA] = signature_metadata
                 answer_params[PSKeys.TOOL_SETTINGS] = tool_settings
+                logger.info(
+                    "DOC_INSIGHTS pipeline: injected signature_metadata "
+                    "into tool_settings for pages: %s",
+                    list(signature_metadata.keys()),
+                )
 
         # ---- Step 2: Summarize (if enabled) ----
         if is_summarization:

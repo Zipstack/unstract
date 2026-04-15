@@ -77,6 +77,8 @@ class LLMWhispererV2(X2TextAdapter):
             or None if no references could be built.
         """
         if not line_metadata:
+            logger.warning("DOC_INSIGHTS: no line_metadata available, "
+                           "cannot build page references")
             return None
 
         # Build a map of page number -> first line_metadata index
@@ -86,6 +88,9 @@ class LLMWhispererV2(X2TextAdapter):
                 page = entry[0]
                 if page not in page_first_line:
                     page_first_line[page] = idx
+        logger.debug(
+            "DOC_INSIGHTS: page_first_line map: %s", page_first_line
+        )
 
         references: dict[str, Any] = {}
         for page_str, signatures in signature_metadata.items():
@@ -93,6 +98,10 @@ class LLMWhispererV2(X2TextAdapter):
                 continue
             page_num = int(page_str)
             if page_num not in page_first_line:
+                logger.warning(
+                    "DOC_INSIGHTS: page %d not found in line_metadata",
+                    page_num,
+                )
                 continue
             line_index = page_first_line[page_num]
             hex_value = f"0x{line_index + 1:02X}"  # 1-indexed hex
@@ -154,23 +163,53 @@ class LLMWhispererV2(X2TextAdapter):
         # Extract signature_metadata when using document_insights mode
         signature_metadata = None
         mode = self.config.get(WhispererConfig.MODE, Modes.FORM.value)
+        logger.info(
+            "DOC_INSIGHTS: mode=%s, is_document_insights=%s",
+            mode,
+            mode == Modes.DOCUMENT_INSIGHTS.value,
+        )
         if mode == Modes.DOCUMENT_INSIGHTS.value:
             response_metadata = response.get("metadata", {})
+            logger.info(
+                "DOC_INSIGHTS: response has metadata keys: %s",
+                list(response_metadata.keys()) if response_metadata else "None",
+            )
             signature_metadata = {}
             for page_num, page_data in response_metadata.items():
                 if isinstance(page_data, dict) and "signature_metadata" in page_data:
                     signature_metadata[page_num] = page_data["signature_metadata"]
+                    logger.info(
+                        "DOC_INSIGHTS: page %s has %d signature(s): %s",
+                        page_num,
+                        len(page_data["signature_metadata"]),
+                        [s.get("name") for s in page_data["signature_metadata"]],
+                    )
             if not any(signature_metadata.values()):
+                logger.info("DOC_INSIGHTS: no signatures found across any page")
                 signature_metadata = None
+            else:
+                logger.info(
+                    "DOC_INSIGHTS: signature_metadata extracted for pages: %s",
+                    list(signature_metadata.keys()),
+                )
 
         # Compute signature page references for frontend navigation
         signature_page_references = None
         if signature_metadata:
             raw_line_metadata = response.get("line_metadata", [])
+            logger.info(
+                "DOC_INSIGHTS: line_metadata has %d entries, "
+                "computing page references",
+                len(raw_line_metadata),
+            )
             signature_page_references = (
                 LLMWhispererV2._build_signature_page_references(
                     signature_metadata, raw_line_metadata
                 )
+            )
+            logger.info(
+                "DOC_INSIGHTS: signature_page_references=%s",
+                signature_page_references,
             )
 
         metadata = TextExtractionMetadata(

@@ -255,8 +255,17 @@ class AnswerPromptService:
         # Append signature metadata to context if present
         signature_context = ""
         if signature_metadata:
+            logger.info(
+                "DOC_INSIGHTS construct_prompt: injecting signature context "
+                "for %d page(s)",
+                len(signature_metadata),
+            )
             signature_context = AnswerPromptService._format_signature_metadata(
                 signature_metadata
+            )
+            logger.debug(
+                "DOC_INSIGHTS construct_prompt: signature_context=%s",
+                signature_context[:200] if signature_context else "empty",
             )
         prompt += (
             f"\n\n{postamble}\n\nContext:\n---------------\n{context}"
