@@ -61,6 +61,16 @@ try {
   // Not available in OSS
 }
 
+let getEnrichedCopyText;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/getEnrichedCopyText"
+  );
+  getEnrichedCopyText = mod.getEnrichedCopyText;
+} catch {
+  // Not available in OSS
+}
+
 // Wraps children in LookupOutputTabs when available (cloud),
 // passes through children directly in OSS.
 const renderWithLookupWrapper = (lookupProps, children) =>
@@ -237,15 +247,19 @@ function PromptOutput({
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
-              copyToClipboard={() =>
+              copyToClipboard={() => {
+                const enrichedText = getEnrichedCopyText?.(
+                  promptOutputData?.promptOutputId,
+                );
                 copyOutputToClipboard(
-                  displayPromptResult(
-                    promptOutput,
-                    true,
-                    promptDetails?.enable_highlight,
-                  ),
-                )
-              }
+                  enrichedText ||
+                    displayPromptResult(
+                      promptOutput,
+                      true,
+                      promptDetails?.enable_highlight,
+                    ),
+                );
+              }}
             />
             <PromptOutputExpandBtn
               promptId={promptDetails?.prompt_id}
@@ -481,14 +495,18 @@ function PromptOutput({
                         <div className="prompt-profile-run">
                           <CopyPromptOutputBtn
                             isDisabled={isTableExtraction}
-                            copyToClipboard={() =>
+                            copyToClipboard={() => {
+                              const enrichedText = getEnrichedCopyText?.(
+                                promptOutputData?.promptOutputId,
+                              );
                               copyOutputToClipboard(
-                                displayPromptResult(
-                                  promptOutputData?.output,
-                                  true,
-                                ),
-                              )
-                            }
+                                enrichedText ||
+                                  displayPromptResult(
+                                    promptOutputData?.output,
+                                    true,
+                                  ),
+                              );
+                            }}
                           />
                         </div>
                       </>
