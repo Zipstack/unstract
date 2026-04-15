@@ -292,12 +292,8 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # through the legacy structure_pipeline. Use local variables so
     # tool_metadata[_SK.OUTPUTS] is preserved for METADATA.json
     # serialization downstream in _write_tool_result.
-    agentic_table_outputs = [
-        o for o in all_outputs if o.get("type") == "agentic_table"
-    ]
-    regular_outputs = [
-        o for o in all_outputs if o.get("type") != "agentic_table"
-    ]
+    agentic_table_outputs = [o for o in all_outputs if o.get("type") == "agentic_table"]
+    regular_outputs = [o for o in all_outputs if o.get("type") != "agentic_table"]
 
     # Validate readiness for each agentic_table prompt: if the export
     # step did not populate agentic_table_settings, fail loudly so the
@@ -305,9 +301,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # legacy stringified-truncated output.
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
-        if not at_settings.get("target_table") or not at_settings.get(
-            "json_structure"
-        ):
+        if not at_settings.get("target_table") or not at_settings.get("json_structure"):
             return ExecutionResult.failure(
                 error=(
                     f"Agentic table prompt '{at_output[_SK.NAME]}' is missing "

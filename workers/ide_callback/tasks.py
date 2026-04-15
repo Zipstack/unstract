@@ -399,11 +399,7 @@ def ide_prompt_complete(
         if cb.get("is_agentic_table"):
             prompt_key = cb.get("prompt_key", "")
             if prompt_key:
-                tables = (
-                    outputs.get("tables", [])
-                    if isinstance(outputs, dict)
-                    else []
-                )
+                tables = outputs.get("tables", []) if isinstance(outputs, dict) else []
                 outputs = {prompt_key: tables}
 
         logger.info(

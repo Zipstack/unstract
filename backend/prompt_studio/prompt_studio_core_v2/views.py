@@ -535,11 +535,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             )
 
             cb_kwargs["hubspot_user_id"] = request.user.pk
-            cb_kwargs["is_first_prompt_run"] = (
-                not PromptStudioOutputManager.objects.filter(
-                    tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
-                ).exists()
-            )
+            cb_kwargs[
+                "is_first_prompt_run"
+            ] = not PromptStudioOutputManager.objects.filter(
+                tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
+            ).exists()
 
             dispatcher = PromptStudioHelper._get_dispatcher()
             executor_task_id = str(uuid.uuid4())

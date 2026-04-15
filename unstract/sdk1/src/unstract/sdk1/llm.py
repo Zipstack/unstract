@@ -361,12 +361,18 @@ class LLM:
 
         Accepts pre-built messages with image_url content blocks::
 
-            [{"role": "user", "content": [
-                {"type": "text", "text": "..."},
-                {"type": "image_url", "image_url": {
-                    "url": "data:image/png;base64,..."
-                }}
-            ]}]
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "..."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,..."},
+                        },
+                    ],
+                }
+            ]
 
         LiteLLM auto-translates the OpenAI-style image format for
         Anthropic, Bedrock, Vertex, and other providers.
