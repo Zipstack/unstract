@@ -244,11 +244,13 @@ def indexing_status(request):
     user_id = data.get("user_id", "")
     doc_id_key = data.get("doc_id_key", "")
 
-    if not action or not org_id or not user_id or not doc_id_key:
+    # user_id may be empty (e.g. mock auth users) - it's only used as a
+    # Redis cache key fragment, so empty is acceptable.
+    if not action or not org_id or not doc_id_key:
         return JsonResponse(
             {
                 "success": False,
-                "error": "action, org_id, user_id, doc_id_key are required",
+                "error": "action, org_id, doc_id_key are required",
             },
             status=status.HTTP_400_BAD_REQUEST,
         )
