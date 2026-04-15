@@ -627,7 +627,6 @@ for key in [
     "GOOGLE_OAUTH2_SECRET",
     "AZUREAD_TENANT_OAUTH2_KEY",
     "AZUREAD_TENANT_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 

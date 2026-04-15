@@ -97,11 +97,6 @@ class PromptStudioIndexHelper:
             with transaction.atomic():
                 document = DocumentManager.objects.get(pk=document_id)
 
-                args = {
-                    "document_manager": document,
-                    "profile_manager": profile_manager,
-                }
-
                 # Build extraction status data
                 status_data = {
                     "extracted": extracted,
@@ -112,12 +107,22 @@ class PromptStudioIndexHelper:
                 if not extracted and error_message:
                     status_data["error"] = error_message
 
-                defaults = {"extraction_status": {x2text_config_hash: status_data}}
-
-                index_manager, created = IndexManager.objects.update_or_create(
-                    **args,
-                    defaults=defaults,
+                # Lock the row (or create an empty one) so concurrent callers
+                # merge into the same dict rather than clobbering each other.
+                index_manager, created = (
+                    IndexManager.objects.select_for_update().get_or_create(
+                        document_manager=document,
+                        profile_manager=profile_manager,
+                        defaults={"extraction_status": {}},
+                    )
                 )
+
+                # Merge in place — update_or_create(defaults=...) would replace
+                # the whole dict and wipe any prior hash entries.
+                extraction_status = dict(index_manager.extraction_status or {})
+                extraction_status[x2text_config_hash] = status_data
+                index_manager.extraction_status = extraction_status
+                index_manager.save(update_fields=["extraction_status"])
 
                 logger.info(
                     f"Index manager {index_manager} {index_manager.index_ids_history}"

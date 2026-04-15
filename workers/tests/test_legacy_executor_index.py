@@ -220,6 +220,38 @@ class TestReindex:
         assert result.success is True
         init_call = mock_index_cls.call_args
         assert init_call.kwargs["processing_options"].reindex is True
+        # reindex=True with already-indexed doc must still call perform_indexing
+        mock_index_cls.return_value.perform_indexing.assert_called_once()
+
+    @patch(_PATCH_FS)
+    def test_already_indexed_no_reindex_short_circuits(
+        self, mock_get_fs, mock_indexing_deps
+    ):
+        """doc_id already in VDB and reindex=False → skip perform_indexing.
+
+        This is the defense-in-depth guard introduced for the IDE
+        re-indexing fix: even if the Redis cache misses and Answer Prompt
+        re-dispatches index, the executor must not re-write the same chunks
+        into the vector store.
+        """
+        mock_index_cls, mock_emb_cls, mock_vdb_cls = mock_indexing_deps
+        _register_legacy()
+        executor = ExecutorRegistry.get("legacy")
+
+        mock_index = _setup_mock_index(mock_index_cls, "doc-already-indexed")
+        mock_index.is_document_indexed.return_value = True
+        mock_emb_cls.return_value = MagicMock()
+        mock_vdb_cls.return_value = MagicMock()
+        mock_get_fs.return_value = MagicMock()
+
+        # reindex defaults to False
+        ctx = _make_index_context()
+        result = executor.execute(ctx)
+
+        assert result.success is True
+        assert result.data[IKeys.DOC_ID] == "doc-already-indexed"
+        mock_index.is_document_indexed.assert_called_once()
+        mock_index.perform_indexing.assert_not_called()
 
 
 # --- 5. VectorDB.close() always called ---

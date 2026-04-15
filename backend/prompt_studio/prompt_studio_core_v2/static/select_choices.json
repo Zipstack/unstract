@@ -16,6 +16,7 @@
         "json":"json",
         "table":"table",
         "agentic_table":"agentic_table"
+        "line-item":"line-item"
     },
     "output_processing":{
         "DEFAULT":"Default"

@@ -11,6 +11,11 @@ urlpatterns = [
     path("index/", internal_views.index_update, name="index-update"),
     path("indexing-status/", internal_views.indexing_status, name="indexing-status"),
     path(
+        "extraction-status/",
+        internal_views.extraction_status,
+        name="extraction-status",
+    ),
+    path(
         "profile/<str:profile_id>/",
         internal_views.profile_detail,
         name="profile-detail",

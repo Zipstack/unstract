@@ -639,6 +639,72 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
             return f"anthropic/{model}"
 
 
+class GeminiLLMParameters(BaseChatCompletionParameters):
+    """See https://docs.litellm.ai/docs/providers/gemini."""
+
+    api_key: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        result_metadata = adapter_metadata.copy()
+        result_metadata["model"] = GeminiLLMParameters.validate_model(adapter_metadata)
+
+        # Handle Gemini thinking configuration
+        enable_thinking = adapter_metadata.get("enable_thinking", False)
+
+        # If enable_thinking is not explicitly provided but thinking config is present,
+        # assume thinking was enabled in a previous validation
+        has_thinking_config = (
+            "thinking" in adapter_metadata
+            and adapter_metadata.get("thinking") is not None
+        )
+        if not enable_thinking and has_thinking_config:
+            enable_thinking = True
+
+        if enable_thinking:
+            if has_thinking_config:
+                result_metadata["thinking"] = adapter_metadata["thinking"]
+            else:
+                budget_tokens = adapter_metadata.get("budget_tokens")
+                if budget_tokens is None:
+                    raise ValueError(
+                        "budget_tokens is required when thinking mode is enabled"
+                    )
+                if not isinstance(budget_tokens, int) or budget_tokens < 1024:
+                    raise ValueError(
+                        f"budget_tokens must be an integer >= 1024, got {budget_tokens}"
+                    )
+                result_metadata["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": budget_tokens,
+                }
+            # Gemini thinking mode requires temperature=1
+            result_metadata["temperature"] = 1
+
+        # Exclude control fields from pydantic validation
+        exclude_fields = ("enable_thinking", "budget_tokens", "thinking")
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
+
+        validated = GeminiLLMParameters(**validation_metadata).model_dump()
+
+        if enable_thinking and "thinking" in result_metadata:
+            validated["thinking"] = result_metadata["thinking"]
+
+        return validated
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required")
+        if model.startswith("gemini/"):
+            return model
+        else:
+            return f"gemini/{model}"
+
+
 class AnyscaleLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/anyscale."""
 
