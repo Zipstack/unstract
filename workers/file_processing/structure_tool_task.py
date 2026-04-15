@@ -407,20 +407,19 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # ---- Step 7: Write output files ----
     # (metadata/metrics merging already done by executor pipeline)
-    try:
-        output_path = Path(output_dir_path) / f"{Path(source_file_name).stem}.json"
-        logger.info("Writing output to %s", output_path)
-        fs.json_dump(path=output_path, data=structured_output)
-
-        # Overwrite INFILE with JSON output (matches Docker-based tool behavior).
-        # The destination connector reads from INFILE and checks MIME type —
-        # if we don't overwrite it, INFILE still has the original PDF.
-        logger.info("Overwriting INFILE with structured output: %s", input_file_path)
-        fs.json_dump(path=input_file_path, data=structured_output)
-
-        logger.info("Output written successfully to workflow storage")
-    except (OSError, json.JSONDecodeError) as e:
-        return ExecutionResult.failure(error=f"Error writing output file: {e}").to_dict()
+    write_error = _write_pipeline_outputs(
+        fs=fs,
+        structured_output=structured_output,
+        output_dir_path=output_dir_path,
+        input_file_path=input_file_path,
+        execution_data_dir=execution_data_dir,
+        source_file_name=source_file_name,
+        label="structured",
+    )
+    if write_error:
+        return ExecutionResult.failure(
+            error=f"Error writing output file: {write_error}"
+        ).to_dict()
 
     # Write tool result + tool_metadata to METADATA.json
     # (destination connector reads output_type from tool_metadata)
@@ -607,23 +606,81 @@ def _run_agentic_extraction(
     elapsed = time.monotonic() - start_time
 
     # Write output files (matches regular pipeline path)
-    try:
-        output_path = Path(output_dir_path) / f"{Path(source_file_name).stem}.json"
-        logger.info("Writing agentic output to %s", output_path)
-        fs.json_dump(path=output_path, data=structured_output)
-
-        # Overwrite INFILE with JSON output so destination connector reads JSON, not PDF
-        logger.info("Overwriting INFILE with agentic output: %s", input_file_path)
-        fs.json_dump(path=input_file_path, data=structured_output)
-    except Exception as e:
+    write_error = _write_pipeline_outputs(
+        fs=fs,
+        structured_output=structured_output,
+        output_dir_path=output_dir_path,
+        input_file_path=input_file_path,
+        execution_data_dir=execution_data_dir,
+        source_file_name=source_file_name,
+        label="agentic",
+    )
+    if write_error:
         return ExecutionResult.failure(
-            error=f"Error writing agentic output: {e}"
+            error=f"Error writing agentic output: {write_error}"
         ).to_dict()
 
     # Write tool result + tool_metadata to METADATA.json
     _write_tool_result(fs, execution_data_dir, structured_output, elapsed)
 
     return ExecutionResult(success=True, data=structured_output).to_dict()
+
+
+def _write_pipeline_outputs(
+    fs: Any,
+    structured_output: dict,
+    output_dir_path: str,
+    input_file_path: str,
+    execution_data_dir: str,
+    source_file_name: str,
+    label: str,
+) -> str | None:
+    """Write structure-tool / agentic outputs to disk.
+
+    Mirrors the old Docker tool's output layout so the destination
+    connector finds what it expects:
+
+    1. ``{output_dir_path}/{stem}.json`` — primary output file.
+    2. INFILE overwritten with JSON (destination connector reads INFILE
+       and checks MIME type — without this it still sees the original
+       PDF).
+    3. ``{execution_data_dir}/COPY_TO_FOLDER/{stem}.json`` — what the
+       old ``ToolExecutor._setup_for_run()`` created for FS destinations.
+
+    Args:
+        label: Short label for log lines (``"structured"`` or
+            ``"agentic"``).
+
+    Returns:
+        ``None`` on success, or the error string on failure.
+    """
+    try:
+        stem = Path(source_file_name).stem
+        output_path = Path(output_dir_path) / f"{stem}.json"
+        logger.info("Writing %s output to %s", label, output_path)
+        fs.json_dump(path=output_path, data=structured_output)
+
+        logger.info("Overwriting INFILE with %s output: %s", label, input_file_path)
+        fs.json_dump(path=input_file_path, data=structured_output)
+
+        copy_to_folder = str(Path(execution_data_dir) / "COPY_TO_FOLDER")
+        fs.mkdir(copy_to_folder)
+        copy_output_path = str(Path(copy_to_folder) / f"{stem}.json")
+        fs.json_dump(path=copy_output_path, data=structured_output)
+        logger.info(
+            "%s output written to COPY_TO_FOLDER: %s",
+            label.capitalize(),
+            copy_output_path,
+        )
+
+        logger.info("Overwriting INFILE with %s output: %s", label, input_file_path)
+        fs.json_dump(path=input_file_path, data=structured_output)
+
+        logger.info("Output written successfully to workflow storage")
+        return None
+    except Exception as e:
+        logger.error("Failed to write %s output files: %s", label, e, exc_info=True)
+        return str(e)
 
 
 def _write_tool_result(
@@ -636,6 +693,7 @@ def _write_tool_result(
       (destination connector reads output_type from here)
     - total_elapsed_time: cumulative elapsed time
     """
+    metadata_path: Path | None = None
     try:
         metadata_path = Path(execution_data_dir) / "METADATA.json"
 
@@ -671,4 +729,9 @@ def _write_tool_result(
             data=json.dumps(existing, indent=2),
         )
     except Exception as e:
-        logger.warning("Failed to write tool result to METADATA.json: %s", e)
+        logger.error(
+            "Failed to write tool result to METADATA.json at '%s': %s",
+            metadata_path,
+            e,
+            exc_info=True,
+        )

@@ -201,9 +201,12 @@ class TestTableLineItemGuard:
     @patch("executor.executors.legacy_executor.ExecutorToolShim")
     @patch("unstract.sdk1.utils.indexing.IndexingUtils.generate_index_key",
            return_value="doc-id-1")
-    def test_line_item_type_raises_not_supported(
+    def test_line_item_type_raises_when_plugin_missing(
         self, mock_key, mock_shim_cls
     ):
+        """LINE_ITEM prompts raise install error when line_item plugin
+        is not registered (mirrors TABLE missing-plugin behavior).
+        """
         mock_shim_cls.return_value = MagicMock()
         executor = _get_executor()
         ctx = _make_context(output_type=PSKeys.LINE_ITEM)  # "line-item"
@@ -211,8 +214,16 @@ class TestTableLineItemGuard:
         patches = _standard_patches(executor, llm)
 
         with patches["_get_prompt_deps"], patches["shim"], patches["index_key"]:
-            with pytest.raises(LegacyExecutorError, match="not supported"):
-                executor._handle_answer_prompt(ctx)
+            with patch(
+                "unstract.sdk1.execution.registry.ExecutorRegistry.get",
+                side_effect=KeyError(
+                    "No executor registered with name 'line_item'"
+                ),
+            ):
+                with pytest.raises(
+                    LegacyExecutorError, match="line_item_extractor plugin"
+                ):
+                    executor._handle_answer_prompt(ctx)
 
 
 # ---------------------------------------------------------------------------

@@ -18,6 +18,7 @@ import pytest
 _PATCH_GET_CLIENT = "ide_callback.tasks._get_api_client"
 _PATCH_EMIT_WS = "ide_callback.tasks._emit_websocket"
 _PATCH_ASYNC_RESULT = "celery.result.AsyncResult"
+_PATCH_GET_PLUGIN = "client_plugin_registry.get_client_plugin"
 
 
 # ---------------------------------------------------------------------------
@@ -647,3 +648,134 @@ class TestJsonSafe:
         result = _json_safe(val)
         assert isinstance(result["items"][0]["id"], str)
         assert isinstance(result["items"][0]["date"], str)
+
+
+# ---------------------------------------------------------------------------
+# TestTrackSubscriptionUsage (unit tests)
+# ---------------------------------------------------------------------------
+
+
+class TestTrackSubscriptionUsage:
+    """Tests for the _track_subscription_usage helper."""
+
+    def _call(self, org_id, run_id):
+        from ide_callback.tasks import _track_subscription_usage
+
+        return _track_subscription_usage(org_id, run_id)
+
+    def test_skips_when_org_id_empty(self):
+        """No-op when org_id is empty."""
+        with patch(_PATCH_GET_PLUGIN) as mock_gp:
+            self._call("", "run-1")
+            mock_gp.assert_not_called()
+
+    def test_skips_when_run_id_empty(self):
+        """No-op when run_id is empty."""
+        with patch(_PATCH_GET_PLUGIN) as mock_gp:
+            self._call("org-1", "")
+            mock_gp.assert_not_called()
+
+    def test_plugin_not_available(self):
+        """Gracefully returns when plugin is not installed (OSS mode)."""
+        with patch(_PATCH_GET_PLUGIN, return_value=None):
+            self._call("org-1", "run-1")  # should not raise
+
+    def test_plugin_commits_usage(self):
+        """Calls commit_batch_subscription_usage with correct args."""
+        mock_plugin = MagicMock()
+        mock_plugin.commit_batch_subscription_usage.return_value = {
+            "status": "ok",
+            "committed_count": 1,
+        }
+        with patch(_PATCH_GET_PLUGIN, return_value=mock_plugin):
+            self._call("org-1", "run-42")
+
+        mock_plugin.commit_batch_subscription_usage.assert_called_once_with(
+            organization_id="org-1",
+            file_execution_ids=["run-42"],
+        )
+
+    def test_plugin_error_non_blocking(self):
+        """Exception from plugin is caught; callback continues."""
+        mock_plugin = MagicMock()
+        mock_plugin.commit_batch_subscription_usage.side_effect = RuntimeError("boom")
+        with patch(_PATCH_GET_PLUGIN, return_value=mock_plugin):
+            self._call("org-1", "run-1")  # should not raise
+
+
+# ---------------------------------------------------------------------------
+# TestSubscriptionUsageIntegration (in callback tasks)
+# ---------------------------------------------------------------------------
+
+
+class TestSubscriptionUsageInIndexCallback:
+    """Verify _track_subscription_usage is called correctly in ide_index_complete."""
+
+    def _call(self, result_dict, callback_kwargs=None):
+        from ide_callback.tasks import ide_index_complete
+
+        return ide_index_complete(result_dict, callback_kwargs)
+
+    @patch("ide_callback.tasks._track_subscription_usage")
+    @patch(_PATCH_EMIT_WS)
+    @patch(_PATCH_GET_CLIENT)
+    def test_called_on_success(
+        self, mock_get_client, mock_emit_ws, mock_track, mock_api, base_index_kwargs, success_result
+    ):
+        mock_get_client.return_value = mock_api
+        base_index_kwargs["run_id"] = "run-idx-1"
+
+        self._call(success_result, base_index_kwargs)
+
+        mock_track.assert_called_once_with("org-1", "run-idx-1")
+
+    @patch("ide_callback.tasks._track_subscription_usage")
+    @patch(_PATCH_EMIT_WS)
+    @patch(_PATCH_GET_CLIENT)
+    def test_not_called_on_executor_failure(
+        self, mock_get_client, mock_emit_ws, mock_track, mock_api, base_index_kwargs, failure_result
+    ):
+        mock_get_client.return_value = mock_api
+
+        self._call(failure_result, base_index_kwargs)
+
+        mock_track.assert_not_called()
+
+
+class TestSubscriptionUsageInPromptCallback:
+    """Verify _track_subscription_usage is called correctly in ide_prompt_complete."""
+
+    def _call(self, result_dict, callback_kwargs=None):
+        from ide_callback.tasks import ide_prompt_complete
+
+        return ide_prompt_complete(result_dict, callback_kwargs)
+
+    def _make_result(self, output=None):
+        return {
+            "success": True,
+            "data": {"output": output or {"p1": "answer"}, "metadata": {}},
+        }
+
+    @patch("ide_callback.tasks._track_subscription_usage")
+    @patch(_PATCH_EMIT_WS)
+    @patch(_PATCH_GET_CLIENT)
+    def test_called_on_success(
+        self, mock_get_client, mock_emit_ws, mock_track, mock_api, base_prompt_kwargs
+    ):
+        mock_get_client.return_value = mock_api
+
+        self._call(self._make_result(), base_prompt_kwargs)
+
+        mock_track.assert_called_once_with("org-1", "run-1")
+
+    @patch("ide_callback.tasks._track_subscription_usage")
+    @patch(_PATCH_EMIT_WS)
+    @patch(_PATCH_GET_CLIENT)
+    def test_not_called_on_executor_failure(
+        self, mock_get_client, mock_emit_ws, mock_track, mock_api, base_prompt_kwargs, failure_result
+    ):
+        mock_get_client.return_value = mock_api
+
+        self._call(failure_result, base_prompt_kwargs)
+
+        mock_track.assert_not_called()

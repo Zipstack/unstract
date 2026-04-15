@@ -377,6 +377,167 @@ class TestIdeIndexEagerChain:
         assert not result.success
         assert "X2Text" in result.error
 
+    @patch(_PATCH_INDEX_DEPS)
+    @patch(_PATCH_FS)
+    @patch(_PATCH_X2TEXT)
+    @patch(_PATCH_SHIM)
+    def test_ide_index_reuses_pre_extracted_text(
+        self,
+        mock_shim,
+        mock_x2text,
+        mock_fs,
+        mock_index_deps,
+        eager_app,
+    ):
+        """Marker-hit path: extracted_text pre-populated → extract is skipped."""
+        # If _handle_extract runs, this will blow up — the whole point is
+        # that it must NOT be called when index_params carries extracted_text.
+        x2t_instance = MagicMock()
+        x2t_instance.process.side_effect = AssertionError(
+            "extract must not run when index_params contains pre-extracted text"
+        )
+        mock_x2text.return_value = x2t_instance
+
+        fs = MagicMock()
+        fs.exists.return_value = False
+        mock_fs.return_value = fs
+
+        # Mock index — capture the extracted_text that reached _handle_index.
+        index_inst = MagicMock()
+        index_inst.generate_index_key.return_value = "idx-doc-reuse"
+        index_inst.is_document_indexed.return_value = False
+        mock_index_deps.return_value = (
+            MagicMock(return_value=index_inst),
+            MagicMock(),
+            MagicMock(),
+        )
+
+        ctx = ExecutionContext(
+            executor_name="legacy",
+            operation="ide_index",
+            run_id="run-ide-reuse",
+            execution_source="ide",
+            organization_id="org-test",
+            executor_params={
+                "extract_params": {
+                    "x2text_instance_id": "x2t-1",
+                    "file_path": "/data/doc.pdf",
+                    "enable_highlight": False,
+                    "output_file_path": "/data/extract/doc.txt",
+                    "platform_api_key": "pk-test",
+                    "usage_kwargs": {},
+                },
+                "index_params": {
+                    "tool_id": "tool-1",
+                    "embedding_instance_id": "emb-1",
+                    "vector_db_instance_id": "vdb-1",
+                    "x2text_instance_id": "x2t-1",
+                    "file_path": "/data/extract/doc.txt",
+                    "file_hash": None,
+                    "chunk_overlap": 64,
+                    "chunk_size": 512,
+                    "reindex": True,
+                    "enable_highlight": False,
+                    "usage_kwargs": {},
+                    "run_id": "run-ide-reuse",
+                    "execution_source": "ide",
+                    "platform_api_key": "pk-test",
+                    "extracted_text": "reused extracted payload",
+                },
+            },
+        )
+
+        result_dict = _run_task(eager_app, ctx.to_dict())
+        result = ExecutionResult.from_dict(result_dict)
+
+        assert result.success
+        assert result.data["doc_id"] == "idx-doc-reuse"
+        # Extract adapter must never have been called.
+        x2t_instance.process.assert_not_called()
+        # perform_indexing received the pre-populated text.
+        perform_call_kwargs = index_inst.perform_indexing.call_args.kwargs
+        assert (
+            perform_call_kwargs.get("extracted_text") == "reused extracted payload"
+        )
+
+    @patch(_PATCH_INDEX_DEPS)
+    @patch(_PATCH_FS)
+    @patch(_PATCH_X2TEXT)
+    @patch(_PATCH_SHIM)
+    def test_ide_index_without_pre_extracted_text_runs_extract(
+        self,
+        mock_shim,
+        mock_x2text,
+        mock_fs,
+        mock_index_deps,
+        eager_app,
+    ):
+        """Marker-miss path: extract runs as before when extracted_text is absent."""
+        x2t_instance = MagicMock()
+        x2t_instance.process.return_value = _mock_process_response(
+            "freshly extracted"
+        )
+        mock_x2text.return_value = x2t_instance
+
+        fs = MagicMock()
+        fs.exists.return_value = False
+        mock_fs.return_value = fs
+
+        index_inst = MagicMock()
+        index_inst.generate_index_key.return_value = "idx-doc-fresh"
+        index_inst.is_document_indexed.return_value = False
+        mock_index_deps.return_value = (
+            MagicMock(return_value=index_inst),
+            MagicMock(),
+            MagicMock(),
+        )
+
+        ctx = ExecutionContext(
+            executor_name="legacy",
+            operation="ide_index",
+            run_id="run-ide-fresh",
+            execution_source="ide",
+            organization_id="org-test",
+            executor_params={
+                "extract_params": {
+                    "x2text_instance_id": "x2t-1",
+                    "file_path": "/data/doc.pdf",
+                    "enable_highlight": False,
+                    "output_file_path": "/data/extract/doc.txt",
+                    "platform_api_key": "pk-test",
+                    "usage_kwargs": {},
+                },
+                "index_params": {
+                    "tool_id": "tool-1",
+                    "embedding_instance_id": "emb-1",
+                    "vector_db_instance_id": "vdb-1",
+                    "x2text_instance_id": "x2t-1",
+                    "file_path": "/data/extract/doc.txt",
+                    "file_hash": None,
+                    "chunk_overlap": 64,
+                    "chunk_size": 512,
+                    "reindex": True,
+                    "enable_highlight": False,
+                    "usage_kwargs": {},
+                    "run_id": "run-ide-fresh",
+                    "execution_source": "ide",
+                    "platform_api_key": "pk-test",
+                    # No "extracted_text" key → must take the extract path.
+                },
+            },
+        )
+
+        result_dict = _run_task(eager_app, ctx.to_dict())
+        result = ExecutionResult.from_dict(result_dict)
+
+        assert result.success
+        assert result.data["doc_id"] == "idx-doc-fresh"
+        # Extract adapter was called exactly once.
+        x2t_instance.process.assert_called_once()
+        # perform_indexing received the freshly extracted text.
+        perform_call_kwargs = index_inst.perform_indexing.call_args.kwargs
+        assert perform_call_kwargs.get("extracted_text") == "freshly extracted"
+
 
 # ---------------------------------------------------------------------------
 # 5D: structure_pipeline compound operation through eager chain
