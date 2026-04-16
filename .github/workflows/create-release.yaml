@@ -1,0 +1,186 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      confirm_major:
+        description: "Confirm major version bump (required when 'major' is selected)"
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: "Create as pre-release"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run - only compute and display the next version without creating a release"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-creation
+  cancel-in-progress: false
+
+run-name: "Create Release (${{ github.event.inputs.version_bump }}${{ github.event.inputs.dry_run == 'true' && ' - dry run' || '' }})"
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.PUSH_TO_MAIN_APP_ID }}
+          private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
+          owner: Zipstack
+          repositories: |
+            unstract
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          fetch-depth: 0
+
+      - name: Validate major bump confirmation
+        if: github.event.inputs.version_bump == 'major' && github.event.inputs.confirm_major != 'true'
+        run: |
+          echo "::error::Major version bump requires the 'Confirm major version bump' checkbox to be checked."
+          echo "This is a safety measure to prevent accidental major version changes."
+          exit 1
+
+      - name: Fetch latest release version
+        id: get-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG=$(gh release list --limit 1 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[0].tagName')
+
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "::error::No existing releases found."
+            exit 1
+          fi
+
+          # Validate format
+          if [[ ! "$LATEST_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Latest release tag '$LATEST_TAG' does not match expected format 'vX.Y.Z'"
+            exit 1
+          fi
+
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Latest release: $LATEST_TAG"
+
+      - name: Compute next version
+        id: compute-version
+        run: |
+          LATEST_TAG="${{ steps.get-latest.outputs.latest_tag }}"
+          BUMP_TYPE="${{ github.event.inputs.version_bump }}"
+
+          # Strip 'v' prefix and parse components
+          VERSION="${LATEST_TAG#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+          echo "Current version: $MAJOR.$MINOR.$PATCH"
+
+          case "$BUMP_TYPE" in
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+          esac
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_TAG"
+
+          # Validate: new version must be greater than current
+          CURRENT_NUM="${LATEST_TAG#v}"
+          NEW_NUM="${NEW_TAG#v}"
+          if ! printf '%s\n%s\n' "$CURRENT_NUM" "$NEW_NUM" | sort -V -C; then
+            echo "::error::Computed version $NEW_TAG is not greater than current version $LATEST_TAG"
+            exit 1
+          fi
+
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Dry run summary
+        if: github.event.inputs.dry_run == 'true'
+        run: |
+          echo "## Dry Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Current version | ${{ steps.get-latest.outputs.latest_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bump type | ${{ github.event.inputs.version_bump }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Next version | ${{ steps.compute-version.outputs.new_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pre-release | ${{ github.event.inputs.pre_release }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "No release was created (dry run mode)." >> $GITHUB_STEP_SUMMARY
+
+      - name: Create GitHub release
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+        run: |
+          NEW_TAG="${{ steps.compute-version.outputs.new_tag }}"
+          LATEST_TAG="${{ steps.get-latest.outputs.latest_tag }}"
+
+          echo "Creating release $NEW_TAG (previous: $LATEST_TAG)"
+
+          # Build release command
+          RELEASE_ARGS=(
+            "$NEW_TAG"
+            --title "$NEW_TAG"
+            --target "${{ github.ref_name }}"
+            --generate-notes
+            --notes-start-tag "$LATEST_TAG"
+          )
+
+          if [[ "${{ github.event.inputs.pre_release }}" == "true" ]]; then
+            RELEASE_ARGS+=(--prerelease)
+          fi
+
+          gh release create "${RELEASE_ARGS[@]}"
+
+          echo "Release $NEW_TAG created successfully."
+
+      - name: Summary
+        if: github.event.inputs.dry_run != 'true'
+        run: |
+          NEW_TAG="${{ steps.compute-version.outputs.new_tag }}"
+
+          echo "## Release Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Previous version | ${{ steps.get-latest.outputs.latest_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| New version | $NEW_TAG |" >> $GITHUB_STEP_SUMMARY
+          echo "| Bump type | ${{ github.event.inputs.version_bump }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Pre-release | ${{ github.event.inputs.pre_release }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Triggered by | ${{ github.actor }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The [production build](${{ github.server_url }}/${{ github.repository }}/actions/workflows/production-build.yaml) workflow will be triggered automatically." >> $GITHUB_STEP_SUMMARY

@@ -19,7 +19,64 @@ on:
 run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
 jobs:
+  # Safety-net validation. Primary protection is the GitHub tag protection ruleset
+  # restricting v* tag creation to the release bot. This job is defense-in-depth for
+  # the workflow_dispatch tag input and any future bypass of the ruleset.
+  validate-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine tag
+        id: get-tag
+        run: |
+          TAG="${{ github.event.release.tag_name || github.event.inputs.tag }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag format
+        run: |
+          TAG="${{ steps.get-tag.outputs.tag }}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match expected format 'vX.Y.Z'."
+            exit 1
+          fi
+          echo "Tag format valid: $TAG"
+
+      - name: Validate version increment
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          NEW_TAG="${{ steps.get-tag.outputs.tag }}"
+
+          # Get the previous release (skip the one just created)
+          PREV_TAG=$(gh release list --repo "${{ github.repository }}" --limit 2 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[1].tagName')
+
+          if [[ -z "$PREV_TAG" ]]; then
+            echo "No previous release found, skipping version increment check."
+            exit 0
+          fi
+
+          echo "Previous release: $PREV_TAG"
+          echo "New release: $NEW_TAG"
+
+          NEW_VER="${NEW_TAG#v}"
+          PREV_VER="${PREV_TAG#v}"
+          NEW_MAJOR=$(echo "$NEW_VER" | cut -d. -f1)
+          PREV_MAJOR=$(echo "$PREV_VER" | cut -d. -f1)
+
+          if [[ "$NEW_MAJOR" != "$PREV_MAJOR" ]]; then
+            echo "::error::Unexpected major version change: $PREV_TAG -> $NEW_TAG. Use the 'Create Release' workflow with the 'major' bump type if this is intentional."
+            exit 1
+          fi
+
+          if ! printf '%s\n%s\n' "$PREV_VER" "$NEW_VER" | sort -V -C; then
+            echo "::error::New version $NEW_TAG is not greater than previous version $PREV_TAG."
+            exit 1
+          fi
+
+          echo "Version increment valid: $PREV_TAG -> $NEW_TAG"
+
   build-and-push:
+    needs: validate-tag
     runs-on: ubuntu-latest
     strategy:
       matrix:
