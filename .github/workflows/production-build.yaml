@@ -353,7 +353,7 @@ jobs:
       # Send summary notification to Slack
       - name: Send Slack summary notification
         if: always()
-        uses: slackapi/slack-github-action@v2.1.0
+        uses: slackapi/slack-github-action@v3.0.1
         with:
           webhook-type: incoming-webhook
           payload: |

@@ -49,7 +49,7 @@ jobs:
       # due to GitHub's anti-recursion policy. Same pattern used in unstract-cloud.
       - name: Generate GitHub App Token
         id: generate-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ vars.PUSH_TO_MAIN_APP_ID }}
           private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
