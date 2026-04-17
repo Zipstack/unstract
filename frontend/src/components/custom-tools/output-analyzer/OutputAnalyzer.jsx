@@ -48,7 +48,9 @@ function OutputAnalyzer() {
   }, []);
 
   const currentDoc = useMemo(() => {
-    if (currentDocIndex === -1) return null;
+    if (currentDocIndex === -1) {
+      return null;
+    }
     return listOfDocs[currentDocIndex];
   }, [listOfDocs, currentDocIndex]);
 

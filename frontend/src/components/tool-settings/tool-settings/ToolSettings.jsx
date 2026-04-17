@@ -211,7 +211,7 @@ function ToolSettings({ type }) {
       setPostHogCustomEvent(posthogEventText[type], {
         info: `Clicked on '+ ${btnText[type]}' button`,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -224,17 +224,15 @@ function ToolSettings({ type }) {
         searchKey={type}
         setSearchList={setDisplayList}
         onSearch={onSearch}
-        CustomButtons={() => {
-          return (
-            <CustomButton
-              type="primary"
-              onClick={handleOpenAddSourceModal}
-              icon={<PlusOutlined />}
-            >
-              {btnText[type]}
-            </CustomButton>
-          );
-        }}
+        customButtons={
+          <CustomButton
+            type="primary"
+            onClick={handleOpenAddSourceModal}
+            icon={<PlusOutlined />}
+          >
+            {btnText[type]}
+          </CustomButton>
+        }
       />
       <IslandLayout>
         <div className="plt-tool-settings-layout-2">

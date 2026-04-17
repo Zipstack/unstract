@@ -21,6 +21,9 @@ WORKERS_DIR="$SCRIPT_DIR"
 # Default environment file
 ENV_FILE="$WORKERS_DIR/.env"
 
+# Worker type constant for the executor worker
+readonly EXECUTOR_WORKER_TYPE="executor"
+
 # Available workers
 declare -A WORKERS=(
     ["api"]="api-deployment"
@@ -37,6 +40,7 @@ declare -A WORKERS=(
     ["notify"]="notification"
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
+    ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["all"]="all"
 )
 
@@ -52,6 +56,7 @@ declare -A WORKER_QUEUES=(
     ["log_consumer"]="celery_log_task_queue"
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["scheduler"]="scheduler"
+    ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
 )
 
 # Worker health ports
@@ -63,6 +68,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["log_consumer"]="8084"
     ["notification"]="8085"
     ["scheduler"]="8087"
+    ["${EXECUTOR_WORKER_TYPE}"]="8088"
 )
 
 # Function to display usage
@@ -80,6 +86,7 @@ WORKER_TYPE:
     log, log-consumer     Run log consumer worker
     notification, notify  Run notification worker
     scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
+    executor              Run executor worker (extraction execution tasks)
     all                   Run all workers (in separate processes, includes auto-discovered pluggable workers)
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
@@ -147,6 +154,7 @@ HEALTH CHECKS:
     - Log Consumer: http://localhost:8084/health
     - Notification: http://localhost:8085/health
     - Scheduler: http://localhost:8087/health
+    - Executor: http://localhost:8088/health
     - Pluggable workers: http://localhost:8090+/health (auto-assigned ports)
 
 EOF
@@ -301,7 +309,7 @@ show_status() {
     print_status $BLUE "Worker Status:"
     echo "=============="
 
-    local workers_to_check="api-deployment general file_processing callback log_consumer notification scheduler"
+    local workers_to_check="api-deployment general file_processing callback log_consumer notification scheduler executor"
 
     # Add discovered pluggable workers
     if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
@@ -405,6 +413,9 @@ run_worker() {
             "scheduler")
                 export SCHEDULER_HEALTH_PORT="$health_port"
                 ;;
+            "${EXECUTOR_WORKER_TYPE}")
+                export EXECUTOR_HEALTH_PORT="$health_port"
+                ;;
             *)
                 # Handle pluggable workers dynamically
                 if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
@@ -478,6 +489,9 @@ run_worker() {
             "scheduler")
                 cmd_args+=("--concurrency=2")
                 ;;
+            "${EXECUTOR_WORKER_TYPE}")
+                cmd_args+=("--concurrency=2")
+                ;;
             *)
                 # Default for pluggable and other workers
                 if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
@@ -525,7 +539,7 @@ run_all_workers() {
     print_status $GREEN "Starting all workers..."
 
     # Define core workers
-    local core_workers="api-deployment general file_processing callback log_consumer notification scheduler"
+    local core_workers="api-deployment general file_processing callback log_consumer notification scheduler executor"
 
     # Add discovered pluggable workers
     if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then

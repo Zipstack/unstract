@@ -1,7 +1,7 @@
 import { ArrowDownOutlined, PlusOutlined } from "@ant-design/icons";
 import { Space } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
@@ -208,7 +208,7 @@ function ListOfTools() {
       setPostHogCustomEvent("intent_new_ps_project", {
         info: "Clicked on '+ New Project' button",
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -219,7 +219,7 @@ function ListOfTools() {
         info: "Importing project from projects list",
         file_name: file.name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -359,7 +359,7 @@ function ListOfTools() {
     </div>
   );
 
-  const CustomButtonsComponent = useCallback(
+  const customButtonsElement = useMemo(
     () => (
       <DefaultCustomButtons
         setOpenImportTool={setOpenImportTool}
@@ -378,7 +378,7 @@ function ListOfTools() {
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={CustomButtonsComponent}
+        customButtons={customButtonsElement}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>

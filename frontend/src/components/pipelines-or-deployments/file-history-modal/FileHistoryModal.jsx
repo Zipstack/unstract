@@ -245,7 +245,9 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
 
   // Delete selected file histories (bulk delete by IDs)
   const handleDeleteSelected = async () => {
-    if (selectedRowKeys.length === 0) return;
+    if (selectedRowKeys.length === 0) {
+      return;
+    }
 
     if (selectedRowKeys.length > MAX_BULK_DELETE) {
       setAlertDetails({
@@ -439,7 +441,9 @@ const FileHistoryModal = ({ open, setOpen, workflowId, workflowName }) => {
       width: "12%",
       responsive: ["md"],
       render: (date) => {
-        if (!date) return "N/A";
+        if (!date) {
+          return "N/A";
+        }
         return new Date(date).toLocaleString();
       },
     },

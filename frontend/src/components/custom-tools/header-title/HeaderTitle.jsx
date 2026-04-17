@@ -26,11 +26,10 @@ function HeaderTitle() {
         <Typography.Text className="custom-tools-name" strong>
           {details?.tool_name}
         </Typography.Text>
-        <Button size="small" type="text" disabled>
-          <EditOutlined />
-        </Button>
+        <Button size="small" type="text" icon={<EditOutlined />} disabled />
       </div>
     </div>
   );
 }
+
 export { HeaderTitle };

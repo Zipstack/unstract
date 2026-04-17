@@ -320,6 +320,11 @@ services:
           path: ../workers/uv.lock
 
   #########################################################################################################
+  # IDE callback worker (workers image, processes ide_callback queue)
+  worker-ide-callback:
+    build:
+      dockerfile: docker/dockerfiles/worker-unified.Dockerfile
+      context: ..
   # Celery worker for dashboard metrics (memory optimized: reduced autoscale)
   worker-metrics:
     build:

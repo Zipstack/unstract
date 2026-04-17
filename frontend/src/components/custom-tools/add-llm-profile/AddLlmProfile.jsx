@@ -64,10 +64,6 @@ function AddLlmProfile({
 
   useEffect(() => {
     setAdaptorProfilesDropdown();
-
-    return () => {
-      setEditLlmProfileId(null);
-    };
   }, []);
 
   // Load retrieval strategies when tool_id is available (only once)
@@ -163,7 +159,7 @@ function AddLlmProfile({
 
   useEffect(() => {
     if (resetForm) {
-      form.resetFields();
+      form.setFieldsValue(formDetails);
       setResetForm(false);
     }
   }, [formDetails]);
@@ -330,7 +326,7 @@ function AddLlmProfile({
         setPostHogCustomEvent("intent_success_ps_new_llm_profile", {
           info: "Clicked on 'Add' button",
         });
-      } catch (err) {
+      } catch (_err) {
         // If an error occurs while setting custom posthog event, ignore it and continue
       }
     }

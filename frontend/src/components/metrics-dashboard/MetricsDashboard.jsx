@@ -18,7 +18,7 @@ import {
   Typography,
 } from "antd";
 import dayjs from "dayjs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { EmptyPlaceholder } from "../../assets";
@@ -29,6 +29,7 @@ import {
   useSubscriptionUsage,
 } from "../../hooks/useMetricsData";
 import { useSessionStore } from "../../store/session-store";
+import { ToolNavBar } from "../navigations/tool-nav-bar/ToolNavBar";
 import { DeploymentUsageTable } from "./LLMUsageTable";
 import { HITLChart, PagesChart, TrendAnalysisChart } from "./MetricsChart";
 import { MetricsSummary } from "./MetricsSummary";
@@ -59,6 +60,41 @@ try {
 }
 
 const { RangePicker } = DatePicker;
+
+function DashboardButtons() {
+  return (
+    <Space>
+      <Button
+        icon={<FileSearchOutlined />}
+        type="link"
+        onClick={() =>
+          window.open(
+            "https://docs.unstract.com/unstract/index.html",
+            "_blank",
+            "noopener,noreferrer",
+          )
+        }
+        className="metrics-header-button"
+      >
+        Documentation
+      </Button>
+      <Button
+        icon={<SlackOutlined />}
+        type="link"
+        onClick={() =>
+          window.open(
+            "https://join-slack.unstract.com/",
+            "_blank",
+            "noopener,noreferrer",
+          )
+        }
+        className="metrics-header-button"
+      >
+        Slack Community
+      </Button>
+    </Space>
+  );
+}
 
 function MetricsDashboard() {
   const navigate = useNavigate();
@@ -119,6 +155,9 @@ function MetricsDashboard() {
     refetch: refetchSubscription,
   } = useSubscriptionUsage();
 
+  // Ref to deployment usage refetch (exposed by DeploymentUsageTable)
+  const deploymentRefetchRef = useRef(null);
+
   // Active tab (controls date picker visibility)
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -135,6 +174,7 @@ function MetricsDashboard() {
     refetchChart();
     refetchActivity();
     refetchSubscription();
+    deploymentRefetchRef.current?.();
   }, [refetchOverview, refetchChart, refetchActivity, refetchSubscription]);
 
   // Check if all data sources are empty (no activity at all)
@@ -218,6 +258,7 @@ function MetricsDashboard() {
             <DeploymentUsageTable
               startDate={dateRange[0]?.toISOString()}
               endDate={dateRange[1]?.toISOString()}
+              refetchRef={deploymentRefetchRef}
             />
           </Col>
         </Row>
@@ -246,105 +287,64 @@ function MetricsDashboard() {
   }
 
   return (
-    <div className="metrics-dashboard">
-      <div className="metrics-topbar">
-        <div className="metrics-topbar-left">
-          <Typography
-            style={{
-              fontWeight: 600,
-              fontSize: "16px",
-              display: "inline",
-              lineHeight: "24px",
-            }}
-          >
-            Dashboard
-          </Typography>
+    <>
+      <ToolNavBar title="Dashboard" CustomButtons={DashboardButtons} />
+      <div className="metrics-dashboard">
+        <div className="metrics-dashboard-container">
+          {PlanBanner && subscriptionData && <PlanBanner />}
+
+          {overviewError && (
+            <Alert
+              message="Error loading metrics"
+              description={overviewError}
+              type="error"
+              showIcon
+              closable
+              className="metrics-error"
+            />
+          )}
+
+          <Tabs
+            items={tabItems}
+            activeKey={activeTab}
+            onChange={setActiveTab}
+            tabBarExtraContent={
+              <Space>
+                {activeTab !== "subscription" && (
+                  <RangePicker
+                    value={dateRange}
+                    onChange={handleDateChange}
+                    disabledDate={(current) => current && current > dayjs()}
+                    allowClear={false}
+                    size="middle"
+                    presets={[
+                      {
+                        label: "Last 7 Days",
+                        value: [dayjs().subtract(7, "day"), dayjs()],
+                      },
+                      {
+                        label: "Last 30 Days",
+                        value: [dayjs().subtract(30, "day"), dayjs()],
+                      },
+                      // 90-day preset only for overview (deployment usage capped at 30 days)
+                      ...(activeTab === "llm-usage"
+                        ? []
+                        : [
+                            {
+                              label: "Last 90 Days",
+                              value: [dayjs().subtract(90, "day"), dayjs()],
+                            },
+                          ]),
+                    ]}
+                  />
+                )}
+                <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+              </Space>
+            }
+          />
         </div>
-
-        <Space className="metrics-topbar-right">
-          <Button
-            icon={<FileSearchOutlined />}
-            type="link"
-            onClick={() =>
-              window.open(
-                "https://docs.unstract.com/unstract/index.html",
-                "_blank",
-                "noopener,noreferrer",
-              )
-            }
-            className="metrics-header-button"
-          >
-            Documentation
-          </Button>
-          <Button
-            icon={<SlackOutlined />}
-            type="link"
-            onClick={() =>
-              window.open(
-                "https://join-slack.unstract.com/",
-                "_blank",
-                "noopener,noreferrer",
-              )
-            }
-            className="metrics-header-button"
-          >
-            Slack Community
-          </Button>
-        </Space>
       </div>
-
-      {PlanBanner && subscriptionData && <PlanBanner />}
-
-      {overviewError && (
-        <Alert
-          message="Error loading metrics"
-          description={overviewError}
-          type="error"
-          showIcon
-          closable
-          className="metrics-error"
-        />
-      )}
-
-      <Tabs
-        items={tabItems}
-        activeKey={activeTab}
-        onChange={setActiveTab}
-        tabBarExtraContent={
-          <Space>
-            {activeTab !== "subscription" && (
-              <RangePicker
-                value={dateRange}
-                onChange={handleDateChange}
-                disabledDate={(current) => current && current > dayjs()}
-                allowClear={false}
-                size="middle"
-                presets={[
-                  {
-                    label: "Last 7 Days",
-                    value: [dayjs().subtract(7, "day"), dayjs()],
-                  },
-                  {
-                    label: "Last 30 Days",
-                    value: [dayjs().subtract(30, "day"), dayjs()],
-                  },
-                  // 90-day preset only for overview (deployment usage capped at 30 days)
-                  ...(activeTab === "llm-usage"
-                    ? []
-                    : [
-                        {
-                          label: "Last 90 Days",
-                          value: [dayjs().subtract(90, "day"), dayjs()],
-                        },
-                      ]),
-                ]}
-              />
-            )}
-            <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
-          </Space>
-        }
-      />
-    </div>
+    </>
   );
 }
 

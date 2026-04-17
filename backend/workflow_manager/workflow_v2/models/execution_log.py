@@ -2,6 +2,7 @@ import uuid
 
 from django.db import models
 from utils.models.base_model import BaseModel
+from utils.models.org_aware_manager import OrgAwareManager
 
 
 class ExecutionLog(BaseModel):
@@ -35,6 +36,11 @@ class ExecutionLog(BaseModel):
     )
     data = models.JSONField(db_comment="Execution log data")
     event_time = models.DateTimeField(db_comment="Execution log event time")
+
+    # Auto-discovers FK path: wf_execution → workflow → organization
+    # In request context: all queries are org-scoped
+    # In Celery/commands: no filtering (full access)
+    objects = OrgAwareManager()
 
     def __str__(self):
         return (

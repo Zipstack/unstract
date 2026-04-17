@@ -219,9 +219,13 @@ function ManageDocsModal({
       newMessages = newMessages.slice(0, lastIndex);
     }
 
-    // Filter only INFO and ERROR logs
+    // Filter only INFO and ERROR logs that are NOT from answer_prompt.
+    // Answer prompt messages carry a prompt_key in their component;
+    // indexing messages do not.
     newMessages = newMessages.filter(
-      (item) => item?.level === "INFO" || item?.level === "ERROR",
+      (item) =>
+        (item?.level === "INFO" || item?.level === "ERROR") &&
+        !item?.component?.prompt_key,
     );
 
     // If there are no new INFO or ERROR messages, return early
@@ -382,19 +386,14 @@ function ManageDocsModal({
       title: "Actions",
       dataIndex: "reindex",
       key: "reindex",
-      width: 200,
+      width: 120,
     },
     {
-      title: "",
-      dataIndex: "delete",
-      key: "delete",
-      width: 30,
-    },
-    {
-      title: "",
+      title: "Select Default",
       dataIndex: "select",
       key: "select",
-      width: 30,
+      align: "center",
+      width: 120,
     },
   ];
 
@@ -496,32 +495,28 @@ function ManageDocsModal({
                 </Tooltip>
               )}
             </div>
+            <ConfirmModal
+              handleConfirm={() => handleDelete(item?.document_id)}
+              content="The document will be permanently deleted."
+            >
+              <Tooltip title="Delete">
+                <Button
+                  size="small"
+                  icon={<DeleteOutlined />}
+                  disabled={
+                    isMultiPassExtractLoading ||
+                    isSinglePassExtractLoading ||
+                    indexDocs.includes(item?.document_id) ||
+                    isUploading ||
+                    isPublicSource
+                  }
+                />
+              </Tooltip>
+            </ConfirmModal>
             <div className="center">
               {infoIndex(indexMessages?.[item?.document_name])}
             </div>
           </Space>
-        ),
-        delete: (
-          <ConfirmModal
-            handleConfirm={() => handleDelete(item?.document_id)}
-            content="The document will be permanently deleted."
-          >
-            <Tooltip title="Delete">
-              <Button
-                size="small"
-                className="display-flex-align-center"
-                disabled={
-                  isMultiPassExtractLoading ||
-                  isSinglePassExtractLoading ||
-                  indexDocs.includes(item?.document_id) ||
-                  isUploading ||
-                  isPublicSource
-                }
-              >
-                <DeleteOutlined className="manage-llm-pro-icon" />
-              </Button>
-            </Tooltip>
-          </ConfirmModal>
         ),
         select: (
           <Radio
@@ -830,4 +825,5 @@ ManageDocsModal.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   handleDocChange: PropTypes.func.isRequired,
 };
+
 export { ManageDocsModal };

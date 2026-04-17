@@ -48,7 +48,7 @@ function ImportTool({ open, setOpen, onImport, loading }) {
         setProjectData(projectData);
         setShowAdapterSelection(true);
         setParseLoading(false);
-      } catch (error) {
+      } catch (_error) {
         message.error("Invalid JSON file");
         setParseLoading(false);
       }

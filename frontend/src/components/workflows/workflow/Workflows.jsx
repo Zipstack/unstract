@@ -12,6 +12,7 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import "./Workflows.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -25,11 +26,6 @@ import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { workflowService } from "./workflow-service";
-
-const PROJECT_FILTER_OPTIONS = [
-  { label: "My Workflows", value: "mine" },
-  { label: "Organization Workflows", value: "all" },
-];
 
 const { Text } = Typography;
 
@@ -52,7 +48,6 @@ function Workflows() {
   const [loading, setLoading] = useState(false);
   const [openModal, toggleModal] = useState(true);
   const projectListRef = useRef();
-  const filterViewRef = useRef(PROJECT_FILTER_OPTIONS[0].value);
   const [backendErrors, setBackendErrors] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [selectedWorkflow, setSelectedWorkflow] = useState();
@@ -73,7 +68,7 @@ function Workflows() {
 
   function getProjectList() {
     projectApiService
-      .getProjectList(filterViewRef.current === PROJECT_FILTER_OPTIONS[0].value)
+      .getProjectList()
       .then((res) => {
         projectListRef.current = res.data;
         setProjectList(res.data);
@@ -92,13 +87,6 @@ function Workflows() {
       item.workflow_name.toLowerCase().includes(searchText.toLowerCase()),
     );
     setSearchList(filteredList);
-  }
-
-  function applyFilter(value) {
-    filterViewRef.current = value;
-    projectListRef.current = "";
-    setProjectList("");
-    getProjectList();
   }
 
   function editProject(name, description) {
@@ -302,17 +290,15 @@ function Workflows() {
     }
   };
 
-  const CustomButtons = () => {
-    return (
-      <CustomButton
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleNewWorkflowBtnClick}
-      >
-        New Workflow
-      </CustomButton>
-    );
-  };
+  const newWorkflowButton = (
+    <CustomButton
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={handleNewWorkflowBtnClick}
+    >
+      New Workflow
+    </CustomButton>
+  );
 
   // Using the custom hook to manage modal state
   const { showModal, handleModalClose } = usePromptStudioModal(
@@ -327,12 +313,11 @@ function Workflows() {
         <PromptStudioModal onClose={handleModalClose} showModal={showModal} />
       )}
       <ToolNavBar
+        title="Workflows"
         enableSearch
         searchList={projectList}
         setSearchList={setProjectList}
-        CustomButtons={CustomButtons}
-        segmentFilter={applyFilter}
-        segmentOptions={PROJECT_FILTER_OPTIONS}
+        customButtons={newWorkflowButton}
         onSearch={onSearch}
       />
       <div className="workflows-pg-layout">
@@ -384,11 +369,7 @@ function Workflows() {
             />
           )}
           {shareOpen && selectedWorkflow && (
-            <LazyLoader
-              component={() =>
-                import("../../widgets/share-permission/SharePermission.jsx")
-              }
-              componentName={"SharePermission"}
+            <SharePermission
               open={shareOpen}
               setOpen={setShareOpen}
               adapter={selectedWorkflow}

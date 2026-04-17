@@ -574,6 +574,7 @@ REST_FRAMEWORK = {
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
+        "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
@@ -626,7 +627,6 @@ for key in [
     "GOOGLE_OAUTH2_SECRET",
     "AZUREAD_TENANT_OAUTH2_KEY",
     "AZUREAD_TENANT_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 

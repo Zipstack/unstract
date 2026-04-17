@@ -370,4 +370,5 @@ CardItem.propTypes = {
 
 // Wrap with memo to prevent unnecessary re-renders when parent array reference changes
 const MemoizedCardItem = memo(CardItem);
+
 export { MemoizedCardItem as CardItem };

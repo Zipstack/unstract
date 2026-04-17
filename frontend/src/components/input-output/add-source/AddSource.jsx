@@ -1,3 +1,5 @@
+import { getDefaultFormState } from "@rjsf/utils";
+import validator from "@rjsf/validator-ajv8";
 import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
@@ -87,7 +89,9 @@ function AddSource({
   ]);
 
   useEffect(() => {
-    if (!isLLMWPaidSchema || !transformLlmWhispererFormData) return;
+    if (!isLLMWPaidSchema || !transformLlmWhispererFormData) {
+      return;
+    }
 
     const modifiedFormData = transformLlmWhispererFormData(formData);
 
@@ -119,12 +123,22 @@ function AddSource({
     axiosPrivate(requestOptions)
       .then((res) => {
         const data = res?.data;
-        setFormData(metadata || {});
+        const jsonSchema = isLLMWPaidSchema
+          ? transformLlmWhispererJsonSchema(data?.json_schema || {})
+          : data?.json_schema || {};
 
-        if (isLLMWPaidSchema) {
-          setSpec(transformLlmWhispererJsonSchema(data?.json_schema || {}));
+        setSpec(jsonSchema);
+
+        if (metadata && Object.keys(metadata).length > 0) {
+          setFormData(metadata);
         } else {
-          setSpec(data?.json_schema || {});
+          const defaults = getDefaultFormState(
+            validator,
+            jsonSchema,
+            {},
+            jsonSchema,
+          );
+          setFormData(defaults || {});
         }
 
         if (data?.oauth) {
@@ -140,7 +154,7 @@ function AddSource({
       .finally(() => {
         setIsLoading(false);
       });
-  }, [selectedSourceId]);
+  }, [selectedSourceId, isLLMWPaidSchema]);
 
   useEffect(() => {
     if (editItemId?.length && metadata && Object.keys(metadata)?.length) {
