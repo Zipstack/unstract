@@ -458,7 +458,7 @@ class LLM:
         return self.platform_kwargs.get("llm_usage_reason")
 
     @staticmethod
-    def _set_litellm_retry_params(completion_kwargs: dict) -> None:
+    def _set_litellm_retry_params(completion_kwargs: dict[str, object]) -> None:
         """Activate litellm's wrapper-level retry for all providers.
 
         litellm's retry mechanism (completion_with_retries) only activates when
@@ -472,10 +472,16 @@ class LLM:
         all retries go through the wrapper uniformly.
         """
         max_retries = completion_kwargs.get("max_retries")
-        if max_retries:
+        # Use explicit `is not None and > 0` so an explicit max_retries=0
+        # (opt-out) is honored and non-int / negative values don't slip through.
+        if isinstance(max_retries, int) and max_retries > 0:
             completion_kwargs["num_retries"] = max_retries
             completion_kwargs["max_retries"] = 0
             completion_kwargs["retry_strategy"] = "exponential_backoff_retry"
+            logger.debug(
+                "[sdk1][LLM] Activated litellm wrapper retry: "
+                f"num_retries={max_retries}, retry_strategy=exponential_backoff_retry"
+            )
 
     def _record_usage(
         self,
