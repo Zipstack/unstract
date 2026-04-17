@@ -7,7 +7,7 @@ import logging
 import os
 import random
 import time
-from collections.abc import Callable, Generator
+from collections.abc import Awaitable, Callable, Generator, Iterable
 from functools import wraps
 from typing import Any
 
@@ -158,14 +158,42 @@ def _validate_max_retries(max_retries: int) -> None:
         raise ValueError(f"max_retries must be >= 0, got {max_retries}")
 
 
-def call_with_retry(
-    fn: Callable[[], object],
+def pop_litellm_retry_kwargs(kwargs: dict[str, Any], context: str = "") -> int:
+    """Pop max_retries from kwargs and disable litellm's built-in retries.
+
+    litellm has two separate retry mechanisms:
+    - max_retries: passed to the SDK client (OpenAI/Azure) as its
+      constructor arg — triggers SDK-level retries.
+    - num_retries: activates litellm's own completion_with_retries wrapper.
+
+    Both are zeroed so the outer retry helpers (call_with_retry etc.) are
+    the single source of truth. Note that num_retries=0 is dropped from
+    embedding kwargs by litellm.drop_params=True, but setting it keeps the
+    intent explicit and consistent across LLM/embedding paths.
+
+    Returns the user-configured max_retries value (or 0 if unset).
+    """
+    max_retries = kwargs.pop("max_retries", None) or 0
+    kwargs["max_retries"] = 0
+    kwargs["num_retries"] = 0
+    suffix = f" for {context}" if context else ""
+    logger.debug(
+        "Extracted max_retries=%d, disabled litellm retry "
+        "(max_retries=0, num_retries=0)%s",
+        max_retries,
+        suffix,
+    )
+    return max_retries
+
+
+def call_with_retry[T](
+    fn: Callable[[], T],
     *,
     max_retries: int,
     retry_predicate: Callable[[Exception], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
-) -> object:
+) -> T:
     """Execute fn() with retry on transient errors."""
     _validate_max_retries(max_retries)
     log = logger_instance or logger
@@ -179,16 +207,17 @@ def call_with_retry(
             if delay is None:
                 raise
             time.sleep(delay)
+    raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
-async def acall_with_retry(
-    fn: Callable[[], object],
+async def acall_with_retry[T](
+    fn: Callable[[], Awaitable[T]],
     *,
     max_retries: int,
     retry_predicate: Callable[[Exception], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
-) -> object:
+) -> T:
     """Async version of call_with_retry — awaits fn()."""
     _validate_max_retries(max_retries)
     log = logger_instance or logger
@@ -202,16 +231,17 @@ async def acall_with_retry(
             if delay is None:
                 raise
             await asyncio.sleep(delay)
+    raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
-def iter_with_retry(
-    fn: Callable[[], object],
+def iter_with_retry[T](
+    fn: Callable[[], Iterable[T]],
     *,
     max_retries: int,
     retry_predicate: Callable[[Exception], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
-) -> Generator:
+) -> Generator[T, None, None]:
     """Yield from fn() with retry. Only retries before the first yield.
 
     Once items have been yielded to the caller a mid-iteration failure is

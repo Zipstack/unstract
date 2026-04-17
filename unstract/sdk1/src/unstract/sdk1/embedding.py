@@ -19,6 +19,7 @@ from unstract.sdk1.utils.retry_utils import (
     acall_with_retry,
     call_with_retry,
     is_retryable_litellm_error,
+    pop_litellm_retry_kwargs,
 )
 
 if TYPE_CHECKING:
@@ -118,25 +119,12 @@ class Embedding:
             return f"{self._adapter_name} ({name})"
         return name
 
-    def _pop_retry_params(self, kwargs: dict[str, object]) -> int:
-        """Extract max_retries and disable litellm's SDK-level retry."""
-        max_retries = kwargs.pop("max_retries", None) or 0
-        kwargs["max_retries"] = 0
-        kwargs["num_retries"] = 0
-        logger.debug(
-            "Embedding: extracted max_retries=%d, "
-            "disabled litellm retry (max_retries=0, num_retries=0) for %s",
-            max_retries,
-            self._get_adapter_info(),
-        )
-        return max_retries
-
     def get_embedding(self, text: str) -> list[float]:
         """Return embedding vector for query string."""
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
-            max_retries = self._pop_retry_params(kwargs)
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
             resp = call_with_retry(
                 lambda: litellm.embedding(model=model, input=[text], **kwargs),
@@ -153,7 +141,7 @@ class Embedding:
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
-            max_retries = self._pop_retry_params(kwargs)
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
             resp = call_with_retry(
                 lambda: litellm.embedding(model=model, input=texts, **kwargs),
@@ -170,7 +158,7 @@ class Embedding:
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
-            max_retries = self._pop_retry_params(kwargs)
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
             resp = await acall_with_retry(
                 lambda: litellm.aembedding(model=model, input=[text], **kwargs),
@@ -187,7 +175,7 @@ class Embedding:
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
-            max_retries = self._pop_retry_params(kwargs)
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
             resp = await acall_with_retry(
                 lambda: litellm.aembedding(model=model, input=texts, **kwargs),
