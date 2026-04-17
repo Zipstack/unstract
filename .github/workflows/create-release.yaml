@@ -51,7 +51,7 @@ jobs:
         id: generate-token
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.PUSH_TO_MAIN_APP_ID }}
+          client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
           private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
           owner: Zipstack
           repositories: |
