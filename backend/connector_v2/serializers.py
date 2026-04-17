@@ -53,10 +53,10 @@ class ConnectorInstanceSerializer(AuditSerializer):
                     oauth_credentials=kwargs[CIKey.CONNECTOR_METADATA],
                 )
                 kwargs[CIKey.CONNECTOR_AUTH] = connector_oauth
-                (
-                    kwargs[CIKey.CONNECTOR_METADATA],
-                    refresh_status,
-                ) = connector_oauth.get_and_refresh_tokens()
+                # Discard return value: ConnectorAuth.extra_data is shared across
+                # every connector with the same (provider, uid) and would overwrite
+                # this connector's form fields (site_url, drive_id).
+                connector_oauth.get_and_refresh_tokens()
             except Exception as exc:
                 logger.error(
                     "Error while obtaining ConnectorAuth for connector id "

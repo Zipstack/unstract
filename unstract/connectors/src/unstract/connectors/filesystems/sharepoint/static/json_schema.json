@@ -22,7 +22,6 @@
     "drive_id": {
       "type": "string",
       "title": "Drive ID",
-      "format": "password",
       "description": "Specific Drive/Document Library ID. Leave empty to use the default drive."
     },
     "auth_type": {
@@ -64,8 +63,7 @@
             "user_email": {
               "type": "string",
               "title": "User Email",
-              "format": "password",
-              "description": "User's email address. Required ONLY for OneDrive with Client Credentials (not needed for SharePoint).",
+              "description": "Required only to access OneDrive with Client Credentials (e.g., user@company.com). Leave empty when accessing a SharePoint site via Site URL.",
               "examples": [
                 "user@company.onmicrosoft.com",
                 "user@company.com"
