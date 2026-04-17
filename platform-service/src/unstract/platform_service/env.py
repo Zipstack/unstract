@@ -18,11 +18,6 @@ class Env:
     PG_BE_PASSWORD = os.environ.get("PG_BE_PASSWORD")
     PG_BE_DATABASE = os.environ.get("PG_BE_DATABASE")
     ENCRYPTION_KEY = EnvManager.get_required_setting("ENCRYPTION_KEY")
-    MODEL_PRICES_URL = EnvManager.get_required_setting("MODEL_PRICES_URL")
-    MODEL_PRICES_TTL_IN_DAYS = int(
-        EnvManager.get_required_setting("MODEL_PRICES_TTL_IN_DAYS")
-    )
-    MODEL_PRICES_FILE_PATH = EnvManager.get_required_setting("MODEL_PRICES_FILE_PATH")
     APPLICATION_NAME = EnvManager.get_required_setting(
         "APPLICATION_NAME", "unstract-platform-service"
     )
