@@ -137,8 +137,8 @@ class SharePointFileSystem(AbstractFileSystem):
             ctx = self._get_context()
 
             if self.drive_id:
-                # Specific drive by ID
-                self._drive = ctx.drives.get_by_id(self.drive_id)
+                # Specific drive by ID — EntityCollection uses bracket indexing.
+                self._drive = ctx.drives[self.drive_id]
             elif self.site_url and "sharepoint.com" in self.site_url.lower():
                 # SharePoint site - get default document library
                 self._drive = self._get_sharepoint_site_drive(ctx)
@@ -149,15 +149,15 @@ class SharePointFileSystem(AbstractFileSystem):
         return self._drive
 
     def _get_sharepoint_site_drive(self, ctx: Any) -> Any:
-        """Get drive from SharePoint site URL."""
+        """Get drive from SharePoint site URL.
+
+        Uses the library's get_by_url, which maps an absolute site URL to the
+        Graph API's ``/sites/{hostname}:/{server-relative-path}`` addressing.
+        """
         from urllib.parse import urlparse
 
-        parsed = urlparse(self.site_url)
-        # Extract site path from URL like
-        # https://tenant.sharepoint.com/sites/sitename
-        site_path = parsed.path.rstrip("/")
-        if site_path:
-            return ctx.sites.get_by_path(site_path).drive
+        if urlparse(self.site_url).path.strip("/"):
+            return ctx.sites.get_by_url(self.site_url).drive
         return ctx.sites.root.drive
 
     def _get_onedrive_drive(self, ctx: Any) -> Any:

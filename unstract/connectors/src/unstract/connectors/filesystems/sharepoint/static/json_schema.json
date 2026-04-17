@@ -22,6 +22,7 @@
     "drive_id": {
       "type": "string",
       "title": "Drive ID",
+      "format": "password",
       "description": "Specific Drive/Document Library ID. Leave empty to use the default drive."
     },
     "auth_type": {
