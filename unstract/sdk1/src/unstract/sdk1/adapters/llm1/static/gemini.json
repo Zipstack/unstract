@@ -1,0 +1,86 @@
+{
+  "title": "Gemini LLM",
+  "type": "object",
+  "required": ["adapter_name", "api_key", "model"],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: gemini-group-1"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "default": "",
+      "description": "Google AI Studio API key",
+      "format": "password"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "default": "gemini-2.0-flash",
+      "description": "Supported: gemini-2.0-flash, gemini-2.5-pro, gemini-2.5-flash, gemini-1.5-pro, gemini-1.5-flash. The gemini/ prefix will be added automatically if omitted."
+    },
+    "temperature": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "title": "Temperature",
+      "default": 0.1,
+      "description": "Sampling temperature between 0 and 2"
+    },
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "default": 8192,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to limit LLM replies, the maximum possible differs from model to model."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 600,
+      "description": "Timeout in seconds"
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "default": 3,
+      "title": "Max Retries",
+      "description": "Maximum number of retries"
+    },
+    "enable_thinking": {
+      "type": "boolean",
+      "title": "Enable Thinking Mode",
+      "default": false,
+      "description": "Enable extended thinking for supported models. Thinking mode is only supported on: gemini-2.5-pro, gemini-2.5-flash. When enabled, temperature is forced to 1."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_thinking": { "const": true }
+        },
+        "required": ["enable_thinking"]
+      },
+      "then": {
+        "required": ["budget_tokens"],
+        "properties": {
+          "budget_tokens": {
+            "type": "integer",
+            "minimum": 1024,
+            "default": 1024,
+            "title": "Budget Tokens",
+            "description": "Number of tokens allocated for the thinking process. Minimum: 1024."
+          }
+        }
+      }
+    }
+  ]
+}

@@ -387,15 +387,6 @@ function ConfigureDs({
           </Popover>
         </div>
       )}
-      {!isLoading && oAuthProvider?.length > 0 && (
-        <OAuthDs
-          oAuthProvider={oAuthProvider}
-          setCacheKey={handleSetCacheKey}
-          setStatus={handleSetStatus}
-          selectedSourceId={selectedSourceId}
-          isExistingConnector={isExistingConnector}
-        />
-      )}
       <RjsfFormLayout
         schema={spec}
         formData={formData}

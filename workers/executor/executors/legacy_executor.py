@@ -408,20 +408,30 @@ class LegacyExecutor(BaseExecutor):
                 error=f"ide_index missing required params: {', '.join(missing)}"
             )
 
-        # Step 1: Extract
-        extract_ctx = ExecutionContext(
-            executor_name=context.executor_name,
-            operation=Operation.EXTRACT.value,
-            run_id=context.run_id,
-            execution_source=context.execution_source,
-            organization_id=context.organization_id,
-            executor_params=extract_params,
-            request_id=context.request_id,
-            log_events_id=context.log_events_id,
-        )
-        extract_result = self._handle_extract(extract_ctx)
-        if not extract_result.success:
-            return extract_result
+        # Step 1: Extract (or reuse pre-extracted text on marker hit)
+        pre_extracted_text = index_params.get(IKeys.EXTRACTED_TEXT, "") or ""
+        if pre_extracted_text:
+            logger.info(
+                "ide_index: marker hit, skipping extract step " "(len=%d, run_id=%s)",
+                len(pre_extracted_text),
+                context.run_id,
+            )
+            extracted_text = pre_extracted_text
+        else:
+            extract_ctx = ExecutionContext(
+                executor_name=context.executor_name,
+                operation=Operation.EXTRACT.value,
+                run_id=context.run_id,
+                execution_source=context.execution_source,
+                organization_id=context.organization_id,
+                executor_params=extract_params,
+                request_id=context.request_id,
+                log_events_id=context.log_events_id,
+            )
+            extract_result = self._handle_extract(extract_ctx)
+            if not extract_result.success:
+                return extract_result
+            extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
 
         # Step 2: Optional summarize
         summarize_params = params.get("summarize_params")
@@ -433,7 +443,6 @@ class LegacyExecutor(BaseExecutor):
                 return result
 
         # Step 3: Index — inject extracted text
-        extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
         index_params[IKeys.EXTRACTED_TEXT] = extracted_text
 
         index_ctx = ExecutionContext(
@@ -1026,9 +1035,20 @@ class LegacyExecutor(BaseExecutor):
                 doc_id_found,
                 reindex,
             )
+            if doc_id_found and not reindex:
+                shim.stream_log(
+                    "Document already indexed in vector store; skipping re-index."
+                )
+                logger.info(
+                    "Skipping re-index: doc_id=%s already in vector DB and "
+                    "reindex=False",
+                    doc_id,
+                )
+                return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+
             if doc_id_found and reindex:
                 shim.stream_log("Document already indexed, re-indexing...")
-            elif not doc_id_found:
+            else:
                 shim.stream_log("Indexing document for the first time...")
             shim.stream_log("Indexing document into vector store...")
             index.perform_indexing(
