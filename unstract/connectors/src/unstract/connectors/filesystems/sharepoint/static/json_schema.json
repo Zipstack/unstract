@@ -10,12 +10,6 @@
       "default": "SharePoint / OneDrive Connector",
       "description": "A friendly name to identify this connector"
     },
-    "is_personal": {
-      "type": "boolean",
-      "title": "Personal Account",
-      "default": false,
-      "description": "Enable for OneDrive Personal (consumer Microsoft accounts). Leave disabled for SharePoint or OneDrive for Business (work/school accounts)."
-    },
     "site_url": {
       "type": "string",
       "title": "Site URL",
@@ -27,7 +21,7 @@
     },
     "drive_id": {
       "type": "string",
-      "title": "Drive ID (Optional)",
+      "title": "Drive ID",
       "description": "Specific Drive/Document Library ID. Leave empty to use the default drive."
     },
     "auth_type": {
