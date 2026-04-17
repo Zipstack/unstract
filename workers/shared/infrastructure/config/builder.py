@@ -340,7 +340,9 @@ class WorkerBuilder:
             # inside worker.py that find_spec wouldn't surface).
             importlib.import_module(module_path)
 
-        except ImportError:
+        except (ImportError, ValueError):
+            # ValueError: find_spec raises this when sys.modules[module_path] is
+            # populated but has __spec__ = None (from a prior failed import).
             logger.exception(f"Failed to import pluggable worker {worker_type.value}")
             return False
         except (OSError, AttributeError):
