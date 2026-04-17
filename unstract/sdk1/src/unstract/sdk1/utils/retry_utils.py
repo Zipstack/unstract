@@ -64,6 +64,29 @@ def is_retryable_litellm_error(error: Exception) -> bool:
 # ── Shared retry decision ───────────────────────────────────────────────────
 
 
+def _extract_retry_after(error: Exception) -> float | None:
+    """Return the server-supplied Retry-After delay in seconds, if present.
+
+    Honors the provider's explicit cool-down hint on 429/503 responses so our
+    backoff doesn't hammer the provider before its requested wait. Only the
+    integer/float seconds form is supported; RFC 7231 HTTP-date values fall
+    back to exponential backoff.
+    """
+    response = getattr(error, "response", None)
+    if response is None:
+        return None
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    value = headers.get("retry-after") or headers.get("Retry-After")
+    if value is None:
+        return None
+    try:
+        return max(float(value), 0.0)
+    except (TypeError, ValueError):
+        return None
+
+
 def _get_retry_delay(
     error: Exception,
     attempt: int,
@@ -94,9 +117,25 @@ def _get_retry_delay(
     )
 
     if not should_retry or attempt >= max_retries:
+        # Shared exhaustion log — fires for every retry helper once retries
+        # were actually attempted (attempt > 0) and the error was retryable
+        # (i.e. we stopped because we ran out of attempts, not because the
+        # error type was non-retryable).
+        if attempt > 0 and should_retry:
+            logger_instance.exception(
+                "Giving up %s after %d attempt(s)",
+                description,
+                attempt + 1,
+            )
         return None
 
-    delay = calculate_delay(attempt, base_delay, multiplier, max_delay, jitter)
+    # Provider-supplied Retry-After (e.g. 429/503) wins over our exponential
+    # backoff — matches the behavior the OpenAI/Azure SDKs give natively.
+    retry_after = _extract_retry_after(error)
+    if retry_after is not None:
+        delay = retry_after
+    else:
+        delay = calculate_delay(attempt, base_delay, multiplier, max_delay, jitter)
     logger_instance.warning(
         "Retry %d/%d for %s: %s (waiting %.1fs)",
         attempt + 1,
@@ -182,12 +221,19 @@ def iter_with_retry(
     log = logger_instance or logger
     for attempt in range(max_retries + 1):
         has_yielded = False
+        gen = fn()
         try:
-            for item in fn():
+            for item in gen:
                 has_yielded = True
                 yield item
             return
         except Exception as e:
+            # Close generator to release in-flight HTTP/socket resources
+            # before retrying — otherwise streaming providers leak sockets
+            # until GC.
+            close = getattr(gen, "close", None)
+            if callable(close):
+                close()
             if has_yielded:
                 raise
             delay = _get_retry_delay(
@@ -300,13 +346,8 @@ def _invoke_with_retries(
             if delay is not None:
                 time.sleep(delay)
                 continue
-            if attempt > 0:
-                logger_instance.exception(
-                    "Giving up '%s' after %d attempt(s) for %s",
-                    func.__name__,
-                    attempt + 1,
-                    prefix,
-                )
+            # Give-up log is emitted inside _get_retry_delay so all retry
+            # helpers share the same exhaustion signal.
             raise
         if attempt > 0:
             logger_instance.info(
