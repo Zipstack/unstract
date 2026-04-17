@@ -295,13 +295,6 @@ def retry_with_exponential_backoff(
             for attempt in range(max_retries + 1):
                 try:
                     result = func(*args, **kwargs)
-                    if attempt > 0:
-                        logger_instance.info(
-                            "Successfully completed '%s' after %d retry attempt(s)",
-                            func.__name__,
-                            attempt,
-                        )
-                    return result
                 except exceptions as e:
                     delay = _get_retry_delay(
                         e,
@@ -315,18 +308,24 @@ def retry_with_exponential_backoff(
                         60.0,
                         jitter,
                     )
-                    if delay is None:
-                        if attempt > 0:
-                            logger_instance.exception(
-                                "Giving up '%s' after %d attempt(s) for %s",
-                                func.__name__,
-                                attempt + 1,
-                                prefix,
-                            )
-                        raise
-                    time.sleep(delay)
-                except Exception:
+                    if delay is not None:
+                        time.sleep(delay)
+                        continue
+                    if attempt > 0:
+                        logger_instance.exception(
+                            "Giving up '%s' after %d attempt(s) for %s",
+                            func.__name__,
+                            attempt + 1,
+                            prefix,
+                        )
                     raise
+                if attempt > 0:
+                    logger_instance.info(
+                        "Successfully completed '%s' after %d retry attempt(s)",
+                        func.__name__,
+                        attempt,
+                    )
+                return result
 
         return wrapper
 
