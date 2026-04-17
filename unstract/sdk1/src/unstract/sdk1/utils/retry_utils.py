@@ -263,6 +263,61 @@ def calculate_delay(
     return min(delay, max_delay)
 
 
+def _invoke_with_retries(
+    func: Callable,
+    args: tuple,
+    kwargs: dict,
+    *,
+    max_retries: int,
+    base_delay: float,
+    multiplier: float,
+    jitter: bool,
+    exceptions: tuple[type[Exception], ...],
+    logger_instance: logging.Logger,
+    prefix: str,
+    retry_predicate: Callable[[Exception], bool] | None,
+) -> Any:  # noqa: ANN401
+    """Execute func with exponential-backoff retries.
+
+    See retry_with_exponential_backoff for parameter semantics.
+    """
+    for attempt in range(max_retries + 1):
+        try:
+            result = func(*args, **kwargs)
+        except exceptions as e:
+            delay = _get_retry_delay(
+                e,
+                attempt,
+                max_retries,
+                retry_predicate,
+                prefix,
+                logger_instance,
+                base_delay,
+                multiplier,
+                60.0,
+                jitter,
+            )
+            if delay is not None:
+                time.sleep(delay)
+                continue
+            if attempt > 0:
+                logger_instance.exception(
+                    "Giving up '%s' after %d attempt(s) for %s",
+                    func.__name__,
+                    attempt + 1,
+                    prefix,
+                )
+            raise
+        if attempt > 0:
+            logger_instance.info(
+                "Successfully completed '%s' after %d retry attempt(s)",
+                func.__name__,
+                attempt,
+            )
+        return result
+    return None  # unreachable: range(max_retries + 1) is non-empty
+
+
 def retry_with_exponential_backoff(
     max_retries: int,
     base_delay: float,
@@ -292,40 +347,19 @@ def retry_with_exponential_backoff(
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:  # noqa: ANN401
-            for attempt in range(max_retries + 1):
-                try:
-                    result = func(*args, **kwargs)
-                except exceptions as e:
-                    delay = _get_retry_delay(
-                        e,
-                        attempt,
-                        max_retries,
-                        retry_predicate,
-                        prefix,
-                        logger_instance,
-                        base_delay,
-                        multiplier,
-                        60.0,
-                        jitter,
-                    )
-                    if delay is not None:
-                        time.sleep(delay)
-                        continue
-                    if attempt > 0:
-                        logger_instance.exception(
-                            "Giving up '%s' after %d attempt(s) for %s",
-                            func.__name__,
-                            attempt + 1,
-                            prefix,
-                        )
-                    raise
-                if attempt > 0:
-                    logger_instance.info(
-                        "Successfully completed '%s' after %d retry attempt(s)",
-                        func.__name__,
-                        attempt,
-                    )
-                return result
+            return _invoke_with_retries(
+                func,
+                args,
+                kwargs,
+                max_retries=max_retries,
+                base_delay=base_delay,
+                multiplier=multiplier,
+                jitter=jitter,
+                exceptions=exceptions,
+                logger_instance=logger_instance,
+                prefix=prefix,
+                retry_predicate=retry_predicate,
+            )
 
         return wrapper
 
