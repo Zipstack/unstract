@@ -2,13 +2,13 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
-from connector_auth_v2.constants import SocialAuthConstants
+from connector_auth_v2.constants import OAUTH_TOKEN_KEYS
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
-from rest_framework.serializers import CharField, SerializerMethodField
+from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
 
@@ -19,23 +19,6 @@ from unstract.connectors.filesystems.ucs import UnstractCloudStorage
 from .models import ConnectorInstance
 
 logger = logging.getLogger(__name__)
-
-# OAuth token-specific keys that are safe to merge across connectors sharing the
-# same (provider, uid). Anything outside this set (e.g. provider-specific
-# enrichment fields stored in ConnectorAuth.extra_data) must NOT leak into a
-# connector's per-instance metadata, which owns form fields like site_url.
-_OAUTH_TOKEN_KEYS: frozenset[str] = frozenset(
-    {
-        SocialAuthConstants.ACCESS_TOKEN,
-        SocialAuthConstants.REFRESH_TOKEN,
-        SocialAuthConstants.TOKEN_TYPE,
-        SocialAuthConstants.EXPIRES,
-        SocialAuthConstants.AUTH_TIME,
-        SocialAuthConstants.REFRESH_AFTER,
-        "expires_in",
-        "scope",
-    }
-)
 
 
 class ConnectorInstanceSerializer(AuditSerializer):
@@ -57,19 +40,27 @@ class ConnectorInstanceSerializer(AuditSerializer):
         Defense-in-depth: the frontend RJSF form seeds ``connector_name`` from
         the schema default, but callers (including staging OAuth flows) have
         been observed to POST without it. If the connector schema declares a
-        default name, use it rather than raising a 400.
+        default name, use it. Otherwise raise a 400 explicitly rather than
+        letting the missing value reach the DB and surface as an
+        ``IntegrityError`` (the model enforces ``null=False``).
         """
         attrs = super().validate(attrs)
-        if not attrs.get(CIKey.CONNECTOR_NAME):
-            connector_id = attrs.get(CIKey.CONNECTOR_ID)
-            if connector_id:
-                default_name = self._get_schema_default_connector_name(connector_id)
-                if default_name:
-                    attrs[CIKey.CONNECTOR_NAME] = default_name
-                    logger.info(
-                        "Filled missing connector_name with schema default for %s",
-                        connector_id,
-                    )
+        if attrs.get(CIKey.CONNECTOR_NAME):
+            return attrs
+
+        connector_id = attrs.get(CIKey.CONNECTOR_ID)
+        default_name = (
+            self._get_schema_default_connector_name(connector_id)
+            if connector_id
+            else None
+        )
+        if not default_name:
+            raise ValidationError({CIKey.CONNECTOR_NAME: "This field is required."})
+        attrs[CIKey.CONNECTOR_NAME] = default_name
+        logger.info(
+            "Filled missing connector_name with schema default for %s",
+            connector_id,
+        )
         return attrs
 
     @staticmethod
@@ -115,7 +106,7 @@ class ConnectorInstanceSerializer(AuditSerializer):
                 refreshed_metadata, _ = connector_oauth.get_and_refresh_tokens()
                 token_updates = {
                     key: refreshed_metadata[key]
-                    for key in _OAUTH_TOKEN_KEYS
+                    for key in OAUTH_TOKEN_KEYS
                     if refreshed_metadata.get(key) is not None
                 }
                 kwargs[CIKey.CONNECTOR_METADATA] = {

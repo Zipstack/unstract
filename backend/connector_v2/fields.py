@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime
 
-from connector_auth_v2.constants import SocialAuthConstants
+from connector_auth_v2.constants import OAUTH_TOKEN_KEYS, SocialAuthConstants
 from connector_auth_v2.models import ConnectorAuth
 from django.db import models
 
@@ -33,8 +33,10 @@ class ConnectorAuthJSONField(models.JSONField):
     ) -> dict[str, str]:
         """Retrieves PSA object and refreshes the token if necessary.
 
-        Merges refreshed token fields over existing metadata so per-instance
-        form fields (e.g. site_url, drive_id) are not dropped on read.
+        Whitelist-merges refreshed token fields over existing metadata so
+        per-instance form fields (e.g. site_url, drive_id) are preserved on
+        read and non-token keys from the shared ConnectorAuth.extra_data
+        cannot leak into a connector's metadata.
         """
         connector_auth: ConnectorAuth = ConnectorAuth.get_social_auth(
             provider=provider, uid=uid
@@ -42,4 +44,9 @@ class ConnectorAuthJSONField(models.JSONField):
         if not connector_auth:
             return existing_metadata
         refreshed_metadata, _ = connector_auth.get_and_refresh_tokens()
-        return {**existing_metadata, **refreshed_metadata}
+        token_updates = {
+            key: refreshed_metadata[key]
+            for key in OAUTH_TOKEN_KEYS
+            if refreshed_metadata.get(key) is not None
+        }
+        return {**existing_metadata, **token_updates}
