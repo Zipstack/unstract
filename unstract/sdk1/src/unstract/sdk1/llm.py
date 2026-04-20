@@ -24,6 +24,13 @@ from unstract.sdk1.utils.common import (
     TokenCounterCompat,
     capture_metrics,
 )
+from unstract.sdk1.utils.retry_utils import (
+    acall_with_retry,
+    call_with_retry,
+    is_retryable_litellm_error,
+    iter_with_retry,
+    pop_litellm_retry_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -285,9 +292,14 @@ class LLM:
             # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
             #     completion_kwargs["temperature"] = 1
 
-            response: dict[str, object] = litellm.completion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response: dict[str, object] = call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -373,14 +385,20 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
             has_yielded_content = False
-            for chunk in litellm.completion(
-                messages=messages,
-                stream=True,
-                stream_options={
-                    "include_usage": True,
-                },
-                **completion_kwargs,
+            for chunk in iter_with_retry(
+                lambda: litellm.completion(
+                    messages=messages,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **completion_kwargs,
+                ),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             ):
                 if chunk.get("usage"):
                     self._record_usage(
@@ -437,9 +455,14 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
-            response = await litellm.acompletion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response = await acall_with_retry(
+                lambda: litellm.acompletion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")

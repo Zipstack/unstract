@@ -1005,3 +1005,30 @@ class OllamaEmbeddingParameters(BaseEmbeddingParameters):
             return model
         else:
             return f"ollama/{model}"
+
+
+class GeminiEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/gemini."""
+
+    api_key: str
+    embed_batch_size: int | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        metadata_copy = {**adapter_metadata}
+        metadata_copy["model"] = GeminiEmbeddingParameters.validate_model(metadata_copy)
+
+        return GeminiEmbeddingParameters(**metadata_copy).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = raw_model.strip() if isinstance(raw_model, str) else ""
+        if not model:
+            raise ValueError(
+                "The 'model' field is required for the Gemini embedding adapter. "
+                "Example: 'gemini/text-embedding-004'"
+            )
+        if not model.startswith("gemini/"):
+            model = f"gemini/{model}"
+        return model
