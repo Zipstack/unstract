@@ -200,8 +200,9 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
-        self._fill_default_connector_name(request.data)
-        serializer = self.get_serializer(data=request.data)
+        data = request.data.copy()
+        self._fill_default_connector_name(data)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         try:
             self.perform_create(serializer)
