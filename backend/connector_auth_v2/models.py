@@ -96,11 +96,19 @@ class ConnectorAuth(AbstractUserSocialAuth):
             refreshed_token = True
             related_connector_instances = self.connectorinstance_set.all()
             for connector_instance in related_connector_instances:
-                connector_instance.connector_metadata = self.extra_data
+                # Merge so per-instance form fields (e.g. site_url, drive_id)
+                # survive a token refresh; refreshed token keys win on conflict.
+                existing_metadata = connector_instance.connector_metadata or {}
+                connector_instance.connector_metadata = {
+                    **existing_metadata,
+                    **self.extra_data,
+                }
                 connector_instance.save()
                 logger.info(
-                    f"Refreshed access token for connector {connector_instance.id}, "
-                    f"provider: {self.provider}, uid: {self.uid}"
+                    "Refreshed access token for connector %s, provider: %s, uid: %s",
+                    connector_instance.id,
+                    self.provider,
+                    self.uid,
                 )
 
         return self.extra_data, refreshed_token

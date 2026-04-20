@@ -25,17 +25,21 @@ class ConnectorAuthJSONField(models.JSONField):
             refresh_after_str, SocialAuthConstants.REFRESH_AFTER_FORMAT
         )
         if datetime.now() > refresh_after:
-            metadata = self._refresh_tokens(provider, uid)
+            metadata = self._refresh_tokens(provider, uid, metadata)
         return metadata
 
-    def _refresh_tokens(self, provider: str, uid: str) -> dict[str, str]:
-        """Retrieves PSA object and refreshes the token if necessary."""
+    def _refresh_tokens(
+        self, provider: str, uid: str, existing_metadata: dict[str, str]
+    ) -> dict[str, str]:
+        """Retrieves PSA object and refreshes the token if necessary.
+
+        Merges refreshed token fields over existing metadata so per-instance
+        form fields (e.g. site_url, drive_id) are not dropped on read.
+        """
         connector_auth: ConnectorAuth = ConnectorAuth.get_social_auth(
             provider=provider, uid=uid
         )
-        if connector_auth:
-            (
-                connector_metadata,
-                _,
-            ) = connector_auth.get_and_refresh_tokens()
-        return connector_metadata  # type: ignore
+        if not connector_auth:
+            return existing_metadata
+        refreshed_metadata, _ = connector_auth.get_and_refresh_tokens()
+        return {**existing_metadata, **refreshed_metadata}

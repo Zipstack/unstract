@@ -5,9 +5,7 @@ from account_v2.custom_exceptions import DuplicateData
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.exceptions import CacheMissException, MissingParamException
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
-from connector_processor.connector_processor import ConnectorProcessor
-from connector_processor.constants import ConnectorKeys
-from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
+from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -100,39 +98,12 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
             # Preserve non-secret form fields (e.g. site_url connector Sharepoint)
             form_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA) or {}
+            if not isinstance(form_metadata, dict):
+                form_metadata = {}
             connector_metadata = {**form_metadata, **oauth_tokens}
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
         return connector_metadata
-
-    def _fill_default_connector_name(self, request_data: Any) -> None:
-        """Fill ``connector_name`` from the schema default when missing.
-
-        Defense-in-depth for an intermittent frontend race where the RJSF
-        default does not reach the POST body for OAuth connector creation,
-        causing the serializer to 400 on ``connector_name: required``.
-        """
-        if request_data.get(CIKey.CONNECTOR_NAME):
-            return
-        connector_id = request_data.get(CIKey.CONNECTOR_ID)
-        if not connector_id:
-            return
-        try:
-            schema_details = ConnectorProcessor.get_json_schema(connector_id=connector_id)
-        except InvalidConnectorID:
-            return
-        default_name = (
-            schema_details.get(ConnectorKeys.JSON_SCHEMA, {})
-            .get("properties", {})
-            .get("connectorName", {})
-            .get("default")
-        )
-        if not default_name:
-            return
-        request_data[CIKey.CONNECTOR_NAME] = default_name
-        logger.info(
-            "Filled missing connector_name with schema default for %s", connector_id
-        )
 
     def _cleanup_oauth_cache(self, connector_id: str) -> None:
         """Clean up OAuth cache after successful operation."""
@@ -200,9 +171,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
     def create(self, request: Any) -> Response:
         # Overriding default exception behavior
-        data = request.data.copy()
-        self._fill_default_connector_name(data)
-        serializer = self.get_serializer(data=data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         try:
             self.perform_create(serializer)

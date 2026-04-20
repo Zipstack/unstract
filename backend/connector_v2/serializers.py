@@ -2,11 +2,12 @@ import logging
 from collections import OrderedDict
 from typing import Any
 
+from connector_auth_v2.constants import SocialAuthConstants
 from connector_auth_v2.models import ConnectorAuth
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
-from connector_processor.exceptions import OAuthTimeOut
+from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
@@ -19,6 +20,23 @@ from .models import ConnectorInstance
 
 logger = logging.getLogger(__name__)
 
+# OAuth token-specific keys that are safe to merge across connectors sharing the
+# same (provider, uid). Anything outside this set (e.g. provider-specific
+# enrichment fields stored in ConnectorAuth.extra_data) must NOT leak into a
+# connector's per-instance metadata, which owns form fields like site_url.
+_OAUTH_TOKEN_KEYS: frozenset[str] = frozenset(
+    {
+        SocialAuthConstants.ACCESS_TOKEN,
+        SocialAuthConstants.REFRESH_TOKEN,
+        SocialAuthConstants.TOKEN_TYPE,
+        SocialAuthConstants.EXPIRES,
+        SocialAuthConstants.AUTH_TIME,
+        SocialAuthConstants.REFRESH_AFTER,
+        "expires_in",
+        "scope",
+    }
+)
+
 
 class ConnectorInstanceSerializer(AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
@@ -28,9 +46,44 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+        extra_kwargs = {"connector_name": {"required": False}}
 
     def validate_connector_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Connector name")
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        """Backfill ``connector_name`` from the JSON schema default when absent.
+
+        Defense-in-depth: the frontend RJSF form seeds ``connector_name`` from
+        the schema default, but callers (including staging OAuth flows) have
+        been observed to POST without it. If the connector schema declares a
+        default name, use it rather than raising a 400.
+        """
+        attrs = super().validate(attrs)
+        if not attrs.get(CIKey.CONNECTOR_NAME):
+            connector_id = attrs.get(CIKey.CONNECTOR_ID)
+            if connector_id:
+                default_name = self._get_schema_default_connector_name(connector_id)
+                if default_name:
+                    attrs[CIKey.CONNECTOR_NAME] = default_name
+                    logger.info(
+                        "Filled missing connector_name with schema default for %s",
+                        connector_id,
+                    )
+        return attrs
+
+    @staticmethod
+    def _get_schema_default_connector_name(connector_id: str) -> str | None:
+        try:
+            schema_details = ConnectorProcessor.get_json_schema(connector_id=connector_id)
+        except InvalidConnectorID:
+            return None
+        return (
+            schema_details.get(ConnectorKeys.JSON_SCHEMA, {})
+            .get("properties", {})
+            .get("connectorName", {})
+            .get("default")
+        )
 
     def save(self, **kwargs):  # type: ignore
         user = self.context.get("request").user or None
@@ -53,10 +106,22 @@ class ConnectorInstanceSerializer(AuditSerializer):
                     oauth_credentials=kwargs[CIKey.CONNECTOR_METADATA],
                 )
                 kwargs[CIKey.CONNECTOR_AUTH] = connector_oauth
-                # Discard return value: ConnectorAuth.extra_data is shared across
-                # every connector with the same (provider, uid) and would overwrite
-                # this connector's form fields (site_url, drive_id).
-                connector_oauth.get_and_refresh_tokens()
+                # Merge refreshed token fields (whitelist) back into this
+                # connector's metadata so ``super().save(**kwargs)`` does not
+                # overwrite the fresh token the sibling-loop just persisted.
+                # Whitelisting preserves per-connector form fields (site_url,
+                # drive_id) that must not be leaked across connectors sharing
+                # the same (provider, uid).
+                refreshed_metadata, _ = connector_oauth.get_and_refresh_tokens()
+                token_updates = {
+                    key: refreshed_metadata[key]
+                    for key in _OAUTH_TOKEN_KEYS
+                    if refreshed_metadata.get(key) is not None
+                }
+                kwargs[CIKey.CONNECTOR_METADATA] = {
+                    **(kwargs.get(CIKey.CONNECTOR_METADATA) or {}),
+                    **token_updates,
+                }
             except Exception as exc:
                 logger.error(
                     "Error while obtaining ConnectorAuth for connector id "
