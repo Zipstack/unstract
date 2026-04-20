@@ -63,6 +63,7 @@
             "user_email": {
               "type": "string",
               "title": "User Email",
+              "format": "password",
               "description": "Required only to access OneDrive with Client Credentials (e.g., user@company.com). Leave empty when accessing a SharePoint site via Site URL.",
               "examples": [
                 "user@company.onmicrosoft.com",
