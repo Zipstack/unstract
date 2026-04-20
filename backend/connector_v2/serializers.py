@@ -43,9 +43,13 @@ class ConnectorInstanceSerializer(AuditSerializer):
         default name, use it. Otherwise raise a 400 explicitly rather than
         letting the missing value reach the DB and surface as an
         ``IntegrityError`` (the model enforces ``null=False``).
+
+        Skipped entirely on partial updates (PATCH): the existing DB row
+        already has a valid name, and backfilling would overwrite a
+        user-renamed connector with the schema default.
         """
         attrs = super().validate(attrs)
-        if attrs.get(CIKey.CONNECTOR_NAME):
+        if attrs.get(CIKey.CONNECTOR_NAME) or self.partial:
             return attrs
 
         connector_id = attrs.get(CIKey.CONNECTOR_ID)
