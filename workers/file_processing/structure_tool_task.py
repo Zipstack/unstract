@@ -404,6 +404,14 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # The executor handles X2Text extraction internally; we just
     # forward the document path and the per-prompt settings unpacked
     # from agentic_table_settings (populated by Layer 1 export).
+    #
+    # Important: read from SOURCE, not INFILE. INFILE gets overwritten
+    # with JSON output at the end of this function (line ~508), so any
+    # subsequent reuse of the same file_execution_dir would surface JSON
+    # bytes to the agentic_table executor and fail PDF parsing
+    # ("PDFium: Data format error"). SOURCE is the immutable original
+    # PDF written alongside INFILE by the source connector.
+    agentic_source_path = str(execution_run_data_folder / "SOURCE")
     agentic_results: dict[str, Any] = {}
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
@@ -416,7 +424,8 @@ def _execute_structure_tool_impl(params: dict) -> dict:
                 "lite_llm_adapter_instance_id", ""
             ),
             "x2text_adapter_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
-            "input_file": input_file_path,
+            "input_file": agentic_source_path,
+            "source_file_name": source_file_name,
             "target_table": at_settings.get("target_table", ""),
             "json_structure": json_structure,
             "instructions": at_settings.get("instructions", ""),
