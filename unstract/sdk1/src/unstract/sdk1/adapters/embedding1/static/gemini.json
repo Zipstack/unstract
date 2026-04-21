@@ -17,7 +17,7 @@
       "type": "string",
       "title": "Model",
       "default": "gemini-embedding-001",
-      "description": "Provide the name of the model. Recommended: gemini-embedding-001 (stable, text-only). For multimodal input, use gemini-embedding-2-preview."
+      "description": "Provide the name of the model. The gemini/ prefix will be added automatically if omitted. Recommended: gemini-embedding-001 (stable, text-only). For multimodal input, use gemini-embedding-2-preview."
     },
     "api_key": {
       "type": "string",
