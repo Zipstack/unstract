@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from datetime import UTC, datetime
@@ -11,6 +12,46 @@ from unstract.connectors.filesystems.unstract_file_system import UnstractFileSys
 from .exceptions import handle_s3fs_exception
 
 logger = logging.getLogger(__name__)
+
+
+class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
+    """S3FileSystem that lists only buckets the credentials can browse.
+
+    The parent's `_lsbuckets` returns every bucket reachable via
+    `s3:ListAllMyBuckets`. That set is wider than what the caller can
+    actually read — especially under IRSA, where `ListAllMyBuckets` may
+    be granted account-wide while `s3:ListBucket` is scoped to a handful
+    of buckets. We probe each returned bucket with a 1-key
+    `list_objects_v2` (the exact IAM action required to browse) and drop
+    any that respond with AccessDenied / NoSuchBucket / other errors.
+    """
+
+    async def _lsbuckets(self, refresh: bool = False) -> list[dict[str, Any]]:
+        buckets: list[dict[str, Any]] = await super()._lsbuckets(refresh=refresh)
+        if not buckets:
+            return buckets
+        accessible = await self._filter_accessible_buckets(buckets)
+        # Replace the cached entry populated by the parent so subsequent
+        # cache reads return the filtered view.
+        self.dircache[""] = accessible
+        return accessible
+
+    async def _filter_accessible_buckets(
+        self, buckets: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        results = await asyncio.gather(
+            *(self._is_bucket_accessible(b["name"]) for b in buckets),
+            return_exceptions=True,
+        )
+        return [b for b, ok in zip(buckets, results, strict=False) if ok is True]
+
+    async def _is_bucket_accessible(self, name: str) -> bool:
+        try:
+            await self._call_s3("list_objects_v2", Bucket=name, MaxKeys=1)
+            return True
+        except Exception as exc:
+            logger.debug("[S3/MinIO] Dropping inaccessible bucket '%s': %s", name, exc)
+            return False
 
 
 class MinioFS(UnstractFileSystem):
@@ -30,7 +71,7 @@ class MinioFS(UnstractFileSystem):
         if endpoint_url:
             creds["endpoint_url"] = endpoint_url
 
-        self.s3 = S3FileSystem(
+        self.s3 = _AccessFilteredS3FileSystem(
             anon=False,
             use_listings_cache=False,
             default_fill_cache=False,
