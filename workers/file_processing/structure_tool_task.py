@@ -673,9 +673,6 @@ def _write_pipeline_outputs(
             copy_output_path,
         )
 
-        logger.info("Overwriting INFILE with %s output: %s", label, input_file_path)
-        fs.json_dump(path=input_file_path, data=structured_output)
-
         logger.info("Output written successfully to workflow storage")
         return None
     except Exception as e:
