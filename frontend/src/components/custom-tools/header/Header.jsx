@@ -18,6 +18,10 @@ import "./Header.css";
 let SinglePassToggleSwitch;
 let CloneButton;
 let PromptShareButton;
+let useLookupExportGate = () => ({
+  checkLookups: () => Promise.resolve(true),
+  modalEl: null,
+});
 try {
   const mod = await import(
     "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
@@ -25,6 +29,14 @@ try {
   SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
 } catch {
   // The variable will remain undefined if the component is not available.
+}
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/useLookupExportGate"
+  );
+  useLookupExportGate = mod.useLookupExportGate;
+} catch {
+  // OSS — gate stays a no-op resolving true.
 }
 try {
   const mod = await import(
@@ -72,6 +84,7 @@ function Header({
   const [isApiDeploymentLoading, setIsApiDeploymentLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm] = Form.useForm();
+  const { checkLookups, modalEl: lookupGateModalEl } = useLookupExportGate();
 
   const handleExport = (
     selectedUsers,
@@ -129,7 +142,7 @@ function Header({
     setConfirmModalVisible(false);
   }, [lastExportParams, handleExport]);
 
-  const handleShare = (isEdit) => {
+  const handleShare = async (isEdit) => {
     try {
       setPostHogCustomEvent("ps_exported_tool", {
         info: `Clicked on the 'Export' button`,
@@ -138,6 +151,9 @@ function Header({
     } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
+
+    const ok = await checkLookups(details?.tool_id, "export");
+    if (!ok) return;
 
     const requestOptions = {
       method: "GET",
@@ -255,7 +271,7 @@ function Header({
       });
   };
 
-  const handleCreateApiDeployment = () => {
+  const handleCreateApiDeployment = async () => {
     try {
       setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
         info: "Clicked Create API Deployment in tool IDE",
@@ -265,6 +281,9 @@ function Header({
     } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
+
+    const ok = await checkLookups(details?.tool_id, "API deployment");
+    if (!ok) return;
 
     // Check for existing API deployments before proceeding
     setIsApiDeploymentLoading(true);
@@ -422,6 +441,7 @@ function Header({
 
   return (
     <>
+      {lookupGateModalEl}
       <ToolNavBar
         title={details?.tool_name || ""}
         subtitle={isPublicSource ? undefined : details?.description}

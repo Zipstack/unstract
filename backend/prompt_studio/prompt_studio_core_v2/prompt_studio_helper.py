@@ -20,7 +20,7 @@ from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFil
 from utils.local_context import StateStore
 
 from backend.celery_service import app as celery_app
-from prompt_studio.lookup_utils import get_lookup_config
+from prompt_studio.lookup_utils import get_lookup_config, get_lookup_configs_for_tool
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -1172,6 +1172,11 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
+
+        # Inject lookup configs for single pass enrichment
+        lookup_configs = get_lookup_configs_for_tool(tool)
+        if lookup_configs:
+            tool_settings["lookup_configs"] = lookup_configs
 
         for p in prompts:
             if not p.prompt:

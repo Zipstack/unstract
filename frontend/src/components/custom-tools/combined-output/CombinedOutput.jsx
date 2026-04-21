@@ -59,6 +59,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   } = useCustomToolStore();
 
   const [combinedOutput, setCombinedOutput] = useState({});
+  const [enrichedOutput, setEnrichedOutput] = useState({});
   const [isOutputLoading, setIsOutputLoading] = useState(false);
   const [adapterData, setAdapterData] = useState([]);
   const [activeKey, setActiveKey] = useState(
@@ -117,29 +118,60 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         const prompts = details?.prompts || [];
 
         if (activeKey === "0" && !isSimplePromptStudio) {
+          const lookupOutputs = data?._lookup_outputs || {};
           const output = Object.entries(data).reduce((acc, [key, value]) => {
+            if (key === "_lookup_outputs") return acc;
             acc[key] = displayPromptResult(value, false);
             return acc;
           }, {});
           setCombinedOutput(output);
-        } else {
-          const output = prompts.reduce((acc, item) => {
-            if (item?.prompt_type !== promptType.notes) {
-              const profileManager = selectedProfile || item?.profile_manager;
-              const outputDetails = data.find(
-                (outputValue) =>
-                  outputValue?.prompt_id === item?.prompt_id &&
-                  outputValue?.profile_manager === profileManager,
-              );
 
-              acc[item?.prompt_key] =
-                outputDetails?.output?.length > 0
-                  ? displayPromptResult(outputDetails?.output, false)
-                  : "";
+          if (Object.keys(lookupOutputs).length > 0) {
+            const enriched = {};
+            for (const [key, val] of Object.entries(output)) {
+              const lookupData = lookupOutputs[key];
+              enriched[key] = lookupData?.output
+                ? displayPromptResult(lookupData.output, false)
+                : val;
             }
-            return acc;
-          }, {});
+            setEnrichedOutput(enriched);
+          } else {
+            setEnrichedOutput({});
+          }
+        } else {
+          const output = {};
+          const enriched = {};
+          let hasEnriched = false;
+
+          for (const item of prompts) {
+            if (item?.prompt_type === promptType.notes) continue;
+            const profileManager = selectedProfile || item?.profile_manager;
+            const outputDetails = data.find(
+              (outputValue) =>
+                outputValue?.prompt_id === item?.prompt_id &&
+                outputValue?.profile_manager === profileManager,
+            );
+
+            output[item?.prompt_key] =
+              outputDetails?.output?.length > 0
+                ? displayPromptResult(outputDetails?.output, false)
+                : "";
+
+            // Build enriched output from lookup_outputs
+            const lookupData = outputDetails?.lookup_outputs;
+            if (lookupData?.output) {
+              enriched[item?.prompt_key] = displayPromptResult(
+                lookupData.output,
+                false,
+              );
+              hasEnriched = true;
+            } else {
+              enriched[item?.prompt_key] = output[item?.prompt_key];
+            }
+          }
+
           setCombinedOutput(output);
+          setEnrichedOutput(hasEnriched ? enriched : {});
         }
       } catch (err) {
         setAlertDetails(
@@ -229,6 +261,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   return (
     <JsonView
       combinedOutput={filteredCombinedOutput}
+      enrichedOutput={enrichedOutput}
       handleTabChange={handleTabChange}
       selectedProfile={selectedProfile}
       llmProfiles={llmProfiles}

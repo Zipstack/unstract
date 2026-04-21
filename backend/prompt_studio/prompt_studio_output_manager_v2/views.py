@@ -61,6 +61,55 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
 
         return queryset
 
+    def latest_outputs_by_keys(self, request: HttpRequest) -> Response:
+        """Return the most recent raw output value per source prompt key.
+
+        Used by the lookup Test panel's "Use Latest Outputs" button to
+        pre-fill {{input.X}} fields from prior prompt runs in the linked
+        tool. Always returns the raw extraction — the enriched value would
+        already include lookup post-processing, which would defeat the
+        purpose of testing the lookup with sample inputs.
+        """
+        tool_id = request.GET.get("tool_id")
+        keys_param = request.GET.get("prompt_keys", "")
+        if not tool_id:
+            raise APIException(
+                detail=PromptOutputManagerErrorMessage.TOOL_VALIDATION,
+                code=400,
+            )
+
+        prompt_keys = [k.strip() for k in keys_param.split(",") if k.strip()]
+        if not prompt_keys:
+            return Response({}, status=status.HTTP_200_OK)
+
+        prompt_id_to_key = dict(
+            ToolStudioPrompt.objects.filter(
+                tool_id=tool_id, prompt_key__in=prompt_keys
+            ).values_list("prompt_id", "prompt_key")
+        )
+        if not prompt_id_to_key:
+            return Response({}, status=status.HTTP_200_OK)
+
+        outputs = (
+            PromptStudioOutputManager.objects.filter(
+                prompt_id__in=prompt_id_to_key.keys()
+            )
+            .exclude(output__isnull=True)
+            .exclude(output__exact="")
+            .order_by("-modified_at")
+            .values("prompt_id", "output")
+        )
+
+        result: dict[str, str] = {}
+        for row in outputs:
+            key = prompt_id_to_key.get(row["prompt_id"])
+            if key and key not in result:
+                result[key] = row["output"]
+            if len(result) == len(prompt_id_to_key):
+                break
+
+        return Response(result, status=status.HTTP_200_OK)
+
     def get_output_for_tool_default(self, request: HttpRequest) -> Response:
         # Get the tool_id from request parameters
         # TODO: Setup Serializer here

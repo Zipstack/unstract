@@ -32,6 +32,10 @@ from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from backend.celery_service import app as celery_app
+from prompt_studio.lookup_utils import (
+    get_lookup_validation_for_tool,
+    get_multi_var_lookups_for_tool,
+)
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -87,6 +91,34 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
+    """Block non-SP runs when a linked lookup has >1 input variable.
+
+    ``prompt_ids`` scopes the check to the prompt(s) being run so a
+    multi-var lookup attached to an unrelated prompt in the same project
+    doesn't block a single-var lookup's run.
+
+    Returns a Response object (HTTP 400) when a block applies, or None
+    to let the caller proceed.
+    """
+    if getattr(custom_tool, "single_pass_extraction_mode", False):
+        return None
+    names = get_multi_var_lookups_for_tool(custom_tool, prompt_ids=prompt_ids)
+    if not names:
+        return None
+    return Response(
+        {
+            "error": (
+                "Multi-variable lookup(s) "
+                f"{', '.join(names)} are linked to prompts in this project. "
+                "These can only run in single pass extraction mode. "
+                "Enable single pass or unlink the lookup before running."
+            )
+        },
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 class PromptStudioCoreView(viewsets.ModelViewSet):
@@ -476,6 +508,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        if err := _multi_var_lookup_block_response(
+            custom_tool, prompt_ids=[prompt_id] if prompt_id else None
+        ):
+            return err
         profile_manager_id: str = request.data.get(
             ToolStudioPromptKeys.PROFILE_MANAGER_ID
         )
@@ -577,6 +613,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 {"error": "prompt_ids is required and must be non-empty."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if err := _multi_var_lookup_block_response(custom_tool, prompt_ids=prompt_ids):
+            return err
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         profile_manager_id: str = request.data.get(
@@ -1059,6 +1097,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             {"message": "Custom tool exported sucessfully."},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=["get"], url_path="lookup-validation")
+    def lookup_validation(self, request: Request, pk: Any = None) -> Response:
+        """Pre-emptive lookup gating for Export / API Deployment buttons.
+
+        Cloud-only check; OSS returns ``ok: True`` so the FE proceeds.
+        """
+        custom_tool = self.get_object()
+        return Response(get_lookup_validation_for_tool(custom_tool))
 
     @action(detail=True, methods=["get"])
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:

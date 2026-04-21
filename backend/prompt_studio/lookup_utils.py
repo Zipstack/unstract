@@ -21,6 +21,34 @@ def get_lookup_config(prompt) -> dict | None:
         return None
 
 
+def get_lookup_configs_for_tool(tool) -> list[dict] | None:
+    """Return lookup configs for a tool (single pass), or None in OSS."""
+    try:
+        from pluggable_apps.lookup_v1.execution import (
+            build_lookup_configs_for_tool,
+        )
+
+        return build_lookup_configs_for_tool(tool)
+    except ImportError:
+        return None
+
+
+def get_multi_var_lookups_for_tool(tool, prompt_ids=None) -> list[str]:
+    """Return names of multi-variable lookups linked to the tool, [] in OSS.
+
+    ``prompt_ids`` scopes the check to a specific subset of linked prompts
+    so single / bulk runs only block when a lookup the run actually uses
+    is multi-variable.
+    """
+    try:
+        from pluggable_apps.lookup_v1.execution import has_multi_var_lookups
+
+        _, names = has_multi_var_lookups(tool, prompt_ids=prompt_ids)
+        return names
+    except ImportError:
+        return []
+
+
 def persist_lookup_output(prompt_output, prompt_lookup: dict) -> None:
     """Persist lookup enrichment result. No-op in OSS."""
     try:
@@ -69,3 +97,25 @@ def validate_lookups_for_export(prompts) -> tuple[dict, str | None]:
         return _validate(prompts)
     except ImportError:
         return {}, None
+
+
+def get_lookup_validation_for_tool(tool) -> dict:
+    """Pre-emptive lookup validation for FE Export / Deploy gating.
+
+    Returns an "always ok" payload in OSS so the FE gate is a no-op.
+    """
+    try:
+        from pluggable_apps.lookup_v1.validation import (
+            get_lookup_validation_for_tool as _validate,
+        )
+
+        return _validate(tool)
+    except ImportError:
+        return {
+            "ok": True,
+            "draft_lookups": [],
+            "multi_var_lookups": [],
+            "single_pass_enabled": bool(
+                getattr(tool, "single_pass_extraction_mode", False)
+            ),
+        }

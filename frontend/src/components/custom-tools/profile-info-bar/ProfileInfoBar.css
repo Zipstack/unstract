@@ -1,3 +1,5 @@
 .profile-info-bar {
   margin-bottom: 10px;
+  flex-wrap: wrap;
+  gap: 4px 0;
 }

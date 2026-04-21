@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
+from django.utils import timezone
 
 from prompt_studio.lookup_utils import persist_lookup_output
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -107,6 +108,8 @@ class OutputManagerHelper:
                     "highlight_data": highlight_data,
                     "confidence_data": confidence_data,
                     "word_confidence_data": word_confidence_data,
+                    # QuerySet.update() bypasses auto_now on modified_at.
+                    "modified_at": timezone.now(),
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
@@ -257,17 +260,20 @@ class OutputManagerHelper:
 
         Returns:
             dict[str, Any]: Formatted JSON response for combined output.
+                Includes a reserved ``_lookup_outputs`` key with per-prompt
+                enriched data when lookups are configured.
         """
-        # Initialize the result dictionary
+        from prompt_studio.lookup_utils import enrich_prompt_output
+
         result: dict[str, Any] = {}
-        # Iterate over ToolStudioPrompt records
+        lookup_outputs: dict[str, Any] = {}
+
         for tool_prompt in tool_studio_prompts:
             if tool_prompt.prompt_type == PSOMKeys.NOTES:
                 continue
             prompt_id = str(tool_prompt.prompt_id)
             profile_manager_id = tool_prompt.profile_manager_id
 
-            # If profile_manager is not set, skip this record
             if not profile_manager_id and not use_default_profile:
                 result[tool_prompt.prompt_key] = ""
                 continue
@@ -292,6 +298,15 @@ class OutputManagerHelper:
 
                 for output in queryset:
                     result[tool_prompt.prompt_key] = output.output
+                    # Check for lookup enrichment
+                    enriched = enrich_prompt_output(output, {})
+                    if "lookup_outputs" in enriched:
+                        lookup_outputs[tool_prompt.prompt_key] = enriched[
+                            "lookup_outputs"
+                        ]
             except ObjectDoesNotExist:
                 result[tool_prompt.prompt_key] = ""
+
+        if lookup_outputs:
+            result["_lookup_outputs"] = lookup_outputs
         return result
