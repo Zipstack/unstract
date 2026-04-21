@@ -119,7 +119,7 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
   },
   {
     key: "triad",
-    label: "Default Triad",
+    label: "Default LLM Profile",
     path: `/${orgName}/settings/triad`,
   },
   ...(manualReviewSettingsEnabled
