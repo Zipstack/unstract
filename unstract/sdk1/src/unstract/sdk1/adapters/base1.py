@@ -1027,7 +1027,7 @@ class GeminiEmbeddingParameters(BaseEmbeddingParameters):
         if not model:
             raise ValueError(
                 "The 'model' field is required for the Gemini embedding adapter. "
-                "Example: 'gemini/text-embedding-004'"
+                "Example: 'gemini-embedding-001'"
             )
         if not model.startswith("gemini/"):
             model = f"gemini/{model}"
