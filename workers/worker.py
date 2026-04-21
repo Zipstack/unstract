@@ -448,8 +448,10 @@ if worker_type.is_pluggable():
     worker_directory = os.path.join("pluggable_worker", worker_type.value)
     worker_path = os.path.join(base_dir, worker_directory)
 else:
-    # Core workers use their value directly (with hyphens converted to underscores where needed)
-    worker_directory = worker_type.value.replace("-", "_")
+    # Enum values use underscores (Python module names); a few on-disk dirs
+    # still use hyphens (e.g. api-deployment). Derive the directory from the
+    # authoritative import-path map on WorkerType instead of a blind replace.
+    worker_directory = worker_type.to_import_path().rsplit(".", 1)[0]
     worker_path = os.path.join(base_dir, worker_directory)
 
 # Add worker directory to path for task imports
