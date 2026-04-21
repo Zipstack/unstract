@@ -49,25 +49,25 @@ class TestGeminiEmbeddingAdapter:
 
     def test_json_schema_model_default(self) -> None:
         schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
-        assert schema["properties"]["model"]["default"] == "gemini/text-embedding-004"
+        assert schema["properties"]["model"]["default"] == "gemini-embedding-001"
 
     def test_validate_model_adds_prefix(self) -> None:
-        meta = {"model": "text-embedding-004", "api_key": "test"}
+        meta = {"model": "gemini-embedding-001", "api_key": "test"}
         result = GeminiEmbeddingAdapter.validate_model(meta)
-        assert result == "gemini/text-embedding-004"
+        assert result == "gemini/gemini-embedding-001"
 
     def test_validate_model_idempotent(self) -> None:
-        meta = {"model": "gemini/text-embedding-004", "api_key": "test"}
+        meta = {"model": "gemini/gemini-embedding-001", "api_key": "test"}
         result = GeminiEmbeddingAdapter.validate_model(meta)
-        assert result == "gemini/text-embedding-004"
+        assert result == "gemini/gemini-embedding-001"
 
     def test_validate_model_does_not_mutate_input(self) -> None:
-        meta = {"model": "text-embedding-004", "api_key": "test"}
+        meta = {"model": "gemini-embedding-001", "api_key": "test"}
         GeminiEmbeddingAdapter.validate_model(meta)
-        assert meta["model"] == "text-embedding-004"
+        assert meta["model"] == "gemini-embedding-001"
 
     def test_validate_does_not_mutate_input(self) -> None:
-        meta = {"model": "text-embedding-004", "api_key": "test-key"}
+        meta = {"model": "gemini-embedding-001", "api_key": "test-key"}
         original_model = meta["model"]
         GeminiEmbeddingAdapter.validate(meta)
         assert meta["model"] == original_model
@@ -105,23 +105,23 @@ class TestGeminiEmbeddingAdapter:
     def test_validate_missing_api_key_raises(self) -> None:
         from pydantic import ValidationError
 
-        meta = {"model": "gemini/text-embedding-004"}
+        meta = {"model": "gemini/gemini-embedding-001"}
         with pytest.raises(ValidationError):
             GeminiEmbeddingAdapter.validate(meta)
 
     def test_validate_calls_validate_model(self) -> None:
-        meta = {"model": "text-embedding-004", "api_key": "test-key"}
+        meta = {"model": "gemini-embedding-001", "api_key": "test-key"}
         validated = GeminiEmbeddingAdapter.validate(meta)
-        assert validated["model"] == "gemini/text-embedding-004"
+        assert validated["model"] == "gemini/gemini-embedding-001"
 
     def test_validate_embed_batch_size_none_by_default(self) -> None:
-        meta = {"model": "gemini/text-embedding-004", "api_key": "test-key"}
+        meta = {"model": "gemini/gemini-embedding-001", "api_key": "test-key"}
         validated = GeminiEmbeddingAdapter.validate(meta)
         assert validated["embed_batch_size"] is None
 
     def test_validate_embed_batch_size_preserved(self) -> None:
         meta = {
-            "model": "gemini/text-embedding-004",
+            "model": "gemini/gemini-embedding-001",
             "api_key": "test-key",
             "embed_batch_size": 50,
         }
@@ -130,7 +130,7 @@ class TestGeminiEmbeddingAdapter:
 
     def test_validate_strips_extra_fields(self) -> None:
         meta = {
-            "model": "gemini/text-embedding-004",
+            "model": "gemini/gemini-embedding-001",
             "api_key": "test-key",
             "adapter_name": "my-adapter",
             "unknown_field": "should_be_dropped",
@@ -140,7 +140,7 @@ class TestGeminiEmbeddingAdapter:
         assert "unknown_field" not in validated
 
     def test_validate_includes_base_fields(self) -> None:
-        meta = {"model": "gemini/text-embedding-004", "api_key": "test-key"}
+        meta = {"model": "gemini/gemini-embedding-001", "api_key": "test-key"}
         validated = GeminiEmbeddingAdapter.validate(meta)
         assert "timeout" in validated
         assert "max_retries" in validated
