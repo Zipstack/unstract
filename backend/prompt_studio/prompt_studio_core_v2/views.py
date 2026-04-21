@@ -14,6 +14,7 @@ from celery.result import AsyncResult
 from django.db import IntegrityError
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
+from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -33,6 +34,7 @@ from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
+    get_latest_lookup_mutation_for_tool,
     get_lookup_validation_for_tool,
     get_multi_var_lookups_for_tool,
 )
@@ -1085,6 +1087,11 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             force_export=force_export,
         )
 
+        # Record export timestamp so staleness checks (e.g. lookup-change
+        # banner) can compare against mutations that happened afterwards.
+        custom_tool.last_exported_at = timezone.now()
+        custom_tool.save(update_fields=["last_exported_at"])
+
         # Notify HubSpot about first tool export
         notify_hubspot_event(
             user=request.user,
@@ -1285,10 +1292,20 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             instance: CustomTool = self.get_object()
             is_used, workflow_ids = self._check_tool_usage_in_workflows(instance)
 
+            # Lookup staleness: NULL last_exported_at means we can't compare,
+            # so treat as clean (don't false-alarm pre-feature projects).
+            is_lookup_dirty = False
+            if instance.last_exported_at is not None:
+                latest = get_latest_lookup_mutation_for_tool(instance)
+                is_lookup_dirty = (
+                    latest is not None and latest > instance.last_exported_at
+                )
+
             deployment_info: dict = {
                 "is_used": is_used,
                 "deployment_types": [],
                 "message": "",
+                "is_lookup_dirty": is_lookup_dirty,
             }
 
             if is_used and workflow_ids:

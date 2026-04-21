@@ -161,6 +161,15 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         db_comment="Flag to share this custom tool with all users in the organization",
     )
 
+    # NULL on pre-feature tools; populated on first successful export.
+    # Drives staleness checks (e.g. lookup-change banner) without requiring
+    # a data backfill.
+    last_exported_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment="Timestamp of the last successful export; NULL if never exported since the field was introduced.",
+    )
+
     objects = CustomToolModelManager()
 
     def delete(self, organization_id=None, *args, **kwargs):

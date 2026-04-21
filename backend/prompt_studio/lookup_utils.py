@@ -99,6 +99,22 @@ def validate_lookups_for_export(prompts) -> tuple[dict, str | None]:
         return {}, None
 
 
+def get_latest_lookup_mutation_for_tool(tool):
+    """Return the max modified_at across all lookup-related records linked to
+    the tool (version, reference file, assignment). Used for banner staleness.
+
+    Returns None if lookups are unavailable or nothing is linked.
+    """
+    try:
+        from pluggable_apps.lookup_v1.staleness import (
+            get_latest_lookup_mutation_for_tool as _get,
+        )
+
+        return _get(tool)
+    except ImportError:
+        return None
+
+
 def get_lookup_validation_for_tool(tool) -> dict:
     """Pre-emptive lookup validation for FE Export / Deploy gating.
 
