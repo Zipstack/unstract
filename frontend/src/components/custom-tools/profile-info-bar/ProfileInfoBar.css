@@ -1,5 +1,10 @@
 .profile-info-bar {
-  margin-bottom: 10px;
+  display: flex;
   flex-wrap: wrap;
-  gap: 4px 0;
+  gap: 6px 8px;
+  margin-bottom: 10px;
+}
+
+.profile-info-bar .ant-tag {
+  margin: 0;
 }
