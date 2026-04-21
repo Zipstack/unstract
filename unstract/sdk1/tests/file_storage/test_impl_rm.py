@@ -11,7 +11,6 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage.impl import FileStorage
 from unstract.sdk1.file_storage.provider import FileStorageProvider
@@ -101,9 +100,7 @@ class TestRmFallback:
         assert s3_file_storage.fs.rm_file.call_count == 3
         s3_file_storage.fs.rmdir.assert_called_once_with("bucket/prefix/")
 
-    def test_fallback_swallows_rmdir_error(
-        self, s3_file_storage: FileStorage
-    ) -> None:
+    def test_fallback_swallows_rmdir_error(self, s3_file_storage: FileStorage) -> None:
         """Missing directory prefix after cleanup is expected; don't raise."""
         s3_file_storage.fs.rm.side_effect = _missing_md5_error()
         s3_file_storage.fs.find.return_value = ["bucket/prefix/a.txt"]
@@ -146,9 +143,7 @@ class TestFallbackDoesNotReenterBulkDelete:
     ``DeleteObject`` is invoked.
     """
 
-    def test_only_singular_delete_called(
-        self, s3_file_storage: FileStorage
-    ) -> None:
+    def test_only_singular_delete_called(self, s3_file_storage: FileStorage) -> None:
         boto3_client = MagicMock()
         boto3_client.delete_objects.side_effect = _missing_md5_error()
         boto3_client.delete_object.return_value = {"ResponseMetadata": {}}
@@ -174,9 +169,5 @@ class TestFallbackDoesNotReenterBulkDelete:
         assert boto3_client.delete_objects.call_count == 1
         # Fallback used singular DeleteObject for every file.
         assert boto3_client.delete_object.call_count == 2
-        boto3_client.delete_object.assert_any_call(
-            Bucket="bucket", Key="prefix/a.txt"
-        )
-        boto3_client.delete_object.assert_any_call(
-            Bucket="bucket", Key="prefix/b.txt"
-        )
+        boto3_client.delete_object.assert_any_call(Bucket="bucket", Key="prefix/a.txt")
+        boto3_client.delete_object.assert_any_call(Bucket="bucket", Key="prefix/b.txt")
