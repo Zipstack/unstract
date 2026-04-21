@@ -1921,6 +1921,11 @@ class LegacyExecutor(BaseExecutor):
             enricher.run()
         except Exception as e:
             logger.warning("Lookup enrichment failed for %s: %s", prompt_name, e)
+            lookup_label = lookup_config.get("lookup_name") or prompt_name
+            shim.stream_log(
+                f"Lookup `{lookup_label}` failed: {str(e)[:200]}",
+                level=LogLevel.ERROR,
+            )
             error_record = {
                 "usage_type": "llm",
                 "llm_usage_reason": "lookup",
