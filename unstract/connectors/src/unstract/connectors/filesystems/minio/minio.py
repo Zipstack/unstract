@@ -57,8 +57,9 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
 
 
 class MinioFS(UnstractFileSystem):
-    # Subclasses can override with plain `S3FileSystem` to skip bucket-access
-    # filtering (e.g. for platform-managed storage).
+    # Override with plain S3FileSystem in a subclass when the credentials are
+    # known to have full access to every bucket they list, so the per-bucket
+    # access probe in _AccessFilteredS3FileSystem can be skipped.
     _FS_CLASS: type[S3FileSystem] = _AccessFilteredS3FileSystem
 
     def __init__(self, settings: dict[str, Any]):
