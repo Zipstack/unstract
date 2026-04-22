@@ -3,21 +3,10 @@ import PropTypes from "prop-types";
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
 
+import { isSafeExternalUrl } from "../../../helpers/urlSafety";
 import { useSessionStore } from "../../../store/session-store";
 
 const { Text, Link, Paragraph } = Typography;
-
-const SAFE_URL_SCHEMES = ["http:", "https:", "mailto:", "tel:"];
-
-const isSafeExternalUrl = (url) => {
-  if (!url) return false;
-  try {
-    const parsed = new URL(url, window.location.origin);
-    return SAFE_URL_SCHEMES.includes(parsed.protocol);
-  } catch {
-    return false;
-  }
-};
 
 const CustomMarkdown = ({
   text = "",
@@ -71,8 +60,6 @@ const CustomMarkdown = ({
           const resolvedUrl = orgName ? `/${orgName}${url}` : url;
           return <RouterLink to={resolvedUrl}>{content}</RouterLink>;
         }
-        // Guard against unsafe schemes (e.g. javascript:, data:) since log
-        // content can originate from tool output or user input.
         if (!isSafeExternalUrl(url)) {
           return content;
         }
