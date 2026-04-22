@@ -13,37 +13,39 @@ from .exceptions import handle_s3fs_exception
 
 logger = logging.getLogger(__name__)
 
+# Cap concurrent per-bucket probes to avoid S3 503 SlowDown on large accounts.
+_MAX_CONCURRENT_BUCKET_PROBES = 16
+
 
 class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
     """S3FileSystem that lists only buckets the credentials can browse.
 
-    The parent's `_lsbuckets` returns every bucket reachable via
-    `s3:ListAllMyBuckets`. That set is wider than what the caller can
-    actually read — especially under IRSA, where `ListAllMyBuckets` may
-    be granted account-wide while `s3:ListBucket` is scoped to a handful
-    of buckets. We probe each returned bucket with a 1-key
-    `list_objects_v2` (the exact IAM action required to browse) and drop
-    any that respond with AccessDenied / NoSuchBucket / other errors.
+    `s3:ListAllMyBuckets` (account-level) returns every bucket in the
+    account, which is wider than `s3:ListBucket` (per-bucket). We probe
+    each bucket with a 1-key `list_objects_v2` and drop any that fail.
     """
 
     async def _lsbuckets(self, refresh: bool = False) -> list[dict[str, Any]]:
+        if not refresh and "" in self.dircache:
+            return self.dircache[""]  # type: ignore[no-any-return]
         buckets: list[dict[str, Any]] = await super()._lsbuckets(refresh=refresh)
         if not buckets:
             return buckets
         accessible = await self._filter_accessible_buckets(buckets)
-        # Replace the cached entry populated by the parent so subsequent
-        # cache reads return the filtered view.
         self.dircache[""] = accessible
         return accessible
 
     async def _filter_accessible_buckets(
         self, buckets: list[dict[str, Any]]
     ) -> list[dict[str, Any]]:
-        results = await asyncio.gather(
-            *(self._is_bucket_accessible(b["name"]) for b in buckets),
-            return_exceptions=True,
-        )
-        return [b for b, ok in zip(buckets, results, strict=False) if ok is True]
+        sem = asyncio.Semaphore(_MAX_CONCURRENT_BUCKET_PROBES)
+
+        async def _probe(name: str) -> bool:
+            async with sem:
+                return await self._is_bucket_accessible(name)
+
+        results = await asyncio.gather(*(_probe(b["name"]) for b in buckets))
+        return [b for b, ok in zip(buckets, results, strict=True) if ok]
 
     async def _is_bucket_accessible(self, name: str) -> bool:
         try:
@@ -55,6 +57,10 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
 
 
 class MinioFS(UnstractFileSystem):
+    # Subclasses can override with plain `S3FileSystem` to skip bucket-access
+    # filtering (e.g. for platform-managed storage).
+    _FS_CLASS: type[S3FileSystem] = _AccessFilteredS3FileSystem
+
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MinioFS/S3")
         key = (settings.get("key") or "").strip()
@@ -71,7 +77,7 @@ class MinioFS(UnstractFileSystem):
         if endpoint_url:
             creds["endpoint_url"] = endpoint_url
 
-        self.s3 = _AccessFilteredS3FileSystem(
+        self.s3 = self._FS_CLASS(
             anon=False,
             use_listings_cache=False,
             default_fill_cache=False,
