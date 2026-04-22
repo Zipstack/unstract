@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import models
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -19,7 +19,7 @@ class LLMUsageReason(models.TextChoices):
     SUMMARIZE = "summarize", "Summarize"
 
 
-class UsageModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     pass
 
 

@@ -1,7 +1,7 @@
 import uuid
 
 from django.db import models
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -9,7 +9,7 @@ from utils.models.organization_mixin import (
 from utils.user_context import UserContext
 
 
-class TagModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class TagModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def get_or_create_tags(self, tag_names: list[str]) -> list["Tag"]:
         """Retrieves or creates tags based on a list of tag names.
 
