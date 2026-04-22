@@ -84,8 +84,8 @@ class LegacyExecutor(BaseExecutor):
         # Extract log streaming info (set by tasks.py for IDE sessions).
         self._log_events_id: str = context.log_events_id or ""
         self._log_component: dict[str, str] = getattr(context, "_log_component", {})
-        self._execution_id: str = getattr(context, "execution_id", "") or ""
-        self._file_execution_id: str = getattr(context, "file_execution_id", "") or ""
+        self._execution_id: str = context.execution_id or ""
+        self._file_execution_id: str = context.file_execution_id or ""
         self._organization_id: str = context.organization_id or ""
 
         handler_name = self._OPERATION_MAP.get(context.operation)
@@ -1753,6 +1753,9 @@ class LegacyExecutor(BaseExecutor):
             execution_source=execution_source,
             organization_id=context.organization_id,
             request_id=context.request_id,
+            log_events_id=self._log_events_id,
+            execution_id=self._execution_id,
+            file_execution_id=self._file_execution_id,
             executor_params={
                 "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
                 "table_settings": output.get(PSKeys.TABLE_SETTINGS, {}),
@@ -1764,7 +1767,6 @@ class LegacyExecutor(BaseExecutor):
             },
         )
         table_ctx._log_component = self._log_component
-        table_ctx.log_events_id = self._log_events_id
 
         shim.stream_log(f"Running table extraction for: `{prompt_name}`")
         table_result = table_executor.execute(table_ctx)
@@ -1827,6 +1829,9 @@ class LegacyExecutor(BaseExecutor):
             execution_source=prompt_run_args["execution_source"],
             organization_id=context.organization_id,
             request_id=context.request_id,
+            log_events_id=self._log_events_id,
+            execution_id=self._execution_id,
+            file_execution_id=self._file_execution_id,
             executor_params={
                 "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
                 "tool_settings": prompt_run_args["tool_settings"],
@@ -1841,7 +1846,6 @@ class LegacyExecutor(BaseExecutor):
             },
         )
         line_item_ctx._log_component = self._log_component
-        line_item_ctx.log_events_id = self._log_events_id
 
         shim.stream_log(f"Running line-item extraction for: `{prompt_name}`")
         line_item_result = line_item_executor.execute(line_item_ctx)

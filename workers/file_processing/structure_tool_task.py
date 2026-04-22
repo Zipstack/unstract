@@ -236,7 +236,15 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # ---- Step 1: Setup ----
     from executor.executor_tool_shim import ExecutorToolShim
 
-    shim = ExecutorToolShim(platform_api_key=platform_service_api_key)
+    # Thread workflow IDs so pre-dispatch X2Text / platform helper logs reach
+    # the workflow logs UI (matches the pipeline/agentic dispatch contexts).
+    shim = ExecutorToolShim(
+        platform_api_key=platform_service_api_key,
+        log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
+        execution_id=execution_id,
+        file_execution_id=file_execution_id,
+        organization_id=organization_id,
+    )
 
     platform_helper = _create_platform_helper(shim, file_execution_id)
     dispatcher = ExecutionDispatcher(celery_app=app)
