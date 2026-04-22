@@ -83,13 +83,6 @@ class CustomAuthMiddleware:
         except (ValueError, AttributeError):
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
-        # Block DELETE before any DB lookup — never allowed via API key
-        if request.method == RequestMethod.DELETE:
-            return JsonResponse(
-                {"message": "DELETE operations are not allowed via API key"},
-                status=403,
-            )
-
         try:
             key = PlatformApiKey.objects.select_related(
                 "created_by", "api_user", "organization"
@@ -123,6 +116,19 @@ class CustomAuthMiddleware:
         ):
             return JsonResponse(
                 {"message": "API key has read-only permission"},
+                status=403,
+            )
+
+        # Only full_access keys may DELETE; read_write keys cannot.
+        if (
+            key.permission == ApiKeyPermission.READ_WRITE
+            and request.method == RequestMethod.DELETE
+        ):
+            return JsonResponse(
+                {
+                    "message": "API key does not have DELETE permission; "
+                    "requires full_access"
+                },
                 status=403,
             )
 

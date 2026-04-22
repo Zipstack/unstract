@@ -9,6 +9,7 @@ from utils.models.organization_mixin import DefaultOrganizationMixin
 class ApiKeyPermission(models.TextChoices):
     READ = "read", "Read"
     READ_WRITE = "read_write", "Read/Write"
+    FULL_ACCESS = "full_access", "Full Access"
 
 
 class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
@@ -20,7 +21,7 @@ class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
     permission = models.CharField(
-        max_length=16,
+        max_length=20,
         choices=ApiKeyPermission.choices,
         default=ApiKeyPermission.READ_WRITE,
     )

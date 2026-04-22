@@ -263,11 +263,15 @@ function PlatformApiKeys() {
       dataIndex: "permission",
       key: "permission",
       width: "10%",
-      render: (text) => (
-        <Tag color={text === "read_write" ? "blue" : "default"}>
-          {text === "read_write" ? "Read/Write" : "Read"}
-        </Tag>
-      ),
+      render: (text) => {
+        const config = {
+          full_access: { color: "red", label: "Full Access" },
+          read_write: { color: "blue", label: "Read/Write" },
+          read: { color: "default", label: "Read" },
+        };
+        const { color, label } = config[text] ?? config.read;
+        return <Tag color={color}>{label}</Tag>;
+      },
     },
     {
       title: "Active",
@@ -427,6 +431,7 @@ function PlatformApiKeys() {
             <Select>
               <Select.Option value="read_write">Read/Write</Select.Option>
               <Select.Option value="read">Read</Select.Option>
+              <Select.Option value="full_access">Full Access</Select.Option>
             </Select>
           </Form.Item>
         </Form>
@@ -472,6 +477,7 @@ function PlatformApiKeys() {
             <Select>
               <Select.Option value="read_write">Read/Write</Select.Option>
               <Select.Option value="read">Read</Select.Option>
+              <Select.Option value="full_access">Full Access</Select.Option>
             </Select>
           </Form.Item>
         </Form>
