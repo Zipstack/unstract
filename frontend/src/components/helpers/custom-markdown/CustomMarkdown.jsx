@@ -7,6 +7,18 @@ import { useSessionStore } from "../../../store/session-store";
 
 const { Text, Link, Paragraph } = Typography;
 
+const SAFE_URL_SCHEMES = ["http:", "https:", "mailto:", "tel:"];
+
+const isSafeExternalUrl = (url) => {
+  if (!url) return false;
+  try {
+    const parsed = new URL(url, window.location.origin);
+    return SAFE_URL_SCHEMES.includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+};
+
 const CustomMarkdown = ({
   text = "",
   renderNewLines = true,
@@ -58,6 +70,11 @@ const CustomMarkdown = ({
         if (isInternal) {
           const resolvedUrl = orgName ? `/${orgName}${url}` : url;
           return <RouterLink to={resolvedUrl}>{content}</RouterLink>;
+        }
+        // Guard against unsafe schemes (e.g. javascript:, data:) since log
+        // content can originate from tool output or user input.
+        if (!isSafeExternalUrl(url)) {
+          return content;
         }
         return (
           <Link href={url} target="_blank" rel="noopener noreferrer">
