@@ -60,6 +60,9 @@ class ExecutorToolShim(StreamMixin):
         platform_api_key: str = "",
         log_events_id: str = "",
         component: dict[str, str] | None = None,
+        execution_id: str = "",
+        organization_id: str = "",
+        file_execution_id: str = "",
     ) -> None:
         """Initialize the shim.
 
@@ -72,10 +75,19 @@ class ExecutorToolShim(StreamMixin):
             component: Structured identifier dict for log correlation
                 (``tool_id``, ``run_id``, ``doc_name``, optionally
                 ``prompt_key``).
+            execution_id: Workflow execution id. When provided with
+                ``organization_id``, enables persistent log attribution
+                to the ``execution_log`` table.
+            organization_id: Tenant/org scope for log persistence.
+            file_execution_id: File execution id (child of workflow
+                execution). Optional — populated for per-file tool runs.
         """
         self.platform_api_key = platform_api_key
         self.log_events_id = log_events_id
         self.component = component or {}
+        self.execution_id = execution_id
+        self.organization_id = organization_id
+        self.file_execution_id = file_execution_id
         # Initialize StreamMixin.  EXECUTION_BY_TOOL is not set in
         # the worker environment, so _exec_by_tool will be False.
         super().__init__(log_level=LogLevel.INFO)
@@ -148,7 +160,9 @@ class ExecutorToolShim(StreamMixin):
         if self.log_events_id:
             try:
                 wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
-                payload = LogPublisher.log_progress(
+                # PROGRESS: drives the IDE prompt-card live progress pane.
+                # Filtered out at the DB persist layer (LogType != LOG).
+                progress_payload = LogPublisher.log_progress(
                     component=self.component,
                     level=wf_level,
                     state=stage,
@@ -156,8 +170,26 @@ class ExecutorToolShim(StreamMixin):
                 )
                 LogPublisher.publish(
                     channel_id=self.log_events_id,
-                    payload=payload,
+                    payload=progress_payload,
                 )
+                # LOG: feeds the workflow execution logs UI and persists
+                # to the execution_log table. Requires the workflow IDs
+                # to pass LogDataDTO validation; skip silently when any
+                # are missing (e.g. older callsites that don't thread
+                # them through yet).
+                if self.execution_id and self.organization_id:
+                    log_payload = LogPublisher.log_workflow(
+                        stage=stage,
+                        message=log,
+                        level=wf_level,
+                        execution_id=self.execution_id,
+                        file_execution_id=self.file_execution_id or None,
+                        organization_id=self.organization_id,
+                    )
+                    LogPublisher.publish(
+                        channel_id=self.log_events_id,
+                        payload=log_payload,
+                    )
             except Exception:
                 logger.debug(
                     "Failed to publish progress log (non-fatal)",

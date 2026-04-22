@@ -111,6 +111,7 @@ const LogsModal = ({
       title: "Log",
       dataIndex: "log",
       key: "log",
+      render: (log) => <CustomMarkdown text={log || ""} />,
     },
   ];
 

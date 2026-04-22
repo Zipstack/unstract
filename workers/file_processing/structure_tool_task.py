@@ -24,6 +24,7 @@ from typing import Any
 
 from file_processing.worker import app
 from shared.enums.task_enums import TaskName
+from shared.infrastructure.context import StateStore
 
 from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
@@ -257,6 +258,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             dispatcher=dispatcher,
             shim=shim,
             file_execution_id=file_execution_id,
+            execution_id=execution_id,
             organization_id=organization_id,
             source_file_name=source_file_name,
             fs=fs,
@@ -388,6 +390,15 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         execution_source="tool",
         organization_id=organization_id,
         request_id=file_execution_id,
+        # Thread the log channel so ExecutorToolShim.stream_log can publish
+        # tool-level progress to the workflow execution logs UI. Falls back
+        # to empty (no publish) when running outside a workflow context.
+        log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
+        # Workflow IDs drive persistent attribution in the execution_log
+        # table — without them LogDataDTO validation drops tool-level
+        # messages even when WebSocket delivery succeeds.
+        execution_id=execution_id,
+        file_execution_id=file_execution_id,
         executor_params={
             "extract_params": extract_params,
             "index_template": index_template,
@@ -533,6 +544,7 @@ def _run_agentic_extraction(
     dispatcher: ExecutionDispatcher,
     shim: Any,
     file_execution_id: str,
+    execution_id: str,
     organization_id: str,
     source_file_name: str,
     fs: Any,
@@ -587,6 +599,9 @@ def _run_agentic_extraction(
         execution_source="tool",
         organization_id=organization_id,
         request_id=file_execution_id,
+        log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
+        execution_id=execution_id,
+        file_execution_id=file_execution_id,
         executor_params={
             "document_id": file_execution_id,
             "document_text": document_text,

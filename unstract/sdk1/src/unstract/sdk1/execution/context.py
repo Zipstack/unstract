@@ -78,6 +78,11 @@ class ExecutionContext:
     executor_params: dict[str, Any] = field(default_factory=dict)
     request_id: str | None = None
     log_events_id: str | None = None
+    # Workflow-level IDs used for persistent log attribution in the
+    # execution_log table. Optional — callers running outside a
+    # workflow context (e.g. IDE test) may omit them.
+    execution_id: str | None = None
+    file_execution_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate required fields after initialization."""
@@ -111,6 +116,8 @@ class ExecutionContext:
             "executor_params": self.executor_params,
             "request_id": self.request_id,
             "log_events_id": self.log_events_id,
+            "execution_id": self.execution_id,
+            "file_execution_id": self.file_execution_id,
         }
 
     @classmethod
@@ -125,4 +132,6 @@ class ExecutionContext:
             executor_params=data.get("executor_params", {}),
             request_id=data.get("request_id"),
             log_events_id=data.get("log_events_id"),
+            execution_id=data.get("execution_id"),
+            file_execution_id=data.get("file_execution_id"),
         )

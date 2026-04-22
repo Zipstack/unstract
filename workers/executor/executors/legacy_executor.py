@@ -60,6 +60,11 @@ class LegacyExecutor(BaseExecutor):
     # Defaults for log streaming (overridden by execute()).
     _log_events_id: str = ""
     _log_component: dict[str, str] = {}
+    # Workflow IDs for persistent log attribution; empty outside of a
+    # workflow context (e.g. bare IDE runs that don't set them).
+    _execution_id: str = ""
+    _file_execution_id: str = ""
+    _organization_id: str = ""
 
     @property
     def name(self) -> str:
@@ -79,6 +84,9 @@ class LegacyExecutor(BaseExecutor):
         # Extract log streaming info (set by tasks.py for IDE sessions).
         self._log_events_id: str = context.log_events_id or ""
         self._log_component: dict[str, str] = getattr(context, "_log_component", {})
+        self._execution_id: str = getattr(context, "execution_id", "") or ""
+        self._file_execution_id: str = getattr(context, "file_execution_id", "") or ""
+        self._organization_id: str = context.organization_id or ""
 
         handler_name = self._OPERATION_MAP.get(context.operation)
         if handler_name is None:
@@ -124,6 +132,9 @@ class LegacyExecutor(BaseExecutor):
                     shim = ExecutorToolShim(
                         log_events_id=self._log_events_id,
                         component=self._log_component,
+                        execution_id=self._execution_id,
+                        organization_id=self._organization_id,
+                        file_execution_id=self._file_execution_id,
                     )
                     shim.stream_log(
                         f"Error: {exc.message or type(exc).__name__}",
@@ -177,6 +188,9 @@ class LegacyExecutor(BaseExecutor):
             platform_api_key=platform_api_key,
             log_events_id=self._log_events_id,
             component=self._log_component,
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
         )
         x2text = X2Text(
             tool=shim,
@@ -523,6 +537,9 @@ class LegacyExecutor(BaseExecutor):
             platform_api_key=extract_params.get("platform_api_key", ""),
             log_events_id=self._log_events_id,
             component=self._log_component,
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
         )
         step = 1
 
@@ -958,6 +975,9 @@ class LegacyExecutor(BaseExecutor):
             platform_api_key=platform_api_key,
             log_events_id=self._log_events_id,
             component=self._log_component,
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
         )
         fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
 
@@ -1203,6 +1223,9 @@ class LegacyExecutor(BaseExecutor):
             platform_api_key=platform_api_key,
             log_events_id=self._log_events_id,
             component=self._log_component,
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
         )
         if enable_highlight:
             from executor.executors.plugins import ExecutorPluginLoader
@@ -1371,7 +1394,7 @@ class LegacyExecutor(BaseExecutor):
         challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
         if not challenge_llm_id:
             return
-        shim.stream_log(f"Running challenge for: {prompt_name}")
+        shim.stream_log(f"Running challenge for: `{prompt_name}`")
         challenge_llm = llm_cls(
             adapter_instance_id=challenge_llm_id,
             tool=shim,
@@ -1390,7 +1413,7 @@ class LegacyExecutor(BaseExecutor):
             metadata=metadata,
         )
         challenger.run()
-        shim.stream_log(f"Challenge verification completed for: {prompt_name}")
+        shim.stream_log(f"Challenge verification completed for: `{prompt_name}`")
         logger.info("Challenge completed: prompt=%s", prompt_name)
 
     @staticmethod
@@ -1412,7 +1435,7 @@ class LegacyExecutor(BaseExecutor):
         evaluator_cls = ExecutorPluginLoader.get("evaluation")
         if not evaluator_cls:
             return
-        shim.stream_log(f"Running evaluation for: {prompt_name}")
+        shim.stream_log(f"Running evaluation for: `{prompt_name}`")
         evaluator = evaluator_cls(
             query=output.get(PSKeys.COMBINED_PROMPT, ""),
             context="\n".join(context_list),
@@ -1480,8 +1503,11 @@ class LegacyExecutor(BaseExecutor):
             platform_api_key=platform_api_key,
             log_events_id=self._log_events_id,
             component={**self._log_component, "prompt_key": prompt_name},
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
         )
-        shim.stream_log(f"Processing prompt: {prompt_name}")
+        shim.stream_log(f"Processing prompt: `{prompt_name}`")
 
         if variable_replacement_svc.is_variables_present(prompt_text=prompt_text):
             prompt_text = variable_replacement_svc.replace_variables_in_prompt(
@@ -1494,7 +1520,7 @@ class LegacyExecutor(BaseExecutor):
                 custom_data=custom_data,
                 is_ide=execution_source == "ide",
             )
-            shim.stream_log(f"Resolved template variables for: {prompt_name}")
+            shim.stream_log(f"Resolved template variables for: `{prompt_name}`")
 
         logger.info(
             "Executing prompt: tool_id=%s name=%s run_id=%s", tool_id, prompt_name, run_id
@@ -1574,7 +1600,9 @@ class LegacyExecutor(BaseExecutor):
                     adapter_instance_id=output[PSKeys.VECTOR_DB],
                     embedding=embedding,
                 )
-            shim.stream_log(f"Initialized LLM and retrieval adapters for: {prompt_name}")
+            shim.stream_log(
+                f"Initialized LLM and retrieval adapters for: `{prompt_name}`"
+            )
         except Exception as e:
             msg = f"Couldn't fetch adapter. {e}"
             logger.error(msg)
@@ -1588,7 +1616,7 @@ class LegacyExecutor(BaseExecutor):
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
             if retrieval_strategy in valid_strategies:
-                shim.stream_log(f"Retrieving context for: {prompt_name}")
+                shim.stream_log(f"Retrieving context for: `{prompt_name}`")
                 logger.info(
                     "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
                     prompt_name,
@@ -1613,14 +1641,14 @@ class LegacyExecutor(BaseExecutor):
                     )
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
                 shim.stream_log(
-                    f"Retrieved {len(context_list)} context chunks for: {prompt_name}"
+                    f"Retrieved {len(context_list)} context chunks for: `{prompt_name}`"
                 )
                 logger.debug(
                     "Retrieved %d context chunks for prompt: %s",
                     len(context_list),
                     prompt_name,
                 )
-                shim.stream_log(f"Running LLM completion for: {prompt_name}")
+                shim.stream_log(f"Running LLM completion for: `{prompt_name}`")
                 answer = answer_prompt_svc.construct_and_run_prompt(
                     tool_settings=tool_settings,
                     output=output,
@@ -1652,7 +1680,7 @@ class LegacyExecutor(BaseExecutor):
                 tool_id=tool_id,
                 doc_name=doc_name,
             )
-            shim.stream_log(f"Applied type conversion for: {prompt_name}")
+            shim.stream_log(f"Applied type conversion for: `{prompt_name}`")
 
             self._run_challenge_if_enabled(
                 tool_settings=tool_settings,
@@ -1676,7 +1704,7 @@ class LegacyExecutor(BaseExecutor):
                 shim=shim,
                 prompt_name=prompt_name,
             )
-            shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(f"Completed prompt: `{prompt_name}`")
 
             val = structured_output.get(prompt_name)
             if isinstance(val, str):
@@ -1738,7 +1766,7 @@ class LegacyExecutor(BaseExecutor):
         table_ctx._log_component = self._log_component
         table_ctx.log_events_id = self._log_events_id
 
-        shim.stream_log(f"Running table extraction for: {prompt_name}")
+        shim.stream_log(f"Running table extraction for: `{prompt_name}`")
         table_result = table_executor.execute(table_ctx)
 
         if table_result.success:
@@ -1747,7 +1775,7 @@ class LegacyExecutor(BaseExecutor):
             metrics.setdefault(prompt_name, {}).update(
                 {"table_extraction": table_metrics}
             )
-            shim.stream_log(f"Table extraction completed for: {prompt_name}")
+            shim.stream_log(f"Table extraction completed for: `{prompt_name}`")
             logger.info("TABLE extraction completed: prompt=%s", prompt_name)
             shim.stream_log(f"Completed prompt: {prompt_name}")
         else:
@@ -2036,6 +2064,9 @@ class LegacyExecutor(BaseExecutor):
             platform_api_key=platform_api_key,
             log_events_id=self._log_events_id,
             component=self._log_component,
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
         )
         usage_kwargs = {
             "run_id": context.run_id,
