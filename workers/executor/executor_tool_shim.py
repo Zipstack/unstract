@@ -160,8 +160,8 @@ class ExecutorToolShim(StreamMixin):
         if self.log_events_id:
             try:
                 wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
-                # PROGRESS: drives the IDE prompt-card live progress pane.
-                # Filtered out at the DB persist layer (LogType != LOG).
+                # PROGRESS payload — IDE prompt-card live updates only
+                # (dropped by DB persist since LogType != LOG).
                 progress_payload = LogPublisher.log_progress(
                     component=self.component,
                     level=wf_level,
@@ -172,11 +172,8 @@ class ExecutorToolShim(StreamMixin):
                     channel_id=self.log_events_id,
                     payload=progress_payload,
                 )
-                # LOG: feeds the workflow execution logs UI and persists
-                # to the execution_log table. Requires the workflow IDs
-                # to pass LogDataDTO validation; skip silently when any
-                # are missing (e.g. older callsites that don't thread
-                # them through yet).
+                # LOG payload — feeds workflow logs UI and persists to
+                # execution_log. LogDataDTO validation requires the IDs.
                 if self.execution_id and self.organization_id:
                     log_payload = LogPublisher.log_workflow(
                         stage=stage,

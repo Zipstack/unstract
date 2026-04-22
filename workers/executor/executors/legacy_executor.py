@@ -60,8 +60,6 @@ class LegacyExecutor(BaseExecutor):
     # Defaults for log streaming (overridden by execute()).
     _log_events_id: str = ""
     _log_component: dict[str, str] = {}
-    # Workflow IDs for persistent log attribution; empty outside of a
-    # workflow context (e.g. bare IDE runs that don't set them).
     _execution_id: str = ""
     _file_execution_id: str = ""
     _organization_id: str = ""

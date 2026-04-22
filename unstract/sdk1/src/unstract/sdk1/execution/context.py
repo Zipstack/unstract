@@ -78,9 +78,7 @@ class ExecutionContext:
     executor_params: dict[str, Any] = field(default_factory=dict)
     request_id: str | None = None
     log_events_id: str | None = None
-    # Workflow-level IDs used for persistent log attribution in the
-    # execution_log table. Optional — callers running outside a
-    # workflow context (e.g. IDE test) may omit them.
+    # Workflow IDs used by LogDataDTO for execution_log persistence.
     execution_id: str | None = None
     file_execution_id: str | None = None
 

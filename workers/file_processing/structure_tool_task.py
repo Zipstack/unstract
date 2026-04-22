@@ -236,8 +236,8 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # ---- Step 1: Setup ----
     from executor.executor_tool_shim import ExecutorToolShim
 
-    # Thread workflow IDs so pre-dispatch X2Text / platform helper logs reach
-    # the workflow logs UI (matches the pipeline/agentic dispatch contexts).
+    # Workflow IDs on the pre-dispatch shim let X2Text/platform helper logs
+    # reach the workflow logs UI before the executor dispatch happens.
     shim = ExecutorToolShim(
         platform_api_key=platform_service_api_key,
         log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
@@ -398,13 +398,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         execution_source="tool",
         organization_id=organization_id,
         request_id=file_execution_id,
-        # Thread the log channel so ExecutorToolShim.stream_log can publish
-        # tool-level progress to the workflow execution logs UI. Falls back
-        # to empty (no publish) when running outside a workflow context.
         log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
-        # Workflow IDs drive persistent attribution in the execution_log
-        # table — without them LogDataDTO validation drops tool-level
-        # messages even when WebSocket delivery succeeds.
         execution_id=execution_id,
         file_execution_id=file_execution_id,
         executor_params={
