@@ -1777,7 +1777,7 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Table extraction completed for: `{prompt_name}`")
             logger.info("TABLE extraction completed: prompt=%s", prompt_name)
-            shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(f"Completed prompt: `{prompt_name}`")
         else:
             structured_output[prompt_name] = ""
             error_msg = table_result.error or "unknown error"
@@ -1787,7 +1787,7 @@ class LegacyExecutor(BaseExecutor):
                 error_msg,
             )
             shim.stream_log(
-                f"Table extraction failed for {prompt_name}: {error_msg}",
+                f"Table extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
             )
 
@@ -1843,7 +1843,7 @@ class LegacyExecutor(BaseExecutor):
         line_item_ctx._log_component = self._log_component
         line_item_ctx.log_events_id = self._log_events_id
 
-        shim.stream_log(f"Running line-item extraction for: {prompt_name}")
+        shim.stream_log(f"Running line-item extraction for: `{prompt_name}`")
         line_item_result = line_item_executor.execute(line_item_ctx)
 
         if line_item_result.success:
@@ -1856,9 +1856,9 @@ class LegacyExecutor(BaseExecutor):
             context_list = data.get("context")
             if context_list:
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
-            shim.stream_log(f"Line-item extraction completed for: {prompt_name}")
+            shim.stream_log(f"Line-item extraction completed for: `{prompt_name}`")
             logger.info("LINE_ITEM extraction completed: prompt=%s", prompt_name)
-            shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(f"Completed prompt: `{prompt_name}`")
         else:
             structured_output[prompt_name] = ""
             error_msg = line_item_result.error or "unknown error"
@@ -1868,7 +1868,7 @@ class LegacyExecutor(BaseExecutor):
                 error_msg,
             )
             shim.stream_log(
-                f"Line-item extraction failed for {prompt_name}: {error_msg}",
+                f"Line-item extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
             )
 
