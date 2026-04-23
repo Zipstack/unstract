@@ -1907,7 +1907,15 @@ class LegacyExecutor(BaseExecutor):
             usage_kwargs=usage_kwargs,
         )
         self._usage_records.extend(outcome.usage_records)
+        # Key stays in sync with llm_usage_reason="lookup" set inside
+        # run_with_metrics; metrics are grouped by reason elsewhere.
         metrics.setdefault(prompt_name, {})["lookup_llm"] = outcome.llm_metrics
+        # Surface a prompt-level degraded flag for dashboards that group
+        # partial-failure runs without forcing the executor to error out.
+        if not outcome.success:
+            metadata.setdefault("lookup_errors", {})[prompt_name] = (outcome.error or "")[
+                :2000
+            ]
 
     @staticmethod
     def _run_webhook_postprocessing(

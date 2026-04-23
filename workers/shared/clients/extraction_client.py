@@ -1,7 +1,16 @@
 """Extraction API Client for text extraction callbacks.
 
-Used by the ide_callback worker to persist extraction results
-through the backend's internal API endpoints.
+Used by the ide_callback worker to persist extraction results through
+the backend's internal API endpoints.
+
+NOTE on scope: the callback endpoints ``v1/extraction/extraction-{complete,error}/``
+are currently registered **only** by the cloud ``lookup_v1`` plugin
+(see ``pluggable_apps/lookup_v1/internal_urls.py``). The interface is
+``source``-dispatched and designed to serve other extraction flows
+(prompt-studio docs, connectors) in the future, but in OSS-only builds
+the endpoints are absent. Callers from OSS paths should expect a 404
+response and treat it as a no-op; the worker's error handling covers
+this via a 404-terminal pattern.
 """
 
 import logging
@@ -16,7 +25,10 @@ _EXTRACTION_ERROR_ENDPOINT = "v1/extraction/extraction-error/"
 
 
 class ExtractionAPIClient(BaseAPIClient):
-    """API client for generic text extraction callback endpoints."""
+    """API client for the extraction-callback endpoints registered by
+    cloud-side plugins (today: lookup_v1). See module docstring for the
+    OSS-absence contract.
+    """
 
     def mark_extraction_complete(
         self,

@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
 from utils.filtering import FilterHelper
+from utils.user_context import UserContext
 
 from prompt_studio.prompt_studio_output_manager_v2.constants import (
     PromptOutputManagerErrorMessage,
@@ -82,9 +83,15 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_keys:
             return Response({}, status=status.HTTP_200_OK)
 
+        # Custom actions don't go through self.filter_queryset(), so
+        # OrganizationFilterBackend does not run. Scope explicitly here via
+        # the tool's organization FK to prevent cross-tenant reads.
+        organization = UserContext.get_organization()
         prompt_id_to_key = dict(
             ToolStudioPrompt.objects.filter(
-                tool_id=tool_id, prompt_key__in=prompt_keys
+                tool_id=tool_id,
+                tool_id__organization=organization,
+                prompt_key__in=prompt_keys,
             ).values_list("prompt_id", "prompt_key")
         )
         if not prompt_id_to_key:
@@ -92,7 +99,8 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
 
         outputs = (
             PromptStudioOutputManager.objects.filter(
-                prompt_id__in=prompt_id_to_key.keys()
+                prompt_id__in=prompt_id_to_key.keys(),
+                tool_id__organization=organization,
             )
             .exclude(output__isnull=True)
             .exclude(output__exact="")

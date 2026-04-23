@@ -562,6 +562,17 @@ class LLM:
             "total_tokens": last["total_tokens"],
         }
 
+    def get_last_usage_record(self) -> dict | None:
+        """Full usage record for the most recent complete() call.
+
+        Returns the complete record (tokens + cost + model + reason
+        metadata) so callers don't have to reach into ``_pending_usage``
+        directly. ``None`` if no call has been made yet.
+        """
+        if not self._pending_usage:
+            return None
+        return self._pending_usage[-1]
+
     def get_usage_reason(self) -> object:
         return self.platform_kwargs.get("llm_usage_reason")
 

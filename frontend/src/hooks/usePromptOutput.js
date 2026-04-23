@@ -33,6 +33,16 @@ try {
   // Not available in OSS
 }
 
+// Opaque extractor so the per-item enrichment payload key name lives in
+// the plugin, not OSS. OSS falls back to a no-op.
+let getEnrichmentFromItem = () => null;
+try {
+  const mod = await import("../plugins/lookup-enriched-toggle/helpers");
+  getEnrichmentFromItem = mod.getEnrichmentFromItem;
+} catch {
+  // Plugin unavailable — no-op.
+}
+
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
   const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
@@ -135,8 +145,9 @@ const usePromptOutput = () => {
         wordConfidenceData: item?.word_confidence_data,
       };
 
-      if (handleLookupOutput && item?.lookup_outputs) {
-        handleLookupOutput(item.prompt_output_id, item.lookup_outputs);
+      const enrichment = getEnrichmentFromItem(item);
+      if (handleLookupOutput && enrichment) {
+        handleLookupOutput(item.prompt_output_id, enrichment);
       }
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded) {

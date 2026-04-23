@@ -115,6 +115,55 @@ def get_latest_lookup_mutation_for_tool(tool):
         return None
 
 
+def get_original_value_if_enriched(metadata: dict, prompt_key: str):
+    """Return the pre-enrichment value for ``prompt_key`` if present.
+
+    Opaque wrapper around the cloud plugin's ``lookup_outputs`` metadata
+    shape so OSS callers don't need to know the key names. Returns None
+    when no enrichment happened or the plugin is absent.
+    """
+    if not isinstance(metadata, dict):
+        return None
+    lookup_outputs = metadata.get("lookup_outputs") or {}
+    prompt_lookup = lookup_outputs.get(prompt_key)
+    if isinstance(prompt_lookup, dict) and "original" in prompt_lookup:
+        return prompt_lookup.get("original"), prompt_lookup
+    return None
+
+
+def attach_combined_output_enrichment(result: dict, enriched_by_key: dict) -> None:
+    """Stamp the combined-output payload with enriched-output metadata.
+
+    OSS ships a stub that ignores the call; cloud reroutes into the payload
+    key its FE plugin expects. Keeping the key name out of OSS lets cloud
+    evolve the shape without OSS-side coordination.
+    """
+    try:
+        from pluggable_apps.lookup_v1.output_enrichment import (
+            attach_combined_output_enrichment as _attach,
+        )
+
+        _attach(result, enriched_by_key)
+    except ImportError:
+        return
+
+
+def extract_prompt_output_enrichment(item) -> dict | None:
+    """Pick enriched-output data off a serialized prompt-output row.
+
+    Returns a plugin-opaque dict (the FE treats it as a black box) or None
+    when no enrichment is present / plugin missing.
+    """
+    try:
+        from pluggable_apps.lookup_v1.output_enrichment import (
+            extract_prompt_output_enrichment as _extract,
+        )
+
+        return _extract(item)
+    except ImportError:
+        return None
+
+
 def get_lookup_validation_for_tool(tool) -> dict:
     """Pre-emptive lookup validation for FE Export / Deploy gating.
 

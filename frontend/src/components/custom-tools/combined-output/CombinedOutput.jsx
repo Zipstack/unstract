@@ -47,6 +47,20 @@ try {
   // The component will remain null if it is not available
 }
 
+// Cloud plugin hook — OSS falls back to passthrough helpers that leave
+// the payload untouched and report "no enrichment".
+let splitCombinedData = (data) => ({ combined: data, bundle: null });
+let buildEnrichedFromBundle = () => ({});
+let getEnrichmentFromItem = () => null;
+try {
+  const mod = await import("../../../plugins/lookup-enriched-toggle/helpers");
+  splitCombinedData = mod.splitCombinedData;
+  buildEnrichedFromBundle = mod.buildEnrichedFromBundle;
+  getEnrichmentFromItem = mod.getEnrichmentFromItem;
+} catch {
+  // Plugin unavailable — passthroughs above retain OSS behavior.
+}
+
 function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const {
     details,
@@ -118,26 +132,15 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         const prompts = details?.prompts || [];
 
         if (activeKey === "0" && !isSimplePromptStudio) {
-          const lookupOutputs = data?._lookup_outputs || {};
-          const output = Object.entries(data).reduce((acc, [key, value]) => {
-            if (key === "_lookup_outputs") return acc;
+          const { combined: payload, bundle } = splitCombinedData(data);
+          const output = Object.entries(payload).reduce((acc, [key, value]) => {
             acc[key] = displayPromptResult(value, false);
             return acc;
           }, {});
           setCombinedOutput(output);
-
-          if (Object.keys(lookupOutputs).length > 0) {
-            const enriched = {};
-            for (const [key, val] of Object.entries(output)) {
-              const lookupData = lookupOutputs[key];
-              enriched[key] = lookupData?.output
-                ? displayPromptResult(lookupData.output, false)
-                : val;
-            }
-            setEnrichedOutput(enriched);
-          } else {
-            setEnrichedOutput({});
-          }
+          setEnrichedOutput(
+            buildEnrichedFromBundle(output, bundle, displayPromptResult),
+          );
         } else {
           const output = {};
           const enriched = {};
@@ -157,11 +160,10 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
                 ? displayPromptResult(outputDetails?.output, false)
                 : "";
 
-            // Build enriched output from lookup_outputs
-            const lookupData = outputDetails?.lookup_outputs;
-            if (lookupData?.output) {
+            const enrichment = getEnrichmentFromItem(outputDetails);
+            if (enrichment?.output) {
               enriched[item?.prompt_key] = displayPromptResult(
-                lookupData.output,
+                enrichment.output,
                 false,
               );
               hasEnriched = true;

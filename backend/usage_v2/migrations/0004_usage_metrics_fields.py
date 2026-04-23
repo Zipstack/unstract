@@ -80,11 +80,7 @@ class Migration(migrations.Migration):
                 null=True,
             ),
         ),
-        migrations.AddIndex(
-            model_name="usage",
-            index=models.Index(
-                fields=["llm_usage_reason", "reference_id", "-created_at"],
-                name="idx_usage_reason_ref_created",
-            ),
-        ),
+        # Index creation moved to 0005 so it can run CONCURRENTLY — the usage
+        # table is billing-critical and a plain AddIndex takes a share-update
+        # lock for the duration of the build on large tables.
     ]

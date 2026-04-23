@@ -5,7 +5,12 @@ from typing import Any
 from django.core.exceptions import ObjectDoesNotExist
 from django.utils import timezone
 
-from prompt_studio.lookup_utils import persist_lookup_output
+from prompt_studio.lookup_utils import (
+    attach_combined_output_enrichment,
+    extract_prompt_output_enrichment,
+    get_original_value_if_enriched,
+    persist_lookup_output,
+)
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
@@ -175,13 +180,16 @@ class OutputManagerHelper:
             # TODO: use enums here
             output = outputs.get(prompt.prompt_key)
 
-            # If lookup enrichment ran, structured_output contains the enriched
-            # value. Restore the original raw LLM output for the prompt output
-            # table — the enriched value lives in LookupOutputResult instead.
-            lookup_outputs = metadata.get("lookup_outputs", {})
-            prompt_lookup = lookup_outputs.get(prompt.prompt_key)
-            if prompt_lookup and "original" in prompt_lookup:
-                output = prompt_lookup["original"]
+            # If lookup enrichment ran, structured_output contains the
+            # enriched value. Restore the original raw LLM output for the
+            # prompt output table — the enriched value is persisted by the
+            # cloud plugin via persist_lookup_output. Cloud owns the
+            # metadata shape; OSS queries through the bridge.
+            enrichment = get_original_value_if_enriched(metadata, prompt.prompt_key)
+            if enrichment is not None:
+                output, prompt_lookup = enrichment
+            else:
+                prompt_lookup = None
 
             if prompt.enforce_type in {"json", "table", "record", "line-item"}:
                 output = json.dumps(output)
@@ -260,13 +268,13 @@ class OutputManagerHelper:
 
         Returns:
             dict[str, Any]: Formatted JSON response for combined output.
-                Includes a reserved ``_lookup_outputs`` key with per-prompt
-                enriched data when lookups are configured.
+                When lookups are configured, the cloud plugin adds an
+                opaque enrichment payload via ``attach_combined_output_enrichment``.
         """
         from prompt_studio.lookup_utils import enrich_prompt_output
 
         result: dict[str, Any] = {}
-        lookup_outputs: dict[str, Any] = {}
+        enrichment_by_key: dict[str, Any] = {}
 
         for tool_prompt in tool_studio_prompts:
             if tool_prompt.prompt_type == PSOMKeys.NOTES:
@@ -298,15 +306,12 @@ class OutputManagerHelper:
 
                 for output in queryset:
                     result[tool_prompt.prompt_key] = output.output
-                    # Check for lookup enrichment
                     enriched = enrich_prompt_output(output, {})
-                    if "lookup_outputs" in enriched:
-                        lookup_outputs[tool_prompt.prompt_key] = enriched[
-                            "lookup_outputs"
-                        ]
+                    bundle = extract_prompt_output_enrichment(enriched)
+                    if bundle is not None:
+                        enrichment_by_key[tool_prompt.prompt_key] = bundle
             except ObjectDoesNotExist:
                 result[tool_prompt.prompt_key] = ""
 
-        if lookup_outputs:
-            result["_lookup_outputs"] = lookup_outputs
+        attach_combined_output_enrichment(result, enrichment_by_key)
         return result
