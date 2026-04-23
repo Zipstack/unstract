@@ -43,3 +43,11 @@ class BaseModel(models.Model):
 
     class Meta:
         abstract = True
+
+    def save(self, *args, update_fields=None, **kwargs):
+        # Django only fires auto_now for fields listed in update_fields, so a
+        # partial save() silently drops the modified_at bump. Auto-include it
+        # whenever the caller restricts update_fields.
+        if update_fields is not None and "modified_at" not in update_fields:
+            update_fields = list(update_fields) + ["modified_at"]
+        return super().save(*args, update_fields=update_fields, **kwargs)
