@@ -13,8 +13,8 @@ from unstract.connectors.filesystems.unstract_file_system import UnstractFileSys
 from .exceptions import (
     BUCKET_PROBE_DISPOSITION,
     BucketProbeDisposition,
-    client_error_code,
     handle_s3fs_exception,
+    s3_error_code,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,11 +25,10 @@ _BUCKET_PROBE_RETRY_DELAY_SECONDS = 0.5
 
 
 class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
-    """S3FileSystem that lists only buckets the credentials can browse.
+    """Lists only buckets the credentials can browse.
 
-    Probes each bucket with `list_objects_v2(MaxKeys=1)` and looks up the
-    resulting `ClientError.Code` in `BUCKET_PROBE_DISPOSITION`. Unknown
-    codes propagate so real failures aren't silently hidden.
+    Probes each bucket and looks up the S3 `Error.Code` in
+    `BUCKET_PROBE_DISPOSITION`. Unlisted codes propagate.
     """
 
     async def _lsbuckets(self, refresh: bool = False) -> list[dict[str, Any]]:
@@ -64,8 +63,8 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
         try:
             await self._call_s3("list_objects_v2", Bucket=name, MaxKeys=1)
             return True
-        except ClientError as exc:
-            code = client_error_code(exc)
+        except (ClientError, OSError) as exc:
+            code = s3_error_code(exc)
             disposition = BUCKET_PROBE_DISPOSITION.get(code)
             if disposition is BucketProbeDisposition.DROP:
                 return False
@@ -85,18 +84,26 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
         try:
             await self._call_s3("list_objects_v2", Bucket=name, MaxKeys=1)
             return True
-        except ClientError as retry_exc:
-            retry_code = client_error_code(retry_exc)
-            if BUCKET_PROBE_DISPOSITION.get(retry_code) is BucketProbeDisposition.DROP:
+        except (ClientError, OSError) as retry_exc:
+            retry_code = s3_error_code(retry_exc)
+            disposition = BUCKET_PROBE_DISPOSITION.get(retry_code)
+            if disposition is BucketProbeDisposition.DROP:
                 return False
-            logger.info(
-                "[S3/MinIO] Bucket '%s' still transient after retry "
-                "(first=%s, retry=%s); keeping in listing.",
-                name,
-                first_code,
-                retry_code,
-            )
-            return True
+            if disposition is BucketProbeDisposition.FAIL_OPEN:
+                return True
+            if disposition is BucketProbeDisposition.RETRY_FAIL_OPEN:
+                # Still transient after one retry — keep to avoid flapping.
+                logger.info(
+                    "[S3/MinIO] Bucket '%s' still transient after retry "
+                    "(first=%s, retry=%s); keeping in listing.",
+                    name,
+                    first_code,
+                    retry_code,
+                )
+                return True
+            # Unclassified retry failure (e.g. credentials expired mid-probe):
+            # re-raise so the real error surfaces instead of being hidden.
+            raise
 
 
 class MinioFS(UnstractFileSystem):

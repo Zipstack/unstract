@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from botocore.exceptions import ClientError
+from s3fs.errors import translate_boto_error
 
 from unstract.connectors.filesystems.minio.minio import (
     MinioFS,
@@ -46,8 +47,17 @@ class TestMinoFS(unittest.TestCase):
         print(s3.get_fsspec_fs().ls("/minio-test"))
 
 
-def _client_error(code: str) -> ClientError:
-    return ClientError({"Error": {"Code": code, "Message": code}}, "ListObjectsV2")
+def _translated_error(code: str) -> BaseException:
+    """Mirror what s3fs `_call_s3` actually raises in production.
+
+    s3fs routes every raise through `translate_boto_error`, which converts
+    `ClientError` into `PermissionError` / `FileNotFoundError` / `OSError`
+    with the original `ClientError` preserved as `__cause__`. Tests must
+    raise the translated form or they won't exercise the real catch path.
+    """
+    ce = ClientError({"Error": {"Code": code, "Message": code}}, "ListObjectsV2")
+    translated: BaseException = translate_boto_error(ce)
+    return translated
 
 
 class TestAccessFilteredS3FileSystem(unittest.TestCase):
@@ -70,13 +80,26 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
             self.assertTrue(asyncio.run(fs._is_bucket_accessible("allowed")))
 
     def test_access_denied_bucket_is_dropped(self) -> None:
+        # s3fs translates `AccessDenied` → `PermissionError`; the filter
+        # must still drop the bucket by recovering the code from `__cause__`.
         fs = self._make_fs()
         with patch.object(
             fs,
             "_call_s3",
-            new=AsyncMock(side_effect=_client_error("AccessDenied")),
+            new=AsyncMock(side_effect=_translated_error("AccessDenied")),
         ):
             self.assertFalse(asyncio.run(fs._is_bucket_accessible("denied")))
+
+    def test_no_such_bucket_is_dropped(self) -> None:
+        # Race: bucket deleted between `list_buckets` and probe → `NoSuchBucket`
+        # (translated to `FileNotFoundError`). Drop it rather than surface.
+        fs = self._make_fs()
+        with patch.object(
+            fs,
+            "_call_s3",
+            new=AsyncMock(side_effect=_translated_error("NoSuchBucket")),
+        ):
+            self.assertFalse(asyncio.run(fs._is_bucket_accessible("deleted")))
 
     def test_permanent_redirect_bucket_is_kept(self) -> None:
         # Fail-open: region mismatch keeps the bucket listed.
@@ -84,7 +107,7 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
         with patch.object(
             fs,
             "_call_s3",
-            new=AsyncMock(side_effect=_client_error("PermanentRedirect")),
+            new=AsyncMock(side_effect=_translated_error("PermanentRedirect")),
         ):
             self.assertTrue(asyncio.run(fs._is_bucket_accessible("other-region")))
 
@@ -92,7 +115,7 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
         fs = self._make_fs()
 
         async def fake_call(_action: str, **_kwargs: object) -> dict[str, object]:
-            raise _client_error("SlowDown")
+            raise _translated_error("SlowDown")
 
         call = AsyncMock(side_effect=fake_call)
         with (
@@ -107,7 +130,7 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
         codes = ["SlowDown", "AccessDenied"]
 
         async def fake_call(_action: str, **_kwargs: object) -> dict[str, object]:
-            raise _client_error(codes.pop(0))
+            raise _translated_error(codes.pop(0))
 
         with (
             patch.object(fs, "_call_s3", new=AsyncMock(side_effect=fake_call)),
@@ -115,16 +138,44 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
         ):
             self.assertFalse(asyncio.run(fs._is_bucket_accessible("slow-then-denied")))
 
-    def test_unknown_client_error_propagates(self) -> None:
-        # Unknown codes must NOT be silently hidden.
+    def test_throttling_then_unknown_on_retry_propagates(self) -> None:
+        # Unknown error on retry (e.g. credentials expire mid-probe) must NOT
+        # be silently swallowed — it has to surface as a real failure.
+        fs = self._make_fs()
+        codes = ["SlowDown", "SomeWeirdUnknownCode"]
+
+        async def fake_call(_action: str, **_kwargs: object) -> dict[str, object]:
+            raise _translated_error(codes.pop(0))
+
+        with (
+            patch.object(fs, "_call_s3", new=AsyncMock(side_effect=fake_call)),
+            patch("asyncio.sleep", new=AsyncMock(return_value=None)),
+        ):
+            with self.assertRaises(OSError):
+                asyncio.run(fs._is_bucket_accessible("slow-then-mystery"))
+
+    def test_unknown_error_propagates(self) -> None:
+        # Unknown codes must NOT be silently hidden on first probe either.
         fs = self._make_fs()
         with patch.object(
             fs,
             "_call_s3",
-            new=AsyncMock(side_effect=_client_error("SomeWeirdUnknownCode")),
+            new=AsyncMock(side_effect=_translated_error("SomeWeirdUnknownCode")),
         ):
-            with self.assertRaises(ClientError):
+            with self.assertRaises(OSError):
                 asyncio.run(fs._is_bucket_accessible("mystery"))
+
+    def test_request_time_too_skewed_propagates(self) -> None:
+        # Clock skew is system-wide, not bucket-level; it must surface so
+        # `handle_s3fs_exception` can show the clock-skew message.
+        fs = self._make_fs()
+        with patch.object(
+            fs,
+            "_call_s3",
+            new=AsyncMock(side_effect=_translated_error("RequestTimeTooSkewed")),
+        ):
+            with self.assertRaises(PermissionError):
+                asyncio.run(fs._is_bucket_accessible("any-bucket"))
 
     def test_lsbuckets_override_wires_to_filter(self) -> None:
         # Regression guard for s3fs signature drift on `_lsbuckets`/`_call_s3`.
@@ -133,7 +184,7 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
 
         async def fake_call(_action: str, **kwargs: object) -> dict[str, object]:
             if kwargs.get("Bucket") == "denied":
-                raise _client_error("AccessDenied")
+                raise _translated_error("AccessDenied")
             return {}
 
         with (
