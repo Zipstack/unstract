@@ -20,6 +20,9 @@ class BaseModelQuerySet(models.QuerySet):
         return super().update(**kwargs)
 
     def bulk_update(self, objs, fields, *args, **kwargs):
+        # Materialize objs before iterating so we don't exhaust a generator
+        # before Django's own tuple(objs) sees it.
+        objs = list(objs)
         fields = list(fields)
         if "modified_at" not in fields:
             now = timezone.now()
