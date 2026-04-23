@@ -31,6 +31,26 @@ class BaseModelQuerySet(models.QuerySet):
             fields.append("modified_at")
         return super().bulk_update(objs, fields, *args, **kwargs)
 
+    def bulk_create(
+        self, objs, *args, update_conflicts=False, update_fields=None, **kwargs
+    ):
+        # On upsert-on-conflict Django runs an UPDATE with only the listed
+        # fields, which skips auto_now the same way save(update_fields=...)
+        # does. Insert-only bulk_create already handles auto_now itself.
+        if (
+            update_conflicts
+            and update_fields is not None
+            and "modified_at" not in update_fields
+        ):
+            update_fields = list(update_fields) + ["modified_at"]
+        return super().bulk_create(
+            objs,
+            *args,
+            update_conflicts=update_conflicts,
+            update_fields=update_fields,
+            **kwargs,
+        )
+
 
 BaseModelManager = models.Manager.from_queryset(BaseModelQuerySet)
 
