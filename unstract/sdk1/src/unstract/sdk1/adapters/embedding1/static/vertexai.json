@@ -57,6 +57,14 @@
             "retrieval"
           ],
           "default": "default"
+      },
+      "max_retries": {
+        "type": "number",
+        "minimum": 0,
+        "multipleOf": 1,
+        "title": "Max Retries",
+        "default": 3,
+        "description": "The maximum number of times to retry a request if it fails."
       }
     }
   }

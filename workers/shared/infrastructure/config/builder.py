@@ -323,27 +323,26 @@ class WorkerBuilder:
 
         try:
             import importlib
-            from pathlib import Path
+            import importlib.util
 
-            # Check if the worker.py file exists
-            # Path resolution: builder.py is at /app/workers/shared/infrastructure/config/
-            # We need to get to /app/workers/, so go up 3 levels
-            pluggable_worker_path = (
-                Path(__file__).resolve().parents[3]
-                / "pluggable_worker"
-                / worker_type.value
-                / "worker.py"
-            )
+            # Ask Python's import system whether the module is resolvable.
+            # find_spec() consults all registered finders and handles every
+            # module representation (source .py, Nuitka/Cython .so, .pyc,
+            # namespace packages, zipimports) — unlike a filesystem check
+            # for a specific file extension, which breaks for compiled plugins.
+            module_path = f"pluggable_worker.{worker_type.value}.worker"
 
-            if not pluggable_worker_path.exists():
-                logger.error(f"Pluggable worker file not found: {pluggable_worker_path}")
+            if importlib.util.find_spec(module_path) is None:
+                logger.error(f"Pluggable worker module not importable: {module_path}")
                 return False
 
-            # Try to import the module to verify it's valid
-            module_path = f"pluggable_worker.{worker_type.value}.worker"
+            # Load it to catch findable-but-broken modules (e.g. import errors
+            # inside worker.py that find_spec wouldn't surface).
             importlib.import_module(module_path)
 
-        except ImportError:
+        except (ImportError, ValueError):
+            # ValueError: find_spec raises this when sys.modules[module_path] is
+            # populated but has __spec__ = None (from a prior failed import).
             logger.exception(f"Failed to import pluggable worker {worker_type.value}")
             return False
         except (OSError, AttributeError):
