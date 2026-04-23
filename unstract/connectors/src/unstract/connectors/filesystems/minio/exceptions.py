@@ -1,4 +1,36 @@
+from enum import Enum
+
+from botocore.exceptions import ClientError
+
 from unstract.connectors.exceptions import ConnectorError
+
+
+class BucketProbeDisposition(Enum):
+    """Action for a `list_objects_v2` probe failure, per S3 error code."""
+
+    DROP = "drop"  # Credentials genuinely lack access — hide the bucket.
+    FAIL_OPEN = "fail_open"  # Region mismatch — keep bucket visible.
+    RETRY_FAIL_OPEN = "retry_fail_open"  # Throttled — retry once, then keep.
+
+
+# One row per S3 `Error.Code` → disposition. Same shape as
+# `S3FS_EXC_TO_UNSTRACT_EXC` below (code → meaning). Codes absent from
+# this table propagate as real errors instead of silently hiding a bucket.
+BUCKET_PROBE_DISPOSITION: dict[str, BucketProbeDisposition] = {
+    "AccessDenied": BucketProbeDisposition.DROP,
+    "AllAccessDisabled": BucketProbeDisposition.DROP,
+    "PermanentRedirect": BucketProbeDisposition.FAIL_OPEN,
+    "IllegalLocationConstraintException": BucketProbeDisposition.FAIL_OPEN,
+    "SlowDown": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "Throttling": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "ThrottlingException": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "RequestTimeTooSkewed": BucketProbeDisposition.RETRY_FAIL_OPEN,
+}
+
+
+def client_error_code(exc: ClientError) -> str:
+    return str(exc.response.get("Error", {}).get("Code", "") or "")
+
 
 S3FS_EXC_TO_UNSTRACT_EXC: dict[str, str] = {
     # Auth errors

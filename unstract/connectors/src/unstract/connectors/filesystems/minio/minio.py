@@ -5,35 +5,38 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
 
+from botocore.exceptions import ClientError
 from s3fs.core import S3FileSystem
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
-from .exceptions import handle_s3fs_exception
+from .exceptions import (
+    BUCKET_PROBE_DISPOSITION,
+    BucketProbeDisposition,
+    client_error_code,
+    handle_s3fs_exception,
+)
 
 logger = logging.getLogger(__name__)
 
 # Cap concurrent per-bucket probes to avoid S3 503 SlowDown on large accounts.
 _MAX_CONCURRENT_BUCKET_PROBES = 16
+_BUCKET_PROBE_RETRY_DELAY_SECONDS = 0.5
 
 
 class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
     """S3FileSystem that lists only buckets the credentials can browse.
 
-    `s3:ListAllMyBuckets` (account-level) returns every bucket in the
-    account, which is wider than `s3:ListBucket` (per-bucket). We probe
-    each bucket with a 1-key `list_objects_v2` and drop any that fail.
+    Probes each bucket with `list_objects_v2(MaxKeys=1)` and looks up the
+    resulting `ClientError.Code` in `BUCKET_PROBE_DISPOSITION`. Unknown
+    codes propagate so real failures aren't silently hidden.
     """
 
     async def _lsbuckets(self, refresh: bool = False) -> list[dict[str, Any]]:
-        if not refresh and "" in self.dircache:
-            return self.dircache[""]  # type: ignore[no-any-return]
         buckets: list[dict[str, Any]] = await super()._lsbuckets(refresh=refresh)
         if not buckets:
             return buckets
-        accessible = await self._filter_accessible_buckets(buckets)
-        self.dircache[""] = accessible
-        return accessible
+        return await self._filter_accessible_buckets(buckets)
 
     async def _filter_accessible_buckets(
         self, buckets: list[dict[str, Any]]
@@ -45,15 +48,55 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
                 return await self._is_bucket_accessible(name)
 
         results = await asyncio.gather(*(_probe(b["name"]) for b in buckets))
-        return [b for b, ok in zip(buckets, results, strict=True) if ok]
+        accessible = [b for b, ok in zip(buckets, results, strict=True) if ok]
+        dropped = len(buckets) - len(accessible)
+        if dropped:
+            logger.info(
+                "[S3/MinIO] Bucket filter: kept %d of %d; dropped %d on "
+                "AccessDenied/AllAccessDisabled.",
+                len(accessible),
+                len(buckets),
+                dropped,
+            )
+        return accessible
 
     async def _is_bucket_accessible(self, name: str) -> bool:
         try:
             await self._call_s3("list_objects_v2", Bucket=name, MaxKeys=1)
             return True
-        except Exception as exc:
-            logger.debug("[S3/MinIO] Dropping inaccessible bucket '%s': %s", name, exc)
-            return False
+        except ClientError as exc:
+            code = client_error_code(exc)
+            disposition = BUCKET_PROBE_DISPOSITION.get(code)
+            if disposition is BucketProbeDisposition.DROP:
+                return False
+            if disposition is BucketProbeDisposition.FAIL_OPEN:
+                logger.info(
+                    "[S3/MinIO] Bucket '%s' probe returned %s; keeping in listing.",
+                    name,
+                    code,
+                )
+                return True
+            if disposition is BucketProbeDisposition.RETRY_FAIL_OPEN:
+                return await self._retry_probe_fail_open(name, code)
+            raise
+
+    async def _retry_probe_fail_open(self, name: str, first_code: str) -> bool:
+        await asyncio.sleep(_BUCKET_PROBE_RETRY_DELAY_SECONDS)
+        try:
+            await self._call_s3("list_objects_v2", Bucket=name, MaxKeys=1)
+            return True
+        except ClientError as retry_exc:
+            retry_code = client_error_code(retry_exc)
+            if BUCKET_PROBE_DISPOSITION.get(retry_code) is BucketProbeDisposition.DROP:
+                return False
+            logger.info(
+                "[S3/MinIO] Bucket '%s' still transient after retry "
+                "(first=%s, retry=%s); keeping in listing.",
+                name,
+                first_code,
+                retry_code,
+            )
+            return True
 
 
 class MinioFS(UnstractFileSystem):
