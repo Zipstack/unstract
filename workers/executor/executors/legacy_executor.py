@@ -1896,56 +1896,18 @@ class LegacyExecutor(BaseExecutor):
             return
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
-        llm_adapter_id = lookup_config.get("llm_adapter_id", "")
-        llm = llm_cls(
-            adapter_instance_id=llm_adapter_id,
-            tool=shim,
-            usage_kwargs={
-                **(usage_kwargs or {}),
-                PSKeys.LLM_USAGE_REASON: "lookup",
-                **lookup_config.get("usage_kwargs_extra", {}),
-            },
-            capture_metrics=True,
-        )
-
-        enricher = lookup_cls(
-            current_value=current_value,
+        outcome = lookup_cls.run_with_metrics(
+            llm_cls=llm_cls,
             lookup_config=lookup_config,
             structured_output=structured_output,
-            llm=llm,
-            shim=shim,
+            current_value=current_value,
             metadata=metadata,
             prompt_name=prompt_name,
+            shim=shim,
+            usage_kwargs=usage_kwargs,
         )
-        try:
-            enricher.run()
-        except Exception as e:
-            logger.warning("Lookup enrichment failed for %s: %s", prompt_name, e)
-            lookup_label = lookup_config.get("lookup_name") or prompt_name
-            shim.stream_log(
-                f"Lookup `{lookup_label}` failed: {str(e)[:200]}",
-                level=LogLevel.ERROR,
-            )
-            error_record = {
-                "usage_type": "llm",
-                "llm_usage_reason": "lookup",
-                "model_name": lookup_config.get("llm_adapter_id", "unknown"),
-                "status": "ERROR",
-                "error_message": str(e)[:2000],
-                "prompt_tokens": 0,
-                "completion_tokens": 0,
-                "total_tokens": 0,
-                "embedding_tokens": 0,
-                "cost_in_dollars": 0.0,
-                **(usage_kwargs or {}),
-                **lookup_config.get("usage_kwargs_extra", {}),
-            }
-            self._usage_records.append(error_record)
-        finally:
-            self._usage_records.extend(llm.flush_pending_usage())
-            metrics.setdefault(prompt_name, {})[f"{llm.get_usage_reason()}_llm"] = (
-                llm.get_metrics()
-            )
+        self._usage_records.extend(outcome.usage_records)
+        metrics.setdefault(prompt_name, {})["lookup_llm"] = outcome.llm_metrics
 
     @staticmethod
     def _run_webhook_postprocessing(
