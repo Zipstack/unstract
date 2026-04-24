@@ -1,8 +1,10 @@
 import logging
 
+from notification_v2.enums import NotificationTrigger
 from notification_v2.helper import NotificationHelper
 from notification_v2.models import Notification
 from pipeline_v2.dto import PipelineStatusPayload
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.models import APIDeployment
@@ -16,11 +18,32 @@ class APINotification:
         self.api = api
         self.workflow_execution = workflow_execution
 
-    def send(self):
-        if not self.notifications.count():
-            logger.info(f"No notifications found for api {self.api}")
+    def send(self) -> None:
+        # Partition notifications by the run outcome so each row's notify_on
+        # preference is honored. STOPPED and any other non-terminal status
+        # fire only for ALL — explicit opt-ins to FAILURES/SUCCESS shouldn't.
+        status = self.workflow_execution.status
+        if status == ExecutionStatus.ERROR.value:
+            self.notifications = self.notifications.exclude(
+                notify_on=NotificationTrigger.SUCCESS_ONLY.value
+            )
+        elif status == ExecutionStatus.COMPLETED.value:
+            self.notifications = self.notifications.exclude(
+                notify_on=NotificationTrigger.FAILURES_ONLY.value
+            )
+        else:
+            self.notifications = self.notifications.filter(
+                notify_on=NotificationTrigger.ALL.value
+            )
+
+        if not self.notifications.exists():
+            logger.info(
+                "No notifications to dispatch for api %s (status=%s)",
+                self.api,
+                status,
+            )
             return
-        logger.info(f"Sending api status notification for api {self.api}")
+        logger.info("Sending api status notification for api %s", self.api)
 
         payload_dto = PipelineStatusPayload(
             type="API",

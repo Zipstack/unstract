@@ -36,3 +36,15 @@ class PlatformType(Enum):
     @classmethod
     def choices(cls):
         return [(e.value, e.name.replace("_", " ").capitalize()) for e in cls]
+
+
+class NotificationTrigger(Enum):
+    """Controls which run outcomes fire a notification."""
+
+    ALL = "ALL"
+    FAILURES_ONLY = "FAILURES_ONLY"
+    SUCCESS_ONLY = "SUCCESS_ONLY"
+
+    @classmethod
+    def choices(cls):
+        return [(e.value, e.name.replace("_", " ").capitalize()) for e in cls]

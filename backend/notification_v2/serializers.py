@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
 
-from .enums import AuthorizationType, NotificationType, PlatformType
+from .enums import AuthorizationType, NotificationTrigger, NotificationType, PlatformType
 from .models import Notification
 
 
@@ -11,6 +11,11 @@ class NotificationSerializer(serializers.ModelSerializer):
     platform = serializers.ChoiceField(choices=PlatformType.choices(), required=False)
     max_retries = serializers.IntegerField(
         max_value=4, min_value=0, default=0, required=False
+    )
+    notify_on = serializers.ChoiceField(
+        choices=NotificationTrigger.choices(),
+        default=NotificationTrigger.ALL.value,
+        required=False,
     )
 
     class Meta:

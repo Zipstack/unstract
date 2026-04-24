@@ -12,6 +12,7 @@ const DEFAULT_FORM_DETAILS = {
   authorization_key: "",
   is_active: false,
   max_retries: 0,
+  notify_on: "ALL",
   pipeline: "",
   api: "",
   url: "",
@@ -52,6 +53,12 @@ const AUTHORIZATION_TYPES = [
     value: "NONE",
     label: "NONE",
   },
+];
+
+const NOTIFY_ON_OPTIONS = [
+  { value: "ALL", label: "On every completion" },
+  { value: "FAILURES_ONLY", label: "On failures only" },
+  { value: "SUCCESS_ONLY", label: "On success only" },
 ];
 
 function CreateNotification({
@@ -191,6 +198,12 @@ function CreateNotification({
       component: <Input type="number" />,
       tooltip:
         "Specify the maximum number of times the notification should be retried if it fails.",
+    },
+    {
+      label: "Notify on",
+      name: "notify_on",
+      component: <Select options={NOTIFY_ON_OPTIONS} />,
+      tooltip: "Choose which run outcomes should trigger this webhook.",
     },
   ];
 

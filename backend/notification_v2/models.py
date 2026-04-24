@@ -5,7 +5,7 @@ from django.db import models
 from pipeline_v2.models import Pipeline
 from utils.models.base_model import BaseModel
 
-from .enums import AuthorizationType, NotificationType, PlatformType
+from .enums import AuthorizationType, NotificationTrigger, NotificationType, PlatformType
 
 NOTIFICATION_NAME_MAX_LENGTH = 255
 
@@ -46,6 +46,17 @@ class Notification(BaseModel):
     is_active = models.BooleanField(
         default=True,
         db_comment="Flag indicating whether the notification is active or not.",
+    )
+    notify_on = models.CharField(
+        max_length=50,
+        choices=NotificationTrigger.choices(),
+        default=NotificationTrigger.ALL.value,
+        db_comment=(
+            "Controls which run outcomes trigger this notification. ALL (default) "
+            "preserves the historical 'notify on every completion' behavior; "
+            "FAILURES_ONLY fires only on failed runs (ERROR for API deployments, "
+            "FAILURE for ETL pipelines); SUCCESS_ONLY fires only on successful runs."
+        ),
     )
     # Foreign keys to specific models
     pipeline = models.ForeignKey(
