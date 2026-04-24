@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import random
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any
@@ -51,8 +52,8 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
         dropped = len(buckets) - len(accessible)
         if dropped:
             logger.info(
-                "[S3/MinIO] Bucket filter: kept %d of %d; dropped %d on "
-                "AccessDenied/AllAccessDisabled.",
+                "[S3/MinIO] Bucket filter: kept %d of %d; "
+                "dropped %d on DROP dispositions.",
                 len(accessible),
                 len(buckets),
                 dropped,
@@ -69,18 +70,30 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
             if disposition is BucketProbeDisposition.DROP:
                 return False
             if disposition is BucketProbeDisposition.FAIL_OPEN:
-                logger.info(
-                    "[S3/MinIO] Bucket '%s' probe returned %s; keeping in listing.",
+                logger.warning(
+                    "[S3/MinIO] Bucket %r probe returned %s; keeping in listing.",
                     name,
                     code,
                 )
                 return True
             if disposition is BucketProbeDisposition.RETRY_FAIL_OPEN:
                 return await self._retry_probe_fail_open(name, code)
+            # Unclassified code: log which bucket before propagating so the
+            # gather-cancellation has a breadcrumb.
+            logger.exception(
+                "[S3/MinIO] Unclassified probe failure for bucket %r "
+                "(code=%r); propagating.",
+                name,
+                code,
+            )
             raise
 
     async def _retry_probe_fail_open(self, name: str, first_code: str) -> bool:
-        await asyncio.sleep(_BUCKET_PROBE_RETRY_DELAY_SECONDS)
+        # Full jitter avoids correlated retries under SlowDown thundering herd.
+        await asyncio.sleep(
+            _BUCKET_PROBE_RETRY_DELAY_SECONDS
+            + random.uniform(0, _BUCKET_PROBE_RETRY_DELAY_SECONDS)
+        )
         try:
             await self._call_s3("list_objects_v2", Bucket=name, MaxKeys=1)
             return True
@@ -90,11 +103,18 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
             if disposition is BucketProbeDisposition.DROP:
                 return False
             if disposition is BucketProbeDisposition.FAIL_OPEN:
+                logger.warning(
+                    "[S3/MinIO] Bucket %r fail-open on retry "
+                    "(first=%s, retry=%s); keeping in listing.",
+                    name,
+                    first_code,
+                    retry_code,
+                )
                 return True
             if disposition is BucketProbeDisposition.RETRY_FAIL_OPEN:
                 # Still transient after one retry — keep to avoid flapping.
                 logger.info(
-                    "[S3/MinIO] Bucket '%s' still transient after retry "
+                    "[S3/MinIO] Bucket %r still transient after retry "
                     "(first=%s, retry=%s); keeping in listing.",
                     name,
                     first_code,
@@ -102,7 +122,14 @@ class _AccessFilteredS3FileSystem(S3FileSystem):  # type: ignore[misc]
                 )
                 return True
             # Unclassified retry failure (e.g. credentials expired mid-probe):
-            # re-raise so the real error surfaces instead of being hidden.
+            # log the bucket, then re-raise so the real error surfaces.
+            logger.exception(
+                "[S3/MinIO] Unclassified retry probe failure for bucket %r "
+                "(first=%s, retry=%s); propagating.",
+                name,
+                first_code,
+                retry_code,
+            )
             raise
 
 

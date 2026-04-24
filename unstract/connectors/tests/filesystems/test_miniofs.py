@@ -4,12 +4,15 @@ import unittest
 from unittest.mock import AsyncMock, patch
 
 from botocore.exceptions import ClientError
+from s3fs.core import S3FileSystem
 from s3fs.errors import translate_boto_error
 
+from unstract.connectors.filesystems.minio.exceptions import s3_error_code
 from unstract.connectors.filesystems.minio.minio import (
     MinioFS,
     _AccessFilteredS3FileSystem,
 )
+from unstract.connectors.filesystems.ucs.ucs import UnstractCloudStorage
 
 
 class TestMinoFS(unittest.TestCase):
@@ -61,7 +64,7 @@ def _translated_error(code: str) -> BaseException:
 
 
 class TestAccessFilteredS3FileSystem(unittest.TestCase):
-    """Unit tests for the bucket-access filter added in UN-3358.
+    """Unit tests for the per-bucket access filter in _AccessFilteredS3FileSystem.
 
     These tests don't need a live MinIO/S3. They bypass
     `_AccessFilteredS3FileSystem.__init__` and monkey-patch `_call_s3` /
@@ -201,6 +204,32 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
     def test_default_fs_class_is_filtered(self) -> None:
         # MinioFS defaults to the access-filtered filesystem; subclasses can opt out.
         self.assertIs(MinioFS._FS_CLASS, _AccessFilteredS3FileSystem)
+
+    def test_ucs_opts_out_of_access_filter(self) -> None:
+        # UCS credentials are expected to have full access, so the per-bucket
+        # probe must be skipped. Guards against a future refactor dropping
+        # the `_FS_CLASS = S3FileSystem` override in ucs.py.
+        self.assertIs(UnstractCloudStorage._FS_CLASS, S3FileSystem)
+        self.assertIsNot(UnstractCloudStorage._FS_CLASS, _AccessFilteredS3FileSystem)
+
+    def test_error_code_walks_context_when_cause_absent(self) -> None:
+        # Guards against future wrapper layers that use implicit exception
+        # chaining (`raise X` inside an `except`). The original `ClientError`
+        # lands on `__context__`, not `__cause__` — the helper must still
+        # recover the disposition code or we silently propagate AccessDenied.
+        client_exc = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "AccessDenied"}},
+            "ListObjectsV2",
+        )
+        try:
+            try:
+                raise client_exc
+            except ClientError:
+                # Implicit chaining: no `from` clause, so ClientError lands
+                # on __context__ of the OSError below.
+                raise OSError("translated")  # noqa: B904
+        except OSError as outer:
+            self.assertEqual(s3_error_code(outer), "AccessDenied")
 
 
 if __name__ == "__main__":

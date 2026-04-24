@@ -31,12 +31,18 @@ BUCKET_PROBE_DISPOSITION: dict[str, BucketProbeDisposition] = {
 def s3_error_code(exc: BaseException) -> str:
     """Return the S3 `Error.Code` from a `ClientError` or its s3fs-translated
     wrapper (`PermissionError` / `FileNotFoundError` / `OSError`).
+
+    Walks `__cause__` first (explicit `raise X from original`), then falls
+    back to `__context__` (implicit chaining inside an `except` block). A
+    `seen` set guards against pathological cycles.
     """
+    seen: set[int] = set()
     target: BaseException | None = exc
-    while target is not None:
+    while target is not None and id(target) not in seen:
+        seen.add(id(target))
         if isinstance(target, ClientError):
             return str(target.response.get("Error", {}).get("Code", "") or "")
-        target = target.__cause__
+        target = target.__cause__ or target.__context__
     return ""
 
 
