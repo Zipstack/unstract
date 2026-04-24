@@ -88,6 +88,11 @@ class ExecutorToolShim(StreamMixin):
         self.execution_id = execution_id
         self.organization_id = organization_id
         self.file_execution_id = file_execution_id
+        # Track whether we've already surfaced a publish failure on this
+        # shim so that a down broker is flagged loudly once instead of
+        # silently swallowing every subsequent log line at DEBUG.
+        self._progress_publish_failed = False
+        self._log_publish_failed = False
         # Initialize StreamMixin.  EXECUTION_BY_TOOL is not set in
         # the worker environment, so _exec_by_tool will be False.
         super().__init__(log_level=LogLevel.INFO)
@@ -177,9 +182,12 @@ class ExecutorToolShim(StreamMixin):
                 payload=progress_payload,
             )
         except Exception:
-            logger.debug(
+            first_failure = not self._progress_publish_failed
+            self._progress_publish_failed = True
+            logger.log(
+                logging.WARNING if first_failure else logging.DEBUG,
                 "Failed to publish progress log (non-fatal)",
-                exc_info=True,
+                exc_info=first_failure,
             )
 
         # LOG payload — feeds workflow logs UI and persists to execution_log.
@@ -202,9 +210,12 @@ class ExecutorToolShim(StreamMixin):
                 payload=log_payload,
             )
         except Exception:
-            logger.debug(
+            first_failure = not self._log_publish_failed
+            self._log_publish_failed = True
+            logger.log(
+                logging.WARNING if first_failure else logging.DEBUG,
                 "Failed to publish workflow log (non-fatal)",
-                exc_info=True,
+                exc_info=first_failure,
             )
 
     def stream_error_and_exit(self, message: str, err: Exception | None = None) -> None:
