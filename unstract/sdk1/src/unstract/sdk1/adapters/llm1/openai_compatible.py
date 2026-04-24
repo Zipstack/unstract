@@ -3,6 +3,12 @@ from typing import Any
 from unstract.sdk1.adapters.base1 import BaseAdapter, OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.enums import AdapterTypes
 
+DESCRIPTION = (
+    "Adapter for servers that implement the OpenAI Chat Completions API "
+    "(vLLM, LM Studio, self-hosted gateways, and third-party providers). "
+    "Use OpenAI for the official OpenAI service."
+)
+
 
 class OpenAICompatibleLLMAdapter(OpenAICompatibleLLMParameters, BaseAdapter):
     @staticmethod
@@ -15,7 +21,7 @@ class OpenAICompatibleLLMAdapter(OpenAICompatibleLLMParameters, BaseAdapter):
             "name": "OpenAI Compatible",
             "version": "1.0.0",
             "adapter": OpenAICompatibleLLMAdapter,
-            "description": "OpenAI-compatible LLM adapter",
+            "description": DESCRIPTION,
             "is_active": True,
         }
 
@@ -25,7 +31,7 @@ class OpenAICompatibleLLMAdapter(OpenAICompatibleLLMParameters, BaseAdapter):
 
     @staticmethod
     def get_description() -> str:
-        return "OpenAI-compatible LLM adapter"
+        return DESCRIPTION
 
     @staticmethod
     def get_provider() -> str:
@@ -33,7 +39,7 @@ class OpenAICompatibleLLMAdapter(OpenAICompatibleLLMParameters, BaseAdapter):
 
     @staticmethod
     def get_icon() -> str:
-        return "/icons/adapter-icons/OpenAI.png"
+        return "/icons/adapter-icons/OpenAICompatible.png"
 
     @staticmethod
     def get_adapter_type() -> AdapterTypes:

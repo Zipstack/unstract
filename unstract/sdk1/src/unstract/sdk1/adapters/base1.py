@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -236,6 +237,9 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         adapter_metadata["model"] = OpenAICompatibleLLMParameters.validate_model(
             adapter_metadata
         )
+        api_key = adapter_metadata.get("api_key")
+        if isinstance(api_key, str) and not api_key.strip():
+            adapter_metadata["api_key"] = None
         return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
 
     @staticmethod

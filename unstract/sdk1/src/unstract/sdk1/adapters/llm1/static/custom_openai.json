@@ -25,14 +25,13 @@
       "type": "string",
       "title": "Model",
       "default": "gpt-4o-mini",
-      "description": "The model name expected by your OpenAI-compatible endpoint. Examples: gpt-4o-mini, ERNIE-4.0-8K (Baidu Qianfan), qwen-max, openai/gpt-4o"
+      "description": "The model name expected by your OpenAI-compatible endpoint. Examples: gateway-model, gpt-4o-mini, openai/gpt-4o"
     },
     "api_base": {
       "type": "string",
       "format": "url",
       "title": "API Base",
-      "default": "https://your-endpoint.example.com/v1",
-      "description": "Base URL for the OpenAI-compatible endpoint. Examples: https://your-endpoint.example.com/v1, https://qianfan.baidubce.com/v2"
+      "description": "Base URL for the OpenAI-compatible endpoint. Examples: https://gateway.example.com/v1, https://llm.example.net/openai/v1"
     },
     "max_tokens": {
       "type": "number",
