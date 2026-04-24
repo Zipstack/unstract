@@ -238,9 +238,16 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # Workflow IDs on the pre-dispatch shim let X2Text/platform helper logs
     # reach the workflow logs UI before the executor dispatch happens.
+    log_events_id = StateStore.get("LOG_EVENTS_ID") or ""
+    if not log_events_id:
+        logger.warning(
+            "LOG_EVENTS_ID missing from StateStore for execution_id=%s — "
+            "tool-level logs will not stream to the workflow logs UI.",
+            execution_id,
+        )
     shim = ExecutorToolShim(
         platform_api_key=platform_service_api_key,
-        log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
+        log_events_id=log_events_id,
         execution_id=execution_id,
         file_execution_id=file_execution_id,
         organization_id=organization_id,

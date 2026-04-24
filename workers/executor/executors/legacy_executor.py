@@ -57,12 +57,13 @@ class LegacyExecutor(BaseExecutor):
         Operation.STRUCTURE_PIPELINE.value: "_handle_structure_pipeline",
     }
 
-    # Defaults for log streaming (overridden by execute()).
-    _log_events_id: str = ""
-    _log_component: dict[str, str] = {}
-    _execution_id: str = ""
-    _file_execution_id: str = ""
-    _organization_id: str = ""
+    def __init__(self) -> None:
+        # Per-request state — overwritten on every ``execute()`` call.
+        self._log_events_id: str = ""
+        self._log_component: dict[str, str] = {}
+        self._execution_id: str | None = None
+        self._file_execution_id: str | None = None
+        self._organization_id: str | None = None
 
     @property
     def name(self) -> str:
@@ -80,11 +81,21 @@ class LegacyExecutor(BaseExecutor):
             NotImplementedError: From stub handlers (until 2D–2H).
         """
         # Extract log streaming info (set by tasks.py for IDE sessions).
-        self._log_events_id: str = context.log_events_id or ""
-        self._log_component: dict[str, str] = getattr(context, "_log_component", {})
-        self._execution_id: str = context.execution_id or ""
-        self._file_execution_id: str = context.file_execution_id or ""
-        self._organization_id: str = context.organization_id or ""
+        self._log_events_id = context.log_events_id or ""
+        self._log_component = getattr(context, "_log_component", None) or {}
+        self._execution_id = context.execution_id
+        self._file_execution_id = context.file_execution_id
+        self._organization_id = context.organization_id
+        if (
+            context.execution_source == "tool"
+            and self._log_events_id
+            and not (self._execution_id and self._organization_id)
+        ):
+            logger.warning(
+                "Workflow IDs missing on tool context run_id=%s — tool-level "
+                "logs will reach the UI but won't persist to execution_log.",
+                context.run_id,
+            )
 
         handler_name = self._OPERATION_MAP.get(context.operation)
         if handler_name is None:

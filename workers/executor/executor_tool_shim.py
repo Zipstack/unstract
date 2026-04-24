@@ -60,9 +60,9 @@ class ExecutorToolShim(StreamMixin):
         platform_api_key: str = "",
         log_events_id: str = "",
         component: dict[str, str] | None = None,
-        execution_id: str = "",
-        organization_id: str = "",
-        file_execution_id: str = "",
+        execution_id: str | None = None,
+        organization_id: str | None = None,
+        file_execution_id: str | None = None,
     ) -> None:
         """Initialize the shim.
 
