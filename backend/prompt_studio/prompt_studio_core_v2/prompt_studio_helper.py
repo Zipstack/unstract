@@ -14,6 +14,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models.manager import BaseManager
 from plugins import get_plugin
+from rest_framework.exceptions import APIException
 from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
@@ -1178,7 +1179,7 @@ class PromptStudioHelper:
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
 
-        lookup_configs = get_lookup_configs_for_tool(tool)
+        lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
         if lookup_configs:
             attach_lookup_configs_to_tool_settings(tool_settings, lookup_configs)
 
@@ -1605,6 +1606,9 @@ class PromptStudioHelper:
                 is_single_pass=False,
                 profile_manager_id=profile_manager_id,
             )
+        except APIException:
+            # Validation responses are user-facing; DRF renders them as-is.
+            raise
         except Exception as e:
             logger.error(
                 f"[{tool.tool_id}] Error while fetching response for "
@@ -1670,6 +1674,9 @@ class PromptStudioHelper:
                 document_id=document_id,
                 is_single_pass=True,
             )
+        except APIException:
+            # Validation responses are user-facing; DRF renders them as-is.
+            raise
         except Exception as e:
             logger.error(
                 f"[{tool.tool_id}] Error while fetching single pass response: {e}"

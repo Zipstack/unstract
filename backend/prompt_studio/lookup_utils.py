@@ -29,11 +29,16 @@ def get_lookup_config(prompt) -> dict | None:
     return _execution.build_lookup_config_for_prompt(prompt)
 
 
-def get_lookup_configs_for_tool(tool) -> list[dict] | None:
-    """Return lookup configs for a tool (single pass), or None in OSS."""
+def get_lookup_configs_for_tool(tool, prompts=None) -> list[dict] | None:
+    """Return lookup configs for a tool (single pass), or None in OSS.
+
+    ``prompts`` scopes the build+validation to the prompts actually
+    participating in the run so an unrelated incomplete assignment on
+    the tool doesn't block it.
+    """
     if not LOOKUPS_AVAILABLE:
         return None
-    return _execution.build_lookup_configs_for_tool(tool)
+    return _execution.build_lookup_configs_for_tool(tool, prompts=prompts)
 
 
 def get_multi_var_lookups_for_tool(tool, prompt_ids=None) -> list[str]:

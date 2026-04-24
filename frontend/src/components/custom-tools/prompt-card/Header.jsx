@@ -49,6 +49,31 @@ try {
   LookupMenuItem = mod.LookupMenuItem;
 } catch {}
 
+let usePromptRunGatePlugin;
+let lookupPluginLoadError;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/usePromptRunGate"
+  );
+  usePromptRunGatePlugin = mod.usePromptRunGate;
+} catch (err) {
+  lookupPluginLoadError = err;
+}
+
+// If the sibling plugin import succeeded, a failure here means the
+// plugin is present but broken — surface it so the no-op fallback
+// doesn't silently disable the run gate.
+if (lookupPluginLoadError && LookupMenuItem) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[Header] lookup-studio plugin loaded but usePromptRunGate failed to import",
+    lookupPluginLoadError,
+  );
+}
+
+// Stable identity so React doesn't see a conditional hook call.
+const usePromptRunGate = usePromptRunGatePlugin || (() => null);
+
 function Header({
   promptDetails,
   promptKey,
@@ -77,6 +102,7 @@ function Header({
     isSimplePromptStudio,
     details,
   } = useCustomToolStore();
+  const runGate = usePromptRunGate(promptDetails);
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
@@ -367,7 +393,9 @@ function Header({
         )}
         {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
-            <Tooltip title="Run all LLMs for current document">
+            <Tooltip
+              title={runGate?.reason || "Run all LLMs for current document"}
+            >
               <Button
                 size="small"
                 type="text"
@@ -385,13 +413,16 @@ function Header({
                   isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
                   isPublicSource ||
-                  spsLoading?.[selectedDoc?.document_id]
+                  spsLoading?.[selectedDoc?.document_id] ||
+                  !!runGate?.disabled
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
-            <Tooltip title="Run all LLMs for all documents">
+            <Tooltip
+              title={runGate?.reason || "Run all LLMs for all documents"}
+            >
               <Button
                 size="small"
                 type="text"
@@ -407,7 +438,8 @@ function Header({
                       promptStudioUpdateStatus?.isUpdating) ||
                   isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
-                  isPublicSource
+                  isPublicSource ||
+                  !!runGate?.disabled
                 }
               >
                 <PlayCircleFilled className="prompt-card-actions-head" />
