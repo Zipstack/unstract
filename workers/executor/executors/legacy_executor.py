@@ -57,9 +57,13 @@ class LegacyExecutor(BaseExecutor):
         Operation.STRUCTURE_PIPELINE.value: "_handle_structure_pipeline",
     }
 
-    # Defaults for log streaming (overridden by execute()).
-    _log_events_id: str = ""
-    _log_component: dict[str, str] = {}
+    def __init__(self) -> None:
+        # Per-request state — overwritten on every ``execute()`` call.
+        self._log_events_id: str = ""
+        self._log_component: dict[str, str] = {}
+        self._execution_id: str | None = None
+        self._file_execution_id: str | None = None
+        self._organization_id: str | None = None
 
     @property
     def name(self) -> str:
@@ -77,8 +81,21 @@ class LegacyExecutor(BaseExecutor):
             NotImplementedError: From stub handlers (until 2D–2H).
         """
         # Extract log streaming info (set by tasks.py for IDE sessions).
-        self._log_events_id: str = context.log_events_id or ""
-        self._log_component: dict[str, str] = getattr(context, "_log_component", {})
+        self._log_events_id = context.log_events_id or ""
+        self._log_component = getattr(context, "_log_component", None) or {}
+        self._execution_id = context.execution_id
+        self._file_execution_id = context.file_execution_id
+        self._organization_id = context.organization_id
+        if (
+            context.execution_source == "tool"
+            and self._log_events_id
+            and not (self._execution_id and self._organization_id)
+        ):
+            logger.warning(
+                "Workflow IDs missing on tool context run_id=%s — tool-level "
+                "logs will reach the UI but won't persist to execution_log.",
+                context.run_id,
+            )
 
         handler_name = self._OPERATION_MAP.get(context.operation)
         if handler_name is None:
@@ -121,10 +138,7 @@ class LegacyExecutor(BaseExecutor):
             # Stream error to FE so the user sees the failure in real-time
             if self._log_events_id:
                 try:
-                    shim = ExecutorToolShim(
-                        log_events_id=self._log_events_id,
-                        component=self._log_component,
-                    )
+                    shim = self._build_shim()
                     shim.stream_log(
                         f"Error: {exc.message or type(exc).__name__}",
                         level=LogLevel.ERROR,
@@ -132,6 +146,26 @@ class LegacyExecutor(BaseExecutor):
                 except Exception:
                     pass  # Best-effort — don't mask the original error
             return ExecutionResult.failure(error=exc.message)
+
+    def _build_shim(
+        self,
+        *,
+        platform_api_key: str = "",
+        component: dict[str, str] | None = None,
+    ) -> ExecutorToolShim:
+        """Construct an ``ExecutorToolShim`` pre-populated with the
+        log-streaming and workflow-attribution fields captured in
+        ``execute()``. Callers override ``platform_api_key`` and
+        ``component`` as needed; everything else is shared.
+        """
+        return ExecutorToolShim(
+            platform_api_key=platform_api_key,
+            log_events_id=self._log_events_id,
+            component=self._log_component if component is None else component,
+            execution_id=self._execution_id,
+            organization_id=self._organization_id,
+            file_execution_id=self._file_execution_id,
+        )
 
     # ------------------------------------------------------------------
     # Phase 2B — Extract handler
@@ -173,11 +207,7 @@ class LegacyExecutor(BaseExecutor):
         execution_data_dir: str | None = params.get(IKeys.EXECUTION_DATA_DIR)
 
         # Build adapter shim and X2Text
-        shim = ExecutorToolShim(
-            platform_api_key=platform_api_key,
-            log_events_id=self._log_events_id,
-            component=self._log_component,
-        )
+        shim = self._build_shim(platform_api_key=platform_api_key)
         x2text = X2Text(
             tool=shim,
             adapter_instance_id=x2text_instance_id,
@@ -352,6 +382,8 @@ class LegacyExecutor(BaseExecutor):
             organization_id=context.organization_id,
             request_id=context.request_id,
             log_events_id=context.log_events_id,
+            execution_id=context.execution_id,
+            file_execution_id=context.file_execution_id,
             executor_params={
                 "llm_adapter_instance_id": llm_adapter_id,
                 "summarize_prompt": summarize_prompt,
@@ -427,6 +459,8 @@ class LegacyExecutor(BaseExecutor):
                 executor_params=extract_params,
                 request_id=context.request_id,
                 log_events_id=context.log_events_id,
+                execution_id=context.execution_id,
+                file_execution_id=context.file_execution_id,
             )
             extract_result = self._handle_extract(extract_ctx)
             if not extract_result.success:
@@ -454,6 +488,8 @@ class LegacyExecutor(BaseExecutor):
             executor_params=index_params,
             request_id=context.request_id,
             log_events_id=context.log_events_id,
+            execution_id=context.execution_id,
+            file_execution_id=context.file_execution_id,
         )
         index_result = self._handle_index(index_ctx)
         if not index_result.success:
@@ -519,10 +555,8 @@ class LegacyExecutor(BaseExecutor):
         extracted_text = ""
         index_metrics: dict = {}
 
-        shim = ExecutorToolShim(
+        shim = self._build_shim(
             platform_api_key=extract_params.get("platform_api_key", ""),
-            log_events_id=self._log_events_id,
-            component=self._log_component,
         )
         step = 1
 
@@ -539,6 +573,8 @@ class LegacyExecutor(BaseExecutor):
                 executor_params=extract_params,
                 request_id=context.request_id,
                 log_events_id=context.log_events_id,
+                execution_id=context.execution_id,
+                file_execution_id=context.file_execution_id,
             )
             extract_result = self._handle_extract(extract_ctx)
             if not extract_result.success:
@@ -643,6 +679,8 @@ class LegacyExecutor(BaseExecutor):
             executor_params=answer_params,
             request_id=context.request_id,
             log_events_id=context.log_events_id,
+            execution_id=context.execution_id,
+            file_execution_id=context.file_execution_id,
         )
         if is_single_pass:
             return self._handle_single_pass_extraction(answer_ctx)
@@ -745,6 +783,8 @@ class LegacyExecutor(BaseExecutor):
                 organization_id=context.organization_id,
                 request_id=context.request_id,
                 log_events_id=context.log_events_id,
+                execution_id=context.execution_id,
+                file_execution_id=context.file_execution_id,
                 executor_params={
                     "llm_adapter_instance_id": llm_adapter_id,
                     "summarize_prompt": summarize_prompt,
@@ -840,6 +880,8 @@ class LegacyExecutor(BaseExecutor):
                     organization_id=context.organization_id,
                     request_id=context.request_id,
                     log_events_id=context.log_events_id,
+                    execution_id=context.execution_id,
+                    file_execution_id=context.file_execution_id,
                     executor_params={
                         "embedding_instance_id": embedding,
                         "vector_db_instance_id": vector_db,
@@ -954,11 +996,7 @@ class LegacyExecutor(BaseExecutor):
             usage_kwargs=usage_kwargs,
         )
 
-        shim = ExecutorToolShim(
-            platform_api_key=platform_api_key,
-            log_events_id=self._log_events_id,
-            component=self._log_component,
-        )
+        shim = self._build_shim(platform_api_key=platform_api_key)
         fs_instance = FileUtils.get_fs_instance(execution_source=execution_source)
 
         logger.info(
@@ -1199,11 +1237,7 @@ class LegacyExecutor(BaseExecutor):
         process_text_fn = None
         enable_highlight = tool_settings.get(PSKeys.ENABLE_HIGHLIGHT, False)
         enable_word_confidence = tool_settings.get(PSKeys.ENABLE_WORD_CONFIDENCE, False)
-        pipeline_shim = ExecutorToolShim(
-            platform_api_key=platform_api_key,
-            log_events_id=self._log_events_id,
-            component=self._log_component,
-        )
+        pipeline_shim = self._build_shim(platform_api_key=platform_api_key)
         if enable_highlight:
             from executor.executors.plugins import ExecutorPluginLoader
 
@@ -1371,7 +1405,7 @@ class LegacyExecutor(BaseExecutor):
         challenge_llm_id = tool_settings.get(PSKeys.CHALLENGE_LLM)
         if not challenge_llm_id:
             return
-        shim.stream_log(f"Running challenge for: {prompt_name}")
+        shim.stream_log(f"Running challenge for: `{prompt_name}`")
         challenge_llm = llm_cls(
             adapter_instance_id=challenge_llm_id,
             tool=shim,
@@ -1390,7 +1424,7 @@ class LegacyExecutor(BaseExecutor):
             metadata=metadata,
         )
         challenger.run()
-        shim.stream_log(f"Challenge verification completed for: {prompt_name}")
+        shim.stream_log(f"Challenge verification completed for: `{prompt_name}`")
         logger.info("Challenge completed: prompt=%s", prompt_name)
 
     @staticmethod
@@ -1412,7 +1446,7 @@ class LegacyExecutor(BaseExecutor):
         evaluator_cls = ExecutorPluginLoader.get("evaluation")
         if not evaluator_cls:
             return
-        shim.stream_log(f"Running evaluation for: {prompt_name}")
+        shim.stream_log(f"Running evaluation for: `{prompt_name}`")
         evaluator = evaluator_cls(
             query=output.get(PSKeys.COMBINED_PROMPT, ""),
             context="\n".join(context_list),
@@ -1476,12 +1510,11 @@ class LegacyExecutor(BaseExecutor):
             output.get(PSKeys.TYPE, "TEXT"),
         )
 
-        shim = ExecutorToolShim(
+        shim = self._build_shim(
             platform_api_key=platform_api_key,
-            log_events_id=self._log_events_id,
             component={**self._log_component, "prompt_key": prompt_name},
         )
-        shim.stream_log(f"Processing prompt: {prompt_name}")
+        shim.stream_log(f"Processing prompt: `{prompt_name}`")
 
         if variable_replacement_svc.is_variables_present(prompt_text=prompt_text):
             prompt_text = variable_replacement_svc.replace_variables_in_prompt(
@@ -1494,7 +1527,7 @@ class LegacyExecutor(BaseExecutor):
                 custom_data=custom_data,
                 is_ide=execution_source == "ide",
             )
-            shim.stream_log(f"Resolved template variables for: {prompt_name}")
+            shim.stream_log(f"Resolved template variables for: `{prompt_name}`")
 
         logger.info(
             "Executing prompt: tool_id=%s name=%s run_id=%s", tool_id, prompt_name, run_id
@@ -1574,7 +1607,9 @@ class LegacyExecutor(BaseExecutor):
                     adapter_instance_id=output[PSKeys.VECTOR_DB],
                     embedding=embedding,
                 )
-            shim.stream_log(f"Initialized LLM and retrieval adapters for: {prompt_name}")
+            shim.stream_log(
+                f"Initialized LLM and retrieval adapters for: `{prompt_name}`"
+            )
         except Exception as e:
             msg = f"Couldn't fetch adapter. {e}"
             logger.error(msg)
@@ -1588,7 +1623,7 @@ class LegacyExecutor(BaseExecutor):
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
             if retrieval_strategy in valid_strategies:
-                shim.stream_log(f"Retrieving context for: {prompt_name}")
+                shim.stream_log(f"Retrieving context for: `{prompt_name}`")
                 logger.info(
                     "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
                     prompt_name,
@@ -1613,14 +1648,14 @@ class LegacyExecutor(BaseExecutor):
                     )
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
                 shim.stream_log(
-                    f"Retrieved {len(context_list)} context chunks for: {prompt_name}"
+                    f"Retrieved {len(context_list)} context chunks for: `{prompt_name}`"
                 )
                 logger.debug(
                     "Retrieved %d context chunks for prompt: %s",
                     len(context_list),
                     prompt_name,
                 )
-                shim.stream_log(f"Running LLM completion for: {prompt_name}")
+                shim.stream_log(f"Running LLM completion for: `{prompt_name}`")
                 answer = answer_prompt_svc.construct_and_run_prompt(
                     tool_settings=tool_settings,
                     output=output,
@@ -1652,7 +1687,7 @@ class LegacyExecutor(BaseExecutor):
                 tool_id=tool_id,
                 doc_name=doc_name,
             )
-            shim.stream_log(f"Applied type conversion for: {prompt_name}")
+            shim.stream_log(f"Applied type conversion for: `{prompt_name}`")
 
             self._run_challenge_if_enabled(
                 tool_settings=tool_settings,
@@ -1676,7 +1711,7 @@ class LegacyExecutor(BaseExecutor):
                 shim=shim,
                 prompt_name=prompt_name,
             )
-            shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(f"Completed prompt: `{prompt_name}`")
 
             val = structured_output.get(prompt_name)
             if isinstance(val, str):
@@ -1725,6 +1760,9 @@ class LegacyExecutor(BaseExecutor):
             execution_source=execution_source,
             organization_id=context.organization_id,
             request_id=context.request_id,
+            log_events_id=self._log_events_id,
+            execution_id=self._execution_id,
+            file_execution_id=self._file_execution_id,
             executor_params={
                 "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
                 "table_settings": output.get(PSKeys.TABLE_SETTINGS, {}),
@@ -1736,9 +1774,8 @@ class LegacyExecutor(BaseExecutor):
             },
         )
         table_ctx._log_component = self._log_component
-        table_ctx.log_events_id = self._log_events_id
 
-        shim.stream_log(f"Running table extraction for: {prompt_name}")
+        shim.stream_log(f"Running table extraction for: `{prompt_name}`")
         table_result = table_executor.execute(table_ctx)
 
         if table_result.success:
@@ -1747,9 +1784,9 @@ class LegacyExecutor(BaseExecutor):
             metrics.setdefault(prompt_name, {}).update(
                 {"table_extraction": table_metrics}
             )
-            shim.stream_log(f"Table extraction completed for: {prompt_name}")
+            shim.stream_log(f"Table extraction completed for: `{prompt_name}`")
             logger.info("TABLE extraction completed: prompt=%s", prompt_name)
-            shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(f"Completed prompt: `{prompt_name}`")
         else:
             structured_output[prompt_name] = ""
             error_msg = table_result.error or "unknown error"
@@ -1759,7 +1796,7 @@ class LegacyExecutor(BaseExecutor):
                 error_msg,
             )
             shim.stream_log(
-                f"Table extraction failed for {prompt_name}: {error_msg}",
+                f"Table extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
             )
 
@@ -1799,6 +1836,9 @@ class LegacyExecutor(BaseExecutor):
             execution_source=prompt_run_args["execution_source"],
             organization_id=context.organization_id,
             request_id=context.request_id,
+            log_events_id=self._log_events_id,
+            execution_id=self._execution_id,
+            file_execution_id=self._file_execution_id,
             executor_params={
                 "llm_adapter_instance_id": output.get(PSKeys.LLM, ""),
                 "tool_settings": prompt_run_args["tool_settings"],
@@ -1813,9 +1853,8 @@ class LegacyExecutor(BaseExecutor):
             },
         )
         line_item_ctx._log_component = self._log_component
-        line_item_ctx.log_events_id = self._log_events_id
 
-        shim.stream_log(f"Running line-item extraction for: {prompt_name}")
+        shim.stream_log(f"Running line-item extraction for: `{prompt_name}`")
         line_item_result = line_item_executor.execute(line_item_ctx)
 
         if line_item_result.success:
@@ -1828,9 +1867,9 @@ class LegacyExecutor(BaseExecutor):
             context_list = data.get("context")
             if context_list:
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
-            shim.stream_log(f"Line-item extraction completed for: {prompt_name}")
+            shim.stream_log(f"Line-item extraction completed for: `{prompt_name}`")
             logger.info("LINE_ITEM extraction completed: prompt=%s", prompt_name)
-            shim.stream_log(f"Completed prompt: {prompt_name}")
+            shim.stream_log(f"Completed prompt: `{prompt_name}`")
         else:
             structured_output[prompt_name] = ""
             error_msg = line_item_result.error or "unknown error"
@@ -1840,7 +1879,7 @@ class LegacyExecutor(BaseExecutor):
                 error_msg,
             )
             shim.stream_log(
-                f"Line-item extraction failed for {prompt_name}: {error_msg}",
+                f"Line-item extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
             )
 
@@ -2032,11 +2071,7 @@ class LegacyExecutor(BaseExecutor):
             f"Context:\n---------------\n{doc_context}\n-----------------\n\nSummary:"
         )
 
-        shim = ExecutorToolShim(
-            platform_api_key=platform_api_key,
-            log_events_id=self._log_events_id,
-            component=self._log_component,
-        )
+        shim = self._build_shim(platform_api_key=platform_api_key)
         usage_kwargs = {
             "run_id": context.run_id,
             PSKeys.LLM_USAGE_REASON: PSKeys.SUMMARIZE,

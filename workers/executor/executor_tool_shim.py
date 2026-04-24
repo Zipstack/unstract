@@ -60,6 +60,9 @@ class ExecutorToolShim(StreamMixin):
         platform_api_key: str = "",
         log_events_id: str = "",
         component: dict[str, str] | None = None,
+        execution_id: str | None = None,
+        organization_id: str | None = None,
+        file_execution_id: str | None = None,
     ) -> None:
         """Initialize the shim.
 
@@ -72,10 +75,24 @@ class ExecutorToolShim(StreamMixin):
             component: Structured identifier dict for log correlation
                 (``tool_id``, ``run_id``, ``doc_name``, optionally
                 ``prompt_key``).
+            execution_id: Workflow execution id. When provided with
+                ``organization_id``, enables persistent log attribution
+                to the ``execution_log`` table.
+            organization_id: Tenant/org scope for log persistence.
+            file_execution_id: File execution id (child of workflow
+                execution). Optional — populated for per-file tool runs.
         """
         self.platform_api_key = platform_api_key
         self.log_events_id = log_events_id
         self.component = component or {}
+        self.execution_id = execution_id
+        self.organization_id = organization_id
+        self.file_execution_id = file_execution_id
+        # Track whether we've already surfaced a publish failure on this
+        # shim so that a down broker is flagged loudly once instead of
+        # silently swallowing every subsequent log line at DEBUG.
+        self._progress_publish_failed = False
+        self._log_publish_failed = False
         # Initialize StreamMixin.  EXECUTION_BY_TOOL is not set in
         # the worker environment, so _exec_by_tool will be False.
         super().__init__(log_level=LogLevel.INFO)
@@ -145,24 +162,61 @@ class ExecutorToolShim(StreamMixin):
             return
 
         # Publish progress to frontend via the log consumer queue.
-        if self.log_events_id:
-            try:
-                wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
-                payload = LogPublisher.log_progress(
-                    component=self.component,
-                    level=wf_level,
-                    state=stage,
-                    message=log,
-                )
-                LogPublisher.publish(
-                    channel_id=self.log_events_id,
-                    payload=payload,
-                )
-            except Exception:
-                logger.debug(
-                    "Failed to publish progress log (non-fatal)",
-                    exc_info=True,
-                )
+        if not self.log_events_id:
+            return
+
+        wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
+
+        # PROGRESS payload — IDE prompt-card live updates only. Dropped at
+        # the DB persist layer because LogPublisher.publish only stores
+        # payloads whose `type == "LOG"`.
+        try:
+            progress_payload = LogPublisher.log_progress(
+                component=self.component,
+                level=wf_level,
+                state=stage,
+                message=log,
+            )
+            LogPublisher.publish(
+                channel_id=self.log_events_id,
+                payload=progress_payload,
+            )
+        except Exception:
+            first_failure = not self._progress_publish_failed
+            self._progress_publish_failed = True
+            logger.log(
+                logging.WARNING if first_failure else logging.DEBUG,
+                "Failed to publish progress log (non-fatal)",
+                exc_info=first_failure,
+            )
+
+        # LOG payload — feeds workflow logs UI and persists to execution_log.
+        # LogDataDTO validation requires `execution_id` and `organization_id`;
+        # `file_execution_id` is optional.
+        if not (self.execution_id and self.organization_id):
+            return
+
+        try:
+            log_payload = LogPublisher.log_workflow(
+                stage=stage,
+                message=log,
+                level=wf_level,
+                execution_id=self.execution_id,
+                file_execution_id=self.file_execution_id or None,
+                organization_id=self.organization_id,
+            )
+            LogPublisher.publish(
+                channel_id=self.log_events_id,
+                payload=log_payload,
+            )
+        except Exception:
+            first_failure = not self._log_publish_failed
+            self._log_publish_failed = True
+            logger.log(
+                logging.WARNING if first_failure else logging.DEBUG,
+                "Failed to publish workflow log (non-fatal)",
+                exc_info=first_failure,
+            )
 
     def stream_error_and_exit(self, message: str, err: Exception | None = None) -> None:
         """Log error and raise SdkError.
