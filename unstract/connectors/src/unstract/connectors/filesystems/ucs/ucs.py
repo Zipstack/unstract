@@ -1,5 +1,7 @@
 import os
 
+from s3fs.core import S3FileSystem
+
 from unstract.connectors.filesystems.minio.minio import MinioFS
 
 
@@ -8,6 +10,11 @@ class UnstractCloudStorage(MinioFS):
 
     Implemented with Google Cloud Storage through Minio.
     """
+
+    # UCS credentials always have full access to UCS buckets, so skip the
+    # per-bucket access probe that MinioFS runs on its fsspec filesystem.
+    # The probe adds latency and could hide a bucket on a transient S3 error.
+    _FS_CLASS = S3FileSystem
 
     @staticmethod
     def get_id() -> str:

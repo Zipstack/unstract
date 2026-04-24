@@ -68,6 +68,11 @@ class ExecutionContext:
         log_events_id: Socket.IO channel ID for streaming progress
             logs to the frontend.  ``None`` when not in an IDE
             session (no logs published).
+        execution_id: Workflow execution identifier for log
+            correlation. When set, ``organization_id`` must also be
+            set (enforced in ``__post_init__``).
+        file_execution_id: Child identifier for per-file execution
+            within a workflow run. Optional.
     """
 
     executor_name: str
@@ -78,6 +83,8 @@ class ExecutionContext:
     executor_params: dict[str, Any] = field(default_factory=dict)
     request_id: str | None = None
     log_events_id: str | None = None
+    execution_id: str | None = None
+    file_execution_id: str | None = None
 
     def __post_init__(self) -> None:
         """Validate required fields after initialization."""
@@ -89,6 +96,10 @@ class ExecutionContext:
             raise ValueError("run_id is required")
         if not self.execution_source:
             raise ValueError("execution_source is required")
+        # When execution_id is set, organization_id must be too — they
+        # travel together for workflow-level log correlation.
+        if self.execution_id and not self.organization_id:
+            raise ValueError("organization_id is required when execution_id is set")
 
         # Normalize enum values to plain strings for serialization
         if isinstance(self.operation, Operation):
@@ -111,6 +122,8 @@ class ExecutionContext:
             "executor_params": self.executor_params,
             "request_id": self.request_id,
             "log_events_id": self.log_events_id,
+            "execution_id": self.execution_id,
+            "file_execution_id": self.file_execution_id,
         }
 
     @classmethod
@@ -125,4 +138,6 @@ class ExecutionContext:
             executor_params=data.get("executor_params", {}),
             request_id=data.get("request_id"),
             log_events_id=data.get("log_events_id"),
+            execution_id=data.get("execution_id"),
+            file_execution_id=data.get("file_execution_id"),
         )

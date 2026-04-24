@@ -13,6 +13,7 @@ import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
 import { useAlertStore } from "../../../store/alert-store";
+import CustomMarkdown from "../../helpers/custom-markdown/CustomMarkdown";
 import { FilterDropdown, FilterIcon } from "../filter-dropdown/FilterDropdown";
 
 function LogModal({
@@ -120,6 +121,7 @@ function LogModal({
       title: "Log",
       dataIndex: "log",
       key: "log",
+      render: (log) => <CustomMarkdown text={log || ""} />,
     },
   ];
 
