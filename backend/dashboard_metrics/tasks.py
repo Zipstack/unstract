@@ -121,7 +121,7 @@ def _bulk_upsert_hourly(aggregations: dict) -> int:
         objects,
         update_conflicts=True,
         unique_fields=["organization", "timestamp", "metric_name", "project", "tag"],
-        update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+        update_fields=["metric_type", "metric_value", "metric_count"],
     )
     return len(objects)
 
@@ -160,7 +160,7 @@ def _bulk_upsert_daily(aggregations: dict) -> int:
         objects,
         update_conflicts=True,
         unique_fields=["organization", "date", "metric_name", "project", "tag"],
-        update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+        update_fields=["metric_type", "metric_value", "metric_count"],
     )
     return len(objects)
 
@@ -199,7 +199,7 @@ def _bulk_upsert_monthly(aggregations: dict) -> int:
         objects,
         update_conflicts=True,
         unique_fields=["organization", "month", "metric_name", "project", "tag"],
-        update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+        update_fields=["metric_type", "metric_value", "metric_count"],
     )
     return len(objects)
 

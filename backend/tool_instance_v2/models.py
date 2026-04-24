@@ -3,7 +3,7 @@ import uuid
 from account_v2.models import User
 from django.db import models
 from django.db.models import QuerySet
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 TOOL_ID_LENGTH = 64
@@ -11,7 +11,7 @@ TOOL_VERSION_LENGTH = 16
 TOOL_STATUS_LENGTH = 32
 
 
-class ToolInstanceManager(models.Manager):
+class ToolInstanceManager(BaseModelManager):
     def get_instances_for_workflow(self, workflow: uuid.UUID) -> QuerySet["ToolInstance"]:
         return self.filter(workflow=workflow)
 
