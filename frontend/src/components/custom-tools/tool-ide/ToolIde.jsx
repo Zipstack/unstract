@@ -47,17 +47,13 @@ try {
 
 // Cloud-only hook that seeds hasUnsavedChanges from server-side
 // lookup-staleness. No-op stub in OSS.
-let useLookupDirtySeed = () => {
-  // no-op
-};
+let useLookupDirtySeed = () => {};
 try {
   const mod = await import(
     "../../../plugins/lookup-studio/hooks/useLookupDirtySeed.js"
   );
   useLookupDirtySeed = mod.useLookupDirtySeed;
-} catch {
-  // Do nothing if plugin is not loaded.
-}
+} catch {}
 
 // Cloud-only lookup export validation gate. OSS stub resolves true so
 // the reminder bar's "Export" button proceeds directly.
@@ -70,9 +66,7 @@ try {
     "../../../plugins/lookup-studio/hooks/useLookupExportGate"
   );
   useLookupExportGate = mod.useLookupExportGate;
-} catch {
-  // OSS — gate stays a no-op resolving true.
-}
+} catch {}
 
 function ToolIde() {
   const [openSettings, setOpenSettings] = useState(false);
@@ -387,6 +381,7 @@ function ToolIde() {
         setOpenSettings={setOpenSettings}
         setOpenShareModal={setOpenShareModal}
         setOpenCloneModal={setOpenCloneModal}
+        checkLookups={checkLookups}
       />
       <div
         className={isPublicSource ? "public-tool-ide-body" : "tool-ide-body"}

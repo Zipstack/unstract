@@ -47,9 +47,7 @@ try {
     "../../../plugins/lookup-studio/prompt-card/LookupMenuItem"
   );
   LookupMenuItem = mod.LookupMenuItem;
-} catch {
-  // Not available in OSS
-}
+} catch {}
 
 function Header({
   promptDetails,

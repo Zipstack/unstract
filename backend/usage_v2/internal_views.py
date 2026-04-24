@@ -145,8 +145,21 @@ class UsageBatchCreateView(APIView):
         if not records:
             return JsonResponse({"created": 0}, status=200)
 
-        # Resolved by InternalAPIAuthMiddleware via StateStore
         organization = UserContext.get_organization()
+        if organization is None:
+            logger.error(
+                "UsageBatchCreateView received %d records with no organization; "
+                "refusing to write rows that would be invisible to tenant dashboards",
+                len(records),
+            )
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Organization context missing. "
+                    "Worker must send X-Organization-ID.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         usage_objects = []
         for r in records:

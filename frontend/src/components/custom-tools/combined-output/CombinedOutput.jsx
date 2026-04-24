@@ -57,9 +57,7 @@ try {
   splitCombinedData = mod.splitCombinedData;
   buildEnrichedFromBundle = mod.buildEnrichedFromBundle;
   getEnrichmentFromItem = mod.getEnrichmentFromItem;
-} catch {
-  // Plugin unavailable — passthroughs above retain OSS behavior.
-}
+} catch {}
 
 function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const {

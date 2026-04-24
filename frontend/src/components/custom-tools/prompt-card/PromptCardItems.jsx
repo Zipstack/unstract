@@ -36,9 +36,7 @@ try {
     "../../../plugins/lookup-studio/prompt-card/LookupIndicator"
   );
   LookupIndicator = mod.LookupIndicator;
-} catch {
-  // Not available in OSS
-}
+} catch {}
 
 function PromptCardItems({
   promptDetails,

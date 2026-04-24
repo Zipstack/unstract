@@ -30,9 +30,7 @@ try {
   fetchLookupAssignments = mod.fetchLookupAssignments;
   fetchLookupOutputs = mod.fetchLookupOutputs;
   resetLookupAssignments = mod.resetLookupAssignments;
-} catch {
-  // Lookup feature not available in OSS
-}
+} catch {}
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();

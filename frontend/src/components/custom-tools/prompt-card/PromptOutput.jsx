@@ -57,9 +57,7 @@ try {
     "../../../plugins/lookup-studio/prompt-card/LookupOutputTabs"
   );
   LookupOutputTabs = mod.LookupOutputTabs;
-} catch {
-  // Not available in OSS
-}
+} catch {}
 
 let getEnrichedCopyText;
 try {
@@ -67,9 +65,7 @@ try {
     "../../../plugins/lookup-studio/prompt-card/getEnrichedCopyText"
   );
   getEnrichedCopyText = mod.getEnrichedCopyText;
-} catch {
-  // Not available in OSS
-}
+} catch {}
 
 // Wraps children in LookupOutputTabs when available (cloud),
 // passes through children directly in OSS.

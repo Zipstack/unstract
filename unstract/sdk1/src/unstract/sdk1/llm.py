@@ -614,6 +614,11 @@ class LLM:
             )
             cost = prompt_cost + compl_cost
         except Exception:
+            logger.warning(
+                "Failed to compute cost for model=%s; recording as 0.0",
+                model,
+                exc_info=True,
+            )
             cost = 0.0
 
         # Strip provider prefix (e.g. "azure/gpt-4o" → "gpt-4o") for storage,

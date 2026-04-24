@@ -71,7 +71,7 @@ class BaseUsageResponse(APIResponse, Generic[T]):
 
     def is_success(self) -> bool:
         """Check if the response indicates success."""
-        return self.success_response and self.status == ResponseStatus.SUCCESS
+        return self.success and self.status == ResponseStatus.SUCCESS
 
 
 @dataclass
@@ -192,8 +192,10 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
                 organization_id=organization_id,
             )
             return response.get("success", False) or "created" in response
-        except Exception as e:
-            logger.error("Failed to bulk create usage records: %s", e)
+        except Exception:
+            logger.error(
+                "Failed to bulk create %d usage records", len(records), exc_info=True
+            )
             return False
 
     def get_aggregated_pages_processed(

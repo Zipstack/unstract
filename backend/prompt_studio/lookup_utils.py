@@ -1,36 +1,39 @@
 """Shared utility for lookup operations.
 
-Wraps cloud-only lookup calls so that OSS callers don't repeat
-the try/except ImportError guard. All functions are no-ops in OSS.
+Wraps cloud-only lookup calls so that OSS callers don't repeat the
+try/except ImportError guard. All functions are no-ops in OSS. A single
+module-level probe decides availability so downstream errors inside the
+cloud plugin surface instead of being silently swallowed as ImportError.
 """
 
 import logging
 
 logger = logging.getLogger(__name__)
 
+try:
+    from pluggable_apps.lookup_v1 import execution as _execution
+    from pluggable_apps.lookup_v1 import output_enrichment as _output_enrichment
+    from pluggable_apps.lookup_v1 import staleness as _staleness
+    from pluggable_apps.lookup_v1 import validation as _validation
+    from pluggable_apps.lookup_v1.models import LookupOutputResult as _LookupOutputResult
+
+    LOOKUPS_AVAILABLE = True
+except ImportError:
+    LOOKUPS_AVAILABLE = False
+
 
 def get_lookup_config(prompt) -> dict | None:
     """Return lookup config for a prompt, or None if lookups are unavailable."""
-    try:
-        from pluggable_apps.lookup_v1.execution import (
-            build_lookup_config_for_prompt,
-        )
-
-        return build_lookup_config_for_prompt(prompt)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return None
+    return _execution.build_lookup_config_for_prompt(prompt)
 
 
 def get_lookup_configs_for_tool(tool) -> list[dict] | None:
     """Return lookup configs for a tool (single pass), or None in OSS."""
-    try:
-        from pluggable_apps.lookup_v1.execution import (
-            build_lookup_configs_for_tool,
-        )
-
-        return build_lookup_configs_for_tool(tool)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return None
+    return _execution.build_lookup_configs_for_tool(tool)
 
 
 def get_multi_var_lookups_for_tool(tool, prompt_ids=None) -> list[str]:
@@ -40,36 +43,31 @@ def get_multi_var_lookups_for_tool(tool, prompt_ids=None) -> list[str]:
     so single / bulk runs only block when a lookup the run actually uses
     is multi-variable.
     """
-    try:
-        from pluggable_apps.lookup_v1.execution import has_multi_var_lookups
-
-        _, names = has_multi_var_lookups(tool, prompt_ids=prompt_ids)
-        return names
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return []
+    _, names = _execution.has_multi_var_lookups(tool, prompt_ids=prompt_ids)
+    return names
 
 
 def persist_lookup_output(prompt_output, prompt_lookup: dict) -> None:
     """Persist lookup enrichment result. No-op in OSS."""
-    try:
-        from pluggable_apps.lookup_v1.models import LookupOutputResult
-
-        lookup_meta = prompt_lookup.get("meta", {})
-        lookup_id = lookup_meta.get("lookup_id")
-        if lookup_id:
-            defaults = {
-                "lookup_definition_id": lookup_id,
-                "output": prompt_lookup.get("enriched", ""),
-            }
-            version_id = lookup_meta.get("version_id")
-            if version_id:
-                defaults["version_id"] = version_id
-            LookupOutputResult.objects.update_or_create(
-                prompt_output=prompt_output,
-                defaults=defaults,
-            )
-    except ImportError:
-        pass
+    if not LOOKUPS_AVAILABLE:
+        return
+    lookup_meta = prompt_lookup.get("meta", {})
+    lookup_id = lookup_meta.get("lookup_id")
+    if not lookup_id:
+        return
+    defaults = {
+        "lookup_definition_id": lookup_id,
+        "output": prompt_lookup.get("enriched", ""),
+    }
+    version_id = lookup_meta.get("version_id")
+    if version_id:
+        defaults["version_id"] = version_id
+    _LookupOutputResult.objects.update_or_create(
+        prompt_output=prompt_output,
+        defaults=defaults,
+    )
 
 
 def enrich_prompt_output(prompt_output, data: dict) -> dict:
@@ -77,26 +75,16 @@ def enrich_prompt_output(prompt_output, data: dict) -> dict:
 
     No-op in OSS.
     """
-    try:
-        from pluggable_apps.lookup_v1.output_enrichment import (
-            enrich_with_lookup_output,
-        )
-
-        return enrich_with_lookup_output(prompt_output, data)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return data
+    return _output_enrichment.enrich_with_lookup_output(prompt_output, data)
 
 
 def validate_lookups_for_export(prompts) -> tuple[dict, str | None]:
     """Validate lookup assignments before export. Returns ({}, None) in OSS."""
-    try:
-        from pluggable_apps.lookup_v1.validation import (
-            validate_lookups_for_export as _validate,
-        )
-
-        return _validate(prompts)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return {}, None
+    return _validation.validate_lookups_for_export(prompts)
 
 
 def get_latest_lookup_mutation_for_tool(tool):
@@ -105,14 +93,9 @@ def get_latest_lookup_mutation_for_tool(tool):
 
     Returns None if lookups are unavailable or nothing is linked.
     """
-    try:
-        from pluggable_apps.lookup_v1.staleness import (
-            get_latest_lookup_mutation_for_tool as _get,
-        )
-
-        return _get(tool)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return None
+    return _staleness.get_latest_lookup_mutation_for_tool(tool)
 
 
 def get_original_value_if_enriched(metadata: dict, prompt_key: str):
@@ -138,14 +121,9 @@ def attach_combined_output_enrichment(result: dict, enriched_by_key: dict) -> No
     key its FE plugin expects. Keeping the key name out of OSS lets cloud
     evolve the shape without OSS-side coordination.
     """
-    try:
-        from pluggable_apps.lookup_v1.output_enrichment import (
-            attach_combined_output_enrichment as _attach,
-        )
-
-        _attach(result, enriched_by_key)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return
+    _output_enrichment.attach_combined_output_enrichment(result, enriched_by_key)
 
 
 def extract_prompt_output_enrichment(item) -> dict | None:
@@ -154,14 +132,9 @@ def extract_prompt_output_enrichment(item) -> dict | None:
     Returns a plugin-opaque dict (the FE treats it as a black box) or None
     when no enrichment is present / plugin missing.
     """
-    try:
-        from pluggable_apps.lookup_v1.output_enrichment import (
-            extract_prompt_output_enrichment as _extract,
-        )
-
-        return _extract(item)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return None
+    return _output_enrichment.extract_prompt_output_enrichment(item)
 
 
 def get_lookup_validation_for_tool(tool) -> dict:
@@ -169,13 +142,7 @@ def get_lookup_validation_for_tool(tool) -> dict:
 
     Returns an "always ok" payload in OSS so the FE gate is a no-op.
     """
-    try:
-        from pluggable_apps.lookup_v1.validation import (
-            get_lookup_validation_for_tool as _validate,
-        )
-
-        return _validate(tool)
-    except ImportError:
+    if not LOOKUPS_AVAILABLE:
         return {
             "ok": True,
             "draft_lookups": [],
@@ -184,3 +151,25 @@ def get_lookup_validation_for_tool(tool) -> dict:
                 getattr(tool, "single_pass_extraction_mode", False)
             ),
         }
+    return _validation.get_lookup_validation_for_tool(tool)
+
+
+def attach_lookup_config(output: dict, config: dict) -> None:
+    """Stamp a per-prompt output dict with the lookup config payload.
+
+    Keeps the payload key name owned by the bridge so OSS call sites
+    don't encode the contract.
+    """
+    output["lookup_config"] = config
+
+
+def attach_lookup_configs_to_tool_settings(
+    tool_settings: dict, configs: list[dict]
+) -> None:
+    """Stamp tool_settings with the per-tool lookup configs list."""
+    tool_settings["lookup_configs"] = configs
+
+
+def get_lookup_config_from_output(output: dict) -> dict | None:
+    """Read the lookup config stamped on a prompt output, if any."""
+    return output.get("lookup_config")

@@ -18,47 +18,33 @@ import "./Header.css";
 let SinglePassToggleSwitch;
 let CloneButton;
 let PromptShareButton;
-let useLookupExportGate = () => ({
-  checkLookups: () => Promise.resolve(true),
-  modalEl: null,
-});
 try {
   const mod = await import(
     "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
   );
   SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/hooks/useLookupExportGate"
-  );
-  useLookupExportGate = mod.useLookupExportGate;
-} catch {
-  // OSS — gate stays a no-op resolving true.
-}
+} catch {}
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx"
   );
   PromptShareButton = mod.PromptShareButton;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx"
   );
   CloneButton = mod.CloneButton;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
+
+const noopCheckLookups = () => Promise.resolve(true);
+
 function Header({
   setOpenSettings,
   handleUpdateTool,
   setOpenShareModal,
   setOpenCloneModal,
+  checkLookups = noopCheckLookups,
 }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details, isPublicSource, markChangesAsExported } =
@@ -84,7 +70,6 @@ function Header({
   const [isApiDeploymentLoading, setIsApiDeploymentLoading] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm] = Form.useForm();
-  const { checkLookups, modalEl: lookupGateModalEl } = useLookupExportGate();
 
   const handleExport = (
     selectedUsers,
@@ -441,7 +426,6 @@ function Header({
 
   return (
     <>
-      {lookupGateModalEl}
       <ToolNavBar
         title={details?.tool_name || ""}
         subtitle={isPublicSource ? undefined : details?.description}
@@ -547,6 +531,7 @@ Header.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   setOpenCloneModal: PropTypes.func.isRequired,
   setOpenShareModal: PropTypes.func.isRequired,
+  checkLookups: PropTypes.func,
 };
 
 export { Header };

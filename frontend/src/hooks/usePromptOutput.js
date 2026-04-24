@@ -29,9 +29,7 @@ try {
     "../plugins/lookup-studio/prompt-card/handleLookupOutput"
   );
   handleLookupOutput = mod.handleLookupOutput;
-} catch {
-  // Not available in OSS
-}
+} catch {}
 
 // Opaque extractor so the per-item enrichment payload key name lives in
 // the plugin, not OSS. OSS falls back to a no-op.
@@ -39,9 +37,7 @@ let getEnrichmentFromItem = () => null;
 try {
   const mod = await import("../plugins/lookup-enriched-toggle/helpers");
   getEnrichmentFromItem = mod.getEnrichmentFromItem;
-} catch {
-  // Plugin unavailable — no-op.
-}
+} catch {}
 
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();

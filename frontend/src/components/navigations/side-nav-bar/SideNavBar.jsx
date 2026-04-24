@@ -93,9 +93,7 @@ let lookupStudioEnabled = false;
 try {
   await import("../../../plugins/lookup-studio");
   lookupStudioEnabled = true;
-} catch {
-  // Plugin unavailable
-}
+} catch {}
 
 let manualReviewSettingsEnabled = false;
 try {
