@@ -452,7 +452,7 @@ class LegacyExecutor(BaseExecutor):
         pre_extracted_text = index_params.get(IKeys.EXTRACTED_TEXT, "") or ""
         if pre_extracted_text:
             logger.info(
-                "ide_index: marker hit, skipping extract step " "(len=%d, run_id=%s)",
+                "ide_index: marker hit, skipping extract step (len=%d, run_id=%s)",
                 len(pre_extracted_text),
                 context.run_id,
             )
@@ -1086,8 +1086,7 @@ class LegacyExecutor(BaseExecutor):
                     "Document already indexed in vector store; skipping re-index."
                 )
                 logger.info(
-                    "Skipping re-index: doc_id=%s already in vector DB and "
-                    "reindex=False",
+                    "Skipping re-index: doc_id=%s already in vector DB and reindex=False",
                     doc_id,
                 )
                 return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
@@ -1597,34 +1596,16 @@ class LegacyExecutor(BaseExecutor):
             return
 
         usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
-        try:
-            llm = llm_cls(
-                adapter_instance_id=output[PSKeys.LLM],
-                tool=shim,
-                usage_kwargs={**usage_kwargs, PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION},
-                capture_metrics=True,
-            )
-            vector_db = None
-            if chunk_size > 0:
-                embedding = embedding_compat_cls(
-                    adapter_instance_id=output[PSKeys.EMBEDDING],
-                    tool=shim,
-                    kwargs={**usage_kwargs},
-                )
-                vector_db = vector_db_cls(
-                    tool=shim,
-                    adapter_instance_id=output[PSKeys.VECTOR_DB],
-                    embedding=embedding,
-                )
-            shim.stream_log(
-                f"Initialized LLM and retrieval adapters for: `{prompt_name}`"
-            )
-        except Exception as e:
-            msg = f"Couldn't fetch adapter. {e}"
-            logger.error(msg)
-            raise LegacyExecutorError(
-                message=msg, code=getattr(e, "status_code", None) or 500
-            ) from e
+        llm, embedding, vector_db = self._init_llm_and_retrieval(
+            output=output,
+            shim=shim,
+            chunk_size=chunk_size,
+            llm_cls=llm_cls,
+            embedding_compat_cls=embedding_compat_cls,
+            vector_db_cls=vector_db_cls,
+            usage_kwargs=usage_kwargs,
+            prompt_name=prompt_name,
+        )
 
         context_list: list[str] = []
         try:
@@ -1740,25 +1721,89 @@ class LegacyExecutor(BaseExecutor):
             if isinstance(val, str):
                 structured_output[prompt_name] = val.rstrip("\n")
         finally:
-            metrics.setdefault(prompt_name, {}).update(
-                {
-                    "context_retrieval": context_retrieval_metrics.get(prompt_name, {}),
-                    f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
-                }
+            self._flush_per_prompt_metrics(
+                metrics=metrics,
+                context_retrieval_metrics=context_retrieval_metrics,
+                prompt_name=prompt_name,
+                llm=llm,
+                embedding=embedding,
+                vector_db=vector_db,
+                chunk_size=chunk_size,
             )
-            self._usage_records.extend(llm.flush_pending_usage())
+
+    def _init_llm_and_retrieval(
+        self,
+        output: dict[str, Any],
+        shim: Any,
+        chunk_size: int,
+        llm_cls: Any,
+        embedding_compat_cls: Any,
+        vector_db_cls: Any,
+        usage_kwargs: dict[str, Any],
+        prompt_name: str,
+    ) -> tuple[Any, Any, Any]:
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        try:
+            llm = llm_cls(
+                adapter_instance_id=output[PSKeys.LLM],
+                tool=shim,
+                usage_kwargs={**usage_kwargs, PSKeys.LLM_USAGE_REASON: PSKeys.EXTRACTION},
+                capture_metrics=True,
+            )
+            embedding = None
+            vector_db = None
             if chunk_size > 0:
-                try:
-                    for handler in embedding.callback_manager.handlers:
-                        if hasattr(handler, "flush_pending_usage"):
-                            self._usage_records.extend(handler.flush_pending_usage())
-                except Exception:
-                    logger.warning(
-                        "Failed to flush embedding usage from callback handlers",
-                        exc_info=True,
-                    )
-            if vector_db:
-                vector_db.close()
+                embedding = embedding_compat_cls(
+                    adapter_instance_id=output[PSKeys.EMBEDDING],
+                    tool=shim,
+                    kwargs={**usage_kwargs},
+                )
+                vector_db = vector_db_cls(
+                    tool=shim,
+                    adapter_instance_id=output[PSKeys.VECTOR_DB],
+                    embedding=embedding,
+                )
+            shim.stream_log(
+                f"Initialized LLM and retrieval adapters for: `{prompt_name}`"
+            )
+            return llm, embedding, vector_db
+        except Exception as e:
+            msg = f"Couldn't fetch adapter. {e}"
+            logger.error(msg)
+            raise LegacyExecutorError(
+                message=msg, code=getattr(e, "status_code", None) or 500
+            ) from e
+
+    def _flush_per_prompt_metrics(
+        self,
+        metrics: dict[str, Any],
+        context_retrieval_metrics: dict[str, Any],
+        prompt_name: str,
+        llm: Any,
+        embedding: Any,
+        vector_db: Any,
+        chunk_size: int,
+    ) -> None:
+        metrics.setdefault(prompt_name, {}).update(
+            {
+                "context_retrieval": context_retrieval_metrics.get(prompt_name, {}),
+                f"{llm.get_usage_reason()}_llm": llm.get_metrics(),
+            }
+        )
+        self._usage_records.extend(llm.flush_pending_usage())
+        if chunk_size > 0 and embedding is not None:
+            try:
+                for handler in embedding.callback_manager.handlers:
+                    if hasattr(handler, "flush_pending_usage"):
+                        self._usage_records.extend(handler.flush_pending_usage())
+            except Exception:
+                logger.warning(
+                    "Failed to flush embedding usage from callback handlers",
+                    exc_info=True,
+                )
+        if vector_db:
+            vector_db.close()
 
     def _run_table_extraction(
         self,

@@ -303,7 +303,7 @@ function Header({
     ];
     if (LookupMenuItem && !isSimplePromptStudio) {
       dropdownItems.splice(
-        dropdownItems.length - 1,
+        -1,
         0,
         {
           type: "divider",

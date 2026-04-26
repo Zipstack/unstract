@@ -24,6 +24,8 @@ PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result"
 # WebSocket emission endpoint (relative to internal API base)
 _EMIT_WEBSOCKET_ENDPOINT = "emit-websocket/"
 
+_UNKNOWN_EXECUTOR_ERROR = "Unknown executor error"
+
 
 class _SafeEncoder(json.JSONEncoder):
     """JSON encoder that converts uuid.UUID and datetime objects to strings."""
@@ -164,7 +166,7 @@ def ide_index_complete(
     try:
         # Check executor-level failure
         if not result_dict.get("success", False):
-            error_msg = result_dict.get("error", "Unknown executor error")
+            error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
             logger.error("ide_index executor reported failure: %s", error_msg)
             api.remove_document_indexing(
                 org_id=org_id,
@@ -370,7 +372,7 @@ def ide_prompt_complete(
     try:
         # Check executor-level failure
         if not result_dict.get("success", False):
-            error_msg = result_dict.get("error", "Unknown executor error")
+            error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
             logger.error("ide_prompt executor reported failure: %s", error_msg)
             _emit_event(
                 api,
@@ -544,7 +546,7 @@ def extraction_complete(
     try:
         # Check executor-level failure
         if not result_dict.get("success", False):
-            error_msg = result_dict.get("error", "Unknown executor error")
+            error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
             logger.error(
                 "extraction executor reported failure: source=%s file=%s error=%s",
                 source,

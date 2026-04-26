@@ -250,6 +250,49 @@ class OutputManagerHelper:
             raise DefaultProfileError("Default ProfileManager does not exist.")
 
     @staticmethod
+    def _resolve_profile_for_prompt(
+        tool_prompt: ToolStudioPrompt,
+        use_default_profile: bool,
+    ) -> str | None:
+        profile_manager_id = tool_prompt.profile_manager_id
+        if not profile_manager_id and not use_default_profile:
+            return None
+        if not profile_manager_id:
+            default_profile = ProfileManager.get_default_llm_profile(tool_prompt.tool_id)
+            profile_manager_id = default_profile.profile_id
+        return profile_manager_id
+
+    @staticmethod
+    def _collect_default_output_for_prompt(
+        tool_prompt: ToolStudioPrompt,
+        profile_manager_id: str,
+        document_manager_id: str,
+        enrichment_by_key: dict[str, Any],
+    ) -> Any:
+        from prompt_studio.lookup_utils import enrich_prompt_output
+
+        try:
+            queryset = PromptStudioOutputManager.objects.filter(
+                prompt_id=str(tool_prompt.prompt_id),
+                profile_manager=profile_manager_id,
+                is_single_pass_extract=False,
+                document_manager_id=document_manager_id,
+            )
+            if not queryset.exists():
+                return ""
+
+            value: Any = ""
+            for output in queryset:
+                value = output.output
+                enriched = enrich_prompt_output(output, {})
+                bundle = extract_prompt_output_enrichment(enriched)
+                if bundle is not None:
+                    enrichment_by_key[tool_prompt.prompt_key] = bundle
+            return value
+        except ObjectDoesNotExist:
+            return ""
+
+    @staticmethod
     def fetch_default_output_response(
         tool_studio_prompts: list[ToolStudioPrompt],
         document_manager_id: str,
@@ -268,47 +311,26 @@ class OutputManagerHelper:
                 When lookups are configured, the cloud plugin adds an
                 opaque enrichment payload via ``attach_combined_output_enrichment``.
         """
-        from prompt_studio.lookup_utils import enrich_prompt_output
-
         result: dict[str, Any] = {}
         enrichment_by_key: dict[str, Any] = {}
 
         for tool_prompt in tool_studio_prompts:
             if tool_prompt.prompt_type == PSOMKeys.NOTES:
                 continue
-            prompt_id = str(tool_prompt.prompt_id)
-            profile_manager_id = tool_prompt.profile_manager_id
-
-            if not profile_manager_id and not use_default_profile:
+            profile_manager_id = OutputManagerHelper._resolve_profile_for_prompt(
+                tool_prompt, use_default_profile
+            )
+            if profile_manager_id is None:
                 result[tool_prompt.prompt_key] = ""
                 continue
-
-            if not profile_manager_id:
-                default_profile = ProfileManager.get_default_llm_profile(
-                    tool_prompt.tool_id
+            result[tool_prompt.prompt_key] = (
+                OutputManagerHelper._collect_default_output_for_prompt(
+                    tool_prompt,
+                    profile_manager_id,
+                    document_manager_id,
+                    enrichment_by_key,
                 )
-                profile_manager_id = default_profile.profile_id
-
-            try:
-                queryset = PromptStudioOutputManager.objects.filter(
-                    prompt_id=prompt_id,
-                    profile_manager=profile_manager_id,
-                    is_single_pass_extract=False,
-                    document_manager_id=document_manager_id,
-                )
-
-                if not queryset.exists():
-                    result[tool_prompt.prompt_key] = ""
-                    continue
-
-                for output in queryset:
-                    result[tool_prompt.prompt_key] = output.output
-                    enriched = enrich_prompt_output(output, {})
-                    bundle = extract_prompt_output_enrichment(enriched)
-                    if bundle is not None:
-                        enrichment_by_key[tool_prompt.prompt_key] = bundle
-            except ObjectDoesNotExist:
-                result[tool_prompt.prompt_key] = ""
+            )
 
         attach_combined_output_enrichment(result, enrichment_by_key)
         return result

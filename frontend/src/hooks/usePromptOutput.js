@@ -32,8 +32,9 @@ try {
 } catch {}
 
 // Opaque extractor so the per-item enrichment payload key name lives in
-// the plugin, not OSS. OSS falls back to a no-op.
-let getEnrichmentFromItem = () => null;
+// the plugin, not OSS. OSS falls back to a no-op. Stub signature matches
+// the cloud helper so static analysis doesn't see call sites as arity mismatches.
+let getEnrichmentFromItem = (_item) => null;
 try {
   const mod = await import("../plugins/lookup-enriched-toggle/helpers");
   getEnrichmentFromItem = mod.getEnrichmentFromItem;
