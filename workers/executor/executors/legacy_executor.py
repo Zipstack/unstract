@@ -1935,7 +1935,16 @@ class LegacyExecutor(BaseExecutor):
 
         lookup_config = output.get("lookup_config")
         lookup_cls = ExecutorPluginLoader.get("lookup-enrichment")
-        if not (lookup_config and current_value is not None and lookup_cls):
+        if not (lookup_config and lookup_cls):
+            return
+        if current_value is None:
+            # Skipping silently here would leave the user wondering why a
+            # configured lookup didn't run — surface it to the workflow log.
+            lookup_name = lookup_config.get("lookup_name") or "lookup"
+            shim.stream_log(
+                f"Skipping lookup `{lookup_name}` for `{prompt_name}` — "
+                f"source prompt produced no value."
+            )
             return
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
