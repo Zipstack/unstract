@@ -5,7 +5,7 @@ from typing import Any
 from account_v2.models import User
 from django.db import models
 from django.db.models import QuerySet
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -21,7 +21,7 @@ from prompt_studio.prompt_studio_v2.models import CustomTool
 logger = logging.getLogger(__name__)
 
 
-class PromptStudioRegistryModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class PromptStudioRegistryModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def get_queryset(self) -> QuerySet[Any]:
         return super().get_queryset()
 

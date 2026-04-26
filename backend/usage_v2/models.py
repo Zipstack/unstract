@@ -2,7 +2,7 @@ import logging
 import uuid
 
 from django.db import models
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -48,7 +48,7 @@ LLM_USAGE_REASON_CHOICES = _LLM_USAGE_REASON_CHOICES
 REFERENCE_TYPE_CHOICES = _REFERENCE_TYPE_CHOICES
 
 
-class UsageModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     pass
 
 

@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 from django.core.exceptions import ObjectDoesNotExist
-from django.utils import timezone
 
 from prompt_studio.lookup_utils import (
     attach_combined_output_enrichment,
@@ -113,8 +112,6 @@ class OutputManagerHelper:
                     "highlight_data": highlight_data,
                     "confidence_data": confidence_data,
                     "word_confidence_data": word_confidence_data,
-                    # QuerySet.update() bypasses auto_now on modified_at.
-                    "modified_at": timezone.now(),
                 }
                 PromptStudioOutputManager.objects.filter(
                     document_manager=document_manager,
