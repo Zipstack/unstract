@@ -152,6 +152,7 @@ def get_lookup_validation_for_tool(tool) -> dict:
             "ok": True,
             "draft_lookups": [],
             "multi_var_lookups": [],
+            "incomplete_lookups": [],
             "single_pass_enabled": bool(
                 getattr(tool, "single_pass_extraction_mode", False)
             ),

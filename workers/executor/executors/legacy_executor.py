@@ -153,7 +153,13 @@ class LegacyExecutor(BaseExecutor):
                     )
                 except Exception:
                     pass  # Best-effort — don't mask the original error
-            return ExecutionResult.failure(error=exc.message)
+            # Preserve any usage rows collected before the failure so the task
+            # wrapper still flushes them. Without this, transient errors that
+            # trigger Celery autoretry re-run LLMs and lose billing rows.
+            failure_metadata: dict[str, Any] = {}
+            if self._usage_records:
+                failure_metadata["usage_records"] = list(self._usage_records)
+            return ExecutionResult.failure(error=exc.message, metadata=failure_metadata)
 
     def _build_shim(
         self,
