@@ -17,6 +17,7 @@ class Migration(migrations.Migration):
                     ("extraction", "Extraction"),
                     ("challenge", "Challenge"),
                     ("summarize", "Summarize"),
+                    ("lookup", "Lookup"),
                 ],
                 db_comment="Reason for LLM usage. Empty if usage_type is 'embedding'. ",
                 max_length=255,
@@ -42,7 +43,10 @@ class Migration(migrations.Migration):
             name="reference_type",
             field=models.CharField(
                 blank=True,
-                choices=[("prompt_key", "Prompt Key")],
+                choices=[
+                    ("prompt_key", "Prompt Key"),
+                    ("lookup_version", "Lookup Version"),
+                ],
                 db_comment=(
                     "Discriminator for reference_id. "
                     "OSS values: 'prompt_key'. "
