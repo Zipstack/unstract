@@ -117,8 +117,22 @@ try {
     "../plugins/prompt-change-indicator/ReadOnlyReviewPage.jsx"
   );
   ReadOnlyReviewPage = mod.ReadOnlyReviewPage;
-} catch {
-  // Cloud-only feedback loop view; stays undefined in OSS builds
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent. Surface
+  // anything that isn't a missing-module error so syntax/runtime
+  // failures inside the plugin don't silently disable the route.
+  const msg = err?.message || "";
+  const isModuleMissing =
+    err?.code === "MODULE_NOT_FOUND" ||
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Cannot find module");
+  if (!isModuleMissing) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[prompt-change-indicator] ReadOnlyReviewPage import failed unexpectedly",
+      err,
+    );
+  }
 }
 
 // The readonly route lives inside the manual-review ReviewLayout. If the
