@@ -121,6 +121,17 @@ try {
   // Cloud-only feedback loop view; stays undefined in OSS builds
 }
 
+// The readonly route lives inside the manual-review ReviewLayout. If the
+// prompt-change-indicator plugin ships without manual-review, the route
+// would silently never register — surface that misconfiguration loudly.
+if (ReadOnlyReviewPage && !ReviewLayout) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[prompt-change-indicator] ReadOnlyReviewPage loaded but ReviewLayout " +
+      "is missing; readonly route will not be registered.",
+  );
+}
+
 try {
   const mod1 = await import(
     "../plugins/unstract-subscription/pages/UnstractSubscriptionPage.jsx"
