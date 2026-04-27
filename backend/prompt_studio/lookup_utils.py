@@ -11,11 +11,11 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    from pluggable_apps.lookup_v1 import execution as _execution
-    from pluggable_apps.lookup_v1 import output_enrichment as _output_enrichment
-    from pluggable_apps.lookup_v1 import staleness as _staleness
-    from pluggable_apps.lookup_v1 import validation as _validation
-    from pluggable_apps.lookup_v1.models import LookupOutputResult as _LookupOutputResult
+    from pluggable_apps.lookups import execution as _execution
+    from pluggable_apps.lookups import output_enrichment as _output_enrichment
+    from pluggable_apps.lookups import staleness as _staleness
+    from pluggable_apps.lookups import validation as _validation
+    from pluggable_apps.lookups.models import LookupOutputResult as _LookupOutputResult
 
     LOOKUPS_AVAILABLE = True
 except ImportError:

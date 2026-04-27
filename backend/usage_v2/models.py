@@ -32,7 +32,7 @@ _REFERENCE_TYPE_CHOICES: list[tuple[str, str]] = [
 ]
 
 try:
-    from pluggable_apps.lookup_v1.constants import (
+    from pluggable_apps.lookups.constants import (
         CLOUD_LLM_USAGE_REASON_CHOICES,
         CLOUD_REFERENCE_TYPE_CHOICES,
     )
