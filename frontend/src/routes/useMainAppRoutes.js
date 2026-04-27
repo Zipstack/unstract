@@ -37,6 +37,7 @@ let ManualReviewPage;
 let SimpleManualReviewPage;
 let ReviewLayout;
 let Manage;
+let ReadOnlyReviewPage;
 let UnstractSubscriptionPage;
 let UnstractSubscriptionCheck;
 let AgenticPromptStudio;
@@ -109,6 +110,15 @@ try {
   Manage = mod4.Manage;
 } catch {
   // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  const mod = await import(
+    "../plugins/prompt-change-indicator/ReadOnlyReviewPage.jsx"
+  );
+  ReadOnlyReviewPage = mod.ReadOnlyReviewPage;
+} catch {
+  // Cloud-only feedback loop view; stays undefined in OSS builds
 }
 
 try {
@@ -248,6 +258,12 @@ function useMainAppRoutes() {
             element={<ManualReviewPage type="approve" />}
           />
           {Manage && <Route path="review/manage" element={<Manage />} />}
+          {ReadOnlyReviewPage && (
+            <Route
+              path="review/readonly/:documentId"
+              element={<ReadOnlyReviewPage />}
+            />
+          )}
         </Route>
       )}
     </>
