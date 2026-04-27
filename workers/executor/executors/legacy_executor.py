@@ -1988,7 +1988,14 @@ class LegacyExecutor(BaseExecutor):
         lookup_cls = ExecutorPluginLoader.get("lookup-enrichment")
         if not (lookup_config and lookup_cls):
             return
-        if current_value is None:
+        # Treat empty strings/containers as "no value" too — for boolean and
+        # number prompts, falsy 0/False are still valid inputs and must run.
+        is_empty = (
+            current_value is None
+            or (isinstance(current_value, str) and not current_value.strip())
+            or (isinstance(current_value, (list, dict)) and not current_value)
+        )
+        if is_empty:
             # Skipping silently here would leave the user wondering why a
             # configured lookup didn't run — surface it to the workflow log.
             lookup_name = lookup_config.get("lookup_name") or "lookup"

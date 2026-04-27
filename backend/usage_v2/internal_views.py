@@ -185,5 +185,23 @@ class UsageBatchCreateView(APIView):
                     error_message=r.get("error_message"),
                 )
             )
-        created = Usage.objects.bulk_create(usage_objects)
+
+        try:
+            # Chunk to bound transaction size on the billing-critical table.
+            created = Usage.objects.bulk_create(usage_objects, batch_size=500)
+        except Exception as e:
+            logger.error(
+                "bulk_create failed for %d usage records (org=%s): %s",
+                len(usage_objects),
+                organization.organization_id if organization else None,
+                e,
+                exc_info=True,
+            )
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": "Failed to persist usage records",
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
         return JsonResponse({"created": len(created)}, status=201)
