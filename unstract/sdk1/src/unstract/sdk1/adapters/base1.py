@@ -15,6 +15,72 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 
 logger = logging.getLogger(__name__)
 
+# Anthropic models that have deprecated sampling parameters (`temperature`,
+# `top_p`, `top_k`). The patterns are substring-matched against the model id
+# after lowercasing and normalizing `.` / `_` to `-`, so a single entry covers:
+#   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
+#   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
+#   - Bedrock route prefixes        `converse/...`, `invoke/...`
+#   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
+#                                   `eu.`, `apac.`, `global.` variants
+#   - Bedrock foundation-model ARN  `arn:aws:bedrock:<region>::foundation-model/
+#                                    anthropic.claude-opus-4-7-...`
+#   - Bedrock inference-profile ARN `arn:aws:bedrock:<region>:<account>:
+#                                    inference-profile/us.anthropic.claude-opus-4-7-...`
+#   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
+#   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
+# Add new entries here when Anthropic deprecates sampling on more models.
+# See https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7
+_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[str, ...] = ("claude-opus-4-7",)
+_DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
+# Fields whose value can carry a model id. `model` is universal; `model_id` is
+# Bedrock's separate ARN field used for Application Inference Profile cost
+# tracking — when callers route through an AIP, the standard model id often
+# only appears here, not in `model`.
+_MODEL_ID_FIELDS: tuple[str, ...] = ("model", "model_id")
+
+
+def _has_deprecated_sampling_params(model: str | None) -> bool:
+    """Return True when the model rejects sampling parameters.
+
+    Anthropic deprecated `temperature`, `top_p`, and `top_k` starting with
+    Claude Opus 4.7; sending any of them yields a 400 from Anthropic and from
+    the providers that proxy it (Bedrock, Azure AI Foundry, Vertex AI).
+
+    The check normalizes case and `.`/`_` separators to `-`, then substring-
+    matches against the patterns. This catches every format that embeds the
+    model id (foundation model ids, cross-region profiles, foundation-model
+    ARNs, inference-profile ARNs, Vertex `@`-suffixed ids).
+
+    It does NOT catch:
+    - Bedrock Application Inference Profile ARNs (e.g.
+      `arn:aws:bedrock:...:application-inference-profile/abcd1234`), whose
+      tail is an opaque profile id — the underlying model is not recoverable
+      from the string. Pass the AIP ARN in `model_id` and keep the standard
+      model id in `model`, or the strip won't fire.
+    - Azure AI Foundry deployment names that omit the model id; rename the
+      deployment to include `claude-opus-4-7` so detection works.
+    """
+    if not model:
+        return False
+    normalized = model.lower().replace(".", "-").replace("_", "-")
+    return any(pat in normalized for pat in _SAMPLING_DEPRECATED_MODEL_PATTERNS)
+
+
+def _strip_deprecated_sampling_params(validated: dict[str, "Any"]) -> dict[str, "Any"]:
+    """Drop sampling params for models that reject them (e.g. Claude Opus 4.7).
+
+    Pydantic's `model_dump()` re-emits the default `temperature=0.1` even when
+    the caller never set one, so the field must be popped after validation to
+    keep it off the wire. Checks both `model` and `model_id` so Bedrock callers
+    routing through an Application Inference Profile are covered when the
+    standard model id only appears in `model_id`.
+    """
+    if any(_has_deprecated_sampling_params(validated.get(f)) for f in _MODEL_ID_FIELDS):
+        for param in _DEPRECATED_SAMPLING_PARAMS:
+            validated.pop(param, None)
+    return validated
+
 
 def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) -> None:
     """Register all SDK v1 adapters of given type.
@@ -646,7 +712,8 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # Keys mode requires non-blank values, legacy (no auth_type) is
         # lenient. Reads auth_type from result_metadata since validation_
         # metadata strips it before Pydantic.
-        return _resolve_bedrock_aws_credentials(result_metadata, validated)
+        validated = _resolve_bedrock_aws_credentials(result_metadata, validated)
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -735,7 +802,7 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
         if enable_extended_context:
             validated["extra_headers"] = {"anthropic-beta": "context-1m-2025-08-07"}
 
-        return validated
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -945,7 +1012,11 @@ class AzureAIFoundryLLMParameters(BaseChatCompletionParameters):
             adapter_metadata
         )
 
-        return AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
+        validated = AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
+        # Azure AI Foundry proxies Anthropic models that reject sampling params
+        # (e.g. Claude Opus 4.7); detection relies on the deployment name
+        # embedding the model id.
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
