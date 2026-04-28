@@ -1,4 +1,3 @@
-import logging
 import uuid
 
 from django.db import models
@@ -8,44 +7,32 @@ from utils.models.organization_mixin import (
     DefaultOrganizationMixin,
 )
 
-logger = logging.getLogger(__name__)
-
 
 class UsageType(models.TextChoices):
     LLM = "llm", "LLM Usage"
     EMBEDDING = "embedding", "Embedding Usage"
 
 
-# ── Extensible choice lists ─────────────────────────────────────────
-# OSS defines base values. Cloud plugins append via try-import so that
-# Django validation accepts cloud-specific values when the plugin is
-# installed, without leaking cloud details into OSS code.
+# ── Choice lists (static union of OSS + cloud values) ────────────────
+# Cloud-only entries (e.g. "lookup", "lookup_version") are listed here
+# even on OSS-only builds where they're never written. A previous
+# try-import pattern extended these at runtime when the cloud plugin
+# was importable, but that left model state ≠ migration state in OSS
+# builds and broke ``makemigrations --check`` in CI. Carrying the union
+# statically keeps both sides in lockstep at the cost of a couple of
+# unused choice entries on OSS.
 
-_LLM_USAGE_REASON_CHOICES: list[tuple[str, str]] = [
+LLM_USAGE_REASON_CHOICES: list[tuple[str, str]] = [
     ("extraction", "Extraction"),
     ("challenge", "Challenge"),
     ("summarize", "Summarize"),
+    ("lookup", "Lookup"),
 ]
 
-_REFERENCE_TYPE_CHOICES: list[tuple[str, str]] = [
+REFERENCE_TYPE_CHOICES: list[tuple[str, str]] = [
     ("prompt_key", "Prompt Key"),
+    ("lookup_version", "Lookup Version"),
 ]
-
-try:
-    from pluggable_apps.lookups.constants import (
-        CLOUD_LLM_USAGE_REASON_CHOICES,
-        CLOUD_REFERENCE_TYPE_CHOICES,
-    )
-
-    _LLM_USAGE_REASON_CHOICES.extend(CLOUD_LLM_USAGE_REASON_CHOICES)
-    _REFERENCE_TYPE_CHOICES.extend(CLOUD_REFERENCE_TYPE_CHOICES)
-except ImportError:
-    pass
-except Exception:
-    logger.warning("Failed to load cloud usage choices", exc_info=True)
-
-LLM_USAGE_REASON_CHOICES = _LLM_USAGE_REASON_CHOICES
-REFERENCE_TYPE_CHOICES = _REFERENCE_TYPE_CHOICES
 
 
 class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
@@ -54,8 +41,8 @@ class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
 
 class Usage(DefaultOrganizationMixin, BaseModel):
     # reference_type → reference_id mapping (no FK constraint):
-    #   "prompt_key"  → ToolStudioPrompt UUID (OSS)
-    #   Cloud plugins register additional types via CLOUD_REFERENCE_TYPE_CHOICES.
+    #   "prompt_key"      → ToolStudioPrompt UUID (OSS-only writer)
+    #   "lookup_version"  → LookupVersion UUID (cloud-only writer)
     # Usage records survive entity deletion.
 
     id = models.UUIDField(
