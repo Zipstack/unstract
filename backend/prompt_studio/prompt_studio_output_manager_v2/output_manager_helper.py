@@ -2,7 +2,8 @@ import json
 import logging
 from typing import Any
 
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
+from django.db import IntegrityError
 
 from prompt_studio.lookup_utils import (
     attach_combined_output_enrichment,
@@ -213,12 +214,16 @@ class OutputManagerHelper:
                 word_confidence_data=prompt_word_confidence_data,
             )
 
-            # Persist lookup outputs if present (cloud plugin, no-op in OSS)
+            # Persist lookup outputs if present (cloud plugin, no-op in OSS).
+            # Narrow to known DB-level errors so unexpected exceptions
+            # (plugin contract drift, KeyError on the lookup payload) bubble
+            # up rather than getting hidden as a warning that masquerades
+            # as a successful save.
             if prompt_lookup:
                 try:
                     persist_lookup_output(prompt_output, prompt_lookup)
-                except Exception:
-                    logger.warning(
+                except (IntegrityError, ValidationError):
+                    logger.error(
                         "Failed to persist lookup output for prompt %s",
                         prompt.prompt_key,
                         exc_info=True,

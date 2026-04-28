@@ -37,6 +37,21 @@ from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 logger = logging.getLogger(__name__)
 
 
+def _is_blank(value: Any) -> bool:
+    """Treat None / whitespace strings / empty containers as no-value.
+
+    Boolean ``False`` and numeric ``0`` are *not* blank — they're valid
+    inputs for boolean / number prompts whose lookups should still run.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, dict)):
+        return not value
+    return False
+
+
 @ExecutorRegistry.register
 class LegacyExecutor(BaseExecutor):
     """Executor that wraps the full prompt-service extraction pipeline.
@@ -1708,11 +1723,13 @@ class LegacyExecutor(BaseExecutor):
                 metrics=metrics,
                 shim=shim,
                 usage_kwargs=usage_kwargs,
+                llm_cls=llm_cls,
             )
             self._run_webhook_postprocessing(
                 output=output,
                 structured_output=structured_output,
                 metadata=metadata,
+                shim=shim,
             )
 
             self._run_challenge_if_enabled(
@@ -1990,9 +2007,14 @@ class LegacyExecutor(BaseExecutor):
         metadata: dict[str, Any],
         metrics: dict[str, Any],
         shim: Any,
+        llm_cls: Any,
         usage_kwargs: dict[str, Any] | None = None,
     ) -> None:
-        """Run lookup enrichment plugin if enabled and available."""
+        """Run lookup enrichment plugin if enabled and available.
+
+        ``llm_cls`` is passed in by the caller so we don't re-unpack the
+        7-tuple returned by ``_get_prompt_deps()`` on every prompt.
+        """
         from executor.executors.constants import PromptServiceConstants as PSKeys
         from executor.executors.plugins import ExecutorPluginLoader
 
@@ -2003,16 +2025,9 @@ class LegacyExecutor(BaseExecutor):
         lookup_cls = ExecutorPluginLoader.get("lookup-enrichment")
         if not (lookup_config and lookup_cls):
             return
-        # Treat empty strings/containers as "no value" too — for boolean and
-        # number prompts, falsy 0/False are still valid inputs and must run.
-        is_empty = (
-            current_value is None
-            or (isinstance(current_value, str) and not current_value.strip())
-            or (isinstance(current_value, (list, dict)) and not current_value)
-        )
-        if is_empty:
-            # Skipping silently here would leave the user wondering why a
-            # configured lookup didn't run — surface it to the workflow log.
+        if _is_blank(current_value):
+            # Surface a skip log instead of silently no-op-ing — the user
+            # configured a lookup and would otherwise wonder why it didn't run.
             lookup_name = lookup_config.get("lookup_name") or "lookup"
             shim.stream_log(
                 f"Skipping lookup `{lookup_name}` for `{prompt_name}` — "
@@ -2020,17 +2035,34 @@ class LegacyExecutor(BaseExecutor):
             )
             return
 
-        _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
-        outcome = lookup_cls.run_with_metrics(
-            llm_cls=llm_cls,
-            lookup_config=lookup_config,
-            structured_output=structured_output,
-            current_value=current_value,
-            metadata=metadata,
-            prompt_name=prompt_name,
-            shim=shim,
-            usage_kwargs=usage_kwargs,
-        )
+        try:
+            outcome = lookup_cls.run_with_metrics(
+                llm_cls=llm_cls,
+                lookup_config=lookup_config,
+                structured_output=structured_output,
+                current_value=current_value,
+                metadata=metadata,
+                prompt_name=prompt_name,
+                shim=shim,
+                usage_kwargs=usage_kwargs,
+            )
+        except Exception:
+            # Enrichment is post-extraction — degrade gracefully on
+            # plugin contract drift (missing METRICS_KEY, unexpected
+            # outcome shape) rather than aborting the whole prompt run
+            # and losing the answer-prompt billing rows.
+            lookup_name = lookup_config.get("lookup_name") or "lookup"
+            logger.exception(
+                "Lookup enrichment failed for prompt=%s lookup=%s",
+                prompt_name,
+                lookup_name,
+            )
+            shim.stream_log(
+                f"Lookup `{lookup_name}` failed for `{prompt_name}`; "
+                f"continuing without enrichment.",
+                level=LogLevel.WARN,
+            )
+            return
         self._usage_records.extend(outcome.usage_records)
         metrics.setdefault(prompt_name, {})[lookup_cls.METRICS_KEY] = outcome.llm_metrics
 
@@ -2039,6 +2071,7 @@ class LegacyExecutor(BaseExecutor):
         output: dict[str, Any],
         structured_output: dict[str, Any],
         metadata: dict[str, Any],
+        shim: Any,
     ) -> None:
         """Run webhook postprocessing if enabled (JSON outputs only)."""
         from executor.executors.answer_prompt import AnswerPromptService
@@ -2047,7 +2080,24 @@ class LegacyExecutor(BaseExecutor):
         prompt_name = output[PSKeys.NAME]
         output_type = output.get(PSKeys.TYPE, "")
         webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
-        if not (webhook_enabled and output_type == PSKeys.JSON):
+        if not webhook_enabled:
+            return
+        if output_type != PSKeys.JSON:
+            # The pre-refactor behaviour fired the webhook regardless of
+            # output_type. The new restriction is intentional, but the
+            # user enabled a webhook URL and would otherwise see no call
+            # firing — surface the skip in the IDE log panel.
+            logger.warning(
+                "Webhook postprocessing supports JSON outputs only; "
+                "skipping for prompt=%s (output_type=%s)",
+                prompt_name,
+                output_type,
+            )
+            shim.stream_log(
+                f"Webhook postprocessing supports JSON outputs only; "
+                f"skipping for `{prompt_name}`.",
+                level=LogLevel.WARN,
+            )
             return
 
         webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)

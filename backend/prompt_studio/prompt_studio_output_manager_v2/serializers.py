@@ -48,7 +48,17 @@ class PromptStudioOutputSerializer(AuditSerializer):
                 " | Process continued"
             )
             data["coverage"] = {}
-        data = enrich_prompt_output(instance, data)
+        # Match the surrounding ``log + continue`` policy used by token-usage
+        # and coverage above — an enrichment failure shouldn't 500 the entire
+        # prompt-output list endpoint and hide the raw output.
+        try:
+            data = enrich_prompt_output(instance, data)
+        except Exception as e:
+            logger.error(
+                "Error occurred while enriching prompt output for "
+                f"prompt_id {instance.prompt_id} (run_id={instance.run_id}): {e}"
+                " | Process continued"
+            )
 
         # Convert string to list
         try:
