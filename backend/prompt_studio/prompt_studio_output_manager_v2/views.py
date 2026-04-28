@@ -97,6 +97,10 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_id_to_key:
             return Response({}, status=status.HTTP_200_OK)
 
+        # ``DISTINCT ON("prompt_id")`` (Postgres) keeps only the latest row
+        # per prompt at the SQL layer — without it Django materialises the
+        # full ``M docs × N runs × len(prompt_keys)`` result set just to
+        # let the Python loop pick one row per prompt.
         outputs = (
             PromptStudioOutputManager.objects.filter(
                 prompt_id__in=prompt_id_to_key.keys(),
@@ -104,17 +108,16 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
             )
             .exclude(output__isnull=True)
             .exclude(output__exact="")
-            .order_by("-modified_at")
+            .order_by("prompt_id", "-modified_at")
+            .distinct("prompt_id")
             .values("prompt_id", "output")
         )
 
         result: dict[str, str] = {}
         for row in outputs:
             key = prompt_id_to_key.get(row["prompt_id"])
-            if key and key not in result:
+            if key:
                 result[key] = row["output"]
-            if len(result) == len(prompt_id_to_key):
-                break
 
         return Response(result, status=status.HTTP_200_OK)
 
