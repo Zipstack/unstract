@@ -13,6 +13,12 @@ class UsageType(models.TextChoices):
     EMBEDDING = "embedding", "Embedding Usage"
 
 
+class UsageStatus(models.TextChoices):
+    SUCCESS = "SUCCESS", "Success"
+    ERROR = "ERROR", "Error"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
 # ── Choice lists (static union of OSS + cloud values) ────────────────
 # Cloud-only entries (e.g. "lookup", "lookup_version") are listed here
 # even on OSS-only builds where they're never written. A previous
@@ -116,6 +122,7 @@ class Usage(DefaultOrganizationMixin, BaseModel):
     )
     status = models.CharField(
         max_length=16,
+        choices=UsageStatus.choices,
         null=True,
         blank=True,
         db_comment="Operation outcome: SUCCESS, ERROR, or SKIPPED",
@@ -140,4 +147,29 @@ class Usage(DefaultOrganizationMixin, BaseModel):
                 fields=["llm_usage_reason", "reference_id", "-created_at"],
                 name="idx_usage_reason_ref_created",
             ),
+        ]
+        constraints = [
+            # ``reference_type`` is a discriminator for ``reference_id``.
+            # Either both are NULL (no entity attribution) or both are set
+            # (decodable). A row with one but not the other is undecodable
+            # at billing-aggregation time. Cheap to validate on apply
+            # because both fields landed together in lookups V2 — legacy
+            # rows have both NULL.
+            models.CheckConstraint(
+                check=(
+                    models.Q(reference_id__isnull=True, reference_type__isnull=True)
+                    | models.Q(reference_id__isnull=False, reference_type__isnull=False)
+                ),
+                name="usage_reference_pair_consistent",
+            ),
+            # NOTE: a sibling ``(usage_type, llm_usage_reason)`` constraint
+            # would be a natural extension here — embedding rows must have
+            # llm_usage_reason NULL, LLM rows must have it set. Skipped in
+            # this PR because the ``usage`` table is large in prod and
+            # legacy embedding rows have ``llm_usage_reason=''`` from the
+            # old SDK default; both the data backfill and Django's default
+            # ``ADD CONSTRAINT`` (full-table scan) would lock the billing
+            # table for too long. To be added in a follow-up via
+            # ``ADD CONSTRAINT ... NOT VALID`` + batched ``VALIDATE
+            # CONSTRAINT`` during a maintenance window.
         ]

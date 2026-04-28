@@ -519,10 +519,11 @@ def ide_prompt_error(
 
 
 # ------------------------------------------------------------------
-# Generic Text Extraction Callbacks
+# Text Extraction Callbacks
 #
-# Reusable extraction callbacks that route based on ``source`` in
-# callback_kwargs (e.g. "lookup", future "prompt_studio").
+# Today only ``source="lookup"`` is wired up; the cloud lookups plugin
+# is the only registrant of the underlying extraction-complete /
+# extraction-error endpoints (see workers/shared/clients/extraction_client.py).
 # ------------------------------------------------------------------
 
 

@@ -22,8 +22,6 @@ from utils.local_context import StateStore
 
 from backend.celery_service import app as celery_app
 from prompt_studio.lookup_utils import (
-    attach_lookup_config,
-    attach_lookup_configs_to_tool_settings,
     get_lookup_config,
     get_lookup_configs_for_tool,
 )
@@ -395,7 +393,7 @@ class PromptStudioHelper:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
         if lookup_config := get_lookup_config(prompt):
-            attach_lookup_config(output, lookup_config)
+            output["lookup_config"] = lookup_config
 
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -809,7 +807,7 @@ class PromptStudioHelper:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
         if lookup_config := get_lookup_config(prompt):
-            attach_lookup_config(output, lookup_config)
+            output["lookup_config"] = lookup_config
 
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -1181,7 +1179,7 @@ class PromptStudioHelper:
 
         lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
         if lookup_configs:
-            attach_lookup_configs_to_tool_settings(tool_settings, lookup_configs)
+            tool_settings["lookup_configs"] = lookup_configs
 
         for p in prompts:
             if not p.prompt:
@@ -1935,7 +1933,7 @@ class PromptStudioHelper:
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
         if lookup_config := get_lookup_config(prompt):
-            attach_lookup_config(output, lookup_config)
+            output["lookup_config"] = lookup_config
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate

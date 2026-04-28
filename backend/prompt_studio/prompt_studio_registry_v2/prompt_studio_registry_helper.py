@@ -7,10 +7,7 @@ from django.conf import settings
 from django.db import IntegrityError
 from plugins import get_plugin
 
-from prompt_studio.lookup_utils import (
-    attach_lookup_config,
-    validate_lookups_for_export,
-)
+from prompt_studio.lookup_utils import validate_lookups_for_export
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
@@ -366,7 +363,7 @@ class PromptStudioRegistryHelper:
             )
             prompt_id_str = str(prompt.prompt_id)
             if prompt_id_str in lookup_configs:
-                attach_lookup_config(output, lookup_configs[prompt_id_str])
+                output["lookup_config"] = lookup_configs[prompt_id_str]
             # Retaining the old fields in condition
             # for backward compatibility. To be removed in future.
             if (

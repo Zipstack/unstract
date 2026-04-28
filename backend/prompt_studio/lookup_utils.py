@@ -1,14 +1,28 @@
 """Shared utility for lookup operations.
 
-Wraps cloud-only lookup calls so that OSS callers don't repeat the
-try/except ImportError guard. All functions are no-ops in OSS. A single
-module-level probe decides availability so downstream errors inside the
-cloud plugin surface instead of being silently swallowed as ImportError.
+Wraps cloud-only lookup calls so OSS callers don't repeat the
+``try/except ImportError`` guard. All functions are no-ops in OSS.
+
+The probe below catches *only* the absence of the cloud
+``pluggable_apps.lookups`` package — an ImportError raised transitively
+inside the cloud plugin (e.g. a missing third-party dependency it needs)
+re-raises so the failure surfaces instead of silently degrading the
+whole feature to a no-op.
 """
 
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_CLOUD_LOOKUP_MODULES = {
+    "pluggable_apps.lookups",
+    "pluggable_apps.lookups.execution",
+    "pluggable_apps.lookups.output_enrichment",
+    "pluggable_apps.lookups.staleness",
+    "pluggable_apps.lookups.validation",
+    "pluggable_apps.lookups.models",
+}
 
 try:
     from pluggable_apps.lookups import execution as _execution
@@ -18,7 +32,9 @@ try:
     from pluggable_apps.lookups.models import LookupOutputResult as _LookupOutputResult
 
     LOOKUPS_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    if e.name not in _CLOUD_LOOKUP_MODULES:
+        raise
     LOOKUPS_AVAILABLE = False
 
 
@@ -103,12 +119,16 @@ def get_latest_lookup_mutation_for_tool(tool):
     return _staleness.get_latest_lookup_mutation_for_tool(tool)
 
 
-def get_original_value_if_enriched(metadata: dict, prompt_key: str):
-    """Return the pre-enrichment value for ``prompt_key`` if present.
+def get_original_value_if_enriched(
+    metadata: dict, prompt_key: str
+) -> tuple[Any, dict] | None:
+    """Return ``(original_value, prompt_lookup_dict)`` if ``prompt_key`` was
+    enriched, or ``None`` otherwise.
 
-    Opaque wrapper around the cloud plugin's ``lookup_outputs`` metadata
-    shape so OSS callers don't need to know the key names. Returns None
-    when no enrichment happened or the plugin is absent.
+    Operates purely on metadata shape — the plugin-availability flag is
+    not consulted, so callers can invoke this even when ``LOOKUPS_AVAILABLE``
+    is False (it still returns ``None`` because the metadata shape won't
+    match).
     """
     if not isinstance(metadata, dict):
         return None
@@ -158,24 +178,3 @@ def get_lookup_validation_for_tool(tool) -> dict:
             ),
         }
     return _validation.get_lookup_validation_for_tool(tool)
-
-
-def attach_lookup_config(output: dict, config: dict) -> None:
-    """Stamp a per-prompt output dict with the lookup config payload.
-
-    Keeps the payload key name owned by the bridge so OSS call sites
-    don't encode the contract.
-    """
-    output["lookup_config"] = config
-
-
-def attach_lookup_configs_to_tool_settings(
-    tool_settings: dict, configs: list[dict]
-) -> None:
-    """Stamp tool_settings with the per-tool lookup configs list."""
-    tool_settings["lookup_configs"] = configs
-
-
-def get_lookup_config_from_output(output: dict) -> dict | None:
-    """Read the lookup config stamped on a prompt output, if any."""
-    return output.get("lookup_config")

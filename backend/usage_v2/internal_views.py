@@ -171,7 +171,12 @@ class UsageBatchCreateView(APIView):
                     adapter_instance_id=r.get("adapter_instance_id", ""),
                     run_id=r.get("run_id"),
                     usage_type=r.get("usage_type", "llm"),
-                    llm_usage_reason=r.get("llm_usage_reason", ""),
+                    # ``llm_usage_reason`` has a fixed choice set and a
+                    # cross-field CheckConstraint vs. ``usage_type``. Coerce
+                    # missing/empty to None so embedding rows don't trip
+                    # the constraint and so we don't silently store ""
+                    # which isn't a valid choice.
+                    llm_usage_reason=r.get("llm_usage_reason") or None,
                     model_name=r.get("model_name", ""),
                     embedding_tokens=r.get("embedding_tokens", 0),
                     prompt_tokens=r.get("prompt_tokens", 0),
