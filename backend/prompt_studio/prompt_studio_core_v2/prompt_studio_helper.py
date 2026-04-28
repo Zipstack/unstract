@@ -1540,6 +1540,7 @@ class PromptStudioHelper:
         if (
             prompt_instance.enforce_type == TSPKeys.TABLE
             or prompt_instance.enforce_type == TSPKeys.RECORD
+            or prompt_instance.enforce_type == TSPKeys.AGENTIC_TABLE
         ) and not payload_modifier_plugin:
             raise OperationNotSupported()
 
@@ -1570,17 +1571,34 @@ class PromptStudioHelper:
             "Invoking prompt service",
         )
         try:
-            response = PromptStudioHelper._fetch_response(
-                doc_path=doc_path,
-                doc_name=doc_name,
-                tool=tool,
-                prompt=prompt_instance,
-                org_id=org_id,
-                document_id=document_id,
-                run_id=run_id,
-                profile_manager_id=profile_manager_id,
-                user_id=user_id,
-            )
+            if (
+                prompt_instance.enforce_type == TSPKeys.AGENTIC_TABLE
+                and payload_modifier_plugin
+            ):
+                modifier_service = payload_modifier_plugin["service_class"]()
+                response = modifier_service.execute_agentic_table(
+                    tool_id=tool_id,
+                    prompt_id=str(prompt_instance.prompt_id),
+                    prompt_key=prompt_name,
+                    prompt=prompt_instance.prompt,
+                    doc_path=doc_path,
+                    doc_name=doc_name,
+                    org_id=org_id,
+                    user_id=user_id,
+                    run_id=run_id,
+                )
+            else:
+                response = PromptStudioHelper._fetch_response(
+                    doc_path=doc_path,
+                    doc_name=doc_name,
+                    tool=tool,
+                    prompt=prompt_instance,
+                    org_id=org_id,
+                    document_id=document_id,
+                    run_id=run_id,
+                    profile_manager_id=profile_manager_id,
+                    user_id=user_id,
+                )
             return PromptStudioHelper._handle_response(
                 response=response,
                 run_id=run_id,

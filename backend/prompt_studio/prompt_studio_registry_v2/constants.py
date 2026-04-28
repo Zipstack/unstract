@@ -12,6 +12,7 @@ class PromptStudioRegistryKeys:
     TABLE = "table"
     RECORD = "record"
     LINE_ITEM = "line-item"
+    AGENTIC_TABLE = "agentic_table"
 
 
 class PromptStudioRegistryErrors:

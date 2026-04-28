@@ -1909,25 +1909,36 @@ class LegacyExecutor(BaseExecutor):
         prompt_name = output[PSKeys.NAME]
         output_type = output[PSKeys.TYPE]
 
+        # Defensive guard: agentic_table prompts must be dispatched to
+        # the dedicated agentic_table executor by the worker (Layer 2 in
+        # workers/file_processing/structure_tool_task.py). If one ever
+        # reaches this method, the legacy fallthrough below would store
+        # the raw LLM completion as a string. Skip silently with a
+        # warning so the caller's existing entry (if any) survives.
+        if output_type == "agentic_table":
+            logger.warning(
+                "Skipping agentic_table prompt %s in legacy executor — "
+                "should have been dispatched to agentic_table executor",
+                prompt_name,
+            )
+            return
+
         if output_type == PSKeys.NUMBER:
             structured_output[prompt_name] = LegacyExecutor._convert_number_answer(
                 answer, llm, answer_prompt_svc
             )
 
         elif output_type == PSKeys.EMAIL:
-            if answer.lower() == "na":
-                structured_output[prompt_name] = answer
-            else:
-                email_prompt = (
-                    f"Extract the email from the following text:\n{answer}"
-                    f"\n\nOutput just the email. "
-                    f"The email should be directly assignable to a string "
-                    f"variable. No explanation is required. If you cannot "
-                    f'extract the email, output "NA".'
-                )
-                structured_output[prompt_name] = answer_prompt_svc.run_completion(
-                    llm=llm, prompt=email_prompt
-                )
+            email_prompt = (
+                f"Extract the email from the following text:\n{answer}"
+                f"\n\nOutput just the email. "
+                f"The email should be directly assignable to a string "
+                f"variable. No explanation is required. If you cannot "
+                f'extract the email, output "NA".'
+            )
+            structured_output[prompt_name] = LegacyExecutor._convert_scalar_answer(
+                answer, llm, answer_prompt_svc, email_prompt
+            )
 
         elif output_type == PSKeys.DATE:
             date_prompt = (

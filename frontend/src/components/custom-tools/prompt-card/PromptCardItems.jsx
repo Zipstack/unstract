@@ -15,7 +15,6 @@ import { useEffect, useRef, useState } from "react";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { TABLE } from "./constants";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
@@ -26,6 +25,16 @@ try {
     "../../../plugins/prompt-card/TableExtractionSettingsBtn"
   );
   TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
+} catch {
+  // The component will remain null of it is not available
+}
+
+let AgenticTableChecklist;
+try {
+  const mod = await import(
+    "../../../plugins/prompt-card/AgenticTableChecklist"
+  );
+  AgenticTableChecklist = mod.AgenticTableChecklist;
 } catch {
   // The component will remain null of it is not available
 }
@@ -82,6 +91,7 @@ function PromptCardItems({
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
   const [tableSettings, setTableSettings] = useState({});
+  const [isAgenticTableReady, setIsAgenticTableReady] = useState(true);
   const promptId = promptDetails?.prompt_id;
 
   useEffect(() => {
@@ -212,6 +222,7 @@ function PromptCardItems({
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
             enforceType={enforceType}
+            isAgenticTableReady={isAgenticTableReady}
           />
         </Space>
       </div>
@@ -222,6 +233,14 @@ function PromptCardItems({
       >
         <Collapse.Panel key={"1"} showArrow={false}>
           <div className="prompt-card-div-body">
+            {AgenticTableChecklist && (
+              <AgenticTableChecklist
+                promptId={promptDetails?.prompt_id}
+                promptText={promptText}
+                enforceType={enforceType}
+                onReadinessChange={setIsAgenticTableReady}
+              />
+            )}
             <EditableText
               isEditing={isEditingPrompt}
               setIsEditing={setIsEditingPrompt}
@@ -278,7 +297,7 @@ function PromptCardItems({
                         )}
                     </Space>
                     <Space>
-                      {enforceType === TABLE && TableExtractionSettingsBtn && (
+                      {TableExtractionSettingsBtn && (
                         <TableExtractionSettingsBtn
                           promptId={promptDetails?.prompt_id}
                           enforceType={enforceType}
@@ -324,6 +343,7 @@ function PromptCardItems({
               isChallenge={isChallenge}
               handleSelectHighlight={handleSelectHighlight}
               progressMsg={progressMsg}
+              isAgenticTableReady={isAgenticTableReady}
             />
           </Row>
         </Collapse.Panel>

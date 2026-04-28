@@ -371,6 +371,15 @@ class PromptStudioRegistryHelper:
                         prompt_id=prompt.prompt_id,
                         prompt=prompt.prompt,
                     )
+            elif prompt.enforce_type == PromptStudioRegistryKeys.AGENTIC_TABLE:
+                payload_modifier_plugin = get_plugin("payload_modifier")
+                if payload_modifier_plugin:
+                    modifier_service = payload_modifier_plugin["service_class"]()
+                    output = modifier_service.export_agentic_table_settings(
+                        output=output,
+                        tool_id=tool.tool_id,
+                        prompt_id=prompt.prompt_id,
+                    )
 
             outputs.append(output)
             output = {}

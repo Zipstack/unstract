@@ -301,7 +301,35 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     tool_id = tool_metadata[_SK.TOOL_ID]
     tool_settings = tool_metadata[_SK.TOOL_SETTINGS]
-    outputs = tool_metadata[_SK.OUTPUTS]
+    all_outputs = tool_metadata[_SK.OUTPUTS]
+
+    # ---- Partition prompts by enforce_type ----
+    # Agentic table prompts run via a dedicated executor (page-by-page
+    # extraction + Agent-5 schema cleanup). Regular prompts continue
+    # through the legacy structure_pipeline. Use local variables so
+    # tool_metadata[_SK.OUTPUTS] is preserved for METADATA.json
+    # serialization downstream in _write_tool_result.
+    agentic_table_outputs = [o for o in all_outputs if o.get("type") == "agentic_table"]
+    regular_outputs = [o for o in all_outputs if o.get("type") != "agentic_table"]
+
+    # Validate readiness for each agentic_table prompt: if the export
+    # step did not populate agentic_table_settings, fail loudly so the
+    # user knows to re-export the tool instead of producing the
+    # legacy stringified-truncated output.
+    for at_output in agentic_table_outputs:
+        at_settings = at_output.get("agentic_table_settings") or {}
+        if not at_settings.get("target_table") or not at_settings.get("json_structure"):
+            return ExecutionResult.failure(
+                error=(
+                    f"Agentic table prompt '{at_output[_SK.NAME]}' is missing "
+                    f"agentic_table_settings in the exported tool metadata. "
+                    f"Re-export the tool from Prompt Studio after the fix is "
+                    f"deployed to populate target_table / json_structure / "
+                    f"instructions."
+                )
+            ).to_dict()
+
+    outputs = regular_outputs
 
     # Inject workflow-level settings into tool_settings
     tool_settings[_SK.CHALLENGE_LLM] = challenge_llm
@@ -388,42 +416,103 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "prompt_keys": prompt_keys,
         }
 
-    # ---- Step 6: Single dispatch to executor ----
-    logger.info(
-        "Dispatching structure_pipeline: tool_id=%s "
-        "skip_extract=%s summarize=%s single_pass=%s",
-        tool_id,
-        skip_extraction_and_indexing,
-        is_summarization_enabled,
-        is_single_pass_enabled,
-    )
+    # ---- Step 6a: Dispatch agentic_table prompts ----
+    # Each agentic_table prompt runs in its own executor invocation.
+    # The executor handles X2Text extraction internally; we just
+    # forward the document path and the per-prompt settings unpacked
+    # from agentic_table_settings (populated by Layer 1 export).
+    #
+    # Important: read from SOURCE, not INFILE. INFILE gets overwritten
+    # with JSON output at the end of this function (line ~508), so any
+    # subsequent reuse of the same file_execution_dir would surface JSON
+    # bytes to the agentic_table executor and fail PDF parsing
+    # ("PDFium: Data format error"). SOURCE is the immutable original
+    # PDF written alongside INFILE by the source connector.
+    agentic_source_path = str(execution_run_data_folder / "SOURCE")
+    agentic_results: dict[str, Any] = {}
+    for at_output in agentic_table_outputs:
+        at_settings = at_output.get("agentic_table_settings") or {}
+        json_structure = at_settings.get("json_structure")
+        if isinstance(json_structure, dict):
+            json_structure = json.dumps(json_structure)
+        agentic_params = {
+            "llm_adapter_instance_id": at_output["llm"],
+            "lite_llm_adapter_instance_id": at_settings.get(
+                "lite_llm_adapter_instance_id", ""
+            ),
+            "x2text_adapter_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
+            "input_file": agentic_source_path,
+            "source_file_name": source_file_name,
+            "target_table": at_settings.get("target_table", ""),
+            "json_structure": json_structure,
+            "instructions": at_settings.get("instructions", ""),
+            "starting_page": at_settings.get("start_page", 1),
+            "ending_page": at_settings.get("end_page") or None,
+            "parallel_pages": at_settings.get("parallel_pages", 4),
+            "execution_id": execution_id,
+            "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
+        }
+        at_ctx = ExecutionContext(
+            executor_name="agentic_table",
+            operation="table_extract",
+            run_id=file_execution_id,
+            execution_source="tool",
+            organization_id=organization_id,
+            request_id=file_execution_id,
+            executor_params=agentic_params,
+        )
+        at_result = dispatcher.dispatch(at_ctx, timeout=EXECUTOR_TIMEOUT)
+        if not at_result.success:
+            return at_result.to_dict()
+        at_output_data = at_result.data.get("output", {}) or {}
+        agentic_results[at_output[_SK.NAME]] = at_output_data.get("tables", [])
 
-    pipeline_ctx = ExecutionContext(
-        executor_name="legacy",
-        operation="structure_pipeline",
-        run_id=file_execution_id,
-        execution_source="tool",
-        organization_id=organization_id,
-        request_id=file_execution_id,
-        log_events_id=StateStore.get("LOG_EVENTS_ID") or "",
-        execution_id=execution_id,
-        file_execution_id=file_execution_id,
-        executor_params={
-            "extract_params": extract_params,
-            "index_template": index_template,
-            "answer_params": answer_params,
-            "pipeline_options": pipeline_options,
-            "summarize_params": summarize_params,
-        },
-    )
-    pipeline_start = time.monotonic()
-    pipeline_result = dispatcher.dispatch(pipeline_ctx, timeout=EXECUTOR_TIMEOUT)
-    pipeline_elapsed = time.monotonic() - pipeline_start
+    # ---- Step 6b: Dispatch legacy structure_pipeline ----
+    # Skipped entirely when every prompt is agentic_table — the legacy
+    # pipeline has no work to do and the agentic_table executor does
+    # its own X2Text inside the runner.
+    if regular_outputs:
+        logger.info(
+            "Dispatching structure_pipeline: tool_id=%s "
+            "skip_extract=%s summarize=%s single_pass=%s",
+            tool_id,
+            skip_extraction_and_indexing,
+            is_summarization_enabled,
+            is_single_pass_enabled,
+        )
 
-    if not pipeline_result.success:
-        return pipeline_result.to_dict()
+        pipeline_ctx = ExecutionContext(
+            executor_name="legacy",
+            operation="structure_pipeline",
+            run_id=file_execution_id,
+            execution_source="tool",
+            organization_id=organization_id,
+            request_id=file_execution_id,
+            executor_params={
+                "extract_params": extract_params,
+                "index_template": index_template,
+                "answer_params": answer_params,
+                "pipeline_options": pipeline_options,
+                "summarize_params": summarize_params,
+            },
+        )
+        pipeline_start = time.monotonic()
+        pipeline_result = dispatcher.dispatch(pipeline_ctx, timeout=EXECUTOR_TIMEOUT)
+        pipeline_elapsed = time.monotonic() - pipeline_start
 
-    structured_output = pipeline_result.data
+        if not pipeline_result.success:
+            return pipeline_result.to_dict()
+
+        structured_output = pipeline_result.data
+        if agentic_results:
+            structured_output.setdefault("output", {}).update(agentic_results)
+    else:
+        # All-agentic case: skip the legacy pipeline entirely.
+        structured_output = {
+            "output": agentic_results,
+            "metadata": {"agentic_only": True},
+        }
+        pipeline_elapsed = 0.0
 
     # ---- Step 7: Write output files ----
     # (metadata/metrics merging already done by executor pipeline)
