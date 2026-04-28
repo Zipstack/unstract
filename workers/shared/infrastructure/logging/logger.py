@@ -3,18 +3,21 @@
 Provides structured logging, performance monitoring, and metrics collection for workers.
 """
 
+import dataclasses
 import functools
+import inspect
 import logging
 import os
 import sys
 import time
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from threading import Lock, local
+from threading import local
 from typing import Any
+from uuid import UUID
 
 # Thread-local storage for context
 _context = local()
@@ -37,8 +40,7 @@ class RequestIDFilter(logging.Filter):
 
     Resolution order:
       1. ``record.request_id`` if set explicitly via ``extra={...}``.
-      2. ``LogContext.request_id`` from the thread-local context (set by the
-         Celery ``task_prerun`` signal in ``_bind_task_context``).
+      2. ``LogContext.request_id`` from the thread-local context.
       3. ``"-"`` placeholder.
     """
 
@@ -582,62 +584,112 @@ def log_execution(func: Callable) -> Callable:
     return logged_execution()(func)
 
 
-_REQUEST_ID_KEYS = ("request_id", "file_execution_id", "execution_id", "run_id")
+_REQUEST_ID_KEYS: tuple[str, ...] = (
+    "request_id",
+    "file_execution_id",
+    "execution_id",
+    "run_id",
+)
 
 
-def _scan_for_id(container: dict) -> str | None:
-    """Look up `_REQUEST_ID_KEYS` in a single dict, in priority order."""
-    for key in _REQUEST_ID_KEYS:
-        value = container.get(key)
-        if value:
-            return str(value)
+def _coerce_id(value: Any) -> str | None:
+    """Return a safe string id, or None if value is not a usable id type.
+
+    Rejects arbitrary objects so a misnamed payload field (e.g. a dataclass
+    or a list) cannot leak its ``__str__`` into log lines or OTel attributes.
+    """
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, (int, UUID)):
+        return str(value)
     return None
 
 
-def _extract_request_id(args: tuple, kwargs: dict) -> str | None:
-    """Pull a usable request_id from a Celery task's args/kwargs.
+def _gather_containers(
+    args: Sequence[Any], kwargs: Mapping[str, Any], task: Any
+) -> list[Mapping[str, Any]]:
+    """Build the ordered list of mappings to scan for an id.
 
-    Convention: workers use ``file_execution_id`` as the value bound to the
-    ``request_id`` log field, matching the legacy structure-tool behaviour.
-    This gives per-file granularity in logs across the multi-tool execution
-    chain (structure tool -> executor -> platform-service).  Cross-service
-    correlation across the API/HTTP boundary is handled separately by the
-    OpenTelemetry ``trace_id`` field, not by ``request_id``.
+    Order (used only for stable iteration; final priority is by KEY in
+    ``_extract_request_id``):
 
-    The lookup order below is also the migration path: callers may start
+      1. Positional args bound to parameter names via ``inspect.signature``
+         when ``task.run`` is introspectable.  This is what catches
+         ``send_task("async_execute_bin", args=[schema, wf_id, exec_id, ...])``
+         where the ids are positional strings rather than dict members.
+      2. Top-level kwargs.
+      3. Dict / Mapping values inside kwargs.
+      4. Dict / Mapping positional args (legacy batch payloads).
+      5. Dataclass positional args, converted via ``dataclasses.asdict``.
+    """
+    containers: list[Mapping[str, Any]] = []
+
+    if task is not None:
+        runner = getattr(task, "run", task)
+        try:
+            sig = inspect.signature(runner)
+            bound = sig.bind_partial(*(args or ()), **(kwargs or {}))
+            if bound.arguments:
+                containers.append(dict(bound.arguments))
+        except (TypeError, ValueError):
+            # Unbindable signature (e.g. *args/**kwargs only).  Fall through
+            # to the cruder shape-based scans below.
+            pass
+
+    if kwargs:
+        containers.append(kwargs)
+        for value in kwargs.values():
+            if isinstance(value, Mapping):
+                containers.append(value)
+
+    for arg in args or ():
+        if isinstance(arg, Mapping):
+            containers.append(arg)
+        elif dataclasses.is_dataclass(arg) and not isinstance(arg, type):
+            containers.append(dataclasses.asdict(arg))
+
+    return containers
+
+
+def _extract_request_id(
+    args: Sequence[Any], kwargs: Mapping[str, Any], task: Any = None
+) -> str | None:
+    """Pull a usable request_id from a Celery task payload.
+
+    Workers bind ``file_execution_id`` to the ``request_id`` log field
+    (legacy structure-tool convention), giving per-file granularity in
+    logs across the multi-tool execution chain.  Cross-service correlation
+    across the API/HTTP boundary is handled by OpenTelemetry ``trace_id``,
+    not by ``request_id``.
+
+    The key priority below is also the migration path: callers may start
     passing a real HTTP ``request_id`` in the payload at any time and it
     will take precedence over ``file_execution_id`` automatically -- no
     worker change required.
 
-    Search order:
-      1. Top-level kwargs (e.g. ``task(execution_id=...)``).
-      2. Dict values inside kwargs (e.g. ``task(context={"execution_id": ...})``).
-      3. Dict args (e.g. ``ExecutionContext`` / batch payloads in positional args).
+    Priority is by KEY (not by container), so a payload with both
+    ``request_id`` in one container and ``file_execution_id`` in another
+    deterministically picks ``request_id`` regardless of insertion order.
     """
-    value = _scan_for_id(kwargs)
-    if value:
-        return value
-    for nested in kwargs.values():
-        if isinstance(nested, dict):
-            value = _scan_for_id(nested)
-            if value:
-                return value
-    for arg in args or ():
-        if isinstance(arg, dict):
-            value = _scan_for_id(arg)
+    containers = _gather_containers(args, kwargs, task)
+    for key in _REQUEST_ID_KEYS:
+        for container in containers:
+            value = _coerce_id(container.get(key))
             if value:
                 return value
     return None
 
 
-# Fields owned by the per-task signal handlers; cleared at task_postrun without
-# touching baseline fields like ``worker_name`` set at WorkerLogger.configure().
-_TASK_SCOPED_FIELDS = ("request_id", "task_id")
-
-
 def _bind_task_context(task_id, task, args, kwargs, **_):
-    """Celery ``task_prerun`` handler: bind request_id onto the log context."""
-    request_id = _extract_request_id(args or (), kwargs or {}) or task_id
+    """Celery ``task_prerun`` handler: bind request_id onto the log context.
+
+    Catches any extraction failure so a malformed payload can never leave
+    the previous task's id bound on the thread.
+    """
+    try:
+        request_id = _extract_request_id(args or (), kwargs or {}, task) or task_id
+    except Exception:
+        request_id = task_id
     WorkerLogger.update_context(request_id=request_id, task_id=task_id)
 
 
@@ -648,33 +700,26 @@ def _clear_task_context(**_):
     ``WorkerLogger.configure()``; only nulls out the per-task fields bound
     in ``_bind_task_context``.
     """
-    WorkerLogger.update_context(**dict.fromkeys(_TASK_SCOPED_FIELDS))
+    WorkerLogger.update_context(request_id=None, task_id=None)
 
 
-_signals_installed = False
-_signals_lock = Lock()
-
-
+@functools.lru_cache(maxsize=1)
 def _install_celery_request_id_signals() -> None:
-    """Wire Celery signals so every task has request_id bound to its log context.
+    """Wire Celery signals once per process.
 
-    Idempotent and thread-safe via double-checked locking — safe to call from
-    each worker's logger setup.  Silently no-ops if Celery is not importable
-    (e.g. unit tests).
+    Idempotent and thread-safe via ``functools.lru_cache``.  No-ops with a
+    debug log if Celery is not importable (e.g. unit tests).
     """
-    global _signals_installed
-    if _signals_installed:
+    try:
+        from celery.signals import task_postrun, task_prerun
+    except ImportError as exc:
+        logging.getLogger(__name__).debug(
+            "celery.signals not importable; request_id signal install skipped: %s",
+            exc,
+        )
         return
-    with _signals_lock:
-        if _signals_installed:
-            return
-        try:
-            from celery.signals import task_postrun, task_prerun
-        except ImportError:
-            return
-        task_prerun.connect(_bind_task_context, weak=False)
-        task_postrun.connect(_clear_task_context, weak=False)
-        _signals_installed = True
+    task_prerun.connect(_bind_task_context, weak=False)
+    task_postrun.connect(_clear_task_context, weak=False)
 
 
 # Dataclass/Dictionary Access Utilities
