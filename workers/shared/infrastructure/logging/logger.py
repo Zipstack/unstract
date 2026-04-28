@@ -13,7 +13,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from threading import local
+from threading import Lock, local
 from typing import Any
 
 # Thread-local storage for context
@@ -585,6 +585,15 @@ def log_execution(func: Callable) -> Callable:
 _REQUEST_ID_KEYS = ("request_id", "file_execution_id", "execution_id", "run_id")
 
 
+def _scan_for_id(container: dict) -> str | None:
+    """Look up `_REQUEST_ID_KEYS` in a single dict, in priority order."""
+    for key in _REQUEST_ID_KEYS:
+        value = container.get(key)
+        if value:
+            return str(value)
+    return None
+
+
 def _extract_request_id(args: tuple, kwargs: dict) -> str | None:
     """Pull a usable request_id from a Celery task's args/kwargs.
 
@@ -599,18 +608,31 @@ def _extract_request_id(args: tuple, kwargs: dict) -> str | None:
     passing a real HTTP ``request_id`` in the payload at any time and it
     will take precedence over ``file_execution_id`` automatically -- no
     worker change required.
+
+    Search order:
+      1. Top-level kwargs (e.g. ``task(execution_id=...)``).
+      2. Dict values inside kwargs (e.g. ``task(context={"execution_id": ...})``).
+      3. Dict args (e.g. ``ExecutionContext`` / batch payloads in positional args).
     """
-    for key in _REQUEST_ID_KEYS:
-        value = kwargs.get(key)
-        if value:
-            return str(value)
+    value = _scan_for_id(kwargs)
+    if value:
+        return value
+    for nested in kwargs.values():
+        if isinstance(nested, dict):
+            value = _scan_for_id(nested)
+            if value:
+                return value
     for arg in args or ():
         if isinstance(arg, dict):
-            for key in _REQUEST_ID_KEYS:
-                value = arg.get(key)
-                if value:
-                    return str(value)
+            value = _scan_for_id(arg)
+            if value:
+                return value
     return None
+
+
+# Fields owned by the per-task signal handlers; cleared at task_postrun without
+# touching baseline fields like ``worker_name`` set at WorkerLogger.configure().
+_TASK_SCOPED_FIELDS = ("request_id", "task_id")
 
 
 def _bind_task_context(task_id, task, args, kwargs, **_):
@@ -620,29 +642,39 @@ def _bind_task_context(task_id, task, args, kwargs, **_):
 
 
 def _clear_task_context(**_):
-    """Celery ``task_postrun`` handler: clear context to avoid bleed-through."""
-    WorkerLogger.clear_context()
+    """Celery ``task_postrun`` handler: reset task-scoped fields only.
+
+    Preserves baseline context (``worker_name``, etc.) set at
+    ``WorkerLogger.configure()``; only nulls out the per-task fields bound
+    in ``_bind_task_context``.
+    """
+    WorkerLogger.update_context(**dict.fromkeys(_TASK_SCOPED_FIELDS))
 
 
 _signals_installed = False
+_signals_lock = Lock()
 
 
 def _install_celery_request_id_signals() -> None:
     """Wire Celery signals so every task has request_id bound to its log context.
 
-    Idempotent — safe to call from each worker's logger setup.  Silently
-    no-ops if Celery is not importable (e.g. unit tests).
+    Idempotent and thread-safe via double-checked locking — safe to call from
+    each worker's logger setup.  Silently no-ops if Celery is not importable
+    (e.g. unit tests).
     """
     global _signals_installed
     if _signals_installed:
         return
-    try:
-        from celery.signals import task_postrun, task_prerun
-    except ImportError:
-        return
-    task_prerun.connect(_bind_task_context, weak=False)
-    task_postrun.connect(_clear_task_context, weak=False)
-    _signals_installed = True
+    with _signals_lock:
+        if _signals_installed:
+            return
+        try:
+            from celery.signals import task_postrun, task_prerun
+        except ImportError:
+            return
+        task_prerun.connect(_bind_task_context, weak=False)
+        task_postrun.connect(_clear_task_context, weak=False)
+        _signals_installed = True
 
 
 # Dataclass/Dictionary Access Utilities
