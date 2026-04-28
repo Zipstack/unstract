@@ -605,6 +605,39 @@ def _coerce_id(value: Any) -> str | None:
     return None
 
 
+def _bind_positional_args_to_names(
+    args: Sequence[Any], kwargs: Mapping[str, Any], task: Any
+) -> Mapping[str, Any] | None:
+    """Map positional args to parameter names via the task's signature.
+
+    Catches the case where ids are passed as positional strings (e.g.
+    ``send_task("async_execute_bin", args=[schema, wf_id, exec_id, ...])``).
+    Returns ``None`` if the task is not introspectable or has no resolved
+    arguments.
+    """
+    if task is None:
+        return None
+    runner = getattr(task, "run", task)
+    try:
+        bound = inspect.signature(runner).bind_partial(*(args or ()), **(kwargs or {}))
+    except (TypeError, ValueError):
+        return None
+    return dict(bound.arguments) if bound.arguments else None
+
+
+def _arg_as_mapping(arg: Any) -> Mapping[str, Any] | None:
+    """Return a mapping view of a positional arg, or None if not coercible.
+
+    Accepts ``Mapping`` instances directly and dataclass instances via
+    ``dataclasses.asdict``.
+    """
+    if isinstance(arg, Mapping):
+        return arg
+    if dataclasses.is_dataclass(arg) and not isinstance(arg, type):
+        return dataclasses.asdict(arg)
+    return None
+
+
 def _gather_containers(
     args: Sequence[Any], kwargs: Mapping[str, Any], task: Any
 ) -> list[Mapping[str, Any]]:
@@ -613,40 +646,25 @@ def _gather_containers(
     Order (used only for stable iteration; final priority is by KEY in
     ``_extract_request_id``):
 
-      1. Positional args bound to parameter names via ``inspect.signature``
-         when ``task.run`` is introspectable.  This is what catches
-         ``send_task("async_execute_bin", args=[schema, wf_id, exec_id, ...])``
-         where the ids are positional strings rather than dict members.
+      1. Positional args bound to parameter names via the task signature.
       2. Top-level kwargs.
-      3. Dict / Mapping values inside kwargs.
-      4. Dict / Mapping positional args (legacy batch payloads).
-      5. Dataclass positional args, converted via ``dataclasses.asdict``.
+      3. ``Mapping`` values nested inside kwargs.
+      4. ``Mapping`` / dataclass positional args.
     """
     containers: list[Mapping[str, Any]] = []
 
-    if task is not None:
-        runner = getattr(task, "run", task)
-        try:
-            sig = inspect.signature(runner)
-            bound = sig.bind_partial(*(args or ()), **(kwargs or {}))
-            if bound.arguments:
-                containers.append(dict(bound.arguments))
-        except (TypeError, ValueError):
-            # Unbindable signature (e.g. *args/**kwargs only).  Fall through
-            # to the cruder shape-based scans below.
-            pass
+    bound = _bind_positional_args_to_names(args, kwargs, task)
+    if bound:
+        containers.append(bound)
 
     if kwargs:
         containers.append(kwargs)
-        for value in kwargs.values():
-            if isinstance(value, Mapping):
-                containers.append(value)
+        containers.extend(v for v in kwargs.values() if isinstance(v, Mapping))
 
     for arg in args or ():
-        if isinstance(arg, Mapping):
-            containers.append(arg)
-        elif dataclasses.is_dataclass(arg) and not isinstance(arg, type):
-            containers.append(dataclasses.asdict(arg))
+        mapping = _arg_as_mapping(arg)
+        if mapping is not None:
+            containers.append(mapping)
 
     return containers
 
