@@ -8,20 +8,24 @@ from unstract.connectors.exceptions import ConnectorError
 class BucketProbeDisposition(Enum):
     """Action for a `list_objects_v2` probe failure, per S3 error code."""
 
-    DROP = "drop"  # Hide the bucket (no access, or bucket gone).
-    FAIL_OPEN = "fail_open"  # Region mismatch — keep bucket visible.
+    DROP = "drop"  # Hide the bucket (no access, bucket gone, or unreachable).
+    FAIL_OPEN = "fail_open"  # Keep the bucket visible despite the probe error.
     RETRY_FAIL_OPEN = "retry_fail_open"  # Throttled — retry once, then keep.
 
 
 # S3 `Error.Code` → probe disposition. Unlisted codes propagate.
 # `RequestTimeTooSkewed` is omitted deliberately: it's a system-wide clock
 # issue, not a bucket outcome — let it surface via `handle_s3fs_exception`.
+# `PermanentRedirect` / `IllegalLocationConstraintException` are dropped: the
+# connector is pinned to one `endpoint_url`, so cross-region buckets can't
+# be browsed through it regardless of IAM — listing them only surfaces a
+# confusing `[Errno 78]` on click.
 BUCKET_PROBE_DISPOSITION: dict[str, BucketProbeDisposition] = {
     "AccessDenied": BucketProbeDisposition.DROP,
     "AllAccessDisabled": BucketProbeDisposition.DROP,
     "NoSuchBucket": BucketProbeDisposition.DROP,
-    "PermanentRedirect": BucketProbeDisposition.FAIL_OPEN,
-    "IllegalLocationConstraintException": BucketProbeDisposition.FAIL_OPEN,
+    "PermanentRedirect": BucketProbeDisposition.DROP,
+    "IllegalLocationConstraintException": BucketProbeDisposition.DROP,
     "SlowDown": BucketProbeDisposition.RETRY_FAIL_OPEN,
     "Throttling": BucketProbeDisposition.RETRY_FAIL_OPEN,
     "ThrottlingException": BucketProbeDisposition.RETRY_FAIL_OPEN,
