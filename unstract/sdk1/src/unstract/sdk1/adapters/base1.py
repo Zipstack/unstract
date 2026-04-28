@@ -2,6 +2,7 @@ import glob
 import inspect
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from importlib import import_module
 from typing import TYPE_CHECKING
@@ -30,8 +31,15 @@ logger = logging.getLogger(__name__)
 #   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
 #   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
 # Add new entries here when Anthropic deprecates sampling on more models.
+# Patterns are anchored at the trailing edge: the version digit must be
+# followed by end-of-string or one of `-:@/v`, so unrelated future ids like
+# `claude-opus-4-70`, `claude-opus-4-75` do not match. The allowed delimiters
+# cover the date suffix (`-20260101-v1:0`), Vertex `@<date>`, ARN paths, and
+# the `v1:0` version tag.
 # See https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7
-_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[str, ...] = ("claude-opus-4-7",)
+_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"claude-opus-4-7(?=$|[-:@/v])"),
+)
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
 # Bedrock's separate ARN field used for Application Inference Profile cost
@@ -64,7 +72,7 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
     if not model:
         return False
     normalized = model.lower().replace(".", "-").replace("_", "-")
-    return any(pat in normalized for pat in _SAMPLING_DEPRECATED_MODEL_PATTERNS)
+    return any(rx.search(normalized) for rx in _SAMPLING_DEPRECATED_MODEL_PATTERNS)
 
 
 def _strip_deprecated_sampling_params(validated: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -528,7 +536,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         if "thinking" in result_metadata:
             validated_data["thinking"] = result_metadata["thinking"]
 
-        return validated_data
+        return _strip_deprecated_sampling_params(validated_data)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
