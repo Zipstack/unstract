@@ -92,6 +92,7 @@ function PromptOutput({
   isChallenge,
   handleSelectHighlight,
   progressMsg,
+  isAgenticTableReady = true,
 }) {
   const [openExpandModal, setOpenExpandModal] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
@@ -423,7 +424,11 @@ function PromptOutput({
                             selectedDoc?.document_id,
                           )
                         }
-                        disabled={isPromptLoading || isPublicSource}
+                        disabled={
+                          !isAgenticTableReady ||
+                          isPromptLoading ||
+                          isPublicSource
+                        }
                       >
                         <PlayCircleOutlined className="prompt-card-actions-head" />
                       </Button>
@@ -441,7 +446,11 @@ function PromptOutput({
                             null,
                           )
                         }
-                        disabled={isPromptLoading || isPublicSource}
+                        disabled={
+                          !isAgenticTableReady ||
+                          isPromptLoading ||
+                          isPublicSource
+                        }
                       >
                         <PlayCircleFilled className="prompt-card-actions-head" />
                       </Button>
@@ -533,6 +542,7 @@ PromptOutput.propTypes = {
   isChallenge: PropTypes.bool,
   handleSelectHighlight: PropTypes.func.isRequired,
   progressMsg: PropTypes.object,
+  isAgenticTableReady: PropTypes.bool,
 };
 
 export { PromptOutput };
