@@ -2046,6 +2046,12 @@ class LegacyExecutor(BaseExecutor):
                 shim=shim,
                 usage_kwargs=usage_kwargs,
             )
+            # Inside the try so a missing/renamed attribute on the outcome
+            # (plugin contract drift) hits the same graceful-degrade branch.
+            self._usage_records.extend(outcome.usage_records)
+            metrics.setdefault(prompt_name, {})[lookup_cls.METRICS_KEY] = (
+                outcome.llm_metrics
+            )
         except Exception:
             # Enrichment is post-extraction — degrade gracefully on
             # plugin contract drift (missing METRICS_KEY, unexpected
@@ -2063,8 +2069,6 @@ class LegacyExecutor(BaseExecutor):
                 level=LogLevel.WARN,
             )
             return
-        self._usage_records.extend(outcome.usage_records)
-        metrics.setdefault(prompt_name, {})[lookup_cls.METRICS_KEY] = outcome.llm_metrics
 
     @staticmethod
     def _run_webhook_postprocessing(

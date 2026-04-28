@@ -107,6 +107,12 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         ):
             if self.embed_model is None:
                 return
+            if self.token_counter is None:
+                logger.warning(
+                    "Embedding usage callback invoked without token_counter; "
+                    "skipping usage record."
+                )
+                return
             model_name = self.embed_model.model_name
             embedding_tokens = self.token_counter.total_embedding_token_count
             self.stream_log(

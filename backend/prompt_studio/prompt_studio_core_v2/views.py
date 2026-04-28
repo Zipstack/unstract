@@ -103,11 +103,12 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     multi-var lookup attached to an unrelated prompt in the same project
     doesn't block a single-var lookup's run.
 
+    Callers are responsible for only invoking this on non-SP execution
+    paths — the SP entry point skips the helper entirely.
+
     Returns a Response object (HTTP 400) when a block applies, or None
     to let the caller proceed.
     """
-    if getattr(custom_tool, "single_pass_extraction_mode", False):
-        return None
     names = get_multi_var_lookups_for_tool(custom_tool, prompt_ids=prompt_ids)
     if not names:
         return None

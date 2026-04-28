@@ -298,8 +298,13 @@ class PromptStudioRegistryHelper:
             settings, JsonSchemaKey.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
 
-        # Validate lookup assignments (cloud-only, no-op in OSS)
-        lookup_configs, lookup_error = validate_lookups_for_export(prompts)
+        # Validate lookup assignments (cloud-only, no-op in OSS) on the
+        # subset that will actually be exported — NOTES / inactive prompts
+        # never run, so an incomplete lookup on those shouldn't fail export.
+        exportable_prompts = [
+            p for p in prompts if p.prompt_type != JsonSchemaKey.NOTES and p.active
+        ]
+        lookup_configs, lookup_error = validate_lookups_for_export(exportable_prompts)
         if lookup_error:
             raise InValidCustomToolError(lookup_error)
 

@@ -16,6 +16,9 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _CLOUD_LOOKUP_MODULES = {
+    # ``e.name`` is the first missing component in the chain — in pure
+    # OSS images the parent ``pluggable_apps`` package itself is absent.
+    "pluggable_apps",
     "pluggable_apps.lookups",
     "pluggable_apps.lookups.execution",
     "pluggable_apps.lookups.output_enrichment",
