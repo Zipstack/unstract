@@ -597,7 +597,12 @@ def _coerce_id(value: Any) -> str | None:
 
     Rejects arbitrary objects so a misnamed payload field (e.g. a dataclass
     or a list) cannot leak its ``__str__`` into log lines or OTel attributes.
+    Booleans are excluded explicitly because ``bool`` is a subclass of
+    ``int`` in Python; without the guard, ``True``/``False`` would
+    serialize to the literal strings ``"True"``/``"False"``.
     """
+    if isinstance(value, bool):
+        return None
     if isinstance(value, str):
         return value or None
     if isinstance(value, (int, UUID)):
@@ -707,6 +712,11 @@ def _bind_task_context(task_id, task, args, kwargs, **_):
     try:
         request_id = _extract_request_id(args or (), kwargs or {}, task) or task_id
     except Exception:
+        logging.getLogger(__name__).debug(
+            "request_id extraction failed for task %s; falling back to task_id",
+            task_id,
+            exc_info=True,
+        )
         request_id = task_id
     WorkerLogger.update_context(request_id=request_id, task_id=task_id)
 
