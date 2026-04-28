@@ -35,14 +35,19 @@ class LogContext:
 class RequestIDFilter(logging.Filter):
     """Filter to inject request_id into log records.
 
-    Adopts the proven pattern from unstract/core/flask/logging.py for consistency.
-    Normalizes missing or falsy values (None, empty string, etc.) to "-" for
-    consistent log formatting.
+    Resolution order:
+      1. ``record.request_id`` if set explicitly via ``extra={...}``.
+      2. ``LogContext.request_id`` from the thread-local context (set by the
+         Celery ``task_prerun`` signal in ``_bind_task_context``).
+      3. ``"-"`` placeholder.
     """
 
     def filter(self, record):
-        if not getattr(record, "request_id", None):
-            record.request_id = "-"
+        value = getattr(record, "request_id", None)
+        if not value:
+            ctx = getattr(_context, "log_context", None)
+            value = getattr(ctx, "request_id", None) if ctx else None
+        record.request_id = value or "-"
         return True
 
 
@@ -144,6 +149,8 @@ class WorkerLogger:
             message="LogRecord init with.*trace_id.*span_id.*trace_flags.*deprecated",
             category=UserWarning,
         )
+
+        _install_celery_request_id_signals()
 
         cls._configured = True
 
@@ -573,6 +580,69 @@ def monitor_performance(func: Callable) -> Callable:
 def log_execution(func: Callable) -> Callable:
     """Decorator for execution logging."""
     return logged_execution()(func)
+
+
+_REQUEST_ID_KEYS = ("request_id", "file_execution_id", "execution_id", "run_id")
+
+
+def _extract_request_id(args: tuple, kwargs: dict) -> str | None:
+    """Pull a usable request_id from a Celery task's args/kwargs.
+
+    Convention: workers use ``file_execution_id`` as the value bound to the
+    ``request_id`` log field, matching the legacy structure-tool behaviour.
+    This gives per-file granularity in logs across the multi-tool execution
+    chain (structure tool -> executor -> platform-service).  Cross-service
+    correlation across the API/HTTP boundary is handled separately by the
+    OpenTelemetry ``trace_id`` field, not by ``request_id``.
+
+    The lookup order below is also the migration path: callers may start
+    passing a real HTTP ``request_id`` in the payload at any time and it
+    will take precedence over ``file_execution_id`` automatically -- no
+    worker change required.
+    """
+    for key in _REQUEST_ID_KEYS:
+        value = kwargs.get(key)
+        if value:
+            return str(value)
+    for arg in args or ():
+        if isinstance(arg, dict):
+            for key in _REQUEST_ID_KEYS:
+                value = arg.get(key)
+                if value:
+                    return str(value)
+    return None
+
+
+def _bind_task_context(task_id, task, args, kwargs, **_):
+    """Celery ``task_prerun`` handler: bind request_id onto the log context."""
+    request_id = _extract_request_id(args or (), kwargs or {}) or task_id
+    WorkerLogger.update_context(request_id=request_id, task_id=task_id)
+
+
+def _clear_task_context(**_):
+    """Celery ``task_postrun`` handler: clear context to avoid bleed-through."""
+    WorkerLogger.clear_context()
+
+
+_signals_installed = False
+
+
+def _install_celery_request_id_signals() -> None:
+    """Wire Celery signals so every task has request_id bound to its log context.
+
+    Idempotent — safe to call from each worker's logger setup.  Silently
+    no-ops if Celery is not importable (e.g. unit tests).
+    """
+    global _signals_installed
+    if _signals_installed:
+        return
+    try:
+        from celery.signals import task_postrun, task_prerun
+    except ImportError:
+        return
+    task_prerun.connect(_bind_task_context, weak=False)
+    task_postrun.connect(_clear_task_context, weak=False)
+    _signals_installed = True
 
 
 # Dataclass/Dictionary Access Utilities
