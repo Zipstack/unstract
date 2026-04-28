@@ -105,16 +105,27 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
         try:
             config = WorkerConfig()
             with UsageAPIClient(config) as usage_client:
+                # ``set_organization_context`` covers the org for every
+                # request on this client; passing it again as a kwarg was
+                # redundant.
                 usage_client.set_organization_context(context.organization_id)
-                usage_client.bulk_create_usage(
-                    usage_records,
-                    organization_id=context.organization_id,
+                ok = usage_client.bulk_create_usage(usage_records)
+            if not ok:
+                # Promote to ERROR so on-call has the run_id/org/count to
+                # recover dropped billing rows from logs.
+                logger.error(
+                    "bulk_create_usage returned failure for %d records "
+                    "(run_id=%s organization_id=%s)",
+                    len(usage_records),
+                    context.run_id,
+                    context.organization_id,
                 )
         except Exception:
-            logger.warning(
-                "Failed to flush %d usage records for run_id=%s",
+            logger.error(
+                "Failed to flush %d usage records for run_id=%s organization_id=%s",
                 len(usage_records),
                 context.run_id,
+                context.organization_id,
                 exc_info=True,
             )
 

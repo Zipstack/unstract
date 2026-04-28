@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 import litellm
@@ -6,6 +7,8 @@ from llama_index.core.callbacks.base_handler import BaseCallbackHandler
 from llama_index.core.embeddings import BaseEmbedding
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.tool.stream import StreamMixin
+
+logger = logging.getLogger(__name__)
 
 
 class UsageHandler(StreamMixin, BaseCallbackHandler):
@@ -102,6 +105,8 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
             and event_type not in self.event_ends_to_ignore
             and payload is not None
         ):
+            if self.embed_model is None:
+                return
             model_name = self.embed_model.model_name
             embedding_tokens = self.token_counter.total_embedding_token_count
             self.stream_log(
@@ -117,16 +122,26 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
                 )
                 cost = prompt_cost
             except Exception:
+                logger.warning(
+                    "Failed to compute embedding cost for model=%s; recording 0.0",
+                    model_name,
+                    exc_info=True,
+                )
                 cost = 0.0
 
-            display_model = model_name.split("/", 1)[-1] if model_name else model_name
+            # rsplit so multi-segment IDs (e.g. ``bedrock/anthropic/claude``)
+            # collapse to the trailing segment, matching legacy Audit semantics.
+            display_model = model_name.rsplit("/", 1)[-1] if model_name else model_name
 
             self._pending_usage.append(
                 {
                     "usage_type": "embedding",
                     "model_name": display_model,
                     "adapter_instance_id": self.kwargs.get("adapter_instance_id", ""),
-                    "run_id": self.kwargs.get("run_id", ""),
+                    # ``run_id`` lands in a UUIDField column; "" would fail the
+                    # cast — keep absent values as None so the bulk-create view
+                    # writes NULL.
+                    "run_id": self.kwargs.get("run_id") or None,
                     "execution_id": self.kwargs.get("execution_id", ""),
                     "embedding_tokens": embedding_tokens,
                     "prompt_tokens": 0,

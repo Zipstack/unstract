@@ -642,7 +642,7 @@ class LLM:
         return self._metrics
 
     def get_last_usage(self) -> Mapping[str, int]:
-        """Token usage from the most recent complete() call."""
+        """Token usage from the most recent LLM call (sync, async, or streaming)."""
         if not self._pending_usage:
             return {}
         last = self._pending_usage[-1]
@@ -653,7 +653,7 @@ class LLM:
         }
 
     def get_last_usage_record(self) -> dict | None:
-        """Full usage record for the most recent complete() call.
+        """Full usage record for the most recent LLM call (sync, async, or streaming).
 
         Returns the complete record (tokens + cost + model + reason
         metadata) so callers don't have to reach into ``_pending_usage``
@@ -711,28 +711,37 @@ class LLM:
             )
             cost = 0.0
 
-        # Strip provider prefix (e.g. "azure/gpt-4o" → "gpt-4o") for storage,
-        # matching the old Audit.push_usage_data() behavior.
-        display_model = model.split("/", 1)[-1] if model else model
+        # rsplit so multi-segment IDs (e.g. ``bedrock/anthropic/claude``)
+        # collapse to the trailing segment, matching legacy Audit semantics.
+        display_model = model.rsplit("/", 1)[-1] if model else model
 
+        # ``_usage_kwargs`` spread first so explicit fields below win — those
+        # are the canonical billing values (tokens, cost, status); we only
+        # want callers to provide context (reference_id, reference_type),
+        # not override computed numbers.
         self._pending_usage.append(
             {
+                **self._usage_kwargs,
                 "usage_type": "llm",
                 "model_name": display_model,
                 "provider": self.adapter.get_provider(),
                 "adapter_instance_id": self.platform_kwargs.get(
                     "adapter_instance_id", ""
                 ),
-                "run_id": self.platform_kwargs.get("run_id", ""),
+                # ``run_id`` lands in a UUIDField column; "" would fail the
+                # cast — keep absent values as None so the bulk-create view
+                # writes NULL.
+                "run_id": self.platform_kwargs.get("run_id") or None,
                 "execution_id": self.platform_kwargs.get("execution_id", ""),
-                "llm_usage_reason": self.platform_kwargs.get("llm_usage_reason", ""),
+                # ``llm_usage_reason`` has a fixed choice set; "" isn't a
+                # valid choice, so write None when missing.
+                "llm_usage_reason": self.platform_kwargs.get("llm_usage_reason") or None,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
                 "embedding_tokens": 0,
                 "cost_in_dollars": cost,
                 "status": "SUCCESS",
-                **self._usage_kwargs,
             }
         )
 

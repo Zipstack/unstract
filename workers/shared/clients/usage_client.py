@@ -191,7 +191,15 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
                 data={"records": records},
                 organization_id=organization_id,
             )
-            return response.get("success", False) or "created" in response
+            # The success path returns ``{"created": N}`` (no ``success``
+            # key); the error path returns ``{"success": False, "error":
+            # ...}``. Accept either an explicit success flag or the
+            # presence of ``created`` *as long as* ``success`` isn't
+            # explicitly False — guards against future contracts that may
+            # report a partial body.
+            if response.get("success") is False:
+                return False
+            return response.get("success") is True or "created" in response
         except Exception:
             logger.error(
                 "Failed to bulk create %d usage records", len(records), exc_info=True

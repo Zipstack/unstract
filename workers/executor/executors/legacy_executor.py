@@ -59,11 +59,16 @@ class LegacyExecutor(BaseExecutor):
 
     def __init__(self) -> None:
         # Per-request state — overwritten on every ``execute()`` call.
+        # ``_usage_records`` initialised here too so the orchestrator's
+        # ``getattr(executor, "_usage_records", None)`` always sees a real
+        # list — an early-init crash inside ``execute()`` would otherwise
+        # silently drop billing rows.
         self._log_events_id: str = ""
         self._log_component: dict[str, str] = {}
         self._execution_id: str | None = None
         self._file_execution_id: str | None = None
         self._organization_id: str | None = None
+        self._usage_records: list[dict[str, Any]] = []
 
     @property
     def name(self) -> str:
@@ -85,7 +90,7 @@ class LegacyExecutor(BaseExecutor):
         self._log_component: dict[str, str] = (
             getattr(context, "_log_component", None) or {}
         )
-        self._usage_records: list[dict[str, Any]] = []
+        self._usage_records = []
         self._execution_id = context.execution_id
         self._file_execution_id = context.file_execution_id
         self._organization_id = context.organization_id
@@ -152,7 +157,14 @@ class LegacyExecutor(BaseExecutor):
                         level=LogLevel.ERROR,
                     )
                 except Exception:
-                    pass  # Best-effort — don't mask the original error
+                    # Best-effort — don't mask the original error, but log
+                    # so the secondary failure (broker down, serialization
+                    # bug, etc.) is recoverable.
+                    logger.debug(
+                        "Failed to stream error to FE for run_id=%s",
+                        context.run_id,
+                        exc_info=True,
+                    )
             # Preserve any usage rows collected before the failure so the task
             # wrapper still flushes them. Without this, transient errors that
             # trigger Celery autoretry re-run LLMs and lose billing rows.
@@ -1436,8 +1448,12 @@ class LegacyExecutor(BaseExecutor):
             platform_key=platform_api_key,
             metadata=metadata,
         )
-        challenger.run()
-        self._usage_records.extend(challenge_llm.flush_pending_usage())
+        try:
+            challenger.run()
+        finally:
+            # Flush even on exception so transient errors don't drop the
+            # challenge LLM's billing rows.
+            self._usage_records.extend(challenge_llm.flush_pending_usage())
         shim.stream_log(f"Challenge verification completed for: `{prompt_name}`")
         logger.info("Challenge completed: prompt=%s", prompt_name)
 
@@ -1799,15 +1815,14 @@ class LegacyExecutor(BaseExecutor):
         )
         self._usage_records.extend(llm.flush_pending_usage())
         if chunk_size > 0 and embedding is not None:
-            try:
+            # Public adapters (``is_public_adapter() is True``) construct
+            # ``EmbeddingCompat`` without a callback_manager, so there's
+            # nothing to flush. Skip silently rather than catching the
+            # AttributeError — the broad catch was masking real bugs.
+            if embedding.callback_manager is not None:
                 for handler in embedding.callback_manager.handlers:
                     if hasattr(handler, "flush_pending_usage"):
                         self._usage_records.extend(handler.flush_pending_usage())
-            except Exception:
-                logger.warning(
-                    "Failed to flush embedding usage from callback handlers",
-                    exc_info=True,
-                )
         if vector_db:
             vector_db.close()
 
@@ -2269,8 +2284,12 @@ class LegacyExecutor(BaseExecutor):
             )
 
             shim.stream_log("Running document summarization...")
-            summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
-            self._usage_records.extend(llm.flush_pending_usage())
+            try:
+                summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
+            finally:
+                # Flush even on exception so the summarization LLM's
+                # billing rows aren't lost on transient errors.
+                self._usage_records.extend(llm.flush_pending_usage())
             logger.info("Summarization completed: run_id=%s", context.run_id)
             shim.stream_log("Summarization completed")
             return ExecutionResult(
