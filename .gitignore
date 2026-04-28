@@ -654,6 +654,10 @@ docker/*.env
 docker/public_tools.json
 docker/proxy_overrides.yaml
 docker/compose.*.yaml
+# ``docker/compose.debug.yaml`` is checked-in tooling — keep it out of the
+# broader ``compose.*.yaml`` ignore so a delete + recreate doesn't make it
+# look untracked, and so teammates can spot it.
+!docker/compose.debug.yaml
 docker/workflow_data/
 
 # Tool development

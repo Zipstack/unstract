@@ -2082,6 +2082,19 @@ class LegacyExecutor(BaseExecutor):
         webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
         if not webhook_enabled:
             return
+        # Pre-refactor, the webhook lived inside ``handle_json`` after its
+        # parse-failure early-return, so a malformed JSON answer (which sets
+        # ``structured_output[prompt_name] = {}``) never fired a webhook.
+        # The new explicit gate keeps that contract — empty / None payloads
+        # are skipped with a log rather than dispatched.
+        parsed_value = structured_output.get(prompt_name)
+        if not isinstance(parsed_value, (dict, list)) or not parsed_value:
+            logger.warning(
+                "Webhook postprocessing skipped: prompt=%s parsed payload "
+                "is empty or non-JSON (likely a parse failure)",
+                prompt_name,
+            )
+            return
         if output_type != PSKeys.JSON:
             # The pre-refactor behaviour fired the webhook regardless of
             # output_type. The new restriction is intentional, but the
