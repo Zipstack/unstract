@@ -5,7 +5,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from rest_framework import status, viewsets
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
@@ -74,10 +74,10 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         tool_id = request.GET.get("tool_id")
         keys_param = request.GET.get("prompt_keys", "")
         if not tool_id:
-            raise APIException(
-                detail=PromptOutputManagerErrorMessage.TOOL_VALIDATION,
-                code=400,
-            )
+            # ``APIException(code=400)`` only sets ``detail.code`` in the body;
+            # ``status_code`` is hardcoded to 500. Use ``ValidationError`` so
+            # callers get the intended 400.
+            raise ValidationError(detail=PromptOutputManagerErrorMessage.TOOL_VALIDATION)
 
         prompt_keys = [k.strip() for k in keys_param.split(",") if k.strip()]
         if not prompt_keys:
@@ -129,7 +129,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION
         tool_not_found = PromptOutputManagerErrorMessage.TOOL_NOT_FOUND
         if not tool_id:
-            raise APIException(detail=tool_validation_message, code=400)
+            raise ValidationError(detail=tool_validation_message)
 
         try:
             # Fetch ToolStudioPrompt records based on tool_id
@@ -137,7 +137,7 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
                 tool_id=tool_id
             ).order_by("sequence_number")
         except ObjectDoesNotExist:
-            raise APIException(detail=tool_not_found, code=400)
+            raise ValidationError(detail=tool_not_found)
 
         # Invoke helper method to frame and fetch default response.
         result: dict[str, Any] = OutputManagerHelper.fetch_default_output_response(
