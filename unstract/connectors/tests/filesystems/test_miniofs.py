@@ -116,6 +116,20 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
         ):
             self.assertFalse(asyncio.run(fs._is_bucket_accessible("other-region")))
 
+    def test_illegal_location_constraint_bucket_is_dropped(self) -> None:
+        # Companion to PermanentRedirect: same cross-region condition surfaced
+        # as a 400 instead of a 301. Guards against a future edit reverting
+        # only one of the two cross-region entries in BUCKET_PROBE_DISPOSITION.
+        fs = self._make_fs()
+        with patch.object(
+            fs,
+            "_call_s3",
+            new=AsyncMock(
+                side_effect=_translated_error("IllegalLocationConstraintException")
+            ),
+        ):
+            self.assertFalse(asyncio.run(fs._is_bucket_accessible("wrong-region")))
+
     def test_throttling_retries_then_fails_open(self) -> None:
         fs = self._make_fs()
 
