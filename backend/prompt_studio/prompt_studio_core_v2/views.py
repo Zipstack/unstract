@@ -511,9 +511,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
-        if err := _multi_var_lookup_block_response(
-            custom_tool, prompt_ids=[prompt_id] if prompt_id else None
-        ):
+        # Validate ``prompt_id`` before the lookup gate so a request
+        # missing the field returns a clear 400 instead of a lookup-related
+        # error.
+        if not prompt_id:
+            return Response(
+                {"error": "prompt id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if err := _multi_var_lookup_block_response(custom_tool, prompt_ids=[prompt_id]):
             return err
         profile_manager_id: str = request.data.get(
             ToolStudioPromptKeys.PROFILE_MANAGER_ID
@@ -523,13 +529,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
-
-        # Resolve prompt — guard against missing / stale prompt_id
-        if not prompt_id:
-            return Response(
-                {"error": "prompt id is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         try:
             prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
         except ToolStudioPrompt.DoesNotExist:

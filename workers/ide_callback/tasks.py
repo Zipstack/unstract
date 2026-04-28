@@ -583,7 +583,10 @@ def extraction_complete(
                 )
             return {"status": "failed", "error": error_msg}
 
-        extracted_text = result_dict.get("data", {}).get("extracted_text", "")
+        # ``result_dict["data"]`` may be explicitly ``None`` on early-return
+        # paths; guard against AttributeError so a benign empty-data response
+        # doesn't escalate to a generic "ERROR" callback.
+        extracted_text = (result_dict.get("data") or {}).get("extracted_text", "")
         token_count = len(extracted_text) // 4
 
         api.mark_extraction_complete(
@@ -631,7 +634,13 @@ def extraction_complete(
                     },
                 )
             except Exception:
-                pass
+                # ``_emit_websocket`` already swallows-and-logs internally,
+                # but if anything reaches this far we'd rather see the
+                # secondary failure in the log than lose it silently.
+                logger.debug(
+                    "Failed to emit ws ERROR event in extraction_complete fallback",
+                    exc_info=True,
+                )
         raise
 
 
