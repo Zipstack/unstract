@@ -74,7 +74,16 @@ class RateLimitDefaults:
     DEFAULT_GLOBAL_LIMIT = 100  # Concurrent requests system-wide
 
     # TTL and timing
-    DEFAULT_TTL_HOURS = 6  # Hours to keep execution in ZSET
+    # DEFAULT_TTL_HOURS is the Redis key TTL — controls when the whole ZSET
+    # is garbage-collected after the org becomes inactive.
+    # DEFAULT_STALE_ENTRY_HOURS is the per-entry cutoff — entries older than
+    # this are removed on every check_and_acquire/get_current_usage call.
+    # The two are split because a leaked entry (worker OOM/SIGKILL before
+    # release_slot fires) shouldn't tie up a slot for the full key TTL.
+    # Override via API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS and
+    # API_DEPLOYMENT_RATE_LIMIT_STALE_ENTRY_HOURS Django settings.
+    DEFAULT_TTL_HOURS = 6  # Hours before the ZSET key itself expires
+    DEFAULT_STALE_ENTRY_HOURS = 1  # Per-entry cutoff for stale releases
     DEFAULT_CACHE_TTL_SECONDS = 600  # 10 minutes cache for org limits
 
     # Lock timeouts

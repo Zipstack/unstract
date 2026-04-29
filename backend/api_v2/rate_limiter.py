@@ -27,7 +27,7 @@ class APIDeploymentRateLimiter:
 
     @classmethod
     def _get_ttl_seconds(cls) -> int:
-        """Get TTL in seconds from hours setting."""
+        """Get Redis key TTL in seconds from hours setting."""
         ttl_hours = getattr(
             settings,
             "API_DEPLOYMENT_RATE_LIMIT_TTL_HOURS",
@@ -36,9 +36,29 @@ class APIDeploymentRateLimiter:
         return ttl_hours * 3600
 
     @classmethod
+    def _get_stale_entry_seconds(cls) -> int:
+        """Get per-entry stale cutoff in seconds.
+
+        Shorter than the key TTL so a leaked entry (worker OOM/SIGKILL
+        before the release path fires) frees its slot within hours rather
+        than the full key TTL.
+        """
+        stale_hours = getattr(
+            settings,
+            "API_DEPLOYMENT_RATE_LIMIT_STALE_ENTRY_HOURS",
+            RateLimitDefaults.DEFAULT_STALE_ENTRY_HOURS,
+        )
+        return stale_hours * 3600
+
+    @classmethod
     def _get_cutoff_timestamp(cls) -> float:
-        """Get timestamp cutoff for removing stale entries."""
-        return time.time() - cls._get_ttl_seconds()
+        """Get timestamp cutoff for removing stale entries.
+
+        Uses the stale-entry cutoff (not the key TTL) so leaks caused by
+        non-graceful worker termination are reaped without waiting for the
+        whole ZSET key to expire.
+        """
+        return time.time() - cls._get_stale_entry_seconds()
 
     @classmethod
     def _cleanup_expired_entries(cls, key: str) -> None:
