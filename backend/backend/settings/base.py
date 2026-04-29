@@ -689,4 +689,6 @@ if missing_settings:
     )
     raise ValueError(ERROR_MESSAGE)
 
-ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", False)
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = CommonUtils.str_to_bool(
+    os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", "False")
+)
