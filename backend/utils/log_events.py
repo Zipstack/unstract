@@ -1,7 +1,6 @@
 import http
 import logging
 import os
-import re
 from typing import Any
 
 import socketio
@@ -12,33 +11,14 @@ from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
 from utils.constants import ExecutionLogConstants
+from utils.cors_origin import RegexOrigin
 
 logger = logging.getLogger(__name__)
 
 
-class _RegexOrigin:
-    """Origin pattern that compares to strings via regex match.
-
-    python-socketio enforces CORS with ``origin in allowed_origins`` during the
-    engine.io handshake — overriding ``__eq__`` lets a single list entry cover
-    a wildcard subdomain so bad origins are rejected before ``connect`` runs.
-    """
-
-    def __init__(self, pattern: str) -> None:
-        self._regex = re.compile(pattern)
-
-    def __eq__(self, other: object) -> bool:
-        if isinstance(other, str):
-            return self._regex.match(other) is not None
-        return NotImplemented
-
-    def __hash__(self) -> int:
-        return hash(self._regex.pattern)
-
-
 _cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
 for _pattern in getattr(settings, "CORS_ALLOWED_ORIGIN_REGEXES", []):
-    _cors_allowed_origins.append(_RegexOrigin(_pattern))
+    _cors_allowed_origins.append(RegexOrigin(_pattern))
 
 _kombu_kwargs: dict[str, Any] = {"url": settings.SOCKET_IO_MANAGER_URL}
 if getattr(settings, "SOCKET_IO_TRANSPORT_OPTIONS", None):
