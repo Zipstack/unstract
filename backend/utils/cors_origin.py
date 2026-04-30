@@ -56,6 +56,16 @@ def normalize_web_app_origin(env_value: str) -> tuple[str, str, str]:
         ValueError: if the env value is not an http(s) URL with a host.
     """
     parsed = urlparse(env_value)
+    # `parsed.port` is a property that raises ValueError on malformed/out-of-range
+    # ports (e.g. `:abc`, `:99999`). Catch it here so misconfig surfaces with the
+    # same actionable message as every other validation failure.
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError(
+            f"WEB_APP_ORIGIN_URL must be of the form http(s)://host[:port], "
+            f"got: {parsed.geturl()!r}"
+        ) from exc
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise ValueError(
             f"WEB_APP_ORIGIN_URL must be of the form http(s)://host[:port], "
@@ -63,8 +73,8 @@ def normalize_web_app_origin(env_value: str) -> tuple[str, str, str]:
         )
     default_port = {"http": 80, "https": 443}[parsed.scheme]
     netloc = parsed.hostname
-    if parsed.port and parsed.port != default_port:
-        netloc = f"{netloc}:{parsed.port}"
+    if port and port != default_port:
+        netloc = f"{netloc}:{port}"
     origin = f"{parsed.scheme}://{netloc}"
     wildcard = f"{parsed.scheme}://*.{netloc}"
     subdomain_regex = rf"^{re.escape(parsed.scheme)}://[^/]+\.{re.escape(netloc)}$"

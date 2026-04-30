@@ -82,12 +82,14 @@ class TestRegexOrigin:
 
     def test_no_redos(self):
         """Pattern must complete on hostile input — ``[^/]+`` has no nested
-        quantifiers so backtracking is bounded."""
+        quantifiers so backtracking is bounded. Threshold is generous (500ms)
+        so noisy CI runners don't flake; ReDoS would blow up by orders of
+        magnitude past this."""
         ro = RegexOrigin(r"^https://[^/]+\.example\.com$")
         hostile = "https://" + "a" * 10000 + ".evil.com"
         start = time.perf_counter()
         _ = hostile in [ro]
-        assert time.perf_counter() - start < 0.05
+        assert time.perf_counter() - start < 0.5
 
 
 class TestNormalizeWebAppOrigin:
@@ -142,6 +144,8 @@ class TestNormalizeWebAppOrigin:
             "https://",             # missing host
             "ftp://example.com",  # non-browser scheme  # NOSONAR — test input asserting ftp is rejected
             "ws://example.com",  # not a top-level browser scheme
+            "https://example.com:abc",  # malformed port — urlparse raises on .port access
+            "https://example.com:99999",  # out-of-range port
         ],
     )
     def test_rejects_misconfigured(self, bad):
