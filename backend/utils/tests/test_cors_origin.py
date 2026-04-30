@@ -41,7 +41,9 @@ class TestRegexOrigin:
 
     def test_wrong_scheme_rejected(self):
         ro = RegexOrigin(r"^https://[^/]+\.example\.com$")
-        assert ("http://app.example.com" == ro) is False
+        # NOSONAR — the `http://` URL is intentional test data: we are
+        # asserting it is *rejected* by an https-scoped pattern.
+        assert ("http://app.example.com" == ro) is False  # NOSONAR
 
     def test_trailing_newline_rejected(self):
         """``fullmatch`` (not ``match``) is required so ``$`` doesn't permit
@@ -57,10 +59,13 @@ class TestRegexOrigin:
         assert "https://evil.com" not in allowed
 
     def test_non_string_returns_not_implemented(self):
+        """``__eq__`` returns ``NotImplemented`` for non-strings so Python
+        falls back to identity — comparison must yield ``False`` cleanly
+        without raising."""
         ro = RegexOrigin(r"^x$")
-        assert ro != None  # noqa: E711
-        assert ro != 42
-        assert ro != []
+        assert (ro == None) is False  # noqa: E711
+        assert (ro == 42) is False
+        assert (ro == []) is False
 
     def test_unhashable(self):
         """``__hash__ = None`` prevents the equality/hash contract from being
@@ -69,7 +74,10 @@ class TestRegexOrigin:
         with pytest.raises(TypeError):
             hash(ro)
         with pytest.raises(TypeError):
-            {ro}  # noqa: B015
+            # `len({ro})` builds the set (calling __hash__) and consumes it via
+            # an explicit function call — keeps ruff from collapsing the
+            # statement and Sonar from flagging it as side-effect-free.
+            len({ro})
 
     def test_no_redos(self):
         """Pattern must complete on hostile input — ``[^/]+`` has no nested
@@ -109,8 +117,10 @@ class TestNormalizeWebAppOrigin:
         assert origin == "https://example.com"
 
     def test_drops_default_http_port(self):
-        origin, _, _ = normalize_web_app_origin("http://example.com:80")
-        assert origin == "http://example.com"
+        # NOSONAR — `http://` URLs are intentional test data for the port
+        # normalization logic, not a runtime use of the insecure protocol.
+        origin, _, _ = normalize_web_app_origin("http://example.com:80")  # NOSONAR
+        assert origin == "http://example.com"  # NOSONAR
 
     def test_keeps_non_default_port(self):
         origin, wildcard, _ = normalize_web_app_origin("https://example.com:8443")
@@ -129,8 +139,8 @@ class TestNormalizeWebAppOrigin:
             "example.com",          # missing scheme
             "//example.com",        # protocol-relative
             "https://",             # missing host
-            "ftp://example.com",    # non-browser scheme
-            "ws://example.com",     # not a top-level browser scheme
+            "ftp://example.com",  # non-browser scheme  # NOSONAR — test input asserting ftp is rejected
+            "ws://example.com",  # not a top-level browser scheme
         ],
     )
     def test_rejects_misconfigured(self, bad):
@@ -165,7 +175,7 @@ class TestSubdomainRegexEndToEnd:
             "https://attacker-example.com",
             "https://x.example.com.attacker.com",
             "https://example.com.attacker.com",
-            "http://app.example.com",  # wrong scheme
+            "http://app.example.com",  # wrong scheme  # NOSONAR — test input asserting http is rejected
             "https://app.example.com\n",  # trailing newline
         ],
     )
