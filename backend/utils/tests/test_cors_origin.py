@@ -59,13 +59,14 @@ class TestRegexOrigin:
         assert "https://evil.com" not in allowed
 
     def test_non_string_returns_not_implemented(self):
-        """``__eq__`` returns ``NotImplemented`` for non-strings so Python
-        falls back to identity — comparison must yield ``False`` cleanly
-        without raising."""
+        """``__eq__`` must return the ``NotImplemented`` sentinel (not
+        ``False``) for non-strings so Python's reflected-equality protocol
+        can fall back to identity. Tested via direct dunder calls because
+        ``ro == None`` short-circuits before reaching ``__eq__``."""
         ro = RegexOrigin(r"^x$")
-        assert (ro == None) is False  # noqa: E711
-        assert (ro == 42) is False
-        assert (ro == []) is False
+        assert ro.__eq__(None) is NotImplemented
+        assert ro.__eq__(42) is NotImplemented
+        assert ro.__eq__([]) is NotImplemented
 
     def test_unhashable(self):
         """``__hash__ = None`` prevents the equality/hash contract from being
