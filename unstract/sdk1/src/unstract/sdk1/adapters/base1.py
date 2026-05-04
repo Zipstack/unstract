@@ -441,9 +441,10 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
-    aws_access_key_id: str | None
-    aws_secret_access_key: str | None
-    aws_region_name: str | None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region_name: str | None = None
+    aws_role_name: str | None = None  # IAM Role ARN for STS AssumeRole auth
     max_retries: int | None = None
 
     @staticmethod
@@ -487,11 +488,13 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
-        # Create validation metadata excluding control fields
+        # Create validation metadata excluding control fields. `auth_type` is
+        # a UI-only selector for the Access Keys vs IAM Role mode; LiteLLM
+        # never sees it.
         validation_metadata = {
             k: v
             for k, v in result_metadata.items()
-            if k not in ("enable_thinking", "budget_tokens", "thinking")
+            if k not in ("enable_thinking", "budget_tokens", "thinking", "auth_type")
         }
 
         validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
@@ -739,9 +742,10 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
-    aws_access_key_id: str | None
-    aws_secret_access_key: str | None
-    aws_region_name: str | None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region_name: str | None = None
+    aws_role_name: str | None = None  # IAM Role ARN for STS AssumeRole auth
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -753,7 +757,11 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
         ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
 
-        return AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
+        # `auth_type` is a UI-only selector; strip before LiteLLM kwargs.
+        validation_metadata = {
+            k: v for k, v in adapter_metadata.items() if k != "auth_type"
+        }
+        return AWSBedrockEmbeddingParameters(**validation_metadata).model_dump()
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:

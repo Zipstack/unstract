@@ -2,9 +2,7 @@
     "title": "Bedrock Embeddings",
     "type": "object",
     "required": [
-      "aws_secret_access_key",
       "region_name",
-      "aws_access_key_id",
       "model",
       "adapter_name"
     ],
@@ -20,18 +18,6 @@
         "title": "Model",
         "default": "amazon.titan-embed-text-v2:0",
         "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models."
-      },
-      "aws_access_key_id": {
-        "type": "string",
-        "title": "AWS Access Key ID",
-        "description": "Provide your AWS Access Key ID",
-        "format": "password"
-      },
-      "aws_secret_access_key": {
-        "type": "string",
-        "title": "AWS Secret Access Key",
-        "description": "Provide your AWS Secret Access Key",
-        "format": "password"
       },
       "region_name": {
         "type": "string",
@@ -53,6 +39,68 @@
         "title": "Timeout",
         "default": 900,
         "description": "Timeout in seconds"
+      },
+      "auth_type": {
+        "type": "string",
+        "title": "Authentication Type",
+        "enum": [
+          "access_keys",
+          "iam_role"
+        ],
+        "enumNames": [
+          "Access Keys",
+          "IAM Role (AssumeRole)"
+        ],
+        "default": "access_keys",
+        "description": "Choose how Bedrock requests are authenticated."
+      }
+    },
+    "dependencies": {
+      "auth_type": {
+        "oneOf": [
+          {
+            "properties": {
+              "auth_type": {
+                "enum": [
+                  "access_keys"
+                ]
+              },
+              "aws_access_key_id": {
+                "type": "string",
+                "title": "AWS Access Key ID",
+                "description": "Provide your AWS Access Key ID",
+                "format": "password"
+              },
+              "aws_secret_access_key": {
+                "type": "string",
+                "title": "AWS Secret Access Key",
+                "description": "Provide your AWS Secret Access Key",
+                "format": "password"
+              }
+            },
+            "required": [
+              "aws_access_key_id",
+              "aws_secret_access_key"
+            ]
+          },
+          {
+            "properties": {
+              "auth_type": {
+                "enum": [
+                  "iam_role"
+                ]
+              },
+              "aws_role_name": {
+                "type": "string",
+                "title": "Role ARN",
+                "description": "IAM Role ARN to assume via STS. Example: arn:aws:iam::123456789012:role/BedrockInvokerRole. Note: AWSReservedSSO_* roles cannot be assumed this way; for SSO use AWS Profile authentication after `aws sso login`."
+              }
+            },
+            "required": [
+              "aws_role_name"
+            ]
+          }
+        ]
       }
     }
   }
