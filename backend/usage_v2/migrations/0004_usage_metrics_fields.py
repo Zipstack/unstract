@@ -70,6 +70,11 @@ class Migration(migrations.Migration):
             name="status",
             field=models.CharField(
                 blank=True,
+                choices=[
+                    ("SUCCESS", "Success"),
+                    ("ERROR", "Error"),
+                    ("SKIPPED", "Skipped"),
+                ],
                 db_comment="Operation outcome: SUCCESS, ERROR, or SKIPPED",
                 max_length=16,
                 null=True,
@@ -82,6 +87,23 @@ class Migration(migrations.Migration):
                 blank=True,
                 db_comment="Error details when status is ERROR",
                 null=True,
+            ),
+        ),
+        # reference_id and reference_type must both be NULL or both be set
+        # so reference_id is always decodable.
+        migrations.AddConstraint(
+            model_name="usage",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    models.Q(
+                        ("reference_id__isnull", True), ("reference_type__isnull", True)
+                    ),
+                    models.Q(
+                        ("reference_id__isnull", False), ("reference_type__isnull", False)
+                    ),
+                    _connector="OR",
+                ),
+                name="usage_reference_pair_consistent",
             ),
         ),
         # Index creation moved to 0005 so it can run CONCURRENTLY — the usage

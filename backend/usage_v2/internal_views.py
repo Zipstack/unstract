@@ -1,10 +1,15 @@
-"""Internal API views for Usage access by workers."""
+"""Internal API views for Usage access by workers.
+
+Mounted under ``/internal/`` and gated by ``InternalAPIAuthMiddleware``.
+"""
 
 import logging
 
 from django.http import JsonResponse
 from rest_framework import status
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.request import Request
+from rest_framework.response import Response
 from rest_framework.views import APIView
 from utils.user_context import UserContext
 
@@ -12,8 +17,15 @@ from unstract.core.data_models import UsageResponseData
 
 from .helper import UsageHelper
 from .models import Usage
+from .serializers import UsageBatchCreateSerializer
 
 logger = logging.getLogger(__name__)
+
+
+class UsagePersistError(APIException):
+    status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    default_detail = "Failed to persist usage records."
+    default_code = "usage_persist_failed"
 
 
 class UsageInternalView(APIView):
@@ -140,10 +152,12 @@ class PagesProcessedInternalView(APIView):
 class UsageBatchCreateView(APIView):
     """Bulk create usage records from worker finalization."""
 
-    def post(self, request: Request) -> JsonResponse:
-        records = request.data.get("records", [])
+    def post(self, request: Request) -> Response:
+        input_serializer = UsageBatchCreateSerializer(data=request.data)
+        input_serializer.is_valid(raise_exception=True)
+        records = input_serializer.validated_data["records"]
         if not records:
-            return JsonResponse({"created": 0}, status=200)
+            return Response({"created": 0}, status=status.HTTP_200_OK)
 
         organization = UserContext.get_organization()
         if organization is None:
@@ -152,13 +166,8 @@ class UsageBatchCreateView(APIView):
                 "refusing to write rows that would be invisible to tenant dashboards",
                 len(records),
             )
-            return JsonResponse(
-                {
-                    "success": False,
-                    "error": "Organization context missing. "
-                    "Worker must send X-Organization-ID.",
-                },
-                status=status.HTTP_400_BAD_REQUEST,
+            raise ValidationError(
+                "Organization context missing. Worker must send X-Organization-ID."
             )
 
         usage_objects = []
@@ -171,11 +180,7 @@ class UsageBatchCreateView(APIView):
                     adapter_instance_id=r.get("adapter_instance_id", ""),
                     run_id=r.get("run_id"),
                     usage_type=r.get("usage_type", "llm"),
-                    # ``llm_usage_reason`` has a fixed choice set and a
-                    # cross-field CheckConstraint vs. ``usage_type``. Coerce
-                    # missing/empty to None so embedding rows don't trip
-                    # the constraint and so we don't silently store ""
-                    # which isn't a valid choice.
+                    # Coerce "" to None so the cross-field CheckConstraint passes.
                     llm_usage_reason=r.get("llm_usage_reason") or None,
                     model_name=r.get("model_name", ""),
                     embedding_tokens=r.get("embedding_tokens", 0),
@@ -192,21 +197,15 @@ class UsageBatchCreateView(APIView):
             )
 
         try:
-            # Chunk to bound transaction size on the billing-critical table.
+            # Bound transaction size on the billing-critical table.
             created = Usage.objects.bulk_create(usage_objects, batch_size=500)
         except Exception as e:
             logger.error(
                 "bulk_create failed for %d usage records (org=%s): %s",
                 len(usage_objects),
-                organization.organization_id if organization else None,
+                organization.organization_id,
                 e,
                 exc_info=True,
             )
-            return JsonResponse(
-                {
-                    "success": False,
-                    "error": "Failed to persist usage records",
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        return JsonResponse({"created": len(created)}, status=201)
+            raise UsagePersistError() from e
+        return Response({"created": len(created)}, status=status.HTTP_201_CREATED)
