@@ -1,13 +1,17 @@
 import logging
 
-from notification_v2.enums import NotificationTrigger
 from notification_v2.helper import NotificationHelper
 from notification_v2.models import Notification
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from pipeline_v2.dto import PipelineStatusPayload
 from pipeline_v2.models import Pipeline
 
 logger = logging.getLogger(__name__)
+
+
+_FAILURE_STATUSES = {ExecutionStatus.ERROR.value, ExecutionStatus.STOPPED.value}
 
 
 class PipelineNotification:
@@ -24,33 +28,57 @@ class PipelineNotification:
         self.error_message = error_message
         self.execution_id = execution_id
 
+    def _load_execution(self) -> WorkflowExecution | None:
+        """Load the WorkflowExecution row for this dispatch, if available.
+
+        Falls back to None when no execution_id was supplied (e.g. legacy
+        callers); callers must handle the None case.
+        """
+        if not self.execution_id:
+            return None
+        try:
+            return WorkflowExecution.objects.get(id=self.execution_id)
+        except WorkflowExecution.DoesNotExist:
+            logger.warning(
+                "WorkflowExecution %s not found for pipeline notification",
+                self.execution_id,
+            )
+            return None
+
     def send(self) -> None:
-        # Partition notifications by the run outcome so each row's notify_on
-        # preference is honored. PipelineUtils.update_pipeline_status collapses
-        # both ERROR and STOPPED execution statuses into PipelineStatus.FAILURE,
-        # so FAILURES_ONLY subscribers get alerts for both on the pipeline side.
-        status = self.pipeline.last_run_status
-        if status == Pipeline.PipelineStatus.FAILURE:
-            self.notifications = self.notifications.exclude(
-                notify_on=NotificationTrigger.SUCCESS_ONLY.value
-            )
-        elif status == Pipeline.PipelineStatus.SUCCESS:
-            self.notifications = self.notifications.exclude(
-                notify_on=NotificationTrigger.FAILURES_ONLY.value
-            )
-        else:
-            self.notifications = self.notifications.filter(
-                notify_on=NotificationTrigger.ALL.value
-            )
+        execution = self._load_execution()
+        # Source of truth for partial-failure detection is the per-run aggregate
+        # written by the worker callback. Pipeline.last_run_status is a coarse
+        # collapse (ERROR/STOPPED → FAILURE) that hides per-file errors when
+        # at least one file succeeded.
+        failed_files = (execution.failed_files or 0) if execution else 0
+        execution_status = execution.status if execution else None
+        is_failure = (
+            execution_status in _FAILURE_STATUSES
+            or failed_files > 0
+            or self.pipeline.last_run_status == Pipeline.PipelineStatus.FAILURE
+        )
+        if not is_failure:
+            self.notifications = self.notifications.filter(notify_on_failures=False)
 
         if not self.notifications.exists():
             logger.info(
-                "No notifications to dispatch for pipeline %s (status=%s)",
+                "No notifications to dispatch for pipeline %s (status=%s, failed_files=%s)",
                 self.pipeline,
-                status,
+                self.pipeline.last_run_status,
+                failed_files,
             )
             return
-        logger.info("Sending pipeline status notification for pipeline %s", self.pipeline)
+        successful_files = (execution.successful_files or 0) if execution else 0
+        total_files = execution.total_files if execution else None
+        logger.info(
+            "Sending pipeline status notification for pipeline %s "
+            "(status=%s, successful=%s, failed=%s)",
+            self.pipeline,
+            self.pipeline.last_run_status,
+            successful_files,
+            failed_files,
+        )
         payload_dto = PipelineStatusPayload(
             type=self.pipeline.pipeline_type,
             pipeline_id=str(self.pipeline.id),
@@ -58,6 +86,9 @@ class PipelineNotification:
             status=self.pipeline.last_run_status,
             execution_id=self.execution_id,
             error_message=self.error_message,
+            total_files=total_files,
+            successful_files=successful_files,
+            failed_files=failed_files,
         )
 
         NotificationHelper.send_notification(

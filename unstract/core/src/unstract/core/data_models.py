@@ -510,6 +510,12 @@ class NotificationPayload:
     error_message: str | None = None
     organization_id: str | None = None
 
+    # Per-run file aggregates surfaced into webhook payloads.
+    # Default 0 lets receivers switch on a numeric value without None-checks.
+    total_files: int = 0
+    successful_files: int = 0
+    failed_files: int = 0
+
     # Metadata
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     additional_data: dict[str, Any] = field(default_factory=dict)
@@ -565,6 +571,9 @@ class NotificationPayload:
         error_message: str | None = None,
         organization_id: str | None = None,
         additional_data: dict[str, Any] | None = None,
+        total_files: int = 0,
+        successful_files: int = 0,
+        failed_files: int = 0,
     ) -> "NotificationPayload":
         """Create notification payload from execution status.
 
@@ -607,6 +616,9 @@ class NotificationPayload:
             execution_id=execution_id,
             error_message=error_message,
             organization_id=organization_id,
+            total_files=total_files,
+            successful_files=successful_files,
+            failed_files=failed_files,
             additional_data=additional_data or {},
             _source=source,
         )

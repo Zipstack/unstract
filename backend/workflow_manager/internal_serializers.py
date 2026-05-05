@@ -178,6 +178,8 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
     total_files = serializers.IntegerField(
         required=False, min_value=0
     )  # Allow 0 but backend will only update if > 0
+    successful_files = serializers.IntegerField(required=False, min_value=0)
+    failed_files = serializers.IntegerField(required=False, min_value=0)
     attempts = serializers.IntegerField(required=False, min_value=0)
     execution_time = serializers.FloatField(required=False, min_value=0)
 

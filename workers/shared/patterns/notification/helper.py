@@ -104,6 +104,7 @@ def trigger_notification(
     pipeline_id: str,
     pipeline_name: str,
     notification_payload: NotificationPayload,
+    execution_id: str | None = None,
 ) -> None:
     """Trigger notifications for pipeline status updates.
 
@@ -111,10 +112,13 @@ def trigger_notification(
     Uses API client to fetch notification configuration.
     """
     try:
-        # Fetch pipeline notifications via API
+        # Pass execution_id so the backend filter respects notify_on_failures
+        # (see trigger_pipeline_notifications for the rationale).
+        params = {"execution_id": execution_id} if execution_id else None
         response_data = api_client._make_request(
             method="GET",
             endpoint=f"v1/webhook/pipeline/{pipeline_id}/notifications/",
+            params=params,
             timeout=10,
         )
 
@@ -176,10 +180,14 @@ def trigger_pipeline_notifications(
         return
 
     try:
-        # Fetch pipeline notifications via API
+        # Pass execution_id so the backend can drop notify_on_failures=True rows
+        # on success runs. Without it the endpoint is a no-op and we'd fire on
+        # every active row regardless of trigger preference.
+        params = {"execution_id": execution_id} if execution_id else None
         response_data = api_client._make_request(
             method="GET",
             endpoint=f"v1/webhook/pipeline/{pipeline_id}/notifications/",
+            params=params,
             timeout=10,
         )
 
@@ -204,7 +212,9 @@ def trigger_pipeline_notifications(
         else:
             workflow_type = WorkflowType.ETL  # Default fallback
 
-        # Create notification payload using dataclass
+        # File counts come from WorkflowExecution via the same endpoint so
+        # webhook receivers (Slack, raw API) see partial-success breakdowns.
+        counts = response_data.get("execution_counts") or {}
         payload = NotificationPayload.from_execution_status(
             pipeline_id=pipeline_id,
             pipeline_name=pipeline_name,
@@ -213,6 +223,9 @@ def trigger_pipeline_notifications(
             source=NotificationSource.CALLBACK_WORKER,
             execution_id=execution_id,
             error_message=error_message,
+            total_files=counts.get("total_files", 0),
+            successful_files=counts.get("successful_files", 0),
+            failed_files=counts.get("failed_files", 0),
         )
 
         logger.info(
@@ -261,9 +274,14 @@ def trigger_api_notifications(
         return
 
     try:
-        # Fetch API notifications via API
+        # See trigger_pipeline_notifications: execution_id powers the backend
+        # filter that respects notify_on_failures.
+        params = {"execution_id": execution_id} if execution_id else None
         response_data = api_client._make_request(
-            method="GET", endpoint=f"v1/webhook/api/{api_id}/notifications/", timeout=10
+            method="GET",
+            endpoint=f"v1/webhook/api/{api_id}/notifications/",
+            params=params,
+            timeout=10,
         )
 
         # _make_request already handles status codes and returns parsed data
@@ -277,7 +295,7 @@ def trigger_api_notifications(
             logger.info(f"No active notifications found for API {api_id}")
             return
 
-        # Create notification payload using dataclass
+        counts = response_data.get("execution_counts") or {}
         payload = NotificationPayload.from_execution_status(
             pipeline_id=api_id,
             pipeline_name=api_name,
@@ -286,6 +304,9 @@ def trigger_api_notifications(
             source=NotificationSource.CALLBACK_WORKER,
             execution_id=execution_id,
             error_message=error_message,
+            total_files=counts.get("total_files", 0),
+            successful_files=counts.get("successful_files", 0),
+            failed_files=counts.get("failed_files", 0),
         )
 
         logger.info(

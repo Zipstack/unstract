@@ -513,10 +513,19 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     increment_attempt=increment_attempt,
                 )
 
-                # Update total_files separately (not handled by update_execution)
+                # Update total_files / per-file aggregates separately (not handled by update_execution)
+                update_fields: list[str] = []
                 if validated_data.get("total_files") is not None:
                     execution.total_files = validated_data["total_files"]
-                    execution.save()
+                    update_fields.append("total_files")
+                if validated_data.get("successful_files") is not None:
+                    execution.successful_files = validated_data["successful_files"]
+                    update_fields.append("successful_files")
+                if validated_data.get("failed_files") is not None:
+                    execution.failed_files = validated_data["failed_files"]
+                    update_fields.append("failed_files")
+                if update_fields:
+                    execution.save(update_fields=update_fields)
 
                 logger.info(
                     f"Updated workflow execution {id} status to {validated_data['status']}"

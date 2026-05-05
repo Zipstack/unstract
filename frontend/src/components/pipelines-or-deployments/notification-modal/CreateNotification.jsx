@@ -1,4 +1,4 @@
-import { Button, Form, Input, Select, Space } from "antd";
+import { Button, Checkbox, Form, Input, Select, Space } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
@@ -12,7 +12,7 @@ const DEFAULT_FORM_DETAILS = {
   authorization_key: "",
   is_active: false,
   max_retries: 0,
-  notify_on: "ALL",
+  notify_on_failures: false,
   pipeline: "",
   api: "",
   url: "",
@@ -53,12 +53,6 @@ const AUTHORIZATION_TYPES = [
     value: "NONE",
     label: "NONE",
   },
-];
-
-const NOTIFY_ON_OPTIONS = [
-  { value: "ALL", label: "On every completion" },
-  { value: "FAILURES_ONLY", label: "On failures only" },
-  { value: "SUCCESS_ONLY", label: "On success only" },
 ];
 
 function CreateNotification({
@@ -199,12 +193,6 @@ function CreateNotification({
       tooltip:
         "Specify the maximum number of times the notification should be retried if it fails.",
     },
-    {
-      label: "Notify on",
-      name: "notify_on",
-      component: <Select options={NOTIFY_ON_OPTIONS} />,
-      tooltip: "Choose which run outcomes should trigger this webhook.",
-    },
   ];
 
   return (
@@ -233,6 +221,13 @@ function CreateNotification({
             </Form.Item>
           ),
       )}
+      <Form.Item
+        name="notify_on_failures"
+        valuePropName="checked"
+        tooltip="When enabled, only runs with at least one failed file or a run-level error/stop trigger this notification. Otherwise notifications fire on every completion."
+      >
+        <Checkbox>Notify on failures only</Checkbox>
+      </Form.Item>
       <Form.Item className="display-flex-right">
         <Space>
           <Button onClick={() => setIsForm(false)}>Cancel</Button>
