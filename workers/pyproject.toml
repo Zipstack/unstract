@@ -110,7 +110,13 @@ known_first_party = [
     "api_deployment",
     "general",
     "file_processing",
-    "callback"
+    "callback",
+    "executor",
+    "pluggable_worker",
+    "notification",
+    "scheduler",
+    "log_consumer",
+    "ide_callback"
 ]
 
 [tool.mypy]
