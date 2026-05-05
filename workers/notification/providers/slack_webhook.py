@@ -199,11 +199,10 @@ class SlackWebhook(WebhookProvider):
         elif isinstance(value, (list, tuple)):
             return "\n• " + "\n• ".join(str(item) for item in value)
         elif isinstance(value, dict):
-            # Format nested dictionary
-            items = []
-            for k, v in value.items():
-                items.append(f"  • {self._format_key(k)}: {v}")
-            return "\n" + "\n".join(items)
+            # Inline {Key: Value, Key: Value} so the receiver sees the
+            # whole dict on one line instead of a bulleted block.
+            items = [f"{self._format_key(k)}: {v}" for k, v in value.items()]
+            return "{" + ", ".join(items) + "}"
         elif value is None:
             return "_Not specified_"
         else:

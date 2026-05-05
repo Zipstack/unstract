@@ -5,6 +5,7 @@ No Django dependencies, works in pure worker environment.
 """
 
 import logging
+from typing import Any
 
 from celery import current_app
 
@@ -335,7 +336,7 @@ def trigger_api_notifications(
 
 
 def handle_status_notifications(
-    api_client,
+    api_client: Any,
     pipeline_id: str,
     status: str,
     execution_id: str | None = None,

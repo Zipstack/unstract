@@ -25,15 +25,21 @@ class PipelineStatusPayload:
         self.failed_files = failed_files
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert the payload DTO to a dictionary."""
+        """Convert the payload DTO to a dictionary.
+
+        File counts are nested in `additional_data` to match the worker-path
+        payload shape (NotificationPayload.from_execution_status).
+        """
         payload: dict[str, Any] = {
             "type": self.type,
             "pipeline_id": str(self.pipeline_id),
             "pipeline_name": self.pipeline_name,
             "status": self.status,
-            "total_files": self.total_files or 0,
-            "successful_files": self.successful_files or 0,
-            "failed_files": self.failed_files or 0,
+            "additional_data": {
+                "total_files": self.total_files or 0,
+                "successful_files": self.successful_files or 0,
+                "failed_files": self.failed_files or 0,
+            },
         }
         if self.execution_id:
             payload["execution_id"] = str(self.execution_id)

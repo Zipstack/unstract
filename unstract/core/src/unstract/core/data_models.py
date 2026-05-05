@@ -510,14 +510,10 @@ class NotificationPayload:
     error_message: str | None = None
     organization_id: str | None = None
 
-    # Per-run file aggregates surfaced into webhook payloads.
-    # Default 0 lets receivers switch on a numeric value without None-checks.
-    total_files: int = 0
-    successful_files: int = 0
-    failed_files: int = 0
-
     # Metadata
     timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
+    # Per-run file aggregates (total/successful/failed) are nested here
+    # so receivers see them grouped rather than as top-level keys.
     additional_data: dict[str, Any] = field(default_factory=dict)
 
     # Internal tracking (not sent to external webhooks)
@@ -608,6 +604,17 @@ class NotificationPayload:
                 f"Cannot create notification for non-final status: {execution_status}"
             )
 
+        # File counts are bundled inside additional_data so receivers see
+        # them grouped (e.g. Slack renders one "Additional Data" section).
+        # Caller-supplied additional_data takes precedence on key conflict.
+        merged_additional = {
+            "total_files": total_files,
+            "successful_files": successful_files,
+            "failed_files": failed_files,
+        }
+        if additional_data:
+            merged_additional.update(additional_data)
+
         return cls(
             type=workflow_type,
             pipeline_id=pipeline_id,
@@ -616,10 +623,7 @@ class NotificationPayload:
             execution_id=execution_id,
             error_message=error_message,
             organization_id=organization_id,
-            total_files=total_files,
-            successful_files=successful_files,
-            failed_files=failed_files,
-            additional_data=additional_data or {},
+            additional_data=merged_additional,
             _source=source,
         )
 
