@@ -32,7 +32,7 @@ class UsageRecordCreateSerializer(serializers.Serializer):
 
     workflow_id = serializers.CharField(required=False, allow_blank=True, default="")
     execution_id = serializers.CharField(required=False, allow_blank=True, default="")
-    run_id = serializers.CharField(required=False, allow_null=True, default=None)
+    run_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     llm_usage_reason = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, default=None
     )
@@ -41,7 +41,7 @@ class UsageRecordCreateSerializer(serializers.Serializer):
     completion_tokens = serializers.IntegerField(required=False, default=0)
     total_tokens = serializers.IntegerField(required=False, default=0)
     cost_in_dollars = serializers.FloatField(required=False, default=0.0)
-    reference_id = serializers.CharField(required=False, allow_null=True, default=None)
+    reference_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     reference_type = serializers.CharField(required=False, allow_null=True, default=None)
     execution_time_ms = serializers.IntegerField(
         required=False, allow_null=True, default=None
