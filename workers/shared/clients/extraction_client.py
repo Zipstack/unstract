@@ -34,7 +34,6 @@ class ExtractionAPIClient(BaseAPIClient):
         self,
         source: str,
         file_id: str,
-        token_count: int,
         extracted_text_path: str,
         organization_id: str | None = None,
         **extra: Any,
@@ -43,7 +42,6 @@ class ExtractionAPIClient(BaseAPIClient):
         payload: dict[str, Any] = {
             "source": source,
             "file_id": file_id,
-            "token_count": token_count,
             "extracted_text_path": extracted_text_path,
             **extra,
         }
