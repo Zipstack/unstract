@@ -21,6 +21,10 @@ from executor.executors.dto import (
 )
 from executor.executors.exceptions import ExtractionError, LegacyExecutorError
 from executor.executors.file_utils import FileUtils
+from executor.executors.lookup_enrichment import (
+    run_lookup_enrichment,
+    run_webhook_postprocessing,
+)
 
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
@@ -35,21 +39,6 @@ from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 
 logger = logging.getLogger(__name__)
-
-
-def _is_blank(value: Any) -> bool:
-    """Treat None / whitespace strings / empty containers as no-value.
-
-    Boolean ``False`` and numeric ``0`` are *not* blank — they're valid
-    inputs for boolean / number prompts whose lookups should still run.
-    """
-    if value is None:
-        return True
-    if isinstance(value, str):
-        return not value.strip()
-    if isinstance(value, (list, dict)):
-        return not value
-    return False
 
 
 @ExecutorRegistry.register
@@ -73,11 +62,8 @@ class LegacyExecutor(BaseExecutor):
     }
 
     def __init__(self) -> None:
-        # Per-request state — overwritten on every ``execute()`` call.
-        # ``_usage_records`` initialised here too so the orchestrator's
-        # ``getattr(executor, "_usage_records", None)`` always sees a real
-        # list — an early-init crash inside ``execute()`` would otherwise
-        # silently drop billing rows.
+        # Per-request state, overwritten in execute(). Seed _usage_records here
+        # so an early-init crash still exposes a real list to the orchestrator.
         self._log_events_id: str = ""
         self._log_component: dict[str, str] = {}
         self._execution_id: str | None = None
@@ -172,9 +158,7 @@ class LegacyExecutor(BaseExecutor):
                         level=LogLevel.ERROR,
                     )
                 except Exception:
-                    # Best-effort — don't mask the original error, but log
-                    # so the secondary failure (broker down, serialization
-                    # bug, etc.) is recoverable.
+                    # Don't mask the original error; log the secondary at DEBUG.
                     logger.debug(
                         "Failed to stream error to FE for run_id=%s",
                         context.run_id,
@@ -1716,16 +1700,18 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Applied type conversion for: `{prompt_name}`")
 
-            self._run_lookup_enrichment(
-                output=output,
-                structured_output=structured_output,
-                metadata=metadata,
-                metrics=metrics,
-                shim=shim,
-                usage_kwargs=usage_kwargs,
-                llm_cls=llm_cls,
+            self._usage_records.extend(
+                run_lookup_enrichment(
+                    output=output,
+                    structured_output=structured_output,
+                    metadata=metadata,
+                    metrics=metrics,
+                    shim=shim,
+                    usage_kwargs=usage_kwargs,
+                    llm_cls=llm_cls,
+                )
             )
-            self._run_webhook_postprocessing(
+            run_webhook_postprocessing(
                 output=output,
                 structured_output=structured_output,
                 metadata=metadata,
@@ -1831,15 +1817,20 @@ class LegacyExecutor(BaseExecutor):
             }
         )
         self._usage_records.extend(llm.flush_pending_usage())
-        if chunk_size > 0 and embedding is not None:
-            # Public adapters (``is_public_adapter() is True``) construct
-            # ``EmbeddingCompat`` without a callback_manager, so there's
-            # nothing to flush. Skip silently rather than catching the
-            # AttributeError — the broad catch was masking real bugs.
-            if embedding.callback_manager is not None:
-                for handler in embedding.callback_manager.handlers:
-                    if hasattr(handler, "flush_pending_usage"):
-                        self._usage_records.extend(handler.flush_pending_usage())
+        # Public adapters skip the callback_manager, so there's nothing to flush.
+        if chunk_size > 0 and embedding is not None and embedding.callback_manager:
+            for handler in embedding.callback_manager.handlers:
+                if not hasattr(handler, "flush_pending_usage"):
+                    continue
+                # Per-handler guard so one bad handler doesn't drop the rest.
+                try:
+                    self._usage_records.extend(handler.flush_pending_usage())
+                except Exception:
+                    logger.warning(
+                        "Failed to flush usage from embedding handler %s",
+                        type(handler).__name__,
+                        exc_info=True,
+                    )
         if vector_db:
             vector_db.close()
 
@@ -1998,138 +1989,6 @@ class LegacyExecutor(BaseExecutor):
             shim.stream_log(
                 f"Line-item extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
-            )
-
-    def _run_lookup_enrichment(
-        self,
-        output: dict[str, Any],
-        structured_output: dict[str, Any],
-        metadata: dict[str, Any],
-        metrics: dict[str, Any],
-        shim: Any,
-        llm_cls: Any,
-        usage_kwargs: dict[str, Any] | None = None,
-    ) -> None:
-        """Run lookup enrichment plugin if enabled and available.
-
-        ``llm_cls`` is passed in by the caller so we don't re-unpack the
-        7-tuple returned by ``_get_prompt_deps()`` on every prompt.
-        """
-        from executor.executors.constants import PromptServiceConstants as PSKeys
-        from executor.executors.plugins import ExecutorPluginLoader
-
-        prompt_name = output[PSKeys.NAME]
-        current_value = structured_output.get(prompt_name)
-
-        lookup_config = output.get("lookup_config")
-        lookup_cls = ExecutorPluginLoader.get("lookup-enrichment")
-        if not (lookup_config and lookup_cls):
-            return
-        if _is_blank(current_value):
-            # Surface a skip log instead of silently no-op-ing — the user
-            # configured a lookup and would otherwise wonder why it didn't run.
-            lookup_name = lookup_config.get("lookup_name") or "lookup"
-            shim.stream_log(
-                f"Skipping lookup `{lookup_name}` for `{prompt_name}` — "
-                f"source prompt produced no value."
-            )
-            return
-
-        try:
-            outcome = lookup_cls.run_with_metrics(
-                llm_cls=llm_cls,
-                lookup_config=lookup_config,
-                structured_output=structured_output,
-                current_value=current_value,
-                metadata=metadata,
-                prompt_name=prompt_name,
-                shim=shim,
-                usage_kwargs=usage_kwargs,
-            )
-            # Inside the try so a missing/renamed attribute on the outcome
-            # (plugin contract drift) hits the same graceful-degrade branch.
-            self._usage_records.extend(outcome.usage_records)
-            metrics.setdefault(prompt_name, {})[lookup_cls.METRICS_KEY] = (
-                outcome.llm_metrics
-            )
-        except Exception:
-            # Enrichment is post-extraction — degrade gracefully on
-            # plugin contract drift (missing METRICS_KEY, unexpected
-            # outcome shape) rather than aborting the whole prompt run
-            # and losing the answer-prompt billing rows.
-            lookup_name = lookup_config.get("lookup_name") or "lookup"
-            logger.exception(
-                "Lookup enrichment failed for prompt=%s lookup=%s",
-                prompt_name,
-                lookup_name,
-            )
-            shim.stream_log(
-                f"Lookup `{lookup_name}` failed for `{prompt_name}`; "
-                f"continuing without enrichment.",
-                level=LogLevel.WARN,
-            )
-            return
-
-    @staticmethod
-    def _run_webhook_postprocessing(
-        output: dict[str, Any],
-        structured_output: dict[str, Any],
-        metadata: dict[str, Any],
-        shim: Any,
-    ) -> None:
-        """Run webhook postprocessing if enabled (JSON outputs only)."""
-        from executor.executors.answer_prompt import AnswerPromptService
-        from executor.executors.constants import PromptServiceConstants as PSKeys
-
-        prompt_name = output[PSKeys.NAME]
-        output_type = output.get(PSKeys.TYPE, "")
-        webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
-        if not webhook_enabled:
-            return
-        # Pre-refactor, the webhook lived inside ``handle_json`` after its
-        # parse-failure early-return, so a malformed JSON answer (which sets
-        # ``structured_output[prompt_name] = {}``) never fired a webhook.
-        # The new explicit gate keeps that contract — empty / None payloads
-        # are skipped with a log rather than dispatched.
-        parsed_value = structured_output.get(prompt_name)
-        if not isinstance(parsed_value, (dict, list)) or not parsed_value:
-            logger.warning(
-                "Webhook postprocessing skipped: prompt=%s parsed payload "
-                "is empty or non-JSON (likely a parse failure)",
-                prompt_name,
-            )
-            return
-        if output_type != PSKeys.JSON:
-            # The pre-refactor behaviour fired the webhook regardless of
-            # output_type. The new restriction is intentional, but the
-            # user enabled a webhook URL and would otherwise see no call
-            # firing — surface the skip in the IDE log panel.
-            logger.warning(
-                "Webhook postprocessing supports JSON outputs only; "
-                "skipping for prompt=%s (output_type=%s)",
-                prompt_name,
-                output_type,
-            )
-            shim.stream_log(
-                f"Webhook postprocessing supports JSON outputs only; "
-                f"skipping for `{prompt_name}`.",
-                level=LogLevel.WARN,
-            )
-            return
-
-        webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
-        highlight_data = None
-        if metadata and PSKeys.HIGHLIGHT_DATA in metadata:
-            highlight_data = metadata.get(PSKeys.HIGHLIGHT_DATA, {}).get(prompt_name)
-        processed, updated_highlights = AnswerPromptService._run_webhook_postprocess(
-            parsed_data=structured_output.get(prompt_name),
-            webhook_url=webhook_url,
-            highlight_data=highlight_data,
-        )
-        structured_output[prompt_name] = processed
-        if updated_highlights is not None and metadata:
-            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_name] = (
-                updated_highlights
             )
 
     @staticmethod

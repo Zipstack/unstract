@@ -551,97 +551,79 @@ def extraction_complete(
     ws_room = cb.get("ws_room", "")
     ws_event = cb.get("ws_event", "")
 
-    api = _get_extraction_client()
-    ps_api = _get_api_client()
+    with _get_extraction_client() as api, _get_api_client() as ps_api:
+        try:
+            # Check executor-level failure
+            if not result_dict.get("success", False):
+                error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
+                logger.error(
+                    "extraction executor reported failure: source=%s file=%s error=%s",
+                    source,
+                    file_id,
+                    error_msg,
+                )
+                api.mark_extraction_error(
+                    source=source,
+                    file_id=file_id,
+                    error=error_msg,
+                    organization_id=org_id,
+                )
+                if ws_room and ws_event:
+                    _emit_websocket(
+                        ps_api,
+                        room=ws_room,
+                        event=ws_event,
+                        data={
+                            "file_id": file_id,
+                            "status": "ERROR",
+                            "error": error_msg[:500],
+                        },
+                    )
+                return {"status": "failed", "error": error_msg}
 
-    try:
-        # Check executor-level failure
-        if not result_dict.get("success", False):
-            error_msg = result_dict.get("error", _UNKNOWN_EXECUTOR_ERROR)
-            logger.error(
-                "extraction executor reported failure: source=%s file=%s error=%s",
-                source,
-                file_id,
-                error_msg,
-            )
-            api.mark_extraction_error(
+            api.mark_extraction_complete(
                 source=source,
                 file_id=file_id,
-                error=error_msg,
+                extracted_text_path=extracted_text_path,
                 organization_id=org_id,
             )
+
             if ws_room and ws_event:
                 _emit_websocket(
                     ps_api,
                     room=ws_room,
                     event=ws_event,
-                    data={
-                        "file_id": file_id,
-                        "status": "ERROR",
-                        "error": error_msg[:500],
-                    },
+                    data={"file_id": file_id, "status": "COMPLETED"},
                 )
-            return {"status": "failed", "error": error_msg}
 
-        # ``result_dict["data"]`` may be explicitly ``None`` on early-return
-        # paths; guard against AttributeError so a benign empty-data response
-        # doesn't escalate to a generic "ERROR" callback.
-        extracted_text = (result_dict.get("data") or {}).get("extracted_text", "")
-        token_count = len(extracted_text) // 4
+            logger.info("Extraction completed: source=%s file=%s", source, file_id)
+            return {"status": "completed", "file_id": file_id}
 
-        api.mark_extraction_complete(
-            source=source,
-            file_id=file_id,
-            token_count=token_count,
-            extracted_text_path=extracted_text_path,
-            organization_id=org_id,
-        )
-
-        if ws_room and ws_event:
-            _emit_websocket(
-                ps_api,
-                room=ws_room,
-                event=ws_event,
-                data={
-                    "file_id": file_id,
-                    "status": "COMPLETED",
-                    "token_count": token_count,
-                },
+        except Exception as e:
+            logger.exception(
+                "extraction_complete callback failed: source=%s file=%s",
+                source,
+                file_id,
             )
-
-        logger.info(
-            "Extraction completed: source=%s file=%s tokens=%d",
-            source,
-            file_id,
-            token_count,
-        )
-        return {"status": "completed", "file_id": file_id, "token_count": token_count}
-
-    except Exception as e:
-        logger.exception(
-            "extraction_complete callback failed: source=%s file=%s", source, file_id
-        )
-        if ws_room and ws_event:
-            try:
-                _emit_websocket(
-                    ps_api,
-                    room=ws_room,
-                    event=ws_event,
-                    data={
-                        "file_id": file_id,
-                        "status": "ERROR",
-                        "error": str(e)[:500],
-                    },
-                )
-            except Exception:
-                # ``_emit_websocket`` already swallows-and-logs internally,
-                # but if anything reaches this far we'd rather see the
-                # secondary failure in the log than lose it silently.
-                logger.debug(
-                    "Failed to emit ws ERROR event in extraction_complete fallback",
-                    exc_info=True,
-                )
-        raise
+            if ws_room and ws_event:
+                try:
+                    _emit_websocket(
+                        ps_api,
+                        room=ws_room,
+                        event=ws_event,
+                        data={
+                            "file_id": file_id,
+                            "status": "ERROR",
+                            "error": str(e)[:500],
+                        },
+                    )
+                except Exception:
+                    # _emit_websocket swallows internally; log if anything escapes.
+                    logger.debug(
+                        "Failed to emit ws ERROR event in extraction_complete fallback",
+                        exc_info=True,
+                    )
+            raise
 
 
 @app.task(name="extraction_error")
@@ -657,31 +639,32 @@ def extraction_error(
     ws_room = cb.get("ws_room", "")
     ws_event = cb.get("ws_event", "")
 
-    api = _get_extraction_client()
-    ps_api = _get_api_client()
+    # Context-manage clients to avoid per-task session leaks.
+    with _get_extraction_client() as api, _get_api_client() as ps_api:
+        try:
+            error_msg = _get_task_error(failed_task_id, default="Text extraction failed")
 
-    try:
-        error_msg = _get_task_error(failed_task_id, default="Text extraction failed")
-
-        api.mark_extraction_error(
-            source=source,
-            file_id=file_id,
-            error=error_msg,
-            organization_id=org_id,
-        )
-
-        if ws_room and ws_event:
-            _emit_websocket(
-                ps_api,
-                room=ws_room,
-                event=ws_event,
-                data={
-                    "file_id": file_id,
-                    "status": "ERROR",
-                    "error": error_msg[:500],
-                },
+            api.mark_extraction_error(
+                source=source,
+                file_id=file_id,
+                error=error_msg,
+                organization_id=org_id,
             )
-    except Exception:
-        logger.exception(
-            "extraction_error callback failed: source=%s file=%s", source, file_id
-        )
+
+            if ws_room and ws_event:
+                _emit_websocket(
+                    ps_api,
+                    room=ws_room,
+                    event=ws_event,
+                    data={
+                        "file_id": file_id,
+                        "status": "ERROR",
+                        "error": error_msg[:500],
+                    },
+                )
+        except Exception:
+            logger.exception(
+                "extraction_error callback failed: source=%s file=%s",
+                source,
+                file_id,
+            )

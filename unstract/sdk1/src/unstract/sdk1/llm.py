@@ -653,11 +653,10 @@ class LLM:
         }
 
     def get_last_usage_record(self) -> dict | None:
-        """Full usage record for the most recent LLM call (sync, async, or streaming).
+        """Full usage record for the most recent LLM call.
 
-        Returns the complete record (tokens + cost + model + reason
-        metadata) so callers don't have to reach into ``_pending_usage``
-        directly. ``None`` if no call has been made yet.
+        Returns tokens + cost + model + reason metadata; ``None`` if no
+        call has been made yet.
         """
         if not self._pending_usage:
             return None
@@ -669,7 +668,7 @@ class LLM:
     def flush_pending_usage(self) -> list[dict]:
         """Return and clear all pending usage records.
 
-        Called by the executor at finalization to collect records for batch write.
+        Called at executor finalization.
         """
         records = self._pending_usage
         self._pending_usage = []
@@ -686,6 +685,20 @@ class LLM:
         prompt_tokens = usage_data.get("prompt_tokens", 0)
         completion_tokens = usage_data.get("completion_tokens", 0)
         total_tokens = usage_data.get("total_tokens", 0)
+
+        # Fall back to litellm when providers omit prompt tokens — avoids 0-token billing.
+        if prompt_tokens == 0 and messages:
+            try:
+                prompt_tokens = litellm.token_counter(model=model, messages=messages)
+                if total_tokens == 0:
+                    total_tokens = prompt_tokens + completion_tokens
+            except Exception:
+                logger.warning(
+                    "[sdk1][LLM][%s] prompt_tokens missing on response and "
+                    "litellm.token_counter() fallback failed; recording 0",
+                    model,
+                    exc_info=True,
+                )
 
         logger.info(
             "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d",
@@ -711,14 +724,10 @@ class LLM:
             )
             cost = 0.0
 
-        # rsplit so multi-segment IDs (e.g. ``bedrock/anthropic/claude``)
-        # collapse to the trailing segment, matching legacy Audit semantics.
+        # Trailing segment matches legacy Audit semantics (e.g. bedrock/anthropic/claude).
         display_model = model.rsplit("/", 1)[-1] if model else model
 
-        # ``_usage_kwargs`` spread first so explicit fields below win — those
-        # are the canonical billing values (tokens, cost, status); we only
-        # want callers to provide context (reference_id, reference_type),
-        # not override computed numbers.
+        # Spread _usage_kwargs first so computed billing fields below win.
         self._pending_usage.append(
             {
                 **self._usage_kwargs,
@@ -728,13 +737,10 @@ class LLM:
                 "adapter_instance_id": self.platform_kwargs.get(
                     "adapter_instance_id", ""
                 ),
-                # ``run_id`` lands in a UUIDField column; "" would fail the
-                # cast — keep absent values as None so the bulk-create view
-                # writes NULL.
+                # run_id lands in a UUIDField — "" fails the cast; keep None.
                 "run_id": self.platform_kwargs.get("run_id") or None,
                 "execution_id": self.platform_kwargs.get("execution_id", ""),
-                # ``llm_usage_reason`` has a fixed choice set; "" isn't a
-                # valid choice, so write None when missing.
+                # "" isn't a valid choice for llm_usage_reason.
                 "llm_usage_reason": self.platform_kwargs.get("llm_usage_reason") or None,
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
