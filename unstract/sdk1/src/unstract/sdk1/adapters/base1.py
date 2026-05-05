@@ -525,11 +525,12 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
-        # Create validation metadata excluding control fields
+        # Create validation metadata excluding control fields. `auth_type` is
+        # a UI-only selector that drives form rendering; LiteLLM never sees it.
         validation_metadata = {
             k: v
             for k, v in result_metadata.items()
-            if k not in ("enable_thinking", "budget_tokens", "thinking")
+            if k not in ("enable_thinking", "budget_tokens", "thinking", "auth_type")
         }
 
         validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
@@ -981,7 +982,12 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
         ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
 
-        validated = AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
+        # `auth_type` is a UI-only selector; strip before LiteLLM kwargs.
+        validation_metadata = {
+            k: v for k, v in adapter_metadata.items() if k != "auth_type"
+        }
+
+        validated = AWSBedrockEmbeddingParameters(**validation_metadata).model_dump()
 
         # Strip empty AWS access keys so boto3's default credential chain
         # takes over (instance profile / IRSA / AWS Profile / env vars).
