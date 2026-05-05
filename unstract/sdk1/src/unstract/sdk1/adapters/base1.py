@@ -538,6 +538,13 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         if enable_thinking and "thinking" in result_metadata:
             validated["thinking"] = result_metadata["thinking"]
 
+        # Strip empty AWS access keys so boto3's default credential chain
+        # takes over (instance profile / IRSA / AWS Profile / env vars).
+        # Mirrors the pattern in the S3/MinIO connector.
+        for key in ("aws_access_key_id", "aws_secret_access_key"):
+            if not validated.get(key):
+                validated.pop(key, None)
+
         return validated
 
     @staticmethod
@@ -959,9 +966,10 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
-    aws_access_key_id: str | None
-    aws_secret_access_key: str | None
-    aws_region_name: str | None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    aws_region_name: str | None = None
+    aws_profile_name: str | None = None  # For AWS SSO authentication
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -973,7 +981,16 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
         ):
             adapter_metadata["aws_region_name"] = adapter_metadata["region_name"]
 
-        return AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
+        validated = AWSBedrockEmbeddingParameters(**adapter_metadata).model_dump()
+
+        # Strip empty AWS access keys so boto3's default credential chain
+        # takes over (instance profile / IRSA / AWS Profile / env vars).
+        # Mirrors the pattern in the S3/MinIO connector.
+        for key in ("aws_access_key_id", "aws_secret_access_key"):
+            if not validated.get(key):
+                validated.pop(key, None)
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
