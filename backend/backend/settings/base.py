@@ -434,6 +434,8 @@ MIDDLEWARE = [
 TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
 
+DISABLE_SSO_IDP_AUTHORIZATION = False
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
