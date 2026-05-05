@@ -540,8 +540,7 @@ def extraction_complete(
 ) -> dict[str, Any]:
     """Celery link callback after successful text extraction.
 
-    Computes token count from extracted text, persists result via
-    internal API, and emits a WebSocket event.
+    Persists the result via internal API and emits a WebSocket event.
     """
     cb = callback_kwargs or {}
     source = cb.get("source", "")
