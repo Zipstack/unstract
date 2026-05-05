@@ -62,8 +62,7 @@ class ExecutionOrchestrator:
                 elapsed,
             )
             metadata: dict[str, Any] = {"elapsed_seconds": round(elapsed, 3)}
-            # Preserve usage records the executor collected before crashing so
-            # the task wrapper still flushes them on retry.
+            # Don't lose pre-crash billing rows on retry.
             collected = getattr(executor, "_usage_records", None) or []
             if collected:
                 metadata["usage_records"] = list(collected)

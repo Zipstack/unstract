@@ -45,8 +45,7 @@ try {
   // Do nothing if plugins are not loaded.
 }
 
-// Cloud-only hook that seeds hasUnsavedChanges from server-side
-// lookup-staleness. No-op stub in OSS.
+// Cloud-only — OSS stub.
 let useLookupDirtySeed = () => {};
 try {
   const mod = await import(
@@ -55,8 +54,7 @@ try {
   useLookupDirtySeed = mod.useLookupDirtySeed;
 } catch {}
 
-// Cloud-only lookup export validation gate. OSS stub resolves true so
-// the reminder bar's "Export" button proceeds directly.
+// Cloud-only — OSS stub resolves true to skip the gate.
 let useLookupExportGate = () => ({
   checkLookups: () => Promise.resolve(true),
   modalEl: null,
@@ -203,9 +201,7 @@ function ToolIde() {
     }
   }, [details?.tool_id]);
 
-  // Cloud plugin seeds hasUnsavedChanges when a linked lookup has been
-  // edited since the tool's last export — surfaces the re-export banner
-  // for mutations made on the standalone /lookups page. No-op in OSS.
+  // Surfaces re-export banner when /lookups page edits made the tool stale.
   useLookupDirtySeed(details?.tool_id);
 
   // Cleanup abort controller on unmount

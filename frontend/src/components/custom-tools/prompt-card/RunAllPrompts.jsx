@@ -4,9 +4,6 @@ import { PROMPT_RUN_TYPES } from "../../../helpers/GetStaticData";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 
-// No tool-wide gate here — per-prompt Run buttons + server already
-// block broken prompts, so disabling bulk would only hide valid ones.
-
 function RunAllPrompts() {
   const { selectedDoc, isMultiPassExtractLoading, isPublicSource } =
     useCustomToolStore();

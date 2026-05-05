@@ -99,15 +99,9 @@ logger = logging.getLogger(__name__)
 def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     """Block non-SP runs when a linked lookup has >1 input variable.
 
-    ``prompt_ids`` scopes the check to the prompt(s) being run so a
-    multi-var lookup attached to an unrelated prompt in the same project
-    doesn't block a single-var lookup's run.
-
-    Callers are responsible for only invoking this on non-SP execution
-    paths — the SP entry point skips the helper entirely.
-
-    Returns a Response object (HTTP 400) when a block applies, or None
-    to let the caller proceed.
+    Multi-var lookups only resolve correctly under single-pass; ``prompt_ids``
+    scopes the gate so an unrelated multi-var lookup doesn't block runs that
+    don't actually use it. Caller must skip this on the SP path.
     """
     names = get_multi_var_lookups_for_tool(custom_tool, prompt_ids=prompt_ids)
     if not names:
@@ -512,9 +506,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
-        # Validate ``prompt_id`` before the lookup gate so a request
-        # missing the field returns a clear 400 instead of a lookup-related
-        # error.
+        # Must precede the lookup gate so missing prompt_id returns a clear 400.
         if not prompt_id:
             return Response(
                 {"error": "prompt id is required."},
@@ -548,9 +540,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         doc_path = str(Path(doc_path) / document.document_name)
 
-        # Agentic table prompts have a separate executor worker. Build the
-        # payload via the cloud payload_modifier plugin and dispatch directly
-        # so the legacy answer_prompt path is bypassed.
+        # Agentic table prompts have their own executor — build payload via
+        # the cloud plugin and dispatch directly, bypassing answer_prompt.
         if prompt.enforce_type == ToolStudioPromptKeys.AGENTIC_TABLE:
             payload_modifier_plugin = get_plugin("payload_modifier")
             if not payload_modifier_plugin:
@@ -921,10 +912,17 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
-        prompt_studio_tool = (
-            serializer.validated_data.get(ProfileManagerKeys.PROMPT_STUDIO_TOOL)
-            or self.get_object()
+        prompt_studio_tool = serializer.validated_data.get(
+            ProfileManagerKeys.PROMPT_STUDIO_TOOL
         )
+        if not prompt_studio_tool:
+            # Write back into validated_data so perform_create() doesn't
+            # persist NULL and orphan the profile from every
+            # ``filter(prompt_studio_tool=...)`` query.
+            prompt_studio_tool = self.get_object()
+            serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
+                prompt_studio_tool
+            )
         profile_count = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_studio_tool
         ).count()
@@ -1144,8 +1142,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             force_export=force_export,
         )
 
-        # Record export timestamp so staleness checks (e.g. lookup-change
-        # banner) can compare against mutations that happened afterwards.
+        # Anchor for staleness checks (e.g. lookup-change banner).
         custom_tool.last_exported_at = timezone.now()
         custom_tool.save(update_fields=["last_exported_at"])
 
@@ -1349,8 +1346,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             instance: CustomTool = self.get_object()
             is_used, workflow_ids = self._check_tool_usage_in_workflows(instance)
 
-            # Lookup staleness: NULL last_exported_at means we can't compare,
-            # so treat as clean (don't false-alarm pre-feature projects).
+            # NULL last_exported_at → treat as clean to avoid false alarms
+            # on pre-feature projects.
             is_lookup_dirty = False
             if instance.last_exported_at is not None:
                 latest = get_latest_lookup_mutation_for_tool(instance)

@@ -30,15 +30,12 @@ try {
   );
   handleLookupOutput = mod.handleLookupOutput;
 } catch (error) {
-  // OSS: plugin may not exist; cloud: surface unexpected chunk-load
-  // failures so they don't degrade silently to OSS-mode behaviour.
+  // Surface chunk-load failures — silent catch hid them.
   // eslint-disable-next-line no-console
   console.warn("[usePromptOutput] handleLookupOutput unavailable:", error);
 }
 
-// Opaque extractor so the per-item enrichment payload key name lives in
-// the plugin, not OSS. OSS falls back to a no-op. Stub signature matches
-// the cloud helper so static analysis doesn't see call sites as arity mismatches.
+// Cloud-only extractor; OSS no-op. Signature matches plugin helper.
 let getEnrichmentFromItem = (_item) => null;
 try {
   const mod = await import("../plugins/lookup-enriched-toggle/helpers");
@@ -150,10 +147,8 @@ const usePromptOutput = () => {
         wordConfidenceData: item?.word_confidence_data,
       };
 
-      // Guard the lookup hook so a per-item plugin failure can't abort
-      // the surrounding ``forEach`` and skip the whole prompt-output state
-      // update — the user would otherwise see partial / stale outputs
-      // with no error surfaced.
+      // Per-item plugin failure must not abort the forEach — would leave
+      // partial state with no error surfaced.
       try {
         const enrichment = getEnrichmentFromItem(item);
         if (handleLookupOutput && enrichment) {

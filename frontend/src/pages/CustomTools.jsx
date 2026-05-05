@@ -18,14 +18,12 @@ function CustomTools() {
       .catch(() => {});
   }, []);
 
-  // Honor tab from navigation state on subsequent entries
   useEffect(() => {
     if (location.state?.activeTab) {
       setActiveTab(location.state.activeTab);
     }
   }, [location.state?.activeTab]);
 
-  // No lookup plugin = just render projects list (OSS mode)
   if (!LookupListComp) {
     return <ListOfTools />;
   }

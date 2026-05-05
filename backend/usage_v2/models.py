@@ -19,14 +19,8 @@ class UsageStatus(models.TextChoices):
     SKIPPED = "SKIPPED", "Skipped"
 
 
-# ── Choice lists (static union of OSS + cloud values) ────────────────
-# Cloud-only entries (e.g. "lookup", "lookup_version") are listed here
-# even on OSS-only builds where they're never written. A previous
-# try-import pattern extended these at runtime when the cloud plugin
-# was importable, but that left model state ≠ migration state in OSS
-# builds and broke ``makemigrations --check`` in CI. Carrying the union
-# statically keeps both sides in lockstep at the cost of a couple of
-# unused choice entries on OSS.
+# Static union of OSS + cloud values — keeps OSS model state aligned with
+# migration state so ``makemigrations --check`` doesn't drift in CI.
 
 LLM_USAGE_REASON_CHOICES: list[tuple[str, str]] = [
     ("extraction", "Extraction"),
@@ -46,10 +40,9 @@ class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
 
 
 class Usage(DefaultOrganizationMixin, BaseModel):
-    # reference_type → reference_id mapping (no FK constraint):
-    #   "prompt_key"      → ToolStudioPrompt UUID (OSS-only writer)
-    #   "lookup_version"  → LookupVersion UUID (cloud-only writer)
-    # Usage records survive entity deletion.
+    # reference_type → reference_id (no FK; survives entity deletion):
+    #   "prompt_key"     → ToolStudioPrompt UUID (OSS)
+    #   "lookup_version" → LookupVersion UUID (cloud)
 
     id = models.UUIDField(
         primary_key=True,
@@ -149,12 +142,8 @@ class Usage(DefaultOrganizationMixin, BaseModel):
             ),
         ]
         constraints = [
-            # ``reference_type`` is a discriminator for ``reference_id``.
-            # Either both are NULL (no entity attribution) or both are set
-            # (decodable). A row with one but not the other is undecodable
-            # at billing-aggregation time. Cheap to validate on apply
-            # because both fields landed together in lookups V2 — legacy
-            # rows have both NULL.
+            # Both NULL or both set; a half-populated row is undecodable
+            # at billing-aggregation time.
             models.CheckConstraint(
                 check=(
                     models.Q(reference_id__isnull=True, reference_type__isnull=True)
@@ -162,14 +151,8 @@ class Usage(DefaultOrganizationMixin, BaseModel):
                 ),
                 name="usage_reference_pair_consistent",
             ),
-            # NOTE: a sibling ``(usage_type, llm_usage_reason)`` constraint
-            # would be a natural extension here — embedding rows must have
-            # llm_usage_reason NULL, LLM rows must have it set. Skipped in
-            # this PR because the ``usage`` table is large in prod and
-            # legacy embedding rows have ``llm_usage_reason=''`` from the
-            # old SDK default; both the data backfill and Django's default
-            # ``ADD CONSTRAINT`` (full-table scan) would lock the billing
-            # table for too long. To be added in a follow-up via
-            # ``ADD CONSTRAINT ... NOT VALID`` + batched ``VALIDATE
-            # CONSTRAINT`` during a maintenance window.
+            # TODO: add (usage_type, llm_usage_reason) consistency constraint
+            # via ``ADD CONSTRAINT ... NOT VALID`` + batched ``VALIDATE`` —
+            # legacy embedding rows have ``llm_usage_reason=''`` and the
+            # default full-table scan would lock the billing table.
         ]

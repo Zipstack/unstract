@@ -65,27 +65,21 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
     def latest_outputs_by_keys(self, request: HttpRequest) -> Response:
         """Return the most recent raw output value per source prompt key.
 
-        Used by the lookup Test panel's "Use Latest Outputs" button to
-        pre-fill {{input.X}} fields from prior prompt runs in the linked
-        tool. Always returns the raw extraction — the enriched value would
-        already include lookup post-processing, which would defeat the
-        purpose of testing the lookup with sample inputs.
+        Backs the lookup Test panel's "Use Latest Outputs" button. Returns
+        raw extraction (not enriched) so the lookup can be tested fresh.
         """
         tool_id = request.GET.get("tool_id")
         keys_param = request.GET.get("prompt_keys", "")
         if not tool_id:
-            # ``APIException(code=400)`` only sets ``detail.code`` in the body;
-            # ``status_code`` is hardcoded to 500. Use ``ValidationError`` so
-            # callers get the intended 400.
+            # APIException(code=400) returns 500; ValidationError returns 400.
             raise ValidationError(detail=PromptOutputManagerErrorMessage.TOOL_VALIDATION)
 
         prompt_keys = [k.strip() for k in keys_param.split(",") if k.strip()]
         if not prompt_keys:
             return Response({}, status=status.HTTP_200_OK)
 
-        # Custom actions don't go through self.filter_queryset(), so
-        # OrganizationFilterBackend does not run. Scope explicitly here via
-        # the tool's organization FK to prevent cross-tenant reads.
+        # Custom actions skip filter_queryset(), so OrganizationFilterBackend
+        # never runs — scope explicitly to prevent cross-tenant reads.
         organization = UserContext.get_organization()
         prompt_id_to_key = dict(
             ToolStudioPrompt.objects.filter(
@@ -97,10 +91,8 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_id_to_key:
             return Response({}, status=status.HTTP_200_OK)
 
-        # ``DISTINCT ON("prompt_id")`` (Postgres) keeps only the latest row
-        # per prompt at the SQL layer — without it Django materialises the
-        # full ``M docs × N runs × len(prompt_keys)`` result set just to
-        # let the Python loop pick one row per prompt.
+        # ``DISTINCT ON("prompt_id")`` keeps the latest row per prompt at
+        # the SQL layer to avoid materialising every doc × run combo.
         outputs = (
             PromptStudioOutputManager.objects.filter(
                 prompt_id__in=prompt_id_to_key.keys(),

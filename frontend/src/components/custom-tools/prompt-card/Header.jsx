@@ -60,8 +60,7 @@ try {
   lookupPluginLoadError = err;
 }
 
-// If the sibling plugin import succeeded, a failure here means the
-// plugin is present but broken — surface it so the no-op fallback
+// Sibling plugin loaded but this hook didn't — surface so the no-op fallback
 // doesn't silently disable the run gate.
 if (lookupPluginLoadError && LookupMenuItem) {
   // eslint-disable-next-line no-console
@@ -71,7 +70,7 @@ if (lookupPluginLoadError && LookupMenuItem) {
   );
 }
 
-// Stable identity so React doesn't see a conditional hook call.
+// Stable identity — avoid conditional hook call.
 const usePromptRunGate = usePromptRunGatePlugin || (() => null);
 
 function Header({

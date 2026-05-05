@@ -33,7 +33,6 @@ function JsonView({
     Prism.highlightAll();
   }, [combinedOutput, enrichedOutput, activeView]);
 
-  // Reset to Raw when enriched data is not available
   useEffect(() => {
     if (!enrichedOutput || Object.keys(enrichedOutput).length === 0) {
       setActiveView("Raw");

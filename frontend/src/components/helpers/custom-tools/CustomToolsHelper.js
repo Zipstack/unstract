@@ -128,7 +128,6 @@ function CustomToolsHelper() {
         const data = res?.data;
         updatedCusTool["adapters"] = data;
 
-        // Fetch lookup data (cloud only, fire-and-forget)
         if (fetchLookupAssignments) {
           const toolId = updatedCusTool["details"]?.tool_id;
           fetchLookupAssignments(axiosPrivate, sessionDetails?.orgId, toolId);

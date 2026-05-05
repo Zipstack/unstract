@@ -54,8 +54,7 @@ function ExecutionLogs() {
     ? location.state?.from || `/${sessionDetails?.orgName}/logs`
     : null;
 
-  // Scroll-restoration takes precedence; fall back to caller-provided
-  // backRouteState so callers can restore arbitrary upstream UI state.
+  // Scroll-restoration wins; otherwise preserve caller's upstream UI state.
   const backRouteState =
     id && location.state?.scrollToCardId
       ? {

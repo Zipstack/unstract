@@ -48,9 +48,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
                 " | Process continued"
             )
             data["coverage"] = {}
-        # Match the surrounding ``log + continue`` policy used by token-usage
-        # and coverage above — an enrichment failure shouldn't 500 the entire
-        # prompt-output list endpoint and hide the raw output.
+        # log+continue: enrichment failure shouldn't 500 the list endpoint.
         try:
             data = enrich_prompt_output(instance, data)
         except Exception as e:

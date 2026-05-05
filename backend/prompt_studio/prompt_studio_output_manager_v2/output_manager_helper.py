@@ -178,11 +178,8 @@ class OutputManagerHelper:
             # TODO: use enums here
             output = outputs.get(prompt.prompt_key)
 
-            # If lookup enrichment ran, structured_output contains the
-            # enriched value. Restore the original raw LLM output for the
-            # prompt output table — the enriched value is persisted by the
-            # cloud plugin via persist_lookup_output. Cloud owns the
-            # metadata shape; OSS queries through the bridge.
+            # On enrichment, store the raw LLM output here; the enriched
+            # value is persisted separately via persist_lookup_output.
             enrichment = get_original_value_if_enriched(metadata, prompt.prompt_key)
             if enrichment is not None:
                 output, prompt_lookup = enrichment
@@ -214,11 +211,8 @@ class OutputManagerHelper:
                 word_confidence_data=prompt_word_confidence_data,
             )
 
-            # Persist lookup outputs if present (cloud plugin, no-op in OSS).
-            # Narrow to known DB-level errors so unexpected exceptions
-            # (plugin contract drift, KeyError on the lookup payload) bubble
-            # up rather than getting hidden as a warning that masquerades
-            # as a successful save.
+            # Narrow except so plugin contract drift surfaces as a real
+            # error instead of being masked as a successful save.
             if prompt_lookup:
                 try:
                     persist_lookup_output(prompt_output, prompt_lookup)
@@ -276,16 +270,12 @@ class OutputManagerHelper:
 
         Returns:
             dict[str, Any]: Formatted JSON response for combined output.
-                When lookups are configured, the cloud plugin adds an
-                opaque enrichment payload via ``attach_combined_output_enrichment``.
+                Cloud plugins may attach an opaque enrichment payload.
         """
         from prompt_studio.lookup_utils import enrich_prompt_output
 
-        # Pre-resolve (prompt, profile_id) pairs once so the per-prompt
-        # default-profile lookup memoises against the small set of tool IDs
-        # involved. Combined Output is a hot path — the previous N+1 (two
-        # DB calls per prompt + a plugin invocation per matching row)
-        # turned every panel switch into a multi-second wait.
+        # Memoise default-profile resolution per tool to avoid N+1 on this
+        # hot path (panel-switch latency).
         default_profile_cache: dict[str, str | None] = {}
 
         def _resolve(tool_prompt: ToolStudioPrompt) -> str | None:
@@ -317,9 +307,8 @@ class OutputManagerHelper:
                 continue
             prompts_to_query.append((tool_prompt, profile_manager_id))
 
-        # Single batch query keyed on the (prompt_id, profile_manager_id)
-        # pair — ``DISTINCT ON`` (Postgres) gives the latest row per pair
-        # in SQL so we don't materialise every historical run per prompt.
+        # ``DISTINCT ON`` (Postgres) yields the latest row per
+        # (prompt_id, profile_manager_id) at the SQL layer.
         outputs_index: dict[tuple[str, str], PromptStudioOutputManager] = {}
         if prompts_to_query:
             prompt_ids = [str(p.prompt_id) for p, _ in prompts_to_query]

@@ -1,13 +1,8 @@
-"""Shared utility for lookup operations.
+"""Shared utility for lookup operations. No-ops in OSS.
 
-Wraps cloud-only lookup calls so OSS callers don't repeat the
-``try/except ImportError`` guard. All functions are no-ops in OSS.
-
-The probe below catches *only* the absence of the cloud
-``pluggable_apps.lookups`` package — an ImportError raised transitively
-inside the cloud plugin (e.g. a missing third-party dependency it needs)
-re-raises so the failure surfaces instead of silently degrading the
-whole feature to a no-op.
+Only the absence of ``pluggable_apps.lookups`` itself is treated as
+"cloud not installed"; an ImportError from a transitive dependency
+re-raises so we don't silently degrade to a no-op on a real bug.
 """
 
 import logging
@@ -16,8 +11,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _CLOUD_LOOKUP_MODULES = {
-    # ``e.name`` is the first missing component in the chain — in pure
-    # OSS images the parent ``pluggable_apps`` package itself is absent.
+    # OSS images lack the parent ``pluggable_apps`` package, so include it.
     "pluggable_apps",
     "pluggable_apps.lookups",
     "pluggable_apps.lookups.execution",
@@ -51,9 +45,8 @@ def get_lookup_config(prompt) -> dict | None:
 def get_lookup_configs_for_tool(tool, prompts=None) -> list[dict] | None:
     """Return lookup configs for a tool (single pass), or None in OSS.
 
-    ``prompts`` scopes the build+validation to the prompts actually
-    participating in the run so an unrelated incomplete assignment on
-    the tool doesn't block it.
+    ``prompts`` scopes validation to the run's prompts so unrelated
+    incomplete assignments on the tool don't block it.
     """
     if not LOOKUPS_AVAILABLE:
         return None
@@ -63,9 +56,8 @@ def get_lookup_configs_for_tool(tool, prompts=None) -> list[dict] | None:
 def get_multi_var_lookups_for_tool(tool, prompt_ids=None) -> list[str]:
     """Return names of multi-variable lookups linked to the tool, [] in OSS.
 
-    ``prompt_ids`` scopes the check to a specific subset of linked prompts
-    so single / bulk runs only block when a lookup the run actually uses
-    is multi-variable.
+    ``prompt_ids`` scopes the check so a run is only blocked when the
+    multi-var lookup is actually used by it.
     """
     if not LOOKUPS_AVAILABLE:
         return []
@@ -112,10 +104,9 @@ def validate_lookups_for_export(prompts) -> tuple[dict, str | None]:
 
 
 def get_latest_lookup_mutation_for_tool(tool):
-    """Return the max modified_at across all lookup-related records linked to
-    the tool (version, reference file, assignment). Used for banner staleness.
-
-    Returns None if lookups are unavailable or nothing is linked.
+    """Max ``modified_at`` across lookup-related records linked to the tool
+    (version, reference file, assignment) — feeds the staleness banner.
+    None if unavailable or nothing linked.
     """
     if not LOOKUPS_AVAILABLE:
         return None
@@ -128,10 +119,8 @@ def get_original_value_if_enriched(
     """Return ``(original_value, prompt_lookup_dict)`` if ``prompt_key`` was
     enriched, or ``None`` otherwise.
 
-    Operates purely on metadata shape — the plugin-availability flag is
-    not consulted, so callers can invoke this even when ``LOOKUPS_AVAILABLE``
-    is False (it still returns ``None`` because the metadata shape won't
-    match).
+    Pure metadata-shape check — safe to call even when LOOKUPS_AVAILABLE
+    is False (returns None because the shape won't match).
     """
     if not isinstance(metadata, dict):
         return None
@@ -145,9 +134,8 @@ def get_original_value_if_enriched(
 def attach_combined_output_enrichment(result: dict, enriched_by_key: dict) -> None:
     """Stamp the combined-output payload with enriched-output metadata.
 
-    OSS ships a stub that ignores the call; cloud reroutes into the payload
-    key its FE plugin expects. Keeping the key name out of OSS lets cloud
-    evolve the shape without OSS-side coordination.
+    Key name stays cloud-side so the FE-plugin shape can evolve without
+    coordinating with OSS.
     """
     if not LOOKUPS_AVAILABLE:
         return
@@ -157,8 +145,8 @@ def attach_combined_output_enrichment(result: dict, enriched_by_key: dict) -> No
 def extract_prompt_output_enrichment(item) -> dict | None:
     """Pick enriched-output data off a serialized prompt-output row.
 
-    Returns a plugin-opaque dict (the FE treats it as a black box) or None
-    when no enrichment is present / plugin missing.
+    Returns a plugin-opaque dict (FE-only) or None when no enrichment
+    is present / plugin missing.
     """
     if not LOOKUPS_AVAILABLE:
         return None

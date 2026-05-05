@@ -135,8 +135,8 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
                 )
                 cost = 0.0
 
-            # rsplit so multi-segment IDs (e.g. ``bedrock/anthropic/claude``)
-            # collapse to the trailing segment, matching legacy Audit semantics.
+            # Collapse multi-segment IDs (``bedrock/anthropic/claude``) to
+            # the trailing segment to match legacy Audit semantics.
             display_model = model_name.rsplit("/", 1)[-1] if model_name else model_name
 
             self._pending_usage.append(
@@ -144,9 +144,7 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
                     "usage_type": "embedding",
                     "model_name": display_model,
                     "adapter_instance_id": self.kwargs.get("adapter_instance_id", ""),
-                    # ``run_id`` lands in a UUIDField column; "" would fail the
-                    # cast — keep absent values as None so the bulk-create view
-                    # writes NULL.
+                    # run_id lands in a UUIDField — "" fails the cast; keep None.
                     "run_id": self.kwargs.get("run_id") or None,
                     "execution_id": self.kwargs.get("execution_id", ""),
                     "embedding_tokens": embedding_tokens,
