@@ -33,6 +33,10 @@ try {
   // The component will remain null of it is not available
 }
 
+// Module-scoped to avoid per-render recompilation.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function DocumentParser({
   addPromptInstance,
   scrollToBottom,
@@ -110,9 +114,7 @@ function DocumentParser({
     }
   }, [scrollToBottom]);
 
-  // Handle scrollTo query param for cross-linking from Lookup Studio
-  const UUID_RE =
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  // Cross-link from Lookup Studio: scroll to a specific prompt.
   useEffect(() => {
     const scrollToPromptId = searchParams.get("scrollTo");
     if (
@@ -130,7 +132,6 @@ function DocumentParser({
       setTimeout(() => el.classList.remove("highlighted-prompt"), 2000);
     }
 
-    // Clear the param so it doesn't re-trigger
     searchParams.delete("scrollTo");
     setSearchParams(searchParams, { replace: true });
   }, [details?.prompts, searchParams]);

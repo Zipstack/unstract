@@ -512,13 +512,16 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
     });
   }
 
-  // Extend Prompt Studio active state to include /lookups paths
-  if (lookupStudioEnabled && isUnstract) {
-    const psItem = data[0]?.subMenu?.find((el) => el.id === 1.1);
-    if (psItem) {
-      psItem.active =
-        psItem.active ||
-        globalThis.location.pathname.startsWith(`/${orgName}/lookups`);
+  // Keep Prompt Studio highlighted on /lookups. Replace, don't mutate —
+  // `data` may alias the `menu` prop.
+  if (lookupStudioEnabled && isUnstract && data[0]?.subMenu) {
+    const onLookupPath = globalThis.location.pathname.startsWith(
+      `/${orgName}/lookups`,
+    );
+    if (onLookupPath) {
+      data[0].subMenu = data[0].subMenu.map((el) =>
+        el.id === 1.1 ? { ...el, active: true } : el,
+      );
     }
   }
 

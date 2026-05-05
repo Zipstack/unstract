@@ -57,11 +57,8 @@ try {
     "../../../plugins/lookup-studio/prompt-card/LookupOutputTabs"
   );
   LookupOutputTabs = mod.LookupOutputTabs;
-} catch (error) {
-  // OSS: plugin may not exist; cloud: surface unexpected chunk-load
-  // failures so they don't degrade silently to OSS-mode behaviour.
-  // eslint-disable-next-line no-console
-  console.warn("[PromptOutput] LookupOutputTabs unavailable:", error);
+} catch {
+  // Cloud-only plugin — absent in OSS builds; LookupOutputTabs stays null.
 }
 
 let getEnrichedCopyText;
@@ -70,14 +67,11 @@ try {
     "../../../plugins/lookup-studio/prompt-card/getEnrichedCopyText"
   );
   getEnrichedCopyText = mod.getEnrichedCopyText;
-} catch (error) {
-  // eslint-disable-next-line no-console
-  console.warn("[PromptOutput] getEnrichedCopyText unavailable:", error);
+} catch {
+  // Cloud-only plugin — absent in OSS builds; falls back to raw copy text.
 }
 
-// Resolve enriched copy text with fallback so a plugin-side throw
-// can't break the Copy button. ``getEnrichedCopyText`` may not exist
-// in OSS (plugin import failed) or may throw on a malformed enrichment.
+// Fallback to raw text — plugin throw on malformed enrichment shouldn't break Copy.
 const resolveCopyText = (promptOutputId, fallbackText) => {
   if (!getEnrichedCopyText) {
     return fallbackText;
@@ -92,8 +86,7 @@ const resolveCopyText = (promptOutputId, fallbackText) => {
   }
 };
 
-// Wraps children in LookupOutputTabs when available (cloud),
-// passes through children directly in OSS.
+// Cloud wraps children in LookupOutputTabs; OSS passes through.
 const renderWithLookupWrapper = (lookupProps, children) =>
   LookupOutputTabs ? (
     <LookupOutputTabs {...lookupProps}>{children}</LookupOutputTabs>

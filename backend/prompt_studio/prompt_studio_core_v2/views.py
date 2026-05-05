@@ -108,7 +108,7 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
         return None
     return Response(
         {
-            "error": (
+            "detail": (
                 "Multi-variable lookup(s) "
                 f"{', '.join(names)} are linked to prompts in this project. "
                 "These can only run in single pass extraction mode. "

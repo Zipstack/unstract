@@ -47,8 +47,7 @@ try {
   // The component will remain null if it is not available
 }
 
-// Cloud plugin hook — OSS falls back to passthrough helpers that leave
-// the payload untouched and report "no enrichment".
+// OSS falls back to passthrough helpers — no enrichment.
 let splitCombinedData = (data) => ({ combined: data, bundle: null });
 let buildEnrichedFromBundle = (_output, _bundle, _formatter) => ({});
 let getEnrichmentFromItem = (_item) => null;
@@ -58,6 +57,56 @@ try {
   buildEnrichedFromBundle = mod.buildEnrichedFromBundle;
   getEnrichmentFromItem = mod.getEnrichmentFromItem;
 } catch {}
+
+const buildDefaultProfileOutputs = (data) => {
+  const { combined: payload, bundle } = splitCombinedData(data);
+  const output = Object.entries(payload).reduce((acc, [key, value]) => {
+    acc[key] = displayPromptResult(value, false);
+    return acc;
+  }, {});
+  const enriched = buildEnrichedFromBundle(output, bundle, displayPromptResult);
+  return {
+    output,
+    enriched,
+    hasEnriched: bundle != null && Object.keys(enriched).length > 0,
+  };
+};
+
+const buildPerPromptOutput = (item, data, selectedProfile) => {
+  const profileManager = selectedProfile || item?.profile_manager;
+  const outputDetails = data.find(
+    (outputValue) =>
+      outputValue?.prompt_id === item?.prompt_id &&
+      outputValue?.profile_manager === profileManager,
+  );
+  const value =
+    outputDetails?.output?.length > 0
+      ? displayPromptResult(outputDetails?.output, false)
+      : "";
+  const enrichment = getEnrichmentFromItem(outputDetails);
+  const enrichedValue = enrichment?.output
+    ? displayPromptResult(enrichment.output, false)
+    : value;
+  return { value, enrichedValue, hasEnriched: !!enrichment?.output };
+};
+
+const buildSelectedProfileOutputs = (data, prompts, selectedProfile) => {
+  const output = {};
+  const enriched = {};
+  let hasEnriched = false;
+  for (const item of prompts) {
+    if (item?.prompt_type === promptType.notes) continue;
+    const {
+      value,
+      enrichedValue,
+      hasEnriched: enrichedHit,
+    } = buildPerPromptOutput(item, data, selectedProfile);
+    output[item?.prompt_key] = value;
+    enriched[item?.prompt_key] = enrichedValue;
+    hasEnriched = hasEnriched || enrichedHit;
+  }
+  return { output, enriched: hasEnriched ? enriched : {}, hasEnriched };
+};
 
 function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
   const {
@@ -120,55 +169,6 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
       return;
     }
 
-    const buildDefaultProfileOutputs = (data) => {
-      const { combined: payload, bundle } = splitCombinedData(data);
-      const output = Object.entries(payload).reduce((acc, [key, value]) => {
-        acc[key] = displayPromptResult(value, false);
-        return acc;
-      }, {});
-      return {
-        output,
-        enriched: buildEnrichedFromBundle(output, bundle, displayPromptResult),
-        hasEnriched: true,
-      };
-    };
-
-    const buildPerPromptOutput = (item, data) => {
-      const profileManager = selectedProfile || item?.profile_manager;
-      const outputDetails = data.find(
-        (outputValue) =>
-          outputValue?.prompt_id === item?.prompt_id &&
-          outputValue?.profile_manager === profileManager,
-      );
-      const value =
-        outputDetails?.output?.length > 0
-          ? displayPromptResult(outputDetails?.output, false)
-          : "";
-      const enrichment = getEnrichmentFromItem(outputDetails);
-      const enrichedValue = enrichment?.output
-        ? displayPromptResult(enrichment.output, false)
-        : value;
-      return { value, enrichedValue, hasEnriched: !!enrichment?.output };
-    };
-
-    const buildSelectedProfileOutputs = (data, prompts) => {
-      const output = {};
-      const enriched = {};
-      let hasEnriched = false;
-      for (const item of prompts) {
-        if (item?.prompt_type === promptType.notes) continue;
-        const {
-          value,
-          enrichedValue,
-          hasEnriched: enrichedHit,
-        } = buildPerPromptOutput(item, data);
-        output[item?.prompt_key] = value;
-        enriched[item?.prompt_key] = enrichedValue;
-        hasEnriched = hasEnriched || enrichedHit;
-      }
-      return { output, enriched: hasEnriched ? enriched : {}, hasEnriched };
-    };
-
     const fetchCombinedOutput = async () => {
       setIsOutputLoading(true);
       setCombinedOutput({});
@@ -180,7 +180,7 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
         const useDefaultProfile = activeKey === "0" && !isSimplePromptStudio;
         const { output, enriched } = useDefaultProfile
           ? buildDefaultProfileOutputs(data)
-          : buildSelectedProfileOutputs(data, prompts);
+          : buildSelectedProfileOutputs(data, prompts, selectedProfile);
         setCombinedOutput(output);
         setEnrichedOutput(enriched);
       } catch (err) {
