@@ -12,11 +12,12 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 import httpx
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
+from utils.cors_origin import normalize_web_app_origin
 
 missing_settings = []
 
@@ -68,10 +69,18 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
 )
 # Maximum number of files allowed per workflow page execution
 WORKFLOW_PAGE_MAX_FILES = int(os.environ.get("WORKFLOW_PAGE_MAX_FILES", 2))
-WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
-parsed_url = urlparse(WEB_APP_ORIGIN_URL)
-WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
+(
+    WEB_APP_ORIGIN_URL,
+    WEB_APP_ORIGIN_URL_WITH_WILD_CARD,
+    _CORS_SUBDOMAIN_REGEX,
+) = normalize_web_app_origin(
+    os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+)
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
+# Wildcard subdomain regex consumed by django-cors-headers and (via the
+# RegexOrigin wrapper in utils/log_events.py) by the SocketIO engine.io
+# handshake — a single source of truth so HTTP and WS CORS cannot diverge.
+CORS_ALLOWED_ORIGIN_REGEXES = [_CORS_SUBDOMAIN_REGEX]
 
 DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
