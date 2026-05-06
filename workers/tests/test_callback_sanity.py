@@ -99,6 +99,18 @@ class TestCeleryTaskWiring:
     def test_process_batch_callback_api_is_registered(self, eager_app):
         assert "process_batch_callback_api" in eager_app.tasks
 
+    def test_process_batch_callback_django_compat_is_registered(self, eager_app):
+        """Backward-compat shim for callbacks dispatched from the Django backend.
+
+        Both this task and `process_batch_callback` delegate to
+        `_process_batch_callback_core`, so refactors that touch the core
+        (e.g. the upcoming CallbackStatus enum migration) affect this path too.
+        """
+        assert (
+            "workflow_manager.workflow_v2.file_execution_tasks.process_batch_callback"
+            in eager_app.tasks
+        )
+
     def test_healthcheck_is_registered(self, eager_app):
         # callback/worker.py registers a healthcheck task on the local app.
         assert any(
@@ -157,7 +169,10 @@ class TestEagerHealthcheckRoundTrip:
         result = healthcheck.apply()
         payload = result.get()
 
-        # The returned dict must round-trip cleanly via JSON
-        # (callback results flow through Celery's serialization layer).
-        round_tripped = json.loads(json.dumps(payload, default=str))
+        # The returned dict must round-trip cleanly via JSON without coercion
+        # — callback results flow through Celery's JSON serializer, which
+        # raises TypeError on non-serializable values (UUIDs, datetimes, etc.).
+        # Using `default=str` here would mask exactly the failure mode we want
+        # to catch.
+        round_tripped = json.loads(json.dumps(payload))
         assert round_tripped["worker_type"] == "callback"
