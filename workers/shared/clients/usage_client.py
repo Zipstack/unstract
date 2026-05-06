@@ -119,6 +119,8 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
         Returns:
             UsageResponse containing aggregated usage data
         """
+        # Pre-bind so the except handler can log even if validation raises.
+        validated_file_execution_id = str(file_execution_id)
         try:
             validated_file_execution_id = self._validate_file_execution_id(
                 file_execution_id
