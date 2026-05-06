@@ -6,7 +6,6 @@ configurations stored before auth_type existed.
 """
 
 import pytest
-
 from unstract.sdk1.adapters.base1 import (
     AWSBedrockEmbeddingParameters,
     AWSBedrockLLMParameters,
