@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -474,6 +475,71 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
             return f"vertex_ai/{model}"
 
 
+# AWS Bedrock auth helpers: shared by LLM and Embedding param classes.
+# `auth_type` is a UI-only selector (Access Keys vs IAM Role / Instance
+# Profile) that drives form rendering. The backend translates the user's
+# choice into actual credential handling here so that both validate()
+# methods stay symmetric and a single bug fix applies to both paths.
+_BEDROCK_AWS_KEY_FIELDS: tuple[str, ...] = (
+    "aws_access_key_id",
+    "aws_secret_access_key",
+)
+_BEDROCK_VALID_AUTH_TYPES: frozenset[str | None] = frozenset(
+    {None, "access_keys", "iam_role"}
+)
+
+
+def _resolve_bedrock_aws_credentials(
+    adapter_metadata: dict[str, "Any"],
+    validated: dict[str, "Any"],
+) -> dict[str, "Any"]:
+    """Apply auth_type semantics to the validated LiteLLM kwargs.
+
+    Three cases:
+    - ``auth_type == "iam_role"``: drop access keys unconditionally so a
+      previously-saved adapter switched into IAM Role mode does not leak
+      stale long-lived credentials. boto3's default credential chain
+      (IRSA / instance profile / env vars / AWS Profile) takes over.
+    - ``auth_type == "access_keys"`` (explicit): require non-blank values.
+      A blank submission must surface as a clear error rather than
+      silently fall through to the default chain (which would hide the
+      mistake and authenticate with whatever ambient creds the host has).
+    - ``auth_type is None`` (legacy adapters created before this field
+      existed): lenient strip of empty/missing keys. Preserves backwards
+      compatibility for stored configurations.
+
+    Raises:
+        ValueError: on unknown ``auth_type`` (typo / non-UI client) or on
+            blank credentials when ``auth_type == "access_keys"``.
+    """
+    auth_type = adapter_metadata.get("auth_type")
+    if auth_type not in _BEDROCK_VALID_AUTH_TYPES:
+        raise ValueError(
+            f"Unknown auth_type {auth_type!r}; expected one of "
+            f"{sorted(t for t in _BEDROCK_VALID_AUTH_TYPES if t)!r} or absent."
+        )
+
+    if auth_type == "iam_role":
+        for key in _BEDROCK_AWS_KEY_FIELDS:
+            validated.pop(key, None)
+        return validated
+
+    if auth_type == "access_keys":
+        for key in _BEDROCK_AWS_KEY_FIELDS:
+            value = validated.get(key)
+            if not isinstance(value, str) or not value.strip():
+                raise ValueError(f"{key} is required when auth_type is 'access_keys'.")
+        return validated
+
+    # Legacy adapters with no auth_type: strip blanks silently to
+    # preserve the pre-PR behaviour where empty key fields fell through
+    # to boto3's default chain.
+    for key in _BEDROCK_AWS_KEY_FIELDS:
+        if not validated.get(key):
+            validated.pop(key, None)
+    return validated
+
+
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
@@ -539,14 +605,11 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         if enable_thinking and "thinking" in result_metadata:
             validated["thinking"] = result_metadata["thinking"]
 
-        # Strip empty AWS access keys so boto3's default credential chain
-        # takes over (instance profile / IRSA / AWS Profile / env vars).
-        # Mirrors the pattern in the S3/MinIO connector.
-        for key in ("aws_access_key_id", "aws_secret_access_key"):
-            if not validated.get(key):
-                validated.pop(key, None)
-
-        return validated
+        # Apply Bedrock auth semantics: IAM Role mode drops keys, Access
+        # Keys mode requires non-blank values, legacy (no auth_type) is
+        # lenient. Reads auth_type from result_metadata since validation_
+        # metadata strips it before Pydantic.
+        return _resolve_bedrock_aws_credentials(result_metadata, validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -967,10 +1030,11 @@ class VertexAIEmbeddingParameters(BaseEmbeddingParameters):
 class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
+    # Region is still mandatory — credentials are the only fields that
+    # may be absent (IAM Role / Instance Profile mode).
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
-    aws_region_name: str | None = None
-    aws_profile_name: str | None = None  # For AWS SSO authentication
+    aws_region_name: str | None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -989,14 +1053,9 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
 
         validated = AWSBedrockEmbeddingParameters(**validation_metadata).model_dump()
 
-        # Strip empty AWS access keys so boto3's default credential chain
-        # takes over (instance profile / IRSA / AWS Profile / env vars).
-        # Mirrors the pattern in the S3/MinIO connector.
-        for key in ("aws_access_key_id", "aws_secret_access_key"):
-            if not validated.get(key):
-                validated.pop(key, None)
-
-        return validated
+        # Apply Bedrock auth semantics: IAM Role drops keys, Access Keys
+        # requires non-blank values, legacy (no auth_type) is lenient.
+        return _resolve_bedrock_aws_credentials(adapter_metadata, validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:

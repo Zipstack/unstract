@@ -24,11 +24,6 @@
         "title": "AWS Region name",
         "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
       },
-      "aws_profile_name": {
-        "type": "string",
-        "title": "AWS Profile Name",
-        "description": "AWS SSO profile name for authentication. Use this instead of access keys when using AWS SSO. Example: dev-profile"
-      },
       "max_retries": {
         "type": "number",
         "minimum": 0,
