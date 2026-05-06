@@ -1,5 +1,5 @@
 {
-  "title": "OpenAI Compatible LLM",
+  "title": "OpenAI Compatible",
   "type": "object",
   "required": [
     "adapter_name",
@@ -24,7 +24,6 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "gpt-4o-mini",
       "description": "The model name expected by your OpenAI-compatible endpoint. Examples: gateway-model, gpt-4o-mini, openai/gpt-4o"
     },
     "api_base": {

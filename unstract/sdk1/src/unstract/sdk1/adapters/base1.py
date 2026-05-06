@@ -4,7 +4,7 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from importlib import import_module
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, ClassVar
 
 if TYPE_CHECKING:
     from typing import Any
@@ -76,6 +76,8 @@ def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) 
 class BaseAdapter(ABC):
     """Adapter base class for compatibility with all SDK v1 providers."""
 
+    SCHEMA_PATH: ClassVar[str | None] = None
+
     @staticmethod
     @abstractmethod
     def get_id() -> str:
@@ -103,11 +105,13 @@ class BaseAdapter(ABC):
 
     @classmethod
     def get_json_schema(cls) -> str:
-        schema_path = (
-            f"{os.path.dirname(__file__)}/"
-            f"{cls.get_adapter_type().name.lower()}1/static/"
-            f"{cls.get_provider()}.json"
-        )
+        schema_path = cls.SCHEMA_PATH
+        if schema_path is None:
+            schema_path = (
+                f"{os.path.dirname(__file__)}/"
+                f"{cls.get_adapter_type().name.lower()}1/static/"
+                f"{cls.get_provider()}.json"
+            )
         with open(schema_path) as f:
             return f.read()
 
