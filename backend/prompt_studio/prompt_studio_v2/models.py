@@ -31,6 +31,7 @@ class ToolStudioPrompt(BaseModel):
             ),
         )
         TABLE = "table", "Response sent as json"
+        AGENTIC_TABLE = "agentic_table", "Response sent as agentic table extraction"
 
     class PromptType(models.TextChoices):
         PROMPT = "PROMPT", "Response sent as Text"

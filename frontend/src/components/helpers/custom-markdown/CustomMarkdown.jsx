@@ -3,6 +3,7 @@ import PropTypes from "prop-types";
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
 
+import { isSafeExternalUrl } from "../../../helpers/urlSafety";
 import { useSessionStore } from "../../../store/session-store";
 
 const { Text, Link, Paragraph } = Typography;
@@ -54,10 +55,15 @@ const CustomMarkdown = ({
           </Text>
         );
       case "link": {
-        const isInternal = url?.startsWith("/");
+        // Protocol-relative URLs (`//evil.com/...`) also start with `/`
+        // so exclude them from the internal-route branch.
+        const isInternal = url?.startsWith("/") && !url.startsWith("//");
         if (isInternal) {
           const resolvedUrl = orgName ? `/${orgName}${url}` : url;
           return <RouterLink to={resolvedUrl}>{content}</RouterLink>;
+        }
+        if (!isSafeExternalUrl(url)) {
+          return content;
         }
         return (
           <Link href={url} target="_blank" rel="noopener noreferrer">

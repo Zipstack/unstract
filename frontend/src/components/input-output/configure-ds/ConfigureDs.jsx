@@ -279,8 +279,8 @@ function ConfigureDs({
 
       url = getUrl("connector/");
 
-      const eventKey = `${type.toUpperCase()}`;
-      if (posthogConnectorAddedEventText[eventKey]) {
+      const eventKey = type?.toUpperCase();
+      if (eventKey && posthogConnectorAddedEventText[eventKey]) {
         setPostHogCustomEvent(posthogConnectorAddedEventText[eventKey], {
           info: `Clicked on 'Submit' button`,
           connector_name: selectedSourceName,
@@ -386,15 +386,6 @@ function ConfigureDs({
             <InfoCircleOutlined className="config-doc-icon" />
           </Popover>
         </div>
-      )}
-      {!isLoading && oAuthProvider?.length > 0 && (
-        <OAuthDs
-          oAuthProvider={oAuthProvider}
-          setCacheKey={handleSetCacheKey}
-          setStatus={handleSetStatus}
-          selectedSourceId={selectedSourceId}
-          isExistingConnector={isExistingConnector}
-        />
       )}
       <RjsfFormLayout
         schema={spec}

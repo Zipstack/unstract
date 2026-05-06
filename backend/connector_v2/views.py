@@ -90,12 +90,17 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
         # Only use OAuth flow if connector supports it AND oauth_key is provided
         if ConnectorInstance.supportsOAuth(connector_id=connector_id) and oauth_key:
-            connector_metadata = ConnectorAuthHelper.get_oauth_creds_from_cache(
+            oauth_tokens = ConnectorAuthHelper.get_oauth_creds_from_cache(
                 cache_key=oauth_key,
                 delete_key=False,  # Don't delete yet - wait for successful operation
             )
-            if connector_metadata is None:
+            if oauth_tokens is None:
                 raise MissingParamException(param=ConnectorAuthKey.OAUTH_KEY)
+            # Preserve non-secret form fields (e.g. site_url connector Sharepoint)
+            form_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA) or {}
+            if not isinstance(form_metadata, dict):
+                form_metadata = {}
+            connector_metadata = {**form_metadata, **oauth_tokens}
         else:
             connector_metadata = self.request.data.get(CIKey.CONNECTOR_METADATA)
         return connector_metadata

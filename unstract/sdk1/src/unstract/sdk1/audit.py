@@ -1,11 +1,15 @@
+import logging
 from typing import Any
 
 import requests
+from litellm import cost_per_token
 from llama_index.core.callbacks import CBEventType, TokenCountingHandler
 from unstract.sdk1.constants import LogLevel, ToolEnv
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.stream import StreamMixin
 from unstract.sdk1.utils.common import TokenCounterCompat
+
+logger = logging.getLogger(__name__)
 
 
 class Audit(StreamMixin):
@@ -79,8 +83,31 @@ class Audit(StreamMixin):
         if event_type == "llm":
             llm_usage_reason = kwargs.get("llm_usage_reason", "")
 
-        if model_name is not None and model_name != "":
-            model_name = model_name.split("/", 1)[-1]
+        prompt_tokens = token_counter.prompt_llm_token_count
+        completion_tokens = token_counter.completion_llm_token_count
+        input_tokens = prompt_tokens
+        if event_type == "embedding":
+            input_tokens = token_counter.total_embedding_token_count
+            completion_tokens = 0
+
+        # Compute cost using the full model name (e.g. "azure/gpt-4o")
+        # before stripping the provider prefix for DB storage.
+        cost_in_dollars = 0.0
+        if model_name:
+            try:
+                prompt_cost, completion_cost = cost_per_token(
+                    model=model_name,
+                    prompt_tokens=input_tokens,
+                    completion_tokens=completion_tokens,
+                )
+                cost_in_dollars = prompt_cost + completion_cost
+            except Exception:
+                logger.debug(
+                    "Cost lookup failed for model %s, defaulting to 0", model_name
+                )
+
+        # Strip provider prefix for DB storage (e.g. "azure/gpt-4o" -> "gpt-4o")
+        display_model_name = model_name.split("/", 1)[-1] if model_name else ""
 
         data = {
             "workflow_id": workflow_id,
@@ -89,12 +116,13 @@ class Audit(StreamMixin):
             "run_id": run_id,
             "usage_type": event_type,
             "llm_usage_reason": llm_usage_reason,
-            "model_name": model_name,
+            "model_name": display_model_name,
             "provider": provider,
             "embedding_tokens": token_counter.total_embedding_token_count,
-            "prompt_tokens": token_counter.prompt_llm_token_count,
-            "completion_tokens": token_counter.completion_llm_token_count,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
             "total_tokens": token_counter.total_llm_token_count,
+            "cost_in_dollars": cost_in_dollars,
         }
 
         url = f"{base_url}/usage"

@@ -104,6 +104,31 @@ def _get_task_error(failed_task_id: str, default: str) -> str:
     return default
 
 
+def _track_subscription_usage(org_id: str, run_id: str) -> None:
+    """Commit deferred subscription usage for an IDE execution.
+    Non-blocking: errors are logged but do not fail the callback.
+    """
+    if not org_id or not run_id:
+        return
+    try:
+        from client_plugin_registry import get_client_plugin
+
+        subscription_plugin = get_client_plugin("subscription_usage")
+        if not subscription_plugin:
+            return
+        result = subscription_plugin.commit_batch_subscription_usage(
+            organization_id=org_id,
+            file_execution_ids=[run_id],
+        )
+        logger.info("IDE subscription usage committed for run_id=%s: %s", run_id, result)
+    except Exception:
+        logger.error(
+            "Failed to commit IDE subscription usage for run_id=%s (continuing callback)",
+            run_id,
+            exc_info=True,
+        )
+
+
 # ------------------------------------------------------------------
 # IDE Callback Tasks
 #
@@ -132,6 +157,7 @@ def ide_index_complete(
     profile_manager_id = cb.get("profile_manager_id")
     executor_task_id = cb.get("executor_task_id", "")
     tool_id = cb.get("tool_id", "")
+    run_id = cb.get("run_id", "")
 
     api = _get_api_client()
 
@@ -185,6 +211,31 @@ def ide_index_complete(
                     profile_manager_id,
                 )
 
+        # Mark extraction_status so subsequent Answer Prompt dispatches
+        # can short-circuit re-extraction. The Phase 4 backend payload
+        # already stashes x2text_config_hash and enable_highlight in
+        # cb_kwargs for exactly this purpose. Failure here is non-fatal:
+        # primary indexing already succeeded above.
+        x2text_config_hash = cb.get("x2text_config_hash", "")
+        enable_highlight = cb.get("enable_highlight", False)
+        if x2text_config_hash and profile_manager_id:
+            try:
+                api.mark_extraction_status(
+                    document_id=document_id,
+                    profile_manager_id=profile_manager_id,
+                    x2text_config_hash=x2text_config_hash,
+                    enable_highlight=enable_highlight,
+                    organization_id=org_id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to mark extraction_status for document %s "
+                    "profile %s; primary indexing succeeded.",
+                    document_id,
+                    profile_manager_id,
+                    exc_info=True,
+                )
+
         # Handle summary index tracking via backend endpoint
         # (requires PromptIdeBaseTool + IndexingUtils which need Django ORM)
         summary_profile_id = cb.get("summary_profile_id", "")
@@ -213,6 +264,8 @@ def ide_index_complete(
                     "primary indexing succeeded.",
                     document_id,
                 )
+
+        _track_subscription_usage(org_id, run_id)
 
         result: dict[str, Any] = {
             "message": "Document indexed successfully.",
@@ -339,6 +392,16 @@ def ide_prompt_complete(
         outputs = _json_safe(data.get("output", {}))
         metadata = _json_safe(data.get("metadata", {}))
 
+        # Agentic table executor returns {"tables": [...], "page_count": ...,
+        # "headers": [...], ...}, but OutputManagerHelper expects
+        # outputs[prompt.prompt_key] to be the value for that prompt. Reshape
+        # so the table list lands under the prompt key.
+        if cb.get("is_agentic_table"):
+            prompt_key = cb.get("prompt_key", "")
+            if prompt_key:
+                tables = outputs.get("tables", []) if isinstance(outputs, dict) else []
+                outputs = {prompt_key: tables}
+
         logger.info(
             "ide_prompt_complete: operation=%s output_keys=%s prompt_ids=%s "
             "doc=%s profile=%s",
@@ -361,6 +424,8 @@ def ide_prompt_complete(
             organization_id=org_id,
         )
         response = resp.get("data", []) if resp.get("success") else []
+
+        _track_subscription_usage(org_id, run_id)
 
         # Fire HubSpot event if applicable
         hubspot_user_id = cb.get("hubspot_user_id")
