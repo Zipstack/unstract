@@ -66,26 +66,26 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
             .only("id", "event_time", "data", "file_execution_id")
         )
 
-        row_count = queryset.count()
-        if row_count > MAX_SYNC_EXPORT_ROWS:
+        # Single materialization with cap+1 sentinel — avoids a separate COUNT
+        # query and a second full scan during build.
+        rows = list(queryset[: MAX_SYNC_EXPORT_ROWS + 1])
+        if len(rows) > MAX_SYNC_EXPORT_ROWS:
             return Response(
                 {
                     "error": (
-                        f"Too many logs to export ({row_count} rows). "
-                        f"Limit is {MAX_SYNC_EXPORT_ROWS}. "
+                        f"Too many logs to export (>{MAX_SYNC_EXPORT_ROWS} rows). "
                         "Narrow the filter (e.g. by file or log level) and retry."
                     ),
-                    "row_count": row_count,
                     "limit": MAX_SYNC_EXPORT_ROWS,
                 },
                 status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             )
 
         if export_format == "csv":
-            body = self._build_csv(queryset)
-            content_type = "text/csv"
+            body = self._build_csv(rows)
+            content_type = "text/csv; charset=utf-8"
         else:
-            body = self._build_json(queryset)
+            body = self._build_json(rows)
             content_type = "application/json"
 
         execution_id = self.kwargs.get("pk")
@@ -96,33 +96,62 @@ class WorkflowExecutionLogViewSet(viewsets.ModelViewSet):
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
         return response
 
-    def _build_csv(self, queryset: QuerySet) -> str:
+    def _normalize(self, log: ExecutionLog) -> dict:
+        """Single source of truth for per-row null-handling and dict-guard.
+
+        Logs warning when `data` is non-dict so silent blank rows in CSV
+        still leave a diagnostic trail in operator logs.
+        """
+        if isinstance(log.data, dict):
+            data = log.data
+        else:
+            if log.data is not None:
+                logger.warning(
+                    "ExecutionLog %s has non-dict data of type %s; "
+                    "emitting blanks in CSV export",
+                    log.id,
+                    type(log.data).__name__,
+                )
+            data = {}
+        return {
+            "id": str(log.id),
+            "event_time": log.event_time.isoformat() if log.event_time else None,
+            "file_execution_id": (
+                str(log.file_execution_id) if log.file_execution_id else None
+            ),
+            "level": data.get("level", ""),
+            "stage": data.get("stage", ""),
+            "log_message": data.get("log", ""),
+            "raw_data": log.data,
+        }
+
+    def _build_csv(self, rows: list[ExecutionLog]) -> str:
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["event_time", "level", "stage", "log", "file_execution_id"])
-        for log in queryset:
-            data = log.data if isinstance(log.data, dict) else {}
+        for log in rows:
+            n = self._normalize(log)
             writer.writerow(
                 [
-                    log.event_time.isoformat() if log.event_time else "",
-                    data.get("level", ""),
-                    data.get("stage", ""),
-                    data.get("log", ""),
-                    str(log.file_execution_id) if log.file_execution_id else "",
+                    n["event_time"] or "",
+                    n["level"],
+                    n["stage"],
+                    n["log_message"],
+                    n["file_execution_id"] or "",
                 ]
             )
         return output.getvalue()
 
-    def _build_json(self, queryset: QuerySet) -> str:
+    def _build_json(self, rows: list[ExecutionLog]) -> str:
+        # JSON path passes raw_data through verbatim (faithful to the DB)
+        # rather than projecting it to extracted level/stage/log fields.
         entries = [
             {
-                "id": str(log.id),
-                "event_time": log.event_time.isoformat() if log.event_time else None,
-                "file_execution_id": (
-                    str(log.file_execution_id) if log.file_execution_id else None
-                ),
-                "data": log.data,
+                "id": n["id"],
+                "event_time": n["event_time"],
+                "file_execution_id": n["file_execution_id"],
+                "data": n["raw_data"],
             }
-            for log in queryset
+            for n in (self._normalize(log) for log in rows)
         ]
         return json.dumps(entries)

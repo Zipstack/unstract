@@ -92,14 +92,20 @@ function LogModal({
     setExporting(true);
     try {
       const url = getUrl(`/execution/${executionId}/logs/export/`);
+      // `file_format` (not `format`) — `format` is reserved by DRF for
+      // content negotiation and 404s when set to "csv".
+      const params = {
+        file_format: fileFormat,
+        file_execution_id: fileId || "null",
+      };
+      // Skip log_level when nothing is selected; axios serializes `null` as
+      // the literal string "null" which falls through the level filter to
+      // an INFO-min default and silently drops DEBUG rows.
+      if (selectedLogLevel) {
+        params.log_level = selectedLogLevel;
+      }
       const response = await axiosPrivate.get(url, {
-        params: {
-          // `file_format` (not `format`) — `format` is reserved by DRF for
-          // content negotiation and 404s when set to "csv".
-          file_format: fileFormat,
-          file_execution_id: fileId || "null",
-          log_level: selectedLogLevel,
-        },
+        params,
         responseType: "blob",
       });
 
@@ -116,20 +122,23 @@ function LogModal({
       link.remove();
       window.URL.revokeObjectURL(blobUrl);
     } catch (err) {
-      // The 413 (too many rows) response is a JSON blob — surface its
-      // message to the user instead of a generic error.
-      if (err?.response?.status === 413 && err.response.data) {
+      // 413 means we hit the server-side row cap. Always surface a
+      // narrow-your-filter message — even if decoding the JSON blob body
+      // fails we keep the right user-facing copy rather than falling
+      // through to a generic "Request failed" alert.
+      if (err?.response?.status === 413) {
+        let message = "Export too large — narrow your filter and retry.";
         try {
           const text = await err.response.data.text();
           const parsed = JSON.parse(text);
-          setAlertDetails({
-            type: "error",
-            content: parsed?.error || "Export too large",
-          });
-          return;
-        } catch {
-          // fall through to default handler
+          if (parsed?.error) {
+            message = parsed.error;
+          }
+        } catch (parseErr) {
+          console.error("Failed to parse 413 body:", parseErr);
         }
+        setAlertDetails({ type: "error", content: message });
+        return;
       }
       setAlertDetails(handleException(err));
     } finally {
@@ -149,6 +158,15 @@ function LogModal({
       onClick: () => handleExport("csv"),
     },
   ];
+
+  let exportTooltip;
+  if (!pagination.total) {
+    exportTooltip = "No logs to export";
+  } else if (exporting) {
+    exportTooltip = "Export in progress…";
+  } else {
+    exportTooltip = "Export logs";
+  }
 
   const logDetailsColumns = [
     {
@@ -238,23 +256,20 @@ function LogModal({
             trigger={["click"]}
             disabled={!pagination.total || exporting}
           >
-            <Tooltip
-              title={
-                pagination.total
-                  ? exporting
-                    ? "Export in progress…"
-                    : "Export logs"
-                  : "No logs to export"
-              }
-            >
-              <Button
-                className="export-btn-outlined"
-                icon={<DownloadOutlined />}
-                loading={exporting}
-                disabled={!pagination.total || exporting}
-              >
-                Export
-              </Button>
+            <Tooltip title={exportTooltip}>
+              {/* span wrapper — antd disabled Buttons swallow pointer
+                  events so a direct Tooltip child never receives
+                  mouseenter and the disabled-state tooltip never shows. */}
+              <span>
+                <Button
+                  className="export-btn-outlined"
+                  icon={<DownloadOutlined />}
+                  loading={exporting}
+                  disabled={!pagination.total || exporting}
+                >
+                  Export
+                </Button>
+              </span>
             </Tooltip>
           </Dropdown>
         </span>
