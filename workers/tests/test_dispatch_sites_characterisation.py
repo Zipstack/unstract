@@ -232,6 +232,30 @@ class TestSchedulerDispatchSite:
         # And the function returns an error result (not raised exception).
         assert result.status == SchedulerExecutionStatus.ERROR
 
+    def test_dispatch_returns_error_result_when_send_task_raises(self):
+        """If current_app.send_task raises (broker down, queue gone, etc.),
+        _execute_scheduled_workflow MUST catch it, log, and return a
+        SchedulerExecutionResult.error(...) — NOT propagate the exception.
+
+        PR #8 (dispatch migration) must preserve this semantic. If the new
+        dispatch() helper either swallows the error silently or re-raises a
+        different exception type, this test fails.
+        """
+        from scheduler.tasks import _execute_scheduled_workflow
+        from shared.models.scheduler_models import SchedulerExecutionStatus
+
+        with patch("celery.current_app") as mock_app:
+            mock_app.send_task.side_effect = RuntimeError("broker down")
+            result = _execute_scheduled_workflow(
+                self._make_api_client(), self._make_context()
+            )
+
+        # Exception was caught (not propagated).
+        assert result.status == SchedulerExecutionStatus.ERROR
+        # Execution itself was created before the dispatch failed, so the
+        # error result is about the dispatch, not the creation.
+        assert result.execution_id == "exec-123" or result.execution_id is None
+
 
 # --- Cross-site invariant ---
 
@@ -247,13 +271,16 @@ class TestDispatchSiteInventory:
         import re
 
         workers_root = pathlib.Path(__file__).parent.parent
-        # Skip tests/ and __pycache__/ etc.
-        skip_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
+        # Anchor skip to the top-level directory relative to workers_root so
+        # we don't accidentally exclude legitimately-named subdirectories
+        # (e.g. workers/shared/tests_helpers/).
+        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
 
         pattern = re.compile(r"current_app\.send_task\b")
         hits = []
         for py in workers_root.rglob("*.py"):
-            if any(part in skip_dirs for part in py.parts):
+            rel_parts = py.relative_to(workers_root).parts
+            if rel_parts and rel_parts[0] in skip_top_dirs:
                 continue
             text = py.read_text()
             for line_no, line in enumerate(text.splitlines(), start=1):

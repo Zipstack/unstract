@@ -259,7 +259,10 @@ class TestChordSiteInventory:
         import re
 
         workers_root = pathlib.Path(__file__).parent.parent
-        skip_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
+        # Anchor to the top-level directory relative to workers_root so we
+        # don't accidentally exclude legitimately-named subdirectories like
+        # `workers/shared/tests_helpers/`.
+        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
 
         # Match `chord(` as a function call — excludes the bare import line
         # `from celery import chord` and helper method names like `create_chord`.
@@ -270,7 +273,8 @@ class TestChordSiteInventory:
 
         hits = []
         for py in workers_root.rglob("*.py"):
-            if any(part in skip_dirs for part in py.parts):
+            rel_parts = py.relative_to(workers_root).parts
+            if rel_parts and rel_parts[0] in skip_top_dirs:
                 continue
             text = py.read_text()
             for line_no, line in enumerate(text.splitlines(), start=1):
@@ -293,13 +297,14 @@ class TestChordSiteInventory:
         import re
 
         workers_root = pathlib.Path(__file__).parent.parent
-        skip_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
+        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
 
         pattern = re.compile(r"^\s*from\s+celery\s+import\s+chord\b")
 
         hits = []
         for py in workers_root.rglob("*.py"):
-            if any(part in skip_dirs for part in py.parts):
+            rel_parts = py.relative_to(workers_root).parts
+            if rel_parts and rel_parts[0] in skip_top_dirs:
                 continue
             text = py.read_text()
             for line_no, line in enumerate(text.splitlines(), start=1):
@@ -310,6 +315,12 @@ class TestChordSiteInventory:
             f"Expected `from celery import chord` in exactly 2 files, found "
             f"{len(hits)}:\n  " + "\n  ".join(hits)
         )
+        # Sanity: same files as the call-site canary above.  If the imports
+        # ever migrate to different files while count stays at 2, this catches
+        # it — preventing a silent miss during the Barrier migration.
+        joined = " ".join(hits)
+        assert "shared/workflow/execution/orchestration_utils.py" in joined
+        assert "api-deployment/tasks.py" in joined
 
 
 if __name__ == "__main__":
