@@ -12,7 +12,7 @@ from usage_v2.constants import UsageKeys
 from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_ERROR_LENGTH = 256
 
 
-class WorkflowExecutionManager(models.Manager):
+class WorkflowExecutionManager(BaseModelManager):
     """Custom manager for WorkflowExecution model to handle user-specific filtering."""
 
     def for_user(self, user) -> QuerySet:

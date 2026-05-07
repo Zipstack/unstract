@@ -50,6 +50,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     DeploymentUsageCheckError,
     MaxProfilesReachedError,
+    OperationNotSupported,
     ToolDeleteError,
 )
 from prompt_studio.prompt_studio_core_v2.migration_utils import SummarizeMigrationUtils
@@ -509,6 +510,61 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         doc_path = str(Path(doc_path) / document.document_name)
 
+        # Agentic table prompts have a separate executor worker. Build the
+        # payload via the cloud payload_modifier plugin and dispatch directly
+        # so the legacy answer_prompt path is bypassed.
+        if prompt.enforce_type == ToolStudioPromptKeys.AGENTIC_TABLE:
+            payload_modifier_plugin = get_plugin("payload_modifier")
+            if not payload_modifier_plugin:
+                raise OperationNotSupported()
+            modifier = payload_modifier_plugin["service_class"]()
+            context, cb_kwargs = modifier.build_agentic_table_payload(
+                tool=custom_tool,
+                prompt=prompt,
+                doc_path=doc_path,
+                doc_name=document.document_name,
+                org_id=org_id,
+                user_id=user_id,
+                document_id=document_id,
+                run_id=run_id,
+                profile_manager_id=profile_manager_id,
+            )
+
+            from prompt_studio.prompt_studio_output_manager_v2.models import (
+                PromptStudioOutputManager,
+            )
+
+            cb_kwargs["hubspot_user_id"] = request.user.pk
+            cb_kwargs[
+                "is_first_prompt_run"
+            ] = not PromptStudioOutputManager.objects.filter(
+                tool_id__in=CustomTool.objects.values_list("tool_id", flat=True)
+            ).exists()
+
+            dispatcher = PromptStudioHelper._get_dispatcher()
+            executor_task_id = str(uuid.uuid4())
+            cb_kwargs["executor_task_id"] = executor_task_id
+            cb_kwargs["dispatch_time"] = time.time()
+
+            task = dispatcher.dispatch_with_callback(
+                context,
+                on_success=signature(
+                    "ide_prompt_complete",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="ide_callback",
+                ),
+                on_error=signature(
+                    "ide_prompt_error",
+                    kwargs={"callback_kwargs": cb_kwargs},
+                    queue="ide_callback",
+                ),
+                task_id=executor_task_id,
+            )
+            return Response(
+                {"task_id": task.id, "run_id": run_id, "status": "accepted"},
+                status=status.HTTP_202_ACCEPTED,
+            )
+
         context, cb_kwargs = PromptStudioHelper.build_fetch_response_payload(
             tool=custom_tool,
             doc_path=doc_path,
@@ -705,7 +761,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         # Fetch prompts eligible for single-pass extraction.
         # Mirrors the filtering in _execute_prompts_in_single_pass:
-        # only active, non-NOTES, non-TABLE/RECORD prompts.
+        # only active, non-NOTES, non-TABLE/RECORD/AGENTIC_TABLE prompts.
         prompts = list(
             ToolStudioPrompt.objects.filter(tool_id=custom_tool.tool_id).order_by(
                 "sequence_number"
@@ -718,6 +774,7 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             and p.active
             and p.enforce_type != ToolStudioPromptKeys.TABLE
             and p.enforce_type != ToolStudioPromptKeys.RECORD
+            and p.enforce_type != ToolStudioPromptKeys.AGENTIC_TABLE
         ]
         if not prompts:
             return Response(

@@ -392,6 +392,16 @@ def ide_prompt_complete(
         outputs = _json_safe(data.get("output", {}))
         metadata = _json_safe(data.get("metadata", {}))
 
+        # Agentic table executor returns {"tables": [...], "page_count": ...,
+        # "headers": [...], ...}, but OutputManagerHelper expects
+        # outputs[prompt.prompt_key] to be the value for that prompt. Reshape
+        # so the table list lands under the prompt key.
+        if cb.get("is_agentic_table"):
+            prompt_key = cb.get("prompt_key", "")
+            if prompt_key:
+                tables = outputs.get("tables", []) if isinstance(outputs, dict) else []
+                outputs = {prompt_key: tables}
+
         logger.info(
             "ide_prompt_complete: operation=%s output_keys=%s prompt_ids=%s "
             "doc=%s profile=%s",

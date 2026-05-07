@@ -4,7 +4,7 @@ from account_v2.models import User
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -18,7 +18,7 @@ APP_ID_LENGTH = 32
 PIPELINE_NAME_LENGTH = 32
 
 
-class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user):
         """Filter pipelines that the user can access:
         - Pipelines created by the user

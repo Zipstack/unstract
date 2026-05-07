@@ -24,6 +24,13 @@ from unstract.sdk1.utils.common import (
     TokenCounterCompat,
     capture_metrics,
 )
+from unstract.sdk1.utils.retry_utils import (
+    acall_with_retry,
+    call_with_retry,
+    is_retryable_litellm_error,
+    iter_with_retry,
+    pop_litellm_retry_kwargs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -285,9 +292,14 @@ class LLM:
             # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
             #     completion_kwargs["temperature"] = 1
 
-            response: dict[str, object] = litellm.completion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response: dict[str, object] = call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -351,6 +363,96 @@ class LLM:
                 message=error_msg, status_code=status_code, actual_err=e
             ) from e
 
+    @capture_metrics
+    def complete_vision(
+        self,
+        messages: list[dict[str, Any]],
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Chat completion with multimodal (text + image) messages.
+
+        Accepts pre-built messages with image_url content blocks::
+
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "..."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,..."},
+                        },
+                    ],
+                }
+            ]
+
+        LiteLLM auto-translates the OpenAI-style image format for
+        Anthropic, Bedrock, Vertex, and other providers.
+
+        Same error handling, usage tracking, and metrics as complete().
+
+        Args:
+            messages: List of message dicts with multimodal content.
+            **kwargs: Additional arguments passed to litellm.completion().
+
+        Returns:
+            dict with "response" key containing LLMResponseCompat.
+        """
+        try:
+            litellm.drop_params = True
+
+            logger.debug(
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} "
+                f"vision completion API"
+            )
+
+            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
+
+            response: dict[str, object] = litellm.completion(
+                messages=messages,
+                **completion_kwargs,
+            )
+
+            response_text = response["choices"][0]["message"]["content"]
+            finish_reason = response["choices"][0].get("finish_reason")
+
+            self._record_usage(
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "complete_vision",
+            )
+
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
+
+            response_object = LLMResponseCompat(response_text)
+            response_object.raw = response
+            return {"response": response_object}
+
+        except LLMError:
+            raise
+        except SdkError:
+            raise
+        except Exception as e:
+            logger.error(f"[sdk1][LLM] Error during vision completion: {e}")
+
+            status_code = None
+            if hasattr(e, "status_code"):
+                status_code = e.status_code
+            elif hasattr(e, "http_status"):
+                status_code = e.http_status
+
+            error_msg = (
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
+                f"{strip_litellm_prefix(str(e))}"
+            )
+
+            raise LLMError(
+                message=error_msg, status_code=status_code, actual_err=e
+            ) from e
+
     def stream_complete(
         self,
         prompt: str,
@@ -373,14 +475,20 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
             has_yielded_content = False
-            for chunk in litellm.completion(
-                messages=messages,
-                stream=True,
-                stream_options={
-                    "include_usage": True,
-                },
-                **completion_kwargs,
+            for chunk in iter_with_retry(
+                lambda: litellm.completion(
+                    messages=messages,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **completion_kwargs,
+                ),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             ):
                 if chunk.get("usage"):
                     self._record_usage(
@@ -437,9 +545,14 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
-            response = await litellm.acompletion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response = await acall_with_retry(
+                lambda: litellm.acompletion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
