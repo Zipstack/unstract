@@ -61,6 +61,12 @@ class ConfigKey(Enum):
         max_value=settings.MAX_PARALLEL_FILE_BATCHES_MAX_VALUE,
     )
 
+    NOTIFICATION_CLUB_INTERVAL = ConfigSpec(
+        default=settings.NOTIFICATION_CLUB_INTERVAL,
+        value_type=ConfigType.INT,
+        help_text="Window (seconds) for clubbing BATCHED notifications.",
+    )
+
     def cast_value(self, raw_value: Any):
         converters = {
             ConfigType.INT: int,

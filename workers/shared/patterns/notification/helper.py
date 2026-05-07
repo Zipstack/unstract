@@ -19,6 +19,90 @@ from unstract.core.data_models import (
 
 logger = logging.getLogger(__name__)
 
+# Mirrors notification_v2.enums.DeliveryMode.BATCHED. Worker stays string-only
+# so it does not import Django enums.
+DELIVERY_MODE_BATCHED = "BATCHED"
+ENQUEUE_BUFFER_ENDPOINT = "v1/webhook/buffer/enqueue/"
+
+
+def _enqueue_to_buffer(
+    api_client: Any,
+    notification: dict[str, Any],
+    payload: NotificationPayload,
+) -> bool:
+    """POST a single execution event to the backend's buffer endpoint.
+
+    Worker writes nothing to the DB itself — the backend owns NotificationBuffer
+    rows. Returns True on success so callers can fall back to immediate dispatch
+    if the buffer endpoint is unavailable. The fallback decision is opinionated:
+    we keep behavior conservative and DON'T fall back so a misconfigured or
+    outage-mode backend can't silently turn BATCHED into IMMEDIATE.
+    """
+    try:
+        api_client._make_request(
+            method="POST",
+            endpoint=ENQUEUE_BUFFER_ENDPOINT,
+            data={
+                "notification_id": notification["id"],
+                "execution_id": payload.execution_id,
+                "pipeline_id": payload.pipeline_id,
+                "pipeline_name": payload.pipeline_name,
+                "status": payload.status.value
+                if hasattr(payload.status, "value")
+                else payload.status,
+                "error_message": payload.error_message,
+                "platform": notification.get("platform"),
+            },
+            timeout=10,
+        )
+        logger.info(
+            "Enqueued BATCHED notification %s for pipeline %s execution %s",
+            notification["id"],
+            payload.pipeline_id,
+            payload.execution_id,
+        )
+        return True
+    except Exception as e:
+        logger.error(
+            "Failed to enqueue BATCHED notification %s for pipeline %s: %s",
+            notification["id"],
+            payload.pipeline_id,
+            e,
+        )
+        return False
+
+
+def _route_notification(
+    api_client: Any,
+    notification: dict[str, Any],
+    payload: NotificationPayload,
+) -> None:
+    """IMMEDIATE -> existing worker queue; BATCHED -> backend enqueue endpoint.
+
+    Defaults to IMMEDIATE when delivery_mode is missing so older backend
+    builds (pre-UNS-611) keep working unchanged.
+    """
+    if notification.get("notification_type") != "WEBHOOK":
+        logger.debug(
+            "Skipping non-webhook notification type: %s",
+            notification.get("notification_type"),
+        )
+        return
+
+    if notification.get("delivery_mode") == DELIVERY_MODE_BATCHED:
+        _enqueue_to_buffer(api_client, notification, payload)
+        return
+
+    send_notification_to_worker(
+        url=notification["url"],
+        payload=payload,
+        auth_type=notification.get("authorization_type", "NONE"),
+        auth_key=notification.get("authorization_key"),
+        auth_header=notification.get("authorization_header"),
+        max_retries=notification.get("max_retries", 0),
+        platform=notification.get("platform"),
+    )
+
 
 def get_webhook_headers(
     auth_type: str, auth_key: str | None, auth_header: str | None
@@ -140,20 +224,7 @@ def trigger_notification(
 
         # Send each notification
         for notification in active_notifications:
-            if notification.get("notification_type") == "WEBHOOK":
-                send_notification_to_worker(
-                    url=notification["url"],
-                    payload=notification_payload,
-                    auth_type=notification.get("authorization_type", "NONE"),
-                    auth_key=notification.get("authorization_key"),
-                    auth_header=notification.get("authorization_header"),
-                    max_retries=notification.get("max_retries", 0),
-                    platform=notification.get("platform"),
-                )
-            else:
-                logger.debug(
-                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
-                )
+            _route_notification(api_client, notification, notification_payload)
 
     except Exception as e:
         logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
@@ -235,20 +306,7 @@ def trigger_pipeline_notifications(
 
         # Send each notification
         for notification in active_notifications:
-            if notification.get("notification_type") == "WEBHOOK":
-                send_notification_to_worker(
-                    url=notification["url"],
-                    payload=payload,
-                    auth_type=notification.get("authorization_type", "NONE"),
-                    auth_key=notification.get("authorization_key"),
-                    auth_header=notification.get("authorization_header"),
-                    max_retries=notification.get("max_retries", 0),
-                    platform=notification.get("platform"),
-                )
-            else:
-                logger.debug(
-                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
-                )
+            _route_notification(api_client, notification, payload)
 
     except Exception as e:
         logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
@@ -316,20 +374,7 @@ def trigger_api_notifications(
 
         # Send each notification
         for notification in active_notifications:
-            if notification.get("notification_type") == "WEBHOOK":
-                send_notification_to_worker(
-                    url=notification["url"],
-                    payload=payload,
-                    auth_type=notification.get("authorization_type", "NONE"),
-                    auth_key=notification.get("authorization_key"),
-                    auth_header=notification.get("authorization_header"),
-                    max_retries=notification.get("max_retries", 0),
-                    platform=notification.get("platform"),
-                )
-            else:
-                logger.debug(
-                    f"Skipping non-webhook notification type: {notification.get('notification_type')}"
-                )
+            _route_notification(api_client, notification, payload)
 
     except Exception as e:
         logger.error(f"Error triggering API notifications for {api_id}: {e}")
