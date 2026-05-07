@@ -1,5 +1,5 @@
-import { CopyOutlined } from "@ant-design/icons";
-import { Button, Modal, Table, Tooltip } from "antd";
+import { CopyOutlined, DownloadOutlined } from "@ant-design/icons";
+import { Button, Dropdown, Modal, Table, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -32,6 +32,7 @@ function LogModal({
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedLogLevel, setSelectedLogLevel] = useState(null);
   const [ordering, setOrdering] = useState(null);
   const [pagination, setPagination] = useState({
@@ -83,6 +84,71 @@ function LogModal({
     setExecutionLogs([]); // Clear logs
     setPagination({ current: 1, pageSize: 10, total: 0 }); // Reset pagination
   };
+
+  const handleExport = async (fileFormat) => {
+    if (exporting) {
+      return;
+    }
+    setExporting(true);
+    try {
+      const url = getUrl(`/execution/${executionId}/logs/export/`);
+      const response = await axiosPrivate.get(url, {
+        params: {
+          // `file_format` (not `format`) — `format` is reserved by DRF for
+          // content negotiation and 404s when set to "csv".
+          file_format: fileFormat,
+          file_execution_id: fileId || "null",
+          log_level: selectedLogLevel,
+        },
+        responseType: "blob",
+      });
+
+      const filename =
+        response.headers?.["content-disposition"]?.match(
+          /filename="?([^"]+)"?/,
+        )?.[1] || `execution_logs_${fileId || executionId}.${fileFormat}`;
+      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      // The 413 (too many rows) response is a JSON blob — surface its
+      // message to the user instead of a generic error.
+      if (err?.response?.status === 413 && err.response.data) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          setAlertDetails({
+            type: "error",
+            content: parsed?.error || "Export too large",
+          });
+          return;
+        } catch {
+          // fall through to default handler
+        }
+      }
+      setAlertDetails(handleException(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportMenuItems = [
+    {
+      key: "json",
+      label: "Download as JSON",
+      onClick: () => handleExport("json"),
+    },
+    {
+      key: "csv",
+      label: "Download as CSV",
+      onClick: () => handleExport("csv"),
+    },
+  ];
 
   const logDetailsColumns = [
     {
@@ -167,6 +233,30 @@ function LogModal({
               onClick={() => copyToClipboard(displayId, "File Execution ID")}
             />
           )}
+          <Dropdown
+            menu={{ items: exportMenuItems }}
+            trigger={["click"]}
+            disabled={!pagination.total || exporting}
+          >
+            <Tooltip
+              title={
+                pagination.total
+                  ? exporting
+                    ? "Export in progress…"
+                    : "Export logs"
+                  : "No logs to export"
+              }
+            >
+              <Button
+                className="export-btn-outlined"
+                icon={<DownloadOutlined />}
+                loading={exporting}
+                disabled={!pagination.total || exporting}
+              >
+                Export
+              </Button>
+            </Tooltip>
+          </Dropdown>
         </span>
       }
       centered

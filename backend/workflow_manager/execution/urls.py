@@ -13,11 +13,17 @@ execution_list = ExecutionViewSet.as_view(
 )
 execution_detail = ExecutionViewSet.as_view({"get": "retrieve"})
 execution_log_list = ExecutionLogViewSet.as_view({"get": "list"})
+execution_log_export = ExecutionLogViewSet.as_view({"get": "export"})
 
 urlpatterns = format_suffix_patterns(
     [
         path("", execution_list, name="execution-list"),
         path("<uuid:pk>/", execution_detail, name="execution-detail"),
         path("<uuid:pk>/logs/", execution_log_list, name="execution-log"),
+        path(
+            "<uuid:pk>/logs/export/",
+            execution_log_export,
+            name="execution-log-export",
+        ),
     ]
 )
