@@ -1,6 +1,6 @@
 import logging
 
-from notification_v2.helper import NotificationHelper
+from notification_v2.helper import dispatch_with_delivery_mode
 from notification_v2.models import Notification
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -90,7 +90,8 @@ class PipelineNotification:
             successful_files=successful_files,
             failed_files=failed_files,
         )
-
-        NotificationHelper.send_notification(
-            notifications=self.notifications, payload=payload_dto.to_dict()
+        dispatch_with_delivery_mode(
+            list(self.notifications),
+            payload_dto.to_dict(),
+            error_context=f"pipeline={self.pipeline.id}",
         )

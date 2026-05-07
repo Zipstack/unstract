@@ -1,8 +1,16 @@
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
 
-from .enums import AuthorizationType, NotificationType, PlatformType
+from .enums import AuthorizationType, DeliveryMode, NotificationType, PlatformType
 from .models import Notification
+
+
+class NotificationSettingsSerializer(serializers.Serializer):
+    """Org-scoped notification batching settings (UNS-611 v2)."""
+
+    # No min/max here: mfbt is silent on bounds. Backend ConfigSpec accepts
+    # any int; constraining is a follow-up if/when product gives a number.
+    club_interval_seconds = serializers.IntegerField()
 
 
 class NotificationSerializer(serializers.ModelSerializer):
@@ -13,6 +21,11 @@ class NotificationSerializer(serializers.ModelSerializer):
         max_value=4, min_value=0, default=0, required=False
     )
     notify_on_failures = serializers.BooleanField(default=False, required=False)
+    delivery_mode = serializers.ChoiceField(
+        choices=DeliveryMode.choices(),
+        default=DeliveryMode.IMMEDIATE.value,
+        required=False,
+    )
 
     class Meta:
         model = Notification

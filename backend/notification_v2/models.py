@@ -1,13 +1,21 @@
 import uuid
 
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.db import models
 from pipeline_v2.models import Pipeline
 from utils.models.base_model import BaseModel
 
-from .enums import AuthorizationType, NotificationType, PlatformType
+from .enums import (
+    AuthorizationType,
+    BufferStatus,
+    DeliveryMode,
+    NotificationType,
+    PlatformType,
+)
 
 NOTIFICATION_NAME_MAX_LENGTH = 255
+AUTH_SIG_LENGTH = 64  # SHA-256 hex digest
 
 
 class Notification(BaseModel):
@@ -55,6 +63,16 @@ class Notification(BaseModel):
             "(default), fire on every terminal completion."
         ),
     )
+    delivery_mode = models.CharField(
+        max_length=16,
+        choices=DeliveryMode.choices(),
+        default=DeliveryMode.IMMEDIATE.value,
+        db_comment=(
+            "IMMEDIATE fires on every completion (default, unchanged behavior). "
+            "BATCHED buffers events and dispatches a single clubbed message per "
+            "(org, webhook_url, auth_sig) every NOTIFICATION_CLUB_INTERVAL."
+        ),
+    )
     # Foreign keys to specific models
     pipeline = models.ForeignKey(
         Pipeline,
@@ -99,4 +117,93 @@ class Notification(BaseModel):
         return (
             f"Notification {self.id}: (Type: {self.notification_type}, "
             f"Platform: {self.platform}, Url: {self.url}))"
+        )
+
+
+class NotificationBuffer(BaseModel):
+    """Per-execution event buffered for a BATCHED notification.
+
+    One row is written per workflow completion when the source Notification
+    has delivery_mode=BATCHED. The flush job groups rows by
+    (organization, webhook_url, auth_sig), renders one clubbed message per
+    group, and dispatches via the existing send_webhook_notification Celery
+    task. Group key includes auth_sig because two notifications may share the
+    same URL but use different credentials — they must dispatch separately.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    notification = models.ForeignKey(
+        Notification,
+        on_delete=models.CASCADE,
+        related_name="buffer_rows",
+        db_comment=(
+            "Source Notification. Cascade-delete is intentional: removing a "
+            "Notification expresses intent to stop all future deliveries, "
+            "including buffered ones."
+        ),
+    )
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="notification_buffer_rows",
+        db_comment=(
+            "Tenant scope. Mandatory grouping key — prevents cross-tenant "
+            "leakage at flush time."
+        ),
+    )
+    webhook_url = models.URLField(
+        db_comment="Denormalized destination URL; grouping key.",
+    )
+    payload = models.JSONField(
+        db_comment=(
+            "Pre-structured execution data (execution_id, status, error_message, "
+            "pipeline_name, pipeline_type) — NOT a final rendered message. The "
+            "renderer formats this at dispatch time."
+        ),
+    )
+    platform = models.CharField(
+        max_length=50,
+        choices=PlatformType.choices(),
+        db_comment="SLACK / API — drives renderer selection at flush time.",
+    )
+    auth_sig = models.CharField(
+        max_length=AUTH_SIG_LENGTH,
+        db_comment=(
+            "SHA-256 hex of (auth_type + auth_key + auth_header), computed at "
+            "enqueue time. Grouping key — never store raw credentials here."
+        ),
+    )
+    flush_after = models.DateTimeField(
+        db_comment=(
+            "created_at + NOTIFICATION_CLUB_INTERVAL, precomputed at enqueue. "
+            "Read-at-enqueue contract: changing the env var only affects rows "
+            "enqueued after the restart."
+        ),
+    )
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+    status = models.CharField(
+        max_length=16,
+        choices=BufferStatus.choices(),
+        default=BufferStatus.PENDING.value,
+        db_comment="PENDING -> DISPATCHED on success, PENDING -> DEAD_LETTER on retry exhaustion.",
+    )
+
+    class Meta:
+        verbose_name = "Notification Buffer"
+        verbose_name_plural = "Notification Buffers"
+        db_table = "notification_buffer"
+        indexes = [
+            # Partial covering index — supports Index Only Scans on the flush
+            # GROUP BY query and bounds index size to live PENDING backlog.
+            models.Index(
+                fields=["organization", "webhook_url", "auth_sig", "flush_after"],
+                name="idx_notif_buffer_pending",
+                condition=models.Q(status=BufferStatus.PENDING.value),
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return (
+            f"NotificationBuffer {self.id}: status={self.status} "
+            f"flush_after={self.flush_after.isoformat() if self.flush_after else 'n/a'}"
         )

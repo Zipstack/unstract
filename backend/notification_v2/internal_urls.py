@@ -21,6 +21,17 @@ router = DefaultRouter()
 router.register(r"", WebhookInternalViewSet, basename="webhook-internal")
 
 urlpatterns = [
+    # Buffered (clubbed) notification dispatch endpoints
+    path(
+        "buffer/enqueue/",
+        internal_api_views.enqueue_notification_buffer,
+        name="enqueue_notification_buffer",
+    ),
+    path(
+        "buffer/process/",
+        internal_api_views.process_notification_buffer,
+        name="process_notification_buffer",
+    ),
     # Notification data endpoints for workers
     path(
         "pipeline/<str:pipeline_id>/notifications/",
