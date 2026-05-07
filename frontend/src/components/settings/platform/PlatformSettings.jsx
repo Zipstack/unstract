@@ -3,7 +3,17 @@ import {
   CopyOutlined,
   DeleteOutlined,
 } from "@ant-design/icons";
-import { Button, Col, Divider, Input, Radio, Row, Typography } from "antd";
+import {
+  Button,
+  Col,
+  Divider,
+  Input,
+  InputNumber,
+  Radio,
+  Row,
+  Space,
+  Typography,
+} from "antd";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -38,12 +48,67 @@ function PlatformSettings() {
   const [keys, setKeys] = useState(defaultKeys);
   const [isLoadingIndex, setLoadingIndex] = useState(null);
   const [isDeletingIndex, setDeletingIndex] = useState(null);
+  // UI shows minutes; wire format (and ConfigSpec.value) is seconds.
+  const [batchIntervalMinutes, setBatchIntervalMinutes] = useState(null);
+  const [isSavingInterval, setIsSavingInterval] = useState(false);
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const navigate = useNavigate();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
+
+  useEffect(() => {
+    // Load org-scoped batch interval (UNS-611 v2). Falls back silently to
+    // null on failure so the rest of the page still renders.
+    axiosPrivate({
+      method: "GET",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/notifications/settings/`,
+    })
+      .then((res) => {
+        const seconds = res?.data?.club_interval_seconds;
+        if (typeof seconds === "number" && seconds > 0) {
+          setBatchIntervalMinutes(Math.round(seconds / 60));
+        }
+      })
+      .catch(() => {
+        // Non-fatal — admin just won't see a pre-filled value.
+      });
+  }, []);
+
+  const handleSaveInterval = () => {
+    if (!batchIntervalMinutes || batchIntervalMinutes < 1) {
+      setAlertDetails({
+        type: "error",
+        content: "Batch interval must be a positive number of minutes.",
+      });
+      return;
+    }
+    setIsSavingInterval(true);
+    axiosPrivate({
+      method: "PATCH",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/notifications/settings/`,
+      headers: {
+        "X-CSRFToken": sessionDetails?.csrfToken,
+        "Content-Type": "application/json",
+      },
+      data: { club_interval_seconds: batchIntervalMinutes * 60 },
+    })
+      .then(() => {
+        setAlertDetails({
+          type: "success",
+          content: "Notification batch interval updated.",
+        });
+      })
+      .catch((err) => {
+        setAlertDetails(
+          handleException(err, "Failed to update batch interval"),
+        );
+      })
+      .finally(() => {
+        setIsSavingInterval(false);
+      });
+  };
 
   useEffect(() => {
     const requestOptions = {
@@ -330,6 +395,34 @@ function PlatformSettings() {
                     </div>
                   );
                 })}
+              </div>
+              <Divider />
+              <div className="plt-set-batch-interval">
+                <Typography.Title level={5}>
+                  Notification batching
+                </Typography.Title>
+                <Typography.Text type="secondary">
+                  Batched notifications enqueued after a change pick up the new
+                  value; in-flight rows keep their original cadence.
+                </Typography.Text>
+                <div style={{ marginTop: 12 }}>
+                  <Space>
+                    <Typography.Text>Batch interval (minutes)</Typography.Text>
+                    <InputNumber
+                      min={1}
+                      value={batchIntervalMinutes}
+                      onChange={(v) => setBatchIntervalMinutes(v)}
+                      placeholder="e.g. 30"
+                    />
+                    <Button
+                      type="primary"
+                      onClick={handleSaveInterval}
+                      loading={isSavingInterval}
+                    >
+                      Save
+                    </Button>
+                  </Space>
+                </div>
               </div>
             </div>
           </IslandLayout>
