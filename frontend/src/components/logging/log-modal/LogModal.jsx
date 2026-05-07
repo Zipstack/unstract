@@ -113,14 +113,14 @@ function LogModal({
         response.headers?.["content-disposition"]?.match(
           /filename="?([^"]+)"?/,
         )?.[1] || `execution_logs_${fileId || executionId}.${fileFormat}`;
-      const blobUrl = window.URL.createObjectURL(new Blob([response.data]));
+      const blobUrl = globalThis.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement("a");
       link.href = blobUrl;
       link.download = filename;
       document.body.appendChild(link);
       link.click();
       link.remove();
-      window.URL.revokeObjectURL(blobUrl);
+      globalThis.URL.revokeObjectURL(blobUrl);
     } catch (err) {
       // 413 means we hit the server-side row cap. Always surface a
       // narrow-your-filter message — even if decoding the JSON blob body
