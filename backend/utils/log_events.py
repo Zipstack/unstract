@@ -11,8 +11,14 @@ from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
 from unstract.core.log_utils import get_validated_log_data, store_execution_log
 from utils.constants import ExecutionLogConstants
+from utils.cors_origin import RegexOrigin
 
 logger = logging.getLogger(__name__)
+
+
+_cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
+for _pattern in getattr(settings, "CORS_ALLOWED_ORIGIN_REGEXES", []):
+    _cors_allowed_origins.append(RegexOrigin(_pattern))
 
 _kombu_kwargs: dict[str, Any] = {"url": settings.SOCKET_IO_MANAGER_URL}
 if getattr(settings, "SOCKET_IO_TRANSPORT_OPTIONS", None):
@@ -23,7 +29,7 @@ if getattr(settings, "SOCKET_IO_TRANSPORT_OPTIONS", None):
 sio = socketio.Server(
     # Allowed values: {threading, eventlet, gevent, gevent_uwsgi}
     async_mode="threading",
-    cors_allowed_origins=settings.CORS_ALLOWED_ORIGINS,
+    cors_allowed_origins=_cors_allowed_origins,
     logger=False,
     engineio_logger=False,
     always_connect=True,
