@@ -1,5 +1,5 @@
-import { CopyOutlined } from "@ant-design/icons";
-import { Button, Modal, Table, Tooltip } from "antd";
+import { CopyOutlined, DownloadOutlined } from "@ant-design/icons";
+import { Button, Dropdown, Modal, Table, Tooltip } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -32,6 +32,7 @@ function LogModal({
 
   const [executionLogs, setExecutionLogs] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [selectedLogLevel, setSelectedLogLevel] = useState(null);
   const [ordering, setOrdering] = useState(null);
   const [pagination, setPagination] = useState({
@@ -83,6 +84,89 @@ function LogModal({
     setExecutionLogs([]); // Clear logs
     setPagination({ current: 1, pageSize: 10, total: 0 }); // Reset pagination
   };
+
+  const handleExport = async (fileFormat) => {
+    if (exporting) {
+      return;
+    }
+    setExporting(true);
+    try {
+      const url = getUrl(`/execution/${executionId}/logs/export/`);
+      // `file_format` (not `format`) — `format` is reserved by DRF for
+      // content negotiation and 404s when set to "csv".
+      const params = {
+        file_format: fileFormat,
+        file_execution_id: fileId || "null",
+      };
+      // Skip log_level when nothing is selected; axios serializes `null` as
+      // the literal string "null" which falls through the level filter to
+      // an INFO-min default and silently drops DEBUG rows.
+      if (selectedLogLevel) {
+        params.log_level = selectedLogLevel;
+      }
+      const response = await axiosPrivate.get(url, {
+        params,
+        responseType: "blob",
+      });
+
+      const filename =
+        response.headers?.["content-disposition"]?.match(
+          /filename="?([^"]+)"?/,
+        )?.[1] || `execution_logs_${fileId || executionId}.${fileFormat}`;
+      const blobUrl = globalThis.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      globalThis.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      // 413 means we hit the server-side row cap. Always surface a
+      // narrow-your-filter message — even if decoding the JSON blob body
+      // fails we keep the right user-facing copy rather than falling
+      // through to a generic "Request failed" alert.
+      if (err?.response?.status === 413) {
+        let message = "Export too large — narrow your filter and retry.";
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          if (parsed?.error) {
+            message = parsed.error;
+          }
+        } catch (parseErr) {
+          console.error("Failed to parse 413 body:", parseErr);
+        }
+        setAlertDetails({ type: "error", content: message });
+        return;
+      }
+      setAlertDetails(handleException(err));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportMenuItems = [
+    {
+      key: "json",
+      label: "Download as JSON",
+      onClick: () => handleExport("json"),
+    },
+    {
+      key: "csv",
+      label: "Download as CSV",
+      onClick: () => handleExport("csv"),
+    },
+  ];
+
+  let exportTooltip;
+  if (!pagination.total) {
+    exportTooltip = "No logs to export";
+  } else if (exporting) {
+    exportTooltip = "Export in progress…";
+  } else {
+    exportTooltip = "Export logs";
+  }
 
   const logDetailsColumns = [
     {
@@ -167,6 +251,27 @@ function LogModal({
               onClick={() => copyToClipboard(displayId, "File Execution ID")}
             />
           )}
+          <Dropdown
+            menu={{ items: exportMenuItems }}
+            trigger={["click"]}
+            disabled={!pagination.total || exporting}
+          >
+            <Tooltip title={exportTooltip}>
+              {/* span wrapper — antd disabled Buttons swallow pointer
+                  events so a direct Tooltip child never receives
+                  mouseenter and the disabled-state tooltip never shows. */}
+              <span>
+                <Button
+                  className="export-btn-outlined"
+                  icon={<DownloadOutlined />}
+                  loading={exporting}
+                  disabled={!pagination.total || exporting}
+                >
+                  Export
+                </Button>
+              </span>
+            </Tooltip>
+          </Dropdown>
         </span>
       }
       centered
