@@ -17,6 +17,16 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 logger = WorkerLogger.get_logger(__name__)
 
+# Operations that always make LLM calls; used by the empty-records guard.
+_LLM_BEARING_OPS = frozenset(
+    {
+        "answer_prompt",
+        "single_pass_extraction",
+        "summarize",
+        "structure_pipeline",
+    }
+)
+
 
 @shared_task(
     bind=True,
@@ -128,6 +138,14 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
                 context.organization_id,
                 exc_info=True,
             )
+    elif result.success and context.operation in _LLM_BEARING_OPS:
+        logger.info(
+            "No usage_records emitted for op=%s run_id=%s organization_id=%s "
+            "(unexpected for an LLM-bearing operation)",
+            context.operation,
+            context.run_id,
+            context.organization_id,
+        )
 
     logger.info(
         "execute_extraction complete: celery_task_id=%s request_id=%s success=%s",
