@@ -127,3 +127,4 @@ class UserSessionResponseSerializer(serializers.Serializer):
     role = serializers.CharField()
     provider = serializers.CharField()
     is_staff = serializers.BooleanField()
+    disable_sso_idp_authorization = serializers.BooleanField()
