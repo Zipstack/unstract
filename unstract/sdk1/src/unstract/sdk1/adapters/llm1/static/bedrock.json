@@ -19,18 +19,6 @@
       "default": "amazon.titan-text-express-v1",
       "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models."
     },
-    "aws_access_key_id": {
-      "type": "string",
-      "title": "AWS Access Key ID",
-      "description": "Provide your AWS Access Key ID. Leave empty if using AWS Profile or IAM role.",
-      "format": "password"
-    },
-    "aws_secret_access_key": {
-      "type": "string",
-      "title": "AWS Secret Access Key",
-      "description": "Provide your AWS Secret Access Key. Leave empty if using AWS Profile or IAM role.",
-      "format": "password"
-    },
     "region_name": {
       "type": "string",
       "title": "AWS Region Name",
@@ -75,6 +63,60 @@
       "title": "Enable Extended Thinking",
       "default": false,
       "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
+    },
+    "auth_type": {
+      "type": "string",
+      "title": "Authentication Type",
+      "enum": [
+        "access_keys",
+        "iam_role"
+      ],
+      "enumNames": [
+        "Access Keys",
+        "IAM Role / Instance Profile (on-prem AWS only)"
+      ],
+      "default": "access_keys",
+      "description": "Choose **Access Keys** for any deployment (provide your AWS Access Key ID and Secret). Choose **IAM Role / Instance Profile** only when Unstract is hosted on AWS infrastructure that already has ambient credentials — for example EKS pods with IRSA, ECS tasks with a task role, or EC2 instances with an instance profile. The on-prem option requires no further input; boto3 picks up the host's identity automatically."
+    }
+  },
+  "dependencies": {
+    "auth_type": {
+      "oneOf": [
+        {
+          "properties": {
+            "auth_type": {
+              "enum": [
+                "access_keys"
+              ]
+            },
+            "aws_access_key_id": {
+              "type": "string",
+              "title": "AWS Access Key ID",
+              "description": "Provide your AWS Access Key ID.",
+              "format": "password"
+            },
+            "aws_secret_access_key": {
+              "type": "string",
+              "title": "AWS Secret Access Key",
+              "description": "Provide your AWS Secret Access Key.",
+              "format": "password"
+            }
+          },
+          "required": [
+            "aws_access_key_id",
+            "aws_secret_access_key"
+          ]
+        },
+        {
+          "properties": {
+            "auth_type": {
+              "enum": [
+                "iam_role"
+              ]
+            }
+          }
+        }
+      ]
     }
   },
   "allOf": [
