@@ -28,6 +28,7 @@ function getSessionData(sessionData) {
     role: sessionData?.role,
     provider: sessionData?.provider,
     isStaff: sessionData?.is_staff,
+    disableSsoIdpAuthorization: sessionData?.disable_sso_idp_authorization,
   };
 }
 
