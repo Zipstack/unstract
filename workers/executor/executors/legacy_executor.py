@@ -665,7 +665,13 @@ class LegacyExecutor(BaseExecutor):
         )
 
         shim.stream_log("Pipeline completed successfully")
-        return ExecutionResult(success=True, data=structured_output)
+        # SP plugin returns usage_records via metadata; non-SP recovers
+        # them via self._usage_records in execute(). Forward either way.
+        return ExecutionResult(
+            success=True,
+            data=structured_output,
+            metadata=answer_result.metadata or {},
+        )
 
     def _run_pipeline_answer_step(
         self,
