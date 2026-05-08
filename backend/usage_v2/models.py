@@ -29,21 +29,12 @@ LLM_USAGE_REASON_CHOICES: list[tuple[str, str]] = [
     ("lookup", "Lookup"),
 ]
 
-REFERENCE_TYPE_CHOICES: list[tuple[str, str]] = [
-    ("prompt_key", "Prompt Key"),
-    ("lookup_version", "Lookup Version"),
-]
-
 
 class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     pass
 
 
 class Usage(DefaultOrganizationMixin, BaseModel):
-    # reference_type → reference_id (no FK; survives entity deletion):
-    #   "prompt_key"     → ToolStudioPrompt UUID (OSS)
-    #   "lookup_version" → LookupVersion UUID (cloud)
-
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -87,25 +78,20 @@ class Usage(DefaultOrganizationMixin, BaseModel):
     )
     total_tokens = models.IntegerField(db_comment="Total number of tokens used")
     cost_in_dollars = models.FloatField(db_comment="Total number of tokens used")
-    reference_id = models.UUIDField(
+    project_id = models.UUIDField(
         null=True,
         blank=True,
         db_comment=(
-            "Polymorphic correlation ID (no FK constraint) linking to the "
-            "entity that triggered this usage. Interpret via reference_type. "
-            "OSS values: prompt_key UUID. "
-            "NULL for most operations; survives entity deletion."
+            "Prompt Studio project (tool) the call belongs to (no FK; survives "
+            "tool deletion). NULL for embeddings and historical rows."
         ),
     )
-    reference_type = models.CharField(
-        max_length=64,
-        choices=REFERENCE_TYPE_CHOICES,
+    prompt_id = models.UUIDField(
         null=True,
         blank=True,
         db_comment=(
-            "Discriminator for reference_id. "
-            "OSS values: 'prompt_key'. "
-            "NULL when reference_id is NULL."
+            "Prompt key UUID that triggered the call (no FK; survives prompt "
+            "deletion). NULL for single-pass / embeddings / historical rows."
         ),
     )
     execution_time_ms = models.IntegerField(
@@ -137,22 +123,11 @@ class Usage(DefaultOrganizationMixin, BaseModel):
             models.Index(fields=["run_id"]),
             models.Index(fields=["execution_id"]),
             models.Index(
-                fields=["llm_usage_reason", "reference_id", "-created_at"],
-                name="idx_usage_reason_ref_created",
+                fields=["project_id", "-created_at"],
+                name="idx_usage_project_created",
             ),
-        ]
-        constraints = [
-            # Both NULL or both set; a half-populated row is undecodable
-            # at billing-aggregation time.
-            models.CheckConstraint(
-                check=(
-                    models.Q(reference_id__isnull=True, reference_type__isnull=True)
-                    | models.Q(reference_id__isnull=False, reference_type__isnull=False)
-                ),
-                name="usage_reference_pair_consistent",
+            models.Index(
+                fields=["prompt_id", "-created_at"],
+                name="idx_usage_prompt_created",
             ),
-            # TODO: add (usage_type, llm_usage_reason) consistency constraint
-            # via ``ADD CONSTRAINT ... NOT VALID`` + batched ``VALIDATE`` —
-            # legacy embedding rows have ``llm_usage_reason=''`` and the
-            # default full-table scan would lock the billing table.
         ]

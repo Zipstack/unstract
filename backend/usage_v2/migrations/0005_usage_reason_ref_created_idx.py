@@ -2,12 +2,12 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    """Build the lookup-usage dashboard index without locking the table.
+    """Build the project_id / prompt_id dashboard indexes without locking.
 
-    CONCURRENTLY requires that the migration itself runs outside a
-    transaction, hence atomic = False. We use RunSQL with IF NOT EXISTS so
-    a partial-apply (process killed between SQL success and django_migrations
-    insert) is recoverable on retry without manual --fake intervention.
+    CONCURRENTLY requires the migration to run outside a transaction, hence
+    atomic = False. RunSQL with IF NOT EXISTS makes a partial-apply
+    (process killed between SQL success and django_migrations insert)
+    recoverable on retry without manual --fake intervention.
     """
 
     atomic = False
@@ -20,18 +20,33 @@ class Migration(migrations.Migration):
         migrations.RunSQL(
             sql=(
                 "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
-                "idx_usage_reason_ref_created "
-                'ON "usage" (llm_usage_reason, reference_id, created_at DESC);'
+                "idx_usage_project_created "
+                'ON "usage" (project_id, created_at DESC);'
             ),
-            reverse_sql=(
-                "DROP INDEX CONCURRENTLY IF EXISTS idx_usage_reason_ref_created;"
-            ),
+            reverse_sql=("DROP INDEX CONCURRENTLY IF EXISTS idx_usage_project_created;"),
             state_operations=[
                 migrations.AddIndex(
                     model_name="usage",
                     index=models.Index(
-                        fields=["llm_usage_reason", "reference_id", "-created_at"],
-                        name="idx_usage_reason_ref_created",
+                        fields=["project_id", "-created_at"],
+                        name="idx_usage_project_created",
+                    ),
+                ),
+            ],
+        ),
+        migrations.RunSQL(
+            sql=(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+                "idx_usage_prompt_created "
+                'ON "usage" (prompt_id, created_at DESC);'
+            ),
+            reverse_sql=("DROP INDEX CONCURRENTLY IF EXISTS idx_usage_prompt_created;"),
+            state_operations=[
+                migrations.AddIndex(
+                    model_name="usage",
+                    index=models.Index(
+                        fields=["prompt_id", "-created_at"],
+                        name="idx_usage_prompt_created",
                     ),
                 ),
             ],

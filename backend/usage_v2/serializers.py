@@ -41,8 +41,8 @@ class UsageRecordCreateSerializer(serializers.Serializer):
     completion_tokens = serializers.IntegerField(required=False, default=0)
     total_tokens = serializers.IntegerField(required=False, default=0)
     cost_in_dollars = serializers.FloatField(required=False, default=0.0)
-    reference_id = serializers.UUIDField(required=False, allow_null=True, default=None)
-    reference_type = serializers.CharField(required=False, allow_null=True, default=None)
+    project_id = serializers.UUIDField(required=False, allow_null=True, default=None)
+    prompt_id = serializers.UUIDField(required=False, allow_null=True, default=None)
     execution_time_ms = serializers.IntegerField(
         required=False, allow_null=True, default=None
     )
@@ -50,6 +50,8 @@ class UsageRecordCreateSerializer(serializers.Serializer):
     error_message = serializers.CharField(
         required=False, allow_null=True, allow_blank=True, default=None
     )
+    # Opaque carrier forwarded to post-write hooks; OSS never reads it.
+    cloud_extras = serializers.DictField(required=False, allow_null=True, default=None)
 
 
 class UsageBatchCreateSerializer(serializers.Serializer):

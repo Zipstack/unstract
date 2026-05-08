@@ -26,33 +26,27 @@ class Migration(migrations.Migration):
         ),
         migrations.AddField(
             model_name="usage",
-            name="reference_id",
+            name="project_id",
             field=models.UUIDField(
                 blank=True,
                 db_comment=(
-                    "Polymorphic correlation ID (no FK constraint) linking to the "
-                    "entity that triggered this usage. Interpret via reference_type. "
-                    "OSS values: prompt_key UUID. "
-                    "NULL for most operations; survives entity deletion."
+                    "Prompt Studio project (tool) the call belongs to (no FK; "
+                    "survives tool deletion). NULL for embeddings and historical "
+                    "rows."
                 ),
                 null=True,
             ),
         ),
         migrations.AddField(
             model_name="usage",
-            name="reference_type",
-            field=models.CharField(
+            name="prompt_id",
+            field=models.UUIDField(
                 blank=True,
-                choices=[
-                    ("prompt_key", "Prompt Key"),
-                    ("lookup_version", "Lookup Version"),
-                ],
                 db_comment=(
-                    "Discriminator for reference_id. "
-                    "OSS values: 'prompt_key'. "
-                    "NULL when reference_id is NULL."
+                    "Prompt key UUID that triggered the call (no FK; survives "
+                    "prompt deletion). NULL for single-pass / embeddings / "
+                    "historical rows."
                 ),
-                max_length=64,
                 null=True,
             ),
         ),
@@ -89,24 +83,7 @@ class Migration(migrations.Migration):
                 null=True,
             ),
         ),
-        # reference_id and reference_type must both be NULL or both be set
-        # so reference_id is always decodable.
-        migrations.AddConstraint(
-            model_name="usage",
-            constraint=models.CheckConstraint(
-                check=models.Q(
-                    models.Q(
-                        ("reference_id__isnull", True), ("reference_type__isnull", True)
-                    ),
-                    models.Q(
-                        ("reference_id__isnull", False), ("reference_type__isnull", False)
-                    ),
-                    _connector="OR",
-                ),
-                name="usage_reference_pair_consistent",
-            ),
-        ),
-        # Index creation moved to 0005 so it can run CONCURRENTLY — the usage
-        # table is billing-critical and a plain AddIndex takes a share-update
-        # lock for the duration of the build on large tables.
+        # Indexes on project_id / prompt_id moved to 0005 so they can run
+        # CONCURRENTLY — usage is billing-critical and a plain AddIndex takes
+        # a share-update lock for the duration of the build on large tables.
     ]

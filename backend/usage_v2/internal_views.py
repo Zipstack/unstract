@@ -5,6 +5,7 @@ Mounted under ``/internal/`` and gated by ``InternalAPIAuthMiddleware``.
 
 import logging
 
+from django.db import transaction
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.exceptions import APIException, ValidationError
@@ -16,6 +17,7 @@ from utils.user_context import UserContext
 from unstract.core.data_models import UsageResponseData
 
 from .helper import UsageHelper
+from .hooks import run_post_write_hooks
 from .models import Usage
 from .serializers import UsageBatchCreateSerializer
 
@@ -188,8 +190,8 @@ class UsageBatchCreateView(APIView):
                     completion_tokens=r.get("completion_tokens", 0),
                     total_tokens=r.get("total_tokens", 0),
                     cost_in_dollars=r.get("cost_in_dollars", 0.0),
-                    reference_id=r.get("reference_id"),
-                    reference_type=r.get("reference_type"),
+                    project_id=r.get("project_id"),
+                    prompt_id=r.get("prompt_id"),
                     execution_time_ms=r.get("execution_time_ms"),
                     status=r.get("status"),
                     error_message=r.get("error_message"),
@@ -197,8 +199,10 @@ class UsageBatchCreateView(APIView):
             )
 
         try:
-            # Bound transaction size on the billing-critical table.
-            created = Usage.objects.bulk_create(usage_objects, batch_size=500)
+            # Atomic with hooks: orphan Usage rows are worse than retrying.
+            with transaction.atomic():
+                created = Usage.objects.bulk_create(usage_objects, batch_size=500)
+                run_post_write_hooks(records, created)
         except Exception as e:
             logger.error(
                 "bulk_create failed for %d usage records (org=%s): %s",
