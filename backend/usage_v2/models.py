@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.db.models import Q
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -129,5 +130,10 @@ class Usage(DefaultOrganizationMixin, BaseModel):
             models.Index(
                 fields=["prompt_id", "-created_at"],
                 name="idx_usage_prompt_created",
+            ),
+            models.Index(
+                fields=["organization", "-created_at"],
+                name="idx_usage_lookup_recent",
+                condition=Q(llm_usage_reason="lookup"),
             ),
         ]

@@ -16,7 +16,9 @@ _post_write_hooks: list[PostWriteHook] = []
 
 
 def register_post_write_hook(fn: PostWriteHook) -> PostWriteHook:
-    _post_write_hooks.append(fn)
+    # Idempotent: ready() can re-fire under test reloads / dev autoreload.
+    if fn not in _post_write_hooks:
+        _post_write_hooks.append(fn)
     return fn
 
 

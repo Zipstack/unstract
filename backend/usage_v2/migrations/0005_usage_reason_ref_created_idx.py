@@ -1,4 +1,5 @@
 from django.db import migrations, models
+from django.db.models import Q
 
 
 class Migration(migrations.Migration):
@@ -47,6 +48,27 @@ class Migration(migrations.Migration):
                     index=models.Index(
                         fields=["prompt_id", "-created_at"],
                         name="idx_usage_prompt_created",
+                    ),
+                ),
+            ],
+        ),
+        # Partial — only lookup-reason rows. Avoids heap-scanning all
+        # Usage rows when the dashboard groups by (run × prompt).
+        migrations.RunSQL(
+            sql=(
+                "CREATE INDEX CONCURRENTLY IF NOT EXISTS "
+                "idx_usage_lookup_recent "
+                'ON "usage" (organization_id, created_at DESC) '
+                "WHERE llm_usage_reason = 'lookup';"
+            ),
+            reverse_sql=("DROP INDEX CONCURRENTLY IF EXISTS idx_usage_lookup_recent;"),
+            state_operations=[
+                migrations.AddIndex(
+                    model_name="usage",
+                    index=models.Index(
+                        fields=["organization", "-created_at"],
+                        name="idx_usage_lookup_recent",
+                        condition=Q(llm_usage_reason="lookup"),
                     ),
                 ),
             ],

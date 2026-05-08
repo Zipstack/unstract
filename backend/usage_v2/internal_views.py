@@ -172,31 +172,30 @@ class UsageBatchCreateView(APIView):
                 "Organization context missing. Worker must send X-Organization-ID."
             )
 
-        usage_objects = []
-        for r in records:
-            usage_objects.append(
-                Usage(
-                    organization=organization,
-                    workflow_id=r.get("workflow_id", ""),
-                    execution_id=r.get("execution_id", ""),
-                    adapter_instance_id=r.get("adapter_instance_id", ""),
-                    run_id=r.get("run_id"),
-                    usage_type=r.get("usage_type", "llm"),
-                    # Coerce "" to None so the cross-field CheckConstraint passes.
-                    llm_usage_reason=r.get("llm_usage_reason") or None,
-                    model_name=r.get("model_name", ""),
-                    embedding_tokens=r.get("embedding_tokens", 0),
-                    prompt_tokens=r.get("prompt_tokens", 0),
-                    completion_tokens=r.get("completion_tokens", 0),
-                    total_tokens=r.get("total_tokens", 0),
-                    cost_in_dollars=r.get("cost_in_dollars", 0.0),
-                    project_id=r.get("project_id"),
-                    prompt_id=r.get("prompt_id"),
-                    execution_time_ms=r.get("execution_time_ms"),
-                    status=r.get("status"),
-                    error_message=r.get("error_message"),
-                )
+        usage_objects = [
+            Usage(
+                organization=organization,
+                workflow_id=r.get("workflow_id", ""),
+                execution_id=r.get("execution_id", ""),
+                adapter_instance_id=r.get("adapter_instance_id", ""),
+                run_id=r.get("run_id"),
+                usage_type=r.get("usage_type", "llm"),
+                # Coerce "" to None so the cross-field CheckConstraint passes.
+                llm_usage_reason=r.get("llm_usage_reason") or None,
+                model_name=r.get("model_name", ""),
+                embedding_tokens=r.get("embedding_tokens", 0),
+                prompt_tokens=r.get("prompt_tokens", 0),
+                completion_tokens=r.get("completion_tokens", 0),
+                total_tokens=r.get("total_tokens", 0),
+                cost_in_dollars=r.get("cost_in_dollars", 0.0),
+                project_id=r.get("project_id"),
+                prompt_id=r.get("prompt_id"),
+                execution_time_ms=r.get("execution_time_ms"),
+                status=r.get("status"),
+                error_message=r.get("error_message"),
             )
+            for r in records
+        ]
 
         try:
             # Atomic with hooks: orphan Usage rows are worse than retrying.
