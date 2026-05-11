@@ -10,7 +10,6 @@ import litellm
 
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens, token_counter
-from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.audit import Audit
@@ -192,7 +191,10 @@ class LLM:
             #     if s not in self.kwargs:
             #         logger.warning("Missing supported parameter for '%s': %s",
             #             self.adapter.get_provider(), s)
-        except (ValidationError, ValueError) as e:
+        except ValueError as e:
+            # `pydantic.ValidationError` is a subclass of `ValueError`; this
+            # catches both Pydantic validation failures and the explicit
+            # `ValueError`s raised by the Bedrock auth resolver.
             raise SdkError("Invalid LLM adapter metadata: " + str(e)) from e
 
         self._system_prompt = system_prompt or self.SYSTEM_PROMPT
