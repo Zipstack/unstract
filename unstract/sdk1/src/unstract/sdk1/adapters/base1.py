@@ -483,9 +483,46 @@ _BEDROCK_AWS_KEY_FIELDS: tuple[str, ...] = (
     "aws_access_key_id",
     "aws_secret_access_key",
 )
+# LiteLLM consumes the Bedrock bearer token as the `api_key` kwarg (see
+# litellm/llms/bedrock/base_aws_llm.py). We accept it from the UI under the
+# more descriptive `aws_bearer_token` name and translate at resolve time.
+_BEDROCK_BEARER_TOKEN_FIELD: str = "aws_bearer_token"
+_BEDROCK_LITELLM_BEARER_KWARG: str = "api_key"
 _BEDROCK_VALID_AUTH_TYPES: frozenset[str | None] = frozenset(
-    {None, "access_keys", "iam_role"}
+    {None, "access_keys", "iam_role", "bearer_token"}
 )
+
+
+def _drop_bedrock_access_keys(validated: dict[str, "Any"]) -> None:
+    for key in _BEDROCK_AWS_KEY_FIELDS:
+        validated.pop(key, None)
+
+
+def _require_bedrock_access_keys(validated: dict[str, "Any"]) -> None:
+    for key in _BEDROCK_AWS_KEY_FIELDS:
+        value = validated.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{key} is required when auth_type is 'access_keys'.")
+
+
+def _translate_bedrock_bearer_token(
+    validated: dict[str, "Any"], *, required: bool
+) -> None:
+    """Move ``aws_bearer_token`` (UI field) to ``api_key`` (LiteLLM kwarg).
+
+    With ``required=True`` (bearer_token mode), a blank/missing token is
+    a hard error. With ``required=False`` (legacy mode), a blank token
+    is silently dropped and a present token is still translated.
+    """
+    token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+    if isinstance(token, str) and token.strip():
+        validated[_BEDROCK_LITELLM_BEARER_KWARG] = token
+        return
+    if required:
+        raise ValueError(
+            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when "
+            "auth_type is 'bearer_token'."
+        )
 
 
 def _resolve_bedrock_aws_credentials(
@@ -494,22 +531,28 @@ def _resolve_bedrock_aws_credentials(
 ) -> dict[str, "Any"]:
     """Apply auth_type semantics to the validated LiteLLM kwargs.
 
-    Three cases:
-    - ``auth_type == "iam_role"``: drop access keys unconditionally so a
-      previously-saved adapter switched into IAM Role mode does not leak
-      stale long-lived credentials. boto3's default credential chain
+    Four cases:
+    - ``auth_type == "iam_role"``: drop access keys and bearer token
+      unconditionally so a previously-saved adapter switched into IAM
+      Role mode does not leak stale credentials. boto3's default chain
       (IRSA / instance profile / env vars / AWS Profile) takes over.
-    - ``auth_type == "access_keys"`` (explicit): require non-blank values.
-      A blank submission must surface as a clear error rather than
-      silently fall through to the default chain (which would hide the
-      mistake and authenticate with whatever ambient creds the host has).
+    - ``auth_type == "access_keys"`` (explicit): require non-blank
+      access-key values; drop any stale bearer token. A blank submission
+      must surface as a clear error rather than silently fall through to
+      the default chain (which would hide the mistake and authenticate
+      with whatever ambient creds the host has).
+    - ``auth_type == "bearer_token"``: require a non-blank
+      ``aws_bearer_token``; drop access keys; translate the token to the
+      ``api_key`` kwarg LiteLLM's bedrock module expects.
     - ``auth_type is None`` (legacy adapters created before this field
-      existed): lenient strip of empty/missing keys. Preserves backwards
-      compatibility for stored configurations.
+      existed): lenient strip of empty/missing credentials. Preserves
+      backwards compatibility for stored configurations; if a non-blank
+      bearer token was hand-saved, translate it to ``api_key``.
 
     Raises:
-        ValueError: on unknown ``auth_type`` (typo / non-UI client) or on
-            blank credentials when ``auth_type == "access_keys"``.
+        ValueError: on unknown ``auth_type`` (typo / non-UI client), on
+            blank access keys when ``auth_type == "access_keys"``, or on
+            a blank token when ``auth_type == "bearer_token"``.
     """
     auth_type = adapter_metadata.get("auth_type")
     if auth_type not in _BEDROCK_VALID_AUTH_TYPES:
@@ -519,23 +562,27 @@ def _resolve_bedrock_aws_credentials(
         )
 
     if auth_type == "iam_role":
-        for key in _BEDROCK_AWS_KEY_FIELDS:
-            validated.pop(key, None)
+        _drop_bedrock_access_keys(validated)
+        validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
         return validated
 
     if auth_type == "access_keys":
-        for key in _BEDROCK_AWS_KEY_FIELDS:
-            value = validated.get(key)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{key} is required when auth_type is 'access_keys'.")
+        _require_bedrock_access_keys(validated)
+        validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
         return validated
 
-    # Legacy adapters with no auth_type: strip blanks silently to
-    # preserve the pre-PR behaviour where empty key fields fell through
-    # to boto3's default chain.
+    if auth_type == "bearer_token":
+        _drop_bedrock_access_keys(validated)
+        _translate_bedrock_bearer_token(validated, required=True)
+        return validated
+
+    # Legacy adapters with no auth_type: strip blank access keys (boto3
+    # default chain takes over) and translate any non-blank bearer token
+    # for parity with bearer_token mode.
     for key in _BEDROCK_AWS_KEY_FIELDS:
         if not validated.get(key):
             validated.pop(key, None)
+    _translate_bedrock_bearer_token(validated, required=False)
     return validated
 
 
@@ -544,6 +591,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
+    aws_bearer_token: str | None = None  # AWS_BEARER_TOKEN_BEDROCK
     aws_region_name: str | None = None
     aws_profile_name: str | None = None  # For AWS SSO authentication
     model_id: str | None = None  # For Application Inference Profile (cost tracking)
@@ -1033,6 +1081,7 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     # may be absent (IAM Role / Instance Profile mode).
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
+    aws_bearer_token: str | None = None  # AWS_BEARER_TOKEN_BEDROCK
     aws_region_name: str | None
 
     @staticmethod

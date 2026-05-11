@@ -149,6 +149,109 @@ def test_llm_other_params_preserved_through_strip() -> None:
     assert out["thinking"] == {"type": "enabled", "budget_tokens": 4096}
 
 
+# ── LLM: bearer token (AWS_BEARER_TOKEN_BEDROCK) ─────────────────────────────
+
+
+def test_llm_bearer_token_mode_translates_to_api_key() -> None:
+    """Bearer token is exposed to LiteLLM under its `api_key` kwarg."""
+    out = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+    assert "aws_bearer_token" not in out
+    assert "aws_access_key_id" not in out
+    assert "aws_secret_access_key" not in out
+    assert "auth_type" not in out
+
+
+def test_llm_bearer_token_mode_drops_stale_access_keys() -> None:
+    """Switching a saved adapter to bearer mode must not leak old access keys."""
+    out = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "region_name": "us-east-1",
+            "aws_access_key_id": "STALE_KEY",
+            "aws_secret_access_key": "STALE_SECRET",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+    assert "aws_access_key_id" not in out
+    assert "aws_secret_access_key" not in out
+
+
+def test_llm_bearer_token_mode_blank_token_raises() -> None:
+    with pytest.raises(ValueError, match="aws_bearer_token is required"):
+        AWSBedrockLLMParameters.validate(
+            {
+                "auth_type": "bearer_token",
+                "model": "anthropic.claude-3-haiku-20240307-v1:0",
+                "region_name": "us-east-1",
+                "aws_bearer_token": "",
+            }
+        )
+
+
+def test_llm_bearer_token_mode_whitespace_token_raises() -> None:
+    with pytest.raises(ValueError, match="aws_bearer_token is required"):
+        AWSBedrockLLMParameters.validate(
+            {
+                "auth_type": "bearer_token",
+                "model": "anthropic.claude-3-haiku-20240307-v1:0",
+                "region_name": "us-east-1",
+                "aws_bearer_token": "   ",
+            }
+        )
+
+
+def test_llm_iam_role_drops_stale_bearer_token() -> None:
+    out = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "iam_role",
+            "model": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "STALE_TOKEN",
+        }
+    )
+    assert "aws_bearer_token" not in out
+    assert "api_key" not in out
+
+
+def test_llm_access_keys_drops_stale_bearer_token() -> None:
+    out = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "access_keys",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "region_name": "us-east-1",
+            "aws_access_key_id": "AKIAFAKE",
+            "aws_secret_access_key": "secret",
+            "aws_bearer_token": "STALE_TOKEN",
+        }
+    )
+    assert "aws_bearer_token" not in out
+    assert "api_key" not in out
+    assert out["aws_access_key_id"] == "AKIAFAKE"
+
+
+def test_llm_legacy_bearer_token_translated_to_api_key() -> None:
+    """Legacy adapters that hand-stored a bearer token still work."""
+    out = AWSBedrockLLMParameters.validate(
+        {
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+    assert "aws_bearer_token" not in out
+
+
 # ── Embedding: same auth_type matrix ─────────────────────────────────────────
 
 
@@ -244,3 +347,91 @@ def test_embedding_region_required_when_absent() -> None:
                 "model": "amazon.titan-embed-text-v2:0",
             }
         )
+
+
+# ── Embedding: bearer token (AWS_BEARER_TOKEN_BEDROCK) ───────────────────────
+
+
+def test_embedding_bearer_token_mode_translates_to_api_key() -> None:
+    out = AWSBedrockEmbeddingParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+    assert "aws_bearer_token" not in out
+    assert "aws_access_key_id" not in out
+    assert "aws_secret_access_key" not in out
+    assert "auth_type" not in out
+
+
+def test_embedding_bearer_token_mode_drops_stale_access_keys() -> None:
+    out = AWSBedrockEmbeddingParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_access_key_id": "STALE_KEY",
+            "aws_secret_access_key": "STALE_SECRET",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+    assert "aws_access_key_id" not in out
+    assert "aws_secret_access_key" not in out
+
+
+def test_embedding_bearer_token_mode_blank_token_raises() -> None:
+    with pytest.raises(ValueError, match="aws_bearer_token is required"):
+        AWSBedrockEmbeddingParameters.validate(
+            {
+                "auth_type": "bearer_token",
+                "model": "amazon.titan-embed-text-v2:0",
+                "region_name": "us-east-1",
+                "aws_bearer_token": "",
+            }
+        )
+
+
+def test_embedding_iam_role_drops_stale_bearer_token() -> None:
+    out = AWSBedrockEmbeddingParameters.validate(
+        {
+            "auth_type": "iam_role",
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "STALE_TOKEN",
+        }
+    )
+    assert "aws_bearer_token" not in out
+    assert "api_key" not in out
+
+
+def test_embedding_access_keys_drops_stale_bearer_token() -> None:
+    out = AWSBedrockEmbeddingParameters.validate(
+        {
+            "auth_type": "access_keys",
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_access_key_id": "AKIAFAKE",
+            "aws_secret_access_key": "secret",
+            "aws_bearer_token": "STALE_TOKEN",
+        }
+    )
+    assert "aws_bearer_token" not in out
+    assert "api_key" not in out
+    assert out["aws_access_key_id"] == "AKIAFAKE"
+
+
+def test_embedding_legacy_bearer_token_translated_to_api_key() -> None:
+    out = AWSBedrockEmbeddingParameters.validate(
+        {
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+    assert "aws_bearer_token" not in out
