@@ -17,7 +17,6 @@ from unstract.sdk1.execution.result import ExecutionResult
 
 logger = WorkerLogger.get_logger(__name__)
 
-# Operations that always make LLM calls; used by the empty-records guard.
 _LLM_BEARING_OPS = frozenset(
     {
         "answer_prompt",
@@ -109,20 +108,16 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
     orchestrator = ExecutionOrchestrator()
     result = orchestrator.execute(context)
 
-    # Batch write usage records collected during execution
     usage_records = result.metadata.get("usage_records", [])
     if usage_records:
         try:
             config = WorkerConfig()
             with UsageAPIClient(config) as usage_client:
-                # ``set_organization_context`` covers the org for every
-                # request on this client; passing it again as a kwarg was
-                # redundant.
+                # Org context is set on the client; no need to pass it per call.
                 usage_client.set_organization_context(context.organization_id)
                 ok = usage_client.bulk_create_usage(usage_records)
             if not ok:
-                # Promote to ERROR so on-call has the run_id/org/count to
-                # recover dropped billing rows from logs.
+                # ERROR severity so dropped billing rows are recoverable from logs.
                 logger.error(
                     "bulk_create_usage returned failure for %d records "
                     "(run_id=%s organization_id=%s)",

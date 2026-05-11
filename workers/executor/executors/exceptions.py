@@ -9,9 +9,7 @@ work outside of Flask (i.e. inside the Celery executor worker).
 class LegacyExecutorError(Exception):
     """Base exception for legacy executor errors.
 
-    ``partial_usage_records`` lets each layer that catches this error
-    prepend its in-flight records before re-raising, so rows already
-    paid for survive a mid-pipeline failure.
+    ``partial_usage_records`` preserves billing rows across mid-pipeline failures.
     """
 
     code: int = 500

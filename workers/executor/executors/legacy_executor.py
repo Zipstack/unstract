@@ -62,7 +62,6 @@ class LegacyExecutor(BaseExecutor):
     }
 
     def __init__(self) -> None:
-        # Per-request state, overwritten in execute().
         self._log_events_id: str = ""
         self._log_component: dict[str, str] = {}
         self._execution_id: str | None = None
@@ -156,8 +155,7 @@ class LegacyExecutor(BaseExecutor):
                         context.run_id,
                         exc_info=True,
                     )
-            # Handlers attach partial records to the exception so a
-            # mid-pipeline failure still flushes rows already paid for.
+            # Preserve partial usage rows from a mid-pipeline failure.
             failure_metadata: dict[str, Any] = {}
             if exc.partial_usage_records:
                 failure_metadata["usage_records"] = list(exc.partial_usage_records)
@@ -456,7 +454,6 @@ class LegacyExecutor(BaseExecutor):
                 error=f"ide_index missing required params: {', '.join(missing)}"
             )
 
-        # Aggregated across child steps so the caller sees one list.
         ide_records: list[dict[str, Any]] = []
 
         def _absorb(child: ExecutionResult) -> None:
@@ -592,7 +589,6 @@ class LegacyExecutor(BaseExecutor):
 
         extracted_text = ""
         index_metrics: dict = {}
-        # Aggregated across child steps so the caller sees one list.
         pipeline_records: list[dict[str, Any]] = []
 
         def _absorb(child_result: ExecutionResult) -> None:
@@ -698,7 +694,6 @@ class LegacyExecutor(BaseExecutor):
         )
 
         shim.stream_log("Pipeline completed successfully")
-        # Forward non-usage_records metadata keys as-is.
         out_metadata = {
             k: v
             for k, v in (answer_result.metadata or {}).items()
@@ -874,7 +869,6 @@ class LegacyExecutor(BaseExecutor):
             )
             forward_metadata = dict(summarize_result.metadata or {})
         else:
-            # Cache hit: no LLM call.
             forward_metadata = {}
 
         # Update answer_params
@@ -2271,7 +2265,7 @@ class LegacyExecutor(BaseExecutor):
         )
 
         shim = self._build_shim(platform_api_key=platform_api_key)
-        # ``execution_id`` drives Usage-row classification on the dashboard.
+        # execution_id is required for correct usage-row classification.
         usage_kwargs = {
             "run_id": context.run_id,
             "execution_id": context.execution_id or "",
