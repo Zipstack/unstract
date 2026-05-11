@@ -265,7 +265,7 @@ function PlatformApiKeys() {
       width: "10%",
       render: (text) => {
         const config = {
-          full_access: { color: "red", label: "Full Access" },
+          full_access: { color: "green", label: "Full Access" },
           read_write: { color: "blue", label: "Read/Write" },
           read: { color: "default", label: "Read" },
         };
