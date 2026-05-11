@@ -269,7 +269,10 @@ function PlatformApiKeys() {
           read_write: { color: "blue", label: "Read/Write" },
           read: { color: "default", label: "Read" },
         };
-        const { color, label } = config[text] ?? config.read;
+        const { color, label } = config[text] ?? {
+          color: "default",
+          label: text,
+        };
         return <Tag color={color}>{label}</Tag>;
       },
     },

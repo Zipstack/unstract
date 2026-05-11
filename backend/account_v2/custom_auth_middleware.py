@@ -132,6 +132,23 @@ class CustomAuthMiddleware:
                 status=403,
             )
 
+        # Defense-in-depth: reject anything that isn't a known tier so a
+        # legacy/corrupted value cannot silently fall through to full_access.
+        if key.permission not in (
+            ApiKeyPermission.READ,
+            ApiKeyPermission.READ_WRITE,
+            ApiKeyPermission.FULL_ACCESS,
+        ):
+            logger.error(
+                "API key %s has unrecognized permission tier %r",
+                key.id,
+                key.permission,
+            )
+            return JsonResponse(
+                {"message": "API key has an unrecognized permission tier"},
+                status=403,
+            )
+
         request.user = key.api_user
         request.platform_api_key = key
         # Skip CSRF for Bearer-authenticated requests
