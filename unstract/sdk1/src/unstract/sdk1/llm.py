@@ -192,7 +192,7 @@ class LLM:
             #     if s not in self.kwargs:
             #         logger.warning("Missing supported parameter for '%s': %s",
             #             self.adapter.get_provider(), s)
-        except ValidationError as e:
+        except (ValidationError, ValueError) as e:
             raise SdkError("Invalid LLM adapter metadata: " + str(e)) from e
 
         self._system_prompt = system_prompt or self.SYSTEM_PROMPT

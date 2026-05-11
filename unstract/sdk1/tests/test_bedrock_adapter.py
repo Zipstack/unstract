@@ -124,6 +124,19 @@ def test_llm_unknown_auth_type_raises() -> None:
         )
 
 
+def test_llm_unknown_bearer_token_typo_raises() -> None:
+    """New auth modes are exactly where typo coverage is most valuable."""
+    with pytest.raises(ValueError, match="Unknown auth_type"):
+        AWSBedrockLLMParameters.validate(
+            {
+                "auth_type": "bearer-token",  # typo: hyphen instead of underscore
+                "model": "anthropic.claude-3-haiku-20240307-v1:0",
+                "region_name": "us-east-1",
+                "aws_bearer_token": "bedrock-key-abc",
+            }
+        )
+
+
 def test_llm_other_params_preserved_through_strip() -> None:
     """Non-credential params survive the auth-type handling.
 
@@ -210,6 +223,35 @@ def test_llm_bearer_token_mode_whitespace_token_raises() -> None:
         )
 
 
+def test_llm_bearer_token_mode_missing_token_raises() -> None:
+    """Field absent (not just blank) must surface the same clear error."""
+    with pytest.raises(ValueError, match="aws_bearer_token is required"):
+        AWSBedrockLLMParameters.validate(
+            {
+                "auth_type": "bearer_token",
+                "model": "anthropic.claude-3-haiku-20240307-v1:0",
+                "region_name": "us-east-1",
+            }
+        )
+
+
+def test_llm_bearer_token_strips_surrounding_whitespace() -> None:
+    """Stray whitespace around a pasted key must not reach the header.
+
+    Storing the unstripped value would produce
+    ``Authorization: Bearer  <token> `` which AWS rejects with an opaque 401.
+    """
+    out = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "  bedrock-key-abc  ",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+
+
 def test_llm_iam_role_drops_stale_bearer_token() -> None:
     out = AWSBedrockLLMParameters.validate(
         {
@@ -239,17 +281,24 @@ def test_llm_access_keys_drops_stale_bearer_token() -> None:
     assert out["aws_access_key_id"] == "AKIAFAKE"
 
 
-def test_llm_legacy_bearer_token_translated_to_api_key() -> None:
-    """Legacy adapters that hand-stored a bearer token still work."""
+def test_llm_legacy_drops_stray_bearer_token() -> None:
+    """Legacy mode (no auth_type) must not stealth-promote a bearer token.
+
+    The field is brand new in this PR, so any value reaching the legacy
+    branch came from manual DB editing. Auto-translating would silently
+    override env-injected ``AWS_BEARER_TOKEN_BEDROCK`` or boto3 default
+    chain credentials with no log line — the user must opt in by setting
+    ``auth_type='bearer_token'`` explicitly.
+    """
     out = AWSBedrockLLMParameters.validate(
         {
             "model": "anthropic.claude-3-haiku-20240307-v1:0",
             "region_name": "us-east-1",
-            "aws_bearer_token": "bedrock-key-abc",
+            "aws_bearer_token": "STRAY_TOKEN",
         }
     )
-    assert out["api_key"] == "bedrock-key-abc"
     assert "aws_bearer_token" not in out
+    assert "api_key" not in out
 
 
 # ── Embedding: same auth_type matrix ─────────────────────────────────────────
@@ -336,6 +385,18 @@ def test_embedding_unknown_auth_type_raises() -> None:
         )
 
 
+def test_embedding_unknown_bearer_token_typo_raises() -> None:
+    with pytest.raises(ValueError, match="Unknown auth_type"):
+        AWSBedrockEmbeddingParameters.validate(
+            {
+                "auth_type": "bearer-token",  # typo: hyphen instead of underscore
+                "model": "amazon.titan-embed-text-v2:0",
+                "region_name": "us-east-1",
+                "aws_bearer_token": "bedrock-key-abc",
+            }
+        )
+
+
 def test_embedding_region_required_when_absent() -> None:
     """aws_region_name is still mandatory even though credentials are not."""
     from pydantic import ValidationError
@@ -396,6 +457,41 @@ def test_embedding_bearer_token_mode_blank_token_raises() -> None:
         )
 
 
+def test_embedding_bearer_token_mode_whitespace_token_raises() -> None:
+    with pytest.raises(ValueError, match="aws_bearer_token is required"):
+        AWSBedrockEmbeddingParameters.validate(
+            {
+                "auth_type": "bearer_token",
+                "model": "amazon.titan-embed-text-v2:0",
+                "region_name": "us-east-1",
+                "aws_bearer_token": "   ",
+            }
+        )
+
+
+def test_embedding_bearer_token_mode_missing_token_raises() -> None:
+    with pytest.raises(ValueError, match="aws_bearer_token is required"):
+        AWSBedrockEmbeddingParameters.validate(
+            {
+                "auth_type": "bearer_token",
+                "model": "amazon.titan-embed-text-v2:0",
+                "region_name": "us-east-1",
+            }
+        )
+
+
+def test_embedding_bearer_token_strips_surrounding_whitespace() -> None:
+    out = AWSBedrockEmbeddingParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "  bedrock-key-abc  ",
+        }
+    )
+    assert out["api_key"] == "bedrock-key-abc"
+
+
 def test_embedding_iam_role_drops_stale_bearer_token() -> None:
     out = AWSBedrockEmbeddingParameters.validate(
         {
@@ -425,13 +521,14 @@ def test_embedding_access_keys_drops_stale_bearer_token() -> None:
     assert out["aws_access_key_id"] == "AKIAFAKE"
 
 
-def test_embedding_legacy_bearer_token_translated_to_api_key() -> None:
+def test_embedding_legacy_drops_stray_bearer_token() -> None:
+    """Mirror of the LLM legacy stealth-promotion guard."""
     out = AWSBedrockEmbeddingParameters.validate(
         {
             "model": "amazon.titan-embed-text-v2:0",
             "region_name": "us-east-1",
-            "aws_bearer_token": "bedrock-key-abc",
+            "aws_bearer_token": "STRAY_TOKEN",
         }
     )
-    assert out["api_key"] == "bedrock-key-abc"
     assert "aws_bearer_token" not in out
+    assert "api_key" not in out
