@@ -13,10 +13,11 @@ class ApiKeyPermission(models.TextChoices):
 
     def allows(self, method: str) -> bool:
         """Whether a key holding this tier may issue the given HTTP method."""
+        method = method.upper()
         if self == ApiKeyPermission.FULL_ACCESS:
-            return True
+            return method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
         if self == ApiKeyPermission.READ_WRITE:
-            return method != "DELETE"
+            return method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH"}
         return method in {"GET", "HEAD", "OPTIONS"}
 
 
