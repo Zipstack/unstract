@@ -247,7 +247,9 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
-        model = adapter_metadata.get("model", "")
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenAI Compatible adapter.")
         if model.startswith("custom_openai/"):
             return model
         return f"custom_openai/{model}"
