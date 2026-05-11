@@ -55,8 +55,7 @@ const CustomMarkdown = ({
           </Text>
         );
       case "link": {
-        // Protocol-relative URLs (`//evil.com/...`) also start with `/`
-        // so exclude them from the internal-route branch.
+        // Exclude protocol-relative `//evil.com` from internal-route branch.
         const isInternal = url?.startsWith("/") && !url.startsWith("//");
         if (isInternal) {
           const resolvedUrl = orgName ? `/${orgName}${url}` : url;

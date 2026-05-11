@@ -7,6 +7,7 @@ prompt_doc_list = PromptStudioOutputView.as_view({"get": "list"})
 get_output_for_tool_default = PromptStudioOutputView.as_view(
     {"get": "get_output_for_tool_default"}
 )
+latest_outputs_by_keys = PromptStudioOutputView.as_view({"get": "latest_outputs_by_keys"})
 
 urlpatterns = format_suffix_patterns(
     [
@@ -15,6 +16,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-output/prompt-default-profile/",
             get_output_for_tool_default,
             name="prompt-default-profile-outputs",
+        ),
+        path(
+            "prompt-output/latest-by-keys/",
+            latest_outputs_by_keys,
+            name="prompt-output-latest-by-keys",
         ),
     ]
 )

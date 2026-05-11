@@ -223,6 +223,10 @@ def capture_metrics(func: object) -> object:
         if self._run_id and self._capture_metrics:
             metrics_mixin = MetricsMixin(run_id=self._run_id)
 
+        # Snapshot index so timing stamps every row appended during this call —
+        # internal retries would otherwise leave NULL execution_time_ms rows.
+        pending_at_entry = len(getattr(self, "_pending_usage", []))
+
         try:
             result = func(self, *args, **kwargs)
         finally:
@@ -249,6 +253,14 @@ def capture_metrics(func: object) -> object:
                 else:
                     # If the key isn't in self._metrics, set it to new_metrics
                     self._metrics = new_metrics
+
+                # Stamp timing on every record appended during this call.
+                pending = getattr(self, "_pending_usage", [])
+                time_taken = new_metrics.get(time_taken_key)
+                if time_taken is not None and len(pending) > pending_at_entry:
+                    elapsed_ms = int(time_taken * 1000)
+                    for record in pending[pending_at_entry:]:
+                        record["execution_time_ms"] = elapsed_ms
 
         return result
 
