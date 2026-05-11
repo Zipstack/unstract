@@ -11,6 +11,14 @@ class ApiKeyPermission(models.TextChoices):
     READ_WRITE = "read_write", "Read/Write"
     FULL_ACCESS = "full_access", "Full Access"
 
+    def allows(self, method: str) -> bool:
+        """Whether a key holding this tier may issue the given HTTP method."""
+        if self == ApiKeyPermission.FULL_ACCESS:
+            return True
+        if self == ApiKeyPermission.READ_WRITE:
+            return method != "DELETE"
+        return method in {"GET", "HEAD", "OPTIONS"}
+
 
 class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -50,6 +58,10 @@ class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
             models.UniqueConstraint(
                 fields=["name", "organization"],
                 name="unique_platform_api_key_name_per_org",
+            ),
+            models.CheckConstraint(
+                check=models.Q(permission__in=ApiKeyPermission.values),
+                name="platform_api_key_permission_valid",
             ),
         ]
 

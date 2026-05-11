@@ -10,7 +10,7 @@ from utils.user_session import UserSessionUtils
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
-from backend.constants import RequestHeader, RequestMethod
+from backend.constants import RequestHeader
 from backend.internal_api_constants import INTERNAL_API_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -109,36 +109,7 @@ class CustomAuthMiddleware:
                 status=401,
             )
 
-        # Block write operations for read-only keys
-        if (
-            key.permission == ApiKeyPermission.READ
-            and request.method not in RequestMethod.SAFE_METHODS
-        ):
-            return JsonResponse(
-                {"message": "API key has read-only permission"},
-                status=403,
-            )
-
-        # Only full_access keys may DELETE; read_write keys cannot.
-        if (
-            key.permission == ApiKeyPermission.READ_WRITE
-            and request.method == RequestMethod.DELETE
-        ):
-            return JsonResponse(
-                {
-                    "message": "API key does not have DELETE permission; "
-                    "requires full_access"
-                },
-                status=403,
-            )
-
-        # Defense-in-depth: reject anything that isn't a known tier so a
-        # legacy/corrupted value cannot silently fall through to full_access.
-        if key.permission not in (
-            ApiKeyPermission.READ,
-            ApiKeyPermission.READ_WRITE,
-            ApiKeyPermission.FULL_ACCESS,
-        ):
+        if key.permission not in ApiKeyPermission.values:
             logger.error(
                 "API key %s has unrecognized permission tier %r",
                 key.id,
@@ -146,6 +117,18 @@ class CustomAuthMiddleware:
             )
             return JsonResponse(
                 {"message": "API key has an unrecognized permission tier"},
+                status=403,
+            )
+
+        permission = ApiKeyPermission(key.permission)
+        if not permission.allows(request.method):
+            return JsonResponse(
+                {
+                    "message": (
+                        f"API key permission '{permission.label}' "
+                        f"does not allow {request.method}"
+                    )
+                },
                 status=403,
             )
 
