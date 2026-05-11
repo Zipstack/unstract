@@ -61,6 +61,14 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let LookupStudio;
+try {
+  const mod = await import("../plugins/lookup-studio");
+  LookupStudio = mod.LookupStudio;
+} catch {
+  // Do nothing, Not-found Page will be triggered.
+}
+
 try {
   const mod1 = await import("../plugins/app-deployment/AppDeployments.jsx");
   AppDeployments = mod1.AppDeployments;
@@ -180,6 +188,7 @@ function useMainAppRoutes() {
             element={<AgenticPromptStudio />}
           />
         )}
+        {LookupStudio && <Route path="lookups/*" element={<LookupStudio />} />}
         <Route path="logs" element={<LogsPage />} />
         <Route path="logs/:type/:id/" element={<LogsPage />} />
         <Route

@@ -14,6 +14,7 @@ from celery.result import AsyncResult
 from django.db import IntegrityError
 from django.db.models import Count, OuterRef, QuerySet, Subquery
 from django.http import HttpRequest, HttpResponse
+from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -32,6 +33,11 @@ from utils.user_session import UserSessionUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 
 from backend.celery_service import app as celery_app
+from prompt_studio.lookup_utils import (
+    get_latest_lookup_mutation_for_tool,
+    get_lookup_validation_for_tool,
+    get_multi_var_lookups_for_tool,
+)
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -88,6 +94,29 @@ from .serializers import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
+    """Block non-SP runs when a linked lookup has >1 input variable.
+
+    Multi-var lookups only resolve correctly under single-pass; ``prompt_ids``
+    scopes the gate so an unrelated multi-var lookup doesn't block runs that
+    don't actually use it. Caller must skip this on the SP path.
+    """
+    names = get_multi_var_lookups_for_tool(custom_tool, prompt_ids=prompt_ids)
+    if not names:
+        return None
+    return Response(
+        {
+            "detail": (
+                "Multi-variable lookup(s) "
+                f"{', '.join(names)} are linked to prompts in this project. "
+                "These can only run in single pass extraction mode. "
+                "Enable single pass or unlink the lookup before running."
+            )
+        },
+        status=status.HTTP_400_BAD_REQUEST,
+    )
 
 
 class PromptStudioCoreView(viewsets.ModelViewSet):
@@ -477,6 +506,14 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         prompt_id: str = request.data.get(ToolStudioPromptKeys.ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
+        # Must precede the lookup gate so missing prompt_id returns a clear 400.
+        if not prompt_id:
+            return Response(
+                {"error": "prompt id is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if err := _multi_var_lookup_block_response(custom_tool, prompt_ids=[prompt_id]):
+            return err
         profile_manager_id: str = request.data.get(
             ToolStudioPromptKeys.PROFILE_MANAGER_ID
         )
@@ -485,13 +522,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
 
         org_id = UserSessionUtils.get_organization_id(request)
         user_id = custom_tool.created_by.user_id
-
-        # Resolve prompt — guard against missing / stale prompt_id
-        if not prompt_id:
-            return Response(
-                {"error": "prompt id is required."},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         try:
             prompt = ToolStudioPrompt.objects.get(pk=prompt_id)
         except ToolStudioPrompt.DoesNotExist:
@@ -510,9 +540,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         document: DocumentManager = DocumentManager.objects.get(pk=document_id)
         doc_path = str(Path(doc_path) / document.document_name)
 
-        # Agentic table prompts have a separate executor worker. Build the
-        # payload via the cloud payload_modifier plugin and dispatch directly
-        # so the legacy answer_prompt path is bypassed.
+        # Agentic table prompts have their own executor — build payload via
+        # the cloud plugin and dispatch directly, bypassing answer_prompt.
         if prompt.enforce_type == ToolStudioPromptKeys.AGENTIC_TABLE:
             payload_modifier_plugin = get_plugin("payload_modifier")
             if not payload_modifier_plugin:
@@ -633,6 +662,8 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
                 {"error": "prompt_ids is required and must be non-empty."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if err := _multi_var_lookup_block_response(custom_tool, prompt_ids=prompt_ids):
+            return err
         document_id: str = request.data.get(ToolStudioPromptKeys.DOCUMENT_ID)
         run_id: str = request.data.get(ToolStudioPromptKeys.RUN_ID)
         profile_manager_id: str = request.data.get(
@@ -881,9 +912,17 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
         # Check for the maximum number of profiles constraint
-        prompt_studio_tool = serializer.validated_data[
+        prompt_studio_tool = serializer.validated_data.get(
             ProfileManagerKeys.PROMPT_STUDIO_TOOL
-        ]
+        )
+        if not prompt_studio_tool:
+            # Write back into validated_data so perform_create() doesn't
+            # persist NULL and orphan the profile from every
+            # ``filter(prompt_studio_tool=...)`` query.
+            prompt_studio_tool = self.get_object()
+            serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
+                prompt_studio_tool
+            )
         profile_count = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_studio_tool
         ).count()
@@ -1103,6 +1142,10 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             force_export=force_export,
         )
 
+        # Anchor for staleness checks (e.g. lookup-change banner).
+        custom_tool.last_exported_at = timezone.now()
+        custom_tool.save(update_fields=["last_exported_at"])
+
         # Notify HubSpot about first tool export
         notify_hubspot_event(
             user=request.user,
@@ -1115,6 +1158,15 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             {"message": "Custom tool exported sucessfully."},
             status=status.HTTP_200_OK,
         )
+
+    @action(detail=True, methods=["get"], url_path="lookup-validation")
+    def lookup_validation(self, request: Request, pk: Any = None) -> Response:
+        """Pre-emptive lookup gating for Export / API Deployment buttons.
+
+        Cloud-only check; OSS returns ``ok: True`` so the FE proceeds.
+        """
+        custom_tool = self.get_object()
+        return Response(get_lookup_validation_for_tool(custom_tool))
 
     @action(detail=True, methods=["get"])
     def export_tool_info(self, request: Request, pk: Any = None) -> Response:
@@ -1294,10 +1346,20 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
             instance: CustomTool = self.get_object()
             is_used, workflow_ids = self._check_tool_usage_in_workflows(instance)
 
+            # NULL last_exported_at → treat as clean to avoid false alarms
+            # on pre-feature projects.
+            is_lookup_dirty = False
+            if instance.last_exported_at is not None:
+                latest = get_latest_lookup_mutation_for_tool(instance)
+                is_lookup_dirty = (
+                    latest is not None and latest > instance.last_exported_at
+                )
+
             deployment_info: dict = {
                 "is_used": is_used,
                 "deployment_types": [],
                 "message": "",
+                "is_lookup_dirty": is_lookup_dirty,
             }
 
             if is_used and workflow_ids:
