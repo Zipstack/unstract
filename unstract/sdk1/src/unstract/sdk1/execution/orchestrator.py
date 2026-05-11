@@ -9,6 +9,7 @@ that unhandled exceptions are always wrapped in a failed
 
 import logging
 import time
+from typing import Any
 
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.registry import ExecutorRegistry
@@ -37,8 +38,7 @@ class ExecutionOrchestrator:
             exceptions (wrapped as a failure result).
         """
         logger.info(
-            "Orchestrating execution: executor=%s operation=%s "
-            "run_id=%s request_id=%s",
+            "Orchestrating execution: executor=%s operation=%s run_id=%s request_id=%s",
             context.executor_name,
             context.operation,
             context.run_id,
@@ -61,9 +61,14 @@ class ExecutionOrchestrator:
                 context.executor_name,
                 elapsed,
             )
+            metadata: dict[str, Any] = {"elapsed_seconds": round(elapsed, 3)}
+            # Don't lose pre-crash billing rows on retry.
+            collected = getattr(executor, "_usage_records", None) or []
+            if collected:
+                metadata["usage_records"] = list(collected)
             return ExecutionResult.failure(
                 error=f"{type(exc).__name__}: {exc}",
-                metadata={"elapsed_seconds": round(elapsed, 3)},
+                metadata=metadata,
             )
 
         elapsed = time.monotonic() - start

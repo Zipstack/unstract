@@ -21,15 +21,12 @@ def _load_llm_module() -> object:
     import sys
     from types import ModuleType
 
-    with patch.dict(
-        sys.modules,
-        {
-            # Stub python-magic so importing LLM does not depend on libmagic
-            # being available in the test environment.
-            "magic": ModuleType("magic")
-        },
-    ):
-        return import_module("unstract.sdk1.llm")
+    # Stub python-magic so importing LLM does not depend on libmagic
+    # being available in the test environment. sys.modules entries set
+    # here must persist (no patch.dict) so litellm and other lazy-loaded
+    # modules stay resolvable across tests.
+    sys.modules.setdefault("magic", ModuleType("magic"))
+    return import_module("unstract.sdk1.llm")
 
 
 def _load_llm_class() -> type:
@@ -107,19 +104,24 @@ def test_openai_compatible_adapter_uses_distinct_description_and_icon() -> None:
     )
 
 
-def test_record_usage_uses_reported_prompt_tokens_without_estimating() -> None:
-    llm_module = _load_llm_module()
-    llm_cls = llm_module.LLM
-
+def _build_llm_for_record_usage(llm_cls: type) -> object:
     llm = llm_cls.__new__(llm_cls)
     llm._platform_api_key = "platform-key"
     llm.platform_kwargs = {"run_id": "run-1"}
+    llm._usage_kwargs = {}
+    llm._pending_usage = []
     llm.adapter = MagicMock()
     llm.adapter.get_provider.return_value = "custom_openai"
+    return llm
+
+
+def test_record_usage_uses_reported_prompt_tokens_without_estimating() -> None:
+    llm_module = _load_llm_module()
+    llm = _build_llm_for_record_usage(llm_module.LLM)
 
     with (
-        patch.object(llm_module, "token_counter") as mock_token_counter,
-        patch.object(llm_module, "Audit") as mock_audit,
+        patch.object(llm_module.litellm, "token_counter") as mock_token_counter,
+        patch.object(llm_module.litellm, "cost_per_token", return_value=(0.0, 0.0)),
     ):
         llm._record_usage(
             model="custom_openai/gateway-model",
@@ -129,28 +131,19 @@ def test_record_usage_uses_reported_prompt_tokens_without_estimating() -> None:
         )
 
     mock_token_counter.assert_not_called()
-    mock_audit.return_value.push_usage_data.assert_called_once()
-    assert (
-        mock_audit.return_value.push_usage_data.call_args.kwargs[
-            "token_counter"
-        ].prompt_llm_token_count
-        == 3
-    )
+    assert len(llm._pending_usage) == 1
+    assert llm._pending_usage[0]["prompt_tokens"] == 3
 
 
 def test_record_usage_tolerates_unmapped_models_without_prompt_tokens() -> None:
     llm_module = _load_llm_module()
-    llm_cls = llm_module.LLM
-
-    llm = llm_cls.__new__(llm_cls)
-    llm._platform_api_key = "platform-key"
-    llm.platform_kwargs = {"run_id": "run-1"}
-    llm.adapter = MagicMock()
-    llm.adapter.get_provider.return_value = "custom_openai"
+    llm = _build_llm_for_record_usage(llm_module.LLM)
 
     with (
-        patch.object(llm_module, "token_counter", side_effect=Exception("unmapped")),
-        patch.object(llm_module, "Audit") as mock_audit,
+        patch.object(
+            llm_module.litellm, "token_counter", side_effect=Exception("unmapped")
+        ),
+        patch.object(llm_module.litellm, "cost_per_token", return_value=(0.0, 0.0)),
         patch.object(llm_module.logger, "warning") as mock_warning,
     ):
         llm._record_usage(
@@ -160,41 +153,27 @@ def test_record_usage_tolerates_unmapped_models_without_prompt_tokens() -> None:
             llm_api="complete",
         )
 
-    mock_audit.return_value.push_usage_data.assert_called_once()
-    assert (
-        mock_audit.return_value.push_usage_data.call_args.kwargs[
-            "token_counter"
-        ].prompt_llm_token_count
-        == 0
-    )
-    assert "recording 0 prompt tokens for usage audit" in mock_warning.call_args.args[0]
+    assert len(llm._pending_usage) == 1
+    assert llm._pending_usage[0]["prompt_tokens"] == 0
+    assert "litellm.token_counter() fallback failed" in mock_warning.call_args.args[0]
 
 
 def test_record_usage_uses_estimated_prompt_tokens_when_usage_has_none() -> None:
     llm_module = _load_llm_module()
-    llm_cls = llm_module.LLM
-
-    llm = llm_cls.__new__(llm_cls)
-    llm._platform_api_key = "platform-key"
-    llm.platform_kwargs = {"run_id": "run-1"}
-    llm.adapter = MagicMock()
-    llm.adapter.get_provider.return_value = "custom_openai"
+    llm = _build_llm_for_record_usage(llm_module.LLM)
 
     with (
-        patch.object(llm_module, "token_counter", return_value=9) as mock_token_counter,
-        patch.object(llm_module, "Audit") as mock_audit,
+        patch.object(
+            llm_module.litellm, "token_counter", return_value=9
+        ) as mock_token_counter,
+        patch.object(llm_module.litellm, "cost_per_token", return_value=(0.0, 0.0)),
     ):
         llm._record_usage(
             model="custom_openai/gateway-model",
             messages=[{"role": "user", "content": "hello"}],
-            usage={"prompt_tokens": None, "completion_tokens": 4, "total_tokens": 13},
+            usage={"completion_tokens": 4, "total_tokens": 13},
             llm_api="complete",
         )
 
     mock_token_counter.assert_called_once()
-    assert (
-        mock_audit.return_value.push_usage_data.call_args.kwargs[
-            "token_counter"
-        ].prompt_llm_token_count
-        == 9
-    )
+    assert llm._pending_usage[0]["prompt_tokens"] == 9

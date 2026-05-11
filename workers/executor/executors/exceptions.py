@@ -9,18 +9,23 @@ work outside of Flask (i.e. inside the Celery executor worker).
 class LegacyExecutorError(Exception):
     """Base exception for legacy executor errors.
 
-    Replaces Flask's ``APIError`` — carries ``message`` and ``code``
-    attributes so callers can map to ``ExecutionResult.failure()``.
+    ``partial_usage_records`` preserves billing rows across mid-pipeline failures.
     """
 
     code: int = 500
     message: str = "Internal executor error"
 
-    def __init__(self, message: str | None = None, code: int | None = None):
+    def __init__(
+        self,
+        message: str | None = None,
+        code: int | None = None,
+        partial_usage_records: list[dict] | None = None,
+    ):
         if message is not None:
             self.message = message
         if code is not None:
             self.code = code
+        self.partial_usage_records: list[dict] = list(partial_usage_records or [])
         super().__init__(self.message)
 
 

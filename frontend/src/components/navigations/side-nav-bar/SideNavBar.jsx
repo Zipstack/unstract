@@ -89,6 +89,12 @@ try {
   // Plugin unavailable
 }
 
+let lookupStudioEnabled = false;
+try {
+  await import("../../../plugins/lookup-studio");
+  lookupStudioEnabled = true;
+} catch {}
+
 let manualReviewSettingsEnabled = false;
 try {
   await import("../../../plugins/manual-review/settings/Settings.jsx");
@@ -504,6 +510,19 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       ),
       tag: "BETA",
     });
+  }
+
+  // Keep Prompt Studio highlighted on /lookups. Replace, don't mutate —
+  // `data` may alias the `menu` prop.
+  if (lookupStudioEnabled && isUnstract && data[0]?.subMenu) {
+    const onLookupPath = globalThis.location.pathname.startsWith(
+      `/${orgName}/lookups`,
+    );
+    if (onLookupPath) {
+      data[0].subMenu = data[0].subMenu.map((el) =>
+        el.id === 1.1 ? { ...el, active: true } : el,
+      );
+    }
   }
 
   // Add HITL Review section if plugin is available and user has HITL role

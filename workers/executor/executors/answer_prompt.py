@@ -338,27 +338,4 @@ class AnswerPromptService:
             structured_output[prompt_key] = {}
             return
 
-        highlight_data = None
-        if enable_highlight and metadata and PSKeys.HIGHLIGHT_DATA in metadata:
-            highlight_data = metadata[PSKeys.HIGHLIGHT_DATA].get(prompt_key)
-
-        processed_data = parsed_data
-        updated_highlight_data = None
-
-        webhook_enabled = output.get(PSKeys.ENABLE_POSTPROCESSING_WEBHOOK, False)
-        if webhook_enabled:
-            webhook_url = output.get(PSKeys.POSTPROCESSING_WEBHOOK_URL)
-            processed_data, updated_highlight_data = (
-                AnswerPromptService._run_webhook_postprocess(
-                    parsed_data=parsed_data,
-                    webhook_url=webhook_url,
-                    highlight_data=highlight_data,
-                )
-            )
-
-        structured_output[prompt_key] = processed_data
-
-        if enable_highlight and metadata and updated_highlight_data is not None:
-            metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})[prompt_key] = (
-                updated_highlight_data
-            )
+        structured_output[prompt_key] = parsed_data
