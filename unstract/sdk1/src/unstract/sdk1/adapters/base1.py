@@ -483,9 +483,8 @@ _BEDROCK_AWS_KEY_FIELDS: tuple[str, ...] = (
     "aws_access_key_id",
     "aws_secret_access_key",
 )
-# LiteLLM consumes the Bedrock bearer token as the `api_key` kwarg (see
-# litellm/llms/bedrock/base_aws_llm.py). We accept it from the UI under the
-# more descriptive `aws_bearer_token` name and translate at resolve time.
+# LiteLLM expects the Bedrock bearer token as `api_key`; the UI uses the
+# more descriptive `aws_bearer_token` and the resolver translates between them.
 _BEDROCK_BEARER_TOKEN_FIELD: str = "aws_bearer_token"
 _BEDROCK_LITELLM_BEARER_KWARG: str = "api_key"
 _BEDROCK_VALID_AUTH_TYPES: frozenset[str | None] = frozenset(
@@ -506,14 +505,11 @@ def _require_bedrock_access_keys(validated: dict[str, "Any"]) -> None:
 
 
 def _translate_bedrock_bearer_token(validated: dict[str, "Any"]) -> None:
-    """Move ``aws_bearer_token`` (UI field) to ``api_key`` (LiteLLM kwarg).
+    """Move ``aws_bearer_token`` to ``api_key``; raise if missing or blank.
 
-    Stores the stripped value to avoid producing
-    ``Authorization: Bearer  <token> `` headers that AWS rejects with
-    an opaque 401 when a user pastes a key with surrounding whitespace.
-    Raises if the token is missing or blank — bearer_token mode requires
-    an explicit token, mirroring how access_keys mode requires non-blank
-    keys.
+    Stripped before storing so surrounding whitespace doesn't reach the
+    ``Authorization`` header — AWS rejects mismatched bearer values with
+    an opaque 401.
     """
     token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
     if not isinstance(token, str) or not token.strip():
@@ -530,30 +526,22 @@ def _resolve_bedrock_aws_credentials(
 ) -> dict[str, "Any"]:
     """Apply auth_type semantics to the validated LiteLLM kwargs.
 
-    Four cases:
-    - ``auth_type == "iam_role"``: drop access keys and bearer token
-      unconditionally so a previously-saved adapter switched into IAM
-      Role mode does not leak stale credentials. boto3's default chain
-      (IRSA / instance profile / env vars / AWS Profile) takes over.
-    - ``auth_type == "access_keys"`` (explicit): require non-blank
-      access-key values; drop any stale bearer token. A blank submission
-      must surface as a clear error rather than silently fall through to
-      the default chain (which would hide the mistake and authenticate
-      with whatever ambient creds the host has).
-    - ``auth_type == "bearer_token"``: require a non-blank
-      ``aws_bearer_token``; drop access keys; translate the token to the
-      ``api_key`` kwarg LiteLLM's bedrock module expects.
-    - ``auth_type is None`` (legacy adapters created before this field
-      existed): lenient strip of empty/missing access keys. Preserves
-      backwards compatibility for stored configurations. A stale
-      ``aws_bearer_token`` (only reachable via direct DB editing — no UI
-      path saves bearer-token without ``auth_type``) is dropped silently
-      to avoid stealth-promoting it into ``api_key``.
+    Each branch drops the credentials belonging to the *other* modes so a
+    re-saved adapter cannot leak stale long-lived secrets. Blank values
+    in an explicitly-selected mode raise rather than fall through to the
+    boto3 default chain, which would mask the misconfiguration.
+
+    - ``iam_role``: drop access keys and bearer token; boto3's default
+      chain (IRSA / instance profile / env vars / AWS Profile) takes over.
+    - ``access_keys``: require non-blank access keys; drop bearer token.
+    - ``bearer_token``: require non-blank ``aws_bearer_token``; drop
+      access keys; translate the token to ``api_key`` for LiteLLM.
+    - ``None`` (legacy, pre-``auth_type``): lenient strip of empty access
+      keys; drop any bearer token (must be opted into explicitly).
 
     Raises:
-        ValueError: on unknown ``auth_type`` (typo / non-UI client), on
-            blank access keys when ``auth_type == "access_keys"``, or on
-            a blank token when ``auth_type == "bearer_token"``.
+        ValueError: on unknown ``auth_type``, blank access keys in
+            ``access_keys`` mode, or blank token in ``bearer_token`` mode.
     """
     auth_type = adapter_metadata.get("auth_type")
     if auth_type not in _BEDROCK_VALID_AUTH_TYPES:
@@ -577,11 +565,9 @@ def _resolve_bedrock_aws_credentials(
         _translate_bedrock_bearer_token(validated)
         return validated
 
-    # Legacy adapters with no auth_type: strip blank access keys (boto3
-    # default chain takes over). Drop any stray bearer token rather than
-    # auto-promoting it — the field is new in this PR, so any value here
-    # came from manual DB editing and the user should opt in explicitly
-    # by setting auth_type="bearer_token".
+    # No auth_type: strip blank access keys (boto3 chain takes over) and
+    # drop any bearer token — bearer auth must be opted into explicitly
+    # via auth_type='bearer_token' rather than promoted from this branch.
     for key in _BEDROCK_AWS_KEY_FIELDS:
         if not validated.get(key):
             validated.pop(key, None)
@@ -594,8 +580,7 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
-    # Short-lived Bedrock API key (AWS_BEARER_TOKEN_BEDROCK); the resolver
-    # translates it to LiteLLM's `api_key` kwarg.
+    # AWS_BEARER_TOKEN_BEDROCK; resolver translates to LiteLLM's `api_key`.
     aws_bearer_token: str | None = None
     aws_region_name: str | None = None
     aws_profile_name: str | None = None  # For AWS SSO authentication
@@ -1086,8 +1071,7 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     # may be absent (IAM Role / Instance Profile mode).
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
-    # Short-lived Bedrock API key (AWS_BEARER_TOKEN_BEDROCK); the resolver
-    # translates it to LiteLLM's `api_key` kwarg.
+    # AWS_BEARER_TOKEN_BEDROCK; resolver translates to LiteLLM's `api_key`.
     aws_bearer_token: str | None = None
     aws_region_name: str | None
 

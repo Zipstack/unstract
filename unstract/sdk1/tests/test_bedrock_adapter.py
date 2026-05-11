@@ -125,7 +125,6 @@ def test_llm_unknown_auth_type_raises() -> None:
 
 
 def test_llm_unknown_bearer_token_typo_raises() -> None:
-    """New auth modes are exactly where typo coverage is most valuable."""
     with pytest.raises(ValueError, match="Unknown auth_type"):
         AWSBedrockLLMParameters.validate(
             {
@@ -284,11 +283,9 @@ def test_llm_access_keys_drops_stale_bearer_token() -> None:
 def test_llm_legacy_drops_stray_bearer_token() -> None:
     """Legacy mode (no auth_type) must not stealth-promote a bearer token.
 
-    The field is brand new in this PR, so any value reaching the legacy
-    branch came from manual DB editing. Auto-translating would silently
-    override env-injected ``AWS_BEARER_TOKEN_BEDROCK`` or boto3 default
-    chain credentials with no log line — the user must opt in by setting
-    ``auth_type='bearer_token'`` explicitly.
+    Auto-translating would silently override env-injected
+    ``AWS_BEARER_TOKEN_BEDROCK`` or boto3 default-chain credentials with
+    no log line; opting into bearer auth must be explicit.
     """
     out = AWSBedrockLLMParameters.validate(
         {
@@ -522,7 +519,6 @@ def test_embedding_access_keys_drops_stale_bearer_token() -> None:
 
 
 def test_embedding_legacy_drops_stray_bearer_token() -> None:
-    """Mirror of the LLM legacy stealth-promotion guard."""
     out = AWSBedrockEmbeddingParameters.validate(
         {
             "model": "amazon.titan-embed-text-v2:0",

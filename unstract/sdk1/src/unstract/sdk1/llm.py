@@ -190,9 +190,7 @@ class LLM:
             #         logger.warning("Missing supported parameter for '%s': %s",
             #             self.adapter.get_provider(), s)
         except ValueError as e:
-            # `pydantic.ValidationError` is a subclass of `ValueError`; this
-            # catches both Pydantic validation failures and the explicit
-            # `ValueError`s raised by the Bedrock auth resolver.
+            # `pydantic.ValidationError` subclasses `ValueError` — this catches both.
             raise SdkError("Invalid LLM adapter metadata: " + str(e)) from e
 
         self._system_prompt = system_prompt or self.SYSTEM_PROMPT
