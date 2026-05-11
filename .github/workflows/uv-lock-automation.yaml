@@ -36,8 +36,6 @@ jobs:
           version: "0.6.14"
           python-version: 3.12.9
 
-      - run: uv pip install --python=3.12.9 pip
-
       - name: Generate UV lockfiles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

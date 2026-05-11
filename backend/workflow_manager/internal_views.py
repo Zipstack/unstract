@@ -7,7 +7,6 @@ import uuid
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -2009,7 +2008,6 @@ class BatchStatusUpdateAPIView(APIView):
                         if update.get("execution_time") is not None:
                             execution.execution_time = update["execution_time"]
 
-                        execution.modified_at = timezone.now()
                         execution.save()
 
                         successful_updates.append(

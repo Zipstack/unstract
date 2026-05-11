@@ -59,6 +59,7 @@ function Header({
   spsLoading,
   handleSpsLoading,
   enforceType,
+  isAgenticTableReady = true,
 }) {
   const {
     selectedDoc,
@@ -357,6 +358,7 @@ function Header({
                   )
                 }
                 disabled={
+                  !isAgenticTableReady ||
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
@@ -380,6 +382,7 @@ function Header({
                   )
                 }
                 disabled={
+                  !isAgenticTableReady ||
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
@@ -436,6 +439,7 @@ Header.propTypes = {
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
   enforceType: PropTypes.string,
+  isAgenticTableReady: PropTypes.bool,
 };
 
 export { Header };

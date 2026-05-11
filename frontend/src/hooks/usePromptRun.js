@@ -16,7 +16,11 @@ import usePromptOutput from "./usePromptOutput";
 // Tracks the latest run nonce per (promptId, statusKey) so stale timeouts
 // from a previous run don't falsely cancel a newer run of the same combo.
 const runNonceMap = new Map();
-const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// Safety-net timeout for the fire-and-forget prompt run flow. Must trail the
+// server-side LLM adapter timeout (default 900s in
+// unstract/sdk1/src/unstract/sdk1/adapters/llm1/static/openai.json) so the UI
+// never gives up before the backend does. 16 minutes leaves a 1-minute buffer.
+const SOCKET_TIMEOUT_MS = 16 * 60 * 1000; // 16 minutes
 
 const usePromptRun = () => {
   const { pushPromptRunApi, freeActiveApi } = usePromptRunQueueStore();

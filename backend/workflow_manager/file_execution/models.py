@@ -4,7 +4,7 @@ from typing import Any
 
 from django.db import models
 from utils.common_utils import CommonUtils
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -15,7 +15,7 @@ HASH_LENGTH = 64
 MIME_TYPE_LENGTH = 128
 
 
-class WorkflowFileExecutionManager(models.Manager):
+class WorkflowFileExecutionManager(BaseModelManager):
     def get_or_create_file_execution(
         self,
         workflow_execution: Any,

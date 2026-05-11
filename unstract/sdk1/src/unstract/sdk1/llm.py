@@ -363,6 +363,96 @@ class LLM:
                 message=error_msg, status_code=status_code, actual_err=e
             ) from e
 
+    @capture_metrics
+    def complete_vision(
+        self,
+        messages: list[dict[str, Any]],
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Chat completion with multimodal (text + image) messages.
+
+        Accepts pre-built messages with image_url content blocks::
+
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "..."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,..."},
+                        },
+                    ],
+                }
+            ]
+
+        LiteLLM auto-translates the OpenAI-style image format for
+        Anthropic, Bedrock, Vertex, and other providers.
+
+        Same error handling, usage tracking, and metrics as complete().
+
+        Args:
+            messages: List of message dicts with multimodal content.
+            **kwargs: Additional arguments passed to litellm.completion().
+
+        Returns:
+            dict with "response" key containing LLMResponseCompat.
+        """
+        try:
+            litellm.drop_params = True
+
+            logger.debug(
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} "
+                f"vision completion API"
+            )
+
+            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
+
+            response: dict[str, object] = litellm.completion(
+                messages=messages,
+                **completion_kwargs,
+            )
+
+            response_text = response["choices"][0]["message"]["content"]
+            finish_reason = response["choices"][0].get("finish_reason")
+
+            self._record_usage(
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "complete_vision",
+            )
+
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
+
+            response_object = LLMResponseCompat(response_text)
+            response_object.raw = response
+            return {"response": response_object}
+
+        except LLMError:
+            raise
+        except SdkError:
+            raise
+        except Exception as e:
+            logger.error(f"[sdk1][LLM] Error during vision completion: {e}")
+
+            status_code = None
+            if hasattr(e, "status_code"):
+                status_code = e.status_code
+            elif hasattr(e, "http_status"):
+                status_code = e.http_status
+
+            error_msg = (
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
+                f"{strip_litellm_prefix(str(e))}"
+            )
+
+            raise LLMError(
+                message=error_msg, status_code=status_code, actual_err=e
+            ) from e
+
     def stream_complete(
         self,
         prompt: str,
