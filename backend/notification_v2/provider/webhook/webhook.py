@@ -17,7 +17,7 @@ class HeaderConstants:
 
 
 class Webhook(NotificationProvider):
-    def send(self):
+    def send(self) -> None:
         """Send the webhook notification."""
         try:
             headers = self.get_headers()
@@ -51,7 +51,7 @@ class Webhook(NotificationProvider):
             raise ValueError("Payload is required.")
         return super().validate()
 
-    def get_headers(self):
+    def get_headers(self) -> dict[str, str]:
         """Get the headers for the notification based on the authorization type and key.
 
         Raises:
@@ -60,7 +60,7 @@ class Webhook(NotificationProvider):
         Returns:
             dict[str, str]: A dictionary containing the headers.
         """
-        headers = {}
+        headers: dict[str, str] = {}
         try:
             authorization_type = AuthorizationType(
                 self.notification.authorization_type.upper()

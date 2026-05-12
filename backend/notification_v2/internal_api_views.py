@@ -350,13 +350,19 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
             status=409,
         )
 
+    # type / timestamp / additional_data stay optional during rollout — older
+    # worker builds that don't forward them still produce a usable row
+    # (renderer falls back to "Type: —" / no Additional Data line).
     payload = {
+        "type": body.get("type", ""),
         "execution_id": body["execution_id"],
         "pipeline_id": body["pipeline_id"],
         "pipeline_name": body["pipeline_name"],
         "status": body["status"],
         "error_message": body.get("error_message"),
         "platform": body["platform"],
+        "timestamp": body.get("timestamp"),
+        "additional_data": body.get("additional_data") or {},
     }
     try:
         buffer_row = enqueue(notification, payload)

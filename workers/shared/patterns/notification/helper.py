@@ -39,19 +39,31 @@ def _enqueue_to_buffer(
     outage-mode backend can't silently turn BATCHED into IMMEDIATE.
     """
     try:
+        # Forward the full per-event shape so the backend renderer can match
+        # IMMEDIATE's KV layout per event (Type / Pipeline Id / Pipeline Name
+        # / Status / Execution Id / Timestamp / Additional Data). Older
+        # backend builds that ignore the extra fields stay unaffected.
+        payload_type = (
+            payload.type.value if hasattr(payload.type, "value") else payload.type
+        )
+        payload_status = (
+            payload.status.value if hasattr(payload.status, "value") else payload.status
+        )
+        payload_timestamp = payload.timestamp.isoformat() if payload.timestamp else None
         api_client._make_request(
             method="POST",
             endpoint=ENQUEUE_BUFFER_ENDPOINT,
             data={
                 "notification_id": notification["id"],
+                "type": payload_type,
                 "execution_id": payload.execution_id,
                 "pipeline_id": payload.pipeline_id,
                 "pipeline_name": payload.pipeline_name,
-                "status": payload.status.value
-                if hasattr(payload.status, "value")
-                else payload.status,
+                "status": payload_status,
                 "error_message": payload.error_message,
                 "platform": notification.get("platform"),
+                "timestamp": payload_timestamp,
+                "additional_data": payload.additional_data or {},
             },
             timeout=10,
         )
