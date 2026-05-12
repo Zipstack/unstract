@@ -167,7 +167,8 @@ def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
     }
     with caplog.at_level(logging.DEBUG, logger="unstract.sdk1.adapters.base1"):
         out = _strip_deprecated_sampling_params(inp)
-    assert out["temperature"] == 0.5  # not stripped (documented limitation)
+    # Documented limitation: not stripped when no field carries the model id.
+    assert out["temperature"] == pytest.approx(0.5)
     assert any(
         "Sampling-param strip skipped" in rec.message for rec in caplog.records
     ), "expected debug breadcrumb when strip is a no-op"
@@ -191,7 +192,7 @@ def test_strip_does_not_log_when_no_sampling_params_present(
 def test_strip_retains_temperature_for_non_deprecated_models() -> None:
     inp = {"model": "claude-3-5-sonnet-20241022", "temperature": 0.5}
     out = _strip_deprecated_sampling_params(inp)
-    assert out["temperature"] == 0.5
+    assert out["temperature"] == pytest.approx(0.5)
 
 
 # ── adapter wiring (regression guard for the Vertex AI gap) ─────────────────
@@ -270,9 +271,9 @@ def test_validate_retains_temperature_for_opus_4_6(
         "azure_ai_foundry": "claude-opus-4-6",
     }[name]
     result = cls.validate({"model": model, "temperature": 0.5, **extra})
-    assert result["temperature"] == 0.5
+    assert result["temperature"] == pytest.approx(0.5)
 
 
 def test_vertex_validate_retains_temperature_for_gemini() -> None:
     result = VertexAILLMParameters.validate(_vertex_metadata("gemini-2.0-flash"))
-    assert result["temperature"] == 0.5
+    assert result["temperature"] == pytest.approx(0.5)
