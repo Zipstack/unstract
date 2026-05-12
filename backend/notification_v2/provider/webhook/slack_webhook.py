@@ -1,60 +1,35 @@
 import logging
+from typing import Any
 
+from notification_v2.clubbed_renderer import render_clubbed_message
+from notification_v2.enums import PlatformType
 from notification_v2.provider.webhook.webhook import Webhook
 
 logger = logging.getLogger(__name__)
 
 
 class SlackWebhook(Webhook):
-    def send(self):
+    def send(self) -> None:
         """Send the Slack webhook notification."""
         formatted_payload = self.format_payload()
         self.payload = formatted_payload
         super().send()
 
-    def get_headers(self):
+    def get_headers(self) -> dict[str, str]:
         """Slack-specific headers."""
         headers = super().get_headers()
         headers["Content-Type"] = "application/json"
         return headers
 
-    def format_payload(self) -> dict:
-        """Format the payload to match Slack's expected structure."""
-        if "text" not in self.payload:
-            # Construct a basic Slack message with 'text' field
-            formatted_payload = {
-                "text": "Notification",
-                "blocks": self.create_blocks_from_payload(),
-            }
-        else:
-            # If 'text' is already present, format accordingly
-            formatted_payload = {
-                "text": self.payload.pop("text"),
-                "blocks": self.create_blocks_from_payload(),
-            }
-        return formatted_payload
+    def format_payload(self) -> dict[str, Any]:
+        """Render the IMMEDIATE event through the canonical envelope.
 
-    def create_blocks_from_payload(self) -> list:
-        """Create Slack blocks from the given payload."""
-        blocks = []
-        # Header
-        blocks.append(
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": "*Unstract Update:*"},
-            }
+        Single shared renderer for IMMEDIATE and BATCHED so receivers see the
+        same Slack body shape regardless of delivery mode. `interval_seconds`
+        is None for IMMEDIATE — `summary.interval_minutes` resolves to null.
+        """
+        return render_clubbed_message(
+            payloads=[self.payload],
+            platform=PlatformType.SLACK.value,
+            interval_seconds=None,
         )
-        # Add a divider for separation
-        blocks.append({"type": "divider"})
-        # Add each key-value pair to the blocks
-        for key, value in self.payload.items():
-            formatted_key = key.replace("_", " ").title()
-            blocks.append(
-                {
-                    "type": "section",
-                    "text": {"type": "mrkdwn", "text": f"*{formatted_key}:* {value}"},
-                }
-            )
-        # Footer
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "*---*"}})
-        return blocks

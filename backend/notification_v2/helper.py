@@ -168,6 +168,14 @@ def enqueue(notification: Notification, payload: dict[str, Any]) -> Notification
     auth_sig = compute_auth_sig(notification)
     platform = notification.platform or PlatformType.API.value
 
+    # Stamp a buffered-at timestamp so renderers can surface it consistently
+    # alongside IMMEDIATE. Worker callers already supply one; backend
+    # dispatchers (PipelineStatusPayload.to_dict) don't, so default here.
+    payload = {
+        **payload,
+        "timestamp": payload.get("timestamp") or timezone.now().isoformat(),
+    }
+
     buffer_row = NotificationBuffer.objects.create(
         notification=notification,
         organization=organization,
