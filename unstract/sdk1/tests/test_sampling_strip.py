@@ -13,7 +13,6 @@ import logging
 from typing import Any
 
 import pytest
-
 from unstract.sdk1.adapters.base1 import (
     _DEPRECATED_SAMPLING_PARAMS,
     AnthropicLLMParameters,
