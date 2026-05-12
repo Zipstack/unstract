@@ -13,8 +13,7 @@ const attachRequestIdInterceptor = (axiosInstance) => {
 
 const getRequestIdFromError = (err) => {
   return (
-    err?.response?.headers?.[REQUEST_ID_HEADER.toLowerCase()] ||
-    err?.response?.headers?.[REQUEST_ID_HEADER] ||
+    err?.response?.headers?.[REQUEST_ID_HEADER.toLowerCase()] ??
     err?.config?.headers?.[REQUEST_ID_HEADER]
   );
 };

@@ -14,7 +14,7 @@ import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import { useSocketLogsStore } from "./store/socket-logs-store.js";
 
-attachRequestIdInterceptor(axios);
+export const globalRequestIdInterceptor = attachRequestIdInterceptor(axios);
 
 let GoogleTagManagerHelper;
 try {
