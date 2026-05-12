@@ -45,14 +45,16 @@
         "title": "Authentication Type",
         "enum": [
           "access_keys",
-          "iam_role"
+          "iam_role",
+          "bearer_token"
         ],
         "enumNames": [
           "Access Keys",
-          "IAM Role / Instance Profile (on-prem AWS only)"
+          "IAM Role / Instance Profile (on-prem AWS only)",
+          "Bedrock API Key (Bearer Token)"
         ],
         "default": "access_keys",
-        "description": "Choose **Access Keys** for any deployment (provide your AWS Access Key ID and Secret). Choose **IAM Role / Instance Profile** only when Unstract is hosted on AWS infrastructure that already has ambient credentials — for example EKS pods with IRSA, ECS tasks with a task role, or EC2 instances with an instance profile. The on-prem option requires no further input; boto3 picks up the host's identity automatically."
+        "description": "Choose **Access Keys** for any deployment (provide your AWS Access Key ID and Secret). Choose **IAM Role / Instance Profile** only when Unstract is hosted on AWS infrastructure that already has ambient credentials — for example EKS pods with IRSA, ECS tasks with a task role, or EC2 instances with an instance profile. Choose **Bedrock API Key (Bearer Token)** to authenticate with an AWS Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). The token is region-scoped — ensure the AWS Region below matches the key's region."
       }
     },
     "dependencies": {
@@ -91,6 +93,25 @@
                 ]
               }
             }
+          },
+          {
+            "properties": {
+              "auth_type": {
+                "enum": [
+                  "bearer_token"
+                ]
+              },
+              "aws_bearer_token": {
+                "type": "string",
+                "title": "Bedrock API Key",
+                "description": "Paste the Bedrock API key (bearer token) issued for your AWS account. See AWS docs on `AWS_BEARER_TOKEN_BEDROCK`.",
+                "format": "password",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "aws_bearer_token"
+            ]
           }
         ]
       }
