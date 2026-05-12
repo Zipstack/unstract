@@ -50,6 +50,21 @@ _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # tracking — when callers route through an AIP, the standard model id often
 # only appears here, not in `model`.
 _MODEL_ID_FIELDS: tuple[str, ...] = ("model", "model_id")
+# Substring of a Bedrock Application Inference Profile ARN; the rest of the
+# ARN is an opaque profile id so the underlying foundation model id is not
+# recoverable from the string. Used only to narrow the debug-breadcrumb path
+# on the strip's no-match branch.
+_OPAQUE_AIP_ARN_MARKER: str = "application-inference-profile"
+
+
+def _looks_like_opaque_aip_arn(value: str | None) -> bool:
+    """Return True when the value looks like a Bedrock AIP ARN.
+
+    Bedrock AIP ARNs do not carry the underlying foundation-model id in the
+    string, so the sampling-strip detector cannot decide whether the call is
+    bound for Claude Opus 4.7.
+    """
+    return bool(value) and _OPAQUE_AIP_ARN_MARKER in value
 
 
 def _has_deprecated_sampling_params(model: str | None) -> bool:
@@ -105,15 +120,18 @@ def _strip_deprecated_sampling_params(validated: dict[str, "Any"]) -> dict[str, 
     if any(_has_deprecated_sampling_params(result.get(f)) for f in _MODEL_ID_FIELDS):
         for param in _DEPRECATED_SAMPLING_PARAMS:
             result.pop(param, None)
-    elif any(p in result for p in _DEPRECATED_SAMPLING_PARAMS):
-        # Sampling params present but no model id field matched a deprecation
-        # pattern. This is the only failure mode for an opaque Bedrock AIP ARN
-        # or an Azure Foundry deployment whose name omits the model id; without
-        # this breadcrumb the strip-skipped state is indistinguishable from
-        # "never attempted" when debugging the resulting 400 from upstream.
+    elif any(_looks_like_opaque_aip_arn(result.get(f)) for f in _MODEL_ID_FIELDS):
+        # An opaque Bedrock AIP ARN reached us with no Anthropic model id in
+        # any field. If the underlying foundation model is Opus 4.7+, the
+        # upstream call will 400 on `temperature is deprecated`; this debug
+        # log makes the strip-skipped state distinguishable from a
+        # never-attempted strip when debugging the resulting 400. The guard
+        # is intentionally narrow — the broader "any sampling param present"
+        # form fires for every routine call because Pydantic's `model_dump`
+        # always re-emits the default `temperature=0.1`.
         logger.debug(
-            "Sampling-param strip skipped; no model id field matched a "
-            "deprecation pattern. Model ids: %s",
+            "Sampling-param strip skipped for opaque Bedrock AIP ARN; no "
+            "model id field matched a deprecation pattern. Model ids: %s",
             {f: result.get(f) for f in _MODEL_ID_FIELDS if result.get(f)},
         )
     return result

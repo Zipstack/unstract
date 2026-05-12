@@ -177,11 +177,32 @@ def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
 def test_strip_does_not_log_when_no_sampling_params_present(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The breadcrumb only fires when sampling params are present.
+    """The breadcrumb stays quiet on the common no-op path.
 
-    The common "no temperature, no match" path stays quiet.
+    No model id field looks opaque, so the strip-skipped state is not worth
+    a debug breadcrumb.
     """
     inp = {"model": "gpt-4o"}
+    with caplog.at_level(logging.DEBUG, logger="unstract.sdk1.adapters.base1"):
+        _strip_deprecated_sampling_params(inp)
+    assert not any(
+        "Sampling-param strip skipped" in rec.message for rec in caplog.records
+    )
+
+
+def test_strip_does_not_log_when_sampling_params_present_but_model_not_opaque(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Non-deprecated models with default `temperature` must not emit noise.
+
+    `BaseChatCompletionParameters` declares `temperature: float | None =
+    Field(default=0.1)`, so every adapter's `validate()` returns a dict that
+    carries `temperature`. If the breadcrumb keyed off "any sampling param
+    present" it would fire for every routine call to `claude-3-5-sonnet`,
+    `claude-opus-4-6`, `gpt-4o`, etc. — pure log noise. The guard must
+    instead key off an opaque-looking model id field.
+    """
+    inp = {"model": "claude-3-5-sonnet-20241022", "temperature": 0.1}
     with caplog.at_level(logging.DEBUG, logger="unstract.sdk1.adapters.base1"):
         _strip_deprecated_sampling_params(inp)
     assert not any(
