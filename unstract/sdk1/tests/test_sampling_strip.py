@@ -13,6 +13,7 @@ import logging
 from typing import Any
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
     _DEPRECATED_SAMPLING_PARAMS,
     AnthropicLLMParameters,
@@ -155,8 +156,10 @@ def test_strip_via_model_field_when_model_id_is_opaque_aip_arn() -> None:
 def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Documented limitation: with no model id in any field, the strip is
-    a no-op and emits a debug breadcrumb so the upstream 400 is traceable.
+    """Documented limitation: opaque-only state must emit a breadcrumb.
+
+    With no model id in any field, the strip is a no-op; the debug log makes
+    the upstream 400 traceable.
     """
     inp = {
         "model": "bedrock/arn:aws:bedrock:us-east-1:0:application-inference-profile/abcd",
@@ -174,8 +177,9 @@ def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
 def test_strip_does_not_log_when_no_sampling_params_present(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """The breadcrumb only fires when sampling params are present, so the
-    common 'no temperature, no match' path stays quiet.
+    """The breadcrumb only fires when sampling params are present.
+
+    The common "no temperature, no match" path stays quiet.
     """
     inp = {"model": "gpt-4o"}
     with caplog.at_level(logging.DEBUG, logger="unstract.sdk1.adapters.base1"):
@@ -231,9 +235,10 @@ ADAPTER_CASES: list[tuple[str, type, dict[str, Any]]] = [
 def test_validate_strips_temperature_for_opus_4_7(
     name: str, cls: type, extra: dict[str, Any]
 ) -> None:
-    """Every adapter that proxies Anthropic must drop temperature on its
-    return path. The Vertex AI gap (commit 5a4ea27f shipped without it,
-    fixed in 7fb66f15) is exactly the regression this locks in.
+    """Every adapter that proxies Anthropic must drop temperature on return.
+
+    The Vertex AI gap (commit 5a4ea27f shipped without it, fixed in 7fb66f15)
+    is exactly the regression this locks in.
     """
     model = {
         "anthropic": "claude-opus-4-7",
