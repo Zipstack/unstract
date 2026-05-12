@@ -1,14 +1,17 @@
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 
+import { getRequestIdFromError } from "../helpers/requestId";
+
 const useExceptionHandler = () => {
   const navigate = useNavigate();
 
-  const buildAlert = (content, title, duration) => ({
+  const buildAlert = (content, title, duration, requestId) => ({
     type: "error",
     content,
     title,
     duration,
+    requestId,
   });
 
   const handleException = (
@@ -18,17 +21,24 @@ const useExceptionHandler = () => {
     title = "Failed",
     duration = 0,
   ) => {
+    const requestId = getRequestIdFromError(err);
     if (!err) {
-      return buildAlert(errMessage, title, duration);
+      return buildAlert(errMessage, title, duration, requestId);
     }
     if (err.code === "ERR_NETWORK" && !navigator.onLine) {
       return buildAlert(
         "Please check your internet connection.",
         title,
         duration,
+        requestId,
       );
     } else if (err.code === "ERR_CANCELED") {
-      return buildAlert("Request has been canceled.", title, duration);
+      return buildAlert(
+        "Request has been canceled.",
+        title,
+        duration,
+        requestId,
+      );
     }
 
     if (err?.response?.data) {
@@ -40,7 +50,7 @@ const useExceptionHandler = () => {
         responseData.error || responseData.detail || responseData.message;
 
       if (commonErrorMessage) {
-        return buildAlert(commonErrorMessage, title, duration);
+        return buildAlert(commonErrorMessage, title, duration, requestId);
       }
 
       // Then handle specific error types
@@ -73,24 +83,25 @@ const useExceptionHandler = () => {
                     .join("\n");
               }
             }
-            return buildAlert(errorMessage, title, duration);
+            return buildAlert(errorMessage, title, duration, requestId);
           }
           break;
         case "subscription_error":
           navigate("/subscription-expired");
-          return buildAlert(errors, title, duration);
+          return buildAlert(errors, title, duration, requestId);
         case "client_error":
         case "server_error":
           return buildAlert(
             errors?.[0]?.detail ? errors[0].detail : errMessage,
             title,
             duration,
+            requestId,
           );
         default:
-          return buildAlert(errMessage, title, duration);
+          return buildAlert(errMessage, title, duration, requestId);
       }
     } else {
-      return buildAlert(errMessage, title, duration);
+      return buildAlert(errMessage, title, duration, requestId);
     }
   };
 

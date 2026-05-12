@@ -1,6 +1,7 @@
 import axios from "axios";
 import { useEffect, useMemo } from "react";
 
+import { attachRequestIdInterceptor } from "../helpers/requestId";
 import useLogout from "./useLogout";
 
 function useAxiosPrivate() {
@@ -8,6 +9,7 @@ function useAxiosPrivate() {
   const axiosPrivate = useMemo(() => axios.create(), []);
 
   useEffect(() => {
+    const requestInterceptor = attachRequestIdInterceptor(axiosPrivate);
     const responseInterceptor = axiosPrivate.interceptors.response.use(
       (response) => {
         return response;
@@ -22,6 +24,7 @@ function useAxiosPrivate() {
     );
 
     return () => {
+      axiosPrivate.interceptors.request.eject(requestInterceptor);
       axiosPrivate.interceptors.response.eject(responseInterceptor);
     };
   }, []);

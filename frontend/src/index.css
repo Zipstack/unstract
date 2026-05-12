@@ -251,3 +251,21 @@ body {
   background-color: #ffffff;
   z-index: 2000;
 }
+
+.notification-request-id {
+  margin-top: 8px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.notification-request-id__label {
+  font-size: 12px;
+}
+
+.notification-request-id__value {
+  font-size: 12px;
+  word-break: break-all;
+}
