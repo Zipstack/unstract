@@ -29,6 +29,14 @@ try {
   // The component will remain null of it is not available
 }
 
+let LookupIndicator;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupIndicator"
+  );
+  LookupIndicator = mod.LookupIndicator;
+} catch {}
+
 let AgenticTableChecklist;
 try {
   const mod = await import(
@@ -279,6 +287,9 @@ function PromptCardItems({
                           </Typography.Link>
                         </Space>
                       </Button>
+                      {LookupIndicator && (
+                        <LookupIndicator promptDetails={promptDetails} />
+                      )}
                     </Space>
                     <Space>
                       {details?.enable_highlight &&

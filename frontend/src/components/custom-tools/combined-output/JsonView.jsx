@@ -2,12 +2,23 @@ import { Tabs } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
 import Prism from "prismjs";
 import PropTypes from "prop-types";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import { JsonViewBody } from "./JsonViewBody";
 
+let EnrichedOutputToggle;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-enriched-toggle/EnrichedOutputToggle"
+  );
+  EnrichedOutputToggle = mod.EnrichedOutputToggle;
+} catch {
+  // The component will remain undefined if it is not available
+}
+
 function JsonView({
   combinedOutput,
+  enrichedOutput,
   handleTabChange,
   adapterData,
   activeKey,
@@ -16,9 +27,24 @@ function JsonView({
   isSinglePass,
   isLoading,
 }) {
+  const [activeView, setActiveView] = useState("Raw");
+
   useEffect(() => {
     Prism.highlightAll();
-  }, [combinedOutput]);
+  }, [combinedOutput, enrichedOutput, activeView]);
+
+  useEffect(() => {
+    if (!enrichedOutput || Object.keys(enrichedOutput).length === 0) {
+      setActiveView("Raw");
+    }
+  }, [enrichedOutput]);
+
+  const displayOutput =
+    activeView === "Enriched" &&
+    enrichedOutput &&
+    Object.keys(enrichedOutput).length > 0
+      ? enrichedOutput
+      : combinedOutput;
 
   return (
     <div className="combined-op-layout">
@@ -34,14 +60,24 @@ function JsonView({
             />
           ))}
         </Tabs>
-        <div className="combined-op-segment"></div>
+        <div className="combined-op-segment">
+          {EnrichedOutputToggle && (
+            <EnrichedOutputToggle
+              activeView={activeView}
+              onChange={setActiveView}
+              hasEnrichedData={
+                !!(enrichedOutput && Object.keys(enrichedOutput).length > 0)
+              }
+            />
+          )}
+        </div>
       </div>
       <div className="combined-op-divider" />
       <JsonViewBody
         activeKey={activeKey}
         selectedProfile={selectedProfile}
         llmProfiles={llmProfiles}
-        combinedOutput={combinedOutput}
+        combinedOutput={displayOutput}
         isLoading={isLoading}
       />
       <div className="gap" />
@@ -51,6 +87,7 @@ function JsonView({
 
 JsonView.propTypes = {
   combinedOutput: PropTypes.object.isRequired,
+  enrichedOutput: PropTypes.object,
   handleTabChange: PropTypes.func,
   adapterData: PropTypes.array,
   selectedProfile: PropTypes.string,

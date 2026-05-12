@@ -1,6 +1,7 @@
 import uuid
 
 from django.db import models
+from django.db.models import Q
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -13,10 +14,21 @@ class UsageType(models.TextChoices):
     EMBEDDING = "embedding", "Embedding Usage"
 
 
-class LLMUsageReason(models.TextChoices):
-    EXTRACTION = "extraction", "Extraction"
-    CHALLENGE = "challenge", "Challenge"
-    SUMMARIZE = "summarize", "Summarize"
+class UsageStatus(models.TextChoices):
+    SUCCESS = "SUCCESS", "Success"
+    ERROR = "ERROR", "Error"
+    SKIPPED = "SKIPPED", "Skipped"
+
+
+# Static union of OSS + cloud values — keeps OSS model state aligned with
+# migration state so ``makemigrations --check`` doesn't drift in CI.
+
+LLM_USAGE_REASON_CHOICES: list[tuple[str, str]] = [
+    ("extraction", "Extraction"),
+    ("challenge", "Challenge"),
+    ("summarize", "Summarize"),
+    ("lookup", "Lookup"),
+]
 
 
 class UsageModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
@@ -52,7 +64,7 @@ class Usage(DefaultOrganizationMixin, BaseModel):
     )
     llm_usage_reason = models.CharField(
         max_length=255,
-        choices=LLMUsageReason.choices,
+        choices=LLM_USAGE_REASON_CHOICES,
         null=True,
         blank=True,
         db_comment="Reason for LLM usage. Empty if usage_type is 'embedding'. ",
@@ -67,6 +79,39 @@ class Usage(DefaultOrganizationMixin, BaseModel):
     )
     total_tokens = models.IntegerField(db_comment="Total number of tokens used")
     cost_in_dollars = models.FloatField(db_comment="Total number of tokens used")
+    project_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Prompt Studio project (tool) the call belongs to (no FK; survives "
+            "tool deletion). NULL for embeddings and historical rows."
+        ),
+    )
+    prompt_id = models.UUIDField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Prompt key UUID that triggered the call (no FK; survives prompt "
+            "deletion). NULL for single-pass / embeddings / historical rows."
+        ),
+    )
+    execution_time_ms = models.IntegerField(
+        null=True,
+        blank=True,
+        db_comment="Wall-clock time for the operation in milliseconds",
+    )
+    status = models.CharField(
+        max_length=16,
+        choices=UsageStatus.choices,
+        null=True,
+        blank=True,
+        db_comment="Operation outcome: SUCCESS, ERROR, or SKIPPED",
+    )
+    error_message = models.TextField(
+        null=True,
+        blank=True,
+        db_comment="Error details when status is ERROR",
+    )
     # Manager
     objects = UsageModelManager()
 
@@ -78,4 +123,17 @@ class Usage(DefaultOrganizationMixin, BaseModel):
         indexes = [
             models.Index(fields=["run_id"]),
             models.Index(fields=["execution_id"]),
+            models.Index(
+                fields=["project_id", "-created_at"],
+                name="idx_usage_project_created",
+            ),
+            models.Index(
+                fields=["prompt_id", "-created_at"],
+                name="idx_usage_prompt_created",
+            ),
+            models.Index(
+                fields=["organization", "-created_at"],
+                name="idx_usage_lookup_recent",
+                condition=Q(llm_usage_reason="lookup"),
+            ),
         ]
