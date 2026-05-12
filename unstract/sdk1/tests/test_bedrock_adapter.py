@@ -251,6 +251,30 @@ def test_llm_bearer_token_strips_surrounding_whitespace() -> None:
     assert out["api_key"] == "bedrock-key-abc"
 
 
+def test_llm_bearer_token_survives_revalidation() -> None:
+    """Bearer-mode kwargs must round-trip through a second validate() call.
+
+    ``LLM.complete()`` re-runs ``validate({**self.kwargs, **kwargs})`` on
+    every call. The second pass has no ``auth_type`` and no
+    ``aws_bearer_token`` (both stripped on the first pass), so the resolver
+    can't re-translate. ``api_key`` must survive Pydantic's
+    ``model_dump()`` on the round-trip — otherwise LiteLLM falls through
+    to SigV4 signing and 401s with "Unable to locate credentials".
+    """
+    first = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "anthropic.claude-3-haiku-20240307-v1:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert first["api_key"] == "bedrock-key-abc"
+
+    second = AWSBedrockLLMParameters.validate({**first, "max_tokens": 100})
+    assert second["api_key"] == "bedrock-key-abc"
+
+
 def test_llm_iam_role_drops_stale_bearer_token() -> None:
     out = AWSBedrockLLMParameters.validate(
         {
@@ -487,6 +511,22 @@ def test_embedding_bearer_token_strips_surrounding_whitespace() -> None:
         }
     )
     assert out["api_key"] == "bedrock-key-abc"
+
+
+def test_embedding_bearer_token_survives_revalidation() -> None:
+    """Defensive parity with the LLM round-trip test."""
+    first = AWSBedrockEmbeddingParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "amazon.titan-embed-text-v2:0",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "bedrock-key-abc",
+        }
+    )
+    assert first["api_key"] == "bedrock-key-abc"
+
+    second = AWSBedrockEmbeddingParameters.validate({**first})
+    assert second["api_key"] == "bedrock-key-abc"
 
 
 def test_embedding_iam_role_drops_stale_bearer_token() -> None:

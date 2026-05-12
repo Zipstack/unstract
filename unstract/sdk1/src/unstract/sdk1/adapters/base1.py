@@ -674,11 +674,13 @@ def _resolve_bedrock_aws_credentials(
     if auth_type == "iam_role":
         _drop_bedrock_access_keys(validated)
         validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+        validated.pop(_BEDROCK_LITELLM_BEARER_KWARG, None)
         return validated
 
     if auth_type == "access_keys":
         _require_bedrock_access_keys(validated)
         validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+        validated.pop(_BEDROCK_LITELLM_BEARER_KWARG, None)
         return validated
 
     if auth_type == "bearer_token":
@@ -689,10 +691,16 @@ def _resolve_bedrock_aws_credentials(
     # No auth_type: strip blank access keys (boto3 chain takes over) and
     # drop any bearer token — bearer auth must be opted into explicitly
     # via auth_type='bearer_token' rather than promoted from this branch.
+    # A non-blank `api_key` is preserved here to support `LLM.complete()`'s
+    # re-validation pass, where bearer-mode kwargs round-trip without their
+    # original `auth_type`. A blank `api_key` (Pydantic's `None` default
+    # for an unset field) is dropped so LiteLLM doesn't see `api_key=None`.
     for key in _BEDROCK_AWS_KEY_FIELDS:
         if not validated.get(key):
             validated.pop(key, None)
     validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+    if not validated.get(_BEDROCK_LITELLM_BEARER_KWARG):
+        validated.pop(_BEDROCK_LITELLM_BEARER_KWARG, None)
     return validated
 
 
@@ -703,6 +711,9 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     aws_secret_access_key: str | None = None
     # AWS_BEARER_TOKEN_BEDROCK; resolver translates to LiteLLM's `api_key`.
     aws_bearer_token: str | None = None
+    # Declared so it survives `LLM.complete()`'s re-validation of self.kwargs;
+    # otherwise Pydantic would drop it as an unknown field.
+    api_key: str | None = None
     aws_region_name: str | None = None
     aws_profile_name: str | None = None  # For AWS SSO authentication
     model_id: str | None = None  # For Application Inference Profile (cost tracking)
@@ -1196,6 +1207,9 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     aws_secret_access_key: str | None = None
     # AWS_BEARER_TOKEN_BEDROCK; resolver translates to LiteLLM's `api_key`.
     aws_bearer_token: str | None = None
+    # Declared so it survives Pydantic re-validation if the kwargs ever round-
+    # trip through validate() (parity with the LLM param class).
+    api_key: str | None = None
     aws_region_name: str | None
 
     @staticmethod
