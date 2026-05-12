@@ -14,11 +14,11 @@ from typing import Any
 
 import pytest
 from unstract.sdk1.adapters.base1 import (
+    _DEPRECATED_SAMPLING_PARAMS,
     AnthropicLLMParameters,
     AWSBedrockLLMParameters,
     AzureAIFoundryLLMParameters,
     VertexAILLMParameters,
-    _DEPRECATED_SAMPLING_PARAMS,
     _has_deprecated_sampling_params,
     _strip_deprecated_sampling_params,
 )
@@ -156,7 +156,8 @@ def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """Documented limitation: with no model id in any field, the strip is
-    a no-op and emits a debug breadcrumb so the upstream 400 is traceable."""
+    a no-op and emits a debug breadcrumb so the upstream 400 is traceable.
+    """
     inp = {
         "model": "bedrock/arn:aws:bedrock:us-east-1:0:application-inference-profile/abcd",
         "model_id": "arn:aws:bedrock:us-east-1:0:application-inference-profile/efgh",
@@ -165,16 +166,17 @@ def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
     with caplog.at_level(logging.DEBUG, logger="unstract.sdk1.adapters.base1"):
         out = _strip_deprecated_sampling_params(inp)
     assert out["temperature"] == 0.5  # not stripped (documented limitation)
-    assert any("Sampling-param strip skipped" in rec.message for rec in caplog.records), (
-        "expected debug breadcrumb when strip is a no-op"
-    )
+    assert any(
+        "Sampling-param strip skipped" in rec.message for rec in caplog.records
+    ), "expected debug breadcrumb when strip is a no-op"
 
 
 def test_strip_does_not_log_when_no_sampling_params_present(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     """The breadcrumb only fires when sampling params are present, so the
-    common 'no temperature, no match' path stays quiet."""
+    common 'no temperature, no match' path stays quiet.
+    """
     inp = {"model": "gpt-4o"}
     with caplog.at_level(logging.DEBUG, logger="unstract.sdk1.adapters.base1"):
         _strip_deprecated_sampling_params(inp)
@@ -231,7 +233,8 @@ def test_validate_strips_temperature_for_opus_4_7(
 ) -> None:
     """Every adapter that proxies Anthropic must drop temperature on its
     return path. The Vertex AI gap (commit 5a4ea27f shipped without it,
-    fixed in 7fb66f15) is exactly the regression this locks in."""
+    fixed in 7fb66f15) is exactly the regression this locks in.
+    """
     model = {
         "anthropic": "claude-opus-4-7",
         "bedrock": "anthropic.claude-opus-4-7-20260101-v1:0",
