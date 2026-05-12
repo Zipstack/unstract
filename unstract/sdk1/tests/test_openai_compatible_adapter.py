@@ -1,7 +1,6 @@
 import json
 from functools import lru_cache
 from importlib import import_module
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
@@ -77,12 +76,6 @@ def test_openai_compatible_validate_normalizes_blank_api_key_to_none() -> None:
 
 
 def test_openai_compatible_schema_is_loadable() -> None:
-    schema_path = Path(OpenAICompatibleLLMAdapter.SCHEMA_PATH)
-
-    assert schema_path.name == "openai_compatible.json"
-    assert schema_path.exists()
-    assert not schema_path.with_name("custom_openai.json").exists()
-
     schema = json.loads(OpenAICompatibleLLMAdapter.get_json_schema())
 
     assert schema["title"] == "OpenAI Compatible"

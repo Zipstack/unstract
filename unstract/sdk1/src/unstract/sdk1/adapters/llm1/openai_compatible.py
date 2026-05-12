@@ -1,5 +1,4 @@
-import os
-from typing import Any, ClassVar
+from typing import Any
 
 from unstract.sdk1.adapters.base1 import BaseAdapter, OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.enums import AdapterTypes
@@ -12,10 +11,6 @@ DESCRIPTION = (
 
 
 class OpenAICompatibleLLMAdapter(OpenAICompatibleLLMParameters, BaseAdapter):
-    SCHEMA_PATH: ClassVar[str] = os.path.join(
-        os.path.dirname(__file__), "static", "openai_compatible.json"
-    )
-
     @staticmethod
     def get_id() -> str:
         return "openaicompatible|b6d10f33-2c41-49fc-a8c2-58d2b247fc09"
