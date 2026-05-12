@@ -62,6 +62,7 @@ class UserSessionInfo:
     role: str
     provider: str
     is_staff: bool = False
+    disable_sso_idp_authorization: bool = False
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "UserSessionInfo":
@@ -73,6 +74,9 @@ class UserSessionInfo:
             role=data["role"],
             provider=data["provider"],
             is_staff=data.get("is_staff", False),
+            disable_sso_idp_authorization=data.get(
+                "disable_sso_idp_authorization", False
+            ),
         )
 
     def to_dict(self) -> Any:
@@ -83,6 +87,7 @@ class UserSessionInfo:
             "organization_id": self.organization_id,
             "role": self.role,
             "is_staff": self.is_staff,
+            "disable_sso_idp_authorization": self.disable_sso_idp_authorization,
         }
 
 

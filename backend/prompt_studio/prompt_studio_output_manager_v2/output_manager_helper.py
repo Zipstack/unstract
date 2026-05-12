@@ -2,8 +2,15 @@ import json
 import logging
 from typing import Any
 
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 
+from prompt_studio.lookup_utils import (
+    attach_combined_output_enrichment,
+    extract_prompt_output_enrichment,
+    get_original_value_if_enriched,
+    persist_lookup_output,
+)
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.exceptions import (
     AnswerFetchError,
@@ -170,6 +177,15 @@ class OutputManagerHelper:
 
             # TODO: use enums here
             output = outputs.get(prompt.prompt_key)
+
+            # On enrichment, store the raw LLM output here; the enriched
+            # value is persisted separately via persist_lookup_output.
+            enrichment = get_original_value_if_enriched(metadata, prompt.prompt_key)
+            if enrichment is not None:
+                output, prompt_lookup = enrichment
+            else:
+                prompt_lookup = None
+
             if prompt.enforce_type in {
                 "json",
                 "table",
@@ -194,6 +210,18 @@ class OutputManagerHelper:
                 confidence_data=prompt_confidence_data,
                 word_confidence_data=prompt_word_confidence_data,
             )
+
+            # Narrow except so plugin contract drift surfaces as a real
+            # error instead of being masked as a successful save.
+            if prompt_lookup:
+                try:
+                    persist_lookup_output(prompt_output, prompt_lookup)
+                except (IntegrityError, ValidationError):
+                    logger.error(
+                        "Failed to persist lookup output for prompt %s",
+                        prompt.prompt_key,
+                        exc_info=True,
+                    )
 
             # Serialize the instance
             serializer = PromptStudioOutputSerializer(prompt_output)
@@ -242,41 +270,76 @@ class OutputManagerHelper:
 
         Returns:
             dict[str, Any]: Formatted JSON response for combined output.
+                Cloud plugins may attach an opaque enrichment payload.
         """
-        # Initialize the result dictionary
+        from prompt_studio.lookup_utils import enrich_prompt_output
+
+        # Memoise default-profile resolution per tool to avoid N+1 on this
+        # hot path (panel-switch latency).
+        default_profile_cache: dict[str, str | None] = {}
+
+        def _resolve(tool_prompt: ToolStudioPrompt) -> str | None:
+            profile_manager_id = tool_prompt.profile_manager_id
+            if profile_manager_id:
+                return profile_manager_id
+            if not use_default_profile:
+                return None
+            tool_id = tool_prompt.tool_id_id
+            if tool_id not in default_profile_cache:
+                try:
+                    default_profile_cache[tool_id] = (
+                        ProfileManager.get_default_llm_profile(
+                            tool_prompt.tool_id
+                        ).profile_id
+                    )
+                except DefaultProfileError:
+                    default_profile_cache[tool_id] = None
+            return default_profile_cache[tool_id]
+
+        prompts_to_query: list[tuple[ToolStudioPrompt, str]] = []
         result: dict[str, Any] = {}
-        # Iterate over ToolStudioPrompt records
         for tool_prompt in tool_studio_prompts:
             if tool_prompt.prompt_type == PSOMKeys.NOTES:
                 continue
-            prompt_id = str(tool_prompt.prompt_id)
-            profile_manager_id = tool_prompt.profile_manager_id
-
-            # If profile_manager is not set, skip this record
-            if not profile_manager_id and not use_default_profile:
+            profile_manager_id = _resolve(tool_prompt)
+            if profile_manager_id is None:
                 result[tool_prompt.prompt_key] = ""
                 continue
+            prompts_to_query.append((tool_prompt, profile_manager_id))
 
-            if not profile_manager_id:
-                default_profile = ProfileManager.get_default_llm_profile(
-                    tool_prompt.tool_id
-                )
-                profile_manager_id = default_profile.profile_id
-
-            try:
-                queryset = PromptStudioOutputManager.objects.filter(
-                    prompt_id=prompt_id,
-                    profile_manager=profile_manager_id,
+        # ``DISTINCT ON`` (Postgres) yields the latest row per
+        # (prompt_id, profile_manager_id) at the SQL layer.
+        outputs_index: dict[tuple[str, str], PromptStudioOutputManager] = {}
+        if prompts_to_query:
+            prompt_ids = [str(p.prompt_id) for p, _ in prompts_to_query]
+            profile_ids = list({pmid for _, pmid in prompts_to_query})
+            outputs = (
+                PromptStudioOutputManager.objects.filter(
+                    prompt_id__in=prompt_ids,
+                    profile_manager_id__in=profile_ids,
                     is_single_pass_extract=False,
                     document_manager_id=document_manager_id,
                 )
+                .order_by("prompt_id", "profile_manager_id", "-modified_at")
+                .distinct("prompt_id", "profile_manager_id")
+            )
+            outputs_index = {
+                (str(o.prompt_id), str(o.profile_manager_id)): o for o in outputs
+            }
 
-                if not queryset.exists():
-                    result[tool_prompt.prompt_key] = ""
-                    continue
-
-                for output in queryset:
-                    result[tool_prompt.prompt_key] = output.output
-            except ObjectDoesNotExist:
+        enrichment_by_key: dict[str, Any] = {}
+        for tool_prompt, profile_manager_id in prompts_to_query:
+            output = outputs_index.get(
+                (str(tool_prompt.prompt_id), str(profile_manager_id))
+            )
+            if output is None:
                 result[tool_prompt.prompt_key] = ""
+                continue
+            result[tool_prompt.prompt_key] = output.output
+            enriched = enrich_prompt_output(output, {})
+            bundle = extract_prompt_output_enrichment(enriched)
+            if bundle is not None:
+                enrichment_by_key[tool_prompt.prompt_key] = bundle
+
+        attach_combined_output_enrichment(result, enrichment_by_key)
         return result
