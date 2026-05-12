@@ -125,7 +125,7 @@ class CustomAuthMiddleware:
             return JsonResponse(
                 {
                     "message": (
-                        f"API key permission '{permission.label}' "
+                        f"API key with permission '{permission.value}' "
                         f"does not allow {request.method}"
                     )
                 },
