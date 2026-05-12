@@ -55,7 +55,7 @@ def _format_file_count(event: dict[str, Any]) -> str:
 
 def _format_event_line(event: dict[str, Any]) -> str:
     parts = [
-        _humanize_timestamp(event.get("timestamp")),
+        event.get("timestamp") or _MISSING,
         f"*{event.get('execution_id') or _MISSING}*",
         event.get("type") or _MISSING,
         event.get("pipeline_name") or _MISSING,
@@ -71,14 +71,15 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Project a flat per-event payload into the canonical shape.
 
     Drops `pipeline_id` and `_source` — neither appears in receiver-visible
-    output. Mirrors the backend projection so renderer input is identical.
+    output. Mirrors the backend projection (including the humanized timestamp)
+    so renderer input is identical.
     """
     event: dict[str, Any] = {
         "type": payload.get("type") or "",
         "pipeline_name": payload.get("pipeline_name") or "",
         "status": payload.get("status") or "",
         "execution_id": payload.get("execution_id") or "",
-        "timestamp": payload.get("timestamp") or "",
+        "timestamp": _humanize_timestamp(payload.get("timestamp")),
         "additional_data": payload.get("additional_data") or {},
     }
     error_message = payload.get("error_message")
@@ -87,28 +88,20 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return event
 
 
-def build_envelope(
-    payloads: list[dict[str, Any]],
-    interval_seconds: int | None,
-) -> dict[str, Any]:
+def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the canonical `{summary, events}` envelope.
 
-    `interval_seconds=None` for IMMEDIATE -> `summary.interval_minutes` null.
+    Summary carries only `{total, succeeded, failed}` — identical shape for
+    IMMEDIATE and BATCHED.
     """
     capped = payloads[:MAX_BATCH_SIZE]
     succeeded = sum(1 for p in capped if _is_success(p.get("status")))
     failed = len(capped) - succeeded
-    interval_minutes: int | None
-    if interval_seconds is None:
-        interval_minutes = None
-    else:
-        interval_minutes = max(1, interval_seconds // 60)
     return {
         "summary": {
             "total": len(capped),
             "succeeded": succeeded,
             "failed": failed,
-            "interval_minutes": interval_minutes,
         },
         "events": [_event_from_payload(p) for p in capped],
     }

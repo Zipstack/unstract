@@ -4,17 +4,14 @@ The same envelope shape feeds every channel × mode cell so receivers never
 need to branch on "is this batched?":
 
     {
-        "summary": {
-            "total": N, "succeeded": S, "failed": F,
-            "interval_minutes": int | None,   # None for IMMEDIATE
-        },
+        "summary": {"total": N, "succeeded": S, "failed": F},
         "events": [
             {
                 "type": "ETL" | "TASK" | "API",
                 "pipeline_name": "...",
                 "status": "ERROR" | "SUCCESS" | ...,
                 "execution_id": "...",
-                "timestamp": "2026-05-05T17:03:34+00:00",
+                "timestamp": "2026 May 5 5:03:34 PM",
                 "additional_data": {
                     "total_files": int,
                     "successful_files": int,
@@ -102,7 +99,7 @@ def _format_event_line(event: dict[str, Any]) -> str:
     `additional_data` is empty so the line collapses to 5 fields, not 6.
     """
     parts = [
-        _humanize_timestamp(event.get("timestamp")),
+        event.get("timestamp") or _MISSING,
         f"*{event.get('execution_id') or _MISSING}*",
         event.get("type") or _MISSING,
         event.get("pipeline_name") or _MISSING,
@@ -118,16 +115,16 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Project a buffered payload into the canonical per-event dict.
 
     Unified shape across Slack/API and IMMEDIATE/BATCHED. `pipeline_id` is
-    intentionally dropped here — neither channel surfaces it. Missing keys
-    fall back to empty values so partial rows from older enqueue builds
-    still render.
+    intentionally dropped here — neither channel surfaces it. Timestamps are
+    humanized once at projection so Slack and API consumers see the same
+    string (implicit UTC, no timezone suffix).
     """
     event: dict[str, Any] = {
         "type": payload.get("type") or "",
         "pipeline_name": payload.get("pipeline_name") or "",
         "status": payload.get("status") or "",
         "execution_id": payload.get("execution_id") or "",
-        "timestamp": payload.get("timestamp") or "",
+        "timestamp": _humanize_timestamp(payload.get("timestamp")),
         "additional_data": payload.get("additional_data") or {},
     }
     error_message = payload.get("error_message")
@@ -136,30 +133,20 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return event
 
 
-def build_envelope(
-    payloads: list[dict[str, Any]],
-    interval_seconds: int | None,
-) -> dict[str, Any]:
+def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the canonical envelope used by every dispatch path.
 
-    `interval_seconds=None` signals IMMEDIATE — `summary.interval_minutes`
-    becomes null so consumers can distinguish modes if they need to. For
-    BATCHED, pass the per-org cadence in seconds (rendered as minutes).
+    Summary carries only `{total, succeeded, failed}` — same shape for
+    IMMEDIATE and BATCHED so receivers parse one envelope, not two.
     """
     capped = payloads[:MAX_BATCH_SIZE]
     succeeded = sum(1 for p in capped if _is_success(p.get("status")))
     failed = len(capped) - succeeded
-    interval_minutes: int | None
-    if interval_seconds is None:
-        interval_minutes = None
-    else:
-        interval_minutes = max(1, interval_seconds // 60)
     return {
         "summary": {
             "total": len(capped),
             "succeeded": succeeded,
             "failed": failed,
-            "interval_minutes": interval_minutes,
         },
         "events": [_event_from_payload(p) for p in capped],
     }
@@ -194,14 +181,13 @@ def render_for_slack(envelope: dict[str, Any]) -> dict[str, Any]:
 def render_clubbed_message(
     payloads: list[dict[str, Any]],
     platform: str,
-    interval_seconds: int | None,
 ) -> dict[str, Any]:
     """Top-level entry — returns the dispatch body for `platform`.
 
     Used by every dispatch site (BATCHED flush, IMMEDIATE backend providers)
     so the receiver-visible payload is identical regardless of mode.
     """
-    envelope = build_envelope(payloads, interval_seconds)
+    envelope = build_envelope(payloads)
     if platform == PlatformType.SLACK.value:
         return render_for_slack(envelope)
     if platform == PlatformType.API.value:

@@ -39,9 +39,7 @@ class APIWebhook(WebhookProvider):
         if "payload" in prepared_data:
             payload = prepared_data["payload"]
             if isinstance(payload, dict) and "events" not in payload:
-                prepared_data["payload"] = build_envelope(
-                    payloads=[payload], interval_seconds=None
-                )
+                prepared_data["payload"] = build_envelope(payloads=[payload])
 
         logger.debug(f"Prepared API webhook data for {notification_data.get('url')}")
         return prepared_data

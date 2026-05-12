@@ -25,11 +25,9 @@ class SlackWebhook(Webhook):
         """Render the IMMEDIATE event through the canonical envelope.
 
         Single shared renderer for IMMEDIATE and BATCHED so receivers see the
-        same Slack body shape regardless of delivery mode. `interval_seconds`
-        is None for IMMEDIATE — `summary.interval_minutes` resolves to null.
+        same Slack body shape regardless of delivery mode.
         """
         return render_clubbed_message(
             payloads=[self.payload],
             platform=PlatformType.SLACK.value,
-            interval_seconds=None,
         )

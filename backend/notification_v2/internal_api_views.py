@@ -34,7 +34,6 @@ from notification_v2.enums import BufferStatus, DeliveryMode
 from notification_v2.helper import (
     build_webhook_headers,
     enqueue,
-    get_org_club_interval_seconds,
     webhook_url_hash,
 )
 from notification_v2.models import Notification, NotificationBuffer
@@ -423,12 +422,7 @@ def _dispatch_group(
         first_notification = rows[0].notification
         platform = rows[0].platform
         payloads = [r.payload for r in rows]
-        # Per-org interval read here is cosmetic — used only for the
-        # `interval_minutes` field in the rendered message body. The
-        # cadence-controlling read happened at enqueue time and is
-        # already baked into each row's flush_after (mfbt §EC-2).
-        interval_seconds = get_org_club_interval_seconds(rows[0].organization)
-        body = render_clubbed_message(payloads, platform, interval_seconds)
+        body = render_clubbed_message(payloads, platform)
         headers = build_webhook_headers(first_notification)
 
         buffer_ids = [str(r.id) for r in rows]

@@ -59,7 +59,7 @@ class SlackWebhook(WebhookProvider):
         if "text" in payload and len(payload) == 1:
             return {"text": payload["text"]}
 
-        envelope = build_envelope(payloads=[payload], interval_seconds=None)
+        envelope = build_envelope(payloads=[payload])
         return {"text": render_slack_text(envelope)}
 
     def get_destination(self, notification_data: dict[str, Any]) -> str:

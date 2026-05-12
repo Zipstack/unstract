@@ -24,7 +24,7 @@ class APIWebhook(Webhook):
     def format_payload(self) -> dict[str, Any]:
         """Wrap a single IMMEDIATE event in the canonical envelope.
 
-        `interval_seconds=None` -> `summary.interval_minutes` is null;
-        receivers can use that to distinguish IMMEDIATE from BATCHED.
+        Receivers parse the same `{summary, events}` shape regardless of
+        whether the dispatch was IMMEDIATE or BATCHED.
         """
-        return build_envelope(payloads=[self.payload], interval_seconds=None)
+        return build_envelope(payloads=[self.payload])
