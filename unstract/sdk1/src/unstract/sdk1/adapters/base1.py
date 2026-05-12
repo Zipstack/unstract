@@ -17,11 +17,13 @@ from unstract.sdk1.adapters.enums import AdapterTypes
 logger = logging.getLogger(__name__)
 
 # Anthropic models that have deprecated sampling parameters (`temperature`,
-# `top_p`, `top_k`). The patterns are substring-matched against the model id
-# after lowercasing and normalizing `.` / `_` to `-`, so a single entry covers:
+# `top_p`, `top_k`). The patterns are regex-searched against the model id
+# after lowercasing and normalizing `.` / `_` to `-`. The match is anchored at
+# the trailing edge so that unrelated future ids (`claude-opus-4-70`,
+# `claude-opus-4-75`, `claude-opus-4-7verbose`) do not match. A single entry
+# covers every encoding of the id we have observed:
 #   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
 #   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
-#   - Bedrock route prefixes        `converse/...`, `invoke/...`
 #   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
 #                                   `eu.`, `apac.`, `global.` variants
 #   - Bedrock foundation-model ARN  `arn:aws:bedrock:<region>::foundation-model/
@@ -30,15 +32,17 @@ logger = logging.getLogger(__name__)
 #                                    inference-profile/us.anthropic.claude-opus-4-7-...`
 #   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
 #   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
+# Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
+# through because the regex is anchored only at the trailing edge.
 # Add new entries here when Anthropic deprecates sampling on more models.
-# Patterns are anchored at the trailing edge: the version digit must be
-# followed by end-of-string or one of `-:@/v`, so unrelated future ids like
-# `claude-opus-4-70`, `claude-opus-4-75` do not match. The allowed delimiters
-# cover the date suffix (`-20260101-v1:0`), Vertex `@<date>`, ARN paths, and
-# the `v1:0` version tag.
-# See https://platform.claude.com/docs/en/about-claude/models/whats-new-claude-4-7
+# Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
+# delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
+# `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
+# `v` is intentionally rejected so alpha continuations like `4-7verbose` do
+# not silently match.
+# See https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
 _SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
-    re.compile(r"claude-opus-4-7(?=$|[-:@/v])"),
+    re.compile(r"claude-opus-4-7(?=$|[-:@/]|v\d)"),
 )
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
@@ -55,10 +59,12 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
     Claude Opus 4.7; sending any of them yields a 400 from Anthropic and from
     the providers that proxy it (Bedrock, Azure AI Foundry, Vertex AI).
 
-    The check normalizes case and `.`/`_` separators to `-`, then substring-
-    matches against the patterns. This catches every format that embeds the
-    model id (foundation model ids, cross-region profiles, foundation-model
-    ARNs, inference-profile ARNs, Vertex `@`-suffixed ids).
+    The check normalizes case and `.`/`_` separators to `-`, then regex-
+    searches against the patterns with a trailing-edge boundary, so
+    `claude-opus-4-70` and `claude-opus-4-7verbose` do not match. This
+    catches every format that embeds the model id (foundation model ids,
+    cross-region profiles, foundation-model ARNs, inference-profile ARNs,
+    Vertex `@`-suffixed ids).
 
     It does NOT catch:
     - Bedrock Application Inference Profile ARNs (e.g.
@@ -76,18 +82,41 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
 
 
 def _strip_deprecated_sampling_params(validated: dict[str, "Any"]) -> dict[str, "Any"]:
-    """Drop sampling params for models that reject them (e.g. Claude Opus 4.7).
+    """Return a copy of `validated` with deprecated sampling params removed.
 
-    Pydantic's `model_dump()` re-emits the default `temperature=0.1` even when
-    the caller never set one, so the field must be popped after validation to
-    keep it off the wire. Checks both `model` and `model_id` so Bedrock callers
-    routing through an Application Inference Profile are covered when the
-    standard model id only appears in `model_id`.
+    The input dict is not mutated. Returns a shallow copy so callers can rely
+    on `before is not after` and follow the file's copy-then-mutate style.
+
+    `temperature` is the load-bearing case: `BaseChatCompletionParameters`
+    declares `temperature: float | None = Field(default=0.1)`, so Pydantic's
+    `model_dump()` re-emits the default even when the caller never set one.
+    `top_p` and `top_k` are not declared fields and are normally dropped by
+    Pydantic, but the strip defends against caller-supplied values flowing
+    through `**adapter_metadata`.
+
+    Checks both `model` and `model_id` so Bedrock callers routing through an
+    Application Inference Profile are covered when the standard model id only
+    appears in `model_id`.
+
+    Contract change: the returned dict may not contain a `temperature` key.
+    Consumers must read via `.get("temperature")`, not `dict["temperature"]`.
     """
-    if any(_has_deprecated_sampling_params(validated.get(f)) for f in _MODEL_ID_FIELDS):
+    result = dict(validated)
+    if any(_has_deprecated_sampling_params(result.get(f)) for f in _MODEL_ID_FIELDS):
         for param in _DEPRECATED_SAMPLING_PARAMS:
-            validated.pop(param, None)
-    return validated
+            result.pop(param, None)
+    elif any(p in result for p in _DEPRECATED_SAMPLING_PARAMS):
+        # Sampling params present but no model id field matched a deprecation
+        # pattern. This is the only failure mode for an opaque Bedrock AIP ARN
+        # or an Azure Foundry deployment whose name omits the model id; without
+        # this breadcrumb the strip-skipped state is indistinguishable from
+        # "never attempted" when debugging the resulting 400 from upstream.
+        logger.debug(
+            "Sampling-param strip skipped; no model id field matched a "
+            "deprecation pattern. Model ids: %s",
+            {f: result.get(f) for f in _MODEL_ID_FIELDS if result.get(f)},
+        )
+    return result
 
 
 def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) -> None:
@@ -1021,9 +1050,6 @@ class AzureAIFoundryLLMParameters(BaseChatCompletionParameters):
         )
 
         validated = AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
-        # Azure AI Foundry proxies Anthropic models that reject sampling params
-        # (e.g. Claude Opus 4.7); detection relies on the deployment name
-        # embedding the model id.
         return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
