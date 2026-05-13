@@ -61,6 +61,22 @@ def _is_success(status: str | None) -> bool:
     return status.upper() in _SUCCESS_STATUSES
 
 
+def _has_failed_files(counts: dict[str, Any]) -> bool:
+    """True when file-level aggregates show at least one failure."""
+    failed = counts.get("failed_files")
+    return isinstance(failed, int) and failed > 0
+
+
+def _is_effective_success(status: str | None, counts: dict[str, Any]) -> bool:
+    """Treat a COMPLETED run with any file failures as a partial failure.
+
+    Mirrors the failure-filter contract at dispatch time so renderer summary
+    counts and the per-event file-count emoji match the reason the alert
+    fired.
+    """
+    return _is_success(status) and not _has_failed_files(counts)
+
+
 def _humanize_timestamp(iso: str | None) -> str:
     """Render an ISO timestamp as `2026 May 11 11:38:31 AM` (POSIX `%-d`).
 
@@ -77,11 +93,18 @@ def _humanize_timestamp(iso: str | None) -> str:
 
 
 def _format_file_count(event: dict[str, Any]) -> str:
-    """Render the file-count summary; empty string when no totals available."""
+    """Render the file-count summary; empty string when no totals available.
+
+    A COMPLETED run with file failures short-circuits to the failure shape so
+    the rendered line matches why a failures-only notification fired.
+    """
     counts = event.get("additional_data") or {}
     total = counts.get("total_files")
     if total is None:
         return ""
+    if _has_failed_files(counts):
+        failed = counts.get("failed_files", 0)
+        return f"{_EMOJI_FAILURE} {failed}/{total} files"
     if _is_success(event.get("status")):
         successful = counts.get("successful_files", 0)
         return f"{_EMOJI_SUCCESS} {successful}/{total} files"
@@ -137,7 +160,11 @@ def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     IMMEDIATE and BATCHED so receivers parse one envelope, not two.
     """
     capped = payloads[:MAX_BATCH_SIZE]
-    succeeded = sum(1 for p in capped if _is_success(p.get("status")))
+    succeeded = sum(
+        1
+        for p in capped
+        if _is_effective_success(p.get("status"), p.get("additional_data") or {})
+    )
     failed = len(capped) - succeeded
     return {
         "summary": {
