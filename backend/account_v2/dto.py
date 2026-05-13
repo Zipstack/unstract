@@ -124,10 +124,12 @@ class MemberInvitation:
     Attributes:
         id (str): The unique identifier for the invitation.
         email (str): The user email.
-        roles (List[str]): The roles assigned to the invitee.
+        roles (List[str]): Human-readable role names assigned to the invitee.
         created_at (Optional[str]): The timestamp when the invitation
             was created.
         expires_at (Optional[str]): The timestamp when the invitation expires.
+        inviter_name (Optional[str]): Display name of the user who sent the
+            invitation, when available from the auth provider.
     """
 
     id: str
@@ -135,6 +137,7 @@ class MemberInvitation:
     roles: list[str]
     created_at: str | None = None
     expires_at: str | None = None
+    inviter_name: str | None = None
 
 
 @dataclass

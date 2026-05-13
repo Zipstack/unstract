@@ -8,6 +8,14 @@
   overflow-y: auto;
 }
 
+.user-tabs {
+  padding: 0 15px;
+}
+
+.user-tabs .ant-tabs-nav {
+  margin-bottom: 0;
+}
+
 .user-reload-button {
   font-size: 16px;
 }

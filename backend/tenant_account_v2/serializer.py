@@ -135,8 +135,10 @@ class GetRolesResponseSerializer(serializers.Serializer):
 class ListInvitationsResponseSerializer(serializers.Serializer):
     id = serializers.CharField()
     email = serializers.CharField()
+    roles = serializers.ListField(child=serializers.CharField(), default=list)
     created_at = serializers.CharField()
     expires_at = serializers.CharField()
+    inviter_name = serializers.CharField(allow_null=True, required=False)
 
     def to_representation(self, instance: Any) -> OrderedDict[str, Any]:
         data: OrderedDict[str, Any] = super().to_representation(instance)
