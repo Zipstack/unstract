@@ -14,8 +14,15 @@ function useAxiosPrivate() {
       },
       async (error) => {
         if (error?.response?.status === 401) {
-          // TODO: Implement Session Expired Modal
-          logout();
+          // Anonymous share viewer has no session to log out of; a 401
+          // here is a misrouted authenticated probe, not an expired session.
+          const onPublicShare =
+            typeof window !== "undefined" &&
+            window.location.pathname.startsWith("/promptStudio/share");
+          if (!onPublicShare) {
+            // TODO: Implement Session Expired Modal
+            logout();
+          }
         }
         return Promise.reject(error);
       },

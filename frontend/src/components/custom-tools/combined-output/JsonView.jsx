@@ -4,6 +4,7 @@ import Prism from "prismjs";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { JsonViewBody } from "./JsonViewBody";
 
 let EnrichedOutputToggle;
@@ -27,7 +28,12 @@ function JsonView({
   isSinglePass,
   isLoading,
 }) {
-  const [activeView, setActiveView] = useState("Raw");
+  // Anonymous share viewers care about the enriched (post-lookup) value;
+  // the existing useEffect below falls back to "Raw" when no enriched data exists.
+  const isPublicSource = useCustomToolStore((s) => s.isPublicSource);
+  const [activeView, setActiveView] = useState(
+    isPublicSource ? "Enriched" : "Raw",
+  );
 
   useEffect(() => {
     Prism.highlightAll();
