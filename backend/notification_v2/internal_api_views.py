@@ -467,12 +467,14 @@ def _dispatch_group(
     with transaction.atomic():
         rows = list(
             NotificationBuffer.objects.select_for_update(skip_locked=True)
+            .select_related("notification")
             .filter(
                 status=BufferStatus.PENDING.value,
                 organization_id=org_id,
                 webhook_url=webhook_url,
                 auth_sig=auth_sig,
                 platform=platform,
+                notification__is_active=True,
             )
             .order_by("created_at")[:_PROCESS_BUFFER_CAP]
         )
