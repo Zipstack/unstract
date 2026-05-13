@@ -39,10 +39,14 @@ function JsonView({
   }, [combinedOutput, enrichedOutput, activeView]);
 
   useEffect(() => {
-    if (!enrichedOutput || Object.keys(enrichedOutput).length === 0) {
+    const hasEnriched =
+      enrichedOutput && Object.keys(enrichedOutput).length > 0;
+    if (!hasEnriched) {
       setActiveView("Raw");
+    } else if (isPublicSource) {
+      setActiveView("Enriched");
     }
-  }, [enrichedOutput]);
+  }, [enrichedOutput, isPublicSource]);
 
   const displayOutput =
     activeView === "Enriched" &&
