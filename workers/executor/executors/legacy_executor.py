@@ -1202,7 +1202,10 @@ class LegacyExecutor(BaseExecutor):
                 try:
                     partial = list(embedding.flush_pending_usage())
                 except Exception:
-                    logger.debug("flush_pending_usage failed during error path")
+                    logger.warning(
+                        "Failed to flush embedding usage during indexing error path",
+                        exc_info=True,
+                    )
             raise LegacyExecutorError(
                 message=f"Error while indexing: {e}",
                 code=status_code,
