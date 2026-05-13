@@ -7,8 +7,6 @@ No Django dependencies, works in pure worker environment.
 import logging
 from typing import Any
 
-from celery import current_app
-
 # Import shared data models from @unstract/core
 from unstract.core.data_models import (
     ExecutionStatus,
@@ -19,9 +17,6 @@ from unstract.core.data_models import (
 
 logger = logging.getLogger(__name__)
 
-# Mirrors notification_v2.enums.DeliveryMode.BATCHED. Worker stays string-only
-# so it does not import Django enums.
-DELIVERY_MODE_BATCHED = "BATCHED"
 ENQUEUE_BUFFER_ENDPOINT = "v1/webhook/buffer/enqueue/"
 
 
@@ -37,7 +32,7 @@ def _enqueue_to_buffer(
     logs the drop instead of silently treating BATCHED delivery as successful.
     """
     # Forward the full per-event shape so the backend renderer can match
-    # IMMEDIATE's KV layout per event (Type / Pipeline Id / Pipeline Name /
+    # the canonical KV layout per event (Type / Pipeline Id / Pipeline Name /
     # Status / Execution Id / Timestamp / Additional Data). Older backend
     # builds that ignore the extra fields stay unaffected.
     payload_type = payload.type.value if hasattr(payload.type, "value") else payload.type
@@ -83,10 +78,13 @@ def _route_notification(
     notification: dict[str, Any],
     payload: NotificationPayload,
 ) -> None:
-    """IMMEDIATE -> existing worker queue; BATCHED -> backend enqueue endpoint.
+    """Forward webhook notifications to the backend buffer-enqueue endpoint.
 
-    Defaults to IMMEDIATE when delivery_mode is missing so older backend
-    builds (pre-UNS-611) keep working unchanged.
+    Single dispatch path: the backend owns the buffer and the periodic
+    flush ships clubbed messages. Non-webhook notification types are
+    skipped at this layer. An enqueue failure is logged but doesn't abort
+    the outer trigger_* loop so sibling notifications still get their
+    chance.
     """
     if notification.get("notification_type") != "WEBHOOK":
         logger.debug(
@@ -95,107 +93,13 @@ def _route_notification(
         )
         return
 
-    if notification.get("delivery_mode") == DELIVERY_MODE_BATCHED:
-        try:
-            _enqueue_to_buffer(api_client, notification, payload)
-        except Exception:  # noqa: BLE001 — already logged with stack inside
-            # Surface but don't abort the outer trigger_* loop — sibling
-            # BATCHED notifications still deserve their enqueue attempt.
-            logger.warning(
-                "BATCHED enqueue failed for notification %s; continuing with others",
-                notification.get("id"),
-            )
-        return
-
-    send_notification_to_worker(
-        url=notification["url"],
-        payload=payload,
-        auth_type=notification.get("authorization_type", "NONE"),
-        auth_key=notification.get("authorization_key"),
-        auth_header=notification.get("authorization_header"),
-        max_retries=notification.get("max_retries", 0),
-        platform=notification.get("platform"),
-    )
-
-
-def get_webhook_headers(
-    auth_type: str, auth_key: str | None, auth_header: str | None
-) -> dict[str, str]:
-    """Generate webhook headers based on authorization configuration."""
-    headers = {"Content-Type": "application/json"}
-
     try:
-        if auth_type and auth_key:
-            auth_type_upper = auth_type.upper()
-
-            if auth_type_upper == "BEARER":
-                headers["Authorization"] = f"Bearer {auth_key}"
-            elif auth_type_upper == "API_KEY":
-                headers["Authorization"] = auth_key
-            elif auth_type_upper == "CUSTOM_HEADER" and auth_header:
-                headers[auth_header] = auth_key
-            # NONE type just uses Content-Type header
-    except Exception as e:
-        logger.warning(f"Error generating webhook headers: {e}")
-        # Use default headers if auth config is invalid
-
-    return headers
-
-
-def send_notification_to_worker(
-    url: str,
-    payload: NotificationPayload,
-    auth_type: str,
-    auth_key: str | None,
-    auth_header: str | None,
-    max_retries: int = 0,
-    platform: str | None = None,
-) -> bool:
-    """Send a single notification to the notification worker queue.
-
-    Args:
-        url: Webhook URL to send notification to
-        payload: Structured notification payload
-        auth_type: Authorization type (NONE, BEARER, API_KEY, CUSTOM_HEADER)
-        auth_key: Authorization key/token
-        auth_header: Custom header name for CUSTOM_HEADER auth type
-        max_retries: Maximum number of retry attempts
-        platform: Platform type from notification config (SLACK, API, etc.)
-
-    Returns:
-        True if task was successfully queued, False otherwise
-    """
-    try:
-        headers = get_webhook_headers(auth_type, auth_key, auth_header)
-
-        # Convert payload to webhook format (excludes internal fields)
-        payload_dict = payload.to_webhook_payload()
-
-        # Send task to notification worker
-        current_app.send_task(
-            "send_webhook_notification",
-            args=[
-                url,
-                payload_dict,
-                headers,
-                10,  # timeout
-            ],
-            kwargs={
-                "max_retries": max_retries,
-                "retry_delay": 10,
-                "platform": platform,
-            },
-            queue="notifications",
+        _enqueue_to_buffer(api_client, notification, payload)
+    except Exception:  # noqa: BLE001 — already logged with stack inside
+        logger.warning(
+            "Buffer enqueue failed for notification %s; continuing with others",
+            notification.get("id"),
         )
-
-        logger.info(
-            f"Sent webhook notification to worker queue for {url} (pipeline: {payload.pipeline_id})"
-        )
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to send notification to {url}: {e}")
-        return False
 
 
 def trigger_notification(

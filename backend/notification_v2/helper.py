@@ -11,13 +11,9 @@ from django.utils import timezone
 from notification_v2.enums import (
     AuthorizationType,
     BufferStatus,
-    DeliveryMode,
-    NotificationType,
     PlatformType,
 )
 from notification_v2.models import Notification, NotificationBuffer
-from notification_v2.provider.notification_provider import NotificationProvider
-from notification_v2.provider.registry import get_notification_provider
 
 logger = logging.getLogger(__name__)
 
@@ -75,9 +71,8 @@ def get_org_club_interval_seconds(organization: Organization) -> int:
 def build_webhook_headers(notification: Notification) -> dict[str, str]:
     """Build HTTP headers for a webhook dispatch from the notification's auth.
 
-    Mirrors the logic in ``provider/webhook/webhook.py`` and the worker-side
-    ``get_webhook_headers`` so the clubbed dispatcher and the immediate path
-    produce identical headers for the same auth config.
+    Used by the buffer flush in ``internal_api_views._dispatch_group`` to
+    pass live auth headers through to the Celery task.
     """
     headers = {"Content-Type": "application/json"}
     auth_type_raw = (notification.authorization_type or "").upper()
@@ -107,51 +102,35 @@ def _resolve_organization(notification: Notification) -> Organization | None:
     return None
 
 
-def split_by_delivery_mode(
-    notifications: "Iterable[Notification]",
-) -> tuple[list[Notification], list[Notification]]:
-    """Partition into (IMMEDIATE, BATCHED). Unknown modes default to IMMEDIATE."""
-    immediate: list[Notification] = []
-    batched: list[Notification] = []
-    for n in notifications:
-        if n.delivery_mode == DeliveryMode.BATCHED.value:
-            batched.append(n)
-        else:
-            immediate.append(n)
-    return immediate, batched
-
-
 def dispatch_with_delivery_mode(
     notifications: "Iterable[Notification]",
     payload: dict[str, Any],
     *,
     error_context: str = "",
 ) -> None:
-    """Single-call entry point that splits IMMEDIATE / BATCHED and dispatches.
+    """Enqueue every active notification into ``NotificationBuffer``.
 
-    IMMEDIATE rows fire synchronously via NotificationHelper. BATCHED rows
-    enqueue into NotificationBuffer; an enqueue failure is logged but does
-    not abort the loop — other notifications still get their chance.
+    Single dispatch path: each notification produces a buffer row that the
+    periodic flush ships as part of a clubbed message. An enqueue failure
+    on one row is logged but does not abort the loop — sibling notifications
+    still get their chance.
 
     ``error_context`` lets callers tag failures with their dispatch source
     (pipeline id, api id) for easier triage.
     """
-    immediate, batched = split_by_delivery_mode(notifications)
-    if immediate:
-        NotificationHelper.send_notification(notifications=immediate, payload=payload)
-    for notification in batched:
+    for notification in notifications:
         try:
             enqueue(notification, payload)
         except Exception:
             logger.exception(
-                "Failed to enqueue BATCHED notification %s%s",
+                "Failed to enqueue notification %s%s",
                 notification.id,
                 f" ({error_context})" if error_context else "",
             )
 
 
 def enqueue(notification: Notification, payload: dict[str, Any]) -> NotificationBuffer:
-    """Buffer a single execution event for a BATCHED notification.
+    """Buffer a single execution event for a notification.
 
     Computes auth_sig and flush_after at write time so existing PENDING rows
     keep their original cadence even if NOTIFICATION_CLUB_INTERVAL or the
@@ -172,9 +151,9 @@ def enqueue(notification: Notification, payload: dict[str, Any]) -> Notification
     auth_sig = compute_auth_sig(notification)
     platform = notification.platform or PlatformType.API.value
 
-    # Stamp a buffered-at timestamp so renderers can surface it consistently
-    # alongside IMMEDIATE. Worker callers already supply one; backend
-    # dispatchers (PipelineStatusPayload.to_dict) don't, so default here.
+    # Stamp a buffered-at timestamp so renderers always have one to humanize.
+    # Worker callers already supply one; backend dispatchers
+    # (PipelineStatusPayload.to_dict) don't, so default here.
     payload = {
         **payload,
         "timestamp": payload.get("timestamp") or timezone.now().isoformat(),
@@ -204,49 +183,3 @@ def enqueue(notification: Notification, payload: dict[str, Any]) -> Notification
         flush_after.isoformat(),
     )
     return buffer_row
-
-
-class NotificationHelper:
-    @classmethod
-    def send_notification(cls, notifications: list[Notification], payload: Any) -> None:
-        """Dispatch IMMEDIATE notifications via the registered provider.
-
-        Iterates over notifications, resolves the provider for each
-        (notification_type, platform) pair, and fires the webhook task. BATCHED
-        notifications must be routed to ``enqueue()`` instead — callers branch
-        on ``notification.delivery_mode`` before reaching this method.
-
-        Args:
-            notifications: Active Notification rows to dispatch synchronously.
-            payload: Provider-specific payload (typically a dict).
-        """
-        for notification in notifications:
-            if notification.delivery_mode == DeliveryMode.BATCHED.value:
-                # Callers should not reach here for BATCHED — log loudly so
-                # routing regressions are visible without breaking dispatch.
-                logger.warning(
-                    "BATCHED notification %s reached IMMEDIATE dispatch path; "
-                    "skipping. Caller must branch on delivery_mode.",
-                    notification.id,
-                )
-                continue
-            notification_type = NotificationType(notification.notification_type)
-            platform_type = PlatformType(notification.platform)
-            try:
-                notification_provider = get_notification_provider(
-                    notification_type, platform_type
-                )
-                notifier: NotificationProvider = notification_provider(
-                    notification=notification, payload=payload
-                )
-                notifier.send()
-                logger.info("Sending notification to %s", notification)
-            except ValueError as e:
-                logger.error(
-                    "Error in notification type %s and platform %s for "
-                    "notification %s: %s",
-                    notification_type,
-                    platform_type,
-                    notification,
-                    e,
-                )

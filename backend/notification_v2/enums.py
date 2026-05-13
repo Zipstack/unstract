@@ -48,10 +48,14 @@ class PlatformType(Enum):
 class DeliveryMode(Enum):
     """Per-notification dispatch mode.
 
-    IMMEDIATE fires on every workflow completion (pre-existing behavior).
-    BATCHED buffers events into NotificationBuffer and flushes them as one
-    clubbed message per (org, webhook_url, auth_sig) every
-    NOTIFICATION_CLUB_INTERVAL seconds.
+    Product ships every notification as BATCHED — events buffer into
+    ``NotificationBuffer`` and flush as one clubbed message per
+    (org, webhook_url, auth_sig) every ``NOTIFICATION_CLUB_INTERVAL`` seconds.
+
+    The ``IMMEDIATE`` value is purely a historical DB value — no code reads
+    it anymore (the legacy synchronous-dispatch path was removed). The
+    column and enum value remain so existing rows don't break; both will be
+    dropped in a follow-up schema migration.
     """
 
     IMMEDIATE = "IMMEDIATE"

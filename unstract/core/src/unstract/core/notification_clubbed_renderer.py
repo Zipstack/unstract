@@ -134,8 +134,8 @@ def _format_event_line(event: dict[str, Any]) -> str:
 def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     """Project a buffered payload into the canonical per-event dict.
 
-    Unified shape across Slack/API and IMMEDIATE/BATCHED. `pipeline_id` is
-    intentionally dropped — neither channel surfaces it. Timestamps are
+    Unified shape across Slack/API and every dispatch path. `pipeline_id`
+    is intentionally dropped — neither channel surfaces it. Timestamps are
     humanized once at projection so Slack and API consumers see the same
     string (implicit UTC, no timezone suffix).
     """
@@ -156,8 +156,8 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the canonical envelope used by every dispatch path.
 
-    Summary carries only `{total, succeeded, failed}` — same shape for
-    IMMEDIATE and BATCHED so receivers parse one envelope, not two.
+    Summary carries only `{total, succeeded, failed}` — one envelope shape
+    so receivers parse a single schema, not two.
     """
     capped = payloads[:MAX_BATCH_SIZE]
     succeeded = sum(
@@ -179,9 +179,9 @@ def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
 def render_slack_text(envelope: dict[str, Any]) -> str:
     """Render the envelope as Slack mrkdwn body text.
 
-    Header + divider are emitted for every dispatch — IMMEDIATE, BATCHED N=1,
-    and BATCHED N>1 all share the same shape. Visible events are capped at
-    SLACK_MAX_DISPLAY_EVENTS with an `_… and K more_` overflow footer.
+    Header + divider are emitted for every dispatch — single-event and
+    multi-event batches share the same shape. Visible events are capped at
+    ``SLACK_MAX_DISPLAY_EVENTS`` with an `_… and K more_` overflow footer.
     """
     summary = envelope["summary"]
     events: list[dict[str, Any]] = envelope["events"]

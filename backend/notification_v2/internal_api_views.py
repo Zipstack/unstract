@@ -29,7 +29,7 @@ from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import render_clubbed_message
-from notification_v2.enums import FAILURE_STATUSES, BufferStatus, DeliveryMode
+from notification_v2.enums import FAILURE_STATUSES, BufferStatus
 from notification_v2.helper import (
     build_webhook_headers,
     enqueue,
@@ -99,9 +99,6 @@ def _serialize_notification(n: Notification) -> dict[str, Any]:
         "max_retries": n.max_retries,
         "is_active": n.is_active,
         "notify_on_failures": n.notify_on_failures,
-        # Drives the worker-side IMMEDIATE-vs-BATCHED branch in
-        # workers/shared/patterns/notification/helper.py.
-        "delivery_mode": n.delivery_mode,
     }
 
 
@@ -309,7 +306,7 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
     Worker code is model-free: it forwards a notification_id + structured
     payload here and lets the backend write the NotificationBuffer row.
     Rejects rows whose source notification is not BATCHED so a worker
-    routing bug cannot silently divert IMMEDIATE traffic into the buffer.
+    routing bug cannot silently divert non-BATCHED traffic into the buffer.
     """
     try:
         body = json.loads(request.body.decode("utf-8") or "{}")
@@ -340,19 +337,6 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
     except Notification.DoesNotExist:
         return JsonResponse(
             {"status": "error", "message": "Notification not found"}, status=404
-        )
-
-    if notification.delivery_mode != DeliveryMode.BATCHED.value:
-        # Hard-fail rather than silently auto-correcting — surfaces worker
-        # routing regressions instead of letting them drain into the buffer.
-        return JsonResponse(
-            {
-                "status": "error",
-                "message": (
-                    "Notification delivery_mode is not BATCHED; refuse to enqueue"
-                ),
-            },
-            status=409,
         )
 
     # type / timestamp / additional_data stay optional during rollout — older

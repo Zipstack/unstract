@@ -1,11 +1,11 @@
 """Backend dispatch entry for clubbed-notification rendering.
 
 Delegates the canonical envelope + Slack body to
-``unstract.core.notification_clubbed_renderer`` so backend dispatches and
-worker IMMEDIATE callbacks emit byte-identical receiver-visible payloads.
-This thin shim keeps the ``render_clubbed_message`` platform dispatcher
-(uses ``PlatformType`` enum) backend-side; everything else lives in the
-shared module.
+``unstract.core.notification_clubbed_renderer`` so backend and worker
+callbacks emit byte-identical receiver-visible payloads. This thin shim
+keeps the ``render_clubbed_message`` platform dispatcher (uses
+``PlatformType`` enum) backend-side; everything else lives in the shared
+module.
 """
 
 from __future__ import annotations
@@ -35,8 +35,8 @@ def render_clubbed_message(
 ) -> dict[str, Any]:
     """Top-level entry — returns the dispatch body for ``platform``.
 
-    Used by every dispatch site (BATCHED flush, IMMEDIATE backend providers)
-    so the receiver-visible payload is identical regardless of mode.
+    Used by every dispatch site so the receiver-visible payload is
+    identical regardless of caller.
     """
     envelope = build_envelope(payloads)
     if platform == PlatformType.SLACK.value:

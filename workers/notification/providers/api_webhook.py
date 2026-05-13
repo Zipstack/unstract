@@ -1,9 +1,9 @@
 """API Webhook Notification Provider
 
-Wraps worker-callback IMMEDIATE payloads (flat per-event dict) in the
-canonical envelope so API webhook receivers always see the same
-``{"summary": {...}, "events": [...]}`` shape — IMMEDIATE or BATCHED.
-Backend dispatches already arrive in envelope form and pass through.
+Wraps worker-callback payloads (flat per-event dict) in the canonical
+envelope so API webhook receivers always see the same
+``{"summary": {...}, "events": [...]}`` shape. Backend dispatches already
+arrive in envelope form and pass through.
 """
 
 from typing import Any
