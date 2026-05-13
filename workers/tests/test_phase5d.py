@@ -283,9 +283,10 @@ class TestNormalPipeline:
         )
         # Simulate index metrics by patching _run_pipeline_index
         executor._run_pipeline_index = MagicMock(
-            return_value={
-                "field_a": {"indexing": {"time_taken(s)": 0.5}},
-            }
+            return_value=(
+                {"field_a": {"indexing": {"time_taken(s)": 0.5}}},
+                [],
+            )
         )
 
         ctx = _make_pipeline_context({

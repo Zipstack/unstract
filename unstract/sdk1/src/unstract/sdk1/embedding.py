@@ -281,3 +281,13 @@ class EmbeddingCompat(BaseEmbedding):
 
     def test_connection(self) -> bool:
         return self._embedding_instance.test_connection()
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Drain pending usage rows from registered callback handlers."""
+        if not self.callback_manager:
+            return []
+        records: list[dict] = []
+        for handler in self.callback_manager.handlers:
+            if hasattr(handler, "flush_pending_usage"):
+                records.extend(handler.flush_pending_usage())
+        return records

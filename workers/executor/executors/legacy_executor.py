@@ -659,13 +659,15 @@ class LegacyExecutor(BaseExecutor):
             elif not is_single_pass:
                 # ---- Step 3: Index per output with dedup ----
                 step += 1
-                index_metrics = self._run_pipeline_index(
+                index_metrics, index_records = self._run_pipeline_index(
                     context=context,
                     index_template=index_template,
                     answer_params=answer_params,
                     extracted_text=extracted_text,
                     usage_kwargs=extract_params.get("usage_kwargs", {}),
                 )
+                if index_records:
+                    pipeline_records.extend(index_records)
 
             # ---- Step 4: Table settings injection ----
             if not is_single_pass:
@@ -891,19 +893,19 @@ class LegacyExecutor(BaseExecutor):
         answer_params: dict,
         extracted_text: str,
         usage_kwargs: dict | None = None,
-    ) -> dict:
+    ) -> tuple[dict, list[dict]]:
         """Run per-output indexing with dedup for the structure pipeline.
 
         Args:
             usage_kwargs: Audit-tracking kwargs (``run_id``,
                 ``execution_id``, ``file_name``) propagated to the
                 embedding adapter so its callback can record usage
-                rows against the correct file_execution_id. Without
-                this, embedding usage is missing from the API
-                deployment response metadata.
+                rows against the correct file_execution_id.
 
         Returns:
-            Dict of index metrics keyed by output name.
+            (index_metrics, usage_records) — metrics keyed by output
+            name and the flat list of usage rows collected across all
+            child ``_handle_index`` calls.
         """
         import datetime
 
@@ -917,6 +919,7 @@ class LegacyExecutor(BaseExecutor):
         usage_kwargs = usage_kwargs or {}
 
         index_metrics: dict = {}
+        index_records: list[dict] = []
         seen_params: set = set()
 
         for output in outputs:
@@ -978,12 +981,15 @@ class LegacyExecutor(BaseExecutor):
                         param_key,
                         index_result.error,
                     )
+                child_records = (index_result.metadata or {}).get("usage_records") or []
+                if child_records:
+                    index_records.extend(child_records)
 
                 elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
                 output_name = output.get("name", "")
                 index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
 
-        return index_metrics
+        return index_metrics, index_records
 
     @staticmethod
     def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:
@@ -1110,6 +1116,7 @@ class LegacyExecutor(BaseExecutor):
         index_cls, embedding_compat, vector_db_cls = self._get_indexing_deps()
 
         vector_db = None
+        embedding = None
         try:
             index = index_cls(
                 tool=shim,
@@ -1152,7 +1159,11 @@ class LegacyExecutor(BaseExecutor):
                     "Skipping re-index: doc_id=%s already in vector DB and reindex=False",
                     doc_id,
                 )
-                return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+                return ExecutionResult(
+                    success=True,
+                    data={IKeys.DOC_ID: doc_id},
+                    metadata={"usage_records": embedding.flush_pending_usage()},
+                )
 
             shim.stream_log(
                 "Re-indexing document" if doc_id_found else "Indexing document"
@@ -1169,7 +1180,11 @@ class LegacyExecutor(BaseExecutor):
                 Path(file_path).name,
             )
             shim.stream_log("Document indexing completed")
-            return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+            return ExecutionResult(
+                success=True,
+                data={IKeys.DOC_ID: doc_id},
+                metadata={"usage_records": embedding.flush_pending_usage()},
+            )
         except Exception as e:
             logger.error(
                 "Indexing failed: file=%s error=%s",
@@ -1177,8 +1192,16 @@ class LegacyExecutor(BaseExecutor):
                 str(e),
             )
             status_code = getattr(e, "status_code", 500)
+            partial = []
+            if embedding is not None:
+                try:
+                    partial = list(embedding.flush_pending_usage())
+                except Exception:
+                    logger.debug("flush_pending_usage failed during error path")
             raise LegacyExecutorError(
-                message=f"Error while indexing: {e}", code=status_code
+                message=f"Error while indexing: {e}",
+                code=status_code,
+                partial_usage_records=partial,
             ) from e
         finally:
             if vector_db is not None:
