@@ -77,10 +77,14 @@ function PlatformSettings() {
   }, []);
 
   const handleSaveInterval = () => {
-    if (!batchIntervalMinutes || batchIntervalMinutes < 1) {
+    if (
+      !batchIntervalMinutes ||
+      batchIntervalMinutes < 1 ||
+      batchIntervalMinutes > 120
+    ) {
       setAlertDetails({
         type: "error",
-        content: "Batch interval must be a positive number of minutes.",
+        content: "Notification interval must be between 1 and 120 minutes.",
       });
       return;
     }
@@ -318,6 +322,7 @@ function PlatformSettings() {
           <IslandLayout>
             <div className="plt-set-layout-2">
               <div>
+                <Typography.Title level={5}>Internal API Keys</Typography.Title>
                 {keys.map((keyDetails, keyIndex) => {
                   return (
                     <div key={keyDetails?.keyName}>
@@ -398,21 +403,17 @@ function PlatformSettings() {
               </div>
               <Divider />
               <div className="plt-set-batch-interval">
-                <Typography.Title level={5}>
-                  Notification batching
-                </Typography.Title>
-                <Typography.Text type="secondary">
-                  Batched notifications enqueued after a change pick up the new
-                  value; in-flight rows keep their original cadence.
-                </Typography.Text>
+                <Typography.Title level={5}>Notifications</Typography.Title>
                 <div style={{ marginTop: 12 }}>
                   <Space>
-                    <Typography.Text>Batch interval (minutes)</Typography.Text>
+                    <Typography.Text>
+                      Notification interval (minutes, 1–120)
+                    </Typography.Text>
                     <InputNumber
                       min={1}
+                      max={120}
                       value={batchIntervalMinutes}
                       onChange={(v) => setBatchIntervalMinutes(v)}
-                      placeholder="e.g. 30"
                     />
                     <Button
                       type="primary"
@@ -422,6 +423,11 @@ function PlatformSettings() {
                       Save
                     </Button>
                   </Space>
+                  <div style={{ marginTop: 4 }}>
+                    <Typography.Text type="secondary">
+                      Allowed: 1–120 minutes. Default: 5 minutes.
+                    </Typography.Text>
+                  </div>
                 </div>
               </div>
             </div>

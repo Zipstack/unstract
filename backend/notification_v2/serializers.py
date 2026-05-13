@@ -8,9 +8,9 @@ from .models import Notification
 class NotificationSettingsSerializer(serializers.Serializer):
     """Org-scoped notification batching settings (UNS-611 v2)."""
 
-    # No min/max here: mfbt is silent on bounds. Backend ConfigSpec accepts
-    # any int; constraining is a follow-up if/when product gives a number.
-    club_interval_seconds = serializers.IntegerField()
+    # Bounds (1 min – 2 h) mirror ConfigKey.NOTIFICATION_CLUB_INTERVAL so DRF
+    # returns a structured 400 before ConfigKey.cast_value re-raises.
+    club_interval_seconds = serializers.IntegerField(min_value=60, max_value=7200)
 
 
 class NotificationSerializer(serializers.ModelSerializer):

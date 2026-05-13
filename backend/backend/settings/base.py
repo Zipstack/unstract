@@ -220,9 +220,9 @@ CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
 # Window for clubbing BATCHED notifications — also the flush cadence (seconds).
-# Default 1800 (30 min). Per-notification buffer rows precompute flush_after at
+# Default 300 (5 min). Per-notification buffer rows precompute flush_after at
 # enqueue time, so changing this only affects rows enqueued after the restart.
-NOTIFICATION_CLUB_INTERVAL = int(os.environ.get("NOTIFICATION_CLUB_INTERVAL", "1800"))
+NOTIFICATION_CLUB_INTERVAL = int(os.environ.get("NOTIFICATION_CLUB_INTERVAL", "300"))
 # Retention for terminal NotificationBuffer rows (DISPATCHED / DEAD_LETTER).
 # PENDING rows are never GC'd regardless of age.
 NOTIFICATION_BUFFER_RETENTION_DAYS = int(

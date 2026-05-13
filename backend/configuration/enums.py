@@ -65,6 +65,8 @@ class ConfigKey(Enum):
         default=settings.NOTIFICATION_CLUB_INTERVAL,
         value_type=ConfigType.INT,
         help_text="Window (seconds) for clubbing BATCHED notifications.",
+        min_value=60,
+        max_value=7200,
     )
 
     def cast_value(self, raw_value: Any):

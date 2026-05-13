@@ -2,12 +2,6 @@ import { Button, Checkbox, Form, Input, Select, Space } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
-import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
-import { useSessionStore } from "../../../store/session-store";
-
-// Used only when the org's batch interval can't be fetched (network or auth
-// failure). Backend's env-derived default is also 30 min, so this matches.
-const FALLBACK_BATCH_INTERVAL_MINUTES = 30;
 
 const DEFAULT_FORM_DETAILS = {
   name: "",
@@ -19,7 +13,6 @@ const DEFAULT_FORM_DETAILS = {
   is_active: false,
   max_retries: 0,
   notify_on_failures: false,
-  delivery_mode: "BATCHED",
   pipeline: "",
   api: "",
   url: "",
@@ -75,37 +68,6 @@ function CreateNotification({
   const [formDetails, setFormDetails] = useState(DEFAULT_FORM_DETAILS);
   const [backendErrors, setBackendErrors] = useState(null);
   const [resetForm, setResetForm] = useState(false);
-  const [batchIntervalMinutes, setBatchIntervalMinutes] = useState(
-    FALLBACK_BATCH_INTERVAL_MINUTES,
-  );
-  const axiosPrivate = useAxiosPrivate();
-  const { sessionDetails } = useSessionStore();
-
-  useEffect(() => {
-    // Read live org-scoped interval (UNS-611 v2). Fall back silently to the
-    // hardcoded 30-min default — the dropdown still labels something useful.
-    if (!sessionDetails?.orgId) {
-      return;
-    }
-    axiosPrivate({
-      method: "GET",
-      url: `/api/v1/unstract/${sessionDetails.orgId}/notifications/settings/`,
-    })
-      .then((res) => {
-        const seconds = res?.data?.club_interval_seconds;
-        if (typeof seconds === "number" && seconds > 0) {
-          setBatchIntervalMinutes(Math.max(1, Math.round(seconds / 60)));
-        }
-      })
-      .catch(() => {
-        // Non-fatal — keep fallback.
-      });
-  }, [sessionDetails?.orgId]);
-
-  const deliveryModes = [
-    { value: "IMMEDIATE", label: "Immediate" },
-    { value: "BATCHED", label: "Batched" },
-  ];
 
   useEffect(() => {
     if (editDetails) {
@@ -263,21 +225,13 @@ function CreateNotification({
       <Form.Item
         name="notify_on_failures"
         valuePropName="checked"
-        tooltip="When enabled, only runs with at least one failed file or a run-level error/stop trigger this notification. Otherwise notifications fire on every completion."
+        extra="Notification interval can be configured in Platform settings."
       >
-        <Checkbox>Notify on failures only</Checkbox>
-      </Form.Item>
-      <Form.Item
-        label="Delivery Mode"
-        name="delivery_mode"
-        tooltip="Immediate fires on every completion. Batched buffers events and dispatches a single clubbed message per webhook every batch interval."
-        extra={
-          formDetails.delivery_mode === "BATCHED"
-            ? `Notifications will be batched and sent every ${batchIntervalMinutes} minutes. Org admins can change this in Platform Settings.`
-            : null
-        }
-      >
-        <Select options={deliveryModes} />
+        <Checkbox>
+          <span style={{ fontSize: 14, color: "rgba(0, 0, 0, 0.88)" }}>
+            Notify on failures only
+          </span>
+        </Checkbox>
       </Form.Item>
       <Form.Item className="display-flex-right">
         <Space>
