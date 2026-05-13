@@ -286,15 +286,11 @@ def get_api_data(request: HttpRequest, api_id: str) -> JsonResponse:
         )
 
 
-# All fields are required at enqueue time. `execution_id` carries one
-# exemption (handled in the validator below): the scheduler INPROGRESS path
-# (workers/scheduler/tasks.py, UN-2850 / #1562) fires before WorkflowExecution
-# is created, so it has no execution_id to forward. Renderer falls back to
-# `—` for missing values. Long-term fix belongs at the producer.
-#
-# Consumer-side gap: INPROGRESS buffer rows ship with execution_id=null, so
-# API webhook receivers cannot correlate the event with execution logs until
-# the producer-reorder follow-up (UN-3056) lands.
+# `execution_id` is required except for INPROGRESS, which fires from the
+# scheduler (workers/scheduler/tasks.py, UN-2850) before WorkflowExecution
+# exists. INPROGRESS rows therefore store execution_id=null — receivers
+# cannot correlate with execution logs until the producer-reorder lands
+# (UN-3056).
 _ENQUEUE_REQUIRED_FIELDS = (
     "notification_id",
     "pipeline_id",
