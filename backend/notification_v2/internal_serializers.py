@@ -23,7 +23,6 @@ class NotificationSerializer(serializers.ModelSerializer):
             "platform",
             "max_retries",
             "is_active",
-            "delivery_mode",
             "created_at",
             "modified_at",
             "pipeline",

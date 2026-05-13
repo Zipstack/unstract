@@ -1,7 +1,7 @@
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
 
-from .enums import AuthorizationType, DeliveryMode, NotificationType, PlatformType
+from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification
 
 
@@ -21,11 +21,6 @@ class NotificationSerializer(serializers.ModelSerializer):
         max_value=4, min_value=0, default=0, required=False
     )
     notify_on_failures = serializers.BooleanField(default=False, required=False)
-    delivery_mode = serializers.ChoiceField(
-        choices=DeliveryMode.choices(),
-        default=DeliveryMode.BATCHED.value,
-        required=False,
-    )
 
     class Meta:
         model = Notification
