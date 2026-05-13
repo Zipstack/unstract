@@ -1,12 +1,33 @@
-"""Worker-side mirror of backend/notification_v2/clubbed_renderer.
+"""Shared clubbed-notification envelope + Slack renderer.
 
-Producing the same envelope shape and Slack mrkdwn body the backend renders
-so worker-callback IMMEDIATE payloads (flat per-event dicts) match the
-canonical wire format used by backend BATCHED dispatches. Backend pre-renders
-for its own dispatches — this module covers only the worker-callback IMMEDIATE
-path. Keep the constants and string output byte-identical to
-`backend/notification_v2/clubbed_renderer.py`; promote to `unstract/core/` if
-a third site ever needs the same logic.
+Imported by both `backend/notification_v2/clubbed_renderer.py` and the
+worker `notification/providers/*_webhook.py` so the receiver-visible
+payload (envelope JSON for API, mrkdwn string for Slack) is byte-identical
+regardless of which side rendered it.
+
+Envelope shape:
+
+    {
+        "summary": {"total": N, "succeeded": S, "failed": F},
+        "events": [
+            {
+                "type": "ETL" | "TASK" | "API",
+                "pipeline_name": "...",
+                "status": "ERROR" | "SUCCESS" | ...,
+                "execution_id": "...",
+                "timestamp": "2026 May 5 5:03:34 PM",
+                "additional_data": {
+                    "total_files": int,
+                    "successful_files": int,
+                    "failed_files": int,
+                },
+                "error_message": "...",   # only on failure
+            },
+            ...
+        ]
+    }
+
+`pipeline_id` is intentionally absent — neither channel surfaces it.
 """
 
 from __future__ import annotations
@@ -14,13 +35,22 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+# Hard cap on events per dispatch; the rest roll into the next flush tick.
 MAX_BATCH_SIZE = 500
+# Slack inlines this many events before collapsing the rest under an
+# "_… and K more_" footer. Slack tolerates much larger payloads, but
+# readability tanks past ~25 lines.
 SLACK_MAX_DISPLAY_EVENTS = 25
 
-_SUCCESS_STATUSES = {"COMPLETED", "SUCCESS"}
+_SUCCESS_STATUSES = frozenset({"COMPLETED", "SUCCESS"})
+
+# Middle dot (U+00B7) padded by single spaces — the per-event field separator.
 _SEPARATOR = " · "
-_MISSING = "—"
-_DIVIDER = "———"
+_MISSING = "—"  # em-dash placeholder for missing fields
+_DIVIDER = "———"  # triple em-dash divider between header and events
+
+# Slack emoji shortcodes — render the same as the literal unicode glyphs and
+# stay readable in source.
 _EMOJI_SUCCESS = ":white_check_mark:"
 _EMOJI_FAILURE = ":x:"
 
@@ -32,6 +62,11 @@ def _is_success(status: str | None) -> bool:
 
 
 def _humanize_timestamp(iso: str | None) -> str:
+    """Render an ISO timestamp as `2026 May 11 11:38:31 AM` (POSIX `%-d`).
+
+    Falls back to the missing placeholder on falsy / unparseable input so a
+    partial row still renders without raising.
+    """
     if not iso:
         return _MISSING
     try:
@@ -42,6 +77,7 @@ def _humanize_timestamp(iso: str | None) -> str:
 
 
 def _format_file_count(event: dict[str, Any]) -> str:
+    """Render the file-count summary; empty string when no totals available."""
     counts = event.get("additional_data") or {}
     total = counts.get("total_files")
     if total is None:
@@ -54,6 +90,11 @@ def _format_file_count(event: dict[str, Any]) -> str:
 
 
 def _format_event_line(event: dict[str, Any]) -> str:
+    """Format one event as a single Slack mrkdwn line.
+
+    Fields are middle-dot separated; the file-count column is omitted when
+    `additional_data` is empty so the line collapses to 5 fields, not 6.
+    """
     parts = [
         event.get("timestamp") or _MISSING,
         f"*{event.get('execution_id') or _MISSING}*",
@@ -68,11 +109,12 @@ def _format_event_line(event: dict[str, Any]) -> str:
 
 
 def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Project a flat per-event payload into the canonical shape.
+    """Project a buffered payload into the canonical per-event dict.
 
-    Drops `pipeline_id` and `_source` — neither appears in receiver-visible
-    output. Mirrors the backend projection (including the humanized timestamp)
-    so renderer input is identical.
+    Unified shape across Slack/API and IMMEDIATE/BATCHED. `pipeline_id` is
+    intentionally dropped — neither channel surfaces it. Timestamps are
+    humanized once at projection so Slack and API consumers see the same
+    string (implicit UTC, no timezone suffix).
     """
     event: dict[str, Any] = {
         "type": payload.get("type") or "",
@@ -89,10 +131,10 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
-    """Build the canonical `{summary, events}` envelope.
+    """Build the canonical envelope used by every dispatch path.
 
-    Summary carries only `{total, succeeded, failed}` — identical shape for
-    IMMEDIATE and BATCHED.
+    Summary carries only `{total, succeeded, failed}` — same shape for
+    IMMEDIATE and BATCHED so receivers parse one envelope, not two.
     """
     capped = payloads[:MAX_BATCH_SIZE]
     succeeded = sum(1 for p in capped if _is_success(p.get("status")))
@@ -110,8 +152,9 @@ def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
 def render_slack_text(envelope: dict[str, Any]) -> str:
     """Render the envelope as Slack mrkdwn body text.
 
-    Always emits header + divider regardless of event count so IMMEDIATE,
-    BATCHED N=1, and BATCHED N>1 all share the same shape.
+    Header + divider are emitted for every dispatch — IMMEDIATE, BATCHED N=1,
+    and BATCHED N>1 all share the same shape. Visible events are capped at
+    SLACK_MAX_DISPLAY_EVENTS with an `_… and K more_` overflow footer.
     """
     summary = envelope["summary"]
     events: list[dict[str, Any]] = envelope["events"]

@@ -417,6 +417,8 @@ function PlatformSettings() {
                     <InputNumber
                       min={1}
                       max={120}
+                      step={1}
+                      precision={0}
                       value={batchIntervalMinutes}
                       onChange={(v) => setBatchIntervalMinutes(v)}
                     />

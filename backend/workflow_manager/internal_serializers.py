@@ -213,7 +213,9 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
             )
         if successful is not None and failed is not None and successful + failed > total:
             raise serializers.ValidationError(
-                "successful_files + failed_files cannot exceed total_files."
+                {
+                    "non_field_errors": "successful_files + failed_files cannot exceed total_files."
+                }
             )
         return attrs
 

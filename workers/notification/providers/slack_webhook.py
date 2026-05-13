@@ -8,12 +8,13 @@ through unchanged.
 
 from typing import Any
 
-from notification.providers._clubbed_format import (
+from notification.providers.webhook_provider import WebhookProvider
+from shared.infrastructure.logging import WorkerLogger
+
+from unstract.core.notification_clubbed_renderer import (
     build_envelope,
     render_slack_text,
 )
-from notification.providers.webhook_provider import WebhookProvider
-from shared.infrastructure.logging import WorkerLogger
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -56,7 +57,7 @@ class SlackWebhook(WebhookProvider):
           wrapped in a single-event envelope and rendered to the canonical
           single-line mrkdwn body.
         """
-        if "text" in payload and len(payload) == 1:
+        if "text" in payload and "events" not in payload:
             return {"text": payload["text"]}
 
         envelope = build_envelope(payloads=[payload])
