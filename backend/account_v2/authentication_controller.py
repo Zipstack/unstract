@@ -101,8 +101,8 @@ class AuthenticationController:
             return self.auth_service.handle_authorization_callback(
                 request=request, backend=backend
             )
-        except Exception as ex:
-            logger.error(f"Error while handling authorization callback: {ex}")
+        except Exception:
+            logger.exception("Error while handling authorization callback")
             return redirect("/error")
 
     def user_organizations(self, request: Request) -> Any:
