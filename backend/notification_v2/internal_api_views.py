@@ -286,15 +286,22 @@ def get_api_data(request: HttpRequest, api_id: str) -> JsonResponse:
         )
 
 
-# `execution_id` is intentionally optional: the scheduler INPROGRESS path
+# All fields are required at enqueue time. `execution_id` carries one
+# exemption (handled in the validator below): the scheduler INPROGRESS path
 # (workers/scheduler/tasks.py, UN-2850 / #1562) fires before WorkflowExecution
-# is created. Renderer falls back to `—` for missing values.
+# is created, so it has no execution_id to forward. Renderer falls back to
+# `—` for missing values. Long-term fix belongs at the producer.
+#
+# Consumer-side gap: INPROGRESS buffer rows ship with execution_id=null, so
+# API webhook receivers cannot correlate the event with execution logs until
+# the producer-reorder follow-up (UN-3056) lands.
 _ENQUEUE_REQUIRED_FIELDS = (
     "notification_id",
     "pipeline_id",
     "pipeline_name",
     "status",
     "platform",
+    "execution_id",
 )
 
 
@@ -315,12 +322,19 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
             {"status": "error", "message": "Invalid JSON body"}, status=400
         )
 
-    missing = [f for f in _ENQUEUE_REQUIRED_FIELDS if not body.get(f)]
-    if missing:
+    missing_fields = [f for f in _ENQUEUE_REQUIRED_FIELDS if not body.get(f)]
+    # INPROGRESS is the one status legitimately allowed to omit execution_id
+    # (see comment on _ENQUEUE_REQUIRED_FIELDS).
+    if (
+        body.get("status") == Pipeline.PipelineStatus.INPROGRESS
+        and "execution_id" in missing_fields
+    ):
+        missing_fields.remove("execution_id")
+    if missing_fields:
         return JsonResponse(
             {
                 "status": "error",
-                "message": f"Missing required fields: {', '.join(missing)}",
+                "message": f"Missing required fields: {', '.join(missing_fields)}",
             },
             status=400,
         )
