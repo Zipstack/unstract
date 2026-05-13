@@ -974,7 +974,12 @@ class LegacyExecutor(BaseExecutor):
                         "usage_kwargs": usage_kwargs,
                     },
                 )
-                index_result = self._handle_index(index_ctx)
+                try:
+                    index_result = self._handle_index(index_ctx)
+                except LegacyExecutorError as e:
+                    # Preserve usage rows accrued from prior iterations.
+                    e.partial_usage_records = index_records + e.partial_usage_records
+                    raise
                 if not index_result.success:
                     logger.warning(
                         "Pipeline indexing failed for %s: %s",
