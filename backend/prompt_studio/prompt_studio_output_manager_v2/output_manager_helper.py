@@ -323,8 +323,10 @@ class OutputManagerHelper:
                 .order_by("prompt_id", "profile_manager_id", "-modified_at")
                 .distinct("prompt_id", "profile_manager_id")
             )
+            # ``prompt_id_id`` is the raw FK column; ``prompt_id`` returns the
+            # related ToolStudioPrompt instance (FK field shadows the PK name).
             outputs_index = {
-                (str(o.prompt_id), str(o.profile_manager_id)): o for o in outputs
+                (str(o.prompt_id_id), str(o.profile_manager_id)): o for o in outputs
             }
 
         enrichment_by_key: dict[str, Any] = {}
