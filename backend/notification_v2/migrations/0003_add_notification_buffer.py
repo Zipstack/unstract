@@ -16,13 +16,13 @@ class Migration(migrations.Migration):
             name="delivery_mode",
             field=models.CharField(
                 choices=[("IMMEDIATE", "Immediate"), ("BATCHED", "Batched")],
-                default="IMMEDIATE",
+                default="BATCHED",
                 max_length=16,
                 db_comment=(
-                    "IMMEDIATE fires on every completion (default, unchanged "
-                    "behavior). BATCHED buffers events and dispatches a single "
+                    "BATCHED (default) buffers events and dispatches a single "
                     "clubbed message per (org, webhook_url, auth_sig) every "
-                    "NOTIFICATION_CLUB_INTERVAL."
+                    "NOTIFICATION_CLUB_INTERVAL. IMMEDIATE fires on every "
+                    "completion."
                 ),
             ),
         ),

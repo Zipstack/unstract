@@ -66,11 +66,11 @@ class Notification(BaseModel):
     delivery_mode = models.CharField(
         max_length=16,
         choices=DeliveryMode.choices(),
-        default=DeliveryMode.IMMEDIATE.value,
+        default=DeliveryMode.BATCHED.value,
         db_comment=(
-            "IMMEDIATE fires on every completion (default, unchanged behavior). "
-            "BATCHED buffers events and dispatches a single clubbed message per "
-            "(org, webhook_url, auth_sig) every NOTIFICATION_CLUB_INTERVAL."
+            "BATCHED (default) buffers events and dispatches a single clubbed "
+            "message per (org, webhook_url, auth_sig) every "
+            "NOTIFICATION_CLUB_INTERVAL. IMMEDIATE fires on every completion."
         ),
     )
     # Foreign keys to specific models

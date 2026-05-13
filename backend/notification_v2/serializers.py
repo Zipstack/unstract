@@ -23,7 +23,7 @@ class NotificationSerializer(serializers.ModelSerializer):
     notify_on_failures = serializers.BooleanField(default=False, required=False)
     delivery_mode = serializers.ChoiceField(
         choices=DeliveryMode.choices(),
-        default=DeliveryMode.IMMEDIATE.value,
+        default=DeliveryMode.BATCHED.value,
         required=False,
     )
 

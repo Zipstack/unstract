@@ -19,7 +19,7 @@ const DEFAULT_FORM_DETAILS = {
   is_active: false,
   max_retries: 0,
   notify_on_failures: false,
-  delivery_mode: "IMMEDIATE",
+  delivery_mode: "BATCHED",
   pipeline: "",
   api: "",
   url: "",
@@ -122,17 +122,7 @@ function CreateNotification({
   }, [formDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
-    let nextValues = { ...formDetails, ...allValues };
-    // Failure alerts must not be delayed by the batch window — auto-select
-    // IMMEDIATE the moment the box is checked. The user can still override
-    // to BATCHED afterward and that choice will stick.
-    if (
-      Object.hasOwn(changedValues, "notify_on_failures") &&
-      changedValues.notify_on_failures === true
-    ) {
-      nextValues = { ...nextValues, delivery_mode: "IMMEDIATE" };
-      form.setFieldsValue({ delivery_mode: "IMMEDIATE" });
-    }
+    const nextValues = { ...formDetails, ...allValues };
     setFormDetails(nextValues);
     const changedFieldName = Object.keys(changedValues)[0];
     form.setFields([
