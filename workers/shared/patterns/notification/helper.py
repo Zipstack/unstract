@@ -58,7 +58,8 @@ def _enqueue_to_buffer(
             },
             timeout=10,
         )
-    except Exception:  # noqa: BLE001 — propagate any failure, don't classify
+    # Propagate any failure; caller decides whether to continue iteration.
+    except Exception:  # noqa: BLE001
         logger.exception(
             "Failed to enqueue BATCHED notification %s for pipeline %s",
             notification["id"],
@@ -95,7 +96,9 @@ def _route_notification(
 
     try:
         _enqueue_to_buffer(api_client, notification, payload)
-    except Exception:  # noqa: BLE001 — already logged with stack inside
+    # Already logged with stack inside _enqueue_to_buffer; broad catch keeps
+    # sibling notifications going.
+    except Exception:  # noqa: BLE001
         logger.warning(
             "Buffer enqueue failed for notification %s; continuing with others",
             notification.get("id"),

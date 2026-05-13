@@ -339,6 +339,16 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
             {"status": "error", "message": "Notification not found"}, status=404
         )
 
+    # INPROGRESS fires from the scheduler before a WorkflowExecution exists,
+    # so the GET-side `_apply_failure_filter` cannot run (no execution → no
+    # filter applied) and returns notify_on_failures=True rows too. Drop the
+    # event here so failure-only subscribers never receive a run-start.
+    if (
+        notification.notify_on_failures
+        and body.get("status") == Pipeline.PipelineStatus.INPROGRESS
+    ):
+        return JsonResponse({"status": "ok", "buffer_row_id": None})
+
     # type / timestamp / additional_data stay optional during rollout — older
     # worker builds that don't forward them still produce a usable row
     # (renderer falls back to "Type: —" / no Additional Data line).
