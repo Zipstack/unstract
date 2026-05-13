@@ -13,6 +13,7 @@ from typing import Any
 from executor.executor_tool_shim import ExecutorToolShim
 from executor.executors.constants import ExecutionSource
 from executor.executors.constants import IndexingConstants as IKeys
+from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.dto import (
     ChunkingConfig,
     FileInfo,
@@ -242,15 +243,15 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
-        shim.stream_log("Initializing text extractor...")
-        shim.stream_log(f"Using text extractor: {type(x2text.x2text_instance).__name__}")
-
+        extractor_name = type(x2text.x2text_instance).__name__
         try:
-            shim.stream_log("Extracting text from document...")
+            shim.stream_log(
+                f"Extracting text using `{extractor_name}`"
+                + (" (with highlight)" if enable_highlight else "")
+            )
             if enable_highlight and isinstance(
                 x2text.x2text_instance, (LLMWhisperer, LLMWhispererV2)
             ):
-                shim.stream_log("Extracting text with highlight support enabled...")
                 process_response: TextExtractionResult = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
@@ -301,7 +302,6 @@ class LegacyExecutor(BaseExecutor):
                 process_response.extraction_metadata
                 and process_response.extraction_metadata.line_metadata
             ):
-                shim.stream_log("Saving extraction metadata...")
                 result_data["highlight_metadata"] = (
                     process_response.extraction_metadata.line_metadata
                 )
@@ -605,12 +605,23 @@ class LegacyExecutor(BaseExecutor):
         shim = self._build_shim(
             platform_api_key=extract_params.get("platform_api_key", ""),
         )
+
+        # One-shot run-config line — non-sensitive flags only; adapter
+        # identities are emitted inline on first use with full model info.
+        tool_settings = answer_params.get(PSKeys.TOOL_SETTINGS, {})
+        outputs = answer_params.get(PSKeys.OUTPUTS, [])
+        shim.stream_log(
+            f"Run config: prompts={len(outputs)} | "
+            f"single_pass={'on' if is_single_pass else 'off'} | "
+            f"summarize={'on' if is_summarization else 'off'} | "
+            f"challenge="
+            f"{'on' if tool_settings.get(PSKeys.ENABLE_CHALLENGE) else 'off'}"
+        )
         step = 1
 
         try:
             # ---- Step 1: Extract ----
             if not skip_extraction:
-                shim.stream_log(f"Pipeline step {step}: Extracting text from document...")
                 step += 1
                 extract_ctx = ExecutionContext(
                     executor_name=context.executor_name,
@@ -632,7 +643,6 @@ class LegacyExecutor(BaseExecutor):
 
             # ---- Step 2: Summarize (if enabled) ----
             if is_summarization:
-                shim.stream_log(f"Pipeline step {step}: Summarizing extracted text...")
                 step += 1
                 summarize_result = self._run_pipeline_summarize(
                     context=context,
@@ -648,9 +658,6 @@ class LegacyExecutor(BaseExecutor):
                 answer_params["file_path"] = input_file_path
             elif not is_single_pass:
                 # ---- Step 3: Index per output with dedup ----
-                shim.stream_log(
-                    f"Pipeline step {step}: Indexing document into vector store..."
-                )
                 step += 1
                 index_metrics = self._run_pipeline_index(
                     context=context,
@@ -693,7 +700,9 @@ class LegacyExecutor(BaseExecutor):
             index_metrics=index_metrics,
         )
 
-        shim.stream_log("Pipeline completed successfully")
+        output_map = structured_output.get(PSKeys.OUTPUT, {}) or {}
+        answered = sum(1 for v in output_map.values() if v not in (None, "", [], {}))
+        shim.stream_log(f"Pipeline completed: {answered}/{len(outputs)} prompts answered")
         out_metadata = {
             k: v
             for k, v in (answer_result.metadata or {}).items()
@@ -728,12 +737,9 @@ class LegacyExecutor(BaseExecutor):
                 output["chunk-size"] = 0
                 output["chunk-overlap"] = 0
             operation = Operation.SINGLE_PASS_EXTRACTION.value
-            mode_label = "single pass"
         else:
             operation = Operation.ANSWER_PROMPT.value
-            mode_label = "prompt"
 
-        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
         answer_ctx = ExecutionContext(
             executor_name=context.executor_name,
             operation=operation,
@@ -1075,8 +1081,6 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
-        shim.stream_log("Initializing indexing pipeline...")
-
         # Skip indexing when chunk_size is 0 — no vector operations needed.
         # ChunkingConfig raises ValueError for 0, so handle before DTO.
         if chunk_size == 0:
@@ -1117,7 +1121,6 @@ class LegacyExecutor(BaseExecutor):
             )
             doc_id = index.generate_index_key(file_info=file_info, fs=fs_instance)
             logger.debug("Generated index key: doc_id=%s", doc_id)
-            shim.stream_log("Checking document index status...")
 
             embedding = embedding_compat(
                 adapter_instance_id=embedding_instance_id,
@@ -1129,7 +1132,8 @@ class LegacyExecutor(BaseExecutor):
                 adapter_instance_id=vector_db_instance_id,
                 embedding=embedding,
             )
-            shim.stream_log("Initialized embedding and vector DB adapters")
+            shim.log_adapter_once("Embedding", embedding_instance_id, embedding)
+            shim.log_adapter_once("Vector DB", vector_db_instance_id, vector_db)
 
             doc_id_found = index.is_document_indexed(
                 doc_id=doc_id, embedding=embedding, vector_db=vector_db
@@ -1150,11 +1154,9 @@ class LegacyExecutor(BaseExecutor):
                 )
                 return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
 
-            if doc_id_found and reindex:
-                shim.stream_log("Document already indexed, re-indexing...")
-            else:
-                shim.stream_log("Indexing document for the first time...")
-            shim.stream_log("Indexing document into vector store...")
+            shim.stream_log(
+                "Re-indexing document" if doc_id_found else "Indexing document"
+            )
             index.perform_indexing(
                 vector_db=vector_db,
                 doc_id=doc_id,
@@ -1689,7 +1691,8 @@ class LegacyExecutor(BaseExecutor):
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
             if retrieval_strategy in valid_strategies:
-                shim.stream_log(f"Retrieving context for: `{prompt_name}`")
+                if chunk_size > 0:
+                    shim.stream_log(f"Retrieving context for: `{prompt_name}`")
                 logger.info(
                     "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
                     prompt_name,
@@ -1713,9 +1716,11 @@ class LegacyExecutor(BaseExecutor):
                         context_retrieval_metrics=context_retrieval_metrics,
                     )
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
-                shim.stream_log(
-                    f"Retrieved {len(context_list)} context chunks for: `{prompt_name}`"
-                )
+                if chunk_size > 0:
+                    shim.stream_log(
+                        f"Retrieved {len(context_list)} chunks via RAG "
+                        f"for `{prompt_name}`"
+                    )
                 logger.debug(
                     "Retrieved %d context chunks for prompt: %s",
                     len(context_list),
@@ -1861,6 +1866,11 @@ class LegacyExecutor(BaseExecutor):
                     adapter_instance_id=output[PSKeys.VECTOR_DB],
                     embedding=embedding,
                 )
+            shim.log_adapter_once("LLM", output[PSKeys.LLM], llm)
+            if embedding is not None:
+                shim.log_adapter_once("Embedding", output[PSKeys.EMBEDDING], embedding)
+            if vector_db is not None:
+                shim.log_adapter_once("Vector DB", output[PSKeys.VECTOR_DB], vector_db)
             shim.stream_log(
                 f"Initialized LLM and retrieval adapters for: `{prompt_name}`"
             )
@@ -2274,7 +2284,6 @@ class LegacyExecutor(BaseExecutor):
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
 
-        shim.stream_log("Initializing LLM for summarization...")
         llm: Any = None
         try:
             llm = llm_cls(
@@ -2286,7 +2295,9 @@ class LegacyExecutor(BaseExecutor):
                 AnswerPromptService as answer_prompt_svc,
             )
 
-            shim.stream_log("Running document summarization...")
+            shim.stream_log(
+                f"Summarizing extracted text using LLM: `{llm.get_model_name()}`"
+            )
             summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
             records = list(llm.flush_pending_usage())
             logger.info("Summarization completed: run_id=%s", context.run_id)

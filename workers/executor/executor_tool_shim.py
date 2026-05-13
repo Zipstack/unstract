@@ -93,6 +93,9 @@ class ExecutorToolShim(StreamMixin):
         # silently swallowing every subsequent log line at DEBUG.
         self._progress_publish_failed = False
         self._log_publish_failed = False
+        # Adapters whose name+model has already been surfaced to the UI;
+        # later mentions skip repeating the model line.
+        self._adapters_logged: set[str] = set()
         # Initialize StreamMixin.  EXECUTION_BY_TOOL is not set in
         # the worker environment, so _exec_by_tool will be False.
         super().__init__(log_level=LogLevel.INFO)
@@ -161,41 +164,36 @@ class ExecutorToolShim(StreamMixin):
         if _levels.index(level) < _levels.index(self.log_level):
             return
 
-        # Publish progress to frontend via the log consumer queue.
-        if not self.log_events_id:
-            return
-
         wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
 
-        # PROGRESS payload — IDE prompt-card live updates only. Dropped at
-        # the DB persist layer because LogPublisher.publish only stores
-        # payloads whose `type == "LOG"`.
-        try:
-            progress_payload = LogPublisher.log_progress(
-                component=self.component,
-                level=wf_level,
-                state=stage,
-                message=log,
-            )
-            LogPublisher.publish(
-                channel_id=self.log_events_id,
-                payload=progress_payload,
-            )
-        except Exception:
-            first_failure = not self._progress_publish_failed
-            self._progress_publish_failed = True
-            logger.log(
-                logging.WARNING if first_failure else logging.DEBUG,
-                "Failed to publish progress log (non-fatal)",
-                exc_info=first_failure,
-            )
+        # PROGRESS payload routes via the websocket room; skip when absent.
+        if self.log_events_id:
+            try:
+                progress_payload = LogPublisher.log_progress(
+                    component=self.component,
+                    level=wf_level,
+                    state=stage,
+                    message=log,
+                )
+                LogPublisher.publish(
+                    channel_id=self.log_events_id,
+                    payload=progress_payload,
+                )
+            except Exception:
+                first_failure = not self._progress_publish_failed
+                self._progress_publish_failed = True
+                logger.log(
+                    logging.WARNING if first_failure else logging.DEBUG,
+                    "Failed to publish progress log (non-fatal)",
+                    exc_info=first_failure,
+                )
 
-        # LOG payload — feeds workflow logs UI and persists to execution_log.
-        # LogDataDTO validation requires `execution_id` and `organization_id`;
-        # `file_execution_id` is optional.
+        # LOG payload persists to execution_log; falls back to execution_id
+        # as the routing channel so it survives without a websocket subscriber.
         if not (self.execution_id and self.organization_id):
             return
 
+        log_channel = self.log_events_id or self.execution_id
         try:
             log_payload = LogPublisher.log_workflow(
                 stage=stage,
@@ -206,7 +204,7 @@ class ExecutorToolShim(StreamMixin):
                 organization_id=self.organization_id,
             )
             LogPublisher.publish(
-                channel_id=self.log_events_id,
+                channel_id=log_channel,
                 payload=log_payload,
             )
         except Exception:
@@ -234,3 +232,26 @@ class ExecutorToolShim(StreamMixin):
         """
         logger.error(message)
         raise SdkError(message, actual_err=err)
+
+    def log_adapter_once(
+        self,
+        kind: str,
+        adapter_id: str,
+        adapter: Any,
+    ) -> None:
+        """Surface adapter identity to the UI on first use only.
+
+        ``kind`` is the human label ("LLM", "Embedding", "Vector DB").
+        ``adapter`` is an SDK instance — read only for non-sensitive
+        identity (model name or adapter display name); ``adapter_id``
+        is the dedup key. Subsequent calls for the same id are no-ops.
+        """
+        if not adapter_id or adapter_id in self._adapters_logged:
+            return
+        self._adapters_logged.add(adapter_id)
+        get_model = getattr(adapter, "get_model_name", None)
+        if callable(get_model):
+            label = get_model() or adapter_id
+        else:
+            label = getattr(adapter, "_adapter_name", "") or adapter_id
+        self.stream_log(f"Using {kind}: `{label}`")
