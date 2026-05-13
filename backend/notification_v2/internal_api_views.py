@@ -286,12 +286,11 @@ def get_api_data(request: HttpRequest, api_id: str) -> JsonResponse:
         )
 
 
-# Required fields on the enqueue endpoint body. Worker-side serialization
-# guarantees these — keep this list in sync with
-# workers/shared/patterns/notification/helper.py.
+# `execution_id` is intentionally optional: the scheduler INPROGRESS path
+# (workers/scheduler/tasks.py, UN-2850 / #1562) fires before WorkflowExecution
+# is created. Renderer falls back to `—` for missing values.
 _ENQUEUE_REQUIRED_FIELDS = (
     "notification_id",
-    "execution_id",
     "pipeline_id",
     "pipeline_name",
     "status",
@@ -351,7 +350,7 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
     # (renderer falls back to "Type: —" / no Additional Data line).
     payload = {
         "type": body.get("type", ""),
-        "execution_id": body["execution_id"],
+        "execution_id": body.get("execution_id"),
         "pipeline_id": body["pipeline_id"],
         "pipeline_name": body["pipeline_name"],
         "status": body["status"],
