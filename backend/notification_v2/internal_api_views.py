@@ -486,12 +486,16 @@ def _dispatch_group(
 
         # Live auth — read from the FIRST row's notification. If multiple
         # notifications collide on (url, auth_sig, platform) we have, by
-        # definition, identical auth + format, so this is safe.
+        # definition, identical auth + format, so this is safe. Retry budget
+        # is the MAX across rows: there's a single HTTP call per batch, so
+        # the most retry-tolerant subscriber's intent wins; using the first
+        # row's value would silently truncate everyone else's retry budget.
         first_notification = rows[0].notification
         payloads = [r.payload for r in rows]
         body = render_clubbed_message(payloads, platform)
         headers = build_webhook_headers(first_notification)
         buffer_ids = [str(r.id) for r in rows]
+        max_retries = max(r.notification.max_retries for r in rows)
 
         # Mark DISPATCHED first; if commit succeeds the on_commit hook
         # publishes the broker task. If commit fails, rows stay PENDING and
@@ -508,7 +512,7 @@ def _dispatch_group(
                 body=body,
                 headers=headers,
                 platform=platform,
-                max_retries=first_notification.max_retries,
+                max_retries=max_retries,
                 buffer_ids=buffer_ids,
                 org_id=org_id,
             )
