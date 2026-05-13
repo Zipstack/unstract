@@ -18,8 +18,8 @@ REQUIRED_FIELDS = [
 ]
 
 
-@AuthHelper.auth_required
 @extraction_bp.route("/extract", methods=["POST"])
+@AuthHelper.auth_required
 def extract() -> Any:
     platform_key = AuthHelper.get_token_from_auth_header(request)
     payload: dict[Any, Any] = request.json

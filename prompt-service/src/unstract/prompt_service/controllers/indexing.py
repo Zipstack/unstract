@@ -32,8 +32,8 @@ REQUIRED_FIELDS = [
 ]
 
 
-@AuthHelper.auth_required
 @indexing_bp.route("/index", methods=["POST"])
+@AuthHelper.auth_required
 def index() -> Any:
     """Endpoint for indexing documents into the vector database.
 
