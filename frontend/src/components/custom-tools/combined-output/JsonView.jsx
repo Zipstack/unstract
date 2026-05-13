@@ -28,8 +28,7 @@ function JsonView({
   isSinglePass,
   isLoading,
 }) {
-  // Anonymous share viewers care about the enriched (post-lookup) value;
-  // the existing useEffect below falls back to "Raw" when no enriched data exists.
+  // Read-only viewers default to the enriched value.
   const isPublicSource = useCustomToolStore((s) => s.isPublicSource);
   const [activeView, setActiveView] = useState(
     isPublicSource ? "Enriched" : "Raw",

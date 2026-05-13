@@ -14,8 +14,7 @@ function useAxiosPrivate() {
       },
       async (error) => {
         if (error?.response?.status === 401) {
-          // Anonymous share viewer has no session to log out of; a 401
-          // here is a misrouted authenticated probe, not an expired session.
+          // Skip logout on routes that intentionally render without a session.
           const onPublicShare =
             typeof window !== "undefined" &&
             window.location.pathname.startsWith("/promptStudio/share");
