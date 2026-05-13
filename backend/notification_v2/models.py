@@ -195,8 +195,16 @@ class NotificationBuffer(BaseModel):
         indexes = [
             # Partial covering index — supports Index Only Scans on the flush
             # GROUP BY query and bounds index size to live PENDING backlog.
+            # `platform` is part of the grouping key so SLACK and API rows on
+            # the same (org, url, auth) split into separate dispatches.
             models.Index(
-                fields=["organization", "webhook_url", "auth_sig", "flush_after"],
+                fields=[
+                    "organization",
+                    "webhook_url",
+                    "auth_sig",
+                    "platform",
+                    "flush_after",
+                ],
                 name="idx_notif_buffer_pending",
                 condition=models.Q(status=BufferStatus.PENDING.value),
             ),

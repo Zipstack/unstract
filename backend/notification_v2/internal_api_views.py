@@ -25,12 +25,11 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import render_clubbed_message
-from notification_v2.enums import BufferStatus, DeliveryMode
+from notification_v2.enums import FAILURE_STATUSES, BufferStatus, DeliveryMode
 from notification_v2.helper import (
     build_webhook_headers,
     enqueue,
@@ -42,8 +41,6 @@ logger = logging.getLogger(__name__)
 
 # Constants for error messages
 INTERNAL_SERVER_ERROR_MSG = "Internal server error"
-
-_FAILURE_STATUSES = {ExecutionStatus.ERROR.value, ExecutionStatus.STOPPED.value}
 
 
 def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
@@ -73,7 +70,7 @@ def _apply_failure_filter(
     if execution is None:
         return notifications_qs
     failed_files = execution.failed_files or 0
-    is_failure = execution.status in _FAILURE_STATUSES or failed_files > 0
+    is_failure = execution.status in FAILURE_STATUSES or failed_files > 0
     if not is_failure:
         notifications_qs = notifications_qs.filter(notify_on_failures=False)
     return notifications_qs
@@ -387,12 +384,71 @@ def _gc_terminal_rows() -> int:
     return int(deleted_count)
 
 
+def _send_clubbed(
+    *,
+    url: str,
+    body: Any,
+    headers: dict[str, str],
+    platform: str,
+    max_retries: int,
+    buffer_ids: list[str],
+    org_id: Any,
+) -> None:
+    """Send the clubbed Celery task after the DB transition has committed.
+
+    Runs as a ``transaction.on_commit`` callback so a rolled-back UPDATE can
+    never leave a broker-queued message orphaned (the prior order — send
+    then update — risked duplicate delivery if the UPDATE failed). On broker
+    failure we revert rows back to PENDING in a separate transaction so the
+    next flush tick retries cleanly.
+    """
+    try:
+        celery_app.send_task(
+            "send_webhook_notification",
+            args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
+            kwargs={
+                "max_retries": max_retries,
+                "retry_delay": 10,
+                "platform": platform,
+            },
+            queue="notifications",
+            link_error=celery_app.signature(
+                "notification_v2.mark_buffer_dead_letter",
+                kwargs={"buffer_row_ids": buffer_ids},
+            ),
+        )
+        logger.info(
+            "metric=notification_batch_dispatched_total platform=%s result=success "
+            "org_id=%s webhook_url_hash=%s rows=%d",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+        )
+    except Exception:
+        logger.exception(
+            "metric=notification_batch_dispatched_total platform=%s "
+            "result=broker_failure org_id=%s webhook_url_hash=%s rows=%d",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+        )
+        # Revert outside the committed transaction so a transient broker
+        # outage degrades to "retried next tick" rather than "stuck DISPATCHED".
+        NotificationBuffer.objects.filter(id__in=buffer_ids).update(
+            status=BufferStatus.PENDING.value,
+            dispatched_at=None,
+        )
+
+
 def _dispatch_group(
     org_id: Any,
     webhook_url: str,
     auth_sig: str,
+    platform: str,
 ) -> tuple[int, int]:
-    """Dispatch a single (org, url, auth_sig) group; returns (rows, succeeded).
+    """Dispatch a single (org, url, auth_sig, platform) group; returns (rows, succeeded).
 
     Caller already filtered groups to MIN(flush_after) <= now. Locks rows
     with SKIP LOCKED so a sibling replica skips them rather than blocking.
@@ -407,6 +463,7 @@ def _dispatch_group(
                 organization_id=org_id,
                 webhook_url=webhook_url,
                 auth_sig=auth_sig,
+                platform=platform,
             )
             .order_by("created_at")[:_PROCESS_BUFFER_CAP]
         )
@@ -417,57 +474,33 @@ def _dispatch_group(
             return 0, 0
 
         # Live auth — read from the FIRST row's notification. If multiple
-        # notifications collide on (url, auth_sig) we have, by definition,
-        # identical auth, so this is safe.
+        # notifications collide on (url, auth_sig, platform) we have, by
+        # definition, identical auth + format, so this is safe.
         first_notification = rows[0].notification
-        platform = rows[0].platform
         payloads = [r.payload for r in rows]
         body = render_clubbed_message(payloads, platform)
         headers = build_webhook_headers(first_notification)
-
         buffer_ids = [str(r.id) for r in rows]
-        try:
-            celery_app.send_task(
-                "send_webhook_notification",
-                args=[
-                    first_notification.url,
-                    body,
-                    headers,
-                    settings.NOTIFICATION_TIMEOUT,
-                ],
-                kwargs={
-                    "max_retries": first_notification.max_retries,
-                    "retry_delay": 10,
-                    "platform": platform,
-                },
-                queue="notifications",
-                link_error=celery_app.signature(
-                    "notification_v2.mark_buffer_dead_letter",
-                    kwargs={"buffer_row_ids": buffer_ids},
-                ),
-            )
-        except Exception:
-            # Broker hiccup — leave rows PENDING for the next tick rather
-            # than mark them DEAD_LETTER. `exception` keeps stack context.
-            logger.exception(
-                "Broker dispatch failed for group org=%s url_hash=%s",
-                org_id,
-                webhook_url_hash(webhook_url),
-            )
-            return 0, 0
 
+        # Mark DISPATCHED first; if commit succeeds the on_commit hook
+        # publishes the broker task. If commit fails, rows stay PENDING and
+        # no task is published — eliminates the broker-vs-DB duplicate-send
+        # race that bit us when the order was reversed.
         now = timezone.now()
         NotificationBuffer.objects.filter(id__in=buffer_ids).update(
             status=BufferStatus.DISPATCHED.value,
             dispatched_at=now,
         )
-        logger.info(
-            "metric=notification_batch_dispatched_total platform=%s result=success "
-            "org_id=%s webhook_url_hash=%s rows=%d",
-            platform,
-            org_id,
-            webhook_url_hash(webhook_url),
-            len(rows),
+        transaction.on_commit(
+            lambda: _send_clubbed(
+                url=first_notification.url,
+                body=body,
+                headers=headers,
+                platform=platform,
+                max_retries=first_notification.max_retries,
+                buffer_ids=buffer_ids,
+                org_id=org_id,
+            )
         )
         return len(rows), len(rows)
 
@@ -484,9 +517,9 @@ def process_notification_buffer(request: HttpRequest) -> JsonResponse:
     """Flush PENDING groups that have hit their flush_after; then GC.
 
     Algorithm:
-    1. GROUP BY (org, url, auth_sig), HAVING MIN(flush_after) <= NOW()
+    1. GROUP BY (org, url, auth_sig, platform), HAVING MIN(flush_after) <= NOW()
     2. For each group, in its own transaction: lock-skip-locked rows,
-       render, dispatch a single Celery task, mark rows DISPATCHED.
+       render, mark rows DISPATCHED, on_commit-dispatch a single Celery task.
     3. Sweep terminal rows older than NOTIFICATION_BUFFER_RETENTION_DAYS.
 
     Concurrency: SELECT FOR UPDATE SKIP LOCKED makes parallel calls safe —
@@ -495,7 +528,7 @@ def process_notification_buffer(request: HttpRequest) -> JsonResponse:
     now = timezone.now()
     groups = list(
         NotificationBuffer.objects.filter(status=BufferStatus.PENDING.value)
-        .values("organization_id", "webhook_url", "auth_sig")
+        .values("organization_id", "webhook_url", "auth_sig", "platform")
         .annotate(earliest_flush=Min("flush_after"))
         .filter(earliest_flush__lte=now)
     )
@@ -508,6 +541,7 @@ def process_notification_buffer(request: HttpRequest) -> JsonResponse:
                 org_id=group["organization_id"],
                 webhook_url=group["webhook_url"],
                 auth_sig=group["auth_sig"],
+                platform=group["platform"],
             )
         except Exception:
             logger.exception(

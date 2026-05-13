@@ -44,7 +44,7 @@ def mark_buffer_dead_letter(
         status=BufferStatus.DEAD_LETTER.value
     )
     logger.warning(
-        "metric=notification_batch_dispatched_total result=dead_letter rows=%d " "exc=%r",
+        "metric=notification_batch_dispatched_total result=dead_letter rows=%d exc=%r",
         updated,
         exc,
     )

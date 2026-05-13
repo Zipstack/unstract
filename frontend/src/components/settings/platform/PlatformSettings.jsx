@@ -59,6 +59,11 @@ function PlatformSettings() {
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   useEffect(() => {
+    // Wait for session hydration — without this guard the first render
+    // fires GET against /api/v1/unstract/undefined/... and silently 404s.
+    if (!sessionDetails?.orgId) {
+      return;
+    }
     // Load org-scoped batch interval (UNS-611 v2). Falls back silently to
     // null on failure so the rest of the page still renders.
     axiosPrivate({
@@ -74,7 +79,7 @@ function PlatformSettings() {
       .catch(() => {
         // Non-fatal — admin just won't see a pre-filled value.
       });
-  }, []);
+  }, [sessionDetails?.orgId]);
 
   const handleSaveInterval = () => {
     if (

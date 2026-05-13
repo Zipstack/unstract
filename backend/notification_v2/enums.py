@@ -1,5 +1,12 @@
 from enum import Enum
 
+from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+# Single source of truth for "did this run fail for notification routing?".
+# STOPPED is intentionally a failure here per migrations/0002_…notify_on_failures
+# db_comment ("terminal status ERROR/STOPPED or any file in the run errored").
+FAILURE_STATUSES = frozenset({ExecutionStatus.ERROR.value, ExecutionStatus.STOPPED.value})
+
 
 class NotificationType(Enum):
     WEBHOOK = "WEBHOOK"

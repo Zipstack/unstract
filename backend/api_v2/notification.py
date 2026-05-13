@@ -1,17 +1,14 @@
 import logging
 
+from notification_v2.enums import FAILURE_STATUSES
 from notification_v2.helper import dispatch_with_delivery_mode
 from notification_v2.models import Notification
 from pipeline_v2.dto import PipelineStatusPayload
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.models import APIDeployment
 
 logger = logging.getLogger(__name__)
-
-
-_FAILURE_STATUSES = {ExecutionStatus.ERROR.value, ExecutionStatus.STOPPED.value}
 
 
 class APINotification:
@@ -26,7 +23,7 @@ class APINotification:
         # status check alone misses them — see callback aggregation rules.
         failed_files = self.workflow_execution.failed_files or 0
         is_failure = (
-            self.workflow_execution.status in _FAILURE_STATUSES or failed_files > 0
+            self.workflow_execution.status in FAILURE_STATUSES or failed_files > 0
         )
         if not is_failure:
             # Success path: skip rows that opted into failure-only alerts.

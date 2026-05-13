@@ -183,6 +183,40 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
     attempts = serializers.IntegerField(required=False, min_value=0)
     execution_time = serializers.FloatField(required=False, min_value=0)
 
+    def validate(self, attrs):
+        """Reject impossible file-count aggregates.
+
+        Per-field min_value=0 catches negatives, but successful + failed >
+        total or either component > total slips through and skews the
+        outcome-based notification filter downstream.
+        """
+        total = attrs.get("total_files")
+        successful = attrs.get("successful_files")
+        failed = attrs.get("failed_files")
+
+        if total is None:
+            if successful is not None or failed is not None:
+                raise serializers.ValidationError(
+                    {
+                        "total_files": "total_files is required when file aggregates are provided."
+                    }
+                )
+            return attrs
+
+        if successful is not None and successful > total:
+            raise serializers.ValidationError(
+                {"successful_files": "successful_files cannot exceed total_files."}
+            )
+        if failed is not None and failed > total:
+            raise serializers.ValidationError(
+                {"failed_files": "failed_files cannot exceed total_files."}
+            )
+        if successful is not None and failed is not None and successful + failed > total:
+            raise serializers.ValidationError(
+                "successful_files + failed_files cannot exceed total_files."
+            )
+        return attrs
+
 
 class OrganizationContextSerializer(serializers.Serializer):
     """Serializer for organization context information."""

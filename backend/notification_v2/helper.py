@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 from collections.abc import Iterable
 from datetime import timedelta
@@ -26,17 +27,20 @@ _AUTH_SIG_NONE = ""
 
 
 def compute_auth_sig(notification: Notification) -> str:
-    """SHA-256 hex of (auth_type + auth_key + auth_header) — never raw creds.
+    """SHA-256 hex of (auth_type, auth_key, auth_header) — never raw creds.
 
     Identical auth configs produce the same sig (so grouping clubs them);
-    differing configs split into separate groups.
+    differing configs split into separate groups. The tuple is JSON-encoded
+    before hashing so a literal delimiter byte inside auth_key/header cannot
+    cause two distinct tuples to collapse to the same digest.
     """
-    raw = "|".join(
+    raw = json.dumps(
         [
             notification.authorization_type or _AUTH_SIG_NONE,
             notification.authorization_key or _AUTH_SIG_NONE,
             notification.authorization_header or _AUTH_SIG_NONE,
-        ]
+        ],
+        separators=(",", ":"),
     )
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 

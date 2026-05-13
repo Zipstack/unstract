@@ -29,27 +29,23 @@ def _enqueue_to_buffer(
     api_client: Any,
     notification: dict[str, Any],
     payload: NotificationPayload,
-) -> bool:
+) -> None:
     """POST a single execution event to the backend's buffer endpoint.
 
     Worker writes nothing to the DB itself — the backend owns NotificationBuffer
-    rows. Returns True on success so callers can fall back to immediate dispatch
-    if the buffer endpoint is unavailable. The fallback decision is opinionated:
-    we keep behavior conservative and DON'T fall back so a misconfigured or
-    outage-mode backend can't silently turn BATCHED into IMMEDIATE.
+    rows. Raises on any failure so the outer trigger_* caller's except block
+    logs the drop instead of silently treating BATCHED delivery as successful.
     """
+    # Forward the full per-event shape so the backend renderer can match
+    # IMMEDIATE's KV layout per event (Type / Pipeline Id / Pipeline Name /
+    # Status / Execution Id / Timestamp / Additional Data). Older backend
+    # builds that ignore the extra fields stay unaffected.
+    payload_type = payload.type.value if hasattr(payload.type, "value") else payload.type
+    payload_status = (
+        payload.status.value if hasattr(payload.status, "value") else payload.status
+    )
+    payload_timestamp = payload.timestamp.isoformat() if payload.timestamp else None
     try:
-        # Forward the full per-event shape so the backend renderer can match
-        # IMMEDIATE's KV layout per event (Type / Pipeline Id / Pipeline Name
-        # / Status / Execution Id / Timestamp / Additional Data). Older
-        # backend builds that ignore the extra fields stay unaffected.
-        payload_type = (
-            payload.type.value if hasattr(payload.type, "value") else payload.type
-        )
-        payload_status = (
-            payload.status.value if hasattr(payload.status, "value") else payload.status
-        )
-        payload_timestamp = payload.timestamp.isoformat() if payload.timestamp else None
         api_client._make_request(
             method="POST",
             endpoint=ENQUEUE_BUFFER_ENDPOINT,
@@ -67,21 +63,19 @@ def _enqueue_to_buffer(
             },
             timeout=10,
         )
-        logger.info(
-            "Enqueued BATCHED notification %s for pipeline %s execution %s",
+    except Exception:  # noqa: BLE001 — propagate any failure, don't classify
+        logger.exception(
+            "Failed to enqueue BATCHED notification %s for pipeline %s",
             notification["id"],
             payload.pipeline_id,
-            payload.execution_id,
         )
-        return True
-    except Exception as e:
-        logger.error(
-            "Failed to enqueue BATCHED notification %s for pipeline %s: %s",
-            notification["id"],
-            payload.pipeline_id,
-            e,
-        )
-        return False
+        raise
+    logger.info(
+        "Enqueued BATCHED notification %s for pipeline %s execution %s",
+        notification["id"],
+        payload.pipeline_id,
+        payload.execution_id,
+    )
 
 
 def _route_notification(
@@ -102,7 +96,15 @@ def _route_notification(
         return
 
     if notification.get("delivery_mode") == DELIVERY_MODE_BATCHED:
-        _enqueue_to_buffer(api_client, notification, payload)
+        try:
+            _enqueue_to_buffer(api_client, notification, payload)
+        except Exception:  # noqa: BLE001 — already logged with stack inside
+            # Surface but don't abort the outer trigger_* loop — sibling
+            # BATCHED notifications still deserve their enqueue attempt.
+            logger.warning(
+                "BATCHED enqueue failed for notification %s; continuing with others",
+                notification.get("id"),
+            )
         return
 
     send_notification_to_worker(

@@ -141,7 +141,13 @@ class Migration(migrations.Migration):
             model_name="notificationbuffer",
             index=models.Index(
                 condition=models.Q(("status", "PENDING")),
-                fields=["organization", "webhook_url", "auth_sig", "flush_after"],
+                fields=[
+                    "organization",
+                    "webhook_url",
+                    "auth_sig",
+                    "platform",
+                    "flush_after",
+                ],
                 name="idx_notif_buffer_pending",
             ),
         ),

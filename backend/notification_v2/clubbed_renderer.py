@@ -1,6 +1,6 @@
 """Canonical envelope + renderer for every dispatch — IMMEDIATE and BATCHED.
 
-The same envelope shape feeds every channel × mode cell so receivers never
+The same envelope shape feeds every channel x mode cell so receivers never
 need to branch on "is this batched?":
 
     {

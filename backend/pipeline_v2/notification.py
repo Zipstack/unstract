@@ -1,17 +1,14 @@
 import logging
 
+from notification_v2.enums import FAILURE_STATUSES
 from notification_v2.helper import dispatch_with_delivery_mode
 from notification_v2.models import Notification
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from pipeline_v2.dto import PipelineStatusPayload
 from pipeline_v2.models import Pipeline
 
 logger = logging.getLogger(__name__)
-
-
-_FAILURE_STATUSES = {ExecutionStatus.ERROR.value, ExecutionStatus.STOPPED.value}
 
 
 class PipelineNotification:
@@ -54,7 +51,7 @@ class PipelineNotification:
         failed_files = (execution.failed_files or 0) if execution else 0
         execution_status = execution.status if execution else None
         is_failure = (
-            execution_status in _FAILURE_STATUSES
+            execution_status in FAILURE_STATUSES
             or failed_files > 0
             or self.pipeline.last_run_status == Pipeline.PipelineStatus.FAILURE
         )
