@@ -8,7 +8,7 @@ from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.input_sanitizer import validate_name_field
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
@@ -86,6 +86,14 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     class Meta:
         model = CustomTool
         fields = "__all__"
+        # Tool-level LLM context fields and stored LLM output;
+        # may legitimately contain XML/HTML-like markup.
+        html_safe_fields = (
+            "summarize_prompt",
+            "preamble",
+            "postamble",
+            "output",
+        )
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_tool_name": {
@@ -98,11 +106,6 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
 
     def validate_tool_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Tool name")
-
-    def validate_description(self, value: str) -> str:
-        if value is None:
-            return value
-        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""
