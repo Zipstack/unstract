@@ -861,12 +861,9 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
-        if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
-        if extract_result.signature_page_references:
-            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
-                extract_result.signature_page_references
-            )
+        PromptStudioHelper._inject_signature_data_into_tool_settings(
+            tool_settings, extract_result
+        )
 
         file_hash = fs_instance.get_hash_from_file(path=extract_path)
 
@@ -1058,12 +1055,9 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
-        if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
-        if extract_result.signature_page_references:
-            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
-                extract_result.signature_page_references
-            )
+        PromptStudioHelper._inject_signature_data_into_tool_settings(
+            tool_settings, extract_result
+        )
 
         file_hash = fs_instance.get_hash_from_file(path=extract_path)
 
@@ -1203,12 +1197,9 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
-        if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
-        if extract_result.signature_page_references:
-            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
-                extract_result.signature_page_references
-            )
+        PromptStudioHelper._inject_signature_data_into_tool_settings(
+            tool_settings, extract_result
+        )
 
         lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
         if lookup_configs:
@@ -2009,12 +2000,9 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
-        if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
-        if extract_result.signature_page_references:
-            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
-                extract_result.signature_page_references
-            )
+        PromptStudioHelper._inject_signature_data_into_tool_settings(
+            tool_settings, extract_result
+        )
         file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
         payload = {
@@ -2314,12 +2302,9 @@ class PromptStudioHelper:
             default_profile.retrieval_strategy or TSPKeys.SIMPLE
         )
         tool_settings[TSPKeys.SIMILARITY_TOP_K] = default_profile.similarity_top_k
-        if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
-        if extract_result.signature_page_references:
-            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
-                extract_result.signature_page_references
-            )
+        PromptStudioHelper._inject_signature_data_into_tool_settings(
+            tool_settings, extract_result
+        )
         for prompt in prompts:
             if not prompt.prompt:
                 raise EmptyPromptError()
@@ -2378,6 +2363,23 @@ class PromptStudioHelper:
             return tool
         except CustomTool.DoesNotExist:
             return None
+
+    @staticmethod
+    def _inject_signature_data_into_tool_settings(
+        tool_settings: dict[str, Any],
+        extract_result: "ExtractResult",
+    ) -> None:
+        """Inject ``signature_metadata`` / ``signature_page_references``
+        from the extract result into ``tool_settings`` (mutated in place).
+
+        No-op when document_insights mode produced no signature data.
+        """
+        if extract_result.signature_metadata:
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
+        if extract_result.signature_page_references:
+            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
+                extract_result.signature_page_references
+            )
 
     @staticmethod
     def _signature_sidecar_path(extract_file_path: str) -> str:

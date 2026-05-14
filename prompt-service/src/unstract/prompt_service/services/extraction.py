@@ -78,7 +78,7 @@ class ExtractionService:
                     process_response.extraction_metadata.signature_metadata
                 )
                 logger.info(
-                    "DOC_INSIGHTS extraction: signature_metadata found " "for pages: %s",
+                    "DOC_INSIGHTS extraction: signature_metadata found for pages: %s",
                     list(signature_metadata.keys()),
                 )
             if (

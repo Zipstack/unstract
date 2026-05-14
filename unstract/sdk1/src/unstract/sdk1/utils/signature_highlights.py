@@ -43,33 +43,39 @@ def _build_page_coords(
     return page_coords
 
 
-def _find_pages_matching_signers(
-    answer: str,
-    signature_metadata: dict[str, list[Any]],
-    eligible_pages: set[str],
-) -> list[str]:
-    """Return the pages whose signer names appear in ``answer``.
+def _any_signer_matches(signatures: list[Any], answer: str) -> bool:
+    """Return True if any signer name in ``signatures`` appears in ``answer``.
 
     Each name is matched as a whole token/phrase (case-insensitive,
     word-boundary anchored) to avoid signer initials like ``"P S"``
     matching the gap between ``"Pradeep"`` and ``"Surukanti"`` inside
     ``"Pradeep Surukanti"``.
     """
-    matched: list[str] = []
-    for page_str, signatures in signature_metadata.items():
-        if page_str not in eligible_pages or not signatures:
+    for sig in signatures:
+        if not isinstance(sig, dict):
             continue
-        for sig in signatures:
-            if not isinstance(sig, dict):
-                continue
-            name = (sig.get("name") or "").strip()
-            if not name:
-                continue
-            pattern = re.compile(r"\b" + re.escape(name) + r"\b", re.IGNORECASE)
-            if pattern.search(answer):
-                matched.append(page_str)
-                break
-    return matched
+        name = (sig.get("name") or "").strip()
+        if not name:
+            continue
+        pattern = re.compile(r"\b" + re.escape(name) + r"\b", re.IGNORECASE)
+        if pattern.search(answer):
+            return True
+    return False
+
+
+def _find_pages_matching_signers(
+    answer: str,
+    signature_metadata: dict[str, list[Any]],
+    eligible_pages: set[str],
+) -> list[str]:
+    """Return the pages whose signer names appear in ``answer``."""
+    return [
+        page_str
+        for page_str, signatures in signature_metadata.items()
+        if page_str in eligible_pages
+        and signatures
+        and _any_signer_matches(signatures, answer)
+    ]
 
 
 def _dedupe_coords(
