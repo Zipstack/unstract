@@ -1,6 +1,6 @@
 from typing import Any
 
-from rest_framework.serializers import ModelSerializer
+from utils.serializer import ModelSerializer
 
 from backend.constants import RequestKey
 
