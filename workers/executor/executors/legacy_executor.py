@@ -348,7 +348,7 @@ class LegacyExecutor(BaseExecutor):
         if signature_metadata:
             result_data["signature_metadata"] = signature_metadata
             logger.info(
-                "DOC_INSIGHTS _handle_extract: signature_metadata found for " "pages: %s",
+                "DOC_INSIGHTS _handle_extract: signature_metadata found for pages: %s",
                 list(signature_metadata.keys()),
             )
         if signature_page_references:

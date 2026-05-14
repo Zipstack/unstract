@@ -1651,7 +1651,7 @@ class PromptStudioHelper:
             # Validation responses are user-facing; DRF renders them as-is.
             raise
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"[{tool.tool_id}] Error while fetching response for "
                 f"prompt {id} and doc {document_id}: {e}"
             )
@@ -1719,7 +1719,7 @@ class PromptStudioHelper:
             # Validation responses are user-facing; DRF renders them as-is.
             raise
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"[{tool.tool_id}] Error while fetching single pass response: {e}"
             )
             PromptStudioHelper._publish_log(
@@ -2213,7 +2213,7 @@ class PromptStudioHelper:
                 msg = e.actual_err.response.json().get("error", str(e))
 
             msg = f"Error while indexing '{filename}'. {msg}"
-            logger.error(msg, stack_info=True, exc_info=True)
+            logger.exception(msg, stack_info=True)
             PromptStudioHelper._publish_log(
                 {"tool_id": tool_id, "run_id": run_id, "doc_name": filename},
                 LogLevels.ERROR,
@@ -2363,6 +2363,23 @@ class PromptStudioHelper:
             return tool
         except CustomTool.DoesNotExist:
             return None
+
+    @staticmethod
+    def _log_signature_capture(
+        signature_metadata: dict[str, Any] | None,
+        signature_page_references: dict[str, Any] | None,
+        document_id: str,
+    ) -> None:
+        """Log signature data capture from a fresh extract dispatch."""
+        if not (signature_metadata or signature_page_references):
+            return
+        logger.info(
+            "DOC_INSIGHTS dynamic_extractor: captured signature data "
+            "(pages=%s, refs=%s) for document %s",
+            list(signature_metadata.keys()) if signature_metadata else [],
+            list(signature_page_references.keys()) if signature_page_references else [],
+            document_id,
+        )
 
     @staticmethod
     def _inject_signature_data_into_tool_settings(
@@ -2526,16 +2543,9 @@ class PromptStudioHelper:
         extracted_text = result.data.get("extracted_text", "")
         signature_metadata = result.data.get("signature_metadata")
         signature_page_references = result.data.get("signature_page_references")
-        if signature_metadata or signature_page_references:
-            logger.info(
-                "DOC_INSIGHTS dynamic_extractor: captured signature data "
-                "(pages=%s, refs=%s) for document %s",
-                list(signature_metadata.keys()) if signature_metadata else [],
-                list(signature_page_references.keys())
-                if signature_page_references
-                else [],
-                document_id,
-            )
+        PromptStudioHelper._log_signature_capture(
+            signature_metadata, signature_page_references, document_id
+        )
         success = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
