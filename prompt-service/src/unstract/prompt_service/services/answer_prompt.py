@@ -1,8 +1,5 @@
-import ipaddress
-import socket
 from logging import Logger
 from typing import Any
-from urllib.parse import urlparse
 
 from flask import current_app as app
 
@@ -29,58 +26,7 @@ from unstract.sdk1.utils.signature_highlights import (
     merge_into_highlight_data,
     resolve_signature_highlight_coords,
 )
-
-
-def _is_safe_public_url(url: str) -> bool:
-    """Validate webhook URL for SSRF protection.
-
-    Only allows HTTPS and blocks private/loopback/internal addresses.
-    Resolves all DNS records (A/AAAA) to prevent DNS rebinding attacks.
-    """
-    try:
-        p = urlparse(url)
-        if p.scheme not in ("https",):  # Only allow HTTPS for security
-            return False
-        host = p.hostname or ""
-        # Block obvious local hosts
-        if host in ("localhost",):
-            return False
-
-        addrs: set[str] = set()
-        # If literal IP, validate directly; else resolve all records (A/AAAA)
-        try:
-            ipaddress.ip_address(host)
-            addrs.add(host)
-        except ValueError:
-            try:
-                for family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
-                    host, None, type=socket.SOCK_STREAM
-                ):
-                    addr = sockaddr[0]
-                    addrs.add(addr)
-            except Exception:
-                return False
-
-        if not addrs:
-            return False
-
-        # Validate all resolved addresses
-        for addr in addrs:
-            try:
-                ip = ipaddress.ip_address(addr)
-            except ValueError:
-                return False
-            if (
-                ip.is_private
-                or ip.is_loopback
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-            ):
-                return False
-        return True
-    except Exception:
-        return False
+from unstract.sdk1.utils.url_safety import is_safe_public_url
 
 
 class AnswerPromptService:
@@ -498,7 +444,7 @@ class AnswerPromptService:
                         app.logger.warning(
                             "Postprocessing webhook enabled but URL missing; skipping."
                         )
-                    elif not _is_safe_public_url(webhook_url):
+                    elif not is_safe_public_url(webhook_url):
                         app.logger.warning(
                             "Postprocessing webhook URL is not allowed; skipping."
                         )
