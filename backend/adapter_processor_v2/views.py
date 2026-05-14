@@ -346,7 +346,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         response = super().partial_update(request, *args, **kwargs)
 
         # Send email notifications to newly shared users
-        if response.status_code == 200 and shared_users_updated:
+        if response.status_code == 200 and shared_users_updated and bool(notification_plugin):
             try:
                 adapter.refresh_from_db()
                 new_shared_users = set(adapter.shared_users.all())
