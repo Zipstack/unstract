@@ -4,7 +4,22 @@ import os
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
+
+
+class ExtractResult(NamedTuple):
+    """Return value of ``PromptStudioHelper.dynamic_extractor``.
+
+    ``signature_metadata`` and ``signature_page_references`` are populated
+    only when the x2text adapter is LLMWhisperer V2 in ``document_insights``
+    mode and the document contains signatures. They are read either from
+    the live extract dispatch result (cache miss) or from the on-disk
+    ``.doc_insights.json`` sidecar (cache hit).
+    """
+
+    text: str
+    signature_metadata: dict[str, Any] | None = None
+    signature_page_references: dict[str, Any] | None = None
 
 from account_v2.constants import Common
 from account_v2.models import User
@@ -734,7 +749,7 @@ class PromptStudioHelper:
         )
 
         # Extract (blocking, usually cached)
-        extracted_text = PromptStudioHelper.dynamic_extractor(
+        extract_result = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
             file_path=file_path,
             org_id=org_id,
@@ -742,6 +757,7 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
         )
+        extracted_text = extract_result.text
 
         is_summary = tool.summarize_as_source
         if is_summary:
@@ -836,6 +852,14 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
+        if extract_result.signature_metadata:
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
+                extract_result.signature_metadata
+            )
+        if extract_result.signature_page_references:
+            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
+                extract_result.signature_page_references
+            )
 
         file_hash = fs_instance.get_hash_from_file(path=extract_path)
 
@@ -951,7 +975,7 @@ class PromptStudioHelper:
         )
 
         # Extract ONCE (blocking, usually cached)
-        extracted_text = PromptStudioHelper.dynamic_extractor(
+        extract_result = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
             file_path=file_path,
             org_id=org_id,
@@ -959,6 +983,7 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
         )
+        extracted_text = extract_result.text
 
         is_summary = tool.summarize_as_source
         if is_summary:
@@ -1026,6 +1051,14 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
+        if extract_result.signature_metadata:
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
+                extract_result.signature_metadata
+            )
+        if extract_result.signature_page_references:
+            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
+                extract_result.signature_page_references
+            )
 
         file_hash = fs_instance.get_hash_from_file(path=extract_path)
 
@@ -1126,7 +1159,7 @@ class PromptStudioHelper:
         )
 
         # Extract (blocking, usually cached)
-        PromptStudioHelper.dynamic_extractor(
+        extract_result = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=doc_path,
             org_id=org_id,
@@ -1165,6 +1198,14 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
+        if extract_result.signature_metadata:
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
+                extract_result.signature_metadata
+            )
+        if extract_result.signature_page_references:
+            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
+                extract_result.signature_page_references
+            )
 
         for p in prompts:
             if not p.prompt:
@@ -1366,7 +1407,7 @@ class PromptStudioHelper:
             tool=util,
         )
 
-        extracted_text = PromptStudioHelper.dynamic_extractor(
+        extract_result = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=file_path,
             org_id=org_id,
@@ -1374,6 +1415,7 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
         )
+        extracted_text = extract_result.text
         if tool.summarize_context:
             summarize_file_path = PromptStudioHelper.summarize(
                 file_name, org_id, run_id, tool
@@ -1817,7 +1859,7 @@ class PromptStudioHelper:
             tool=util,
         )
         logger.info(f"Extracting text from {file_path} for {doc_id}")
-        extracted_text = PromptStudioHelper.dynamic_extractor(
+        extract_result = PromptStudioHelper.dynamic_extractor(
             profile_manager=profile_manager,
             file_path=file_path,
             org_id=org_id,
@@ -1825,6 +1867,7 @@ class PromptStudioHelper:
             run_id=run_id,
             enable_highlight=tool.enable_highlight,
         )
+        extracted_text = extract_result.text
         logger.info(f"Extracted text from {file_path} for {doc_id}")
         if is_summary:
             profile_manager.chunk_size = 0
@@ -1933,6 +1976,14 @@ class PromptStudioHelper:
         tool_settings[TSPKeys.WORD_CONFIDENCE_POSTAMBLE] = getattr(
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
+        if extract_result.signature_metadata:
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
+                extract_result.signature_metadata
+            )
+        if extract_result.signature_page_references:
+            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
+                extract_result.signature_page_references
+            )
         file_hash = fs_instance.get_hash_from_file(path=doc_path)
 
         payload = {
@@ -2194,7 +2245,7 @@ class PromptStudioHelper:
         file_path = os.path.join(
             directory, "extract", os.path.splitext(filename)[0] + ".txt"
         )
-        PromptStudioHelper.dynamic_extractor(
+        extract_result = PromptStudioHelper.dynamic_extractor(
             profile_manager=default_profile,
             file_path=input_file_path,
             org_id=org_id,
@@ -2232,6 +2283,14 @@ class PromptStudioHelper:
             default_profile.retrieval_strategy or TSPKeys.SIMPLE
         )
         tool_settings[TSPKeys.SIMILARITY_TOP_K] = default_profile.similarity_top_k
+        if extract_result.signature_metadata:
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
+                extract_result.signature_metadata
+            )
+        if extract_result.signature_page_references:
+            tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
+                extract_result.signature_page_references
+            )
         for prompt in prompts:
             if not prompt.prompt:
                 raise EmptyPromptError()
@@ -2292,6 +2351,49 @@ class PromptStudioHelper:
             return None
 
     @staticmethod
+    def _signature_sidecar_path(extract_file_path: str) -> str:
+        p = Path(extract_file_path)
+        return str(p.with_suffix("")) + ".doc_insights.json"
+
+    @staticmethod
+    def _load_signature_sidecar(
+        extract_file_path: str,
+        fs_instance: Any,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        """Return ``(signature_metadata, signature_page_references)`` from the
+        sidecar, or ``(None, None)`` if the sidecar is missing or unreadable.
+
+        Signature data is only written by the executor when a document
+        contains signatures in document_insights mode; cache-hit calls
+        for documents extracted in other modes legitimately have no
+        sidecar, so absence is not an error.
+        """
+        sidecar_path = PromptStudioHelper._signature_sidecar_path(extract_file_path)
+        try:
+            raw = fs_instance.read(path=sidecar_path, mode="r")
+        except FileNotFoundError:
+            return None, None
+        except Exception as e:
+            logger.warning(
+                "DOC_INSIGHTS sidecar: failed to read %s: %s",
+                sidecar_path,
+                e,
+            )
+            return None, None
+        try:
+            data = json.loads(raw)
+        except (TypeError, ValueError) as e:
+            logger.warning(
+                "DOC_INSIGHTS sidecar: failed to parse %s: %s",
+                sidecar_path,
+                e,
+            )
+            return None, None
+        sig_meta = data.get("signature_metadata") or None
+        sig_refs = data.get("signature_page_references") or None
+        return sig_meta, sig_refs
+
+    @staticmethod
     def dynamic_extractor(
         file_path: str,
         enable_highlight: bool,
@@ -2299,7 +2401,7 @@ class PromptStudioHelper:
         org_id: str,
         profile_manager: ProfileManager,
         document_id: str,
-    ) -> str:
+    ) -> ExtractResult:
         # Guard against None metadata (when adapter_metadata_b is None)
         metadata = profile_manager.x2text.metadata or {}
         x2text_config_hash = ToolUtils.hash_str(json.dumps(metadata, sort_keys=True))
@@ -2329,7 +2431,15 @@ class PromptStudioHelper:
             try:
                 extracted_text = fs_instance.read(path=extract_file_path, mode="r")
                 logger.info("Extracted text found. Reading from file..")
-                return extracted_text
+                sig_meta, sig_refs = PromptStudioHelper._load_signature_sidecar(
+                    extract_file_path=extract_file_path,
+                    fs_instance=fs_instance,
+                )
+                return ExtractResult(
+                    text=extracted_text,
+                    signature_metadata=sig_meta,
+                    signature_page_references=sig_refs,
+                )
             except FileNotFoundError as e:
                 logger.warning(
                     f"File not found for extraction. {extract_file_path}. {e}"
@@ -2383,6 +2493,18 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
+        signature_metadata = result.data.get("signature_metadata")
+        signature_page_references = result.data.get("signature_page_references")
+        if signature_metadata or signature_page_references:
+            logger.info(
+                "DOC_INSIGHTS dynamic_extractor: captured signature data "
+                "(pages=%s, refs=%s) for document %s",
+                list(signature_metadata.keys()) if signature_metadata else [],
+                list(signature_page_references.keys())
+                if signature_page_references
+                else [],
+                document_id,
+            )
         success = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
@@ -2395,7 +2517,11 @@ class PromptStudioHelper:
                 f"Extraction completed but status not saved."
             )
 
-        return extracted_text
+        return ExtractResult(
+            text=extracted_text,
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+        )
 
     @staticmethod
     def export_project_settings(tool: CustomTool) -> dict:

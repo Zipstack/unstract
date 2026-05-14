@@ -55,4 +55,7 @@ def extract() -> Any:
     signature_metadata = extraction_result.get("signature_metadata")
     if signature_metadata:
         response["signature_metadata"] = signature_metadata
+    signature_page_references = extraction_result.get("signature_page_references")
+    if signature_page_references:
+        response["signature_page_references"] = signature_page_references
     return response

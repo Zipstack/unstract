@@ -900,6 +900,179 @@ class TestAnswerPromptServiceUnit:
         assert "sum, total" in result
 
 
+class TestAttachSignatureHighlights:
+    """Tests for the signature-highlight post-processor."""
+
+    @staticmethod
+    def _fixture_signatures():
+        """Build a minimal signature fixture set covering two pages."""
+        signature_metadata = {
+            "0": [
+                {"name": "Mr Dagan", "type": "signature", "desc": ""},
+                {"name": "Carmela Avner", "type": "signature", "desc": ""},
+            ],
+            "1": [
+                {"name": "Eve Other", "type": "signature", "desc": ""},
+            ],
+        }
+        signature_page_references = {
+            "0": {
+                "hex": "0x10",
+                "line_metadata_index": 15,
+                "signers": ["Mr Dagan", "Carmela Avner"],
+                "coords": [0, 320, 31, 3168],
+            },
+            "1": {
+                "hex": "0x20",
+                "line_metadata_index": 31,
+                "signers": ["Eve Other"],
+                "coords": [1, 100, 40, 3168],
+            },
+        }
+        return signature_metadata, signature_page_references
+
+    def test_name_match_attaches_only_matched_page(self):
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        sig_meta, sig_refs = self._fixture_signatures()
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="The document was signed by Mr Dagan on Jan 1.",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="signer",
+        )
+        # Only page 0's coords (Mr Dagan) should be attached.
+        assert metadata["highlight_data"]["signer"] == [[0, 320, 31, 3168]]
+
+    def test_case_insensitive_substring_match(self):
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        sig_meta, sig_refs = self._fixture_signatures()
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="signed by mr dagan, with sign-off from carmela avner.",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="signers",
+        )
+        # Both names matched but both are on page 0 → single coord, deduped.
+        assert metadata["highlight_data"]["signers"] == [[0, 320, 31, 3168]]
+
+    def test_multi_page_names_attach_distinct_coords(self):
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        sig_meta, sig_refs = self._fixture_signatures()
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="Signed by Mr Dagan and Eve Other.",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="signers",
+        )
+        # Page 0 and page 1 coords both attached.
+        coords = metadata["highlight_data"]["signers"]
+        assert [0, 320, 31, 3168] in coords
+        assert [1, 100, 40, 3168] in coords
+        assert len(coords) == 2
+
+    def test_keyword_fallback_attaches_all_signature_pages(self):
+        """Generic signature mention with no name match → all pages."""
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        sig_meta, sig_refs = self._fixture_signatures()
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="Yes, the document is signed.",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="is_signed",
+        )
+        coords = metadata["highlight_data"]["is_signed"]
+        assert [0, 320, 31, 3168] in coords
+        assert [1, 100, 40, 3168] in coords
+        assert len(coords) == 2
+
+    def test_no_match_no_keyword_no_op(self):
+        """Answer with neither name match nor keyword → no highlights added."""
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        sig_meta, sig_refs = self._fixture_signatures()
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="The total amount is $42.",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="total",
+        )
+        assert "highlight_data" not in metadata
+
+    def test_preserves_existing_highlight_entries(self):
+        """Coords already in metadata[HIGHLIGHT_DATA][key] are kept; no dups."""
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        sig_meta, sig_refs = self._fixture_signatures()
+        metadata = {
+            "highlight_data": {
+                "signer": [
+                    [9, 9, 9, 9],  # pre-existing, unrelated highlight
+                    [0, 320, 31, 3168],  # would duplicate the page-0 sig
+                ]
+            }
+        }
+        AnswerPromptService._attach_signature_highlights(
+            answer="Signed by Mr Dagan.",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="signer",
+        )
+        # Pre-existing entries preserved, page-0 coord not duplicated.
+        assert metadata["highlight_data"]["signer"] == [
+            [9, 9, 9, 9],
+            [0, 320, 31, 3168],
+        ]
+
+    def test_missing_inputs_no_op(self):
+        """No-op when signature data or metadata pieces are missing."""
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        # No signature_metadata
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="signed by Mr Dagan",
+            signature_metadata=None,
+            signature_page_references={"0": {"coords": [0, 0, 0, 0]}},
+            metadata=metadata,
+            prompt_key="k",
+        )
+        assert metadata == {}
+        # No signature_page_references
+        AnswerPromptService._attach_signature_highlights(
+            answer="signed by Mr Dagan",
+            signature_metadata={"0": [{"name": "Mr Dagan"}]},
+            signature_page_references=None,
+            metadata=metadata,
+            prompt_key="k",
+        )
+        assert metadata == {}
+        # Empty/None answer
+        sig_meta, sig_refs = self._fixture_signatures()
+        AnswerPromptService._attach_signature_highlights(
+            answer="",
+            signature_metadata=sig_meta,
+            signature_page_references=sig_refs,
+            metadata=metadata,
+            prompt_key="k",
+        )
+        assert metadata == {}
+
+
 class TestVariableReplacementService:
     """Tests for the VariableReplacementService."""
 

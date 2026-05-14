@@ -160,7 +160,7 @@ class AnswerPromptService:
             signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
-        return AnswerPromptService.run_completion(
+        answer = AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt,
             metadata=metadata,
@@ -172,6 +172,16 @@ class AnswerPromptService:
             execution_source=execution_source,
             process_text=process_text,
         )
+        AnswerPromptService._attach_signature_highlights(
+            answer=answer,
+            signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
+            signature_page_references=tool_settings.get(
+                PSKeys.SIGNATURE_PAGE_REFERENCES
+            ),
+            metadata=metadata,
+            prompt_key=output[PSKeys.NAME],
+        )
+        return answer
 
     @staticmethod
     def _build_grammar_notes(grammar_list: list[dict[str, Any]]) -> str:
@@ -189,6 +199,109 @@ class AnswerPromptService:
                     f"in both the question and the context."
                 )
         return notes
+
+    # Generic signature-related terms used as a fallback trigger when the
+    # LLM answer doesn't mention any specific signer name but does talk
+    # about signing in general (e.g. "Is this signed?" → "Yes, the document
+    # is signed."). Matched as case-insensitive substrings.
+    _SIGNATURE_KEYWORDS = (
+        "signature",
+        "signed",
+        "signatory",
+        "signatories",
+        "signing",
+        "executed",
+    )
+
+    @staticmethod
+    def _attach_signature_highlights(
+        answer: str,
+        signature_metadata: dict[str, list[Any]] | None,
+        signature_page_references: dict[str, Any] | None,
+        metadata: dict[str, Any] | None,
+        prompt_key: str | None,
+    ) -> None:
+        """Attach signature page highlights to ``metadata`` when the LLM
+        answer references a known signer or signatures generally.
+
+        - For each signer name in ``signature_metadata`` found as a
+          case-insensitive substring in ``answer``, append that page's
+          coords (from ``signature_page_references``) to
+          ``metadata[HIGHLIGHT_DATA][prompt_key]``.
+        - If no signer-name match is found but the answer mentions
+          generic signature keywords (signature, signed, signatory,
+          executed, signing), append every signature page's coords.
+
+        ``metadata[HIGHLIGHT_DATA][prompt_key]`` is mutated in place; the
+        existing list (populated by hex-comment processing in
+        ``run_completion``) is preserved and extended.
+        """
+        if not signature_page_references or not signature_metadata:
+            return
+        if metadata is None or not prompt_key:
+            return
+        if not isinstance(answer, str) or not answer.strip():
+            return
+
+        # Build page → coords map (one coord array per signature page).
+        page_coords: dict[str, list[int]] = {}
+        for page_str, ref in signature_page_references.items():
+            if not isinstance(ref, dict):
+                continue
+            coords = ref.get("coords")
+            if isinstance(coords, list) and len(coords) >= 4:
+                page_coords[page_str] = list(coords[:4])
+        if not page_coords:
+            return
+
+        answer_lower = answer.lower()
+        matched_pages: list[str] = []
+        for page_str, signatures in signature_metadata.items():
+            if page_str not in page_coords or not signatures:
+                continue
+            for sig in signatures:
+                if not isinstance(sig, dict):
+                    continue
+                name = (sig.get("name") or "").strip()
+                if name and name.lower() in answer_lower:
+                    matched_pages.append(page_str)
+                    break  # one match per page is enough
+
+        if not matched_pages:
+            # No specific signer matched — fall back to all signature pages
+            # when the answer talks about signing generically.
+            if any(kw in answer_lower for kw in AnswerPromptService._SIGNATURE_KEYWORDS):
+                matched_pages = list(page_coords.keys())
+
+        if not matched_pages:
+            return
+
+        seen: set[tuple[int, ...]] = set()
+        new_coords: list[list[int]] = []
+        for page_str in matched_pages:
+            coords = page_coords[page_str]
+            key = tuple(coords)
+            if key in seen:
+                continue
+            seen.add(key)
+            new_coords.append(coords)
+
+        bucket = metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})
+        existing = bucket.get(prompt_key)
+        if not isinstance(existing, list):
+            existing = []
+        # Avoid duplicating coords already present from hex-comment processing.
+        for coords in new_coords:
+            if coords not in existing:
+                existing.append(coords)
+        bucket[prompt_key] = existing
+        logger.info(
+            "DOC_INSIGHTS attach_signature_highlights: prompt=%s, added %d "
+            "signature highlight(s) on pages %s",
+            prompt_key,
+            len(new_coords),
+            matched_pages,
+        )
 
     @staticmethod
     def _format_signature_metadata(

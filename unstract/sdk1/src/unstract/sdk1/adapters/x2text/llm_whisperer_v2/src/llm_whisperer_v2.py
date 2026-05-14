@@ -110,10 +110,17 @@ class LLMWhispererV2(X2TextAdapter):
                 for sig in signatures
                 if isinstance(sig, dict)
             ]
+            coords_entry = line_metadata[line_index]
+            coords = (
+                list(coords_entry[:4])
+                if isinstance(coords_entry, list) and len(coords_entry) >= 4
+                else None
+            )
             references[page_str] = {
                 "hex": hex_value,
                 "line_metadata_index": line_index,
                 "signers": signers,
+                "coords": coords,
             }
 
         return references if references else None
