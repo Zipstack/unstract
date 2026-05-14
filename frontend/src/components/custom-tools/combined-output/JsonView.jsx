@@ -2,8 +2,9 @@ import { Tabs } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
 import Prism from "prismjs";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
+import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { JsonViewBody } from "./JsonViewBody";
 
 let EnrichedOutputToggle;
@@ -27,17 +28,31 @@ function JsonView({
   isSinglePass,
   isLoading,
 }) {
-  const [activeView, setActiveView] = useState("Raw");
+  // Read-only viewers default to the enriched value.
+  const isPublicSource = useCustomToolStore((s) => s.isPublicSource);
+  const [activeView, setActiveView] = useState(
+    isPublicSource ? "Enriched" : "Raw",
+  );
+  const didInitTab = useRef(false);
 
   useEffect(() => {
     Prism.highlightAll();
   }, [combinedOutput, enrichedOutput, activeView]);
 
   useEffect(() => {
-    if (!enrichedOutput || Object.keys(enrichedOutput).length === 0) {
+    const hasEnriched =
+      enrichedOutput && Object.keys(enrichedOutput).length > 0;
+    if (!hasEnriched) {
       setActiveView("Raw");
+      didInitTab.current = false;
+      return;
     }
-  }, [enrichedOutput]);
+    // Public viewer default fires once so a manual Raw toggle isn't stomped on re-renders.
+    if (isPublicSource && !didInitTab.current) {
+      setActiveView("Enriched");
+      didInitTab.current = true;
+    }
+  }, [enrichedOutput, isPublicSource]);
 
   const displayOutput =
     activeView === "Enriched" &&
