@@ -139,6 +139,40 @@ def resolve_signature_highlight_coords(
     return _dedupe_coords(matched_pages, page_coords)
 
 
+def format_signature_metadata_context(
+    signature_metadata: dict[str, list[Any]],
+) -> str:
+    """Format ``signature_metadata`` as a human-readable LLM context block.
+
+    Returns an empty string when no signatures are present. Page numbers
+    are converted from 0-indexed to 1-indexed for display.
+    """
+    lines: list[str] = []
+    for page_num, signatures in sorted(
+        signature_metadata.items(), key=lambda x: int(x[0])
+    ):
+        if not signatures:
+            continue
+        for sig in signatures:
+            name = sig.get("name", "Unknown")
+            sig_type = sig.get("type", "signature")
+            desc = sig.get("desc", "")
+            page_display = int(page_num) + 1  # 0-indexed → 1-indexed
+            entry = f"- Page {page_display}: {name} ({sig_type})"
+            if desc:
+                entry += f" — {desc}"
+            lines.append(entry)
+    if not lines:
+        return ""
+    header = (
+        "\n\n[Document Signature Information]\n"
+        "The following signatures were detected in this document. "
+        "Use this information to answer any questions about signatories, "
+        "signing parties, or document execution status.\n"
+    )
+    return header + "\n".join(lines)
+
+
 def merge_into_highlight_data(
     metadata: dict[str, Any],
     prompt_key: str,
