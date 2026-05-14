@@ -60,6 +60,9 @@ class ExecutorToolShim(StreamMixin):
         platform_api_key: str = "",
         log_events_id: str = "",
         component: dict[str, str] | None = None,
+        execution_id: str | None = None,
+        organization_id: str | None = None,
+        file_execution_id: str | None = None,
     ) -> None:
         """Initialize the shim.
 
@@ -72,10 +75,27 @@ class ExecutorToolShim(StreamMixin):
             component: Structured identifier dict for log correlation
                 (``tool_id``, ``run_id``, ``doc_name``, optionally
                 ``prompt_key``).
+            execution_id: Workflow execution id. When provided with
+                ``organization_id``, enables persistent log attribution
+                to the ``execution_log`` table.
+            organization_id: Tenant/org scope for log persistence.
+            file_execution_id: File execution id (child of workflow
+                execution). Optional — populated for per-file tool runs.
         """
         self.platform_api_key = platform_api_key
         self.log_events_id = log_events_id
         self.component = component or {}
+        self.execution_id = execution_id
+        self.organization_id = organization_id
+        self.file_execution_id = file_execution_id
+        # Track whether we've already surfaced a publish failure on this
+        # shim so that a down broker is flagged loudly once instead of
+        # silently swallowing every subsequent log line at DEBUG.
+        self._progress_publish_failed = False
+        self._log_publish_failed = False
+        # Adapters whose name+model has already been surfaced to the UI;
+        # later mentions skip repeating the model line.
+        self._adapters_logged: set[str] = set()
         # Initialize StreamMixin.  EXECUTION_BY_TOOL is not set in
         # the worker environment, so _exec_by_tool will be False.
         super().__init__(log_level=LogLevel.INFO)
@@ -144,11 +164,12 @@ class ExecutorToolShim(StreamMixin):
         if _levels.index(level) < _levels.index(self.log_level):
             return
 
-        # Publish progress to frontend via the log consumer queue.
+        wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
+
+        # PROGRESS payload routes via the websocket room; skip when absent.
         if self.log_events_id:
             try:
-                wf_level = _SDK_TO_WF_LEVEL.get(level, "INFO")
-                payload = LogPublisher.log_progress(
+                progress_payload = LogPublisher.log_progress(
                     component=self.component,
                     level=wf_level,
                     state=stage,
@@ -156,13 +177,44 @@ class ExecutorToolShim(StreamMixin):
                 )
                 LogPublisher.publish(
                     channel_id=self.log_events_id,
-                    payload=payload,
+                    payload=progress_payload,
                 )
             except Exception:
-                logger.debug(
+                first_failure = not self._progress_publish_failed
+                self._progress_publish_failed = True
+                logger.log(
+                    logging.WARNING if first_failure else logging.DEBUG,
                     "Failed to publish progress log (non-fatal)",
-                    exc_info=True,
+                    exc_info=first_failure,
                 )
+
+        # LOG payload persists to execution_log; falls back to execution_id
+        # as the routing channel so it survives without a websocket subscriber.
+        if not (self.execution_id and self.organization_id):
+            return
+
+        log_channel = self.log_events_id or self.execution_id
+        try:
+            log_payload = LogPublisher.log_workflow(
+                stage=stage,
+                message=log,
+                level=wf_level,
+                execution_id=self.execution_id,
+                file_execution_id=self.file_execution_id or None,
+                organization_id=self.organization_id,
+            )
+            LogPublisher.publish(
+                channel_id=log_channel,
+                payload=log_payload,
+            )
+        except Exception:
+            first_failure = not self._log_publish_failed
+            self._log_publish_failed = True
+            logger.log(
+                logging.WARNING if first_failure else logging.DEBUG,
+                "Failed to publish workflow log (non-fatal)",
+                exc_info=first_failure,
+            )
 
     def stream_error_and_exit(self, message: str, err: Exception | None = None) -> None:
         """Log error and raise SdkError.
@@ -180,3 +232,26 @@ class ExecutorToolShim(StreamMixin):
         """
         logger.error(message)
         raise SdkError(message, actual_err=err)
+
+    def log_adapter_once(
+        self,
+        kind: str,
+        adapter_id: str,
+        adapter: Any,
+    ) -> None:
+        """Surface adapter identity to the UI on first use only.
+
+        ``kind`` is the human label ("LLM", "Embedding", "Vector DB").
+        ``adapter`` is an SDK instance — read only for non-sensitive
+        identity (model name or adapter display name); ``adapter_id``
+        is the dedup key. Subsequent calls for the same id are no-ops.
+        """
+        if not adapter_id or adapter_id in self._adapters_logged:
+            return
+        self._adapters_logged.add(adapter_id)
+        get_model = getattr(adapter, "get_model_name", None)
+        if callable(get_model):
+            label = get_model() or adapter_id
+        else:
+            label = getattr(adapter, "_adapter_name", "") or adapter_id
+        self.stream_log(f"Using {kind}: `{label}`")

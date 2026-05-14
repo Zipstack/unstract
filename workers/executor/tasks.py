@@ -6,7 +6,9 @@ ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
 from celery import shared_task
+from shared.clients import UsageAPIClient
 from shared.enums.task_enums import TaskName
+from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 
 from unstract.sdk1.execution.context import ExecutionContext
@@ -14,6 +16,15 @@ from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.result import ExecutionResult
 
 logger = WorkerLogger.get_logger(__name__)
+
+_LLM_BEARING_OPS = frozenset(
+    {
+        "answer_prompt",
+        "single_pass_extraction",
+        "summarize",
+        "structure_pipeline",
+    }
+)
 
 
 @shared_task(
@@ -96,6 +107,40 @@ def execute_extraction(self, execution_context_dict: dict) -> dict:
 
     orchestrator = ExecutionOrchestrator()
     result = orchestrator.execute(context)
+
+    usage_records = result.metadata.get("usage_records", [])
+    if usage_records:
+        try:
+            config = WorkerConfig()
+            with UsageAPIClient(config) as usage_client:
+                # Org context is set on the client; no need to pass it per call.
+                usage_client.set_organization_context(context.organization_id)
+                ok = usage_client.bulk_create_usage(usage_records)
+            if not ok:
+                # ERROR severity so dropped billing rows are recoverable from logs.
+                logger.error(
+                    "bulk_create_usage returned failure for %d records "
+                    "(run_id=%s organization_id=%s)",
+                    len(usage_records),
+                    context.run_id,
+                    context.organization_id,
+                )
+        except Exception:
+            logger.error(
+                "Failed to flush %d usage records for run_id=%s organization_id=%s",
+                len(usage_records),
+                context.run_id,
+                context.organization_id,
+                exc_info=True,
+            )
+    elif result.success and context.operation in _LLM_BEARING_OPS:
+        logger.info(
+            "No usage_records emitted for op=%s run_id=%s organization_id=%s "
+            "(unexpected for an LLM-bearing operation)",
+            context.operation,
+            context.run_id,
+            context.organization_id,
+        )
 
     logger.info(
         "execute_extraction complete: celery_task_id=%s request_id=%s success=%s",

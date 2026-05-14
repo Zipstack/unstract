@@ -36,8 +36,6 @@ jobs:
           version: "0.6.14"
           python-version: 3.12.9
 
-      - run: uv pip install --python=3.12.9 pip
-
       - name: Generate UV lockfiles
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -66,7 +64,7 @@ jobs:
         shell: bash
 
       - name: Commit uv.lock changes
-        uses: stefanzweifel/git-auto-commit-action@v5
+        uses: stefanzweifel/git-auto-commit-action@v7
         with:
           commit_message: Commit uv.lock changes
           commit_user_name: uv-lock-automation[bot]

@@ -51,6 +51,49 @@ try {
   // The component will remain null of it is not available
 }
 
+let LookupOutputTabs;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupOutputTabs"
+  );
+  LookupOutputTabs = mod.LookupOutputTabs;
+} catch {
+  // Cloud-only plugin — absent in OSS builds; LookupOutputTabs stays null.
+}
+
+let getEnrichedCopyText;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/getEnrichedCopyText"
+  );
+  getEnrichedCopyText = mod.getEnrichedCopyText;
+} catch {
+  // Cloud-only plugin — absent in OSS builds; falls back to raw copy text.
+}
+
+// Fallback to raw text — plugin throw on malformed enrichment shouldn't break Copy.
+const resolveCopyText = (promptOutputId, fallbackText) => {
+  if (!getEnrichedCopyText) {
+    return fallbackText;
+  }
+  try {
+    const enriched = getEnrichedCopyText(promptOutputId);
+    return typeof enriched === "string" && enriched ? enriched : fallbackText;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[PromptOutput] getEnrichedCopyText threw:", err);
+    return fallbackText;
+  }
+};
+
+// Cloud wraps children in LookupOutputTabs; OSS passes through.
+const renderWithLookupWrapper = (lookupProps, children) =>
+  LookupOutputTabs ? (
+    <LookupOutputTabs {...lookupProps}>{children}</LookupOutputTabs>
+  ) : (
+    children
+  );
+
 function PromptOutput({
   promptDetails,
   handleRun,
@@ -67,6 +110,7 @@ function PromptOutput({
   isChallenge,
   handleSelectHighlight,
   progressMsg,
+  isAgenticTableReady = true,
 }) {
   const [openExpandModal, setOpenExpandModal] = useState(false);
   const { width: windowWidth } = useWindowDimensions();
@@ -193,32 +237,43 @@ function PromptOutput({
             "highlighted-prompt-cell"
           }`}
         >
-          <DisplayPromptResult
-            output={promptOutput}
-            highlightData={
-              promptOutputData?.highlightData?.[promptDetails.prompt_key]
-            }
-            handleSelectHighlight={handleSelectHighlight}
-            confidenceData={
-              promptOutputData?.confidenceData?.[promptDetails.prompt_key]
-            }
-            wordConfidenceData={
-              promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
-            }
-            progressMsg={progressMsg}
-          />
+          {renderWithLookupWrapper(
+            {
+              promptId,
+              profileManagerId: defaultLlmProfile,
+              defaultLlmProfile,
+              promptOutputId: promptOutputData?.promptOutputId,
+            },
+            <DisplayPromptResult
+              output={promptOutput}
+              highlightData={
+                promptOutputData?.highlightData?.[promptDetails.prompt_key]
+              }
+              handleSelectHighlight={handleSelectHighlight}
+              confidenceData={
+                promptOutputData?.confidenceData?.[promptDetails.prompt_key]
+              }
+              wordConfidenceData={
+                promptOutputData?.wordConfidenceData?.[promptDetails.prompt_key]
+              }
+              progressMsg={progressMsg}
+            />,
+          )}
           <div className="prompt-profile-run">
             <CopyPromptOutputBtn
               isDisabled={isTableExtraction}
-              copyToClipboard={() =>
+              copyToClipboard={() => {
                 copyOutputToClipboard(
-                  displayPromptResult(
-                    promptOutput,
-                    true,
-                    promptDetails?.enable_highlight,
+                  resolveCopyText(
+                    promptOutputData?.promptOutputId,
+                    displayPromptResult(
+                      promptOutput,
+                      true,
+                      promptDetails?.enable_highlight,
+                    ),
                   ),
-                )
-              }
+                );
+              }}
             />
             <PromptOutputExpandBtn
               promptId={promptDetails?.prompt_id}
@@ -386,7 +441,11 @@ function PromptOutput({
                             selectedDoc?.document_id,
                           )
                         }
-                        disabled={isPromptLoading || isPublicSource}
+                        disabled={
+                          !isAgenticTableReady ||
+                          isPromptLoading ||
+                          isPublicSource
+                        }
                       >
                         <PlayCircleOutlined className="prompt-card-actions-head" />
                       </Button>
@@ -404,7 +463,11 @@ function PromptOutput({
                             null,
                           )
                         }
-                        disabled={isPromptLoading || isPublicSource}
+                        disabled={
+                          !isAgenticTableReady ||
+                          isPromptLoading ||
+                          isPublicSource
+                        }
                       >
                         <PlayCircleFilled className="prompt-card-actions-head" />
                       </Button>
@@ -429,31 +492,42 @@ function PromptOutput({
                       handleTable(profileId, promptOutputData)
                     ) : (
                       <>
-                        <DisplayPromptResult
-                          output={promptOutputData?.output}
-                          profileId={profileId}
-                          docId={selectedDoc?.document_id}
-                          promptRunStatus={promptRunStatus}
-                          handleSelectHighlight={handleSelectHighlight}
-                          highlightData={promptOutputData?.highlightData}
-                          confidenceData={promptOutputData?.confidenceData}
-                          wordConfidenceData={
-                            promptOutputData?.wordConfidenceData
-                          }
-                          promptDetails={promptDetails}
-                          progressMsg={progressMsg}
-                        />
+                        {renderWithLookupWrapper(
+                          {
+                            promptId,
+                            profileManagerId: profileId,
+                            defaultLlmProfile,
+                            promptOutputId: promptOutputData?.promptOutputId,
+                          },
+                          <DisplayPromptResult
+                            output={promptOutputData?.output}
+                            profileId={profileId}
+                            docId={selectedDoc?.document_id}
+                            promptRunStatus={promptRunStatus}
+                            handleSelectHighlight={handleSelectHighlight}
+                            highlightData={promptOutputData?.highlightData}
+                            confidenceData={promptOutputData?.confidenceData}
+                            wordConfidenceData={
+                              promptOutputData?.wordConfidenceData
+                            }
+                            promptDetails={promptDetails}
+                            progressMsg={progressMsg}
+                          />,
+                        )}
                         <div className="prompt-profile-run">
                           <CopyPromptOutputBtn
                             isDisabled={isTableExtraction}
-                            copyToClipboard={() =>
+                            copyToClipboard={() => {
                               copyOutputToClipboard(
-                                displayPromptResult(
-                                  promptOutputData?.output,
-                                  true,
+                                resolveCopyText(
+                                  promptOutputData?.promptOutputId,
+                                  displayPromptResult(
+                                    promptOutputData?.output,
+                                    true,
+                                  ),
                                 ),
-                              )
-                            }
+                              );
+                            }}
                           />
                         </div>
                       </>
@@ -484,6 +558,7 @@ PromptOutput.propTypes = {
   isChallenge: PropTypes.bool,
   handleSelectHighlight: PropTypes.func.isRequired,
   progressMsg: PropTypes.object,
+  isAgenticTableReady: PropTypes.bool,
 };
 
 export { PromptOutput };

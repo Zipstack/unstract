@@ -8,7 +8,7 @@ from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from django.db import models
 from utils.fields import EncryptedBinaryField
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -22,7 +22,7 @@ VERSION_NAME_SIZE = 64
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def get_queryset(self) -> models.QuerySet:
         return super().get_queryset()
 

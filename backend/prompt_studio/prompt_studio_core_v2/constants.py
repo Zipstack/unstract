@@ -92,6 +92,7 @@ class ToolStudioPromptKeys:
     INCLUDE_METADATA = "include_metadata"
     TXT_EXTENTION = ".txt"
     TABLE = "table"
+    AGENTIC_TABLE = "agentic_table"
     PLATFORM_POSTAMBLE = "platform_postamble"
     WORD_CONFIDENCE_POSTAMBLE = "word_confidence_postamble"
     SUMMARIZE_AS_SOURCE = "summarize_as_source"

@@ -16,7 +16,8 @@ import usePromptOutput from "./usePromptOutput";
 // Tracks the latest run nonce per (promptId, statusKey) so stale timeouts
 // from a previous run don't falsely cancel a newer run of the same combo.
 const runNonceMap = new Map();
-const SOCKET_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+// Must exceed server LLM adapter timeout (default 900s) so UI doesn't bail first.
+const SOCKET_TIMEOUT_MS = 16 * 60 * 1000; // 16 minutes
 
 const usePromptRun = () => {
   const { pushPromptRunApi, freeActiveApi } = usePromptRunQueueStore();

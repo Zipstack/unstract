@@ -1,4 +1,54 @@
+from enum import Enum
+
+from botocore.exceptions import ClientError
+
 from unstract.connectors.exceptions import ConnectorError
+
+
+class BucketProbeDisposition(Enum):
+    """Action for a `list_objects_v2` probe failure, per S3 error code."""
+
+    DROP = "drop"  # Hide the bucket (no access, bucket gone, or unreachable).
+    FAIL_OPEN = "fail_open"  # Keep the bucket visible despite the probe error.
+    RETRY_FAIL_OPEN = "retry_fail_open"  # Throttled — retry once, then keep.
+
+
+# S3 `Error.Code` → probe disposition. Unlisted codes propagate.
+# `RequestTimeTooSkewed` is omitted deliberately: it's a system-wide clock
+# issue, not a bucket outcome — let it surface via `handle_s3fs_exception`.
+# `PermanentRedirect` / `IllegalLocationConstraintException` are dropped: the
+# connector is pinned to one `endpoint_url`, so cross-region buckets can't
+# be browsed through it regardless of IAM — listing them only surfaces a
+# confusing `[Errno 78]` on click.
+BUCKET_PROBE_DISPOSITION: dict[str, BucketProbeDisposition] = {
+    "AccessDenied": BucketProbeDisposition.DROP,
+    "AllAccessDisabled": BucketProbeDisposition.DROP,
+    "NoSuchBucket": BucketProbeDisposition.DROP,
+    "PermanentRedirect": BucketProbeDisposition.DROP,
+    "IllegalLocationConstraintException": BucketProbeDisposition.DROP,
+    "SlowDown": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "Throttling": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "ThrottlingException": BucketProbeDisposition.RETRY_FAIL_OPEN,
+}
+
+
+def s3_error_code(exc: BaseException) -> str:
+    """Return the S3 `Error.Code` from a `ClientError` or its s3fs-translated
+    wrapper (`PermissionError` / `FileNotFoundError` / `OSError`).
+
+    Walks `__cause__` first (explicit `raise X from original`), then falls
+    back to `__context__` (implicit chaining inside an `except` block). A
+    `seen` set guards against pathological cycles.
+    """
+    seen: set[int] = set()
+    target: BaseException | None = exc
+    while target is not None and id(target) not in seen:
+        seen.add(id(target))
+        if isinstance(target, ClientError):
+            return str(target.response.get("Error", {}).get("Code", "") or "")
+        target = target.__cause__ or target.__context__
+    return ""
+
 
 S3FS_EXC_TO_UNSTRACT_EXC: dict[str, str] = {
     # Auth errors

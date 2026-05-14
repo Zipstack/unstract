@@ -1,0 +1,269 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_bump:
+        description: "Version bump type (hotfix branches force 'patch')"
+        required: true
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+      confirm_major:
+        description: "Confirm major version bump (required when 'major' is selected)"
+        required: false
+        type: boolean
+        default: false
+      pre_release:
+        description: "Create as pre-release"
+        required: false
+        type: boolean
+        default: false
+      dry_run:
+        description: "Dry run - only compute and display the next version without creating a release"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-creation
+  cancel-in-progress: false
+
+run-name: "Create Release (${{ github.event.inputs.version_bump }}${{ github.event.inputs.dry_run == 'true' && ' - dry run' || '' }})"
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+
+    steps:
+      # A GitHub App token is required (not the default GITHUB_TOKEN) because releases
+      # created with GITHUB_TOKEN do not trigger downstream `release: created` workflows
+      # due to GitHub's anti-recursion policy. Same pattern used in unstract-cloud.
+      - name: Generate GitHub App Token
+        id: generate-token
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
+          owner: Zipstack
+          repositories: |
+            unstract
+
+      - name: Validate branch and determine release mode
+        id: branch-mode
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          if [[ "$BRANCH" == "main" ]]; then
+            MODE=main
+            HOTFIX_LINE=""
+          elif [[ "$BRANCH" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)-hotfix$ ]]; then
+            MODE=hotfix
+            HOTFIX_LINE="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}"
+            echo "Hotfix branch detected. Line: v${HOTFIX_LINE}.x"
+          else
+            echo "::error::Releases must be cut from 'main' or a 'vX.Y.Z-hotfix' branch. Got: '$BRANCH'"
+            exit 1
+          fi
+
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+          echo "hotfix_line=$HOTFIX_LINE" >> "$GITHUB_OUTPUT"
+
+      - name: Validate inputs for hotfix mode
+        if: steps.branch-mode.outputs.mode == 'hotfix'
+        env:
+          BUMP: ${{ github.event.inputs.version_bump }}
+        run: |
+          if [[ "$BUMP" != "patch" ]]; then
+            echo "::error::Hotfix branches only support 'patch' bumps. Got: '$BUMP'"
+            exit 1
+          fi
+
+      - name: Validate major bump confirmation
+        if: github.event.inputs.version_bump == 'major' && github.event.inputs.confirm_major != 'true'
+        run: |
+          echo "::error::Major version bump requires the 'Confirm major version bump' checkbox to be checked."
+          exit 1
+
+      - name: Fetch base release version
+        id: get-latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODE: ${{ steps.branch-mode.outputs.mode }}
+          HOTFIX_LINE: ${{ steps.branch-mode.outputs.hotfix_line }}
+        run: |
+          if [[ "$MODE" == "main" ]]; then
+            # Use the "latest" API (releases/latest) which respects the explicit
+            # "Set as latest release" flag. Hotfix releases are created with
+            # --latest=false, so this never returns a hotfix tag.
+            LATEST_TAG=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // empty')
+          else
+            # For hotfixes, find the latest tag on this specific v<major>.<minor>.x line
+            LATEST_TAG=$(gh release list --repo "${{ github.repository }}" \
+              --limit 100 --exclude-drafts --exclude-pre-releases \
+              --json tagName \
+              --jq "[.[] | select(.tagName | startswith(\"v${HOTFIX_LINE}.\"))] | .[0].tagName // empty")
+          fi
+
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "::error::Could not find a base release to bump from (mode=$MODE)."
+            exit 1
+          fi
+
+          if [[ ! "$LATEST_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Base release tag '$LATEST_TAG' does not match expected format 'vX.Y.Z'"
+            exit 1
+          fi
+
+          echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
+          echo "Base release: $LATEST_TAG"
+
+      - name: Compute next version
+        id: compute-version
+        env:
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+          BUMP_TYPE: ${{ github.event.inputs.version_bump }}
+        run: |
+          VERSION="${LATEST_TAG#v}"
+          MAJOR=$(echo "$VERSION" | cut -d. -f1)
+          MINOR=$(echo "$VERSION" | cut -d. -f2)
+          PATCH=$(echo "$VERSION" | cut -d. -f3)
+
+          case "$BUMP_TYPE" in
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            *)
+              echo "::error::Unknown bump type: '$BUMP_TYPE'"
+              exit 1
+              ;;
+          esac
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+
+          # Strict monotonic increase: equal is NOT allowed, sort -V -C alone
+          # accepts equal values (it checks non-decreasing order).
+          CURRENT_NUM="${LATEST_TAG#v}"
+          NEW_NUM="${NEW_TAG#v}"
+          if [[ "$CURRENT_NUM" == "$NEW_NUM" ]]; then
+            echo "::error::Computed version $NEW_TAG equals current version $LATEST_TAG"
+            exit 1
+          fi
+          if ! printf '%s\n%s\n' "$CURRENT_NUM" "$NEW_NUM" | sort -V -C; then
+            echo "::error::Computed version $NEW_TAG is not greater than current version $LATEST_TAG"
+            exit 1
+          fi
+
+          echo "new_tag=$NEW_TAG" >> "$GITHUB_OUTPUT"
+          echo "Current: $LATEST_TAG  ->  New: $NEW_TAG"
+
+      - name: Check for tag collision
+        id: collision-check
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
+        run: |
+          # Guard against collisions with existing pre-releases or drafts
+          # (which are hidden by --exclude-pre-releases in the earlier lookup).
+          if gh release view "$NEW_TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "::error::A release with tag '$NEW_TAG' already exists (possibly as a pre-release or draft). Delete it first or pick a different bump type."
+            exit 1
+          fi
+
+      - name: Dry run summary
+        if: github.event.inputs.dry_run == 'true'
+        env:
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+          NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
+          BUMP: ${{ github.event.inputs.version_bump }}
+          PRERELEASE: ${{ github.event.inputs.pre_release }}
+          MODE: ${{ steps.branch-mode.outputs.mode }}
+        run: |
+          {
+            echo "## Dry Run Summary"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Mode | $MODE |"
+            echo "| Current version | $LATEST_TAG |"
+            echo "| Bump type | $BUMP |"
+            echo "| Next version | $NEW_TAG |"
+            echo "| Pre-release | $PRERELEASE |"
+            echo ""
+            echo "No release was created (dry run mode)."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create GitHub release
+        id: create-release
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+          MODE: ${{ steps.branch-mode.outputs.mode }}
+          PRERELEASE: ${{ github.event.inputs.pre_release }}
+          TARGET_BRANCH: ${{ github.ref_name }}
+        run: |
+          RELEASE_ARGS=(
+            "$NEW_TAG"
+            --title "$NEW_TAG"
+            --target "$TARGET_BRANCH"
+            --generate-notes
+            --notes-start-tag "$LATEST_TAG"
+          )
+
+          # Only mark as "latest" on main releases; hotfixes never override latest
+          # (matches the convention documented in the Hotfix Deployment Guide).
+          if [[ "$MODE" == "main" ]]; then
+            RELEASE_ARGS+=(--latest=true)
+          else
+            RELEASE_ARGS+=(--latest=false)
+          fi
+
+          if [[ "$PRERELEASE" == "true" ]]; then
+            RELEASE_ARGS+=(--prerelease)
+          fi
+
+          gh release create --repo "${{ github.repository }}" "${RELEASE_ARGS[@]}"
+          echo "Release $NEW_TAG created successfully."
+
+      - name: Summary
+        if: success() && github.event.inputs.dry_run != 'true'
+        env:
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+          NEW_TAG: ${{ steps.compute-version.outputs.new_tag }}
+          BUMP: ${{ github.event.inputs.version_bump }}
+          PRERELEASE: ${{ github.event.inputs.pre_release }}
+          MODE: ${{ steps.branch-mode.outputs.mode }}
+        run: |
+          {
+            echo "## Release Created"
+            echo ""
+            echo "| Field | Value |"
+            echo "|-------|-------|"
+            echo "| Mode | $MODE |"
+            echo "| Previous version | $LATEST_TAG |"
+            echo "| New version | $NEW_TAG |"
+            echo "| Bump type | $BUMP |"
+            echo "| Pre-release | $PRERELEASE |"
+            echo "| Triggered by | ${{ github.actor }} |"
+            echo ""
+            echo "The [production build](${{ github.server_url }}/${{ github.repository }}/actions/workflows/production-build.yaml) workflow will be triggered automatically."
+          } >> "$GITHUB_STEP_SUMMARY"

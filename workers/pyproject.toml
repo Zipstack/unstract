@@ -110,7 +110,13 @@ known_first_party = [
     "api_deployment",
     "general",
     "file_processing",
-    "callback"
+    "callback",
+    "executor",
+    "pluggable_worker",
+    "notification",
+    "scheduler",
+    "log_consumer",
+    "ide_callback"
 ]
 
 [tool.mypy]
@@ -151,6 +157,12 @@ addopts = [
     "--cov=general",
     "--cov=file_processing",
     "--cov=callback",
+    "--cov=executor",
+    "--cov=pluggable_worker",
+    "--cov=notification",
+    "--cov=scheduler",
+    "--cov=log_consumer",
+    "--cov=ide_callback",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml"
@@ -167,7 +179,13 @@ source = [
     "api_deployment",
     "general",
     "file_processing",
-    "callback"
+    "callback",
+    "executor",
+    "pluggable_worker",
+    "notification",
+    "scheduler",
+    "log_consumer",
+    "ide_callback"
 ]
 omit = [
     "*/tests/*",

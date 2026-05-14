@@ -5,7 +5,7 @@ http:
       rule: Host(`frontend.unstract.localhost`)
     backend:
       service: backend
-      rule: Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`))
+      rule: Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
 
   services:
     frontend:
