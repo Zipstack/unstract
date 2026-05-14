@@ -907,94 +907,116 @@ class LegacyExecutor(BaseExecutor):
             name and the flat list of usage rows collected across all
             child ``_handle_index`` calls.
         """
-        import datetime
-
         tool_settings = answer_params.get("tool_settings", {})
         outputs = answer_params.get("outputs", [])
-        tool_id = index_template.get("tool_id", "")
-        file_hash = index_template.get("file_hash", "")
-        is_highlight = index_template.get("is_highlight_enabled", False)
-        platform_api_key = index_template.get("platform_api_key", "")
-        extracted_file_path = index_template.get("extracted_file_path", "")
-        usage_kwargs = usage_kwargs or {}
-
         index_metrics: dict = {}
         index_records: list[dict] = []
         seen_params: set = set()
 
         for output in outputs:
-            chunk_size = output.get("chunk-size", 0)
-            chunk_overlap = output.get("chunk-overlap", 0)
-            vector_db = tool_settings.get("vector-db", "")
-            embedding = tool_settings.get("embedding", "")
-            x2text = tool_settings.get("x2text_adapter", "")
-
-            param_key = (
-                f"chunk_size={chunk_size}_"
-                f"chunk_overlap={chunk_overlap}_"
-                f"vector_db={vector_db}_"
-                f"embedding={embedding}_"
-                f"x2text={x2text}"
+            self._index_pipeline_output(
+                context=context,
+                output=output,
+                index_template=index_template,
+                tool_settings=tool_settings,
+                extracted_text=extracted_text,
+                usage_kwargs=usage_kwargs or {},
+                seen_params=seen_params,
+                index_metrics=index_metrics,
+                index_records=index_records,
             )
 
-            if chunk_size != 0 and param_key not in seen_params:
-                seen_params.add(param_key)
-
-                indexing_start = datetime.datetime.now()
-                logger.info(
-                    "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
-                    chunk_size,
-                    chunk_overlap,
-                    vector_db,
-                )
-
-                index_ctx = ExecutionContext(
-                    executor_name=context.executor_name,
-                    operation=Operation.INDEX.value,
-                    run_id=context.run_id,
-                    execution_source=context.execution_source,
-                    organization_id=context.organization_id,
-                    request_id=context.request_id,
-                    log_events_id=context.log_events_id,
-                    execution_id=context.execution_id,
-                    file_execution_id=context.file_execution_id,
-                    executor_params={
-                        "embedding_instance_id": embedding,
-                        "vector_db_instance_id": vector_db,
-                        "x2text_instance_id": x2text,
-                        "chunk_size": chunk_size,
-                        "chunk_overlap": chunk_overlap,
-                        "file_path": extracted_file_path,
-                        "reindex": True,
-                        "tool_id": tool_id,
-                        "file_hash": file_hash,
-                        "enable_highlight": is_highlight,
-                        "extracted_text": extracted_text,
-                        "platform_api_key": platform_api_key,
-                        "usage_kwargs": usage_kwargs,
-                    },
-                )
-                try:
-                    index_result = self._handle_index(index_ctx)
-                except LegacyExecutorError as e:
-                    # Preserve usage rows accrued from prior iterations.
-                    e.partial_usage_records = index_records + e.partial_usage_records
-                    raise
-                if not index_result.success:
-                    logger.warning(
-                        "Pipeline indexing failed for %s: %s",
-                        param_key,
-                        index_result.error,
-                    )
-                child_records = (index_result.metadata or {}).get("usage_records") or []
-                if child_records:
-                    index_records.extend(child_records)
-
-                elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
-                output_name = output.get("name", "")
-                index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
-
         return index_metrics, index_records
+
+    def _index_pipeline_output(
+        self,
+        *,
+        context: ExecutionContext,
+        output: dict,
+        index_template: dict,
+        tool_settings: dict,
+        extracted_text: str,
+        usage_kwargs: dict,
+        seen_params: set,
+        index_metrics: dict,
+        index_records: list[dict],
+    ) -> None:
+        """Index a single structure-pipeline output entry in-place."""
+        import datetime
+
+        chunk_size = output.get("chunk-size", 0)
+        if chunk_size == 0:
+            return
+
+        chunk_overlap = output.get("chunk-overlap", 0)
+        vector_db = tool_settings.get("vector-db", "")
+        embedding = tool_settings.get("embedding", "")
+        x2text = tool_settings.get("x2text_adapter", "")
+
+        param_key = (
+            f"chunk_size={chunk_size}_"
+            f"chunk_overlap={chunk_overlap}_"
+            f"vector_db={vector_db}_"
+            f"embedding={embedding}_"
+            f"x2text={x2text}"
+        )
+        if param_key in seen_params:
+            return
+        seen_params.add(param_key)
+
+        indexing_start = datetime.datetime.now()
+        logger.info(
+            "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
+            chunk_size,
+            chunk_overlap,
+            vector_db,
+        )
+
+        index_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.INDEX.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+            execution_id=context.execution_id,
+            file_execution_id=context.file_execution_id,
+            executor_params={
+                "embedding_instance_id": embedding,
+                "vector_db_instance_id": vector_db,
+                "x2text_instance_id": x2text,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "file_path": index_template.get("extracted_file_path", ""),
+                "reindex": True,
+                "tool_id": index_template.get("tool_id", ""),
+                "file_hash": index_template.get("file_hash", ""),
+                "enable_highlight": index_template.get("is_highlight_enabled", False),
+                "extracted_text": extracted_text,
+                "platform_api_key": index_template.get("platform_api_key", ""),
+                "usage_kwargs": usage_kwargs,
+            },
+        )
+        try:
+            index_result = self._handle_index(index_ctx)
+        except LegacyExecutorError as e:
+            # Preserve usage rows accrued from prior iterations.
+            e.partial_usage_records = index_records + e.partial_usage_records
+            raise
+        if not index_result.success:
+            logger.warning(
+                "Pipeline indexing failed for %s: %s",
+                param_key,
+                index_result.error,
+            )
+        child_records = (index_result.metadata or {}).get("usage_records") or []
+        if child_records:
+            index_records.extend(child_records)
+
+        elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
+        output_name = output.get("name", "")
+        index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
 
     @staticmethod
     def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:
@@ -1019,6 +1041,23 @@ class LegacyExecutor(BaseExecutor):
     # Phase 2C — Index handler
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _missing_index_params(
+        *,
+        embedding_instance_id: str,
+        vector_db_instance_id: str,
+        x2text_instance_id: str,
+        file_path: str,
+    ) -> list[str]:
+        """Return required-param keys that are unset for an INDEX op."""
+        checks = (
+            (embedding_instance_id, IKeys.EMBEDDING_INSTANCE_ID),
+            (vector_db_instance_id, IKeys.VECTOR_DB_INSTANCE_ID),
+            (x2text_instance_id, IKeys.X2TEXT_INSTANCE_ID),
+            (file_path, IKeys.FILE_PATH),
+        )
+        return [key for value, key in checks if not value]
+
     def _handle_index(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.INDEX`` — vector DB indexing.
 
@@ -1038,15 +1077,12 @@ class LegacyExecutor(BaseExecutor):
         extracted_text: str = params.get(IKeys.EXTRACTED_TEXT, "")
         platform_api_key: str = params.get("platform_api_key", "")
 
-        missing = []
-        if not embedding_instance_id:
-            missing.append(IKeys.EMBEDDING_INSTANCE_ID)
-        if not vector_db_instance_id:
-            missing.append(IKeys.VECTOR_DB_INSTANCE_ID)
-        if not x2text_instance_id:
-            missing.append(IKeys.X2TEXT_INSTANCE_ID)
-        if not file_path:
-            missing.append(IKeys.FILE_PATH)
+        missing = self._missing_index_params(
+            embedding_instance_id=embedding_instance_id,
+            vector_db_instance_id=vector_db_instance_id,
+            x2text_instance_id=x2text_instance_id,
+            file_path=file_path,
+        )
         if missing:
             return ExecutionResult.failure(
                 error=f"Missing required params: {', '.join(missing)}"
