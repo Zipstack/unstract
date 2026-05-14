@@ -374,17 +374,32 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
 
 
 def _gc_terminal_rows() -> int:
-    """Delete DISPATCHED / DEAD_LETTER rows older than the retention window.
+    """Delete buffer rows past the retention window.
 
-    PENDING rows are intentionally untouched regardless of age — they
-    represent live work the flush job still owns.
+    Two sweeps:
+    - Terminal rows (DISPATCHED / DEAD_LETTER) older than the retention
+      window: hygiene for completed work.
+    - PENDING rows whose source notification has been deactivated and
+      whose ``flush_after`` has aged past the same window: ``_dispatch_group``
+      filters ``notification__is_active=True``, so without this sweep
+      these rows are unreachable from both dispatch and GC and would
+      accumulate forever in the partial PENDING index.
+
+    PENDING rows attached to active notifications are intentionally
+    untouched regardless of age — they represent live work the flush
+    job still owns.
     """
     cutoff = timezone.now() - timedelta(days=settings.NOTIFICATION_BUFFER_RETENTION_DAYS)
-    deleted_count, _ = NotificationBuffer.objects.filter(
+    terminal_deleted, _ = NotificationBuffer.objects.filter(
         status__in=[BufferStatus.DISPATCHED.value, BufferStatus.DEAD_LETTER.value],
         created_at__lt=cutoff,
     ).delete()
-    return int(deleted_count)
+    inactive_deleted, _ = NotificationBuffer.objects.filter(
+        status=BufferStatus.PENDING.value,
+        notification__is_active=False,
+        flush_after__lt=cutoff,
+    ).delete()
+    return int(terminal_deleted) + int(inactive_deleted)
 
 
 def _send_clubbed(
