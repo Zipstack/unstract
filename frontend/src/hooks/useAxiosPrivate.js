@@ -16,8 +16,8 @@ function useAxiosPrivate() {
         if (error?.response?.status === 401) {
           // Skip logout on routes that intentionally render without a session.
           const onPublicShare =
-            typeof window !== "undefined" &&
-            window.location.pathname.startsWith("/promptStudio/share/");
+            typeof globalThis !== "undefined" &&
+            globalThis.location?.pathname.startsWith("/promptStudio/share/");
           if (!onPublicShare) {
             // TODO: Implement Session Expired Modal
             logout();
