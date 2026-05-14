@@ -143,13 +143,16 @@ class PipelineViewSet(viewsets.ModelViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        shared_users_updated = "shared_users" in request.data
+        current_shared_users = set()
+        if shared_users_updated:
+            current_shared_users = set(instance.shared_users.all())
 
         response = super().partial_update(request, *args, **kwargs)
 
         if (
             response.status_code == 200
-            and "shared_users" in request.data
+            and shared_users_updated
             and notification_plugin
         ):
             try:

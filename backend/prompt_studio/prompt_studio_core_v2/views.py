@@ -266,15 +266,17 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Store current shared users before update for email notifications
         custom_tool = self.get_object()
-        current_shared_users = set(custom_tool.shared_users.all())
+        shared_users_updated = "shared_users" in request.data
+        current_shared_users = set()
+        if shared_users_updated:
+            current_shared_users = set(custom_tool.shared_users.all())
 
         # Perform the update
         response = super().partial_update(request, *args, **kwargs)
 
         # Send email notifications to newly shared users
-        if response.status_code == 200 and "shared_users" in request.data:
+        if response.status_code == 200 and shared_users_updated:
             from plugins import get_plugin
 
             notification_plugin = get_plugin("notification")
