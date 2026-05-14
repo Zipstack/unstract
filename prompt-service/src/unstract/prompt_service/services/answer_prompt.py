@@ -1,4 +1,5 @@
 import ipaddress
+import re
 import socket
 from logging import Logger
 from typing import Any
@@ -219,7 +220,15 @@ class AnswerPromptService:
                 if not isinstance(sig, dict):
                     continue
                 name = (sig.get("name") or "").strip()
-                if name and name.lower() in answer_lower:
+                if not name:
+                    continue
+                # Word-boundary regex avoids false positives like
+                # signer "P S" matching the gap between "Pradeep" and
+                # "Surukanti" inside "Pradeep Surukanti".
+                pattern = re.compile(
+                    r"\b" + re.escape(name) + r"\b", re.IGNORECASE
+                )
+                if pattern.search(answer):
                     matched_pages.append(page_str)
                     break
 

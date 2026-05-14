@@ -1038,6 +1038,39 @@ class TestAttachSignatureHighlights:
             [0, 320, 31, 3168],
         ]
 
+    def test_short_initials_do_not_falsely_match_across_words(self):
+        """Regression: signer "P S" must not match across "Pradeep Surukanti".
+
+        Pure substring matching incorrectly fired because "p s" appears
+        between "Pradee[p s]urukanti". Word-boundary matching prevents
+        the false positive.
+        """
+        from executor.executors.answer_prompt import AnswerPromptService
+
+        signature_metadata = {
+            "0": [
+                {"name": "P S", "type": "signature"},
+                {"name": "H S", "type": "signature"},
+            ],
+            "1": [
+                {"name": "Pradeep Surukanti", "type": "signature"},
+            ],
+        }
+        signature_page_references = {
+            "0": {"coords": [0, 100, 30, 3168]},
+            "1": {"coords": [1, 200, 30, 3168]},
+        }
+        metadata = {}
+        AnswerPromptService._attach_signature_highlights(
+            answer="Pradeep Surukanti",
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+            metadata=metadata,
+            prompt_key="signer",
+        )
+        # Only the actual signer's page should be attached, not page 0.
+        assert metadata["highlight_data"]["signer"] == [[1, 200, 30, 3168]]
+
     def test_missing_inputs_no_op(self):
         """No-op when signature data or metadata pieces are missing."""
         from executor.executors.answer_prompt import AnswerPromptService

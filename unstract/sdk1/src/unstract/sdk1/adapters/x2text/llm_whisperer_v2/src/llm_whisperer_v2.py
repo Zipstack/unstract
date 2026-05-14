@@ -81,13 +81,20 @@ class LLMWhispererV2(X2TextAdapter):
                            "cannot build page references")
             return None
 
-        # Build a map of page number -> first line_metadata index
+        # Build a map of page number -> first *content* line index.
+        # Skip marker/empty rows like [0, 0, 0, 3168] or [1, 0, 0, 0]:
+        # they have zero height or zero page_height and produce an
+        # invisible overlay (and divide-by-zero in the frontend's
+        # percentage calculations).
         page_first_line: dict[int, int] = {}
         for idx, entry in enumerate(line_metadata):
-            if isinstance(entry, list) and len(entry) >= 1:
-                page = entry[0]
-                if page not in page_first_line:
-                    page_first_line[page] = idx
+            if not isinstance(entry, list) or len(entry) < 4:
+                continue
+            page, _y, height, page_height = entry[0], entry[1], entry[2], entry[3]
+            if height <= 0 or page_height <= 0:
+                continue
+            if page not in page_first_line:
+                page_first_line[page] = idx
         logger.debug(
             "DOC_INSIGHTS: page_first_line map: %s", page_first_line
         )
