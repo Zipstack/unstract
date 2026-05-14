@@ -382,11 +382,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         response = super().partial_update(request, *args, **kwargs)
 
         # If successful and shared_users changed, send notifications
-        if (
-            response.status_code == 200
-            and shared_users_updated
-            and notification_plugin
-        ):
+        if response.status_code == 200 and shared_users_updated and notification_plugin:
             try:
                 instance.refresh_from_db()
                 new_shared_users = set(instance.shared_users.all())
