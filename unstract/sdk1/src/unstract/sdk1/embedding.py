@@ -288,6 +288,15 @@ class EmbeddingCompat(BaseEmbedding):
             return []
         records: list[dict] = []
         for handler in self.callback_manager.handlers:
-            if hasattr(handler, "flush_pending_usage"):
+            if not hasattr(handler, "flush_pending_usage"):
+                continue
+            # Per-handler guard so one bad handler doesn't drop the rest.
+            try:
                 records.extend(handler.flush_pending_usage())
+            except Exception:
+                logger.warning(
+                    "Failed to flush usage from embedding handler %s",
+                    type(handler).__name__,
+                    exc_info=True,
+                )
         return records

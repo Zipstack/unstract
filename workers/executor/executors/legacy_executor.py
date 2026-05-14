@@ -1005,10 +1005,12 @@ class LegacyExecutor(BaseExecutor):
             e.partial_usage_records = index_records + e.partial_usage_records
             raise
         if not index_result.success:
-            logger.warning(
-                "Pipeline indexing failed for %s: %s",
-                param_key,
-                index_result.error,
+            # Abort on returned-failure so downstream steps don't run
+            # against an incomplete vector store.
+            raise LegacyExecutorError(
+                message=f"Pipeline indexing failed for {param_key}: {index_result.error}",
+                code=500,
+                partial_usage_records=list(index_records),
             )
         child_records = (index_result.metadata or {}).get("usage_records") or []
         if child_records:
