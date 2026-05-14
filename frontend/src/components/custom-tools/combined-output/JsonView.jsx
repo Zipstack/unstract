@@ -2,7 +2,7 @@ import { Tabs } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
 import Prism from "prismjs";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { JsonViewBody } from "./JsonViewBody";
@@ -33,6 +33,7 @@ function JsonView({
   const [activeView, setActiveView] = useState(
     isPublicSource ? "Enriched" : "Raw",
   );
+  const didInitTab = useRef(false);
 
   useEffect(() => {
     Prism.highlightAll();
@@ -43,8 +44,13 @@ function JsonView({
       enrichedOutput && Object.keys(enrichedOutput).length > 0;
     if (!hasEnriched) {
       setActiveView("Raw");
-    } else if (isPublicSource) {
+      didInitTab.current = false;
+      return;
+    }
+    // Public viewer default fires once so a manual Raw toggle isn't stomped on re-renders.
+    if (isPublicSource && !didInitTab.current) {
       setActiveView("Enriched");
+      didInitTab.current = true;
     }
   }, [enrichedOutput, isPublicSource]);
 

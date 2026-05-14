@@ -18,7 +18,13 @@ function useAxiosPrivate() {
           const onPublicShare =
             typeof globalThis !== "undefined" &&
             globalThis.location?.pathname.startsWith("/promptStudio/share/");
-          if (!onPublicShare) {
+          if (onPublicShare) {
+            // Keep a breadcrumb so a stray authenticated probe doesn't go silent.
+            console.warn("[useAxiosPrivate] Suppressed 401 on public share", {
+              url: error?.config?.url,
+              path: globalThis.location?.pathname,
+            });
+          } else {
             // TODO: Implement Session Expired Modal
             logout();
           }
