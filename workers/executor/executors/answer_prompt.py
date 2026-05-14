@@ -13,13 +13,17 @@ are integrated at the caller level (LegacyExecutor).
 import ipaddress
 import logging
 import os
-import re
 import socket
 from typing import Any
 from urllib.parse import urlparse
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
+
+from unstract.sdk1.utils.signature_highlights import (
+    merge_into_highlight_data,
+    resolve_signature_highlight_coords,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -176,9 +180,7 @@ class AnswerPromptService:
         AnswerPromptService._attach_signature_highlights(
             answer=answer,
             signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
-            signature_page_references=tool_settings.get(
-                PSKeys.SIGNATURE_PAGE_REFERENCES
-            ),
+            signature_page_references=tool_settings.get(PSKeys.SIGNATURE_PAGE_REFERENCES),
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
         )
@@ -201,19 +203,6 @@ class AnswerPromptService:
                 )
         return notes
 
-    # Generic signature-related terms used as a fallback trigger when the
-    # LLM answer doesn't mention any specific signer name but does talk
-    # about signing in general (e.g. "Is this signed?" → "Yes, the document
-    # is signed."). Matched as case-insensitive substrings.
-    _SIGNATURE_KEYWORDS = (
-        "signature",
-        "signed",
-        "signatory",
-        "signatories",
-        "signing",
-        "executed",
-    )
-
     @staticmethod
     def _attach_signature_highlights(
         answer: str,
@@ -225,91 +214,30 @@ class AnswerPromptService:
         """Attach signature page highlights to ``metadata`` when the LLM
         answer references a known signer or signatures generally.
 
-        - For each signer name in ``signature_metadata`` found as a
-          case-insensitive substring in ``answer``, append that page's
-          coords (from ``signature_page_references``) to
-          ``metadata[HIGHLIGHT_DATA][prompt_key]``.
-        - If no signer-name match is found but the answer mentions
-          generic signature keywords (signature, signed, signatory,
-          executed, signing), append every signature page's coords.
-
-        ``metadata[HIGHLIGHT_DATA][prompt_key]`` is mutated in place; the
-        existing list (populated by hex-comment processing in
-        ``run_completion``) is preserved and extended.
+        Delegates the matching logic to
+        ``unstract.sdk1.utils.signature_highlights`` so workers and
+        prompt-service stay in sync.
         """
-        if not signature_page_references or not signature_metadata:
-            return
         if metadata is None or not prompt_key:
             return
-        if not isinstance(answer, str) or not answer.strip():
+        new_coords = resolve_signature_highlight_coords(
+            answer=answer,
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+        )
+        if not new_coords:
             return
-
-        # Build page → coords map (one coord array per signature page).
-        page_coords: dict[str, list[int]] = {}
-        for page_str, ref in signature_page_references.items():
-            if not isinstance(ref, dict):
-                continue
-            coords = ref.get("coords")
-            if isinstance(coords, list) and len(coords) >= 4:
-                page_coords[page_str] = list(coords[:4])
-        if not page_coords:
-            return
-
-        answer_lower = answer.lower()
-        matched_pages: list[str] = []
-        for page_str, signatures in signature_metadata.items():
-            if page_str not in page_coords or not signatures:
-                continue
-            for sig in signatures:
-                if not isinstance(sig, dict):
-                    continue
-                name = (sig.get("name") or "").strip()
-                if not name:
-                    continue
-                # Word-boundary regex avoids false positives like
-                # signer "P S" matching the gap between "Pradeep" and
-                # "Surukanti" inside "Pradeep Surukanti".
-                pattern = re.compile(
-                    r"\b" + re.escape(name) + r"\b", re.IGNORECASE
-                )
-                if pattern.search(answer):
-                    matched_pages.append(page_str)
-                    break  # one match per page is enough
-
-        if not matched_pages:
-            # No specific signer matched — fall back to all signature pages
-            # when the answer talks about signing generically.
-            if any(kw in answer_lower for kw in AnswerPromptService._SIGNATURE_KEYWORDS):
-                matched_pages = list(page_coords.keys())
-
-        if not matched_pages:
-            return
-
-        seen: set[tuple[int, ...]] = set()
-        new_coords: list[list[int]] = []
-        for page_str in matched_pages:
-            coords = page_coords[page_str]
-            key = tuple(coords)
-            if key in seen:
-                continue
-            seen.add(key)
-            new_coords.append(coords)
-
-        bucket = metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})
-        existing = bucket.get(prompt_key)
-        if not isinstance(existing, list):
-            existing = []
-        # Avoid duplicating coords already present from hex-comment processing.
-        for coords in new_coords:
-            if coords not in existing:
-                existing.append(coords)
-        bucket[prompt_key] = existing
+        merge_into_highlight_data(
+            metadata=metadata,
+            prompt_key=prompt_key,
+            new_coords=new_coords,
+            highlight_data_key=PSKeys.HIGHLIGHT_DATA,
+        )
         logger.info(
             "DOC_INSIGHTS attach_signature_highlights: prompt=%s, added %d "
-            "signature highlight(s) on pages %s",
+            "signature highlight(s)",
             prompt_key,
             len(new_coords),
-            matched_pages,
         )
 
     @staticmethod

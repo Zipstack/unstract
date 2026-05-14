@@ -6,21 +6,6 @@ import uuid
 from pathlib import Path
 from typing import Any, NamedTuple
 
-
-class ExtractResult(NamedTuple):
-    """Return value of ``PromptStudioHelper.dynamic_extractor``.
-
-    ``signature_metadata`` and ``signature_page_references`` are populated
-    only when the x2text adapter is LLMWhisperer V2 in ``document_insights``
-    mode and the document contains signatures. They are read either from
-    the live extract dispatch result (cache miss) or from the on-disk
-    ``.doc_insights.json`` sidecar (cache hit).
-    """
-
-    text: str
-    signature_metadata: dict[str, Any] | None = None
-    signature_page_references: dict[str, Any] | None = None
-
 from account_v2.constants import Common
 from account_v2.models import User
 from adapter_processor_v2.constants import AdapterKeys
@@ -95,7 +80,20 @@ logger = logging.getLogger(__name__)
 CHOICES_JSON = "/static/select_choices.json"
 ERROR_MSG = "User %s doesn't have access to adapter %s"
 
-logger = logging.getLogger(__name__)
+
+class ExtractResult(NamedTuple):
+    """Return value of ``PromptStudioHelper.dynamic_extractor``.
+
+    ``signature_metadata`` and ``signature_page_references`` are populated
+    only when the x2text adapter is LLMWhisperer V2 in ``document_insights``
+    mode and the document contains signatures. They are read either from
+    the live extract dispatch result (cache miss) or from the on-disk
+    ``.doc_insights.json`` sidecar (cache hit).
+    """
+
+    text: str
+    signature_metadata: dict[str, Any] | None = None
+    signature_page_references: dict[str, Any] | None = None
 
 
 class PromptStudioHelper:
@@ -853,9 +851,7 @@ class PromptStudioHelper:
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
-                extract_result.signature_metadata
-            )
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
         if extract_result.signature_page_references:
             tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
                 extract_result.signature_page_references
@@ -1052,9 +1048,7 @@ class PromptStudioHelper:
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
-                extract_result.signature_metadata
-            )
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
         if extract_result.signature_page_references:
             tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
                 extract_result.signature_page_references
@@ -1199,9 +1193,7 @@ class PromptStudioHelper:
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
         if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
-                extract_result.signature_metadata
-            )
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
         if extract_result.signature_page_references:
             tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
                 extract_result.signature_page_references
@@ -1977,9 +1969,7 @@ class PromptStudioHelper:
             settings, TSPKeys.WORD_CONFIDENCE_POSTAMBLE.upper(), ""
         )
         if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
-                extract_result.signature_metadata
-            )
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
         if extract_result.signature_page_references:
             tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
                 extract_result.signature_page_references
@@ -2284,9 +2274,7 @@ class PromptStudioHelper:
         )
         tool_settings[TSPKeys.SIMILARITY_TOP_K] = default_profile.similarity_top_k
         if extract_result.signature_metadata:
-            tool_settings[TSPKeys.SIGNATURE_METADATA] = (
-                extract_result.signature_metadata
-            )
+            tool_settings[TSPKeys.SIGNATURE_METADATA] = extract_result.signature_metadata
         if extract_result.signature_page_references:
             tool_settings[TSPKeys.SIGNATURE_PAGE_REFERENCES] = (
                 extract_result.signature_page_references

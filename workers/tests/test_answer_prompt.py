@@ -11,7 +11,6 @@ import pytest
 from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
-
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 
 # ---------------------------------------------------------------------------
@@ -109,7 +108,9 @@ def _mock_deps(llm=None):
         llm = _mock_llm()
 
     # AnswerPromptService — use the real class
-    from executor.executors.answer_prompt import AnswerPromptService as answer_prompt_svc_cls
+    from executor.executors.answer_prompt import (
+        AnswerPromptService as answer_prompt_svc_cls,
+    )
 
     retrieval_svc = MagicMock(name="RetrievalService")
     retrieval_svc.run_retrieval.return_value = ["chunk1", "chunk2"]

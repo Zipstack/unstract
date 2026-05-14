@@ -1,5 +1,4 @@
 import ipaddress
-import re
 import socket
 from logging import Logger
 from typing import Any
@@ -25,6 +24,10 @@ from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
 from unstract.sdk1.llm import LLM
+from unstract.sdk1.utils.signature_highlights import (
+    merge_into_highlight_data,
+    resolve_signature_highlight_coords,
+)
 
 
 def _is_safe_public_url(url: str) -> bool:
@@ -159,25 +162,11 @@ class AnswerPromptService:
         AnswerPromptService._attach_signature_highlights(
             answer=answer,
             signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
-            signature_page_references=tool_settings.get(
-                PSKeys.SIGNATURE_PAGE_REFERENCES
-            ),
+            signature_page_references=tool_settings.get(PSKeys.SIGNATURE_PAGE_REFERENCES),
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
         )
         return answer
-
-    # Generic signature-related terms used as a fallback trigger when the
-    # LLM answer doesn't mention any specific signer name but does talk
-    # about signing in general. Matched as case-insensitive substrings.
-    _SIGNATURE_KEYWORDS = (
-        "signature",
-        "signed",
-        "signatory",
-        "signatories",
-        "signing",
-        "executed",
-    )
 
     @staticmethod
     def _attach_signature_highlights(
@@ -190,81 +179,30 @@ class AnswerPromptService:
         """Attach signature page highlights to ``metadata`` when the LLM
         answer references a known signer or signatures generally.
 
-        Mirror of the workers post-processor — see
-        ``executor.executors.answer_prompt.AnswerPromptService._attach_signature_highlights``
-        for behavior details.
+        Delegates the matching logic to
+        ``unstract.sdk1.utils.signature_highlights`` so workers and
+        prompt-service stay in sync.
         """
-        if not signature_page_references or not signature_metadata:
-            return
         if metadata is None or not prompt_key:
             return
-        if not isinstance(answer, str) or not answer.strip():
+        new_coords = resolve_signature_highlight_coords(
+            answer=answer,
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+        )
+        if not new_coords:
             return
-
-        page_coords: dict[str, list[int]] = {}
-        for page_str, ref in signature_page_references.items():
-            if not isinstance(ref, dict):
-                continue
-            coords = ref.get("coords")
-            if isinstance(coords, list) and len(coords) >= 4:
-                page_coords[page_str] = list(coords[:4])
-        if not page_coords:
-            return
-
-        answer_lower = answer.lower()
-        matched_pages: list[str] = []
-        for page_str, signatures in signature_metadata.items():
-            if page_str not in page_coords or not signatures:
-                continue
-            for sig in signatures:
-                if not isinstance(sig, dict):
-                    continue
-                name = (sig.get("name") or "").strip()
-                if not name:
-                    continue
-                # Word-boundary regex avoids false positives like
-                # signer "P S" matching the gap between "Pradeep" and
-                # "Surukanti" inside "Pradeep Surukanti".
-                pattern = re.compile(
-                    r"\b" + re.escape(name) + r"\b", re.IGNORECASE
-                )
-                if pattern.search(answer):
-                    matched_pages.append(page_str)
-                    break
-
-        if not matched_pages:
-            if any(
-                kw in answer_lower for kw in AnswerPromptService._SIGNATURE_KEYWORDS
-            ):
-                matched_pages = list(page_coords.keys())
-
-        if not matched_pages:
-            return
-
-        seen: set[tuple[int, ...]] = set()
-        new_coords: list[list[int]] = []
-        for page_str in matched_pages:
-            coords = page_coords[page_str]
-            key = tuple(coords)
-            if key in seen:
-                continue
-            seen.add(key)
-            new_coords.append(coords)
-
-        bucket = metadata.setdefault(PSKeys.HIGHLIGHT_DATA, {})
-        existing = bucket.get(prompt_key)
-        if not isinstance(existing, list):
-            existing = []
-        for coords in new_coords:
-            if coords not in existing:
-                existing.append(coords)
-        bucket[prompt_key] = existing
+        merge_into_highlight_data(
+            metadata=metadata,
+            prompt_key=prompt_key,
+            new_coords=new_coords,
+            highlight_data_key=PSKeys.HIGHLIGHT_DATA,
+        )
         app.logger.info(
             "DOC_INSIGHTS attach_signature_highlights: prompt=%s, added %d "
-            "signature highlight(s) on pages %s",
+            "signature highlight(s)",
             prompt_key,
             len(new_coords),
-            matched_pages,
         )
 
     @staticmethod

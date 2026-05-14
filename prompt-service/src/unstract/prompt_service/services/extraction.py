@@ -2,8 +2,6 @@ import logging
 from pathlib import Path
 from typing import Any
 
-logger = logging.getLogger(__name__)
-
 from unstract.prompt_service.constants import ExecutionSource
 from unstract.prompt_service.constants import IndexingConstants as IKeys
 from unstract.prompt_service.exceptions import ExtractionError
@@ -16,6 +14,8 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.utils.common import log_elapsed
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
+
+logger = logging.getLogger(__name__)
 
 
 class ExtractionService:
@@ -78,8 +78,7 @@ class ExtractionService:
                     process_response.extraction_metadata.signature_metadata
                 )
                 logger.info(
-                    "DOC_INSIGHTS extraction: signature_metadata found "
-                    "for pages: %s",
+                    "DOC_INSIGHTS extraction: signature_metadata found " "for pages: %s",
                     list(signature_metadata.keys()),
                 )
             if (

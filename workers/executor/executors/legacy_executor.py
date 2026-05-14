@@ -273,30 +273,24 @@ class LegacyExecutor(BaseExecutor):
                 logger.info(
                     "DOC_INSIGHTS _handle_extract: signature_metadata found "
                     "for pages: %s",
-                    list(process_response.extraction_metadata
-                         .signature_metadata.keys()),
+                    list(process_response.extraction_metadata.signature_metadata.keys()),
                 )
             if (
                 process_response.extraction_metadata
                 and process_response.extraction_metadata.signature_page_references
             ):
                 result_data["signature_page_references"] = (
-                    process_response.extraction_metadata
-                    .signature_page_references
+                    process_response.extraction_metadata.signature_page_references
                 )
                 logger.info(
-                    "DOC_INSIGHTS _handle_extract: "
-                    "signature_page_references=%s",
-                    process_response.extraction_metadata
-                    .signature_page_references,
+                    "DOC_INSIGHTS _handle_extract: " "signature_page_references=%s",
+                    process_response.extraction_metadata.signature_page_references,
                 )
             self._write_signature_sidecar(
                 fs=fs,
                 output_file_path=output_file_path,
                 signature_metadata=result_data.get("signature_metadata"),
-                signature_page_references=result_data.get(
-                    "signature_page_references"
-                ),
+                signature_page_references=result_data.get("signature_page_references"),
             )
             return ExecutionResult(
                 success=True,
@@ -321,7 +315,7 @@ class LegacyExecutor(BaseExecutor):
         Prompt Studio can recover signature data without re-extracting.
         """
         p = Path(output_file_path)
-        return str(p.with_suffix("") ) + ".doc_insights.json"
+        return str(p.with_suffix("")) + ".doc_insights.json"
 
     @staticmethod
     def _write_signature_sidecar(

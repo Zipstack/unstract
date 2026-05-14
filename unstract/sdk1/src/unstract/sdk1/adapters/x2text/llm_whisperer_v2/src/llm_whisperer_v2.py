@@ -57,35 +57,16 @@ class LLMWhispererV2(X2TextAdapter):
         return "/icons/adapter-icons/LLMWhispererV2.png"
 
     @staticmethod
-    def _build_signature_page_references(
-        signature_metadata: dict[str, list[Any]],
+    def _index_first_content_line_per_page(
         line_metadata: list[list[int]],
-    ) -> dict[str, Any] | None:
-        """Build page references for frontend navigation to signature pages.
+    ) -> dict[int, int]:
+        """Map each page to its first content-line index in ``line_metadata``.
 
-        For each page that has signatures, finds the first line_metadata
-        entry for that page and converts its index to a 1-indexed hex
-        value. This allows the frontend to jump to the correct page.
-
-        Args:
-            signature_metadata: Dict keyed by page number (str, 0-indexed)
-                with lists of signature entries.
-            line_metadata: List of [page, y_pos, height, page_height] arrays.
-
-        Returns:
-            Dict mapping page number to hex reference and signer names,
-            or None if no references could be built.
+        Marker/empty rows like ``[0, 0, 0, 3168]`` or ``[1, 0, 0, 0]`` are
+        skipped because they have zero height or zero page_height and
+        produce an invisible overlay (and divide-by-zero in the frontend's
+        percentage calculation).
         """
-        if not line_metadata:
-            logger.warning("DOC_INSIGHTS: no line_metadata available, "
-                           "cannot build page references")
-            return None
-
-        # Build a map of page number -> first *content* line index.
-        # Skip marker/empty rows like [0, 0, 0, 3168] or [1, 0, 0, 0]:
-        # they have zero height or zero page_height and produce an
-        # invisible overlay (and divide-by-zero in the frontend's
-        # percentage calculations).
         page_first_line: dict[int, int] = {}
         for idx, entry in enumerate(line_metadata):
             if not isinstance(entry, list) or len(entry) < 4:
@@ -95,9 +76,62 @@ class LLMWhispererV2(X2TextAdapter):
                 continue
             if page not in page_first_line:
                 page_first_line[page] = idx
-        logger.debug(
-            "DOC_INSIGHTS: page_first_line map: %s", page_first_line
+        return page_first_line
+
+    @staticmethod
+    def _build_page_reference_entry(
+        line_index: int,
+        signatures: list[Any],
+        line_metadata: list[list[int]],
+    ) -> dict[str, Any]:
+        """Build a single ``signature_page_references`` entry for one page."""
+        coords_entry = line_metadata[line_index]
+        coords = (
+            list(coords_entry[:4])
+            if isinstance(coords_entry, list) and len(coords_entry) >= 4
+            else None
         )
+        return {
+            "hex": f"0x{line_index + 1:02X}",  # 1-indexed hex
+            "line_metadata_index": line_index,
+            "signers": [
+                sig.get("name", "Unknown") for sig in signatures if isinstance(sig, dict)
+            ],
+            "coords": coords,
+        }
+
+    @staticmethod
+    def _build_signature_page_references(
+        signature_metadata: dict[str, list[Any]],
+        line_metadata: list[list[int]],
+    ) -> dict[str, Any] | None:
+        """Build page references for frontend navigation to signature pages.
+
+        For each page that has signatures, finds the first **content**
+        line in ``line_metadata`` (skipping zero-height marker rows) and
+        emits its 1-indexed hex value plus resolved coords. The frontend
+        uses ``coords`` directly in its highlight overlay; the workers
+        executor caches the result in a sidecar JSON next to the
+        extracted text file so cached extracts retain it.
+
+        Args:
+            signature_metadata: Dict keyed by page number (str, 0-indexed)
+                with lists of signature entries.
+            line_metadata: List of [page, y_pos, height, page_height] arrays.
+
+        Returns:
+            Dict mapping page number to ``{hex, line_metadata_index,
+            signers, coords}``, or None if no references could be built.
+        """
+        if not line_metadata:
+            logger.warning(
+                "DOC_INSIGHTS: no line_metadata available, "
+                "cannot build page references"
+            )
+            return None
+
+        page_first_line = LLMWhispererV2._index_first_content_line_per_page(line_metadata)
+        logger.debug("DOC_INSIGHTS: page_first_line map: %s", page_first_line)
 
         references: dict[str, Any] = {}
         for page_str, signatures in signature_metadata.items():
@@ -106,29 +140,14 @@ class LLMWhispererV2(X2TextAdapter):
             page_num = int(page_str)
             if page_num not in page_first_line:
                 logger.warning(
-                    "DOC_INSIGHTS: page %d not found in line_metadata",
-                    page_num,
+                    "DOC_INSIGHTS: page %d not found in line_metadata", page_num
                 )
                 continue
-            line_index = page_first_line[page_num]
-            hex_value = f"0x{line_index + 1:02X}"  # 1-indexed hex
-            signers = [
-                sig.get("name", "Unknown")
-                for sig in signatures
-                if isinstance(sig, dict)
-            ]
-            coords_entry = line_metadata[line_index]
-            coords = (
-                list(coords_entry[:4])
-                if isinstance(coords_entry, list) and len(coords_entry) >= 4
-                else None
+            references[page_str] = LLMWhispererV2._build_page_reference_entry(
+                line_index=page_first_line[page_num],
+                signatures=signatures,
+                line_metadata=line_metadata,
             )
-            references[page_str] = {
-                "hex": hex_value,
-                "line_metadata_index": line_index,
-                "signers": signers,
-                "coords": coords,
-            }
 
         return references if references else None
 
@@ -216,10 +235,8 @@ class LLMWhispererV2(X2TextAdapter):
                 "computing page references",
                 len(raw_line_metadata),
             )
-            signature_page_references = (
-                LLMWhispererV2._build_signature_page_references(
-                    signature_metadata, raw_line_metadata
-                )
+            signature_page_references = LLMWhispererV2._build_signature_page_references(
+                signature_metadata, raw_line_metadata
             )
             logger.info(
                 "DOC_INSIGHTS: signature_page_references=%s",
