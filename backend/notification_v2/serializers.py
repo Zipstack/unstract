@@ -1,11 +1,12 @@
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
+from utils.serializer import ModelSerializer
 
 from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification
 
 
-class NotificationSerializer(serializers.ModelSerializer):
+class NotificationSerializer(ModelSerializer):
     notification_type = serializers.ChoiceField(choices=NotificationType.choices())
     authorization_type = serializers.ChoiceField(choices=AuthorizationType.choices())
     platform = serializers.ChoiceField(choices=PlatformType.choices(), required=False)
