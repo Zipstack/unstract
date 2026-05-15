@@ -16,6 +16,13 @@ class PromptStudioOutputSerializer(AuditSerializer):
     class Meta:
         model = PromptStudioOutputManager
         fields = "__all__"
+        # Stored LLM response (`output`) and document chunks (`context`)
+        # routinely contain <thinking>, <context>, and other XML-like
+        # tags from the model. The serializer is mounted on a
+        # ModelViewSet with no class-level method restrictions, so writes
+        # routed through it (DRF admin / browsable API / any future write
+        # endpoint) must accept arbitrary text.
+        html_safe_fields = ("output", "context")
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
