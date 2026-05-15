@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import NoReturn
 
 from rest_framework.serializers import ValidationError
 
@@ -29,7 +30,7 @@ _DOM_EVENTS = (
 EVENT_HANDLER_PATTERN = re.compile(rf"\bon({_DOM_EVENTS})\s*=", re.IGNORECASE)
 
 
-def _reject(field_name: str, reason: str, message: str) -> None:
+def _reject(field_name: str, reason: str, message: str) -> NoReturn:
     logger.warning(
         "input_validation_rejected",
         extra={"field": field_name, "reason": reason},
