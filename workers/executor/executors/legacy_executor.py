@@ -1720,7 +1720,7 @@ class LegacyExecutor(BaseExecutor):
             return []
 
         if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
-            self._run_line_item_extraction(
+            return self._run_line_item_extraction(
                 output=output,
                 context=context,
                 structured_output=structured_output,
@@ -1739,7 +1739,6 @@ class LegacyExecutor(BaseExecutor):
                 },
                 shim=shim,
             )
-            return []
 
         usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
         llm, embedding, vector_db = self._init_llm_and_retrieval(
@@ -2070,7 +2069,7 @@ class LegacyExecutor(BaseExecutor):
         metrics: dict[str, Any],
         prompt_run_args: dict[str, Any],
         shim: Any,
-    ) -> None:
+    ) -> list[dict[str, Any]]:
         """Delegate LINE_ITEM prompt to the line_item executor plugin.
 
         ``prompt_run_args`` bundles the per-prompt scalars passed from
@@ -2118,6 +2117,10 @@ class LegacyExecutor(BaseExecutor):
         shim.stream_log(f"Running line-item extraction for: `{prompt_name}`")
         line_item_result = line_item_executor.execute(line_item_ctx)
 
+        usage_records: list[dict[str, Any]] = list(
+            (line_item_result.metadata or {}).get("usage_records") or []
+        )
+
         if line_item_result.success:
             data = line_item_result.data or {}
             structured_output[prompt_name] = data.get("output", "")
@@ -2143,6 +2146,7 @@ class LegacyExecutor(BaseExecutor):
                 f"Line-item extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
             )
+        return usage_records
 
     @staticmethod
     def _apply_type_conversion(
