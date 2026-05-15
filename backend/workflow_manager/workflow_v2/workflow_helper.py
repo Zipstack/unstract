@@ -991,6 +991,46 @@ class WorkflowHelper:
         }
 
     USAGE_DISPLAY_LIMIT = 5
+    USAGE_MESSAGE_DISPLAY_LIMIT = 3
+
+    @staticmethod
+    def build_workflow_in_use_message(workflow_name: str, usage: dict[str, Any]) -> str:
+        """Builds a user-facing message listing pipelines/APIs blocking deletion.
+
+        Matches the format used by the frontend so direct API callers see the
+        same details about which pipelines/API deployments are using the WF.
+        """
+        pipelines = usage.get("pipelines") or []
+        api_names = usage.get("api_names") or []
+        pipeline_count = usage.get("pipeline_count", 0)
+        api_count = usage.get("api_count", 0)
+
+        if (pipeline_count + api_count) == 0:
+            return f"Cannot delete `{workflow_name}` as it is currently in use."
+
+        limit = WorkflowHelper.USAGE_MESSAGE_DISPLAY_LIMIT
+        lines: list[str] = []
+
+        if api_names:
+            shown = list(api_names)[:limit]
+            for name in shown:
+                lines.append(f"- `{name}` (API Deployment)")
+            remaining = api_count - len(shown)
+            if remaining > 0:
+                lines.append(f"- ...and {remaining} more API deployment(s)")
+
+        if pipelines:
+            shown = list(pipelines)[:limit]
+            for p in shown:
+                name = p.get("pipeline_name")
+                p_type = p.get("pipeline_type")
+                lines.append(f"- `{name}` ({p_type} Pipeline)")
+            remaining = pipeline_count - len(shown)
+            if remaining > 0:
+                lines.append(f"- ...and {remaining} more pipeline(s)")
+
+        details = "\n".join(lines)
+        return f"Cannot delete `{workflow_name}` as it is used in:\n{details}"
 
     @staticmethod
     def can_update_workflow(workflow_id: str) -> dict[str, Any]:
