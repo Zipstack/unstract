@@ -6,7 +6,6 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from pipeline_v2.models import Pipeline
@@ -528,7 +527,6 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 if validated_data.get("execution_time") is not None:
                     execution.execution_time = validated_data["execution_time"]
 
-                execution.modified_at = timezone.now()
                 execution.save()
 
                 logger.info(

@@ -4,6 +4,7 @@ import logging
 from usage_v2.helper import UsageHelper
 
 from backend.serializers import AuditSerializer
+from prompt_studio.lookup_utils import enrich_prompt_output
 
 from .models import PromptStudioOutputManager
 from .output_manager_util import OutputManagerUtils
@@ -47,6 +48,16 @@ class PromptStudioOutputSerializer(AuditSerializer):
                 " | Process continued"
             )
             data["coverage"] = {}
+        # log+continue: enrichment failure shouldn't 500 the list endpoint.
+        try:
+            data = enrich_prompt_output(instance, data)
+        except Exception as e:
+            logger.error(
+                "Error occurred while enriching prompt output for "
+                f"prompt_id {instance.prompt_id} (run_id={instance.run_id}): {e}"
+                " | Process continued"
+            )
+
         # Convert string to list
         try:
             context = data["context"]

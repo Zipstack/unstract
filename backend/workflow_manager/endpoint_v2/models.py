@@ -2,12 +2,12 @@ import uuid
 
 from connector_v2.models import ConnectorInstance
 from django.db import models
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 
-class WorkflowEndpointModelManager(models.Manager):
+class WorkflowEndpointModelManager(BaseModelManager):
     def get_queryset(self):
         # Validating organization
         organization = UserContext.get_organization()

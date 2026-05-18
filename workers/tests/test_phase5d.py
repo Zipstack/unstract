@@ -283,9 +283,10 @@ class TestNormalPipeline:
         )
         # Simulate index metrics by patching _run_pipeline_index
         executor._run_pipeline_index = MagicMock(
-            return_value={
-                "field_a": {"indexing": {"time_taken(s)": 0.5}},
-            }
+            return_value=(
+                {"field_a": {"indexing": {"time_taken(s)": 0.5}}},
+                [],
+            )
         )
 
         ctx = _make_pipeline_context({
@@ -301,6 +302,89 @@ class TestNormalPipeline:
         # Both llm and indexing metrics for field_a should be merged
         assert "llm" in metrics["field_a"]
         assert "indexing" in metrics["field_a"]
+
+
+# ---------------------------------------------------------------------------
+# Tests — Embedding usage record propagation
+# ---------------------------------------------------------------------------
+
+
+class TestPipelineUsageRecordsPropagation:
+    """Embedding usage rows surface in the pipeline result.
+
+    Exercises the real _run_pipeline_index → _index_pipeline_output →
+    _handle_index chain so the usage-record carrier wiring is verified
+    end-to-end rather than stubbed at the top of the chain.
+    """
+
+    def test_index_usage_records_propagate(self, executor):
+        executor._handle_extract = MagicMock(
+            return_value=ExecutionResult(
+                success=True, data={"extracted_text": "text"}
+            )
+        )
+        embedding_row = {
+            "model_name": "emb-1",
+            "embedding_tokens": 42,
+            "cost_in_dollars": 0.001,
+        }
+        executor._handle_index = MagicMock(
+            return_value=ExecutionResult(
+                success=True,
+                data={"doc_id": "doc-1"},
+                metadata={"usage_records": [embedding_row]},
+            )
+        )
+        executor._handle_answer_prompt = MagicMock(
+            return_value=ExecutionResult(
+                success=True,
+                data={
+                    "output": {"field_a": "v"},
+                    "metadata": {},
+                    "metrics": {"field_a": {}},
+                },
+            )
+        )
+
+        ctx = _make_pipeline_context({
+            "extract_params": _base_extract_params(),
+            "index_template": _base_index_template(),
+            "answer_params": _base_answer_params(),
+            "pipeline_options": _base_pipeline_options(),
+        })
+        result = executor._handle_structure_pipeline(ctx)
+
+        assert result.success
+        usage_records = (result.metadata or {}).get("usage_records", [])
+        assert embedding_row in usage_records
+
+    def test_index_returned_failure_aborts_pipeline(self, executor):
+        from executor.executors.exceptions import LegacyExecutorError
+
+        executor._handle_extract = MagicMock(
+            return_value=ExecutionResult(
+                success=True, data={"extracted_text": "text"}
+            )
+        )
+        executor._handle_index = MagicMock(
+            return_value=ExecutionResult.failure(
+                error="Missing required params: embedding_instance_id"
+            )
+        )
+        executor._handle_answer_prompt = MagicMock()
+
+        ctx = _make_pipeline_context({
+            "extract_params": _base_extract_params(),
+            "index_template": _base_index_template(),
+            "answer_params": _base_answer_params(),
+            "pipeline_options": _base_pipeline_options(),
+        })
+        with pytest.raises(LegacyExecutorError) as exc_info:
+            executor._handle_structure_pipeline(ctx)
+
+        assert "Pipeline indexing failed" in exc_info.value.message
+        # Pipeline must short-circuit before answering.
+        assert executor._handle_answer_prompt.call_count == 0
 
 
 # ---------------------------------------------------------------------------

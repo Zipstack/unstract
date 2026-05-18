@@ -7,7 +7,7 @@ from django.db import models
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from pipeline_v2.models import Pipeline
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -24,7 +24,7 @@ DESCRIPTION_MAX_LENGTH = 255
 API_ENDPOINT_MAX_LENGTH = 255
 
 
-class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user):
         """Filter API deployments that the user can access:
         - API deployments created by the user

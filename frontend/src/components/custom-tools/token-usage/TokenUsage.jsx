@@ -23,8 +23,13 @@ function TokenUsage({ tokenUsageId, isLoading }) {
     setTokens(tokenUsage[tokenUsageId]); // Update tokens state with the token usage data for the given tokenUsageId
   }, [tokenUsage, tokenUsageId]);
 
-  // If no tokens data is available, render nothing
-  if (!tokens || !Object.keys(tokens)?.length || isLoading) {
+  // BE returns all-null fields when no Usage rows match; treat as empty.
+  if (
+    !tokens ||
+    !Object.keys(tokens)?.length ||
+    isLoading ||
+    tokens?.total_tokens == null
+  ) {
     return "NA";
   }
 

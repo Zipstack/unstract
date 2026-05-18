@@ -23,6 +23,28 @@ try {
   // The component will remain null of it is not available
 }
 
+let handleLookupOutput;
+try {
+  const mod = await import(
+    "../plugins/lookup-studio/prompt-card/handleLookupOutput"
+  );
+  handleLookupOutput = mod.handleLookupOutput;
+} catch (error) {
+  // Surface chunk-load failures — silent catch hid them.
+  // eslint-disable-next-line no-console
+  console.warn("[usePromptOutput] handleLookupOutput unavailable:", error);
+}
+
+// Cloud-only extractor; OSS no-op. Signature matches plugin helper.
+let getEnrichmentFromItem = (_item) => null;
+try {
+  const mod = await import("../plugins/lookup-enriched-toggle/helpers");
+  getEnrichmentFromItem = mod.getEnrichmentFromItem;
+} catch (error) {
+  // eslint-disable-next-line no-console
+  console.warn("[usePromptOutput] getEnrichmentFromItem unavailable:", error);
+}
+
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();
   const { setTokenUsage, updateTokenUsage } = useTokenUsageStore();
@@ -124,6 +146,18 @@ const usePromptOutput = () => {
         confidenceData: item?.confidence_data,
         wordConfidenceData: item?.word_confidence_data,
       };
+
+      // Per-item plugin failure must not abort the forEach — would leave
+      // partial state with no error surfaced.
+      try {
+        const enrichment = getEnrichmentFromItem(item);
+        if (handleLookupOutput && enrichment) {
+          handleLookupOutput(item.prompt_output_id, enrichment);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.warn("[usePromptOutput] lookup enrichment failed:", err);
+      }
 
       if (item?.is_single_pass_extract && isTokenUsageForSinglePassAdded) {
         return;

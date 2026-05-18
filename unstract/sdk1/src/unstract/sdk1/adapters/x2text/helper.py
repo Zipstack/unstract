@@ -1,4 +1,6 @@
 import logging
+import os
+from io import BytesIO
 from typing import Any
 
 import requests
@@ -72,17 +74,15 @@ class UnstructuredHelper:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         try:
             response: Response
-            local_storage = FileStorage(FileStorageProvider.LOCAL)
-            if not local_storage.exists(input_file_path):
-                fs.download(from_path=input_file_path, to_path=input_file_path)
-            with open(input_file_path, "rb") as input_f:
-                mime_type = local_storage.mime_type(path=input_file_path)
-                files = {"file": (input_file_path, input_f, mime_type)}
-                response = UnstructuredHelper.make_request(
-                    unstructured_adapter_config=unstructured_adapter_config,
-                    request_type=UnstructuredHelper.PROCESS,
-                    files=files,
-                )
+            file_bytes = fs.read(path=input_file_path, mode="rb")
+            mime_type = fs.mime_type(path=input_file_path)
+            file_name = os.path.basename(input_file_path)
+            files = {"file": (file_name, BytesIO(file_bytes), mime_type)}
+            response = UnstructuredHelper.make_request(
+                unstructured_adapter_config=unstructured_adapter_config,
+                request_type=UnstructuredHelper.PROCESS,
+                files=files,
+            )
             output, is_success = X2TextHelper.parse_response(
                 response=response, out_file_path=output_file_path, fs=fs
             )

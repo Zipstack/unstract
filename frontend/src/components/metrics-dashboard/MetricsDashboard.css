@@ -2,45 +2,18 @@
 
 .metrics-dashboard {
   padding: 12px;
-  background: #f5f5f5;
-  height: calc(100vh - 64px);
+  background-color: var(--page-bg-2);
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .metrics-dashboard-container {
-  background: #ffffff;
-  height: 100%;
+  background-color: var(--page-bg-1);
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-}
-
-/* Topbar */
-.metrics-topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 14px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.metrics-topbar-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.metrics-topbar-icon {
-  font-size: 20px;
-  color: #1890ff;
-}
-
-.metrics-topbar-left h4 {
-  font-weight: 600;
-  color: #262626;
-}
-
-.metrics-topbar-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
 .metrics-header-button {
@@ -239,22 +212,6 @@
 
 /* Responsive Adjustments */
 @media (max-width: 768px) {
-  .metrics-topbar {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 12px;
-    padding: 12px 14px;
-  }
-
-  .metrics-topbar-left {
-    justify-content: center;
-  }
-
-  .metrics-topbar-right {
-    flex-direction: row;
-    justify-content: center;
-  }
-
   .metrics-dashboard {
     padding: 12px;
   }

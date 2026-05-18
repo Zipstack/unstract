@@ -9,6 +9,7 @@ import "./ToolNavBar.css";
 
 function ToolNavBar({
   title,
+  titleAdornment,
   subtitle,
   onEditTitle,
   enableSearch,
@@ -19,6 +20,7 @@ function ToolNavBar({
   onNavigateBack,
   segmentFilter,
   segmentOptions,
+  segmentValue,
   onSearch,
   searchKey,
 }) {
@@ -53,6 +55,7 @@ function ToolNavBar({
                 <Typography.Text strong className="tool-nav-bar__title">
                   {title}
                 </Typography.Text>
+                {titleAdornment}
                 {onEditTitle && (
                   <Button
                     type="text"
@@ -79,6 +82,7 @@ function ToolNavBar({
         {segmentFilter && segmentOptions && (
           <Segmented
             options={segmentOptions}
+            value={segmentValue}
             onChange={segmentFilter}
             className="tool-nav-bar__segment"
           />
@@ -102,6 +106,7 @@ function ToolNavBar({
 
 ToolNavBar.propTypes = {
   title: PropTypes.string,
+  titleAdornment: PropTypes.node,
   subtitle: PropTypes.string,
   onEditTitle: PropTypes.func,
   enableSearch: PropTypes.bool,
@@ -111,6 +116,7 @@ ToolNavBar.propTypes = {
   previousRouteState: PropTypes.object,
   onNavigateBack: PropTypes.func,
   segmentOptions: PropTypes.array,
+  segmentValue: PropTypes.string,
   segmentFilter: PropTypes.func,
   onSearch: PropTypes.func,
   searchKey: PropTypes.string,

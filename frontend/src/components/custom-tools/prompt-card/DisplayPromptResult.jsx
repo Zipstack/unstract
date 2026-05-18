@@ -84,7 +84,7 @@ function DisplayPromptResult({
     );
   }
 
-  if (output === undefined || output === null) {
+  if (output === undefined) {
     return (
       <Typography.Text className="prompt-not-ran">
         <span>
@@ -92,6 +92,12 @@ function DisplayPromptResult({
         </span>{" "}
         Yet to run
       </Typography.Text>
+    );
+  }
+
+  if (output === null) {
+    return (
+      <Typography.Text className="prompt-output-result">null</Typography.Text>
     );
   }
 
