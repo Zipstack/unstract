@@ -319,10 +319,21 @@ class PromptStudioRegistryHelper:
                 prompt.profile_manager = default_llm_profile
 
             if not force_export:
+                # Single-pass execution stores outputs against the tool's
+                # default profile (see
+                # OutputManagerHelper.handle_prompt_output_update), not the
+                # prompt-level profile_manager FK. Match the lookup to the
+                # mode the prompts were actually run in so validation does
+                # not miss the rows created during single-pass.
+                if tool.single_pass_extraction_mode:
+                    output_profile = default_llm_profile
+                else:
+                    output_profile = prompt.profile_manager
                 prompt_output = PromptStudioOutputManager.objects.filter(
                     tool_id=tool.tool_id,
                     prompt_id=prompt.prompt_id,
-                    profile_manager=prompt.profile_manager,
+                    profile_manager=output_profile,
+                    is_single_pass_extract=tool.single_pass_extraction_mode,
                 ).all()
                 if not prompt_output:
                     invalidated_outputs.append(prompt.prompt_key)
