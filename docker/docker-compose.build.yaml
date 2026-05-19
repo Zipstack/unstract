@@ -20,30 +20,10 @@ services:
     build:
       dockerfile: docker/dockerfiles/tool-sidecar.Dockerfile
       context: ..
-  tool-structure:
-    image: unstract/tool-structure:${VERSION}
-    build:
-      dockerfile: tools/structure/Dockerfile
-      context: ..
-  tool-text_extractor:
-    image: unstract/tool-text_extractor:${VERSION}
-    build:
-      dockerfile: tools/text_extractor/Dockerfile
-      context: ..
-  tool-classifier:
-    image: unstract/tool-classifier:${VERSION}
-    build:
-      dockerfile: tools/classifier/Dockerfile
-      context: ..
   platform-service:
     image: unstract/platform-service:${VERSION}
     build:
       dockerfile: docker/dockerfiles/platform.Dockerfile
-      context: ..
-  prompt-service:
-    image: unstract/prompt-service:${VERSION}
-    build:
-      dockerfile: docker/dockerfiles/prompt.Dockerfile
       context: ..
   x2text-service:
     image: unstract/x2text-service:${VERSION}

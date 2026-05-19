@@ -21,7 +21,6 @@ services:
       - minio
       - minio-bootstrap
       - platform-service
-      - prompt-service
       - x2text-service
     volumes:
       - prompt_studio_data:/app/prompt-studio-data
@@ -150,25 +149,6 @@ services:
       - db
     labels:
       - traefik.enable=false
-
-  prompt-service:
-    image: unstract/prompt-service:${VERSION}
-    container_name: unstract-prompt-service
-    restart: unless-stopped
-    depends_on:
-      - db
-      - minio
-      - minio-bootstrap
-      - rabbitmq
-    ports:
-      - "3003:3003"
-    env_file:
-      - ../prompt-service/.env
-    labels:
-      - traefik.enable=false
-    extra_hosts:
-      # "host-gateway" is a special string that translates to host docker0 i/f IP.
-      - "host.docker.internal:host-gateway"
 
   x2text-service:
     image: unstract/x2text-service:${VERSION}

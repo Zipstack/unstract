@@ -516,10 +516,3 @@ def create_retry_decorator(
 # - PLATFORM_SERVICE_MULTIPLIER (default: 2.0)
 # - PLATFORM_SERVICE_JITTER (default: true)
 retry_platform_service_call = create_retry_decorator("PLATFORM_SERVICE")
-
-# Retry configured through below envs.
-# - PROMPT_SERVICE_MAX_RETRIES (default: 3)
-# - PROMPT_SERVICE_BASE_DELAY (default: 1.0s)
-# - PROMPT_SERVICE_MULTIPLIER (default: 2.0)
-# - PROMPT_SERVICE_JITTER (default: true)
-retry_prompt_service_call = create_retry_decorator("PROMPT_SERVICE")
