@@ -91,11 +91,15 @@ function App() {
       key: alertDetails?.key,
     });
 
+    const logMessage = showRequestId
+      ? `${alertDetails.content}\nRequest ID: \`${alertDetails.requestId}\``
+      : alertDetails.content;
+
     pushLogMessages([
       {
         timestamp: Math.floor(Date.now() / 1000),
         level: alertDetails?.type ? alertDetails?.type.toUpperCase() : "",
-        message: alertDetails.content,
+        message: logMessage,
         type: "NOTIFICATION",
       },
     ]);
