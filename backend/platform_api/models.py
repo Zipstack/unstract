@@ -9,6 +9,16 @@ from utils.models.organization_mixin import DefaultOrganizationMixin
 class ApiKeyPermission(models.TextChoices):
     READ = "read", "Read"
     READ_WRITE = "read_write", "Read/Write"
+    FULL_ACCESS = "full_access", "Full Access"
+
+    def allows(self, method: str) -> bool:
+        """Whether a key holding this tier may issue the given HTTP method."""
+        method = method.upper()
+        if self == ApiKeyPermission.FULL_ACCESS:
+            return method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH", "DELETE"}
+        if self == ApiKeyPermission.READ_WRITE:
+            return method in {"GET", "HEAD", "OPTIONS", "POST", "PUT", "PATCH"}
+        return method in {"GET", "HEAD", "OPTIONS"}
 
 
 class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
@@ -20,7 +30,7 @@ class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
     permission = models.CharField(
-        max_length=16,
+        max_length=20,
         choices=ApiKeyPermission.choices,
         default=ApiKeyPermission.READ_WRITE,
     )
@@ -49,6 +59,10 @@ class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
             models.UniqueConstraint(
                 fields=["name", "organization"],
                 name="unique_platform_api_key_name_per_org",
+            ),
+            models.CheckConstraint(
+                check=models.Q(permission__in=ApiKeyPermission.values),
+                name="platform_api_key_permission_valid",
             ),
         ]
 

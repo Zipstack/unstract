@@ -3,6 +3,8 @@ from rest_framework.urlpatterns import format_suffix_patterns
 
 from .views import ToolStudioPromptView
 
+prompt_studio_prompt_list = ToolStudioPromptView.as_view({"get": "list"})
+
 prompt_studio_prompt_detail = ToolStudioPromptView.as_view(
     {
         "get": "retrieve",
@@ -17,14 +19,19 @@ reorder_prompts = ToolStudioPromptView.as_view({"post": "reorder_prompts"})
 urlpatterns = format_suffix_patterns(
     [
         path(
+            "prompt/reorder/",
+            reorder_prompts,
+            name="reorder_prompts",
+        ),
+        path(
             "prompt/<uuid:pk>/",
             prompt_studio_prompt_detail,
             name="tool-studio-prompt-detail",
         ),
         path(
-            "prompt/reorder/",
-            reorder_prompts,
-            name="reorder_prompts",
+            "prompt/",
+            prompt_studio_prompt_list,
+            name="tool-studio-prompt-list",
         ),
     ]
 )

@@ -10,7 +10,7 @@ from django.db import models
 from django.db.models import QuerySet
 from tenant_account_v2.models import OrganizationMember
 from utils.exceptions import InvalidEncryptionKey
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -29,7 +29,7 @@ ADAPTER_ID_LENGTH = 128
 logger = logging.getLogger(__name__)
 
 
-class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def get_queryset(self) -> QuerySet[Any]:
         return super().get_queryset()
 

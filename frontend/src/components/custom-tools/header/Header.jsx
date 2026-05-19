@@ -23,30 +23,28 @@ try {
     "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
   );
   SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx"
   );
   PromptShareButton = mod.PromptShareButton;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx"
   );
   CloneButton = mod.CloneButton;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
+
+const noopCheckLookups = () => Promise.resolve(true);
+
 function Header({
   setOpenSettings,
   handleUpdateTool,
   setOpenShareModal,
   setOpenCloneModal,
+  checkLookups = noopCheckLookups,
 }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details, isPublicSource, markChangesAsExported } =
@@ -129,7 +127,7 @@ function Header({
     setConfirmModalVisible(false);
   }, [lastExportParams, handleExport]);
 
-  const handleShare = (isEdit) => {
+  const handleShare = async (isEdit) => {
     try {
       setPostHogCustomEvent("ps_exported_tool", {
         info: `Clicked on the 'Export' button`,
@@ -138,6 +136,9 @@ function Header({
     } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
+
+    const ok = await checkLookups(details?.tool_id, "export");
+    if (!ok) return;
 
     const requestOptions = {
       method: "GET",
@@ -255,7 +256,7 @@ function Header({
       });
   };
 
-  const handleCreateApiDeployment = () => {
+  const handleCreateApiDeployment = async () => {
     try {
       setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
         info: "Clicked Create API Deployment in tool IDE",
@@ -265,6 +266,9 @@ function Header({
     } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
+
+    const ok = await checkLookups(details?.tool_id, "API deployment");
+    if (!ok) return;
 
     // Check for existing API deployments before proceeding
     setIsApiDeploymentLoading(true);
@@ -527,6 +531,7 @@ Header.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   setOpenCloneModal: PropTypes.func.isRequired,
   setOpenShareModal: PropTypes.func.isRequired,
+  checkLookups: PropTypes.func,
 };
 
 export { Header };

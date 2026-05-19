@@ -48,7 +48,7 @@ DefaultCustomButtons.propTypes = {
   handleNewProjectBtnClick: PropTypes.func.isRequired,
 };
 
-function ListOfTools() {
+function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [openImportTool, setOpenImportTool] = useState(false);
@@ -373,12 +373,15 @@ function ListOfTools() {
   return (
     <>
       <ToolNavBar
-        title={"Prompt Studio"}
+        title="Prompt Studio"
         enableSearch
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
         customButtons={customButtonsElement}
+        segmentOptions={segmentOptions}
+        segmentValue={segmentValue}
+        segmentFilter={onSegmentChange}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>
@@ -411,5 +414,11 @@ function ListOfTools() {
     </>
   );
 }
+
+ListOfTools.propTypes = {
+  segmentOptions: PropTypes.arrayOf(PropTypes.string),
+  segmentValue: PropTypes.string,
+  onSegmentChange: PropTypes.func,
+};
 
 export { ListOfTools };

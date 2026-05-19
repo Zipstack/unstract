@@ -5,6 +5,23 @@ from backend.serializers import AuditSerializer
 from .models import ToolStudioPrompt
 
 
+class ToolStudioPromptListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for listing prompts by tool.
+
+    Returns only the fields needed for linking/display without
+    output data or coverage calculation.
+    """
+
+    class Meta:
+        model = ToolStudioPrompt
+        fields = [
+            "prompt_id",
+            "prompt_key",
+            "enforce_type",
+            "sequence_number",
+        ]
+
+
 class ToolStudioPromptSerializer(AuditSerializer):
     class Meta:
         model = ToolStudioPrompt

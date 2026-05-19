@@ -32,7 +32,7 @@ services:
       - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
-      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`))
+      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
     extra_hosts:
       # "host-gateway" is a special string that translates to host docker0 i/f IP.
@@ -134,7 +134,7 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`)
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`) && !PathPrefix(`/public`)
       - traefik.http.services.frontend.loadbalancer.server.port=80
 
   platform-service:
@@ -529,7 +529,7 @@ services:
       - EXECUTOR_METRICS_PORT=8088
       - HEALTH_PORT=8088
       # Configurable Celery options
-      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic}
+      - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table}
       - CELERY_POOL=${WORKER_EXECUTOR_POOL:-prefork}
       - CELERY_PREFETCH_MULTIPLIER=${WORKER_EXECUTOR_PREFETCH_MULTIPLIER:-1}
       - CELERY_CONCURRENCY=${WORKER_EXECUTOR_CONCURRENCY:-2}
