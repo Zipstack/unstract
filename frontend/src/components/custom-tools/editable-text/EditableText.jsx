@@ -1,4 +1,4 @@
-import { Input } from "antd";
+import { Input, Typography } from "antd";
 import debounce from "lodash/debounce";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +17,7 @@ function EditableText({
   isTextarea,
   placeHolder,
   isCoverageLoading,
+  error,
 }) {
   const name = isTextarea ? "prompt" : "prompt_key";
   const [triggerHandleChange, setTriggerHandleChange] = useState(false);
@@ -94,24 +95,32 @@ function EditableText({
   }
 
   return (
-    <Input
-      className="width-100 input-header-text"
-      value={text}
-      onChange={handleTextChange}
-      placeholder="Enter Key"
-      name={name}
-      size="small"
-      style={{ backgroundColor: "transparent" }}
-      variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}
-      autoSize={true}
-      onMouseOver={() => setIsHovered(true)}
-      onMouseOut={() => setIsHovered(false)}
-      onBlur={handleBlur}
-      onClick={() => setIsEditing(true)}
-      disabled={
-        isCoverageLoading || isSinglePassExtractLoading || isPublicSource
-      }
-    />
+    <>
+      <Input
+        className="width-100 input-header-text"
+        value={text}
+        onChange={handleTextChange}
+        placeholder="Enter Key"
+        name={name}
+        size="small"
+        style={{ backgroundColor: "transparent" }}
+        variant={`${!isEditing && !isHovered ? "borderless" : "outlined"}`}
+        autoSize={true}
+        onMouseOver={() => setIsHovered(true)}
+        onMouseOut={() => setIsHovered(false)}
+        onBlur={handleBlur}
+        onClick={() => setIsEditing(true)}
+        disabled={
+          isCoverageLoading || isSinglePassExtractLoading || isPublicSource
+        }
+        status={error ? "error" : undefined}
+      />
+      {error && (
+        <Typography.Text type="danger" className="editable-text-error-message">
+          {error}
+        </Typography.Text>
+      )}
+    </>
   );
 }
 
@@ -126,6 +135,7 @@ EditableText.propTypes = {
   isTextarea: PropTypes.bool,
   placeHolder: PropTypes.string,
   isCoverageLoading: PropTypes.bool.isRequired,
+  error: PropTypes.string,
 };
 
 export { EditableText };

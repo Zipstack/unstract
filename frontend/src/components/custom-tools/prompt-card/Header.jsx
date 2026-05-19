@@ -92,6 +92,7 @@ function Header({
   handleSpsLoading,
   enforceType,
   isAgenticTableReady = true,
+  promptKeyError,
 }) {
   const {
     selectedDoc,
@@ -335,6 +336,7 @@ function Header({
           handleChange={handleChange}
           placeHolder={updatePlaceHolder}
           isCoverageLoading={isCoverageLoading}
+          error={promptKeyError}
         />
       </Col>
       <Col span={12} className="display-flex-right">
@@ -493,6 +495,7 @@ Header.propTypes = {
   handleSpsLoading: PropTypes.func.isRequired,
   enforceType: PropTypes.string,
   isAgenticTableReady: PropTypes.bool,
+  promptKeyError: PropTypes.string,
 };
 
 export { Header };
