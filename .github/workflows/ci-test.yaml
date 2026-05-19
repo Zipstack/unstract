@@ -42,26 +42,51 @@ jobs:
             ${{ runner.os }}-tox-uv-
 
       - name: Restore main-branch test baseline (for regression detection)
+        # actions/cache only saves on a cache miss. Include the run id in the
+        # key so each main build writes a fresh cache entry; the prefix in
+        # restore-keys still pulls the most recent baseline for any branch.
         uses: actions/cache@v5
         with:
           path: reports/previous-summary.json
-          key: unstract-test-baseline-main
+          key: unstract-test-baseline-main-${{ github.run_id }}
           restore-keys: |
+            unstract-test-baseline-main-
             unstract-test-baseline-
 
       - name: Install tox with UV
         run: uv tool install tox --with tox-uv
 
-      - name: Run unit + integration tiers
-        id: tox
-        # On main, fail on uncovered critical paths and update the baseline
-        # cache. On PRs, gaps are warnings (visible in the summary).
+      - name: Validate test manifests
+        # Cheap pre-flight: catches groups.yaml / critical_paths.yaml schema
+        # errors before we spend minutes on tier runs. Also catches malformed
+        # manifests on PRs that only touch paths-ignored files (because this
+        # step always runs).
+        run: tox -e rig -- validate
+
+      - name: Run unit tier
+        # Each tier runs as a separate rig invocation so its results land in
+        # reports/<group>/ before the next tier starts. --update-baseline (on
+        # main only) merges this tier's covered paths into the cached
+        # previous-summary.json; later tiers union on top.
         run: |
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            tox -e unit,integration -- --fail-on-critical-gap --update-baseline
+            tox -e unit -- --fail-on-critical-gap --update-baseline
           else
-            tox -e unit,integration
+            tox -e unit
           fi
+
+      - name: Run integration tier
+        if: always()
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tox -e integration -- --fail-on-critical-gap --update-baseline
+          else
+            tox -e integration
+          fi
+
+      - name: Re-aggregate reports from both tiers
+        if: always()
+        run: tox -e rig -- report combine
 
       - name: Render combined test report to PR
         uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2

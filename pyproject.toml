@@ -212,6 +212,30 @@ markers = [
     "critical: marks tests covering a critical path (see tests/critical_paths.yaml)",
 ]
 
+[tool.coverage.run]
+branch = false
+relative_files = true
+
+[tool.coverage.paths]
+# Each group runs pytest from its own workdir, so per-group .coverage files
+# store paths anchored at that workdir (e.g. "src/unstract/sdk1/foo.py" from
+# unstract/sdk1/; "shared/foo.py" from workers/). `coverage combine` uses
+# these mappings to fold parallel workdir paths back onto a single
+# repo-relative path, otherwise xml/html show duplicate or orphaned files.
+sdk1 = ["unstract/sdk1/src/unstract/sdk1", "*/unstract/sdk1/src/unstract/sdk1"]
+runner = ["runner/src/unstract/runner", "*/runner/src/unstract/runner"]
+prompt_service = [
+    "prompt-service/src/unstract/prompt_service",
+    "*/prompt-service/src/unstract/prompt_service",
+]
+platform_service = ["platform-service/src", "*/platform-service/src"]
+workers = ["workers/shared", "*/workers/shared"]
+connectors = ["unstract/connectors/src", "*/unstract/connectors/src"]
+core = ["unstract/core/src", "*/unstract/core/src"]
+tool_registry = ["unstract/tool-registry/src", "*/unstract/tool-registry/src"]
+backend = ["backend", "*/backend"]
+rig = ["tests/rig", "*/tests/rig"]
+
 [tool.mypy]
 python_version = "3.12"
 warn_return_any = true

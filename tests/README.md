@@ -120,7 +120,7 @@ Each entry is a high-value user or system flow with an `id`, an `entry` (HTTP en
 - ⚠️ **gap** — no covering group ran green (or `covered_by` is empty).
 - ❌ **regression** — was ✅ on the cached main baseline but isn't now.
 
-Gaps are warnings on PRs; on main they fail the build when CI passes`--fail-on-critical-gap`. Regressions are **always** errors — the team target is zero.
+The rig itself does not know about PRs or main — it just emits the markers and respects `--fail-on-critical-gap`. The CI workflow at `.github/workflows/ci-test.yaml` is what decides to pass that flag on main and not on PRs, so gaps surface as warnings during review and as errors only when merging. Regressions are **always** errors — the team target is zero.
 
 ---
 
@@ -141,16 +141,17 @@ Useful for fast feedback on feature branches.
 
 ## E2E runtime
 
-Three modes behind one protocol, chosen by `--runtime` or`UNSTRACT_E2E_RUNTIME`. CI defaults to `compose`; everywhere else defaults to `testcontainers`.
+Three modes behind one protocol, chosen by `--runtime` or `UNSTRACT_E2E_RUNTIME`. CI defaults to `compose`; everywhere else defaults to `testcontainers`.
 
 | Mode | Use when | How it works |
 |---|---|---|
 | `compose` | CI; testing the prod image. | `docker compose -f docker/docker-compose.yaml -f tests/compose/docker-compose.test.yaml up -d --wait`, then HTTP. Teardown wipes volumes. |
-| `testcontainers` | Local iteration. | Postgres/Redis/RabbitMQ/MinIO via testcontainers; expects services to be reachable on standard ports (extension point for launching them as subprocesses). |
-| `local` | After `./run-platform.sh`. | Assume a developer-managed stack; just read URLs from env. |
+| `testcontainers` | Local iteration on infra-only groups. | Stands up Postgres/Redis/RabbitMQ/MinIO via testcontainers and exposes their handles on `PlatformEndpoints.infra`. **Stub today**: does NOT auto-launch backend/prompt-service/etc. as subprocesses — full-platform e2e on testcontainers will need that wiring added. Use `compose` for now if you need the whole stack. |
+| `local` | After `./run-platform.sh`. | Assume a developer-managed stack; read URLs from env. |
 
-The rig brings the platform up **once** per `run` invocation (if any selected group has `requires_platform: true`) and exports its URLs via env vars (`UNSTRACT_BACKEND_URL`, `UNSTRACT_PROMPT_SERVICE_URL`, etc.). The`platform` pytest fixture in `tests/e2e/conftest.py` reads those env vars;
-e2e tests run elsewhere (without the rig) just skip with a clear message.
+The rig brings the platform up **once** per `run` invocation (if any selected group has `requires_platform: true`) and exports its URLs via env vars (`UNSTRACT_BACKEND_URL`, `UNSTRACT_PROMPT_SERVICE_URL`, etc.). The rig uses `env.setdefault(...)` so a pre-set value (e.g. from `local` runtime or a developer override) wins over the runtime's default — useful when iterating against a custom stack, but means stale shell env can mask wiring bugs. The smoke test asserts the fixture's URL matches the env var to catch this.
+
+The `platform` pytest fixture in `tests/e2e/conftest.py` reads those env vars; e2e tests run elsewhere (without the rig) just skip with a clear message.
 
 ---
 
@@ -171,14 +172,15 @@ reports/
     └── exit.txt                  # group's pytest exit code
 ```
 
-`reports/summary.md` has three sections:
+`reports/summary.md` has two sections:
 
 1. **Per-group results** table (passed/failed/errors/skipped/duration).
-2. **❌ Regressions** — must be zero.
-3. **⚠️ Critical paths not yet covered** — the gaps backlog.
-4. **✅ Covered critical paths** (collapsed) — what's protected.
+2. **Critical paths**, split into:
+   - ❌ Regressions — must be zero.
+   - ⚠️ Critical paths not yet covered — the gaps backlog.
+   - ✅ Covered critical paths (collapsed) — what's protected.
 
-CI uploads the whole `reports/` directory as an artifact and posts`combined-test-report.md` as a sticky PR comment.
+CI uploads the whole `reports/` directory as an artifact and posts `combined-test-report.md` as a sticky PR comment.
 
 ---
 
@@ -197,8 +199,8 @@ We **do not** chase 100% coverage. The bar is critical-path coverage; the rig's 
 
 The rig itself has **no branch awareness**. Branch behavior is enforced in GitHub Actions, not in the rig:
 
-- `main` runs `tox -e unit,integration -- --fail-on-critical-gap --update-baseline` (every PR-merge to main updates the regression baseline).
-- PRs run `tox -e unit,integration` with no `--fail-on-critical-gap` so gaps are visible but don't block.
+- On `main`, each tier runs in its own step (`tox -e unit` then `tox -e integration`, then `tox -e e2e` in the slow lane). Each invocation passes `--fail-on-critical-gap --update-baseline`. The rig merges (rather than overwrites) covered paths into `previous-summary.json` so the second tier's run preserves the first tier's coverage.
+- On PRs, the same tiered steps run without `--fail-on-critical-gap`, so gaps are visible but don't block.
 - The e2e workflow only runs on main, on PRs labeled `run-e2e`, on nightly cron, or via manual dispatch.
 
 Developers can scope local runs however they like via positional args, `--from-file .test-selection`, `--tier`, or `--changed-only`.

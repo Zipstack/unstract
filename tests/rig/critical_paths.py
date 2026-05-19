@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 
 from tests.rig.groups import REPO_ROOT, GroupManifest
+
+CriticalPathState = Literal["covered", "gap", "regression"]
 
 DEFAULT_REGISTRY = REPO_ROOT / "tests" / "critical_paths.yaml"
 
@@ -25,18 +27,22 @@ class CriticalPath:
 @dataclass(frozen=True)
 class CriticalPathRegistry:
     paths: tuple[CriticalPath, ...]
+    _by_id: dict[str, CriticalPath] = field(default_factory=dict, init=False, repr=False)
+
+    def __post_init__(self) -> None:
+        # `frozen=True` blocks direct assignment; route through object.__setattr__.
+        object.__setattr__(self, "_by_id", {p.id: p for p in self.paths})
 
     def by_id(self, path_id: str) -> CriticalPath:
-        for p in self.paths:
-            if p.id == path_id:
-                return p
-        raise KeyError(path_id)
+        if path_id not in self._by_id:
+            raise KeyError(path_id)
+        return self._by_id[path_id]
 
 
 @dataclass(frozen=True)
 class CriticalPathStatus:
     path: CriticalPath
-    state: str  # "covered" | "gap" | "regression"
+    state: CriticalPathState
     covering_groups_run: tuple[str, ...]
     notes: str = ""
 
@@ -67,7 +73,9 @@ def validate_registry_against_manifest(
     for path in registry.paths:
         for g in path.covered_by:
             if g not in known:
-                errors.append(f"critical path {path.id!r}: covered_by references unknown group {g!r}")
+                errors.append(
+                    f"critical path {path.id!r}: covered_by references unknown group {g!r}"
+                )
     return errors
 
 
@@ -94,6 +102,7 @@ def evaluate(
     statuses: list[CriticalPathStatus] = []
     for path in registry.paths:
         covering = tuple(g for g in path.covered_by if g in groups_run_green)
+        state: CriticalPathState
         if covering:
             state = "covered"
             note = ""
@@ -114,13 +123,28 @@ def evaluate(
     return statuses
 
 
-def emit_baseline(statuses: list[CriticalPathStatus], destination: Path) -> None:
-    """Persist the green critical paths so the next build can detect regressions."""
-    payload = {
-        "covered_paths": [s.path.id for s in statuses if s.state == "covered"],
-    }
+def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -> None:
+    """Merge this build's green critical paths into the cached baseline.
+
+    Two tiers run in separate processes (unit, then integration; then e2e in a
+    separate workflow). Each invocation only knows about the paths covered by
+    *its* groups. A naive overwrite would erase the other tier's coverage. We
+    therefore union with whatever's already on disk before writing.
+    """
+    existing: set[str] = set()
+    if destination.exists():
+        try:
+            existing = set(json.loads(destination.read_text()).get("covered_paths", []))
+        except (json.JSONDecodeError, OSError):
+            existing = set()
+    fresh = {s.path.id for s in statuses if s.state == "covered"}
+    payload = {"covered_paths": sorted(existing | fresh)}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, indent=2))
+
+
+# Back-compat alias for any caller still using the old name.
+emit_baseline = merge_into_baseline
 
 
 def load_baseline(source: Path) -> dict[str, Any] | None:

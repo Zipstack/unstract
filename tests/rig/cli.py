@@ -22,10 +22,20 @@ from pathlib import Path
 
 from tests.rig import critical_paths as cp
 from tests.rig.coverage import combine_and_report, coverage_env
-from tests.rig.groups import REPO_ROOT, GroupDefinition, GroupManifest, load_groups
+from tests.rig.groups import (
+    REPO_ROOT,
+    TIERS,
+    GroupDefinition,
+    load_groups,
+)
 from tests.rig.reporting import GroupResult, parse_junit, write_summary
 from tests.rig.runtime import PlatformEndpoints, PlatformRuntime, pick_runtime
 from tests.rig.selection import resolve
+
+# Pytest exit codes that the rig treats as non-failure for aggregation:
+#   0 — all tests passed
+#   5 — no tests collected (optional placeholders, empty hurl group, etc.)
+_NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -41,25 +51,48 @@ def _build_parser() -> argparse.ArgumentParser:
     pr = sub.add_parser("run", help="Run selected groups")
     pr.add_argument("groups", nargs="*", help="Group names, or 'all'.")
     pr.add_argument("--from-file", type=Path, help="File with one group name per line.")
-    pr.add_argument("--tier", choices=["unit", "integration", "e2e"])
+    pr.add_argument("--tier", choices=TIERS)
     pr.add_argument("--marker", help="Pytest -m marker expression to forward.")
-    pr.add_argument("--paths", help="Comma-separated pytest paths/nodeids (overrides group paths).")
+    pr.add_argument(
+        "--paths", help="Comma-separated pytest paths/nodeids (overrides group paths)."
+    )
     pr.add_argument("--runtime", choices=["compose", "testcontainers", "local"])
     pr.add_argument("--coverage", dest="coverage", action="store_true", default=True)
     pr.add_argument("--no-coverage", dest="coverage", action="store_false")
     pr.add_argument("--parallel", dest="parallel", action="store_true", default=True)
     pr.add_argument("--no-parallel", dest="parallel", action="store_false")
-    pr.add_argument("--workers", default="auto", help="pytest-xdist worker count (default: auto).")
+    pr.add_argument(
+        "--workers",
+        default="auto",
+        help="pytest-xdist worker count (default: auto).",
+    )
     pr.add_argument("--timeout", type=int, help="Per-group timeout override in seconds.")
     pr.add_argument("--reports-dir", type=Path, default=REPO_ROOT / "reports")
-    pr.add_argument("--fail-on-critical-gap", action="store_true",
-                    help="Treat uncovered critical paths as a build failure.")
-    pr.add_argument("--changed-only", action="store_true",
-                    help="Auto-select groups overlapping `git diff origin/main...HEAD`.")
+    pr.add_argument(
+        "--fail-on-critical-gap",
+        action="store_true",
+        help="Treat uncovered critical paths as a build failure.",
+    )
+    pr.add_argument(
+        "--changed-only",
+        action="store_true",
+        help="Auto-select groups overlapping `git diff origin/main...HEAD`.",
+    )
     pr.add_argument("--changed-base", default="origin/main")
-    pr.add_argument("--baseline", type=Path, default=REPO_ROOT / "reports" / "previous-summary.json")
-    pr.add_argument("--update-baseline", action="store_true",
-                    help="On green main builds, write this build's covered paths as the new baseline.")
+    pr.add_argument(
+        "--baseline",
+        type=Path,
+        default=REPO_ROOT / "reports" / "previous-summary.json",
+    )
+    pr.add_argument(
+        "--update-baseline",
+        action="store_true",
+        help=(
+            "On green main builds, merge this build's covered paths into the "
+            "baseline. Merging (not overwriting) preserves coverage recorded by "
+            "earlier tier invocations in the same workflow."
+        ),
+    )
     pr.add_argument("--dry-run", action="store_true", help="Plan only; do not execute.")
     pr.set_defaults(func=cmd_run)
 
@@ -67,13 +100,17 @@ def _build_parser() -> argparse.ArgumentParser:
     pl.set_defaults(func=cmd_list_groups)
 
     pc = sub.add_parser("list-critical-paths", help="Print critical-path status table.")
-    pc.add_argument("--baseline", type=Path, default=REPO_ROOT / "reports" / "previous-summary.json")
+    pc.add_argument(
+        "--baseline",
+        type=Path,
+        default=REPO_ROOT / "reports" / "previous-summary.json",
+    )
     pc.set_defaults(func=cmd_list_critical)
 
     pe = sub.add_parser("expand", help="Show what `run` would execute, in topo order.")
     pe.add_argument("groups", nargs="*")
     pe.add_argument("--from-file", type=Path)
-    pe.add_argument("--tier", choices=["unit", "integration", "e2e"])
+    pe.add_argument("--tier", choices=TIERS)
     pe.add_argument("--changed-only", action="store_true")
     pe.add_argument("--changed-base", default="origin/main")
     pe.set_defaults(func=cmd_expand)
@@ -94,7 +131,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return p
 
 
-# ── subcommands ────────────────────────────────────────────────────────────────
+# ── subcommands ───────────────────────────────────────────────────────────────
 
 
 def cmd_list_groups(_args: argparse.Namespace) -> int:
@@ -102,7 +139,7 @@ def cmd_list_groups(_args: argparse.Namespace) -> int:
     for name in manifest.names():
         g = manifest.get(name)
         deps = ", ".join(g.depends_on) or "—"
-        flags = []
+        flags: list[str] = []
         if g.critical:
             flags.append("critical")
         if g.requires_platform:
@@ -111,7 +148,10 @@ def cmd_list_groups(_args: argparse.Namespace) -> int:
             flags.append("optional")
         if g.requires_services:
             flags.append("svc:" + "+".join(g.requires_services))
-        print(f"  {name:<32} tier={g.tier:<11} runner={g.runner:<7} deps=[{deps}]  {' '.join(flags)}")
+        print(
+            f"  {name:<32} tier={g.tier:<11} runner={g.runner:<7} "
+            f"deps=[{deps}]  {' '.join(flags)}"
+        )
     return 0
 
 
@@ -150,8 +190,20 @@ def cmd_expand(args: argparse.Namespace) -> int:
 
 
 def cmd_validate(_args: argparse.Namespace) -> int:
-    manifest = load_groups()
-    registry = cp.load_critical_paths()
+    """Validate both manifests. Schema/path/cycle errors come from
+    ``load_groups`` (raised); cross-manifest errors come from
+    ``validate_registry_against_manifest``.
+    """
+    try:
+        manifest = load_groups()
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+    try:
+        registry = cp.load_critical_paths()
+    except (ValueError, FileNotFoundError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     errors = cp.validate_registry_against_manifest(registry, manifest)
     for err in errors:
         print(f"ERROR: {err}", file=sys.stderr)
@@ -164,7 +216,13 @@ def cmd_validate(_args: argparse.Namespace) -> int:
 def cmd_platform(args: argparse.Namespace) -> int:
     runtime = pick_runtime(args.runtime)
     if args.action == "up":
-        endpoints = runtime.up()
+        try:
+            endpoints = runtime.up()
+        except Exception:
+            # If up() raised mid-way (e.g. one testcontainer started, the next
+            # failed), down() cleans up the partial stack.
+            runtime.down()
+            raise
         print(f"Platform up via runtime={runtime.name}:")
         print(f"  backend         : {endpoints.backend_url}")
         print(f"  prompt-service  : {endpoints.prompt_service_url}")
@@ -175,7 +233,10 @@ def cmd_platform(args: argparse.Namespace) -> int:
         runtime.down()
         return 0
     if args.action == "status":
-        print(f"runtime={runtime.name} (status check is best-effort; see `docker compose ps` for compose)")
+        print(
+            f"runtime={runtime.name} (status check is best-effort; "
+            f"see `docker compose ps` for compose)"
+        )
         return 0
     return 2
 
@@ -183,7 +244,6 @@ def cmd_platform(args: argparse.Namespace) -> int:
 def cmd_report(args: argparse.Namespace) -> int:
     reports_dir: Path = args.reports_dir
     combine_and_report(reports_dir)
-    # Best-effort re-aggregation using whatever junit.xml files we find.
     manifest = load_groups()
     registry = cp.load_critical_paths()
     group_results: list[GroupResult] = []
@@ -192,7 +252,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         result = parse_junit(name, tier, reports_dir)
         if result is not None:
             group_results.append(result)
-    green = {r.name for r in group_results if r.failed == 0 and r.errors == 0 and r.exit_code in (0, 5)}
+    green = _green_group_names(group_results)
     baseline = cp.load_baseline(reports_dir / "previous-summary.json")
     statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
     write_summary(
@@ -200,7 +260,7 @@ def cmd_report(args: argparse.Namespace) -> int:
         group_results=group_results,
         critical_statuses=statuses,
     )
-    print(f"Wrote {reports_dir/'summary.md'}")
+    print(f"Wrote {reports_dir / 'summary.md'}")
     return 0
 
 
@@ -222,10 +282,12 @@ def cmd_run(args: argparse.Namespace) -> int:
         changed_base=args.changed_base,
     )
     if not ordered:
-        print("ERROR: no groups selected. Pass group names, `all`, --tier, or --from-file.", file=sys.stderr)
+        print(
+            "ERROR: no groups selected. Pass group names, `all`, --tier, or --from-file.",
+            file=sys.stderr,
+        )
         return 2
 
-    # Filter out optional groups whose workdir doesn't exist (placeholders).
     runnable = [n for n in ordered if not _is_missing_placeholder(manifest.get(n))]
     skipped = [n for n in ordered if n not in runnable]
     for n in skipped:
@@ -234,24 +296,29 @@ def cmd_run(args: argparse.Namespace) -> int:
     reports_dir: Path = args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
 
-    # Bring up the platform once if any selected group needs it.
+    needs_platform = any(manifest.get(n).requires_platform for n in runnable)
     runtime: PlatformRuntime | None = None
     endpoints: PlatformEndpoints | None = None
-    if any(manifest.get(n).requires_platform for n in runnable):
-        runtime = pick_runtime(args.runtime)
-        if not args.dry_run:
-            print(f"[rig] bringing platform up via runtime={runtime.name}")
-            endpoints = runtime.up()
-
     group_results: list[GroupResult] = []
     overall_exit = 0
+
     try:
+        if needs_platform and not args.dry_run:
+            runtime = pick_runtime(args.runtime)
+            print(f"[rig] bringing platform up via runtime={runtime.name}")
+            # `up()` is inside the try so a failure here still triggers `down()`
+            # in the finally, cleaning up any partial stack.
+            endpoints = runtime.up()
+
         for name in runnable:
             group = manifest.get(name)
-            print(f"\n[rig] running group: {name} (tier={group.tier}, runner={group.runner})")
+            print(
+                f"\n[rig] running group: {name} "
+                f"(tier={group.tier}, runner={group.runner})"
+            )
             if args.dry_run:
                 continue
-            result = _execute_group(
+            result, exit_code = _execute_group(
                 group,
                 reports_dir=reports_dir,
                 marker=args.marker,
@@ -264,8 +331,11 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             if result is not None:
                 group_results.append(result)
-                if result.exit_code not in (0, 5):
-                    overall_exit = overall_exit or result.exit_code
+            # Always fold the exit code into overall_exit, even when junit.xml
+            # was never written (segfault/OOM/missing binary). Otherwise the
+            # rig silently returns 0 for catastrophic group failures.
+            if exit_code not in _NON_FAILING_PYTEST_EXIT_CODES and overall_exit == 0:
+                overall_exit = exit_code
     finally:
         if runtime is not None and not args.dry_run:
             print(f"[rig] tearing platform down (runtime={runtime.name})")
@@ -274,29 +344,46 @@ def cmd_run(args: argparse.Namespace) -> int:
     if args.coverage and not args.dry_run:
         combine_and_report(reports_dir)
 
-    green = {r.name for r in group_results if r.failed == 0 and r.errors == 0 and r.exit_code in (0, 5)}
+    green = _green_group_names(group_results)
     baseline = cp.load_baseline(args.baseline)
     statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
-    write_summary(reports_dir=reports_dir, group_results=group_results, critical_statuses=statuses)
+    write_summary(
+        reports_dir=reports_dir,
+        group_results=group_results,
+        critical_statuses=statuses,
+    )
 
     regressions = [s for s in statuses if s.state == "regression"]
     if regressions:
-        print(f"\n[rig] ❌ {len(regressions)} critical-path regression(s) detected", file=sys.stderr)
-        overall_exit = overall_exit or 1
+        print(
+            f"\n[rig] ❌ {len(regressions)} critical-path regression(s) detected",
+            file=sys.stderr,
+        )
+        if overall_exit == 0:
+            overall_exit = 1
 
     gaps = [s for s in statuses if s.state == "gap"]
     if gaps and args.fail_on_critical_gap:
-        print(f"\n[rig] ⚠️  {len(gaps)} critical-path gap(s) detected (fail-on-critical-gap)", file=sys.stderr)
-        overall_exit = overall_exit or 1
+        print(
+            f"\n[rig] ⚠️  {len(gaps)} critical-path gap(s) detected "
+            f"(fail-on-critical-gap)",
+            file=sys.stderr,
+        )
+        if overall_exit == 0:
+            overall_exit = 1
 
     if args.update_baseline and overall_exit == 0:
-        cp.emit_baseline(statuses, args.baseline)
-        print(f"[rig] updated baseline: {args.baseline}")
+        cp.merge_into_baseline(statuses, args.baseline)
+        print(f"[rig] merged into baseline: {args.baseline}")
 
     return overall_exit
 
 
 # ── execution helpers ─────────────────────────────────────────────────────────
+
+
+def _green_group_names(results: list[GroupResult]) -> set[str]:
+    return {r.name for r in results if r.status in ("pass", "empty")}
 
 
 def _is_missing_placeholder(group: GroupDefinition) -> bool:
@@ -319,7 +406,7 @@ def _execute_group(
     workers: str,
     timeout: int,
     endpoints: PlatformEndpoints | None,
-) -> GroupResult | None:
+) -> tuple[GroupResult | None, int]:
     group_reports = reports_dir / group.name
     group_reports.mkdir(parents=True, exist_ok=True)
     junit = group_reports / "junit.xml"
@@ -332,11 +419,14 @@ def _execute_group(
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
         env.setdefault("UNSTRACT_PLATFORM_SERVICE_URL", endpoints.platform_service_url)
         env.setdefault("UNSTRACT_RUNNER_URL", endpoints.runner_url)
-    if coverage:
+    if coverage and group.coverage_source:
         env.update(coverage_env(group.name, reports_dir))
 
-    # Prepare deps (best-effort — failures don't necessarily fail the group;
-    # pytest will surface the real error).
+    # Best-effort dep prep. Each `uv` call uses check=False so a transient
+    # install failure (e.g. network blip during `uv pip install`) doesn't kill
+    # the whole rig; pytest will surface a real missing-module error if so.
+    # If you're debugging "ModuleNotFoundError" in a group, scroll up for the
+    # uv warnings — they're the smoking gun.
     _prepare_group_env(group, env=env)
 
     workdir = group.absolute_workdir()
@@ -344,7 +434,6 @@ def _execute_group(
     if group.runner == "hurl":
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
-        # No JUnit from hurl by default — synthesize a minimal one.
         _write_synthetic_junit(junit, group.name, exit_code)
     else:
         cmd = _pytest_command(
@@ -354,14 +443,22 @@ def _execute_group(
             md_report=md_report,
             marker=marker,
             paths_override=paths_override,
+            coverage=coverage,
             parallel=parallel,
             workers=workers,
             timeout=timeout,
         )
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
 
-    (group_reports / "exit.txt").write_text(str(exit_code))
-    return parse_junit(group.name, group.tier, reports_dir)
+    try:
+        (group_reports / "exit.txt").write_text(str(exit_code))
+    except OSError as err:
+        print(
+            f"[rig] could not write exit.txt for {group.name}: {err}",
+            file=sys.stderr,
+        )
+
+    return parse_junit(group.name, group.tier, reports_dir), exit_code
 
 
 RIG_PYTEST_PLUGINS = (
@@ -389,7 +486,12 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
             check=False,
         )
     if group.install_editable:
-        subprocess.run(["uv", "pip", "install", "-e", "."], cwd=workdir, env=env, check=False)
+        subprocess.run(
+            ["uv", "pip", "install", "-e", "."],
+            cwd=workdir,
+            env=env,
+            check=False,
+        )
     if group.pip_install:
         subprocess.run(
             ["uv", "pip", "install", *group.pip_install],
@@ -397,14 +499,9 @@ def _prepare_group_env(group: GroupDefinition, *, env: dict[str, str]) -> None:
             env=env,
             check=False,
         )
-    # Inject the rig's required pytest plugins. Idempotent; uv pip install is
-    # a no-op when versions already satisfy.
-    subprocess.run(
-        ["uv", "pip", "install", *RIG_PYTEST_PLUGINS],
-        cwd=workdir,
-        env=env,
-        check=False,
-    )
+    # NOTE: rig pytest plugins (pytest-timeout, pytest-md-report, etc.) are
+    # injected via `uv run --with ...` in _pytest_command, not installed here.
+    # That avoids losing them on the next `uv run` (which re-syncs the venv).
 
 
 def _pytest_command(
@@ -415,22 +512,43 @@ def _pytest_command(
     md_report: Path,
     marker: str | None,
     paths_override: str | None,
+    coverage: bool,
     parallel: bool,
     workers: str,
     timeout: int,
 ) -> list[str]:
     use_uv = shutil.which("uv") is not None
-    base: list[str] = ["uv", "run", "pytest"] if use_uv else [sys.executable, "-m", "pytest"]
+    if use_uv:
+        # `uv run` re-syncs the project's venv each call, which would wipe any
+        # plugins added via `uv pip install`. `--with` injects them into the
+        # ephemeral run environment, surviving the sync.
+        with_args: list[str] = []
+        for spec in RIG_PYTEST_PLUGINS:
+            with_args += ["--with", spec]
+        base: list[str] = ["uv", "run", *with_args, "pytest"]
+    else:
+        base = [sys.executable, "-m", "pytest"]
 
     cmd = [
         *base,
         "-v",
         f"--junitxml={junit}",
-        "--md-report",
-        "--md-report-flavor=gfm",
-        f"--md-report-output={md_report}",
         f"--timeout={timeout}",
     ]
+    # pytest-md-report does not aggregate worker output reliably under xdist.
+    # Emit markdown only on serial runs; junit + reporting.py's _render_markdown
+    # cover the parallel case.
+    if not parallel:
+        cmd += [
+            "--md-report",
+            "--md-report-flavor=gfm",
+            f"--md-report-output={md_report}",
+        ]
+    if coverage and group.coverage_source:
+        cmd += [
+            f"--cov={group.coverage_source}",
+            "--cov-report=",
+        ]
     if parallel:
         cmd += ["-n", workers]
     effective_marker = marker or group.markers
@@ -441,7 +559,7 @@ def _pytest_command(
     if paths_override:
         cmd += [p.strip() for p in paths_override.split(",") if p.strip()]
     else:
-        # Make paths relative to workdir so pytest works the same as `cd workdir && pytest path`.
+        # Paths are relative to workdir so pytest runs as `cd workdir && pytest <path>`.
         for p in group.paths:
             cmd.append(p)
     return cmd
@@ -462,13 +580,22 @@ def _hurl_command(group: GroupDefinition, workdir: Path) -> list[str]:
 
 
 def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
-    failed = 1 if exit_code != 0 else 0
-    failure_tag = f'<failure message="hurl exit {exit_code}"/>' if failed else ""
+    """Synthesise a JUnit XML for hurl runs.
+
+    Exit 5 ("no tests collected") must produce failures=0; otherwise an empty
+    hurl group would show ⚪ via :class:`GroupResult` while also being counted
+    as a failure in totals + critical-path evaluation.
+    """
+    is_failure = exit_code != 0 and exit_code != 5
+    failures = 1 if is_failure else 0
+    failure_tag = f'<failure message="hurl exit {exit_code}"/>' if is_failure else ""
     path.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        f'<testsuite name="{group_name}" tests="1" failures="{failed}" errors="0" skipped="0" time="0">\n'
-        f'  <testcase classname="{group_name}" name="hurl-suite">{failure_tag}</testcase>\n'
-        f'</testsuite>\n'
+        f'<testsuite name="{group_name}" tests="1" failures="{failures}" '
+        f'errors="0" skipped="0" time="0">\n'
+        f'  <testcase classname="{group_name}" name="hurl-suite">{failure_tag}'
+        f"</testcase>\n"
+        f"</testsuite>\n"
     )
 
 
@@ -478,7 +605,10 @@ def _spawn(cmd: list[str], *, env: dict[str, str], cwd: Path, timeout: int) -> i
         result = subprocess.run(cmd, cwd=cwd, env=env, timeout=timeout + 30)
         return result.returncode
     except subprocess.TimeoutExpired:
-        print(f"[rig] TIMEOUT after {time.monotonic() - start:.0f}s: {' '.join(cmd)}", file=sys.stderr)
+        print(
+            f"[rig] TIMEOUT after {time.monotonic() - start:.0f}s: {' '.join(cmd)}",
+            file=sys.stderr,
+        )
         return 124
     except FileNotFoundError as exc:
         print(f"[rig] command not found: {exc}", file=sys.stderr)

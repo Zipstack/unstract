@@ -11,9 +11,15 @@ from __future__ import annotations
 import graphlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, get_args
 
 import yaml
+
+Tier = Literal["unit", "integration", "e2e"]
+Runner = Literal["pytest", "hurl"]
+
+TIERS: tuple[Tier, ...] = get_args(Tier)
+RUNNERS: tuple[Runner, ...] = get_args(Runner)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MANIFEST = REPO_ROOT / "tests" / "groups.yaml"
@@ -22,9 +28,9 @@ DEFAULT_MANIFEST = REPO_ROOT / "tests" / "groups.yaml"
 @dataclass(frozen=True)
 class GroupDefinition:
     name: str
-    tier: str  # "unit" | "integration" | "e2e"
+    tier: Tier
     paths: tuple[str, ...]
-    runner: str = "pytest"  # "pytest" | "hurl"
+    runner: Runner = "pytest"
     workdir: str = "."
     markers: str | None = None
     pytest_extra: tuple[str, ...] = ()
@@ -36,6 +42,7 @@ class GroupDefinition:
     requires_platform: bool = False
     depends_on: tuple[str, ...] = ()
     critical: bool = False
+    coverage_source: str | None = None
     timeout_seconds: int = 600
     parallel: bool = True
     optional: bool = False
@@ -53,13 +60,16 @@ class GroupManifest:
 
     def get(self, name: str) -> GroupDefinition:
         if name not in self.groups:
-            raise KeyError(f"Unknown test group: {name!r}. Run `python -m tests.rig list-groups` to see options.")
+            raise KeyError(
+                f"Unknown test group: {name!r}. "
+                "Run `python -m tests.rig list-groups` to see options."
+            )
         return self.groups[name]
 
     def names(self) -> list[str]:
         return sorted(self.groups)
 
-    def names_by_tier(self, tier: str) -> list[str]:
+    def names_by_tier(self, tier: Tier) -> list[str]:
         return sorted(n for n, g in self.groups.items() if g.tier == tier)
 
     def expand(self, selected: list[str]) -> list[str]:
@@ -99,22 +109,37 @@ def load_groups(path: Path | None = None) -> GroupManifest:
     _validate_no_cycles(groups)
     _validate_dep_targets_exist(groups)
     _validate_paths(groups)
+    _validate_platform_groups_depend_on_smoke(groups)
     return GroupManifest(groups=groups)
 
 
-def _build_group(name: str, spec: dict[str, Any], defaults: dict[str, Any]) -> GroupDefinition:
+def _build_group(
+    name: str, spec: dict[str, Any], defaults: dict[str, Any]
+) -> GroupDefinition:
     tier = spec.get("tier")
-    if tier not in {"unit", "integration", "e2e"}:
-        raise ValueError(f"group {name!r}: `tier` must be unit|integration|e2e (got {tier!r})")
+    if tier not in TIERS:
+        raise ValueError(f"group {name!r}: `tier` must be one of {TIERS} (got {tier!r})")
+    runner = spec.get("runner", defaults.get("runner", "pytest"))
+    if runner not in RUNNERS:
+        raise ValueError(
+            f"group {name!r}: `runner` must be one of {RUNNERS} (got {runner!r})"
+        )
     paths = spec.get("paths") or []
     if not paths:
         raise ValueError(f"group {name!r}: at least one `paths` entry is required")
+    try:
+        timeout = int(spec.get("timeout_seconds", defaults.get("timeout_seconds", 600)))
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"group {name!r}: `timeout_seconds` must be an integer "
+            f"(got {spec.get('timeout_seconds')!r})"
+        ) from exc
 
     return GroupDefinition(
         name=name,
         tier=tier,
         paths=tuple(paths),
-        runner=spec.get("runner", defaults.get("runner", "pytest")),
+        runner=runner,
         workdir=spec.get("workdir", "."),
         markers=spec.get("markers"),
         pytest_extra=tuple(spec.get("pytest_extra") or ()),
@@ -126,7 +151,8 @@ def _build_group(name: str, spec: dict[str, Any], defaults: dict[str, Any]) -> G
         requires_platform=bool(spec.get("requires_platform", False)),
         depends_on=tuple(spec.get("depends_on") or ()),
         critical=bool(spec.get("critical", False)),
-        timeout_seconds=int(spec.get("timeout_seconds", defaults.get("timeout_seconds", 600))),
+        coverage_source=spec.get("coverage_source"),
+        timeout_seconds=timeout,
         parallel=bool(spec.get("parallel", defaults.get("parallel", True))),
         optional=bool(spec.get("optional", False)),
     )
@@ -151,15 +177,50 @@ def _validate_dep_targets_exist(groups: dict[str, GroupDefinition]) -> None:
 
 def _validate_paths(groups: dict[str, GroupDefinition]) -> None:
     for name, g in groups.items():
-        # The workdir of an optional group may not exist yet (e.g. a placeholder
-        # for tests/integration/...). Skip validation but the rig will skip the
-        # group at runtime too.
+        # Optional groups may be placeholders whose paths don't exist yet.
+        # The rig skips them at runtime; don't fail validation here.
         if g.optional:
             continue
         wd = g.absolute_workdir()
         if not wd.exists():
             raise ValueError(f"group {name!r}: workdir does not exist: {wd}")
         for p in g.absolute_paths():
-            # Path may be a directory or a file; just verify it resolves under repo root.
             if not p.exists():
                 raise ValueError(f"group {name!r}: test path does not exist: {p}")
+
+
+def _validate_platform_groups_depend_on_smoke(
+    groups: dict[str, GroupDefinition],
+) -> None:
+    """Every non-smoke ``requires_platform`` group must transitively depend on
+    ``e2e-smoke``. Smoke is the gate: if it fails, dependent groups skip cleanly
+    rather than running against a half-up stack and reporting misleading failures.
+    """
+    smoke = "e2e-smoke"
+    if smoke not in groups:
+        return  # custom manifest without a smoke group; nothing to enforce
+    for name, g in groups.items():
+        if name == smoke or not g.requires_platform:
+            continue
+        if not _transitively_depends_on(name, smoke, groups):
+            raise ValueError(
+                f"group {name!r} requires_platform but does not (transitively) "
+                f"depend on {smoke!r}; add it to depends_on so smoke gates this group"
+            )
+
+
+def _transitively_depends_on(
+    name: str, target: str, groups: dict[str, GroupDefinition]
+) -> bool:
+    seen: set[str] = set()
+    frontier = [name]
+    while frontier:
+        current = frontier.pop()
+        if current in seen:
+            continue
+        seen.add(current)
+        for dep in groups[current].depends_on:
+            if dep == target:
+                return True
+            frontier.append(dep)
+    return False

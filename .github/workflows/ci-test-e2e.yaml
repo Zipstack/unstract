@@ -14,7 +14,7 @@ on:
 
 jobs:
   e2e:
-    # Only run on PRs that explicitly opt in via the `run-e2e` label, plus main + nightly + manual.
+    # Only run on PRs that opt in via the `run-e2e` label, plus main + nightly + manual.
     if: >
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'run-e2e')
@@ -36,27 +36,34 @@ jobs:
       - name: Install tox with UV
         run: uv tool install tox --with tox-uv
 
+      - name: Validate test manifests
+        run: tox -e rig -- validate
+
       - name: Restore main-branch test baseline
+        # See ci-test.yaml for the rationale on including run_id in the key.
         uses: actions/cache@v5
         with:
           path: reports/previous-summary.json
-          key: unstract-test-baseline-main-e2e
+          key: unstract-test-baseline-main-e2e-${{ github.run_id }}
           restore-keys: |
-            unstract-test-baseline-main
+            unstract-test-baseline-main-e2e-
+            unstract-test-baseline-main-
 
       - name: Run e2e tier via docker compose
         env:
           UNSTRACT_E2E_RUNTIME: compose
         run: |
+          # Use --tier e2e (not `all`) so this workflow runs only e2e groups.
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
-            tox -e e2e -- all --fail-on-critical-gap --update-baseline
+            tox -e e2e -- --fail-on-critical-gap --update-baseline
           else
-            tox -e e2e -- all
+            tox -e e2e
           fi
 
       - name: Capture docker compose logs on failure
         if: failure()
         run: |
+          mkdir -p reports
           docker compose -p unstract-test \
             -f docker/docker-compose.yaml \
             -f tests/compose/docker-compose.test.yaml \

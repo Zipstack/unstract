@@ -18,7 +18,10 @@ paths:
   - id: adapter-register-llm
     description: "Register and validate an LLM adapter."
     entry: "POST /api/v1/adapter/"
-    covered_by: [unit-backend, e2e-smoke]
+    # Honest declaration: unit-backend is currently optional/gated and
+    # e2e-smoke only hits /health/. Track as a gap until a real adapter test
+    # exists (likely under tests/e2e/smoke/ or a new tests/e2e/adapters/ group).
+    covered_by: []
 
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."

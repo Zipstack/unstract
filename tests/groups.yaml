@@ -4,6 +4,7 @@
 # (or another runner). `depends_on` is expanded transitively before execution.
 #
 # Add new groups by appending to this file. Validate with:
+#   python -m tests.rig validate
 #   python -m tests.rig list-groups
 #   python -m tests.rig expand <group>
 version: 1
@@ -15,17 +16,27 @@ defaults:
 
 groups:
   # ── Unit tier: pure pytest, no external services ───────────────────────────
+  unit-rig:
+    # Self-tests for the rig's pure logic (dep-graph, evaluate, junit parse).
+    # Run from the repo root so the `tests.rig` package import resolves.
+    tier: unit
+    workdir: .
+    paths: [tests/rig/tests]
+    coverage_source: tests/rig
+
   unit-sdk1:
     tier: unit
     workdir: unstract/sdk1
     paths: [tests]
     markers: "not slow and not integration"
     uv_sync_group: test
+    coverage_source: src/unstract/sdk1
 
   unit-runner:
     tier: unit
     workdir: runner
-    # Runner co-locates its tests under src/. Pytest will recurse from here.
+    # Runner co-locates its tests under src/. Pytest recurses from here.
+    # The project has no `test` uv group, so deps are pip-installed inline.
     paths: [src]
     pip_install:
       - "flask~=3.1.0"
@@ -34,6 +45,7 @@ groups:
       - "python-dotenv>=1.0.0"
       - "kubernetes"
     install_editable: true
+    coverage_source: src/unstract/runner
 
   unit-prompt-service:
     tier: unit
@@ -44,13 +56,15 @@ groups:
     # tests must not depend on integration fixtures.
     pytest_extra: ["--noconftest"]
     markers: "not slow"
+    coverage_source: src/unstract/prompt_service
 
   unit-platform-service:
     tier: unit
     workdir: platform-service
     paths: [tests]
     uv_sync_group: test
-    optional: true   # service has only a couple of tests today; don't fail rig if module is absent
+    coverage_source: src
+    optional: true   # service has only a couple of tests today
 
   unit-workers:
     tier: unit
@@ -58,17 +72,33 @@ groups:
     paths: [tests, shared/tests]
     markers: "unit"
     uv_sync_group: test
+    coverage_source: shared
 
   unit-backend:
     tier: unit
     workdir: backend
-    paths: [.]
+    # Tightened from `[.]` (which collected every test_*.py in the tree) to
+    # the explicit per-app tests/ directories that exist today.
+    paths:
+      - account_v2/tests
+      - adapter_processor_v2/tests
+      - api_deployment_v2/tests
+      - connector_v2/tests
+      - dashboard_metrics/tests
+      - file_management/tests
+      - project/tests
+      - prompt_studio/tests
+      - tenant_account_v2/tests
+      - usage_v2/tests
+      - utils/tests
+      - workflow_manager/endpoint_v2/tests
     uv_sync_group: test
     env:
       DJANGO_SETTINGS_MODULE: backend.settings.test_cases
     # Backend ORM imports require a real Postgres; rig provisions it via
     # testcontainers or compose when this group is selected.
     requires_services: [postgres, redis]
+    coverage_source: .
     optional: true   # gated until backend test_cases settings are complete
 
   unit-connectors:
@@ -76,14 +106,16 @@ groups:
     workdir: unstract/connectors
     paths: [tests]
     uv_sync_group: test
+    coverage_source: src
     optional: true
 
   unit-core:
     tier: unit
     workdir: unstract/core
     paths: [tests]
-    # No `test` uv group in unstract/core today; rig will still inject pytest plugins.
+    # No `test` uv group in unstract/core today; rig still injects pytest plugins.
     install_editable: true
+    coverage_source: src
     optional: true
 
   unit-tool-registry:
@@ -91,6 +123,7 @@ groups:
     workdir: unstract/tool-registry
     paths: [tests]
     uv_sync_group: test
+    coverage_source: src
     optional: true
 
   # ── Integration tier: needs infra but not full platform ────────────────────
@@ -139,4 +172,6 @@ groups:
     runner: hurl
     paths: [tests/e2e/hurl]
     requires_platform: true
+    # Smoke gates every platform group so a half-up stack doesn't poison results.
+    depends_on: [e2e-smoke]
     optional: true

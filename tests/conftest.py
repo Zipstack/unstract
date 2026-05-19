@@ -13,6 +13,8 @@ def pytest_configure(config) -> None:
     # importing pyproject ini-options when pytest is run from a sub-workdir.
     config.addinivalue_line("markers", "unit: marks tests as unit (no external services)")
     config.addinivalue_line("markers", "integration: marks tests as integration")
-    config.addinivalue_line("markers", "e2e: marks tests as end-to-end (require platform)")
+    config.addinivalue_line(
+        "markers", "e2e: marks tests as end-to-end (require platform)"
+    )
     config.addinivalue_line("markers", "critical: marks tests covering a critical path")
     config.addinivalue_line("markers", "slow: marks tests as slow")
