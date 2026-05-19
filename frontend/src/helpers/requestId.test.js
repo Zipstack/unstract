@@ -11,9 +11,9 @@ const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const runRequestInterceptors = async (instance, config = {}) => {
-  let current = { ...config, headers: { ...(config.headers || {}) } };
+  let current = { ...config, headers: { ...config.headers } };
   for (const handler of instance.interceptors.request.handlers) {
-    if (handler && handler.fulfilled) {
+    if (handler?.fulfilled) {
       current = await handler.fulfilled(current);
     }
   }
@@ -60,7 +60,7 @@ describe("attachRequestIdInterceptor", () => {
 
     let current = {};
     for (const handler of instance.interceptors.request.handlers) {
-      if (handler && handler.fulfilled) {
+      if (handler?.fulfilled) {
         current = await handler.fulfilled(current);
       }
     }
