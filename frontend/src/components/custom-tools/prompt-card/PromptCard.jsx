@@ -53,6 +53,7 @@ const PromptCard = memo(
     const [promptKey, setPromptKey] = useState("");
     const [promptText, setPromptText] = useState("");
     const [selectedLlmProfileId, setSelectedLlmProfileId] = useState(null);
+    const [fieldErrors, setFieldErrors] = useState({});
 
     const [isCoverageLoading, setIsCoverageLoading] = useState(false);
     const [openOutputForDoc, setOpenOutputForDoc] = useState(false);
@@ -165,6 +166,14 @@ const PromptCard = memo(
        */
       const prevValue = promptDetailsState?.[name];
 
+      // New attempt — drop any prior inline error for this field.
+      setFieldErrors((prev) => {
+        if (!(name in prev)) return prev;
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+
       handleUpdateStatus(
         isUpdateStatus,
         promptId,
@@ -186,10 +195,24 @@ const PromptCard = memo(
             setUpdateStatus,
           );
         })
-        .catch(() => {
+        .catch((err) => {
           handleUpdateStatus(isUpdateStatus, promptId, null, setUpdateStatus);
-          // Roll back only the field that failed, for the same reason.
-          setPromptDetailsState((prev) => ({ ...prev, [name]: prevValue }));
+          const data = err?.response?.data;
+          const fieldErrorMap = {};
+          if (data?.type === "validation_error" && Array.isArray(data?.errors)) {
+            data.errors.forEach((e) => {
+              if (e?.attr) {
+                fieldErrorMap[e.attr] = e.detail || "Invalid value";
+              }
+            });
+          }
+          if (Object.keys(fieldErrorMap).length > 0) {
+            // Keep the typed value so user can fix in place; show inline error.
+            setFieldErrors((prev) => ({ ...prev, ...fieldErrorMap }));
+          } else {
+            // Roll back only the field that failed, for the same reason.
+            setPromptDetailsState((prev) => ({ ...prev, [name]: prevValue }));
+          }
         })
         .finally(() => {
           if (isUpdateStatus) {
@@ -390,6 +413,7 @@ const PromptCard = memo(
           coverageCountData={coverageCountData}
           isChallenge={isChallenge}
           handleSelectHighlight={handleSelectHighlight}
+          fieldErrors={fieldErrors}
         />
         <OutputForDocModal
           open={openOutputForDoc}

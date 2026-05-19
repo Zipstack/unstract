@@ -56,6 +56,17 @@ class TestSanitizedSerializerMixin:
         msg = str(s.errors["description"][0])
         assert "description" in msg.lower()
 
+    def test_error_message_uses_humanised_field_name(self):
+        """snake_case field names are surfaced as 'Snake case' in user-visible errors."""
+
+        class SnakeCaseSerializer(Serializer):
+            prompt_key = drf.CharField()
+
+        s = SnakeCaseSerializer(data={"prompt_key": "<h1>x</h1>"})
+        assert not s.is_valid()
+        msg = str(s.errors["prompt_key"][0])
+        assert msg.startswith("Prompt key ")
+
     def test_html_safe_fields_opts_out(self):
         s = WithOptOutSerializer(
             data={"name": "ok", "prompt": "<thinking>step 1</thinking>"}
