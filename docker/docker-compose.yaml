@@ -32,7 +32,7 @@ services:
       - APPLICATION_NAME=unstract-backend
     labels:
       - traefik.enable=true
-      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`))
+      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
     extra_hosts:
       # "host-gateway" is a special string that translates to host docker0 i/f IP.
@@ -134,7 +134,7 @@ services:
       - ENVIRONMENT=development
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`)
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`) && !PathPrefix(`/public`)
       - traefik.http.services.frontend.loadbalancer.server.port=80
 
   platform-service:
