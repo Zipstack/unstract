@@ -13,7 +13,6 @@ from typing import Any
 
 import pytest
 
-from tests.rig import critical_paths as cp
 from tests.rig.runtime import PlatformEndpoints
 
 
