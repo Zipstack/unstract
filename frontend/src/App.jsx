@@ -14,7 +14,11 @@ import { useAlertStore } from "./store/alert-store.js";
 import { useSessionStore } from "./store/session-store.js";
 import { useSocketLogsStore } from "./store/socket-logs-store.js";
 
-export const globalRequestIdInterceptor = attachRequestIdInterceptor(axios);
+const GLOBAL_INTERCEPTOR_FLAG = Symbol.for("unstract.requestIdInterceptor");
+if (!axios[GLOBAL_INTERCEPTOR_FLAG]) {
+  attachRequestIdInterceptor(axios);
+  axios[GLOBAL_INTERCEPTOR_FLAG] = true;
+}
 
 let GoogleTagManagerHelper;
 try {
@@ -64,12 +68,7 @@ function App() {
         <CustomMarkdown text={alertDetails?.content} />
         {showRequestId && (
           <div className="notification-request-id">
-            <Typography.Text
-              type="secondary"
-              className="notification-request-id__label"
-            >
-              Request ID:
-            </Typography.Text>{" "}
+            <Typography.Text type="secondary">Request ID:</Typography.Text>{" "}
             <Typography.Text
               code
               copyable={{ text: alertDetails?.requestId }}
