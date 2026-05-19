@@ -313,10 +313,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     skipped = [n for n in ordered if n not in runnable]
     for n in skipped:
         print(f"SKIP {n} (optional + workdir/paths absent)")
-    # Scope of this invocation = every group the user asked for, runnable or
-    # skipped. Used by evaluate() to distinguish "this critical path was meant
-    # to be exercised here but its group ran red" (regression) from "this path
-    # belongs to a tier we weren't running this time" (gap).
+    # Scope of this invocation = every selected group AFTER dep-expansion
+    # (includes dependencies the user didn't ask for directly, and includes
+    # optional placeholders that were skipped). Used by evaluate() to
+    # distinguish "this critical path was meant to be exercised here but its
+    # group ran red" (regression) from "this path belongs to a tier we
+    # weren't running this time" (gap).
     scope_groups = set(ordered)
 
     reports_dir: Path = args.reports_dir
@@ -380,14 +382,19 @@ def cmd_run(args: argparse.Namespace) -> int:
         combine_and_report(reports_dir)
 
     green = _green_group_names(group_results)
+    # A corrupt baseline can't be silently treated as empty (that would turn
+    # the next build into a regression festival once a one-tier baseline gets
+    # written back). But we must still write the per-group summary so the
+    # developer can see what passed/failed — otherwise the reporting path
+    # silently fails on top of the baseline error.
+    baseline_corrupt = False
     try:
         baseline = cp.load_baseline(args.baseline)
     except cp.BaselineCorruptError as exc:
         print(f"[rig] ❌ {exc}", file=sys.stderr)
-        # A corrupt baseline can't be silently treated as empty: that would
-        # turn the next build into a regression festival once it writes a
-        # one-tier baseline back. Bail out so CI surfaces the bad cache.
-        return overall_exit or 1
+        baseline = None
+        baseline_corrupt = True
+
     statuses = cp.evaluate(
         registry,
         groups_run_green=green,
@@ -399,6 +406,9 @@ def cmd_run(args: argparse.Namespace) -> int:
         group_results=group_results,
         critical_statuses=statuses,
     )
+
+    if baseline_corrupt and overall_exit == 0:
+        overall_exit = 1
 
     regressions = [s for s in statuses if s.state == "regression"]
     if regressions:

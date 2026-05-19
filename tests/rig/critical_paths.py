@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -96,9 +97,9 @@ def validate_registry_against_manifest(
 def evaluate(
     registry: CriticalPathRegistry,
     *,
-    groups_run_green: set[str],
+    groups_run_green: Collection[str],
     baseline: dict[str, Any] | None,
-    scope_groups: set[str] | None = None,
+    scope_groups: Collection[str] | None = None,
 ) -> list[CriticalPathStatus]:
     """Compute the status for each critical path against this build's results.
 
@@ -121,10 +122,15 @@ def evaluate(
     previously_covered: set[str] = set(
         (baseline or {}).get("covered_paths", []) if baseline else []
     )
+    # Convert to sets internally so per-path membership checks stay O(1) even
+    # when callers pass lists/tuples; the public signature accepts Collection
+    # to leave that choice to them.
+    green = set(groups_run_green)
+    scope = None if scope_groups is None else set(scope_groups)
     statuses: list[CriticalPathStatus] = []
     for path in registry.paths:
-        covering = tuple(g for g in path.covered_by if g in groups_run_green)
-        in_scope = scope_groups is None or any(g in scope_groups for g in path.covered_by)
+        covering = tuple(g for g in path.covered_by if g in green)
+        in_scope = scope is None or any(g in scope for g in path.covered_by)
         state: CriticalPathState
         if covering:
             state = "covered"

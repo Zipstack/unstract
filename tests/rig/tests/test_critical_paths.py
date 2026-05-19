@@ -111,20 +111,29 @@ def test_scope_demotes_out_of_scope_regressions_to_gaps() -> None:
     """A unit-only invocation should NOT flag e2e-covered paths as regressed
     just because the baseline lists them — those paths are out of scope for
     this invocation and belong to the e2e workflow's baseline instead.
+
+    The "straddling" path is the discriminator: ``covered_by=[unit-g, e2e-g]``
+    with only ``unit-g`` in scope must still be IN scope (because at least one
+    of its declared groups is). A weaker implementation that checks against
+    ``groups_run_green`` would mis-classify it.
     """
     registry = _registry(
-        ("unit-path", ("unit-group",)),
-        ("e2e-path", ("e2e-group",)),
+        ("unit-path", ("unit-g",)),
+        ("e2e-path", ("e2e-g",)),
+        ("straddle-path", ("unit-g", "e2e-g")),
     )
     statuses = evaluate(
         registry,
         groups_run_green=set(),  # nothing passed
-        baseline={"covered_paths": ["unit-path", "e2e-path"]},
-        scope_groups={"unit-group"},  # only unit groups in scope this run
+        baseline={
+            "covered_paths": ["unit-path", "e2e-path", "straddle-path"]
+        },
+        scope_groups={"unit-g"},  # only unit groups in scope this run
     )
     by_id = {s.path.id: s for s in statuses}
-    assert by_id["unit-path"].state == "regression"  # in scope, was covered
-    assert by_id["e2e-path"].state == "gap"  # out of scope; not regressed
+    assert by_id["unit-path"].state == "regression"  # fully in scope
+    assert by_id["e2e-path"].state == "gap"  # fully out of scope
+    assert by_id["straddle-path"].state == "regression"  # partially in scope
 
 
 def test_scope_none_preserves_legacy_behavior() -> None:

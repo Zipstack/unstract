@@ -38,16 +38,18 @@ BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 class InfraEndpoints:
     """Named handles for stateful infra started by ``TestcontainersRuntime``.
 
-    Each ``host``/``port`` pair must be set together or not at all — the
-    ``__post_init__`` check exists so a partial spec (e.g. host known but port
-    not yet bound) doesn't silently land in downstream config.
+    For fields that come in host/port pairs (redis, rabbitmq), both must be
+    set together — ``__post_init__`` enforces this so a partial spec doesn't
+    silently land in downstream config. Postgres collapses host+port+creds
+    into a single URL string, and MinIO uses a combined ``host:port``
+    endpoint, so no pairing applies to those.
     """
 
     postgres_url: str | None = None
     redis_host: str | None = None
-    redis_port: str | None = None
+    redis_port: int | None = None
     rabbitmq_host: str | None = None
-    rabbitmq_port: str | None = None
+    rabbitmq_port: int | None = None
     minio_endpoint: str | None = None
 
     def __post_init__(self) -> None:
@@ -179,6 +181,9 @@ class TestcontainersRuntime:
         from testcontainers.rabbitmq import RabbitMqContainer
         from testcontainers.redis import RedisContainer
 
+        # Construct InfraEndpoints + return inside the same try so the
+        # __post_init__ invariant (host without port) is self-cleaning;
+        # otherwise a partial spec leaks the four containers we just started.
         try:
             pg = PostgresContainer("pgvector/pgvector:pg15")
             pg.start()
@@ -189,23 +194,22 @@ class TestcontainersRuntime:
             self._stack.append(rabbit)
             minio = MinioContainer("minio/minio:latest").start()
             self._stack.append(minio)
+
+            return PlatformEndpoints.from_env(
+                infra=InfraEndpoints(
+                    postgres_url=pg.get_connection_url(),
+                    redis_host=redis.get_container_host_ip(),
+                    redis_port=redis.get_exposed_port(6379),
+                    rabbitmq_host=rabbit.get_container_host_ip(),
+                    rabbitmq_port=rabbit.get_exposed_port(5672),
+                    minio_endpoint=(
+                        f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}"
+                    ),
+                ),
+            )
         except Exception:
             self.down()
             raise
-
-        endpoints = PlatformEndpoints.from_env(
-            infra=InfraEndpoints(
-                postgres_url=pg.get_connection_url(),
-                redis_host=redis.get_container_host_ip(),
-                redis_port=str(redis.get_exposed_port(6379)),
-                rabbitmq_host=rabbit.get_container_host_ip(),
-                rabbitmq_port=str(rabbit.get_exposed_port(5672)),
-                minio_endpoint=(
-                    f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}"
-                ),
-            ),
-        )
-        return endpoints
 
     def down(self) -> None:
         while self._stack:
