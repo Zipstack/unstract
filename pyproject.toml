@@ -26,6 +26,21 @@ workers = [
     "unstract-workers",
 ]
 
+test-rig = [
+    # Test runner foundation. Installed by tox into the rig env.
+    "pytest>=8.0.1",
+    "pytest-xdist>=3.5.0",
+    "pytest-cov>=4.1.0",
+    "pytest-md-report>=0.6.2",
+    "pytest-mock>=3.12.0",
+    "pytest-timeout>=2.3.1",
+    "pytest-django>=4.8.0",
+    "coverage[toml]>=7.4.0",
+    "pyyaml>=6.0.1",
+    "testcontainers[postgres,redis,minio,rabbitmq]>=4.7.0",
+    "requests>=2.31.0",
+]
+
 hook-check-django-migrations = [
     "celery>=5.3.4",
     "cron-descriptor==1.4.0",
@@ -192,6 +207,9 @@ testpaths = ["tests"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "integration: marks tests as integration (deselect with '-m \"not integration\"')",
+    "unit: marks tests as unit (no external services required)",
+    "e2e: marks tests as end-to-end (require full platform stack)",
+    "critical: marks tests covering a critical path (see tests/critical_paths.yaml)",
 ]
 
 [tool.mypy]

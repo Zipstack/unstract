@@ -1,0 +1,32 @@
+# E2E test overlay for docker/docker-compose.yaml.
+#
+# Used by tests/rig/runtime.py's ComposeRuntime:
+#   docker compose -f docker/docker-compose.yaml -f tests/compose/docker-compose.test.yaml up -d --wait
+#
+# Goal: minimal differences from production compose so we test the same images.
+# Currently this file only documents the contract — the rig works without it.
+# Add overrides here when an e2e test needs a fixed value (seed data volume,
+# faster timeouts, disabled frontend, etc).
+
+services:
+  backend:
+    # Backend is the only service we strictly need for the smoke test today.
+    # Pin to 'latest' so test runs don't depend on a $VERSION env var being set.
+    image: unstract/backend:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test
+
+  prompt-service:
+    image: unstract/prompt-service:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test
+
+  platform-service:
+    image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test
+
+  runner:
+    image: unstract/runner:${UNSTRACT_TEST_VERSION:-latest}
+    environment:
+      - ENVIRONMENT=test

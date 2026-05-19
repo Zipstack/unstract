@@ -1,0 +1,78 @@
+name: Run e2e tests (rig + docker compose)
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [labeled, synchronize]
+    branches: [main]
+  schedule:
+    # Nightly at 02:00 UTC.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    # Only run on PRs that explicitly opt in via the `run-e2e` label, plus main + nightly + manual.
+    if: >
+      github.event_name != 'pull_request' ||
+      contains(github.event.pull_request.labels.*.name, 'run-e2e')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.6.14"
+          python-version: 3.12.9
+
+      - name: Install tox with UV
+        run: uv tool install tox --with tox-uv
+
+      - name: Restore main-branch test baseline
+        uses: actions/cache@v5
+        with:
+          path: reports/previous-summary.json
+          key: unstract-test-baseline-main-e2e
+          restore-keys: |
+            unstract-test-baseline-main
+
+      - name: Run e2e tier via docker compose
+        env:
+          UNSTRACT_E2E_RUNTIME: compose
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tox -e e2e -- all --fail-on-critical-gap --update-baseline
+          else
+            tox -e e2e -- all
+          fi
+
+      - name: Capture docker compose logs on failure
+        if: failure()
+        run: |
+          docker compose -p unstract-test \
+            -f docker/docker-compose.yaml \
+            -f tests/compose/docker-compose.test.yaml \
+            logs --no-color > reports/docker-compose-logs.txt || true
+
+      - name: Output e2e report to job summary
+        if: always() && hashFiles('reports/summary.md') != ''
+        shell: bash
+        run: |
+          cat reports/summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload e2e reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-e2e
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 30

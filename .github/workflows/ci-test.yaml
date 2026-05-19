@@ -1,4 +1,4 @@
-name: Run tox tests with UV
+name: Run unit + integration tests (rig)
 
 on:
   push:
@@ -24,11 +24,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # rig --changed-only needs git history
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          # Install a specific version of uv.
           version: "0.6.14"
           python-version: 3.12.9
 
@@ -40,29 +41,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-tox-uv-
 
+      - name: Restore main-branch test baseline (for regression detection)
+        uses: actions/cache@v5
+        with:
+          path: reports/previous-summary.json
+          key: unstract-test-baseline-main
+          restore-keys: |
+            unstract-test-baseline-
+
       - name: Install tox with UV
         run: uv tool install tox --with tox-uv
 
-      - name: Run tox
+      - name: Run unit + integration tiers
         id: tox
+        # On main, fail on uncovered critical paths and update the baseline
+        # cache. On PRs, gaps are warnings (visible in the summary).
         run: |
-          tox
-
-      - name: Combine test reports
-        if: always() && (hashFiles('runner-report.md') != '' || hashFiles('sdk1-report.md') != '')
-        run: |
-          bash .github/scripts/combine-test-reports.sh
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tox -e unit,integration -- --fail-on-critical-gap --update-baseline
+          else
+            tox -e unit,integration
+          fi
 
       - name: Render combined test report to PR
         uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
-        if: always() && hashFiles('combined-test-report.md') != '' && github.event.pull_request.head.repo.fork == false
+        if: always() && hashFiles('reports/combined-test-report.md') != '' && github.event.pull_request.head.repo.fork == false
         with:
           header: test-results
           recreate: true
-          path: combined-test-report.md
+          path: reports/combined-test-report.md
 
       - name: Output combined report to job summary
-        if: always() && hashFiles('combined-test-report.md') != ''
+        if: always() && hashFiles('reports/summary.md') != ''
         shell: bash
         run: |
-          cat combined-test-report.md >> $GITHUB_STEP_SUMMARY
+          cat reports/summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-unit-integration
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 14

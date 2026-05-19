@@ -86,6 +86,17 @@ repos:
         files: ^frontend/src/
         types_or: [javascript, jsx, ts, tsx, json]
 
+      - id: unstract-tests
+        name: Run selected unstract tests (.test-selection)
+        # Only fires when the developer has opted in by creating .test-selection
+        # (newline-delimited group names, gitignored). Runs serially without
+        # coverage to stay fast in a commit hook.
+        entry: bash -c 'if [ -f .test-selection ]; then python -m tests.rig run --from-file .test-selection --no-coverage --no-parallel; fi'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+
   - repo: https://github.com/igorshubovych/markdownlint-cli
     rev: v0.42.0
     hooks:

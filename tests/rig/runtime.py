@@ -1,0 +1,217 @@
+"""Platform runtime drivers for e2e tests.
+
+Two strategies share a small protocol so the rig can pick by env/CLI flag:
+
+  ComposeRuntime          — CI default. Reuses docker/docker-compose.yaml +
+                            tests/compose/docker-compose.test.yaml overlay.
+  TestcontainersRuntime   — local default. Spins up Postgres/Redis/RabbitMQ/MinIO
+                            via testcontainers; services run as local subprocesses.
+
+A third mode, ``LocalRuntime``, assumes the developer already has services up
+(e.g. via ``run-platform.sh``) and only collects their URLs from env. Useful
+when iterating quickly.
+
+The driver exposes URLs via ``PlatformEndpoints`` and is consumed by the
+``platform`` pytest fixture in ``tests/e2e/conftest.py``.
+"""
+
+from __future__ import annotations
+
+import os
+import shutil
+import subprocess
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Protocol
+
+from tests.rig.groups import REPO_ROOT
+
+COMPOSE_OVERLAY = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
+BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
+
+
+@dataclass(frozen=True)
+class PlatformEndpoints:
+    backend_url: str
+    prompt_service_url: str
+    platform_service_url: str
+    runner_url: str
+    x2text_url: str
+    admin_user: str = "unstract"
+    admin_password: str = "unstract"
+    extras: dict[str, str] = field(default_factory=dict)
+
+
+class PlatformRuntime(Protocol):
+    name: str
+
+    def up(self) -> PlatformEndpoints: ...
+    def down(self) -> None: ...
+
+
+class LocalRuntime:
+    """Assume a developer-managed stack; just collect endpoints from env."""
+
+    name = "local"
+
+    def up(self) -> PlatformEndpoints:
+        return PlatformEndpoints(
+            backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
+            prompt_service_url=os.environ.get("UNSTRACT_PROMPT_SERVICE_URL", "http://localhost:3003"),
+            platform_service_url=os.environ.get("UNSTRACT_PLATFORM_SERVICE_URL", "http://localhost:3001"),
+            runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
+            x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
+            admin_user=os.environ.get("UNSTRACT_ADMIN_USER", "unstract"),
+            admin_password=os.environ.get("UNSTRACT_ADMIN_PASSWORD", "unstract"),
+        )
+
+    def down(self) -> None:
+        return None
+
+
+class ComposeRuntime:
+    """Bring the platform up via docker compose with a test overlay."""
+
+    name = "compose"
+
+    def __init__(self, *, project_name: str = "unstract-test") -> None:
+        self.project_name = project_name
+
+    def up(self) -> PlatformEndpoints:
+        if shutil.which("docker") is None:
+            raise RuntimeError("ComposeRuntime requires the `docker` CLI on PATH")
+        files = ["-f", str(BASE_COMPOSE)]
+        if COMPOSE_OVERLAY.exists():
+            files += ["-f", str(COMPOSE_OVERLAY)]
+        _run(["docker", "compose", "-p", self.project_name, *files, "up", "-d", "--wait"])
+        endpoints = PlatformEndpoints(
+            backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
+            prompt_service_url=os.environ.get("UNSTRACT_PROMPT_SERVICE_URL", "http://localhost:3003"),
+            platform_service_url=os.environ.get("UNSTRACT_PLATFORM_SERVICE_URL", "http://localhost:3001"),
+            runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
+            x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
+        )
+        _wait_ready(endpoints)
+        return endpoints
+
+    def down(self) -> None:
+        if shutil.which("docker") is None:
+            return
+        files = ["-f", str(BASE_COMPOSE)]
+        if COMPOSE_OVERLAY.exists():
+            files += ["-f", str(COMPOSE_OVERLAY)]
+        _run(
+            ["docker", "compose", "-p", self.project_name, *files, "down", "-v", "--remove-orphans"],
+            check=False,
+        )
+
+
+class TestcontainersRuntime:
+    """Spin up stateful infra via testcontainers; services run locally.
+
+    This is a stub today: it stands up Postgres/Redis/RabbitMQ/MinIO so that
+    ``unit-backend`` and ``integration-*`` groups can run, but does NOT
+    auto-launch backend/prompt-service/etc. as subprocesses yet — that is
+    layered on once each service has a tested test-mode entrypoint.
+
+    For full platform e2e against testcontainers, use ``ComposeRuntime`` for now
+    or set ``UNSTRACT_E2E_RUNTIME=local`` after running ``run-platform.sh``.
+    """
+
+    name = "testcontainers"
+
+    def __init__(self) -> None:
+        self._stack: list[object] = []  # holds container handles for teardown
+
+    def up(self) -> PlatformEndpoints:
+        # Lazy import so that ``python -m tests.rig list-groups`` doesn't pull in
+        # the (heavy) testcontainers dep tree.
+        from testcontainers.minio import MinioContainer
+        from testcontainers.postgres import PostgresContainer
+        from testcontainers.rabbitmq import RabbitMqContainer
+        from testcontainers.redis import RedisContainer
+
+        pg = PostgresContainer("pgvector/pgvector:pg15")
+        pg.start()
+        self._stack.append(pg)
+        redis = RedisContainer("redis:7.2.3").start()
+        self._stack.append(redis)
+        rabbit = RabbitMqContainer("rabbitmq:3.13-management").start()
+        self._stack.append(rabbit)
+        minio = MinioContainer("minio/minio:latest").start()
+        self._stack.append(minio)
+
+        return PlatformEndpoints(
+            backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
+            prompt_service_url=os.environ.get("UNSTRACT_PROMPT_SERVICE_URL", "http://localhost:3003"),
+            platform_service_url=os.environ.get("UNSTRACT_PLATFORM_SERVICE_URL", "http://localhost:3001"),
+            runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
+            x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
+            extras={
+                "postgres_url": pg.get_connection_url(),
+                "redis_host": redis.get_container_host_ip(),
+                "redis_port": str(redis.get_exposed_port(6379)),
+                "rabbitmq_host": rabbit.get_container_host_ip(),
+                "rabbitmq_port": str(rabbit.get_exposed_port(5672)),
+                "minio_endpoint": f"{minio.get_container_host_ip()}:{minio.get_exposed_port(9000)}",
+            },
+        )
+
+    def down(self) -> None:
+        while self._stack:
+            container = self._stack.pop()
+            stop = getattr(container, "stop", None)
+            if callable(stop):
+                try:
+                    stop()
+                except Exception:  # pragma: no cover — best-effort teardown
+                    pass
+
+
+def pick_runtime(name: str | None) -> PlatformRuntime:
+    """Resolve a runtime by name, falling back to env then default."""
+    chosen = (name or os.environ.get("UNSTRACT_E2E_RUNTIME") or _default_runtime_name()).lower()
+    if chosen == "compose":
+        return ComposeRuntime()
+    if chosen == "testcontainers":
+        return TestcontainersRuntime()
+    if chosen == "local":
+        return LocalRuntime()
+    raise ValueError(f"unknown runtime: {chosen!r} (expected compose|testcontainers|local)")
+
+
+def _default_runtime_name() -> str:
+    return "compose" if os.environ.get("CI") else "testcontainers"
+
+
+def _run(cmd: list[str], *, check: bool = True) -> None:
+    subprocess.run(cmd, check=check, cwd=REPO_ROOT)
+
+
+def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> None:
+    """Poll each service's /health endpoint until all respond or timeout."""
+    targets = [
+        endpoints.backend_url.rstrip("/") + "/health/",
+        endpoints.prompt_service_url.rstrip("/") + "/health",
+        endpoints.platform_service_url.rstrip("/") + "/health",
+        endpoints.runner_url.rstrip("/") + "/health",
+    ]
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if all(_responds(t) for t in targets):
+            return
+        time.sleep(2)
+    raise TimeoutError(f"services not ready within {timeout_seconds}s: {targets}")
+
+
+def _responds(url: str) -> bool:
+    try:
+        import requests
+    except ImportError:
+        return True  # can't check; assume reachable to avoid spurious failure
+    try:
+        resp = requests.get(url, timeout=2)
+        return resp.status_code < 500
+    except requests.RequestException:
+        return False
