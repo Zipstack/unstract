@@ -270,16 +270,19 @@ def cmd_report(args: argparse.Namespace) -> int:
         if result is not None:
             group_results.append(result)
     green = _green_group_names(group_results)
+    baseline_corrupt = False
     try:
         baseline = cp.load_baseline(reports_dir / "previous-summary.json")
     except cp.BaselineCorruptError as exc:
         print(f"[rig] {exc}", file=sys.stderr)
         baseline = None
+        baseline_corrupt = True
     statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
     write_summary(
         reports_dir=reports_dir,
         group_results=group_results,
         critical_statuses=statuses,
+        baseline_corrupt=baseline_corrupt,
     )
     print(f"Wrote {reports_dir / 'summary.md'}")
     return 0
@@ -405,8 +408,13 @@ def cmd_run(args: argparse.Namespace) -> int:
         reports_dir=reports_dir,
         group_results=group_results,
         critical_statuses=statuses,
+        baseline_corrupt=baseline_corrupt,
     )
 
+    # Surface baseline corruption regardless of whether the build was
+    # otherwise green or red. A red-then-fixed cycle without this flip would
+    # silently swallow the corrupt cache and disable regression detection on
+    # the next N builds.
     if baseline_corrupt and overall_exit == 0:
         overall_exit = 1
 

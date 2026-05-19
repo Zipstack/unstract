@@ -108,20 +108,18 @@ def evaluate(
         groups_run_green: names of groups that ran AND passed in this build.
         baseline: parsed previous-summary.json from the main-branch cache, or None.
                   Expected shape: ``{"covered_paths": ["auth-login", ...]}``.
-        scope_groups: set of groups in scope for this invocation (typically
-                  ``runnable + skipped`` from ``cmd_run``, i.e. every group the
-                  rig considered running this time). When a critical path's
-                  ``covered_by`` is fully outside ``scope_groups``, the path is
-                  classified as ``gap`` rather than ``regression`` — running
-                  only the unit tier shouldn't flag e2e-tier paths as
-                  regressed. If ``None``, no scoping is applied (back-compat).
+        scope_groups: collection of every group the caller considered running
+                  this invocation (including dep-expanded deps and skipped
+                  optional placeholders). When a critical path's ``covered_by``
+                  is fully outside ``scope_groups``, the path is classified as
+                  ``gap`` rather than ``regression`` — running only the unit
+                  tier shouldn't flag e2e-tier paths as regressed. If ``None``,
+                  no scoping is applied (back-compat).
 
     Returns:
         Statuses in the original registry order.
     """
-    previously_covered: set[str] = set(
-        (baseline or {}).get("covered_paths", []) if baseline else []
-    )
+    previously_covered: set[str] = set((baseline or {}).get("covered_paths") or [])
     # Convert to sets internally so per-path membership checks stay O(1) even
     # when callers pass lists/tuples; the public signature accepts Collection
     # to leave that choice to them.

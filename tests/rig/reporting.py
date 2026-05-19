@@ -154,7 +154,16 @@ def write_summary(
     reports_dir: Path,
     group_results: list[GroupResult],
     critical_statuses: list[CriticalPathStatus],
+    baseline_corrupt: bool = False,
 ) -> None:
+    """Write the per-build summary in JSON and Markdown.
+
+    ``baseline_corrupt=True`` flags a build where the cached baseline could
+    not be parsed. The Markdown summary surfaces a banner so reviewers
+    reading the durable artifact (sticky PR comment, CI step summary) know
+    that regression detection was disabled and any "gap" entries here might
+    actually be regressions.
+    """
     summary_json = reports_dir / "summary.json"
     summary_md = reports_dir / "summary.md"
     combined_md = reports_dir / "combined-test-report.md"
@@ -173,12 +182,13 @@ def write_summary(
                     }
                     for s in critical_statuses
                 ],
+                "baseline_corrupt": baseline_corrupt,
             },
             indent=2,
         )
     )
 
-    md = _render_markdown(group_results, critical_statuses)
+    md = _render_markdown(group_results, critical_statuses, baseline_corrupt)
     summary_md.write_text(md)
     # Backward-compat alias for the existing sticky-comment workflow.
     combined_md.write_text(md)
@@ -187,8 +197,19 @@ def write_summary(
 def _render_markdown(
     group_results: list[GroupResult],
     critical_statuses: list[CriticalPathStatus],
+    baseline_corrupt: bool = False,
 ) -> str:
     lines: list[str] = ["# Unstract test results", ""]
+    if baseline_corrupt:
+        lines.extend(
+            [
+                "> ⚠️ **Baseline cache was corrupt; regression detection "
+                "disabled this run.** Paths classified below as `gap` may "
+                "actually be regressions. Clear the baseline cache and "
+                "re-run to re-validate.",
+                "",
+            ]
+        )
 
     if group_results:
         lines.append("## Per-group results")

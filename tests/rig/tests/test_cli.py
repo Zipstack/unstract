@@ -4,6 +4,12 @@ The bulk of the rig is tested via the manifest + evaluate + reporting helpers.
 These tests exist for the parts of ``cmd_run`` that are hard to exercise from
 pure unit tests — specifically, how it passes ``scope_groups`` through to
 ``evaluate`` and how it shields the in-flight exception from a teardown failure.
+
+These tests monkeypatch module-level constants (``DEFAULT_MANIFEST``,
+``DEFAULT_REGISTRY``) because ``cmd_run`` reads them at call time. Safe today
+because the read is synchronous; if manifest loading ever becomes async (or
+the CLI starts caching a parsed manifest at import time), prefer passing the
+path explicitly through CLI args rather than expanding this patching pattern.
 """
 
 from __future__ import annotations
@@ -19,9 +25,10 @@ from tests.rig.runtime import PlatformEndpoints
 def test_cmd_run_passes_scope_to_evaluate(tmp_path: Path, monkeypatch) -> None:
     """``cmd_run`` must pass the dep-expanded selection (not just runnable
     groups, not just groups_run_green) as ``scope_groups``. Without this
-    plumbing the N2 fix has no effect — a future refactor that drops the
-    kwarg, or swaps it for ``runnable``, would silently reintroduce
-    cross-tier regression false positives.
+    plumbing, scope-aware regression filtering has no effect — a future
+    refactor that drops the kwarg, or swaps it for ``runnable``, would
+    silently reintroduce cross-tier regression false positives where the
+    unit-tier baseline lights up the e2e-tier paths as regressed.
     """
     manifest_yaml = (
         "version: 1\n"
@@ -186,8 +193,79 @@ def test_cmd_run_writes_summary_even_on_corrupt_baseline(
     exit_code = cli_mod.cmd_run(args)
     # Build is red because baseline is corrupt, but summary.md must exist.
     assert exit_code != 0
-    assert (reports_dir / "summary.md").exists(), (
+    summary_md = reports_dir / "summary.md"
+    assert summary_md.exists(), (
         "write_summary must run even when load_baseline raises; otherwise "
         "developers lose all per-group visibility on the build that hit a "
         "corrupt cache."
+    )
+    # And the durable artifact must SAY the baseline was corrupt so reviewers
+    # don't read its "gap" entries as first-time gaps when they're actually
+    # regressions hidden by the cache failure.
+    content = summary_md.read_text()
+    assert "Baseline cache was corrupt" in content, (
+        "summary.md must surface baseline corruption so reviewers reading "
+        "the sticky PR comment know regression detection was disabled. "
+        f"Got:\n{content}"
+    )
+
+
+def test_cmd_run_does_not_update_baseline_on_red_build(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """``--update-baseline`` must skip the write when the build is red.
+    Otherwise red-build state bakes into the cache and masks the next real
+    regression. A refactor dropping the ``overall_exit == 0`` guard would
+    silently reintroduce that footgun.
+    """
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  unit-x:\n"
+        "    tier: unit\n"
+        "    paths: [x]\n"
+        "    optional: true\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    baseline = reports_dir / "previous-summary.json"
+    baseline.write_text("{not valid json")  # corrupt → red build
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(
+        cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml"
+    )
+    merge_calls: list[Any] = []
+    monkeypatch.setattr(
+        cli_mod.cp,
+        "merge_into_baseline",
+        lambda statuses, dest: merge_calls.append((statuses, dest)),
+    )
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "unit-x",
+            "--dry-run",
+            "--update-baseline",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(reports_dir),
+            "--baseline",
+            str(baseline),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+    assert exit_code != 0
+    assert merge_calls == [], (
+        "merge_into_baseline must NOT be called when overall_exit != 0; "
+        "writing red-build state to the baseline cache hides regressions "
+        f"on the next build. Got calls: {merge_calls}"
     )
