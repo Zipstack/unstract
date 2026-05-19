@@ -18,6 +18,8 @@ import shutil
 import subprocess
 import sys
 import time
+import uuid
+from functools import lru_cache
 from pathlib import Path
 
 from tests.rig import critical_paths as cp
@@ -36,6 +38,17 @@ from tests.rig.selection import resolve
 #   0 — all tests passed
 #   5 — no tests collected (optional placeholders, empty hurl group, etc.)
 _NON_FAILING_PYTEST_EXIT_CODES = (0, 5)
+
+
+@lru_cache(maxsize=1)
+def _rig_session_id() -> str:
+    """Stable per-invocation sentinel, computed once.
+
+    Stamped into ``UNSTRACT_RIG_SESSION_ID`` for every group's pytest env so
+    e2e tests can prove that THIS rig invocation set the platform URLs — not a
+    stale shell value the developer forgot to unset.
+    """
+    return uuid.uuid4().hex
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -161,7 +174,11 @@ def cmd_list_critical(args: argparse.Namespace) -> int:
     errors = cp.validate_registry_against_manifest(registry, manifest)
     for err in errors:
         print(f"ERROR: {err}", file=sys.stderr)
-    baseline = cp.load_baseline(args.baseline)
+    try:
+        baseline = cp.load_baseline(args.baseline)
+    except cp.BaselineCorruptError as exc:
+        print(f"[rig] {exc}", file=sys.stderr)
+        baseline = None
     statuses = cp.evaluate(registry, groups_run_green=set(), baseline=baseline)
     icons = {"covered": "✅", "gap": "⚠️", "regression": "❌"}
     for s in statuses:
@@ -253,7 +270,11 @@ def cmd_report(args: argparse.Namespace) -> int:
         if result is not None:
             group_results.append(result)
     green = _green_group_names(group_results)
-    baseline = cp.load_baseline(reports_dir / "previous-summary.json")
+    try:
+        baseline = cp.load_baseline(reports_dir / "previous-summary.json")
+    except cp.BaselineCorruptError as exc:
+        print(f"[rig] {exc}", file=sys.stderr)
+        baseline = None
     statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
     write_summary(
         reports_dir=reports_dir,
@@ -292,6 +313,11 @@ def cmd_run(args: argparse.Namespace) -> int:
     skipped = [n for n in ordered if n not in runnable]
     for n in skipped:
         print(f"SKIP {n} (optional + workdir/paths absent)")
+    # Scope of this invocation = every group the user asked for, runnable or
+    # skipped. Used by evaluate() to distinguish "this critical path was meant
+    # to be exercised here but its group ran red" (regression) from "this path
+    # belongs to a tier we weren't running this time" (gap).
+    scope_groups = set(ordered)
 
     reports_dir: Path = args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -339,14 +365,35 @@ def cmd_run(args: argparse.Namespace) -> int:
     finally:
         if runtime is not None and not args.dry_run:
             print(f"[rig] tearing platform down (runtime={runtime.name})")
-            runtime.down()
+            # Don't let a teardown failure mask the in-flight exception.
+            # Python re-raises whatever exception we caught here if down()
+            # raises during a `finally`, hiding the real cause upstream.
+            try:
+                runtime.down()
+            except Exception as exc:
+                print(
+                    f"[rig] teardown failed (runtime={runtime.name}): {exc}",
+                    file=sys.stderr,
+                )
 
     if args.coverage and not args.dry_run:
         combine_and_report(reports_dir)
 
     green = _green_group_names(group_results)
-    baseline = cp.load_baseline(args.baseline)
-    statuses = cp.evaluate(registry, groups_run_green=green, baseline=baseline)
+    try:
+        baseline = cp.load_baseline(args.baseline)
+    except cp.BaselineCorruptError as exc:
+        print(f"[rig] ❌ {exc}", file=sys.stderr)
+        # A corrupt baseline can't be silently treated as empty: that would
+        # turn the next build into a regression festival once it writes a
+        # one-tier baseline back. Bail out so CI surfaces the bad cache.
+        return overall_exit or 1
+    statuses = cp.evaluate(
+        registry,
+        groups_run_green=green,
+        baseline=baseline,
+        scope_groups=scope_groups,
+    )
     write_summary(
         reports_dir=reports_dir,
         group_results=group_results,
@@ -373,8 +420,12 @@ def cmd_run(args: argparse.Namespace) -> int:
             overall_exit = 1
 
     if args.update_baseline and overall_exit == 0:
-        cp.merge_into_baseline(statuses, args.baseline)
-        print(f"[rig] merged into baseline: {args.baseline}")
+        try:
+            cp.merge_into_baseline(statuses, args.baseline)
+            print(f"[rig] merged into baseline: {args.baseline}")
+        except cp.BaselineCorruptError as exc:
+            print(f"[rig] ❌ baseline write skipped: {exc}", file=sys.stderr)
+            overall_exit = 1
 
     return overall_exit
 
@@ -419,6 +470,11 @@ def _execute_group(
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
         env.setdefault("UNSTRACT_PLATFORM_SERVICE_URL", endpoints.platform_service_url)
         env.setdefault("UNSTRACT_RUNNER_URL", endpoints.runner_url)
+        # Stamp the run with a per-invocation sentinel so e2e tests can
+        # distinguish "rig brought the platform up" from "stale shell env
+        # leaked in". `setdefault` would let a leaked sentinel win, which
+        # defeats the purpose — set unconditionally.
+        env["UNSTRACT_RIG_SESSION_ID"] = _rig_session_id()
     if coverage and group.coverage_source:
         env.update(coverage_env(group.name, reports_dir))
 

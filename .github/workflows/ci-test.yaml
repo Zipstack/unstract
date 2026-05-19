@@ -44,14 +44,20 @@ jobs:
       - name: Restore main-branch test baseline (for regression detection)
         # actions/cache only saves on a cache miss. Include the run id in the
         # key so each main build writes a fresh cache entry; the prefix in
-        # restore-keys still pulls the most recent baseline for any branch.
+        # restore-keys pulls the most recent baseline.
+        #
+        # The unit/integration lane keeps a SEPARATE baseline from the e2e
+        # workflow because their `scope_groups` don't overlap — restoring an
+        # e2e-tier baseline here would flag every e2e-covered path as a
+        # regression in this lane (and vice versa). Each workflow is the
+        # source of truth for the paths covered by its own tiers.
         uses: actions/cache@v5
         with:
           path: reports/previous-summary.json
-          key: unstract-test-baseline-main-${{ github.run_id }}
+          key: unstract-test-baseline-ut-main-${{ github.run_id }}
           restore-keys: |
-            unstract-test-baseline-main-
-            unstract-test-baseline-
+            unstract-test-baseline-ut-main-
+            unstract-test-baseline-ut-
 
       - name: Install tox with UV
         run: uv tool install tox --with tox-uv

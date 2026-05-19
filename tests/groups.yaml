@@ -77,8 +77,9 @@ groups:
   unit-backend:
     tier: unit
     workdir: backend
-    # Tightened from `[.]` (which collected every test_*.py in the tree) to
-    # the explicit per-app tests/ directories that exist today.
+    # List paths explicitly. `[.]` recurses into every test_*.py in backend/,
+    # including vendored fixtures and pluggable-app tests that don't belong
+    # in the OSS rig — keep this list scoped to the apps actually under test.
     paths:
       - account_v2/tests
       - adapter_processor_v2/tests
@@ -135,6 +136,10 @@ groups:
     optional: true   # placeholder until tests are authored
 
   # ── E2E tier: real HTTP against running platform ───────────────────────────
+  # Every group below has `requires_platform: true` and must (transitively)
+  # depend on `e2e-smoke` — the rig's `_validate_platform_groups_depend_on_gate`
+  # enforces this so smoke failures cleanly skip dependents rather than running
+  # them against a half-up stack.
   e2e-smoke:
     tier: e2e
     paths: [tests/e2e/smoke]
@@ -172,6 +177,5 @@ groups:
     runner: hurl
     paths: [tests/e2e/hurl]
     requires_platform: true
-    # Smoke gates every platform group so a half-up stack doesn't poison results.
     depends_on: [e2e-smoke]
     optional: true

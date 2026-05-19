@@ -12,7 +12,7 @@ import os
 
 import pytest
 
-from tests.rig.runtime import PlatformEndpoints, _endpoints_from_env
+from tests.rig.runtime import PlatformEndpoints
 
 
 @pytest.fixture(scope="session")
@@ -23,4 +23,4 @@ def platform() -> PlatformEndpoints:
             "`python -m tests.rig run --tier e2e ...` or export "
             "UNSTRACT_BACKEND_URL (etc.) yourself."
         )
-    return _endpoints_from_env()
+    return PlatformEndpoints.from_env()

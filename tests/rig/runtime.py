@@ -36,7 +36,12 @@ BASE_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 
 @dataclass(frozen=True)
 class InfraEndpoints:
-    """Named handles for stateful infra started by ``TestcontainersRuntime``."""
+    """Named handles for stateful infra started by ``TestcontainersRuntime``.
+
+    Each ``host``/``port`` pair must be set together or not at all — the
+    ``__post_init__`` check exists so a partial spec (e.g. host known but port
+    not yet bound) doesn't silently land in downstream config.
+    """
 
     postgres_url: str | None = None
     redis_host: str | None = None
@@ -44,6 +49,17 @@ class InfraEndpoints:
     rabbitmq_host: str | None = None
     rabbitmq_port: str | None = None
     minio_endpoint: str | None = None
+
+    def __post_init__(self) -> None:
+        for host, port, label in (
+            (self.redis_host, self.redis_port, "redis"),
+            (self.rabbitmq_host, self.rabbitmq_port, "rabbitmq"),
+        ):
+            if (host is None) != (port is None):
+                raise ValueError(
+                    f"InfraEndpoints: {label}_host and {label}_port must be "
+                    f"set together (got host={host!r}, port={port!r})"
+                )
 
 
 @dataclass(frozen=True)
@@ -56,6 +72,28 @@ class PlatformEndpoints:
     admin_user: str = "unstract"
     admin_password: str = "unstract"
     infra: InfraEndpoints = field(default_factory=InfraEndpoints)
+
+    @classmethod
+    def from_env(cls, *, infra: InfraEndpoints | None = None) -> PlatformEndpoints:
+        """Build a ``PlatformEndpoints`` from ``UNSTRACT_*`` env vars.
+
+        Used by every runtime so the lookup logic stays single-sourced.
+        Defaults match the dev compose stack at ``docker/docker-compose.yaml``.
+        """
+        return cls(
+            backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
+            prompt_service_url=os.environ.get(
+                "UNSTRACT_PROMPT_SERVICE_URL", "http://localhost:3003"
+            ),
+            platform_service_url=os.environ.get(
+                "UNSTRACT_PLATFORM_SERVICE_URL", "http://localhost:3001"
+            ),
+            runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
+            x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
+            admin_user=os.environ.get("UNSTRACT_ADMIN_USER", "unstract"),
+            admin_password=os.environ.get("UNSTRACT_ADMIN_PASSWORD", "unstract"),
+            infra=infra or InfraEndpoints(),
+        )
 
 
 class PlatformRuntime(Protocol):
@@ -71,7 +109,7 @@ class LocalRuntime:
     name: ClassVar[str] = "local"
 
     def up(self) -> PlatformEndpoints:
-        return _endpoints_from_env()
+        return PlatformEndpoints.from_env()
 
     def down(self) -> None:
         return None
@@ -92,7 +130,7 @@ class ComposeRuntime:
         if COMPOSE_OVERLAY.exists():
             files += ["-f", str(COMPOSE_OVERLAY)]
         _run(["docker", "compose", "-p", self.project_name, *files, "up", "-d", "--wait"])
-        endpoints = _endpoints_from_env()
+        endpoints = PlatformEndpoints.from_env()
         _wait_ready(endpoints)
         return endpoints
 
@@ -155,7 +193,7 @@ class TestcontainersRuntime:
             self.down()
             raise
 
-        endpoints = _endpoints_from_env(
+        endpoints = PlatformEndpoints.from_env(
             infra=InfraEndpoints(
                 postgres_url=pg.get_connection_url(),
                 redis_host=redis.get_container_host_ip(),
@@ -202,23 +240,6 @@ def pick_runtime(name: str | None) -> PlatformRuntime:
 
 def _default_runtime_name() -> str:
     return "compose" if os.environ.get("CI") else "testcontainers"
-
-
-def _endpoints_from_env(*, infra: InfraEndpoints | None = None) -> PlatformEndpoints:
-    return PlatformEndpoints(
-        backend_url=os.environ.get("UNSTRACT_BACKEND_URL", "http://localhost:8000"),
-        prompt_service_url=os.environ.get(
-            "UNSTRACT_PROMPT_SERVICE_URL", "http://localhost:3003"
-        ),
-        platform_service_url=os.environ.get(
-            "UNSTRACT_PLATFORM_SERVICE_URL", "http://localhost:3001"
-        ),
-        runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
-        x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
-        admin_user=os.environ.get("UNSTRACT_ADMIN_USER", "unstract"),
-        admin_password=os.environ.get("UNSTRACT_ADMIN_PASSWORD", "unstract"),
-        infra=infra or InfraEndpoints(),
-    )
 
 
 def _run(cmd: list[str], *, check: bool = True) -> None:

@@ -40,14 +40,14 @@ jobs:
         run: tox -e rig -- validate
 
       - name: Restore main-branch test baseline
-        # See ci-test.yaml for the rationale on including run_id in the key.
+        # See ci-test.yaml for the rationale on namespacing per-workflow.
         uses: actions/cache@v5
         with:
           path: reports/previous-summary.json
-          key: unstract-test-baseline-main-e2e-${{ github.run_id }}
+          key: unstract-test-baseline-e2e-main-${{ github.run_id }}
           restore-keys: |
-            unstract-test-baseline-main-e2e-
-            unstract-test-baseline-main-
+            unstract-test-baseline-e2e-main-
+            unstract-test-baseline-e2e-
 
       - name: Run e2e tier via docker compose
         env:

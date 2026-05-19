@@ -109,7 +109,8 @@ def load_groups(path: Path | None = None) -> GroupManifest:
     _validate_no_cycles(groups)
     _validate_dep_targets_exist(groups)
     _validate_paths(groups)
-    _validate_platform_groups_depend_on_smoke(groups)
+    smoke_gate = defaults.get("platform_gate_group", "e2e-smoke")
+    _validate_platform_groups_depend_on_gate(groups, gate=smoke_gate)
     return GroupManifest(groups=groups)
 
 
@@ -189,23 +190,33 @@ def _validate_paths(groups: dict[str, GroupDefinition]) -> None:
                 raise ValueError(f"group {name!r}: test path does not exist: {p}")
 
 
-def _validate_platform_groups_depend_on_smoke(
-    groups: dict[str, GroupDefinition],
+def _validate_platform_groups_depend_on_gate(
+    groups: dict[str, GroupDefinition], *, gate: str
 ) -> None:
-    """Every non-smoke ``requires_platform`` group must transitively depend on
-    ``e2e-smoke``. Smoke is the gate: if it fails, dependent groups skip cleanly
-    rather than running against a half-up stack and reporting misleading failures.
+    """Every non-gate ``requires_platform`` group must transitively depend on
+    the named gate group. The gate is the smoke test: if it fails, dependent
+    groups skip cleanly rather than running against a half-up stack and
+    reporting misleading failures.
+
+    If the manifest declares ``requires_platform`` groups but doesn't actually
+    define the gate, that's a manifest error — silently disabling the check
+    would defeat the invariant. The gate name is overridable via
+    ``defaults.platform_gate_group`` in ``groups.yaml`` for forks that rename it.
     """
-    smoke = "e2e-smoke"
-    if smoke not in groups:
-        return  # custom manifest without a smoke group; nothing to enforce
-    for name, g in groups.items():
-        if name == smoke or not g.requires_platform:
-            continue
-        if not _transitively_depends_on(name, smoke, groups):
+    platform_groups = [n for n, g in groups.items() if g.requires_platform and n != gate]
+    if not platform_groups:
+        return  # No platform-dependent groups; nothing to enforce.
+    if gate not in groups:
+        raise ValueError(
+            f"`requires_platform` groups present ({sorted(platform_groups)}) "
+            f"but the platform gate {gate!r} is not defined. Either define it, "
+            f"or set `defaults.platform_gate_group` in groups.yaml."
+        )
+    for name in platform_groups:
+        if not _transitively_depends_on(name, gate, groups):
             raise ValueError(
                 f"group {name!r} requires_platform but does not (transitively) "
-                f"depend on {smoke!r}; add it to depends_on so smoke gates this group"
+                f"depend on {gate!r}; add it to depends_on so smoke gates this group"
             )
 
 

@@ -215,6 +215,16 @@ markers = [
 [tool.coverage.run]
 branch = false
 relative_files = true
+omit = [
+    # Test modules shouldn't count themselves as covered code; that inflates
+    # the percentage and hides real gaps in the modules under test.
+    # Keep the patterns narrow: target test FILES, not "anything in a tests/
+    # directory" (which would exclude tests/rig/*.py — those ARE the
+    # production modules for the unit-rig group).
+    "**/test_*.py",
+    "**/*_tests.py",
+    "**/tests.py",
+]
 
 [tool.coverage.paths]
 # Each group runs pytest from its own workdir, so per-group .coverage files

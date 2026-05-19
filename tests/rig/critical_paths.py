@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
@@ -11,9 +12,21 @@ import yaml
 
 from tests.rig.groups import REPO_ROOT, GroupManifest
 
+log = logging.getLogger(__name__)
+
 CriticalPathState = Literal["covered", "gap", "regression"]
 
 DEFAULT_REGISTRY = REPO_ROOT / "tests" / "critical_paths.yaml"
+
+
+class BaselineCorruptError(RuntimeError):
+    """Raised when the baseline file exists but cannot be parsed.
+
+    The rig refuses to silently treat a corrupt baseline as empty because that
+    would (a) demote real regressions to gaps and (b) wipe the other tier's
+    coverage on the next merge. The CI workflow should delete the cache and
+    retry, surfacing the corruption explicitly.
+    """
 
 
 @dataclass(frozen=True)
@@ -74,7 +87,8 @@ def validate_registry_against_manifest(
         for g in path.covered_by:
             if g not in known:
                 errors.append(
-                    f"critical path {path.id!r}: covered_by references unknown group {g!r}"
+                    f"critical path {path.id!r}: "
+                    f"covered_by references unknown group {g!r}"
                 )
     return errors
 
@@ -84,6 +98,7 @@ def evaluate(
     *,
     groups_run_green: set[str],
     baseline: dict[str, Any] | None,
+    scope_groups: set[str] | None = None,
 ) -> list[CriticalPathStatus]:
     """Compute the status for each critical path against this build's results.
 
@@ -92,6 +107,13 @@ def evaluate(
         groups_run_green: names of groups that ran AND passed in this build.
         baseline: parsed previous-summary.json from the main-branch cache, or None.
                   Expected shape: ``{"covered_paths": ["auth-login", ...]}``.
+        scope_groups: set of groups in scope for this invocation (typically
+                  ``runnable + skipped`` from ``cmd_run``, i.e. every group the
+                  rig considered running this time). When a critical path's
+                  ``covered_by`` is fully outside ``scope_groups``, the path is
+                  classified as ``gap`` rather than ``regression`` — running
+                  only the unit tier shouldn't flag e2e-tier paths as
+                  regressed. If ``None``, no scoping is applied (back-compat).
 
     Returns:
         Statuses in the original registry order.
@@ -102,16 +124,21 @@ def evaluate(
     statuses: list[CriticalPathStatus] = []
     for path in registry.paths:
         covering = tuple(g for g in path.covered_by if g in groups_run_green)
+        in_scope = scope_groups is None or any(g in scope_groups for g in path.covered_by)
         state: CriticalPathState
         if covering:
             state = "covered"
             note = ""
-        elif path.id in previously_covered:
+        elif path.id in previously_covered and in_scope:
             state = "regression"
-            note = "Was covered on the cached main baseline; not covered in this build."
+            note = "Was covered on the cached baseline; not covered in this build."
         else:
             state = "gap"
-            note = "No group covering this path ran green in this build."
+            note = (
+                "Out of scope for this invocation."
+                if not in_scope
+                else "No group covering this path ran green in this build."
+            )
         statuses.append(
             CriticalPathStatus(
                 path=path,
@@ -128,29 +155,43 @@ def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -
 
     Two tiers run in separate processes (unit, then integration; then e2e in a
     separate workflow). Each invocation only knows about the paths covered by
-    *its* groups. A naive overwrite would erase the other tier's coverage. We
-    therefore union with whatever's already on disk before writing.
+    *its* groups. A naive overwrite would erase the other tier's coverage, so
+    we union with whatever's already on disk.
+
+    A corrupt baseline raises :class:`BaselineCorruptError` rather than being
+    treated as empty: silently dropping previously-covered paths would erase
+    the other tier's contribution and turn the next build into a regression
+    festival. CI should delete the cache and retry on this exception.
     """
     existing: set[str] = set()
     if destination.exists():
         try:
-            existing = set(json.loads(destination.read_text()).get("covered_paths", []))
-        except (json.JSONDecodeError, OSError):
-            existing = set()
+            parsed = json.loads(destination.read_text())
+            existing = set(parsed.get("covered_paths") or [])
+        except (json.JSONDecodeError, OSError) as exc:
+            raise BaselineCorruptError(
+                f"refusing to merge into corrupt baseline {destination}: {exc}. "
+                "Delete the cache entry and re-run."
+            ) from exc
     fresh = {s.path.id for s in statuses if s.state == "covered"}
     payload = {"covered_paths": sorted(existing | fresh)}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, indent=2))
 
 
-# Back-compat alias for any caller still using the old name.
-emit_baseline = merge_into_baseline
-
-
 def load_baseline(source: Path) -> dict[str, Any] | None:
+    """Load the cached baseline.
+
+    Returns None if the file doesn't exist (first build / fresh cache).
+    Raises :class:`BaselineCorruptError` if the file exists but is unreadable
+    or unparseable — see :func:`merge_into_baseline` for the rationale.
+    """
     if not source.exists():
         return None
     try:
         return json.loads(source.read_text())
-    except (json.JSONDecodeError, OSError):
-        return None
+    except (json.JSONDecodeError, OSError) as exc:
+        raise BaselineCorruptError(
+            f"baseline at {source} is unreadable: {exc}. "
+            "Delete the cache entry and re-run."
+        ) from exc

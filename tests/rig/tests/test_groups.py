@@ -74,7 +74,6 @@ def test_expand_topological_order(tmp_path: Path) -> None:
             paths: [x]
             depends_on: [mid]
             optional: true
-            requires_platform: true
         """,
     )
     expanded = load_groups(manifest).expand(["root"])
@@ -134,6 +133,53 @@ def test_platform_group_must_depend_on_smoke(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="depend on 'e2e-smoke'"):
         load_groups(manifest)
+
+
+def test_platform_groups_without_gate_definition_fails(tmp_path: Path) -> None:
+    """If a manifest declares platform groups but never defines the gate
+    (``e2e-smoke`` by default), validation must fail — silently no-oping the
+    smoke-gate check would defeat the whole invariant.
+    """
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        groups:
+          e2e-orphan:
+            tier: e2e
+            paths: [x]
+            requires_platform: true
+            optional: true
+        """,
+    )
+    with pytest.raises(ValueError, match="platform gate 'e2e-smoke' is not defined"):
+        load_groups(manifest)
+
+
+def test_custom_gate_name_via_defaults(tmp_path: Path) -> None:
+    """Forks can rename the gate via defaults.platform_gate_group."""
+    manifest = _write_manifest(
+        tmp_path,
+        """
+        version: 1
+        defaults:
+          platform_gate_group: my-custom-smoke
+        groups:
+          my-custom-smoke:
+            tier: e2e
+            paths: [x]
+            requires_platform: true
+            optional: true
+          downstream:
+            tier: e2e
+            paths: [x]
+            requires_platform: true
+            depends_on: [my-custom-smoke]
+            optional: true
+        """,
+    )
+    # Must not raise.
+    assert "downstream" in load_groups(manifest).names()
 
 
 def test_real_manifest_is_valid() -> None:
