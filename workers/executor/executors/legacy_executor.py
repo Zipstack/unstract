@@ -13,6 +13,7 @@ from typing import Any
 from executor.executor_tool_shim import ExecutorToolShim
 from executor.executors.constants import ExecutionSource
 from executor.executors.constants import IndexingConstants as IKeys
+from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.dto import (
     ChunkingConfig,
     FileInfo,
@@ -242,15 +243,15 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
-        shim.stream_log("Initializing text extractor...")
-        shim.stream_log(f"Using text extractor: {type(x2text.x2text_instance).__name__}")
-
+        extractor_name = type(x2text.x2text_instance).__name__
         try:
-            shim.stream_log("Extracting text from document...")
+            shim.stream_log(
+                f"Extracting text using `{extractor_name}`"
+                + (" (with highlight)" if enable_highlight else "")
+            )
             if enable_highlight and isinstance(
                 x2text.x2text_instance, (LLMWhisperer, LLMWhispererV2)
             ):
-                shim.stream_log("Extracting text with highlight support enabled...")
                 process_response: TextExtractionResult = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,
@@ -301,7 +302,6 @@ class LegacyExecutor(BaseExecutor):
                 process_response.extraction_metadata
                 and process_response.extraction_metadata.line_metadata
             ):
-                shim.stream_log("Saving extraction metadata...")
                 result_data["highlight_metadata"] = (
                     process_response.extraction_metadata.line_metadata
                 )
@@ -605,12 +605,23 @@ class LegacyExecutor(BaseExecutor):
         shim = self._build_shim(
             platform_api_key=extract_params.get("platform_api_key", ""),
         )
+
+        # One-shot run-config line — non-sensitive flags only; adapter
+        # identities are emitted inline on first use with full model info.
+        tool_settings = answer_params.get(PSKeys.TOOL_SETTINGS, {})
+        outputs = answer_params.get(PSKeys.OUTPUTS, [])
+        shim.stream_log(
+            f"Run config: prompts={len(outputs)} | "
+            f"single_pass={'on' if is_single_pass else 'off'} | "
+            f"summarize={'on' if is_summarization else 'off'} | "
+            f"challenge="
+            f"{'on' if tool_settings.get(PSKeys.ENABLE_CHALLENGE) else 'off'}"
+        )
         step = 1
 
         try:
             # ---- Step 1: Extract ----
             if not skip_extraction:
-                shim.stream_log(f"Pipeline step {step}: Extracting text from document...")
                 step += 1
                 extract_ctx = ExecutionContext(
                     executor_name=context.executor_name,
@@ -632,7 +643,6 @@ class LegacyExecutor(BaseExecutor):
 
             # ---- Step 2: Summarize (if enabled) ----
             if is_summarization:
-                shim.stream_log(f"Pipeline step {step}: Summarizing extracted text...")
                 step += 1
                 summarize_result = self._run_pipeline_summarize(
                     context=context,
@@ -648,17 +658,16 @@ class LegacyExecutor(BaseExecutor):
                 answer_params["file_path"] = input_file_path
             elif not is_single_pass:
                 # ---- Step 3: Index per output with dedup ----
-                shim.stream_log(
-                    f"Pipeline step {step}: Indexing document into vector store..."
-                )
                 step += 1
-                index_metrics = self._run_pipeline_index(
+                index_metrics, index_records = self._run_pipeline_index(
                     context=context,
                     index_template=index_template,
                     answer_params=answer_params,
                     extracted_text=extracted_text,
                     usage_kwargs=extract_params.get("usage_kwargs", {}),
                 )
+                if index_records:
+                    pipeline_records.extend(index_records)
 
             # ---- Step 4: Table settings injection ----
             if not is_single_pass:
@@ -693,7 +702,9 @@ class LegacyExecutor(BaseExecutor):
             index_metrics=index_metrics,
         )
 
-        shim.stream_log("Pipeline completed successfully")
+        output_map = structured_output.get(PSKeys.OUTPUT, {}) or {}
+        answered = sum(1 for v in output_map.values() if v not in (None, "", [], {}))
+        shim.stream_log(f"Pipeline completed: {answered}/{len(outputs)} prompts answered")
         out_metadata = {
             k: v
             for k, v in (answer_result.metadata or {}).items()
@@ -728,12 +739,9 @@ class LegacyExecutor(BaseExecutor):
                 output["chunk-size"] = 0
                 output["chunk-overlap"] = 0
             operation = Operation.SINGLE_PASS_EXTRACTION.value
-            mode_label = "single pass"
         else:
             operation = Operation.ANSWER_PROMPT.value
-            mode_label = "prompt"
 
-        shim.stream_log(f"Pipeline step {step}: Running {mode_label} execution...")
         answer_ctx = ExecutionContext(
             executor_name=context.executor_name,
             operation=operation,
@@ -885,99 +893,132 @@ class LegacyExecutor(BaseExecutor):
         answer_params: dict,
         extracted_text: str,
         usage_kwargs: dict | None = None,
-    ) -> dict:
+    ) -> tuple[dict, list[dict]]:
         """Run per-output indexing with dedup for the structure pipeline.
 
         Args:
             usage_kwargs: Audit-tracking kwargs (``run_id``,
                 ``execution_id``, ``file_name``) propagated to the
                 embedding adapter so its callback can record usage
-                rows against the correct file_execution_id. Without
-                this, embedding usage is missing from the API
-                deployment response metadata.
+                rows against the correct file_execution_id.
 
         Returns:
-            Dict of index metrics keyed by output name.
+            (index_metrics, usage_records) — metrics keyed by output
+            name and the flat list of usage rows collected across all
+            child ``_handle_index`` calls.
         """
-        import datetime
-
         tool_settings = answer_params.get("tool_settings", {})
         outputs = answer_params.get("outputs", [])
-        tool_id = index_template.get("tool_id", "")
-        file_hash = index_template.get("file_hash", "")
-        is_highlight = index_template.get("is_highlight_enabled", False)
-        platform_api_key = index_template.get("platform_api_key", "")
-        extracted_file_path = index_template.get("extracted_file_path", "")
-        usage_kwargs = usage_kwargs or {}
-
         index_metrics: dict = {}
+        index_records: list[dict] = []
         seen_params: set = set()
 
         for output in outputs:
-            chunk_size = output.get("chunk-size", 0)
-            chunk_overlap = output.get("chunk-overlap", 0)
-            vector_db = tool_settings.get("vector-db", "")
-            embedding = tool_settings.get("embedding", "")
-            x2text = tool_settings.get("x2text_adapter", "")
-
-            param_key = (
-                f"chunk_size={chunk_size}_"
-                f"chunk_overlap={chunk_overlap}_"
-                f"vector_db={vector_db}_"
-                f"embedding={embedding}_"
-                f"x2text={x2text}"
+            self._index_pipeline_output(
+                context=context,
+                output=output,
+                index_template=index_template,
+                tool_settings=tool_settings,
+                extracted_text=extracted_text,
+                usage_kwargs=usage_kwargs or {},
+                seen_params=seen_params,
+                index_metrics=index_metrics,
+                index_records=index_records,
             )
 
-            if chunk_size != 0 and param_key not in seen_params:
-                seen_params.add(param_key)
+        return index_metrics, index_records
 
-                indexing_start = datetime.datetime.now()
-                logger.info(
-                    "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
-                    chunk_size,
-                    chunk_overlap,
-                    vector_db,
-                )
+    def _index_pipeline_output(
+        self,
+        *,
+        context: ExecutionContext,
+        output: dict,
+        index_template: dict,
+        tool_settings: dict,
+        extracted_text: str,
+        usage_kwargs: dict,
+        seen_params: set,
+        index_metrics: dict,
+        index_records: list[dict],
+    ) -> None:
+        """Index a single structure-pipeline output entry in-place."""
+        import datetime
 
-                index_ctx = ExecutionContext(
-                    executor_name=context.executor_name,
-                    operation=Operation.INDEX.value,
-                    run_id=context.run_id,
-                    execution_source=context.execution_source,
-                    organization_id=context.organization_id,
-                    request_id=context.request_id,
-                    log_events_id=context.log_events_id,
-                    execution_id=context.execution_id,
-                    file_execution_id=context.file_execution_id,
-                    executor_params={
-                        "embedding_instance_id": embedding,
-                        "vector_db_instance_id": vector_db,
-                        "x2text_instance_id": x2text,
-                        "chunk_size": chunk_size,
-                        "chunk_overlap": chunk_overlap,
-                        "file_path": extracted_file_path,
-                        "reindex": True,
-                        "tool_id": tool_id,
-                        "file_hash": file_hash,
-                        "enable_highlight": is_highlight,
-                        "extracted_text": extracted_text,
-                        "platform_api_key": platform_api_key,
-                        "usage_kwargs": usage_kwargs,
-                    },
-                )
-                index_result = self._handle_index(index_ctx)
-                if not index_result.success:
-                    logger.warning(
-                        "Pipeline indexing failed for %s: %s",
-                        param_key,
-                        index_result.error,
-                    )
+        chunk_size = output.get("chunk-size", 0)
+        if chunk_size == 0:
+            return
 
-                elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
-                output_name = output.get("name", "")
-                index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
+        chunk_overlap = output.get("chunk-overlap", 0)
+        vector_db = tool_settings.get("vector-db", "")
+        embedding = tool_settings.get("embedding", "")
+        x2text = tool_settings.get("x2text_adapter", "")
 
-        return index_metrics
+        param_key = (
+            f"chunk_size={chunk_size}_"
+            f"chunk_overlap={chunk_overlap}_"
+            f"vector_db={vector_db}_"
+            f"embedding={embedding}_"
+            f"x2text={x2text}"
+        )
+        if param_key in seen_params:
+            return
+        seen_params.add(param_key)
+
+        indexing_start = datetime.datetime.now()
+        logger.info(
+            "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
+            chunk_size,
+            chunk_overlap,
+            vector_db,
+        )
+
+        index_ctx = ExecutionContext(
+            executor_name=context.executor_name,
+            operation=Operation.INDEX.value,
+            run_id=context.run_id,
+            execution_source=context.execution_source,
+            organization_id=context.organization_id,
+            request_id=context.request_id,
+            log_events_id=context.log_events_id,
+            execution_id=context.execution_id,
+            file_execution_id=context.file_execution_id,
+            executor_params={
+                "embedding_instance_id": embedding,
+                "vector_db_instance_id": vector_db,
+                "x2text_instance_id": x2text,
+                "chunk_size": chunk_size,
+                "chunk_overlap": chunk_overlap,
+                "file_path": index_template.get("extracted_file_path", ""),
+                "reindex": True,
+                "tool_id": index_template.get("tool_id", ""),
+                "file_hash": index_template.get("file_hash", ""),
+                "enable_highlight": index_template.get("is_highlight_enabled", False),
+                "extracted_text": extracted_text,
+                "platform_api_key": index_template.get("platform_api_key", ""),
+                "usage_kwargs": usage_kwargs,
+            },
+        )
+        try:
+            index_result = self._handle_index(index_ctx)
+        except LegacyExecutorError as e:
+            # Preserve usage rows accrued from prior iterations.
+            e.partial_usage_records = index_records + e.partial_usage_records
+            raise
+        if not index_result.success:
+            # Abort on returned-failure so downstream steps don't run
+            # against an incomplete vector store.
+            raise LegacyExecutorError(
+                message=f"Pipeline indexing failed for {param_key}: {index_result.error}",
+                code=500,
+                partial_usage_records=list(index_records),
+            )
+        child_records = (index_result.metadata or {}).get("usage_records") or []
+        if child_records:
+            index_records.extend(child_records)
+
+        elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
+        output_name = output.get("name", "")
+        index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
 
     @staticmethod
     def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:
@@ -1002,6 +1043,23 @@ class LegacyExecutor(BaseExecutor):
     # Phase 2C — Index handler
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _missing_index_params(
+        *,
+        embedding_instance_id: str,
+        vector_db_instance_id: str,
+        x2text_instance_id: str,
+        file_path: str,
+    ) -> list[str]:
+        """Return required-param keys that are unset for an INDEX op."""
+        checks = (
+            (embedding_instance_id, IKeys.EMBEDDING_INSTANCE_ID),
+            (vector_db_instance_id, IKeys.VECTOR_DB_INSTANCE_ID),
+            (x2text_instance_id, IKeys.X2TEXT_INSTANCE_ID),
+            (file_path, IKeys.FILE_PATH),
+        )
+        return [key for value, key in checks if not value]
+
     def _handle_index(self, context: ExecutionContext) -> ExecutionResult:
         """Handle ``Operation.INDEX`` — vector DB indexing.
 
@@ -1021,15 +1079,12 @@ class LegacyExecutor(BaseExecutor):
         extracted_text: str = params.get(IKeys.EXTRACTED_TEXT, "")
         platform_api_key: str = params.get("platform_api_key", "")
 
-        missing = []
-        if not embedding_instance_id:
-            missing.append(IKeys.EMBEDDING_INSTANCE_ID)
-        if not vector_db_instance_id:
-            missing.append(IKeys.VECTOR_DB_INSTANCE_ID)
-        if not x2text_instance_id:
-            missing.append(IKeys.X2TEXT_INSTANCE_ID)
-        if not file_path:
-            missing.append(IKeys.FILE_PATH)
+        missing = self._missing_index_params(
+            embedding_instance_id=embedding_instance_id,
+            vector_db_instance_id=vector_db_instance_id,
+            x2text_instance_id=x2text_instance_id,
+            file_path=file_path,
+        )
         if missing:
             return ExecutionResult.failure(
                 error=f"Missing required params: {', '.join(missing)}"
@@ -1075,8 +1130,6 @@ class LegacyExecutor(BaseExecutor):
             Path(file_path).name,
             context.run_id,
         )
-        shim.stream_log("Initializing indexing pipeline...")
-
         # Skip indexing when chunk_size is 0 — no vector operations needed.
         # ChunkingConfig raises ValueError for 0, so handle before DTO.
         if chunk_size == 0:
@@ -1106,6 +1159,7 @@ class LegacyExecutor(BaseExecutor):
         index_cls, embedding_compat, vector_db_cls = self._get_indexing_deps()
 
         vector_db = None
+        embedding = None
         try:
             index = index_cls(
                 tool=shim,
@@ -1117,7 +1171,6 @@ class LegacyExecutor(BaseExecutor):
             )
             doc_id = index.generate_index_key(file_info=file_info, fs=fs_instance)
             logger.debug("Generated index key: doc_id=%s", doc_id)
-            shim.stream_log("Checking document index status...")
 
             embedding = embedding_compat(
                 adapter_instance_id=embedding_instance_id,
@@ -1129,7 +1182,8 @@ class LegacyExecutor(BaseExecutor):
                 adapter_instance_id=vector_db_instance_id,
                 embedding=embedding,
             )
-            shim.stream_log("Initialized embedding and vector DB adapters")
+            shim.log_adapter_once("Embedding", embedding_instance_id, embedding)
+            shim.log_adapter_once("Vector DB", vector_db_instance_id, vector_db)
 
             doc_id_found = index.is_document_indexed(
                 doc_id=doc_id, embedding=embedding, vector_db=vector_db
@@ -1148,13 +1202,15 @@ class LegacyExecutor(BaseExecutor):
                     "Skipping re-index: doc_id=%s already in vector DB and reindex=False",
                     doc_id,
                 )
-                return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+                return ExecutionResult(
+                    success=True,
+                    data={IKeys.DOC_ID: doc_id},
+                    metadata={"usage_records": embedding.flush_pending_usage()},
+                )
 
-            if doc_id_found and reindex:
-                shim.stream_log("Document already indexed, re-indexing...")
-            else:
-                shim.stream_log("Indexing document for the first time...")
-            shim.stream_log("Indexing document into vector store...")
+            shim.stream_log(
+                "Re-indexing document" if doc_id_found else "Indexing document"
+            )
             index.perform_indexing(
                 vector_db=vector_db,
                 doc_id=doc_id,
@@ -1167,7 +1223,11 @@ class LegacyExecutor(BaseExecutor):
                 Path(file_path).name,
             )
             shim.stream_log("Document indexing completed")
-            return ExecutionResult(success=True, data={IKeys.DOC_ID: doc_id})
+            return ExecutionResult(
+                success=True,
+                data={IKeys.DOC_ID: doc_id},
+                metadata={"usage_records": embedding.flush_pending_usage()},
+            )
         except Exception as e:
             logger.error(
                 "Indexing failed: file=%s error=%s",
@@ -1175,8 +1235,19 @@ class LegacyExecutor(BaseExecutor):
                 str(e),
             )
             status_code = getattr(e, "status_code", 500)
+            partial = []
+            if embedding is not None:
+                try:
+                    partial = list(embedding.flush_pending_usage())
+                except Exception:
+                    logger.warning(
+                        "Failed to flush embedding usage during indexing error path",
+                        exc_info=True,
+                    )
             raise LegacyExecutorError(
-                message=f"Error while indexing: {e}", code=status_code
+                message=f"Error while indexing: {e}",
+                code=status_code,
+                partial_usage_records=partial,
             ) from e
         finally:
             if vector_db is not None:
@@ -1649,7 +1720,7 @@ class LegacyExecutor(BaseExecutor):
             return []
 
         if output.get(PSKeys.TYPE) == PSKeys.LINE_ITEM:
-            self._run_line_item_extraction(
+            return self._run_line_item_extraction(
                 output=output,
                 context=context,
                 structured_output=structured_output,
@@ -1668,7 +1739,6 @@ class LegacyExecutor(BaseExecutor):
                 },
                 shim=shim,
             )
-            return []
 
         usage_kwargs = {"run_id": run_id, "execution_id": execution_id}
         llm, embedding, vector_db = self._init_llm_and_retrieval(
@@ -1689,7 +1759,8 @@ class LegacyExecutor(BaseExecutor):
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
             if retrieval_strategy in valid_strategies:
-                shim.stream_log(f"Retrieving context for: `{prompt_name}`")
+                if chunk_size > 0:
+                    shim.stream_log(f"Retrieving context for: `{prompt_name}`")
                 logger.info(
                     "Performing retrieval: prompt=%s strategy=%s chunk_size=%d",
                     prompt_name,
@@ -1713,9 +1784,11 @@ class LegacyExecutor(BaseExecutor):
                         context_retrieval_metrics=context_retrieval_metrics,
                     )
                 metadata[PSKeys.CONTEXT][prompt_name] = context_list
-                shim.stream_log(
-                    f"Retrieved {len(context_list)} context chunks for: `{prompt_name}`"
-                )
+                if chunk_size > 0:
+                    shim.stream_log(
+                        f"Retrieved {len(context_list)} chunks via RAG "
+                        f"for `{prompt_name}`"
+                    )
                 logger.debug(
                     "Retrieved %d context chunks for prompt: %s",
                     len(context_list),
@@ -1861,6 +1934,11 @@ class LegacyExecutor(BaseExecutor):
                     adapter_instance_id=output[PSKeys.VECTOR_DB],
                     embedding=embedding,
                 )
+            shim.log_adapter_once("LLM", output[PSKeys.LLM], llm)
+            if embedding is not None:
+                shim.log_adapter_once("Embedding", output[PSKeys.EMBEDDING], embedding)
+            if vector_db is not None:
+                shim.log_adapter_once("Vector DB", output[PSKeys.VECTOR_DB], vector_db)
             shim.stream_log(
                 f"Initialized LLM and retrieval adapters for: `{prompt_name}`"
             )
@@ -1991,7 +2069,7 @@ class LegacyExecutor(BaseExecutor):
         metrics: dict[str, Any],
         prompt_run_args: dict[str, Any],
         shim: Any,
-    ) -> None:
+    ) -> list[dict[str, Any]]:
         """Delegate LINE_ITEM prompt to the line_item executor plugin.
 
         ``prompt_run_args`` bundles the per-prompt scalars passed from
@@ -2039,6 +2117,10 @@ class LegacyExecutor(BaseExecutor):
         shim.stream_log(f"Running line-item extraction for: `{prompt_name}`")
         line_item_result = line_item_executor.execute(line_item_ctx)
 
+        usage_records: list[dict[str, Any]] = list(
+            (line_item_result.metadata or {}).get("usage_records") or []
+        )
+
         if line_item_result.success:
             data = line_item_result.data or {}
             structured_output[prompt_name] = data.get("output", "")
@@ -2064,6 +2146,7 @@ class LegacyExecutor(BaseExecutor):
                 f"Line-item extraction failed for `{prompt_name}`: {error_msg}",
                 level=LogLevel.ERROR,
             )
+        return usage_records
 
     @staticmethod
     def _apply_type_conversion(
@@ -2274,7 +2357,6 @@ class LegacyExecutor(BaseExecutor):
 
         _, _, _, _, llm_cls, _, _ = self._get_prompt_deps()
 
-        shim.stream_log("Initializing LLM for summarization...")
         llm: Any = None
         try:
             llm = llm_cls(
@@ -2286,7 +2368,9 @@ class LegacyExecutor(BaseExecutor):
                 AnswerPromptService as answer_prompt_svc,
             )
 
-            shim.stream_log("Running document summarization...")
+            shim.stream_log(
+                f"Summarizing extracted text using LLM: `{llm.get_model_name()}`"
+            )
             summary = answer_prompt_svc.run_completion(llm=llm, prompt=prompt)
             records = list(llm.flush_pending_usage())
             logger.info("Summarization completed: run_id=%s", context.run_id)
