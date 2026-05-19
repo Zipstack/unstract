@@ -181,7 +181,7 @@ function DefaultTriad() {
           <ArrowLeftOutlined />
         </Button>
         <Typography.Text className="plt-set-head-typo">
-          Default Triad
+          Default LLM Profile
         </Typography.Text>
       </div>
       <div className="plt-set-layout">
