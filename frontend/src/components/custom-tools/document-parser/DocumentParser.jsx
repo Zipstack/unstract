@@ -205,6 +205,16 @@ function DocumentParser({
         return res;
       })
       .catch((err) => {
+        // Field-keyed DRF validation errors are surfaced inline on the
+        // prompt card; re-throw so the card's catch can render them.
+        const data = err?.response?.data;
+        const hasFieldError =
+          data?.type === "validation_error" &&
+          Array.isArray(data?.errors) &&
+          data.errors.some((e) => e?.attr);
+        if (hasFieldError) {
+          throw err;
+        }
         setAlertDetails(handleException(err, "Failed to update"));
       });
   };
