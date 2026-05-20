@@ -500,7 +500,6 @@ class TestPreconfiguredDecorators:
         assert mock_func.call_count == 2
 
 
-
 class TestRetryLogging:
     """Tests for retry logging behavior."""
 
