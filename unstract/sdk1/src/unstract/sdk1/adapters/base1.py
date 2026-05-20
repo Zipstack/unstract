@@ -346,6 +346,32 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
             return f"openai/{model}"
 
 
+class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
+    """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
+
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = OpenAICompatibleLLMParameters.validate_model(
+            adapter_metadata
+        )
+        api_key = adapter_metadata.get("api_key")
+        if isinstance(api_key, str) and not api_key.strip():
+            adapter_metadata["api_key"] = None
+        return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenAI Compatible adapter.")
+        if model.startswith("custom_openai/"):
+            return model
+        return f"custom_openai/{model}"
+
+
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version."""
 
