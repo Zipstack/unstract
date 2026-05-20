@@ -269,3 +269,73 @@ def test_cmd_run_does_not_update_baseline_on_red_build(
         "writing red-build state to the baseline cache hides regressions "
         f"on the next build. Got calls: {merge_calls}"
     )
+
+
+def test_synthetic_junit_escapes_group_name(tmp_path: Path) -> None:
+    """A group key containing XML metacharacters must not break the synthetic
+    junit — otherwise parse_junit reads malformed XML as a phantom error on a
+    green hurl run.
+    """
+    import xml.etree.ElementTree as ET
+
+    import tests.rig.cli as cli_mod
+
+    junit = tmp_path / "junit.xml"
+    cli_mod._write_synthetic_junit(junit, 'hurl-api & docs <"x">', exit_code=0)
+    # Must parse without raising and round-trip the name intact.
+    root = ET.parse(junit).getroot()
+    assert root.attrib["name"] == 'hurl-api & docs <"x">'
+
+
+def test_synthetic_junit_exit_5_is_not_a_failure(tmp_path: Path) -> None:
+    import xml.etree.ElementTree as ET
+
+    import tests.rig.cli as cli_mod
+
+    junit = tmp_path / "junit.xml"
+    cli_mod._write_synthetic_junit(junit, "g", exit_code=5)
+    root = ET.parse(junit).getroot()
+    assert root.attrib["failures"] == "0"
+
+
+def test_cmd_report_re_aggregates_existing_junit(tmp_path: Path, monkeypatch) -> None:
+    """`report combine` re-parses each group's junit + writes all three summary
+    artifacts. It's the CI-retry / manual entrypoint and was previously
+    untested.
+    """
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  unit-x:\n"
+        "    tier: unit\n"
+        "    paths: [x]\n"
+        "    optional: true\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+    reports_dir = tmp_path / "reports"
+    (reports_dir / "unit-x").mkdir(parents=True)
+    (reports_dir / "unit-x" / "junit.xml").write_text(
+        '<?xml version="1.0"?>'
+        '<testsuite name="unit-x" tests="2" failures="0" errors="0" '
+        'skipped="0" time="0.5"/>'
+    )
+    (reports_dir / "unit-x" / "exit.txt").write_text("0")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+    # Skip the coverage subprocess; we only care about report aggregation here.
+    monkeypatch.setattr(cli_mod, "combine_and_report", lambda _d: None)
+
+    args = cli_mod._build_parser().parse_args(
+        ["report", "combine", "--reports-dir", str(reports_dir)]
+    )
+    exit_code = cli_mod.cmd_report(args)
+    assert exit_code == 0
+    for artifact in ("summary.md", "summary.json", "combined-test-report.md"):
+        assert (reports_dir / artifact).exists(), f"missing {artifact}"
+    assert "unit-x" in (reports_dir / "summary.md").read_text()

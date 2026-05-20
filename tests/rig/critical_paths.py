@@ -44,6 +44,12 @@ class CriticalPathRegistry:
     _by_id: dict[str, CriticalPath] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        # Duplicate ids would silently last-wins in the lookup while both rows
+        # still render — fail loudly at load time instead.
+        seen: set[str] = set()
+        dupes = sorted({p.id for p in self.paths if p.id in seen or seen.add(p.id)})
+        if dupes:
+            raise ValueError(f"duplicate critical-path ids: {dupes}")
         # `frozen=True` blocks direct assignment; route through object.__setattr__.
         object.__setattr__(self, "_by_id", {p.id: p for p in self.paths})
 
@@ -59,6 +65,15 @@ class CriticalPathStatus:
     state: CriticalPathState
     covering_groups_run: tuple[str, ...]
     notes: str = ""
+
+    def __post_init__(self) -> None:
+        # Make the contradictory states unrepresentable rather than relying on
+        # evaluate()'s discipline: covered ⇒ at least one covering group ran;
+        # gap/regression ⇒ none did.
+        if self.state == "covered" and not self.covering_groups_run:
+            raise ValueError("state='covered' requires a non-empty covering_groups_run")
+        if self.state in ("gap", "regression") and self.covering_groups_run:
+            raise ValueError(f"state={self.state!r} must have empty covering_groups_run")
 
 
 def load_critical_paths(path: Path | None = None) -> CriticalPathRegistry:

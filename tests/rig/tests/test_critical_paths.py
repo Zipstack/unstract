@@ -85,6 +85,28 @@ def test_by_id_lookup_caches() -> None:
     assert registry.by_id("p1").id == "p1"
 
 
+def test_duplicate_path_ids_rejected() -> None:
+    """Two paths with the same id silently last-wins in the lookup while both
+    still render. Fail at construction instead.
+    """
+    with pytest.raises(ValueError, match="duplicate critical-path ids"):
+        _registry(("p1", ("g1",)), ("p1", ("g2",)))
+
+
+def test_critical_path_status_rejects_contradictions() -> None:
+    """Make the contradictory states unrepresentable."""
+    from tests.rig.critical_paths import CriticalPath, CriticalPathStatus
+
+    path = CriticalPath(id="p", description="", entry="", covered_by=("g",))
+    with pytest.raises(ValueError, match="covered.*non-empty"):
+        CriticalPathStatus(path=path, state="covered", covering_groups_run=())
+    with pytest.raises(ValueError, match="empty covering_groups_run"):
+        CriticalPathStatus(path=path, state="gap", covering_groups_run=("g",))
+    # Valid combinations must not raise.
+    CriticalPathStatus(path=path, state="covered", covering_groups_run=("g",))
+    CriticalPathStatus(path=path, state="gap", covering_groups_run=())
+
+
 def test_load_baseline_raises_on_corrupt_file(tmp_path: Path) -> None:
     """A corrupt baseline must not be silently treated as empty — that would
     demote real regressions to gaps on the build that needs detection most.

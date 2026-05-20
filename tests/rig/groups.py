@@ -9,8 +9,10 @@ unless the group is marked ``optional: true`` (which is how we declare
 from __future__ import annotations
 
 import graphlib
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Literal, get_args
 
 import yaml
@@ -34,7 +36,7 @@ class GroupDefinition:
     workdir: str = "."
     markers: str | None = None
     pytest_extra: tuple[str, ...] = ()
-    env: dict[str, str] = field(default_factory=dict)
+    env: Mapping[str, str] = field(default_factory=dict)
     uv_sync_group: str | None = None
     pip_install: tuple[str, ...] = ()
     install_editable: bool = False
@@ -46,6 +48,13 @@ class GroupDefinition:
     timeout_seconds: int = 600
     parallel: bool = True
     optional: bool = False
+
+    def __post_init__(self) -> None:
+        # Freeze env: a frozen dataclass with a mutable dict still lets callers
+        # scribble onto the shared manifest record (group.env[k] = v). Coerce
+        # to a read-only proxy so the record is genuinely immutable.
+        if not isinstance(self.env, MappingProxyType):
+            object.__setattr__(self, "env", MappingProxyType(dict(self.env)))
 
     def absolute_workdir(self) -> Path:
         return (REPO_ROOT / self.workdir).resolve()

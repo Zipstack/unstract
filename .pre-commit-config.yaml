@@ -91,7 +91,9 @@ repos:
         # Only fires when the developer has opted in by creating .test-selection
         # (newline-delimited group names, gitignored). Runs serially without
         # coverage to stay fast in a commit hook.
-        entry: bash -c 'if [ -f .test-selection ]; then python -m tests.rig run --from-file .test-selection --no-coverage --no-parallel; fi'
+        # Use python3 (stock Ubuntu / many container images ship no `python`
+        # symlink), matching .github/scripts/combine-test-reports.sh.
+        entry: bash -c 'if [ -f .test-selection ]; then "$(command -v python3 || command -v python)" -m tests.rig run --from-file .test-selection --no-coverage --no-parallel; fi'
         language: system
         pass_filenames: false
         always_run: true

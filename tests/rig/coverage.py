@@ -18,6 +18,11 @@ from tests.rig.groups import REPO_ROOT
 
 log = logging.getLogger(__name__)
 
+# Cap each coverage subprocess. Runs after the per-group loop, so per-group
+# timeouts don't apply; without this a slow `uv run --with` resolve could hang
+# the job to the CI ceiling.
+_COVERAGE_TIMEOUT_SECONDS = 300
+
 
 def _clean_env() -> dict[str, str]:
     """Env for ``uv run`` that drops a leaked ``VIRTUAL_ENV`` (e.g. tox's
@@ -70,19 +75,11 @@ def combine_and_report(reports_dir: Path) -> None:
 
     base = _coverage_base()
     clean_env = _clean_env()
-    result = subprocess.run(
+    if not _run_coverage(
         [*base, "combine", *[str(p) for p in files]],
         cwd=reports_dir,
-        capture_output=True,
-        text=True,
         env=clean_env,
-    )
-    if result.returncode != 0:
-        log.warning(
-            "coverage combine failed (exit %d): %s",
-            result.returncode,
-            (result.stderr or result.stdout).strip(),
-        )
+    ):
         return
 
     combined = reports_dir / ".coverage"
@@ -103,13 +100,39 @@ def combine_and_report(reports_dir: Path) -> None:
         str(reports_dir / "htmlcov"),
     ]
     for cmd in (xml_cmd, html_cmd):
+        _run_coverage(cmd, cwd=REPO_ROOT, env=clean_env)
+
+
+def _run_coverage(cmd: list[str], *, cwd: Path, env: dict[str, str]) -> bool:
+    """Run a coverage subprocess with a timeout. Returns True on success.
+
+    A timeout is essential: ``uv run --with coverage[toml]`` can resolve over a
+    slow index, and this runs AFTER the per-group loop so the rig's per-group
+    timeouts don't apply — without a cap it could hang the job to the CI limit.
+    Failures are logged, not raised (coverage is best-effort reporting).
+    """
+    try:
         result = subprocess.run(
-            cmd, cwd=REPO_ROOT, capture_output=True, text=True, env=clean_env
+            cmd,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=_COVERAGE_TIMEOUT_SECONDS,
         )
-        if result.returncode != 0:
-            log.warning(
-                "%s failed (exit %d): %s",
-                " ".join(cmd),
-                result.returncode,
-                (result.stderr or result.stdout).strip(),
-            )
+    except subprocess.TimeoutExpired:
+        log.warning(
+            "coverage step timed out after %ds: %s",
+            _COVERAGE_TIMEOUT_SECONDS,
+            " ".join(cmd),
+        )
+        return False
+    if result.returncode != 0:
+        log.warning(
+            "%s failed (exit %d): %s",
+            " ".join(cmd),
+            result.returncode,
+            (result.stderr or result.stdout).strip(),
+        )
+        return False
+    return True

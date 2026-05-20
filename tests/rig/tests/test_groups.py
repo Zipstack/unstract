@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.rig.groups import load_groups
+from tests.rig.groups import GroupDefinition, load_groups
 
 
 def _write_manifest(tmp_path: Path, body: str) -> Path:
@@ -191,3 +191,16 @@ def test_real_manifest_is_valid() -> None:
         g = manifest.get(name)
         if name != "e2e-smoke" and g.requires_platform:
             assert "e2e-smoke" in manifest.expand([name])
+
+
+def test_group_env_is_frozen() -> None:
+    """A frozen GroupDefinition with a mutable env dict still lets callers
+    scribble onto the shared record. __post_init__ coerces to a read-only
+    proxy so that's no longer possible.
+    """
+    group = GroupDefinition(
+        name="g", tier="unit", paths=("x",), env={"A": "1"}
+    )
+    assert group.env["A"] == "1"
+    with pytest.raises(TypeError):
+        group.env["B"] = "2"  # type: ignore[index]

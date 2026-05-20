@@ -70,10 +70,25 @@ def resolve(
 
 
 def _groups_for_changed_paths(manifest: GroupManifest, *, base: str) -> set[str]:
-    """Pick groups whose ``paths`` overlap any file in ``git diff base...HEAD``."""
+    """Pick groups whose ``paths`` overlap any file in ``git diff base...HEAD``.
+
+    ``--changed-only`` is designed for PR branches. On a ``push: main`` event
+    the checked-out commit *is* ``origin/main``, so ``base...HEAD`` is empty and
+    nothing would be selected. We detect ``HEAD == base`` and fall back to
+    ``HEAD~1...HEAD`` (the merge commit's delta) so the heuristic still picks
+    something useful on main.
+    """
+    diff_range = f"{base}...HEAD"
+    if _same_commit(base, "HEAD"):
+        print(
+            f"[rig] --changed-only: HEAD == {base}; falling back to HEAD~1...HEAD "
+            "(this selector is intended for PR branches).",
+            file=sys.stderr,
+        )
+        diff_range = "HEAD~1...HEAD"
     try:
         result = subprocess.run(
-            ["git", "diff", "--name-only", f"{base}...HEAD"],
+            ["git", "diff", "--name-only", diff_range],
             check=True,
             capture_output=True,
             text=True,
@@ -119,3 +134,21 @@ def _is_within(child: Path, parent: Path) -> bool:
         return True
     except ValueError:
         return False
+
+
+def _same_commit(ref_a: str, ref_b: str) -> bool:
+    """True if both refs resolve to the same commit. Conservative on error:
+    returns False so the caller uses the normal ``base...HEAD`` range.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "rev-parse", ref_a, ref_b],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=REPO_ROOT,
+            env={**os.environ, "GIT_OPTIONAL_LOCKS": "0"},
+        ).stdout.split()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    return len(out) == 2 and out[0] == out[1]

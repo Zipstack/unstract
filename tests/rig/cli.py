@@ -21,6 +21,7 @@ import time
 import uuid
 from functools import lru_cache
 from pathlib import Path
+from xml.sax import saxutils
 
 from tests.rig import critical_paths as cp
 from tests.rig.coverage import combine_and_report, coverage_env
@@ -45,8 +46,10 @@ def _rig_session_id() -> str:
     """Stable per-invocation sentinel, computed once.
 
     Stamped into ``UNSTRACT_RIG_SESSION_ID`` for every group's pytest env so
-    e2e tests can prove that THIS rig invocation set the platform URLs — not a
-    stale shell value the developer forgot to unset.
+    e2e tests can prove the rig ran. URL ownership is intentionally cooperative
+    — the rig sets ``UNSTRACT_*_URL`` via ``setdefault``, so a developer's
+    pre-set value wins (see tests/README.md). The session id is the rig's
+    signature, not a claim that the rig owns the URLs.
     """
     return uuid.uuid4().hex
 
@@ -384,6 +387,15 @@ def cmd_run(args: argparse.Namespace) -> int:
             # rig silently returns 0 for catastrophic group failures.
             if exit_code not in _NON_FAILING_PYTEST_EXIT_CODES and overall_exit == 0:
                 overall_exit = exit_code
+            # Belt-and-braces: if the junit attests to errors/failures the exit
+            # code didn't (truncated junit → errors=1 with exit 0), the report
+            # shows ❌ but exit would otherwise stay 0. Keep them in sync.
+            if (
+                result is not None
+                and (result.errors or result.failed)
+                and overall_exit == 0
+            ):
+                overall_exit = 1
     finally:
         if runtime is not None and not args.dry_run:
             print(f"[rig] tearing platform down (runtime={runtime.name})")
@@ -434,6 +446,12 @@ def cmd_run(args: argparse.Namespace) -> int:
     # the next N builds.
     if baseline_corrupt and overall_exit == 0:
         overall_exit = 1
+
+    # In a dry run no groups executed, so every covered path looks like a
+    # gap/regression. A dry run is plan-only: report but never fail (and never
+    # write a baseline) on the back of results that didn't happen.
+    if args.dry_run:
+        return overall_exit
 
     regressions = [s for s in statuses if s.state == "regression"]
     if regressions:
@@ -525,7 +543,16 @@ def _execute_group(
     if group.runner == "hurl":
         cmd = _hurl_command(group, workdir)
         exit_code = _spawn(cmd, env=env, cwd=workdir, timeout=timeout)
-        _write_synthetic_junit(junit, group.name, exit_code)
+        # Match the exit.txt write's defensive handling: a read-only reports
+        # dir or full disk shouldn't abort the whole run and orphan completed
+        # groups before the summary renders.
+        try:
+            _write_synthetic_junit(junit, group.name, exit_code)
+        except OSError as err:
+            print(
+                f"[rig] could not write synthetic junit for {group.name}: {err}",
+                file=sys.stderr,
+            )
     else:
         cmd = _pytest_command(
             group,
@@ -676,15 +703,20 @@ def _write_synthetic_junit(path: Path, group_name: str, exit_code: int) -> None:
     Exit 5 ("no tests collected") must produce failures=0; otherwise an empty
     hurl group would show ⚪ via :class:`GroupResult` while also being counted
     as a failure in totals + critical-path evaluation.
+
+    ``group_name`` is XML-escaped: a group key containing ``"``/``&``/``<``
+    would otherwise produce malformed XML, which ``parse_junit`` then reads as
+    a phantom error on a green hurl run.
     """
     is_failure = exit_code != 0 and exit_code != 5
     failures = 1 if is_failure else 0
     failure_tag = f'<failure message="hurl exit {exit_code}"/>' if is_failure else ""
+    name = saxutils.escape(group_name, {'"': "&quot;"})
     path.write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        f'<testsuite name="{group_name}" tests="1" failures="{failures}" '
+        f'<testsuite name="{name}" tests="1" failures="{failures}" '
         f'errors="0" skipped="0" time="0">\n'
-        f'  <testcase classname="{group_name}" name="hurl-suite">{failure_tag}'
+        f'  <testcase classname="{name}" name="hurl-suite">{failure_tag}'
         f"</testcase>\n"
         f"</testsuite>\n"
     )
