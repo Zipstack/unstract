@@ -276,6 +276,7 @@ def _wait_ready(endpoints: PlatformEndpoints, *, timeout_seconds: int = 300) -> 
         endpoints.prompt_service_url.rstrip("/") + "/health",
         endpoints.platform_service_url.rstrip("/") + "/health",
         endpoints.runner_url.rstrip("/") + "/health",
+        endpoints.x2text_url.rstrip("/") + "/health",
     ]
     deadline = time.monotonic() + timeout_seconds
     while time.monotonic() < deadline:

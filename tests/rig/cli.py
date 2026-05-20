@@ -523,6 +523,7 @@ def _execute_group(
         env.setdefault("UNSTRACT_PROMPT_SERVICE_URL", endpoints.prompt_service_url)
         env.setdefault("UNSTRACT_PLATFORM_SERVICE_URL", endpoints.platform_service_url)
         env.setdefault("UNSTRACT_RUNNER_URL", endpoints.runner_url)
+        env.setdefault("UNSTRACT_X2TEXT_URL", endpoints.x2text_url)
         # Stamp the run with a per-invocation sentinel so e2e tests can
         # distinguish "rig brought the platform up" from "stale shell env
         # leaked in". `setdefault` would let a leaked sentinel win, which
