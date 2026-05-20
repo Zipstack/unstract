@@ -8,6 +8,7 @@ merges them into a single ``.coverage`` and emits XML/HTML.
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import subprocess
 import sys
@@ -16,6 +17,16 @@ from pathlib import Path
 from tests.rig.groups import REPO_ROOT
 
 log = logging.getLogger(__name__)
+
+
+def _clean_env() -> dict[str, str]:
+    """Env for ``uv run`` that drops a leaked ``VIRTUAL_ENV`` (e.g. tox's
+    ``.tox/<env>``) so uv resolves the project venv without a mismatch warning.
+    """
+    env = os.environ.copy()
+    env.pop("VIRTUAL_ENV", None)
+    env.pop("UV_PROJECT_ENVIRONMENT", None)
+    return env
 
 
 def coverage_env(group_name: str, reports_dir: Path) -> dict[str, str]:
@@ -58,11 +69,13 @@ def combine_and_report(reports_dir: Path) -> None:
         target.unlink()
 
     base = _coverage_base()
+    clean_env = _clean_env()
     result = subprocess.run(
         [*base, "combine", *[str(p) for p in files]],
         cwd=reports_dir,
         capture_output=True,
         text=True,
+        env=clean_env,
     )
     if result.returncode != 0:
         log.warning(
@@ -90,7 +103,9 @@ def combine_and_report(reports_dir: Path) -> None:
         str(reports_dir / "htmlcov"),
     ]
     for cmd in (xml_cmd, html_cmd):
-        result = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
+        result = subprocess.run(
+            cmd, cwd=REPO_ROOT, capture_output=True, text=True, env=clean_env
+        )
         if result.returncode != 0:
             log.warning(
                 "%s failed (exit %d): %s",

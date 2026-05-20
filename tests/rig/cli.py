@@ -51,6 +51,23 @@ def _rig_session_id() -> str:
     return uuid.uuid4().hex
 
 
+def _subprocess_env() -> dict[str, str]:
+    """Base environment for every group's ``uv``/pytest subprocess.
+
+    Drops ``VIRTUAL_ENV`` so ``uv run`` does clean per-group project discovery
+    (each group runs against its own workdir's ``.venv``). When the rig runs
+    under tox, tox exports ``VIRTUAL_ENV=.tox/<env>``, which doesn't match any
+    group's project and makes ``uv`` emit a "does not match the project
+    environment path" warning before ignoring it anyway. Stripping it removes
+    the noise and the ambiguity. ``UV_PROJECT_ENVIRONMENT`` is dropped for the
+    same reason.
+    """
+    env = os.environ.copy()
+    env.pop("VIRTUAL_ENV", None)
+    env.pop("UV_PROJECT_ENVIRONMENT", None)
+    return env
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -481,7 +498,7 @@ def _execute_group(
     junit = group_reports / "junit.xml"
     md_report = group_reports / "report.md"
 
-    env = os.environ.copy()
+    env = _subprocess_env()
     env.update(group.env)
     if endpoints is not None:
         env.setdefault("UNSTRACT_BACKEND_URL", endpoints.backend_url)
