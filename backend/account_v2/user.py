@@ -84,13 +84,16 @@ def _resolve_unique(
     qs = UserFilterRegistry.apply(qs, kind)
     rows = list(qs[:2])
     if len(rows) > 1:
-        total = qs.count()
-        field, value = lookup
+        # Log the matched row PKs (internal IDs, not PII) instead of the
+        # raw lookup value so ambiguity remains diagnosable from logs
+        # without expanding PII retention.
+        pks = list(qs.values_list("pk", flat=True))
+        field, _ = lookup
         Logger.error(
-            "Ambiguous User lookup for %s=%s (matched %d rows after filters)",
+            "Ambiguous User lookup by %s (matched %d rows; pks=%s)",
             field,
-            value,
-            total,
+            len(pks),
+            pks,
         )
         raise AmbiguousUserException()
     return rows[0] if rows else None

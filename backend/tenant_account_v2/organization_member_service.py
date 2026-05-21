@@ -35,12 +35,15 @@ class OrganizationMemberService:
         )
         rows = list(qs[:2])
         if len(rows) > 1:
-            total = qs.count()
+            # Log the matched member_ids (internal IDs, not PII) instead
+            # of the raw email so ambiguity remains diagnosable from logs
+            # without expanding PII retention.
+            member_ids = list(qs.values_list("member_id", flat=True))
             logger.error(
-                "Ambiguous OrganizationMember lookup for email=%s "
-                "(matched %d rows after filters)",
-                email,
-                total,
+                "Ambiguous OrganizationMember lookup by email "
+                "(matched %d rows; member_ids=%s)",
+                len(member_ids),
+                member_ids,
             )
             raise AmbiguousUserException()
         return rows[0] if rows else None
