@@ -23,20 +23,25 @@ from tests.rig.runtime import PlatformEndpoints
 
 
 def test_cmd_run_passes_scope_to_evaluate(tmp_path: Path, monkeypatch) -> None:
-    """``cmd_run`` must pass the dep-expanded selection (not just runnable
-    groups, not just groups_run_green) as ``scope_groups``. Without this
-    plumbing, scope-aware regression filtering has no effect — a future
-    refactor that drops the kwarg, or swaps it for ``runnable``, would
-    silently reintroduce cross-tier regression false positives where the
-    unit-tier baseline lights up the e2e-tier paths as regressed.
+    """``cmd_run`` must pass the runnable dep-expanded selection (not just
+    groups_run_green) as ``scope_groups``. Without this plumbing, scope-aware
+    regression filtering has no effect — a future refactor that drops the
+    kwarg would silently reintroduce cross-tier regression false positives
+    where the unit-tier baseline lights up the e2e-tier paths as regressed.
+
+    ``unit-x`` is given a real workdir/path so it survives the
+    ``_is_missing_placeholder`` filter and lands in ``scope_groups``; the
+    companion test ``test_cmd_run_excludes_missing_placeholders_from_scope``
+    covers the opposite case.
     """
+    test_dir = Path(__file__).parent
     manifest_yaml = (
         "version: 1\n"
         "groups:\n"
         "  unit-x:\n"
         "    tier: unit\n"
-        "    paths: [x]\n"
-        "    optional: true\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
     )
     cp_yaml = "version: 1\npaths: []\n"
     (tmp_path / "groups.yaml").write_text(manifest_yaml)
@@ -48,9 +53,7 @@ def test_cmd_run_passes_scope_to_evaluate(tmp_path: Path, monkeypatch) -> None:
     import tests.rig.groups as groups_mod
 
     monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
-    monkeypatch.setattr(
-        cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml"
-    )
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
 
     # Spy on evaluate to capture scope_groups.
     captured: dict[str, Any] = {}
@@ -84,6 +87,135 @@ def test_cmd_run_passes_scope_to_evaluate(tmp_path: Path, monkeypatch) -> None:
     )
 
 
+def test_cmd_run_excludes_missing_placeholders_from_scope(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """An ``optional: true`` group whose paths/workdir are absent is skipped
+    and must NOT appear in ``scope_groups``. If it leaked into scope, its
+    critical paths would classify as ``regression`` (in scope, not green)
+    instead of ``gap`` — exactly the cross-tier false positive Fix 2 prevents.
+    """
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  unit-absent:\n"
+        "    tier: unit\n"
+        "    paths: [definitely-not-on-disk]\n"
+        "    optional: true\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    captured: dict[str, Any] = {}
+    real_evaluate = cp_mod.evaluate
+
+    def spy_evaluate(*args, **kwargs):
+        captured["scope_groups"] = kwargs.get("scope_groups")
+        return real_evaluate(*args, **kwargs)
+
+    monkeypatch.setattr(cli_mod.cp, "evaluate", spy_evaluate)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "unit-absent",
+            "--dry-run",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(tmp_path / "reports"),
+            "--baseline",
+            str(tmp_path / "reports" / "previous-summary.json"),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+    assert exit_code == 0
+    assert captured["scope_groups"] == set(), (
+        "skipped optional placeholders must be excluded from scope_groups; "
+        f"got {captured.get('scope_groups')}"
+    )
+
+
+def test_optional_group_failure_does_not_block_overall_exit(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A failing ``optional: true`` group surfaces its red result in the
+    summary but must NOT gate the overall exit code. This honors the developer
+    intent for groups that need infra we don't provision in CI (live-DB
+    connector tests) or that are pluggable/cloud-only — red shows in the
+    report, merge isn't blocked.
+    """
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  unit-opt:\n"
+        "    tier: unit\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+        "  unit-req:\n"
+        "    tier: unit\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    def fake_execute_group(group, **kwargs):
+        # The optional group fails; the required one passes.
+        failed = 1 if group.optional else 0
+        exit_code = 1 if group.optional else 0
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=exit_code,
+            passed=0 if group.optional else 1,
+            failed=failed,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, exit_code
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "unit-opt",
+            "unit-req",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(tmp_path / "reports"),
+            "--baseline",
+            str(tmp_path / "reports" / "previous-summary.json"),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+    assert exit_code == 0, (
+        "a failing optional group must not gate the overall exit; "
+        f"got exit_code={exit_code}"
+    )
+
+
 def test_cmd_run_teardown_failure_does_not_mask_up_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -113,9 +245,7 @@ def test_cmd_run_teardown_failure_does_not_mask_up_failure(
     import tests.rig.groups as groups_mod
 
     monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
-    monkeypatch.setattr(
-        cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml"
-    )
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
 
     class BrokenRuntime:
         name = "broken"
@@ -173,9 +303,7 @@ def test_cmd_run_writes_summary_even_on_corrupt_baseline(
     import tests.rig.groups as groups_mod
 
     monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
-    monkeypatch.setattr(
-        cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml"
-    )
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
 
     args = cli_mod._build_parser().parse_args(
         [
@@ -238,9 +366,7 @@ def test_cmd_run_does_not_update_baseline_on_red_build(
     import tests.rig.groups as groups_mod
 
     monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
-    monkeypatch.setattr(
-        cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml"
-    )
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
     merge_calls: list[Any] = []
     monkeypatch.setattr(
         cli_mod.cp,

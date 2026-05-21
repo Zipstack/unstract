@@ -110,7 +110,7 @@ Optional knobs (see `groups.yaml` for examples):
 | `depends_on` | Other groups that must run first. |
 | `critical` | Marks the group as covering a critical path. |
 | `timeout_seconds` | Override the default 600s. |
-| `optional` | Skip silently if paths are missing (use for placeholders). |
+| `optional` | Two effects: (1) skip silently if paths/workdir are missing (placeholders, gitignored cloud-only dirs); (2) **non-blocking** — if the group runs and fails, its red result still shows in the summary but does not gate the overall exit code. Use for groups that need infra CI doesn't provision (e.g. live-DB connector tests) where a red run shouldn't block merge. |
 
 ### `critical_paths.yaml` — what we promise not to break
 

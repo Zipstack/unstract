@@ -336,13 +336,14 @@ def cmd_run(args: argparse.Namespace) -> int:
     skipped = [n for n in ordered if n not in runnable]
     for n in skipped:
         print(f"SKIP {n} (optional + workdir/paths absent)")
-    # Scope of this invocation = every selected group AFTER dep-expansion
-    # (includes dependencies the user didn't ask for directly, and includes
-    # optional placeholders that were skipped). Used by evaluate() to
-    # distinguish "this critical path was meant to be exercised here but its
-    # group ran red" (regression) from "this path belongs to a tier we
-    # weren't running this time" (gap).
-    scope_groups = set(ordered)
+    # Scope of this invocation = every group we will actually run AFTER
+    # dep-expansion (includes dependencies the user didn't ask for directly).
+    # Skipped optional placeholders are excluded: their critical paths were
+    # never going to be exercised here, so they must classify as gap, not
+    # regression. evaluate() uses this to distinguish "this path's group ran
+    # red" (regression) from "this path belongs to a tier we weren't running
+    # this time" (gap).
+    scope_groups = set(runnable)
 
     reports_dir: Path = args.reports_dir
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -382,10 +383,22 @@ def cmd_run(args: argparse.Namespace) -> int:
             )
             if result is not None:
                 group_results.append(result)
+            # `optional: true` groups run and surface their result in the
+            # summary, but never gate the overall exit. This honors the
+            # developer intent for groups that need infra we don't provision in
+            # CI (live-DB connector tests) or that are pluggable/cloud-only:
+            # red shows in the report, merge isn't blocked. Both exit-folds
+            # below are gated on `not group.optional` so the skip is consistent
+            # whether the failure came via exit code or junit attestation.
+            #
             # Always fold the exit code into overall_exit, even when junit.xml
             # was never written (segfault/OOM/missing binary). Otherwise the
             # rig silently returns 0 for catastrophic group failures.
-            if exit_code not in _NON_FAILING_PYTEST_EXIT_CODES and overall_exit == 0:
+            if (
+                exit_code not in _NON_FAILING_PYTEST_EXIT_CODES
+                and not group.optional
+                and overall_exit == 0
+            ):
                 overall_exit = exit_code
             # Belt-and-braces: if the junit attests to errors/failures the exit
             # code didn't (truncated junit → errors=1 with exit 0), the report
@@ -393,6 +406,7 @@ def cmd_run(args: argparse.Namespace) -> int:
             if (
                 result is not None
                 and (result.errors or result.failed)
+                and not group.optional
                 and overall_exit == 0
             ):
                 overall_exit = 1
