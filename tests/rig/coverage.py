@@ -62,16 +62,30 @@ def combine_and_report(reports_dir: Path) -> None:
     file paths (stored as repo-relative in ``COVERAGE_FILE`` thanks to
     ``[tool.coverage.run].relative_files = true``).
 
+    This is called once per tier invocation (``tox -e unit`` then
+    ``tox -e integration`` run as separate processes). ``coverage combine``
+    consumes its inputs, so a fresh combine of only this tier's files would
+    discard an earlier tier's merged data. To carry it forward we rename the
+    existing ``reports/.coverage`` to a suffixed ``.coverage.<tag>`` and feed
+    it back in as an input — ``coverage combine`` only picks up suffixed data
+    files, never a bare ``.coverage`` (that's the output target), so the
+    rename is required. The result is the union across every tier that ran.
+
     Errors are logged (not raised) because a coverage failure shouldn't drop
     the test run's exit code.
     """
     files = sorted(reports_dir.glob(".coverage.*"))
+    target = reports_dir / ".coverage"
+    # Carry the prior tier's merged data forward. `coverage combine` ignores a
+    # bare `.coverage` arg (it's the output), so promote it to a suffixed
+    # input name. `__prior__` sorts before tier files but order is irrelevant
+    # to the union; the suffix just needs to match the `.coverage.*` glob.
+    if target.exists():
+        prior = reports_dir / ".coverage.__prior__"
+        target.rename(prior)
+        files = [prior, *files]
     if not files:
         return
-
-    target = reports_dir / ".coverage"
-    if target.exists():
-        target.unlink()
 
     base = _coverage_base()
     clean_env = _clean_env()
