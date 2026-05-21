@@ -9,6 +9,10 @@ from account_v2.user_filter_registry import UserFilterRegistry
 
 Logger = logging.getLogger(__name__)
 
+# Cap on the number of matched row PKs included in ambiguity logs to keep
+# a misconfigured filter from turning the error path into a full table scan.
+AMBIGUITY_LOG_LIMIT = 50
+
 
 class UserService:
     def __init__(
@@ -86,12 +90,15 @@ def _resolve_unique(
     if len(rows) > 1:
         # Log the matched row PKs (internal IDs, not PII) instead of the
         # raw lookup value so ambiguity remains diagnosable from logs
-        # without expanding PII retention.
-        pks = list(qs.values_list("pk", flat=True))
+        # without expanding PII retention. Cap at AMBIGUITY_LOG_LIMIT so a
+        # misconfigured filter matching thousands of rows doesn't turn the
+        # error path into a full table scan.
+        pks = list(qs.values_list("pk", flat=True)[:AMBIGUITY_LOG_LIMIT])
         field, _ = lookup
         Logger.error(
-            "Ambiguous User lookup by %s (matched %d rows; pks=%s)",
+            "Ambiguous User lookup by %s (matched ≥%d rows; first %d pks=%s)",
             field,
+            len(pks),
             len(pks),
             pks,
         )

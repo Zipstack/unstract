@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from account_v2.custom_exceptions import AmbiguousUserException
+from account_v2.user import AMBIGUITY_LOG_LIMIT
 from account_v2.user_filter_registry import UserFilterRegistry
 from django.db.models import QuerySet
 from utils.cache_service import CacheService
@@ -14,14 +15,6 @@ logger = logging.getLogger(__name__)
 class OrganizationMemberService:
     @staticmethod
     def get_user_by_email(email: str) -> OrganizationMember | None:
-        qs = UserFilterRegistry.apply(
-            OrganizationMember.objects.filter(user__email=email),  # type: ignore
-            "org_member",
-        )
-        return qs.first()
-
-    @staticmethod
-    def get_unique_user_by_email(email: str) -> OrganizationMember | None:
         """Resolve a single OrganizationMember by email or raise.
 
         Raises ``AmbiguousUserException`` when more than one row matches
@@ -37,11 +30,15 @@ class OrganizationMemberService:
         if len(rows) > 1:
             # Log the matched member_ids (internal IDs, not PII) instead
             # of the raw email so ambiguity remains diagnosable from logs
-            # without expanding PII retention.
-            member_ids = list(qs.values_list("member_id", flat=True))
+            # without expanding PII retention. Cap so a misconfigured filter
+            # matching thousands of rows doesn't full-scan the error path.
+            member_ids = list(
+                qs.values_list("member_id", flat=True)[:AMBIGUITY_LOG_LIMIT]
+            )
             logger.error(
                 "Ambiguous OrganizationMember lookup by email "
-                "(matched %d rows; member_ids=%s)",
+                "(matched ≥%d rows; first %d member_ids=%s)",
+                len(member_ids),
                 len(member_ids),
                 member_ids,
             )

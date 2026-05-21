@@ -9,6 +9,7 @@ from django.middleware import csrf
 from django.shortcuts import redirect
 from logs_helper.log_service import LogService
 from rest_framework import status
+from rest_framework.exceptions import APIException
 from rest_framework.request import Request
 from rest_framework.response import Response
 from tenant_account_v2.models import OrganizationMember as OrganizationMember
@@ -100,6 +101,11 @@ class AuthenticationController:
             return self.auth_service.handle_authorization_callback(
                 request=request, backend=backend
             )
+        except APIException:
+            # Surface DRF exceptions (e.g., AmbiguousUserException → 409) so
+            # the actionable detail reaches the caller instead of being lost
+            # behind a generic /error redirect.
+            raise
         except Exception:
             logger.exception("Error while handling authorization callback")
             return redirect("/error")
@@ -410,7 +416,7 @@ class AuthenticationController:
     ) -> str | None:
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
-        user = OrganizationMemberService.get_unique_user_by_email(email)
+        user = OrganizationMemberService.get_user_by_email(email=email)
         if user:
             current_roles = self.auth_service.add_organization_user_role(
                 admin_user, org_id, user.user.user_id, [role], request
@@ -429,7 +435,7 @@ class AuthenticationController:
     ) -> str | None:
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
-        organization_member = OrganizationMemberService.get_unique_user_by_email(email)
+        organization_member = OrganizationMemberService.get_user_by_email(email=email)
         if organization_member:
             current_roles = self.auth_service.remove_organization_user_role(
                 admin_user, org_id, organization_member.user.user_id, [role], request
