@@ -4,8 +4,10 @@ Bug: litellm.llms.cohere.embed.handler.embedding() and async_embedding()
 receive a `timeout` parameter but don't forward it to client.post(),
 causing "Connection timed out after None seconds" errors.
 
-Affected litellm version: 1.83.10 (bug confirmed in every release between
-1.82.3 and 1.83.14-stable as of 2026-05-20; upstream issue still open).
+Affected litellm version: this patch activates only on the pinned
+version in pyproject.toml (see _PATCHED_LITELLM_VERSION below). The
+underlying bug has been observed upstream across 1.82.3 → 1.83.14;
+any version mismatch logs and skips so the upgrade is reviewed.
 
 Activation: This patch is imported as a side-effect from
 unstract.sdk1.embedding. Any code path that invokes Bedrock Cohere
