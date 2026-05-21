@@ -67,11 +67,11 @@ dev = [
     "inotify>=0.2.10",
     "poethepoet>=0.33.1",
     "debugpy>=1.8.14",
-    "pytest>=8.3.5",
+    "pytest>=9.0.3",
     "responses>=0.25.7",
     "psutil>=7.0.0",
 ]
-test = ["pytest>=8.0.1", "pytest-dotenv==0.5.2"]
+test = ["pytest>=9.0.3", "pytest-dotenv==0.5.2"]
 deploy = [
     "gunicorn~=23.0", # For serving the application
     # Keep versions empty and let uv decide version

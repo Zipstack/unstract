@@ -9,7 +9,7 @@ readme = "README.md"
 
 dependencies = [
     "peewee~=3.16",
-    "nltk~=3.8",
+    "nltk~=3.9",
     "flask~=3.0",
     "llama-index>=0.14.13",
     "python-dotenv==1.0.1",
@@ -28,7 +28,7 @@ unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
 test = [
-    "pytest~=8.0.1",
+    "pytest~=9.0.3",
     "pytest-asyncio>=0.23.0",
     "pytest-dotenv==0.5.2",
     "pytest-mock~=3.14.0",
