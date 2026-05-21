@@ -203,9 +203,17 @@ def _validate_platform_groups_depend_on_gate(
     groups: dict[str, GroupDefinition], *, gate: str
 ) -> None:
     """Every non-gate ``requires_platform`` group must transitively depend on
-    the named gate group. The gate is the smoke test: if it fails, dependent
-    groups skip cleanly rather than running against a half-up stack and
-    reporting misleading failures.
+    the named gate group. This is a *structural* invariant on the dependency
+    graph: it guarantees the manifest can never ship a platform test that
+    bypasses the smoke gate, and that the gate runs first in topological order.
+
+    Note: runtime skip-on-gate-failure (not running dependents when the gate
+    reports red) is NOT implemented yet — ``cmd_run`` executes every runnable
+    group unconditionally. Today this is moot because every dependent is
+    ``optional: true`` (a placeholder), so a smoke failure doesn't gate CI and
+    the dependents collect nothing. When those groups are promoted to active,
+    add dep-failure tracking in ``cmd_run`` so dependents skip cleanly rather
+    than running against a half-up stack — see the TODO there.
 
     If the manifest declares ``requires_platform`` groups but doesn't actually
     define the gate, that's a manifest error — silently disabling the check

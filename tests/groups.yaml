@@ -138,8 +138,10 @@ groups:
   # ── E2E tier: real HTTP against running platform ───────────────────────────
   # Every group below has `requires_platform: true` and must (transitively)
   # depend on `e2e-smoke` — the rig's `_validate_platform_groups_depend_on_gate`
-  # enforces this so smoke failures cleanly skip dependents rather than running
-  # them against a half-up stack.
+  # enforces this structural invariant so the manifest can't ship a platform
+  # test that bypasses the smoke gate, and so smoke runs first in topo order.
+  # (Runtime skip-on-gate-failure is a future enhancement; see that function's
+  # docstring and the TODO in cmd_run.)
   e2e-smoke:
     tier: e2e
     paths: [tests/e2e/smoke]

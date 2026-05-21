@@ -362,6 +362,16 @@ def cmd_run(args: argparse.Namespace) -> int:
             # in the finally, cleaning up any partial stack.
             endpoints = runtime.up()
 
+        # TODO(runtime-gate-skip): groups run unconditionally in topo order;
+        # there is no skip-if-a-dependency-failed logic yet. The dep edge to
+        # the platform gate (e2e-smoke) is enforced structurally at load time
+        # (_validate_platform_groups_depend_on_gate), but at runtime a red gate
+        # does not stop its dependents from running against a half-up stack.
+        # Moot today since every platform dependent is `optional: true`
+        # (placeholder). When promoting them to active, track failed groups
+        # here and skip any group whose (transitive) deps include a failure,
+        # writing a synthetic "skipped (dependency failed)" result. Decide then:
+        # does an optional/non-failing-exit gate cascade, and how far?
         for name in runnable:
             group = manifest.get(name)
             print(
