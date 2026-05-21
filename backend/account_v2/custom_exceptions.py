@@ -61,6 +61,6 @@ class UserAlreadyAssociatedException(APIException):
 class AmbiguousUserException(APIException):
     status_code = 409
     default_detail = (
-        "Multiple user records match this email. The environment's IdP filter "
-        "may be misconfigured. Contact your administrator."
+        "Multiple user records match this lookup. "
+        "Contact your administrator to resolve the duplicate."
     )

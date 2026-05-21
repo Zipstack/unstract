@@ -1,9 +1,14 @@
+import logging
 from typing import Any
 
+from account_v2.custom_exceptions import AmbiguousUserException
 from account_v2.user_filter_registry import UserFilterRegistry
+from django.db.models import QuerySet
 from utils.cache_service import CacheService
 
 from tenant_account_v2.models import OrganizationMember
+
+logger = logging.getLogger(__name__)
 
 
 class OrganizationMemberService:
@@ -16,6 +21,31 @@ class OrganizationMemberService:
         return qs.first()
 
     @staticmethod
+    def get_unique_user_by_email(email: str) -> OrganizationMember | None:
+        """Resolve a single OrganizationMember by email or raise.
+
+        Raises ``AmbiguousUserException`` when more than one row matches
+        after registered filters apply — that signals either duplicate
+        rows or a misconfigured identity-scoping filter, and silently
+        picking one would propagate the wrong identity downstream.
+        """
+        qs = UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(user__email=email),  # type: ignore
+            "org_member",
+        )
+        rows = list(qs[:2])
+        if len(rows) > 1:
+            total = qs.count()
+            logger.error(
+                "Ambiguous OrganizationMember lookup for email=%s "
+                "(matched %d rows after filters)",
+                email,
+                total,
+            )
+            raise AmbiguousUserException()
+        return rows[0] if rows else None
+
+    @staticmethod
     def get_user_by_user_id(user_id: str) -> OrganizationMember | None:
         qs = UserFilterRegistry.apply(
             OrganizationMember.objects.filter(user__user_id=user_id),  # type: ignore
@@ -25,29 +55,27 @@ class OrganizationMemberService:
 
     @staticmethod
     def get_user_by_id(id: str) -> OrganizationMember | None:
-        qs = UserFilterRegistry.apply(
-            OrganizationMember.objects.filter(user=id),  # type: ignore
-            "org_member",
-        )
-        return qs.first()
+        """Retrieve an OrganizationMember by the user's primary key.
+
+        PK lookups bypass the filter registry — the identifier is already
+        unique, so scoping would only risk hiding a legitimate row (most
+        critically, the executing admin's own row in role-change flows).
+        """
+        try:
+            return OrganizationMember.objects.get(user=id)  # type: ignore
+        except OrganizationMember.DoesNotExist:
+            return None
 
     @staticmethod
-    def get_members() -> list[OrganizationMember]:
+    def get_members() -> QuerySet[OrganizationMember]:
         return UserFilterRegistry.apply(
             OrganizationMember.objects.filter(user__is_service_account=False),
             "org_member",
         )
 
     @staticmethod
-    def get_members_by_role(role: str) -> list[OrganizationMember]:
-        """It return members in the order of member_id
-
-        Args:
-            role (str): user role
-
-        Returns:
-            list[OrganizationMember]: list of members
-        """
+    def get_members_by_role(role: str) -> QuerySet[OrganizationMember]:
+        """Return members for the given role, ordered by member_id."""
         return UserFilterRegistry.apply(
             OrganizationMember.objects.filter(role=role, user__is_service_account=False),
             "org_member",

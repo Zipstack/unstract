@@ -410,7 +410,7 @@ class AuthenticationController:
     ) -> str | None:
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
-        user = self._resolve_unique_member_by_email(email)
+        user = OrganizationMemberService.get_unique_user_by_email(email)
         if user:
             current_roles = self.auth_service.add_organization_user_role(
                 admin_user, org_id, user.user.user_id, [role], request
@@ -419,7 +419,8 @@ class AuthenticationController:
                 self.save_organization_user_role(
                     user_uid=user.user.id, role=current_roles[0]
                 )
-            return current_roles[0]
+                return current_roles[0]
+            return None
         else:
             return None
 
@@ -428,7 +429,7 @@ class AuthenticationController:
     ) -> str | None:
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
-        organization_member = self._resolve_unique_member_by_email(email)
+        organization_member = OrganizationMemberService.get_unique_user_by_email(email)
         if organization_member:
             current_roles = self.auth_service.remove_organization_user_role(
                 admin_user, org_id, organization_member.user.user_id, [role], request
@@ -438,38 +439,10 @@ class AuthenticationController:
                     user_uid=organization_member.user.id,
                     role=current_roles[0],
                 )
-            return current_roles[0]
+                return current_roles[0]
+            return None
         else:
             return None
-
-    @staticmethod
-    def _resolve_unique_member_by_email(email: str) -> OrganizationMember | None:
-        """Resolve a single OrganizationMember by email after registered filters.
-
-        Raises AmbiguousUserException if more than one row matches — that
-        indicates the environment's IdP filter is missing or misconfigured
-        (e.g., AUTH0_OIDC_CONNECTION not set when multiple IdP connections
-        share the same Auth0 org), and silently picking one row would lead
-        to role changes landing on the wrong identity.
-        """
-        from account_v2.user_filter_registry import UserFilterRegistry
-
-        qs = UserFilterRegistry.apply(
-            OrganizationMember.objects.filter(user__email=email),
-            "org_member",
-        )
-        members = list(qs[:2])
-        if len(members) > 1:
-            logger.error(
-                "Ambiguous OrganizationMember lookup for email=%s "
-                "(matched %d rows after IdP filter)",
-                email,
-                len(members),
-            )
-            from account_v2.custom_exceptions import AmbiguousUserException
-
-            raise AmbiguousUserException()
-        return members[0] if members else None
 
     def save_organization_user_role(self, user_uid: str, role: str) -> None:
         organization_user = OrganizationMemberService.get_user_by_id(id=user_uid)

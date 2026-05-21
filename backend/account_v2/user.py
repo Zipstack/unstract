@@ -3,6 +3,7 @@ from typing import Any
 
 from django.db import IntegrityError
 
+from account_v2.custom_exceptions import AmbiguousUserException
 from account_v2.models import User
 from account_v2.user_filter_registry import UserFilterRegistry
 
@@ -42,23 +43,54 @@ class UserService:
         return user
 
     def get_user_by_email(self, email: str) -> User | None:
-        qs = UserFilterRegistry.apply(
-            User.objects.filter(email=email, auth_provider=""), "user"
+        return _resolve_unique(
+            User.objects.filter(email=email, auth_provider=""),
+            "user",
+            ("email", email),
         )
-        return qs.first()
 
     def get_user_by_user_id(self, user_id: str) -> Any:
-        qs = UserFilterRegistry.apply(User.objects.filter(user_id=user_id), "user")
-        return qs.first()
+        return _resolve_unique(
+            User.objects.filter(user_id=user_id),
+            "user",
+            ("user_id", user_id),
+        )
 
     def get_user_by_id(self, id: str) -> Any:
-        """Retrieve a user by their ID, taking into account the schema context.
+        """Retrieve a user by primary key.
 
-        Args:
-            id (str): The ID of the user.
-
-        Returns:
-            Any: The user object if found, or None if not found.
+        PK lookups are always unique and bypass the filter registry so
+        identity-scoping filters cannot hide a row whose PK is already known
+        (e.g., the currently authenticated admin's own row).
         """
-        qs = UserFilterRegistry.apply(User.objects.filter(id=id), "user")
-        return qs.first()
+        try:
+            return User.objects.get(id=id)
+        except User.DoesNotExist:
+            return None
+
+
+def _resolve_unique(
+    qs: Any,
+    kind: str,
+    lookup: tuple[str, Any],
+) -> User | None:
+    """Apply the user filter registry and resolve to a single row.
+
+    Raises ``AmbiguousUserException`` if more than one row matches after
+    filters apply — that signals either duplicate User rows or a
+    misconfigured identity-scoping filter, and silently picking one would
+    propagate the wrong identity downstream.
+    """
+    qs = UserFilterRegistry.apply(qs, kind)
+    rows = list(qs[:2])
+    if len(rows) > 1:
+        total = qs.count()
+        field, value = lookup
+        Logger.error(
+            "Ambiguous User lookup for %s=%s (matched %d rows after filters)",
+            field,
+            value,
+            total,
+        )
+        raise AmbiguousUserException()
+    return rows[0] if rows else None
