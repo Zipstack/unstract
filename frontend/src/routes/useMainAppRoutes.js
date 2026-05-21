@@ -37,6 +37,7 @@ let ManualReviewPage;
 let SimpleManualReviewPage;
 let ReviewLayout;
 let Manage;
+let ReadOnlyReviewPage;
 let UnstractSubscriptionPage;
 let UnstractSubscriptionCheck;
 let AgenticPromptStudio;
@@ -117,6 +118,40 @@ try {
   Manage = mod4.Manage;
 } catch {
   // Do nothing, Not-found Page will be triggered.
+}
+
+try {
+  const mod = await import(
+    "../plugins/prompt-change-indicator/ReadOnlyReviewPage.jsx"
+  );
+  ReadOnlyReviewPage = mod.ReadOnlyReviewPage;
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent. Surface
+  // anything that isn't a missing-module error so syntax/runtime
+  // failures inside the plugin don't silently disable the route.
+  const msg = err?.message || "";
+  const isModuleMissing =
+    err?.code === "MODULE_NOT_FOUND" ||
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Cannot find module");
+  if (!isModuleMissing) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[prompt-change-indicator] ReadOnlyReviewPage import failed unexpectedly",
+      err,
+    );
+  }
+}
+
+// The readonly route lives inside the manual-review ReviewLayout. If the
+// prompt-change-indicator plugin ships without manual-review, the route
+// would silently never register — surface that misconfiguration loudly.
+if (ReadOnlyReviewPage && !ReviewLayout) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[prompt-change-indicator] ReadOnlyReviewPage loaded but ReviewLayout " +
+      "is missing; readonly route will not be registered.",
+  );
 }
 
 try {
@@ -257,6 +292,12 @@ function useMainAppRoutes() {
             element={<ManualReviewPage type="approve" />}
           />
           {Manage && <Route path="review/manage" element={<Manage />} />}
+          {ReadOnlyReviewPage && (
+            <Route
+              path="review/readonly/:documentId"
+              element={<ReadOnlyReviewPage />}
+            />
+          )}
         </Route>
       )}
     </>
