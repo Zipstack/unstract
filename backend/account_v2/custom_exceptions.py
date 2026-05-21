@@ -56,3 +56,11 @@ class Forbidden(APIException):
 class UserAlreadyAssociatedException(APIException):
     status_code = 400
     default_detail = "User is already associated with one organization."
+
+
+class AmbiguousUserException(APIException):
+    status_code = 409
+    default_detail = (
+        "Multiple user records match this email. The environment's IdP filter "
+        "may be misconfigured. Contact your administrator."
+    )

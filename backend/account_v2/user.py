@@ -4,6 +4,7 @@ from typing import Any
 from django.db import IntegrityError
 
 from account_v2.models import User
+from account_v2.user_filter_registry import UserFilterRegistry
 
 Logger = logging.getLogger(__name__)
 
@@ -41,17 +42,14 @@ class UserService:
         return user
 
     def get_user_by_email(self, email: str) -> User | None:
-        try:
-            user: User = User.objects.get(email=email, auth_provider="")
-            return user
-        except User.DoesNotExist:
-            return None
+        qs = UserFilterRegistry.apply(
+            User.objects.filter(email=email, auth_provider=""), "user"
+        )
+        return qs.first()
 
     def get_user_by_user_id(self, user_id: str) -> Any:
-        try:
-            return User.objects.get(user_id=user_id)
-        except User.DoesNotExist:
-            return None
+        qs = UserFilterRegistry.apply(User.objects.filter(user_id=user_id), "user")
+        return qs.first()
 
     def get_user_by_id(self, id: str) -> Any:
         """Retrieve a user by their ID, taking into account the schema context.
@@ -62,7 +60,5 @@ class UserService:
         Returns:
             Any: The user object if found, or None if not found.
         """
-        try:
-            return User.objects.get(id=id)
-        except User.DoesNotExist:
-            return None
+        qs = UserFilterRegistry.apply(User.objects.filter(id=id), "user")
+        return qs.first()

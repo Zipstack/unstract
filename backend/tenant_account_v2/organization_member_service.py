@@ -1,5 +1,6 @@
 from typing import Any
 
+from account_v2.user_filter_registry import UserFilterRegistry
 from utils.cache_service import CacheService
 
 from tenant_account_v2.models import OrganizationMember
@@ -8,28 +9,34 @@ from tenant_account_v2.models import OrganizationMember
 class OrganizationMemberService:
     @staticmethod
     def get_user_by_email(email: str) -> OrganizationMember | None:
-        try:
-            return OrganizationMember.objects.get(user__email=email)  # type: ignore
-        except OrganizationMember.DoesNotExist:
-            return None
+        qs = UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(user__email=email),  # type: ignore
+            "org_member",
+        )
+        return qs.first()
 
     @staticmethod
     def get_user_by_user_id(user_id: str) -> OrganizationMember | None:
-        try:
-            return OrganizationMember.objects.get(user__user_id=user_id)  # type: ignore
-        except OrganizationMember.DoesNotExist:
-            return None
+        qs = UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(user__user_id=user_id),  # type: ignore
+            "org_member",
+        )
+        return qs.first()
 
     @staticmethod
     def get_user_by_id(id: str) -> OrganizationMember | None:
-        try:
-            return OrganizationMember.objects.get(user=id)  # type: ignore
-        except OrganizationMember.DoesNotExist:
-            return None
+        qs = UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(user=id),  # type: ignore
+            "org_member",
+        )
+        return qs.first()
 
     @staticmethod
     def get_members() -> list[OrganizationMember]:
-        return OrganizationMember.objects.filter(user__is_service_account=False)
+        return UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(user__is_service_account=False),
+            "org_member",
+        )
 
     @staticmethod
     def get_members_by_role(role: str) -> list[OrganizationMember]:
@@ -41,8 +48,9 @@ class OrganizationMemberService:
         Returns:
             list[OrganizationMember]: list of members
         """
-        return OrganizationMember.objects.filter(
-            role=role, user__is_service_account=False
+        return UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(role=role, user__is_service_account=False),
+            "org_member",
         ).order_by("member_id")
 
     @staticmethod
@@ -72,7 +80,10 @@ class OrganizationMemberService:
         """
         if not user_emails:
             return []
-        queryset = OrganizationMember.objects.filter(user__email__in=user_emails)
+        queryset = UserFilterRegistry.apply(
+            OrganizationMember.objects.filter(user__email__in=user_emails),
+            "org_member",
+        )
         if values_list_fields is None:
             users = queryset.values()
         else:
