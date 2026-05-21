@@ -3,7 +3,7 @@
 import uuid
 
 from django.db import models
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -25,19 +25,19 @@ class MetricType(models.TextChoices):
     HISTOGRAM = "histogram", "Histogram"
 
 
-class EventMetricsHourlyManager(DefaultOrganizationManagerMixin):
+class EventMetricsHourlyManager(DefaultOrganizationManagerMixin, BaseModelManager):
     """Manager for EventMetricsHourly with organization filtering."""
 
     pass
 
 
-class EventMetricsDailyManager(DefaultOrganizationManagerMixin):
+class EventMetricsDailyManager(DefaultOrganizationManagerMixin, BaseModelManager):
     """Manager for EventMetricsDaily with organization filtering."""
 
     pass
 
 
-class EventMetricsMonthlyManager(DefaultOrganizationManagerMixin):
+class EventMetricsMonthlyManager(DefaultOrganizationManagerMixin, BaseModelManager):
     """Manager for EventMetricsMonthly with organization filtering."""
 
     pass

@@ -14,12 +14,17 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models.manager import BaseManager
 from plugins import get_plugin
+from rest_framework.exceptions import APIException
 from rest_framework.request import Request
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
 from backend.celery_service import app as celery_app
+from prompt_studio.lookup_utils import (
+    get_lookup_config,
+    get_lookup_configs_for_tool,
+)
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_profile_manager_v2.profile_manager_helper import (
     ProfileManagerHelper,
@@ -386,6 +391,9 @@ class PromptStudioHelper:
         output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
+
+        if lookup_config := get_lookup_config(prompt):
+            output["lookup_config"] = lookup_config
 
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
@@ -798,6 +806,9 @@ class PromptStudioHelper:
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
 
+        if lookup_config := get_lookup_config(prompt):
+            output["lookup_config"] = lookup_config
+
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_MONITOR_LLM] = [monitor_llm]
@@ -1165,6 +1176,10 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
+
+        lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
+        if lookup_configs:
+            tool_settings["lookup_configs"] = lookup_configs
 
         for p in prompts:
             if not p.prompt:
@@ -1540,6 +1555,7 @@ class PromptStudioHelper:
         if (
             prompt_instance.enforce_type == TSPKeys.TABLE
             or prompt_instance.enforce_type == TSPKeys.RECORD
+            or prompt_instance.enforce_type == TSPKeys.AGENTIC_TABLE
         ) and not payload_modifier_plugin:
             raise OperationNotSupported()
 
@@ -1570,17 +1586,34 @@ class PromptStudioHelper:
             "Invoking prompt service",
         )
         try:
-            response = PromptStudioHelper._fetch_response(
-                doc_path=doc_path,
-                doc_name=doc_name,
-                tool=tool,
-                prompt=prompt_instance,
-                org_id=org_id,
-                document_id=document_id,
-                run_id=run_id,
-                profile_manager_id=profile_manager_id,
-                user_id=user_id,
-            )
+            if (
+                prompt_instance.enforce_type == TSPKeys.AGENTIC_TABLE
+                and payload_modifier_plugin
+            ):
+                modifier_service = payload_modifier_plugin["service_class"]()
+                response = modifier_service.execute_agentic_table(
+                    tool_id=tool_id,
+                    prompt_id=str(prompt_instance.prompt_id),
+                    prompt_key=prompt_name,
+                    prompt=prompt_instance.prompt,
+                    doc_path=doc_path,
+                    doc_name=doc_name,
+                    org_id=org_id,
+                    user_id=user_id,
+                    run_id=run_id,
+                )
+            else:
+                response = PromptStudioHelper._fetch_response(
+                    doc_path=doc_path,
+                    doc_name=doc_name,
+                    tool=tool,
+                    prompt=prompt_instance,
+                    org_id=org_id,
+                    document_id=document_id,
+                    run_id=run_id,
+                    profile_manager_id=profile_manager_id,
+                    user_id=user_id,
+                )
             return PromptStudioHelper._handle_response(
                 response=response,
                 run_id=run_id,
@@ -1589,6 +1622,9 @@ class PromptStudioHelper:
                 is_single_pass=False,
                 profile_manager_id=profile_manager_id,
             )
+        except APIException:
+            # Validation responses are user-facing; DRF renders them as-is.
+            raise
         except Exception as e:
             logger.error(
                 f"[{tool.tool_id}] Error while fetching response for "
@@ -1654,6 +1690,9 @@ class PromptStudioHelper:
                 document_id=document_id,
                 is_single_pass=True,
             )
+        except APIException:
+            # Validation responses are user-facing; DRF renders them as-is.
+            raise
         except Exception as e:
             logger.error(
                 f"[{tool.tool_id}] Error while fetching single pass response: {e}"
@@ -1893,6 +1932,8 @@ class PromptStudioHelper:
         output[TSPKeys.ENABLE_POSTPROCESSING_WEBHOOK] = webhook_enabled
         if webhook_enabled:
             output[TSPKeys.POSTPROCESSING_WEBHOOK_URL] = webhook_url
+        if lookup_config := get_lookup_config(prompt):
+            output["lookup_config"] = lookup_config
         # Eval settings for the prompt
         output[TSPKeys.EVAL_SETTINGS] = {}
         output[TSPKeys.EVAL_SETTINGS][TSPKeys.EVAL_SETTINGS_EVALUATE] = prompt.evaluate

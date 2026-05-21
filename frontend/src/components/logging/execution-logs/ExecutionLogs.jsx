@@ -54,14 +54,14 @@ function ExecutionLogs() {
     ? location.state?.from || `/${sessionDetails?.orgName}/logs`
     : null;
 
-  // State to pass back for scroll restoration
+  // Scroll-restoration wins; otherwise preserve caller's upstream UI state.
   const backRouteState =
     id && location.state?.scrollToCardId
       ? {
           scrollToCardId: location.state.scrollToCardId,
           cardExpanded: location.state.cardExpanded,
         }
-      : null;
+      : location.state?.backRouteState || null;
 
   const items = [
     {

@@ -27,7 +27,7 @@ function EmptyState({ text, btnText, handleClick }) {
 }
 
 EmptyState.propTypes = {
-  text: PropTypes.string.isRequired,
+  text: PropTypes.node.isRequired,
   btnText: PropTypes.string,
   handleClick: PropTypes.func,
 };

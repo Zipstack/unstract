@@ -2,6 +2,7 @@ import glob
 import inspect
 import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from importlib import import_module
 from typing import TYPE_CHECKING
@@ -14,6 +15,126 @@ from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
 logger = logging.getLogger(__name__)
+
+# Anthropic models that have deprecated sampling parameters (`temperature`,
+# `top_p`, `top_k`). The patterns are regex-searched against the model id
+# after lowercasing and normalizing `.` / `_` to `-`. The match is anchored at
+# the trailing edge so that unrelated future ids (`claude-opus-4-70`,
+# `claude-opus-4-75`, `claude-opus-4-7verbose`) do not match. A single entry
+# covers every encoding of the id we have observed:
+#   - Native Anthropic              `claude-opus-4-7`, `anthropic/claude-opus-4-7`
+#   - Bedrock foundation model      `anthropic.claude-opus-4-7-<date>-v1:0`
+#   - Bedrock cross-region profile  `us.anthropic.claude-opus-4-7-...`,
+#                                   `eu.`, `apac.`, `global.` variants
+#   - Bedrock foundation-model ARN  `arn:aws:bedrock:<region>::foundation-model/
+#                                    anthropic.claude-opus-4-7-...`
+#   - Bedrock inference-profile ARN `arn:aws:bedrock:<region>:<account>:
+#                                    inference-profile/us.anthropic.claude-opus-4-7-...`
+#   - Vertex AI                     `vertex_ai/claude-opus-4-7@<date>`
+#   - Azure AI Foundry              deployments whose name embeds `claude-opus-4-7`
+# Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
+# through because the regex is anchored only at the trailing edge.
+# Add new entries here when Anthropic deprecates sampling on more models.
+# Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
+# delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
+# `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
+# `v` is intentionally rejected so alpha continuations like `4-7verbose` do
+# not silently match.
+# See https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
+_SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"claude-opus-4-7(?=$|[-:@/]|v\d)"),
+)
+_DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
+# Fields whose value can carry a model id. `model` is universal; `model_id` is
+# Bedrock's separate ARN field used for Application Inference Profile cost
+# tracking — when callers route through an AIP, the standard model id often
+# only appears here, not in `model`.
+_MODEL_ID_FIELDS: tuple[str, ...] = ("model", "model_id")
+# Substring of a Bedrock Application Inference Profile ARN; the rest of the
+# ARN is an opaque profile id so the underlying foundation model id is not
+# recoverable from the string. Used only to narrow the debug-breadcrumb path
+# on the strip's no-match branch.
+_OPAQUE_AIP_ARN_MARKER: str = "application-inference-profile"
+
+
+def _looks_like_opaque_aip_arn(value: str | None) -> bool:
+    """Return True when the value looks like a Bedrock AIP ARN.
+
+    Bedrock AIP ARNs do not carry the underlying foundation-model id in the
+    string, so the sampling-strip detector cannot decide whether the call is
+    bound for Claude Opus 4.7.
+    """
+    return bool(value) and _OPAQUE_AIP_ARN_MARKER in value
+
+
+def _has_deprecated_sampling_params(model: str | None) -> bool:
+    """Return True when the model rejects sampling parameters.
+
+    Anthropic deprecated `temperature`, `top_p`, and `top_k` starting with
+    Claude Opus 4.7; sending any of them yields a 400 from Anthropic and from
+    the providers that proxy it (Bedrock, Azure AI Foundry, Vertex AI).
+
+    The check normalizes case and `.`/`_` separators to `-`, then regex-
+    searches against the patterns with a trailing-edge boundary, so
+    `claude-opus-4-70` and `claude-opus-4-7verbose` do not match. This
+    catches every format that embeds the model id (foundation model ids,
+    cross-region profiles, foundation-model ARNs, inference-profile ARNs,
+    Vertex `@`-suffixed ids).
+
+    It does NOT catch:
+    - Bedrock Application Inference Profile ARNs (e.g.
+      `arn:aws:bedrock:...:application-inference-profile/abcd1234`), whose
+      tail is an opaque profile id — the underlying model is not recoverable
+      from the string. Pass the AIP ARN in `model_id` and keep the standard
+      model id in `model`, or the strip won't fire.
+    - Azure AI Foundry deployment names that omit the model id; rename the
+      deployment to include `claude-opus-4-7` so detection works.
+    """
+    if not model:
+        return False
+    normalized = model.lower().replace(".", "-").replace("_", "-")
+    return any(rx.search(normalized) for rx in _SAMPLING_DEPRECATED_MODEL_PATTERNS)
+
+
+def _strip_deprecated_sampling_params(validated: dict[str, "Any"]) -> dict[str, "Any"]:
+    """Return a copy of `validated` with deprecated sampling params removed.
+
+    The input dict is not mutated. Returns a shallow copy so callers can rely
+    on `before is not after` and follow the file's copy-then-mutate style.
+
+    `temperature` is the load-bearing case: `BaseChatCompletionParameters`
+    declares `temperature: float | None = Field(default=0.1)`, so Pydantic's
+    `model_dump()` re-emits the default even when the caller never set one.
+    `top_p` and `top_k` are not declared fields and are normally dropped by
+    Pydantic, but the strip defends against caller-supplied values flowing
+    through `**adapter_metadata`.
+
+    Checks both `model` and `model_id` so Bedrock callers routing through an
+    Application Inference Profile are covered when the standard model id only
+    appears in `model_id`.
+
+    Contract change: the returned dict may not contain a `temperature` key.
+    Consumers must read via `.get("temperature")`, not `dict["temperature"]`.
+    """
+    result = dict(validated)
+    if any(_has_deprecated_sampling_params(result.get(f)) for f in _MODEL_ID_FIELDS):
+        for param in _DEPRECATED_SAMPLING_PARAMS:
+            result.pop(param, None)
+    elif any(_looks_like_opaque_aip_arn(result.get(f)) for f in _MODEL_ID_FIELDS):
+        # An opaque Bedrock AIP ARN reached us with no Anthropic model id in
+        # any field. If the underlying foundation model is Opus 4.7+, the
+        # upstream call will 400 on `temperature is deprecated`; this debug
+        # log makes the strip-skipped state distinguishable from a
+        # never-attempted strip when debugging the resulting 400. The guard
+        # is intentionally narrow — the broader "any sampling param present"
+        # form fires for every routine call because Pydantic's `model_dump`
+        # always re-emits the default `temperature=0.1`.
+        logger.debug(
+            "Sampling-param strip skipped for opaque Bedrock AIP ARN; no "
+            "model id field matched a deprecation pattern. Model ids: %s",
+            {f: result.get(f) for f in _MODEL_ID_FIELDS if result.get(f)},
+        )
+    return result
 
 
 def register_adapters(adapters: dict[str, dict[str, "Any"]], adapter_type: str) -> None:
@@ -223,6 +344,32 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
             return model
         else:
             return f"openai/{model}"
+
+
+class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
+    """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
+
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata["model"] = OpenAICompatibleLLMParameters.validate_model(
+            adapter_metadata
+        )
+        api_key = adapter_metadata.get("api_key")
+        if isinstance(api_key, str) and not api_key.strip():
+            adapter_metadata["api_key"] = None
+        return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenAI Compatible adapter.")
+        if model.startswith("custom_openai/"):
+            return model
+        return f"custom_openai/{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
@@ -462,7 +609,7 @@ class VertexAILLMParameters(BaseChatCompletionParameters):
         if "thinking" in result_metadata:
             validated_data["thinking"] = result_metadata["thinking"]
 
-        return validated_data
+        return _strip_deprecated_sampling_params(validated_data)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -483,9 +630,41 @@ _BEDROCK_AWS_KEY_FIELDS: tuple[str, ...] = (
     "aws_access_key_id",
     "aws_secret_access_key",
 )
+# LiteLLM expects the Bedrock bearer token as `api_key`; the UI uses the
+# more descriptive `aws_bearer_token` and the resolver translates between them.
+_BEDROCK_BEARER_TOKEN_FIELD: str = "aws_bearer_token"
+_BEDROCK_LITELLM_BEARER_KWARG: str = "api_key"
 _BEDROCK_VALID_AUTH_TYPES: frozenset[str | None] = frozenset(
-    {None, "access_keys", "iam_role"}
+    {None, "access_keys", "iam_role", "bearer_token"}
 )
+
+
+def _drop_bedrock_access_keys(validated: dict[str, "Any"]) -> None:
+    for key in _BEDROCK_AWS_KEY_FIELDS:
+        validated.pop(key, None)
+
+
+def _require_bedrock_access_keys(validated: dict[str, "Any"]) -> None:
+    for key in _BEDROCK_AWS_KEY_FIELDS:
+        value = validated.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"{key} is required when auth_type is 'access_keys'.")
+
+
+def _translate_bedrock_bearer_token(validated: dict[str, "Any"]) -> None:
+    """Move ``aws_bearer_token`` to ``api_key``; raise if missing or blank.
+
+    Stripped before storing so surrounding whitespace doesn't reach the
+    ``Authorization`` header — AWS rejects mismatched bearer values with
+    an opaque 401.
+    """
+    token = validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+    if not isinstance(token, str) or not token.strip():
+        raise ValueError(
+            f"{_BEDROCK_BEARER_TOKEN_FIELD} is required when "
+            "auth_type is 'bearer_token'."
+        )
+    validated[_BEDROCK_LITELLM_BEARER_KWARG] = token.strip()
 
 
 def _resolve_bedrock_aws_credentials(
@@ -494,22 +673,22 @@ def _resolve_bedrock_aws_credentials(
 ) -> dict[str, "Any"]:
     """Apply auth_type semantics to the validated LiteLLM kwargs.
 
-    Three cases:
-    - ``auth_type == "iam_role"``: drop access keys unconditionally so a
-      previously-saved adapter switched into IAM Role mode does not leak
-      stale long-lived credentials. boto3's default credential chain
-      (IRSA / instance profile / env vars / AWS Profile) takes over.
-    - ``auth_type == "access_keys"`` (explicit): require non-blank values.
-      A blank submission must surface as a clear error rather than
-      silently fall through to the default chain (which would hide the
-      mistake and authenticate with whatever ambient creds the host has).
-    - ``auth_type is None`` (legacy adapters created before this field
-      existed): lenient strip of empty/missing keys. Preserves backwards
-      compatibility for stored configurations.
+    Each branch drops the credentials belonging to the *other* modes so a
+    re-saved adapter cannot leak stale long-lived secrets. Blank values
+    in an explicitly-selected mode raise rather than fall through to the
+    boto3 default chain, which would mask the misconfiguration.
+
+    - ``iam_role``: drop access keys and bearer token; boto3's default
+      chain (IRSA / instance profile / env vars / AWS Profile) takes over.
+    - ``access_keys``: require non-blank access keys; drop bearer token.
+    - ``bearer_token``: require non-blank ``aws_bearer_token``; drop
+      access keys; translate the token to ``api_key`` for LiteLLM.
+    - ``None`` (legacy, pre-``auth_type``): lenient strip of empty access
+      keys; drop any bearer token (must be opted into explicitly).
 
     Raises:
-        ValueError: on unknown ``auth_type`` (typo / non-UI client) or on
-            blank credentials when ``auth_type == "access_keys"``.
+        ValueError: on unknown ``auth_type``, blank access keys in
+            ``access_keys`` mode, or blank token in ``bearer_token`` mode.
     """
     auth_type = adapter_metadata.get("auth_type")
     if auth_type not in _BEDROCK_VALID_AUTH_TYPES:
@@ -519,23 +698,35 @@ def _resolve_bedrock_aws_credentials(
         )
 
     if auth_type == "iam_role":
-        for key in _BEDROCK_AWS_KEY_FIELDS:
-            validated.pop(key, None)
+        _drop_bedrock_access_keys(validated)
+        validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+        validated.pop(_BEDROCK_LITELLM_BEARER_KWARG, None)
         return validated
 
     if auth_type == "access_keys":
-        for key in _BEDROCK_AWS_KEY_FIELDS:
-            value = validated.get(key)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{key} is required when auth_type is 'access_keys'.")
+        _require_bedrock_access_keys(validated)
+        validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+        validated.pop(_BEDROCK_LITELLM_BEARER_KWARG, None)
         return validated
 
-    # Legacy adapters with no auth_type: strip blanks silently to
-    # preserve the pre-PR behaviour where empty key fields fell through
-    # to boto3's default chain.
+    if auth_type == "bearer_token":
+        _drop_bedrock_access_keys(validated)
+        _translate_bedrock_bearer_token(validated)
+        return validated
+
+    # No auth_type: strip blank access keys (boto3 chain takes over) and
+    # drop any bearer token — bearer auth must be opted into explicitly
+    # via auth_type='bearer_token' rather than promoted from this branch.
+    # A non-blank `api_key` is preserved here to support `LLM.complete()`'s
+    # re-validation pass, where bearer-mode kwargs round-trip without their
+    # original `auth_type`. A blank `api_key` (Pydantic's `None` default
+    # for an unset field) is dropped so LiteLLM doesn't see `api_key=None`.
     for key in _BEDROCK_AWS_KEY_FIELDS:
         if not validated.get(key):
             validated.pop(key, None)
+    validated.pop(_BEDROCK_BEARER_TOKEN_FIELD, None)
+    if not validated.get(_BEDROCK_LITELLM_BEARER_KWARG):
+        validated.pop(_BEDROCK_LITELLM_BEARER_KWARG, None)
     return validated
 
 
@@ -544,6 +735,11 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
 
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
+    # AWS_BEARER_TOKEN_BEDROCK; resolver translates to LiteLLM's `api_key`.
+    aws_bearer_token: str | None = None
+    # Declared so it survives `LLM.complete()`'s re-validation of self.kwargs;
+    # otherwise Pydantic would drop it as an unknown field.
+    api_key: str | None = None
     aws_region_name: str | None = None
     aws_profile_name: str | None = None  # For AWS SSO authentication
     model_id: str | None = None  # For Application Inference Profile (cost tracking)
@@ -608,7 +804,8 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
         # Keys mode requires non-blank values, legacy (no auth_type) is
         # lenient. Reads auth_type from result_metadata since validation_
         # metadata strips it before Pydantic.
-        return _resolve_bedrock_aws_credentials(result_metadata, validated)
+        validated = _resolve_bedrock_aws_credentials(result_metadata, validated)
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -697,7 +894,7 @@ class AnthropicLLMParameters(BaseChatCompletionParameters):
         if enable_extended_context:
             validated["extra_headers"] = {"anthropic-beta": "context-1m-2025-08-07"}
 
-        return validated
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -907,7 +1104,8 @@ class AzureAIFoundryLLMParameters(BaseChatCompletionParameters):
             adapter_metadata
         )
 
-        return AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
+        validated = AzureAIFoundryLLMParameters(**adapter_metadata).model_dump()
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
@@ -1033,6 +1231,11 @@ class AWSBedrockEmbeddingParameters(BaseEmbeddingParameters):
     # may be absent (IAM Role / Instance Profile mode).
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None
+    # AWS_BEARER_TOKEN_BEDROCK; resolver translates to LiteLLM's `api_key`.
+    aws_bearer_token: str | None = None
+    # Declared so it survives Pydantic re-validation if the kwargs ever round-
+    # trip through validate() (parity with the LLM param class).
+    api_key: str | None = None
     aws_region_name: str | None
 
     @staticmethod
@@ -1086,3 +1289,30 @@ class OllamaEmbeddingParameters(BaseEmbeddingParameters):
             return model
         else:
             return f"ollama/{model}"
+
+
+class GeminiEmbeddingParameters(BaseEmbeddingParameters):
+    """See https://docs.litellm.ai/docs/providers/gemini."""
+
+    api_key: str
+    embed_batch_size: int | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        metadata_copy = {**adapter_metadata}
+        metadata_copy["model"] = GeminiEmbeddingParameters.validate_model(metadata_copy)
+
+        return GeminiEmbeddingParameters(**metadata_copy).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        raw_model = adapter_metadata.get("model")
+        model = raw_model.strip() if isinstance(raw_model, str) else ""
+        if not model:
+            raise ValueError(
+                "The 'model' field is required for the Gemini embedding adapter. "
+                "Example: 'gemini-embedding-001'"
+            )
+        if not model.startswith("gemini/"):
+            model = f"gemini/{model}"
+        return model

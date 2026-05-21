@@ -4,7 +4,7 @@ from account_v2.models import User
 from django.conf import settings
 from django.core.validators import MinValueValidator
 from django.db import models
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -15,7 +15,7 @@ DESCRIPTION_FIELD_LENGTH = 490
 WORKFLOW_NAME_SIZE = 128
 
 
-class WorkflowModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class WorkflowModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user):
         """Filter workflows that the user can access:
         - Workflows created by the user

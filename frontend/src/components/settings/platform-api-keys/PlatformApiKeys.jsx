@@ -36,6 +36,18 @@ const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:()/]+$/;
 const SAFE_TEXT_MESSAGE =
   "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, parentheses, and forward slashes are allowed.";
 
+const PERMISSION_OPTIONS = [
+  { value: "read_write", label: "Read/Write", color: "blue" },
+  { value: "read", label: "Read", color: "default" },
+  { value: "full_access", label: "Full Access", color: "green" },
+];
+const PERMISSION_CONFIG = Object.fromEntries(
+  PERMISSION_OPTIONS.map(({ value, label, color }) => [
+    value,
+    { label, color },
+  ]),
+);
+
 function PlatformApiKeys() {
   const [keys, setKeys] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -263,11 +275,13 @@ function PlatformApiKeys() {
       dataIndex: "permission",
       key: "permission",
       width: "10%",
-      render: (text) => (
-        <Tag color={text === "read_write" ? "blue" : "default"}>
-          {text === "read_write" ? "Read/Write" : "Read"}
-        </Tag>
-      ),
+      render: (text) => {
+        const { color, label } = PERMISSION_CONFIG[text] ?? {
+          color: "default",
+          label: `Unknown: ${text}`,
+        };
+        return <Tag color={color}>{label}</Tag>;
+      },
     },
     {
       title: "Active",
@@ -424,10 +438,7 @@ function PlatformApiKeys() {
             label="Permission"
             initialValue="read_write"
           >
-            <Select>
-              <Select.Option value="read_write">Read/Write</Select.Option>
-              <Select.Option value="read">Read</Select.Option>
-            </Select>
+            <Select options={PERMISSION_OPTIONS} />
           </Form.Item>
         </Form>
       </Modal>
@@ -469,10 +480,7 @@ function PlatformApiKeys() {
             />
           </Form.Item>
           <Form.Item name="permission" label="Permission">
-            <Select>
-              <Select.Option value="read_write">Read/Write</Select.Option>
-              <Select.Option value="read">Read</Select.Option>
-            </Select>
+            <Select options={PERMISSION_OPTIONS} />
           </Form.Item>
         </Form>
       </Modal>

@@ -49,3 +49,29 @@ class EvaluationProtocol(Protocol):
     """Legacy executor: prompt evaluation."""
 
     def run(self, **kwargs: Any) -> dict: ...
+
+
+@runtime_checkable
+class LookupEnrichmentProtocol(Protocol):
+    """Legacy executor: post-extraction lookup enrichment.
+
+    The executor calls ``run_with_metrics`` (not ``run``) because the
+    plugin returns an outcome object exposing ``usage_records`` and
+    ``llm_metrics`` for the calling executor to flush. ``METRICS_KEY``
+    keys the lookup metrics into the per-prompt metrics dict.
+    """
+
+    METRICS_KEY: str
+
+    def run_with_metrics(
+        self,
+        *,
+        llm_cls: Any,
+        lookup_config: dict,
+        structured_output: dict,
+        current_value: Any,
+        metadata: dict,
+        prompt_name: str,
+        shim: Any,
+        usage_kwargs: dict | None = None,
+    ) -> Any: ...

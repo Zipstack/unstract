@@ -41,6 +41,48 @@ try {
   // The component will remain 'undefined' it is not available
 }
 
+let PromptChangeIndicator;
+try {
+  const mod = await import(
+    "../../../plugins/prompt-change-indicator/PromptChangeIndicator"
+  );
+  PromptChangeIndicator = mod.PromptChangeIndicator;
+} catch {
+  // Cloud-only feedback loop indicator; stays undefined in OSS builds
+}
+
+let LookupMenuItem;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupMenuItem"
+  );
+  LookupMenuItem = mod.LookupMenuItem;
+} catch {}
+
+let usePromptRunGatePlugin;
+let lookupPluginLoadError;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/usePromptRunGate"
+  );
+  usePromptRunGatePlugin = mod.usePromptRunGate;
+} catch (err) {
+  lookupPluginLoadError = err;
+}
+
+// Sibling plugin loaded but this hook didn't — surface so the no-op fallback
+// doesn't silently disable the run gate.
+if (lookupPluginLoadError && LookupMenuItem) {
+  // eslint-disable-next-line no-console
+  console.warn(
+    "[Header] lookup-studio plugin loaded but usePromptRunGate failed to import",
+    lookupPluginLoadError,
+  );
+}
+
+// Stable identity — avoid conditional hook call.
+const usePromptRunGate = usePromptRunGatePlugin || (() => null);
+
 function Header({
   promptDetails,
   promptKey,
@@ -59,6 +101,7 @@ function Header({
   spsLoading,
   handleSpsLoading,
   enforceType,
+  isAgenticTableReady = true,
 }) {
   const {
     selectedDoc,
@@ -69,6 +112,7 @@ function Header({
     isSimplePromptStudio,
     details,
   } = useCustomToolStore();
+  const runGate = usePromptRunGate(promptDetails);
   const [items, setItems] = useState([]);
 
   const [isDisablePrompt, setIsDisablePrompt] = useState(null);
@@ -267,6 +311,20 @@ function Header({
           isPublicSource,
       },
     ];
+    if (LookupMenuItem && !isSimplePromptStudio) {
+      dropdownItems.splice(
+        -1,
+        0,
+        {
+          type: "divider",
+        },
+        {
+          label: <LookupMenuItem promptDetails={promptDetails} />,
+          key: "lookup",
+        },
+      );
+    }
+
     if (isSimplePromptStudio) {
       dropdownItems.splice(0, 1);
     }
@@ -345,7 +403,9 @@ function Header({
         )}
         {!singlePassExtractMode && !isSimplePromptStudio && (
           <>
-            <Tooltip title="Run all LLMs for current document">
+            <Tooltip
+              title={runGate?.reason || "Run all LLMs for current document"}
+            >
               <Button
                 size="small"
                 type="text"
@@ -357,19 +417,23 @@ function Header({
                   )
                 }
                 disabled={
+                  !isAgenticTableReady ||
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
                   isPublicSource ||
-                  spsLoading?.[selectedDoc?.document_id]
+                  spsLoading?.[selectedDoc?.document_id] ||
+                  !!runGate?.disabled
                 }
               >
                 <PlayCircleOutlined className="prompt-card-actions-head" />
               </Button>
             </Tooltip>
-            <Tooltip title="Run all LLMs for all documents">
+            <Tooltip
+              title={runGate?.reason || "Run all LLMs for all documents"}
+            >
               <Button
                 size="small"
                 type="text"
@@ -380,12 +444,14 @@ function Header({
                   )
                 }
                 disabled={
+                  !isAgenticTableReady ||
                   (updateStatus?.promptId === promptDetails?.prompt_id &&
                     updateStatus?.status ===
                       promptStudioUpdateStatus?.isUpdating) ||
                   isCoverageLoading ||
                   indexDocs?.includes(selectedDoc?.document_id) ||
-                  isPublicSource
+                  isPublicSource ||
+                  !!runGate?.disabled
                 }
               >
                 <PlayCircleFilled className="prompt-card-actions-head" />
@@ -394,6 +460,12 @@ function Header({
           </>
         )}
         <ExpandCardBtn expandCard={expandCard} setExpandCard={setExpandCard} />
+        {PromptChangeIndicator && (
+          <PromptChangeIndicator
+            promptDetails={promptDetails}
+            toolDetails={details}
+          />
+        )}
         {isSimplePromptStudio && PromptRunBtnSps && (
           <PromptRunBtnSps
             spsLoading={spsLoading}
@@ -436,6 +508,7 @@ Header.propTypes = {
   spsLoading: PropTypes.object,
   handleSpsLoading: PropTypes.func.isRequired,
   enforceType: PropTypes.string,
+  isAgenticTableReady: PropTypes.bool,
 };
 
 export { Header };

@@ -1,6 +1,7 @@
 import logging
 from typing import Any
 
+from django.conf import settings
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
@@ -151,6 +152,7 @@ def make_session_response(
             role=UserSessionUtils.get_organization_member_role(request),
             provider=provider,
             is_staff=request.user.is_staff,
+            disable_sso_idp_authorization=settings.DISABLE_SSO_IDP_AUTHORIZATION,
         )
     ).data
 

@@ -155,7 +155,6 @@ class Index:
         ):
             return doc_id
 
-        self.tool.stream_log("Indexing file...")
         full_text = [
             {
                 "section": "full",
@@ -171,7 +170,6 @@ class Index:
     def _trigger_indexing(self, vector_db: Any, documents: list) -> None:
         import openai
 
-        self.tool.stream_log("Adding nodes to vector db...")
         try:
             vector_db.index_document(
                 documents,

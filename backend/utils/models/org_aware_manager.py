@@ -3,15 +3,15 @@
 import logging
 
 from django.core.exceptions import ImproperlyConfigured
-from django.db import models
 from django.db.utils import OperationalError, ProgrammingError
+from utils.models.base_model import BaseModelManager
 from utils.models.org_path_discovery import get_org_path
 from utils.user_context import UserContext
 
 logger = logging.getLogger(__name__)
 
 
-class OrgAwareManager(models.Manager):
+class OrgAwareManager(BaseModelManager):
     """Manager that auto-discovers FK path to Organization and applies
     org filtering to all queries in request context.
 

@@ -1,5 +1,6 @@
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import "./DocumentParser.css";
 import { promptType } from "../../../helpers/GetStaticData";
@@ -32,6 +33,10 @@ try {
   // The component will remain null of it is not available
 }
 
+// Module-scoped to avoid per-render recompilation.
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 function DocumentParser({
   addPromptInstance,
   scrollToBottom,
@@ -42,6 +47,7 @@ function DocumentParser({
   const [isChallenge, setIsChallenge] = useState(false);
   const [allTableSettings, setAllTableSettings] = useState([]);
   const bottomRef = useRef(null);
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     details,
     isSimplePromptStudio,
@@ -107,6 +113,28 @@ function DocumentParser({
       setScrollToBottom(false);
     }
   }, [scrollToBottom]);
+
+  // Cross-link from Lookup Studio: scroll to a specific prompt.
+  useEffect(() => {
+    const scrollToPromptId = searchParams.get("scrollTo");
+    if (
+      !scrollToPromptId ||
+      !UUID_RE.test(scrollToPromptId) ||
+      !details?.prompts?.length
+    ) {
+      return;
+    }
+
+    const el = document.querySelector(`[data-prompt-id="${scrollToPromptId}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("highlighted-prompt");
+      setTimeout(() => el.classList.remove("highlighted-prompt"), 2000);
+    }
+
+    searchParams.delete("scrollTo");
+    setSearchParams(searchParams, { replace: true });
+  }, [details?.prompts, searchParams]);
 
   const promptUrl = (urlPath) => {
     return `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/${urlPath}`;
@@ -242,7 +270,7 @@ function DocumentParser({
     <div className="doc-parser-layout">
       {details?.prompts?.map((item) => {
         return (
-          <div key={item.prompt_id}>
+          <div key={item.prompt_id} data-prompt-id={item.prompt_id}>
             <div className="doc-parser-pad-top" />
             <PromptCardWrapper
               item={item}

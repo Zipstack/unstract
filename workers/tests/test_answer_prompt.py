@@ -622,8 +622,8 @@ class TestHandleAnswerPromptRetrieval:
         )
         result = executor._handle_answer_prompt(ctx)
 
-        # Answer stays "NA" (top-level NA is preserved, not sanitized)
-        assert result.data[PSKeys.OUTPUT]["field_a"] == "NA"
+        # Answer stays "NA" which gets sanitized to None
+        assert result.data[PSKeys.OUTPUT]["field_a"] is None
 
 
 class TestHandleAnswerPromptMultiPrompt:
@@ -747,21 +747,21 @@ class TestHandleAnswerPromptMetrics:
 class TestNullSanitization:
     """Tests for _sanitize_null_values."""
 
-    def test_na_string_preserved(self):
-        """Top-level 'NA' string is preserved (not sanitized to None)."""
+    def test_na_string_becomes_none(self):
+        """Top-level 'NA' string → None."""
         from executor.executors.legacy_executor import LegacyExecutor
 
         output = {"field": "NA"}
         result = LegacyExecutor._sanitize_null_values(output)
-        assert result["field"] == "NA"
+        assert result["field"] is None
 
-    def test_na_case_insensitive_preserved(self):
-        """Top-level 'na' (lowercase) is preserved (not sanitized to None)."""
+    def test_na_case_insensitive(self):
+        """'na' (lowercase) → None."""
         from executor.executors.legacy_executor import LegacyExecutor
 
         output = {"field": "na"}
         result = LegacyExecutor._sanitize_null_values(output)
-        assert result["field"] == "na"
+        assert result["field"] is None
 
     def test_nested_list_na(self):
         """NA in nested list items → None."""

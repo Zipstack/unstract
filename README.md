@@ -176,9 +176,10 @@ Also see [architecture](docs/ARCHITECTURE.md).
 | Provider | Status | Provider | Status |
 |----------|--------|----------|--------|
 | OpenAI | ✅ | Azure OpenAI | ✅ |
-| Anthropic Claude | ✅ | Google Gemini | ✅ |
-| AWS Bedrock | ✅ | Mistral AI | ✅ |
-| Ollama (local) | ✅ | Anyscale | ✅ |
+| OpenAI Compatible | ✅ | Anthropic Claude | ✅ |
+| AWS Bedrock | ✅ | Google Gemini | ✅ |
+| Ollama (local) | ✅ | Mistral AI | ✅ |
+| Anyscale | ✅ | | |
 
 ### Vector Databases
 
