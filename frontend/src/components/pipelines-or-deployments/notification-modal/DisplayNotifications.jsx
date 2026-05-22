@@ -91,7 +91,7 @@ function DisplayNotifications({
           indicator: <SpinnerLoader />,
           spinning: isLoading,
         }}
-        pagination={{ pageSize: 5 }}
+        pagination={false}
       />
     </SpaceWrapper>
   );

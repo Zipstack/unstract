@@ -9,9 +9,8 @@ import {
   Divider,
   Input,
   InputNumber,
-  Radio,
   Row,
-  Space,
+  Tag,
   Typography,
 } from "antd";
 import { useEffect, useState } from "react";
@@ -326,94 +325,110 @@ function PlatformSettings() {
         <div className="plt-set-layout">
           <IslandLayout>
             <div className="plt-set-layout-2">
-              <div>
+              <div className="plt-set-section">
                 <Typography.Title level={5}>Internal API Keys</Typography.Title>
-                {keys.map((keyDetails, keyIndex) => {
-                  return (
-                    <div key={keyDetails?.keyName}>
-                      <div>
-                        <div className="plt-set-key-head">
-                          <Row>
-                            <Col>
-                              <div className="plt-set-key-head-col-1">
-                                <Typography.Text>
-                                  {keyDetails?.keyName}
-                                </Typography.Text>
-                              </div>
-                            </Col>
-                            <Col>
-                              <div className="plt-set-key-head-col-2">
-                                <Radio
-                                  checked={
-                                    keyDetails?.id && activeKey === keyIndex
-                                  }
-                                  disabled={keyDetails?.id === null}
-                                  onClick={() => handleToggle(keyIndex)}
-                                >
-                                  Active Key
-                                </Radio>
-                              </div>
-                            </Col>
-                          </Row>
-                        </div>
+                <Typography.Text
+                  type="secondary"
+                  className="plt-set-section-subtitle"
+                >
+                  Authenticate platform-to-platform requests. Keep these values
+                  secret.
+                </Typography.Text>
+                <div className="plt-set-inner-card">
+                  {keys.map((keyDetails, keyIndex) => {
+                    const isActive =
+                      Boolean(keyDetails?.id) && activeKey === keyIndex;
+                    const canActivate = keyDetails?.id !== null;
+                    return (
+                      <div key={keyDetails?.keyName}>
                         <div>
-                          <Row gutter={10}>
-                            <Col>
-                              <div className="plt-set-key-display">
-                                <Input
-                                  size="small"
-                                  value={keys[keyIndex].key}
-                                  suffix={
-                                    <CopyOutlined
-                                      onClick={() =>
-                                        copyText(keys[keyIndex].key)
-                                      }
-                                    />
-                                  }
-                                />
-                              </div>
-                            </Col>
-                            <Col>
-                              <Button
-                                size="small"
-                                loading={isLoadingIndex === keyIndex}
-                                onClick={() => handleGenerate(keyIndex)}
+                          <div className="plt-set-key-head">
+                            <Typography.Text>
+                              {keyDetails?.keyName}
+                            </Typography.Text>
+                            {isActive ? (
+                              <Tag color="success">Active</Tag>
+                            ) : (
+                              <Tag
+                                className={
+                                  canActivate
+                                    ? "plt-set-key-pill-clickable"
+                                    : undefined
+                                }
+                                onClick={
+                                  canActivate
+                                    ? () => handleToggle(keyIndex)
+                                    : undefined
+                                }
                               >
-                                {keyDetails?.id?.length > 0
-                                  ? "Refresh"
-                                  : "Generate"}
-                              </Button>
-                            </Col>
-                            <Col>
-                              <ConfirmModal
-                                handleConfirm={() => handleDelete(keyIndex)}
-                                content="Want to delete this platform key? This action cannot be undone."
-                                okText="Delete"
-                              >
+                                Inactive
+                              </Tag>
+                            )}
+                          </div>
+                          <div>
+                            <Row gutter={10}>
+                              <Col>
+                                <div className="plt-set-key-display">
+                                  <Input
+                                    size="small"
+                                    value={keys[keyIndex].key}
+                                    suffix={
+                                      <CopyOutlined
+                                        onClick={() =>
+                                          copyText(keys[keyIndex].key)
+                                        }
+                                      />
+                                    }
+                                  />
+                                </div>
+                              </Col>
+                              <Col>
                                 <Button
                                   size="small"
-                                  icon={<DeleteOutlined />}
-                                  disabled={keyDetails?.id === null}
-                                  loading={isDeletingIndex === keyIndex}
-                                />
-                              </ConfirmModal>
-                            </Col>
-                          </Row>
+                                  loading={isLoadingIndex === keyIndex}
+                                  onClick={() => handleGenerate(keyIndex)}
+                                >
+                                  {keyDetails?.id?.length > 0
+                                    ? "Refresh"
+                                    : "Generate"}
+                                </Button>
+                              </Col>
+                              <Col>
+                                <ConfirmModal
+                                  handleConfirm={() => handleDelete(keyIndex)}
+                                  content="Want to delete this platform key? This action cannot be undone."
+                                  okText="Delete"
+                                >
+                                  <Button
+                                    size="small"
+                                    icon={<DeleteOutlined />}
+                                    disabled={keyDetails?.id === null}
+                                    loading={isDeletingIndex === keyIndex}
+                                  />
+                                </ConfirmModal>
+                              </Col>
+                            </Row>
+                          </div>
                         </div>
+                        {keyIndex < keys?.length - 1 && <Divider />}
                       </div>
-                      {keyIndex < keys?.length - 1 && <Divider />}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
-              <Divider />
-              <div className="plt-set-batch-interval">
+              <div className="plt-set-section">
                 <Typography.Title level={5}>Notifications</Typography.Title>
-                <div style={{ marginTop: 12 }}>
-                  <Space>
-                    <Typography.Text>
-                      Notification interval (minutes, 1–120)
-                    </Typography.Text>
+                <Typography.Text
+                  type="secondary"
+                  className="plt-set-section-subtitle"
+                >
+                  Control how often the platform notifies you about activity.
+                </Typography.Text>
+                <div className="plt-set-inner-card">
+                  <Typography.Text className="plt-set-notif-field-label">
+                    Notification interval
+                  </Typography.Text>
+                  <div className="plt-set-notif-field-row">
                     <InputNumber
                       min={1}
                       max={120}
@@ -429,12 +444,13 @@ function PlatformSettings() {
                     >
                       Save
                     </Button>
-                  </Space>
-                  <div style={{ marginTop: 4 }}>
-                    <Typography.Text type="secondary">
-                      Allowed: 1–120 minutes. Default: 5 minutes.
-                    </Typography.Text>
                   </div>
+                  <Typography.Text
+                    type="secondary"
+                    className="plt-set-notif-helper"
+                  >
+                    Allowed: 1 to 120 minutes. Default: 5 minutes.
+                  </Typography.Text>
                 </div>
               </div>
             </div>
