@@ -346,6 +346,27 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
             return f"openai/{model}"
 
 
+_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+
+
+def _is_openai_reasoning_model(model: str) -> bool:
+    """Best-effort detection of OpenAI reasoning model names.
+
+    The check is conservative — it matches only OpenAI's known reasoning
+    families (o1, o3, o4, gpt-5) after stripping the LiteLLM `custom_openai/`
+    prefix and optional `openai/` sub-prefix. Custom gateway model aliases
+    that hide a reasoning model behind an unrelated name still need the
+    explicit `enable_reasoning` opt-in.
+    """
+    if not model:
+        return False
+    if model.startswith("custom_openai/"):
+        model = model[len("custom_openai/") :]
+    if model.startswith("openai/"):
+        model = model[len("openai/") :]
+    return bool(_OPENAI_REASONING_MODEL_PATTERN.match(model.lower()))
+
+
 class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
 
@@ -368,12 +389,19 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         # is generic and does not apply these transformations, so we route the
         # reasoning-only fields via `extra_body` (which LiteLLM forwards as-is)
         # and strip the rejected fields from the top-level kwargs.
+        # Auto-detect known OpenAI reasoning model names so users do not have
+        # to know that gpt-5 / o-series need special handling — they can still
+        # opt in explicitly for custom gateway aliases that hide the model id.
         enable_reasoning = adapter_metadata.get("enable_reasoning", False)
         has_reasoning_effort = (
             "reasoning_effort" in adapter_metadata
             and adapter_metadata.get("reasoning_effort") is not None
         )
         if not enable_reasoning and has_reasoning_effort:
+            enable_reasoning = True
+        if not enable_reasoning and _is_openai_reasoning_model(
+            adapter_metadata["model"]
+        ):
             enable_reasoning = True
 
         max_tokens = adapter_metadata.get("max_tokens")

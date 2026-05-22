@@ -105,6 +105,58 @@ def test_openai_compatible_schema_exposes_reasoning_toggle() -> None:
     assert reasoning_branch["then"]["required"] == ["reasoning_effort"]
 
 
+def test_openai_compatible_validate_auto_detects_reasoning_for_known_families() -> None:
+    # User-facing requirement: dropping a known OpenAI reasoning model name
+    # (gpt-5, o1, o3, o4 and their *-mini / *-nano / dated variants) into the
+    # adapter must "just work" — the upstream API rejects `temperature != 1`
+    # and `max_tokens`, and users will not know to flip a switch for that.
+    for model in [
+        "gpt-5",
+        "gpt-5-mini",
+        "gpt-5-2024-12-01",
+        "o1",
+        "o1-mini",
+        "o1-preview",
+        "o3",
+        "o3-mini",
+        "o4-mini",
+        "openai/gpt-5",
+    ]:
+        validated = OpenAICompatibleLLMParameters.validate(
+            {
+                "api_base": "https://api.openai.com/v1",
+                "api_key": "sk-test",
+                "model": model,
+                "max_tokens": 4096,
+            }
+        )
+
+        assert "temperature" not in validated, f"{model} should drop temperature"
+        assert "max_tokens" not in validated, f"{model} should drop max_tokens"
+        assert validated["extra_body"] == {
+            "reasoning_effort": "medium",
+            "max_completion_tokens": 4096,
+        }, f"{model} should route reasoning params via extra_body"
+
+
+def test_openai_compatible_validate_preserves_non_reasoning_models() -> None:
+    # Non-reasoning OpenAI models (gpt-4o, gpt-4o-mini, gpt-3.5-turbo) and
+    # arbitrary gateway aliases must keep `temperature` / `max_tokens` so the
+    # existing vLLM / LM Studio / generic gateway path is unchanged.
+    for model in ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", "gateway-model"]:
+        validated = OpenAICompatibleLLMParameters.validate(
+            {
+                "api_base": "https://gateway.example.com/v1",
+                "model": model,
+                "max_tokens": 1024,
+            }
+        )
+
+        assert validated["temperature"] == 0.1, f"{model} should keep temperature"
+        assert validated["max_tokens"] == 1024, f"{model} should keep max_tokens"
+        assert "extra_body" not in validated, f"{model} should not set extra_body"
+
+
 def test_openai_compatible_validate_routes_reasoning_via_extra_body() -> None:
     # GPT-5 / o-series via custom_openai: LiteLLM does NOT auto-translate
     # `max_tokens` to `max_completion_tokens` or drop `temperature`, so the
