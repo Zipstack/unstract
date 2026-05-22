@@ -402,6 +402,15 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
             "reasoning_effort" in adapter_metadata
             and adapter_metadata.get("reasoning_effort") is not None
         )
+        # When validate() runs again on its own previous output, the reasoning
+        # fields live ONLY inside `extra_body` (this method strips them from
+        # the top level on the reasoning path). Recover them from there so
+        # re-validation is idempotent for non-auto-detected aliases too.
+        existing_extra_body = adapter_metadata.get("extra_body")
+        has_reasoning_extra_body = (
+            isinstance(existing_extra_body, dict)
+            and existing_extra_body.get("reasoning_effort") is not None
+        )
         # Infer reasoning only when `enable_reasoning` is ABSENT (e.g. on a
         # re-validation pass that already stripped the field). Skip the inference
         # if the user explicitly submitted `enable_reasoning: false` with a
@@ -409,14 +418,22 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         # implicit opt-in.
         if (
             not enable_reasoning
-            and has_reasoning_effort
             and "enable_reasoning" not in adapter_metadata
+            and (has_reasoning_effort or has_reasoning_extra_body)
         ):
             enable_reasoning = True
         if not enable_reasoning and _is_openai_reasoning_model(adapter_metadata["model"]):
             enable_reasoning = True
 
-        reasoning_effort = adapter_metadata.get("reasoning_effort") or "medium"
+        reasoning_effort = (
+            adapter_metadata.get("reasoning_effort")
+            or (
+                existing_extra_body.get("reasoning_effort")
+                if isinstance(existing_extra_body, dict)
+                else None
+            )
+            or "medium"
+        )
 
         exclude_fields = {"enable_reasoning"}
         if not enable_reasoning:
@@ -429,8 +446,13 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         if enable_reasoning:
             # Read max_tokens from the validated dict so Pydantic's `int | None`
             # coercion (e.g. "4096" -> 4096) has already been applied before the
-            # value is forwarded to the upstream API via extra_body.
+            # value is forwarded to the upstream API via extra_body. On the
+            # re-validation path the original max_tokens is in extra_body, not
+            # at the top level — fall back to that to keep the value across
+            # passes.
             max_tokens = validated.get("max_tokens")
+            if max_tokens is None and isinstance(existing_extra_body, dict):
+                max_tokens = existing_extra_body.get("max_completion_tokens")
             extra_body = {"reasoning_effort": reasoning_effort}
             if max_tokens is not None:
                 extra_body["max_completion_tokens"] = max_tokens

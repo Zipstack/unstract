@@ -237,6 +237,33 @@ def test_openai_compatible_validate_infers_reasoning_from_effort_field() -> None
     }
 
 
+def test_reasoning_state_survives_revalidation_for_custom_alias() -> None:
+    # Regression: validate() strips `enable_reasoning` / `reasoning_effort`
+    # from the top level on the reasoning path and routes them into
+    # `extra_body`. Feeding that output back into validate() for a
+    # non-auto-detected alias (where `_is_openai_reasoning_model` cannot
+    # rescue) must still preserve the reasoning state — otherwise the
+    # second pass would emit `temperature` / `max_tokens` and the upstream
+    # API would reject the request.
+    first = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "my-gateway-alias",
+            "max_tokens": 4096,
+            "enable_reasoning": True,
+            "reasoning_effort": "high",
+        }
+    )
+    second = OpenAICompatibleLLMParameters.validate(dict(first))
+
+    assert "temperature" not in second
+    assert "max_tokens" not in second
+    assert second["extra_body"] == {
+        "reasoning_effort": "high",
+        "max_completion_tokens": 4096,
+    }
+
+
 def test_explicit_disable_overrides_leftover_reasoning_effort() -> None:
     # Regression: when a user explicitly submits `enable_reasoning: false`
     # while a leftover `reasoning_effort` is still in the stored metadata
