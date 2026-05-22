@@ -399,9 +399,7 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         )
         if not enable_reasoning and has_reasoning_effort:
             enable_reasoning = True
-        if not enable_reasoning and _is_openai_reasoning_model(
-            adapter_metadata["model"]
-        ):
+        if not enable_reasoning and _is_openai_reasoning_model(adapter_metadata["model"]):
             enable_reasoning = True
 
         max_tokens = adapter_metadata.get("max_tokens")
