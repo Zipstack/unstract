@@ -85,6 +85,88 @@ def test_openai_compatible_schema_is_loadable() -> None:
     assert "ERNIE" not in schema["properties"]["model"]["description"]
     assert "qianfan" not in schema["properties"]["api_base"]["description"].lower()
     assert "default" not in schema["properties"]["api_base"]
+    assert schema["properties"]["enable_reasoning"]["default"] is False
+
+
+def test_openai_compatible_validate_default_keeps_temperature_and_max_tokens() -> None:
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "gateway-model",
+            "max_tokens": 4096,
+        }
+    )
+
+    assert validated["temperature"] == 0.1
+    assert validated["max_tokens"] == 4096
+    assert "max_completion_tokens" not in validated
+    assert "reasoning_effort" not in validated
+
+
+def test_openai_compatible_validate_autodetects_reasoning_model() -> None:
+    """gpt-5 must work without the user enabling the Reasoning toggle."""
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "api_key": "test-key",
+            "model": "gpt-5",
+            "temperature": 0.1,
+            "max_tokens": 4096,
+        }
+    )
+
+    assert "temperature" not in validated
+    assert "max_tokens" not in validated
+    assert validated["max_completion_tokens"] == 4096
+    # reasoning_effort stays opt-in
+    assert "reasoning_effort" not in validated
+
+
+def test_openai_compatible_validate_autodetects_o_series_with_prefix() -> None:
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "model": "custom_openai/openai/o3-mini",
+            "max_tokens": 1024,
+        }
+    )
+
+    assert "temperature" not in validated
+    assert validated["max_completion_tokens"] == 1024
+
+
+def test_openai_compatible_validate_non_reasoning_model_unaffected() -> None:
+    """A look-alike name (gpt-50) must not trigger the reasoning transforms."""
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "gpt-50-turbo",
+            "max_tokens": 4096,
+        }
+    )
+
+    assert validated["temperature"] == 0.1
+    assert validated["max_tokens"] == 4096
+    assert "max_completion_tokens" not in validated
+
+
+def test_openai_compatible_validate_reasoning_toggle_overrides_unknown_name() -> None:
+    """The toggle still fixes params for reasoning models with odd names."""
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "gateway-reasoner",
+            "temperature": 0.1,
+            "max_tokens": 4096,
+            "enable_reasoning": True,
+            "reasoning_effort": "high",
+        }
+    )
+
+    assert "temperature" not in validated
+    assert validated["reasoning_effort"] == "high"
+    assert validated["max_completion_tokens"] == 4096
+    assert "enable_reasoning" not in validated
 
 
 def test_openai_compatible_adapter_uses_distinct_description_and_icon() -> None:

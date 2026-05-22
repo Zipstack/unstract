@@ -346,11 +346,42 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
             return f"openai/{model}"
 
 
+# Anchored to the start or a path separator and to the trailing edge so that
+# look-alike ids (e.g. `gpt-50`) do not match.
+_REASONING_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?:^|/)gpt-5(?=$|[-.])"),
+    re.compile(r"(?:^|/)o[1-9](?=$|[-.])"),
+)
+
+
+def _is_reasoning_model(model: str | None) -> bool:
+    """Return True when the model id matches a known OpenAI reasoning family."""
+    if not model:
+        return False
+    normalized = model.lower().replace("_", "-")
+    return any(rx.search(normalized) for rx in _REASONING_MODEL_PATTERNS)
+
+
+def _apply_reasoning_param_compat(validated: dict[str, "Any"]) -> None:
+    """Reshape sampling params in place for OpenAI reasoning models.
+
+    Reasoning models reject `temperature` != 1 and require
+    `max_completion_tokens` over `max_tokens`. litellm applies this for
+    providers it has model metadata for; the generic OpenAI-compatible
+    provider has none, so the adapter handles it.
+    """
+    validated.pop("temperature", None)
+    max_tokens = validated.pop("max_tokens", None)
+    if max_tokens is not None:
+        validated["max_completion_tokens"] = max_tokens
+
+
 class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
 
     api_key: str | None = None
     api_base: str
+    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -360,7 +391,38 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         api_key = adapter_metadata.get("api_key")
         if isinstance(api_key, str) and not api_key.strip():
             adapter_metadata["api_key"] = None
-        return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
+
+        # `reasoning_effort` applies only when reasoning is explicitly enabled.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        if not enable_reasoning and adapter_metadata.get("reasoning_effort"):
+            enable_reasoning = True
+
+        result_metadata = adapter_metadata.copy()
+        if enable_reasoning:
+            result_metadata["reasoning_effort"] = adapter_metadata.get(
+                "reasoning_effort", "medium"
+            )
+
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+        validation_metadata = {
+            k: v for k, v in result_metadata.items() if k not in exclude_fields
+        }
+
+        validated = OpenAICompatibleLLMParameters(**validation_metadata).model_dump()
+
+        if enable_reasoning:
+            validated["reasoning_effort"] = result_metadata["reasoning_effort"]
+        else:
+            validated.pop("reasoning_effort", None)
+
+        # Apply param compatibility for recognized reasoning models, or when
+        # reasoning is explicitly enabled (covers non-standard model names).
+        if enable_reasoning or _is_reasoning_model(validated.get("model")):
+            _apply_reasoning_param_compat(validated)
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
