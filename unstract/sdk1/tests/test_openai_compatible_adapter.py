@@ -340,6 +340,19 @@ def test_openai_compatible_validate_no_cost_model_for_other_gateway() -> None:
     assert "cost_model" not in validated
 
 
+def test_openai_compatible_validate_cost_model_stable_on_revalidation() -> None:
+    # validate() may run on its own previous output; cost_model must survive.
+    first = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-4o",
+        }
+    )
+    second = OpenAICompatibleLLMParameters.validate(first)
+
+    assert second["cost_model"] == "gpt-4o"
+
+
 def test_openai_compatible_adapter_uses_distinct_description_and_icon() -> None:
     metadata = OpenAICompatibleLLMAdapter.get_metadata()
 

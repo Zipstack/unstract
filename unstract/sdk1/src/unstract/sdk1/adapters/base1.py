@@ -374,10 +374,13 @@ def _is_openai_reasoning_model(model: str) -> bool:
 
 
 def _is_openai_api_endpoint(api_base: str | None) -> bool:
-    """Return True when api_base points at OpenAI's own API host."""
+    """Return True when api_base points at OpenAI's own HTTPS API host."""
     if not api_base:
         return False
-    return (urlparse(api_base).hostname or "").lower() == "api.openai.com"
+    parsed = urlparse(api_base)
+    return (
+        parsed.scheme == "https" and (parsed.hostname or "").lower() == "api.openai.com"
+    )
 
 
 class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
