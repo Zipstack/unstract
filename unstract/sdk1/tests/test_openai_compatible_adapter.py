@@ -107,9 +107,9 @@ def test_openai_compatible_schema_exposes_reasoning_toggle() -> None:
     # vacuously when the property is omitted from the submitted instance
     # (JSON Schema treats a `properties`-only `if` as valid in that case).
     for branch in schema["allOf"]:
-        assert branch["if"].get("required") == ["enable_reasoning"], (
-            "if/then branches must anchor on the property being present"
-        )
+        assert branch["if"].get("required") == [
+            "enable_reasoning"
+        ], "if/then branches must anchor on the property being present"
 
 
 def test_openai_compatible_validate_auto_detects_reasoning_for_known_families() -> None:
