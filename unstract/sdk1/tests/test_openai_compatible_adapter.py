@@ -4,7 +4,6 @@ from importlib import import_module
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
