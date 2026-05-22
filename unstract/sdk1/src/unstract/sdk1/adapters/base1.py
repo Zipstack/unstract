@@ -340,12 +340,17 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add openai/ prefix if the model doesn't already have it
-        if model.startswith("openai/"):
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
             return model
         else:
-            return f"openai/{model}"
+            return f"{_OPENAI_PROVIDER_PREFIX}{model}"
 
 
+# LiteLLM provider prefixes hoisted to module constants so the same literal is
+# not duplicated across `OpenAILLMParameters`, `OpenAICompatibleLLMParameters`,
+# and the reasoning-model detector below.
+_OPENAI_PROVIDER_PREFIX = "openai/"
+_CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
 _OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
 
 
@@ -360,10 +365,10 @@ def _is_openai_reasoning_model(model: str) -> bool:
     """
     if not model:
         return False
-    if model.startswith("custom_openai/"):
-        model = model[len("custom_openai/") :]
-    if model.startswith("openai/"):
-        model = model[len("openai/") :]
+    if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
+        model = model[len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :]
+    if model.startswith(_OPENAI_PROVIDER_PREFIX):
+        model = model[len(_OPENAI_PROVIDER_PREFIX) :]
     return bool(_OPENAI_REASONING_MODEL_PATTERN.match(model.lower()))
 
 
@@ -434,9 +439,9 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         model = str(adapter_metadata.get("model", "")).strip()
         if not model:
             raise ValueError("model is required for the OpenAI Compatible adapter.")
-        if model.startswith("custom_openai/"):
+        if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
             return model
-        return f"custom_openai/{model}"
+        return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):

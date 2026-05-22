@@ -3,10 +3,17 @@ from functools import lru_cache
 from importlib import import_module
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.adapters.llm1.openai_compatible import OpenAICompatibleLLMAdapter
+
+# Pydantic default for `temperature` on `BaseChatCompletionParameters`. Wrapped
+# in `pytest.approx` so the non-reasoning-path assertions read the value safely
+# (float `==` triggers Sonar S1244 even when both sides are the same literal).
+_DEFAULT_TEMPERATURE = pytest.approx(0.1)
 
 OPENAI_COMPATIBLE_DESCRIPTION = (
     "Adapter for servers that implement the OpenAI Chat Completions API "
@@ -159,7 +166,7 @@ def test_openai_compatible_validate_preserves_non_reasoning_models() -> None:
             }
         )
 
-        assert validated["temperature"] == 0.1, f"{model} should keep temperature"
+        assert validated["temperature"] == _DEFAULT_TEMPERATURE, f"{model} should keep temperature"
         assert validated["max_tokens"] == 1024, f"{model} should keep max_tokens"
         assert "extra_body" not in validated, f"{model} should not set extra_body"
 
@@ -241,7 +248,7 @@ def test_openai_compatible_validate_no_reasoning_unchanged() -> None:
 
     # Non-reasoning path must preserve temperature/max_tokens for ordinary
     # OpenAI-compatible gateways (vLLM, LM Studio, etc.).
-    assert validated["temperature"] == 0.1
+    assert validated["temperature"] == _DEFAULT_TEMPERATURE
     assert validated["max_tokens"] == 1024
     assert "extra_body" not in validated
     assert "reasoning_effort" not in validated
