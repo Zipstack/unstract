@@ -3,6 +3,7 @@ from functools import lru_cache
 from importlib import import_module
 from unittest.mock import MagicMock, patch
 
+import pytest
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
@@ -97,7 +98,7 @@ def test_openai_compatible_validate_default_keeps_temperature_and_max_tokens() -
         }
     )
 
-    assert validated["temperature"] == 0.1
+    assert validated["temperature"] == pytest.approx(0.1)
     assert validated["max_tokens"] == 4096
     assert "max_completion_tokens" not in validated
     assert "reasoning_effort" not in validated
@@ -145,7 +146,7 @@ def test_openai_compatible_validate_non_reasoning_model_unaffected() -> None:
         }
     )
 
-    assert validated["temperature"] == 0.1
+    assert validated["temperature"] == pytest.approx(0.1)
     assert validated["max_tokens"] == 4096
     assert "max_completion_tokens" not in validated
 
