@@ -87,6 +87,105 @@ def test_openai_compatible_schema_is_loadable() -> None:
     assert "default" not in schema["properties"]["api_base"]
 
 
+def test_openai_compatible_schema_exposes_reasoning_toggle() -> None:
+    schema = json.loads(OpenAICompatibleLLMAdapter.get_json_schema())
+
+    reasoning_flag = schema["properties"]["enable_reasoning"]
+    assert reasoning_flag["type"] == "boolean"
+    assert reasoning_flag["default"] is False
+
+    reasoning_branch = next(
+        branch
+        for branch in schema["allOf"]
+        if branch["if"]["properties"]["enable_reasoning"]["const"] is True
+    )
+    effort = reasoning_branch["then"]["properties"]["reasoning_effort"]
+    assert effort["enum"] == ["low", "medium", "high"]
+    assert effort["default"] == "medium"
+    assert reasoning_branch["then"]["required"] == ["reasoning_effort"]
+
+
+def test_openai_compatible_validate_routes_reasoning_via_extra_body() -> None:
+    # GPT-5 / o-series via custom_openai: LiteLLM does NOT auto-translate
+    # `max_tokens` to `max_completion_tokens` or drop `temperature`, so the
+    # adapter must do both — and route reasoning_effort / max_completion_tokens
+    # through `extra_body` (the only field LiteLLM's custom_openai forwards
+    # to the upstream API without rewriting).
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "api_key": "sk-test",
+            "model": "gpt-5",
+            "max_tokens": 4096,
+            "enable_reasoning": True,
+            "reasoning_effort": "high",
+        }
+    )
+
+    assert validated["model"] == "custom_openai/gpt-5"
+    assert "temperature" not in validated
+    assert "max_tokens" not in validated
+    assert "reasoning_effort" not in validated
+    assert "enable_reasoning" not in validated
+    assert validated["extra_body"] == {
+        "reasoning_effort": "high",
+        "max_completion_tokens": 4096,
+    }
+
+
+def test_reasoning_omits_max_completion_tokens_when_unset() -> None:
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-5",
+            "enable_reasoning": True,
+        }
+    )
+
+    assert validated["extra_body"] == {"reasoning_effort": "medium"}
+    assert "max_tokens" not in validated
+    assert "temperature" not in validated
+
+
+def test_openai_compatible_validate_infers_reasoning_from_effort_field() -> None:
+    # When the adapter is re-validated (e.g. on second call), `enable_reasoning`
+    # may already have been consumed but `reasoning_effort` should still trigger
+    # the reasoning code path so the model keeps working.
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "model": "gpt-5",
+            "max_tokens": 2048,
+            "reasoning_effort": "low",
+        }
+    )
+
+    assert "temperature" not in validated
+    assert "max_tokens" not in validated
+    assert validated["extra_body"] == {
+        "reasoning_effort": "low",
+        "max_completion_tokens": 2048,
+    }
+
+
+def test_openai_compatible_validate_no_reasoning_unchanged() -> None:
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "api_key": "test-key",
+            "model": "gateway-model",
+            "max_tokens": 1024,
+        }
+    )
+
+    # Non-reasoning path must preserve temperature/max_tokens for ordinary
+    # OpenAI-compatible gateways (vLLM, LM Studio, etc.).
+    assert validated["temperature"] == 0.1
+    assert validated["max_tokens"] == 1024
+    assert "extra_body" not in validated
+    assert "reasoning_effort" not in validated
+
+
 def test_openai_compatible_adapter_uses_distinct_description_and_icon() -> None:
     metadata = OpenAICompatibleLLMAdapter.get_metadata()
 

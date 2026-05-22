@@ -351,6 +351,7 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
 
     api_key: str | None = None
     api_base: str
+    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -360,7 +361,44 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         api_key = adapter_metadata.get("api_key")
         if isinstance(api_key, str) and not api_key.strip():
             adapter_metadata["api_key"] = None
-        return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
+
+        # Reasoning models (OpenAI gpt-5, o1, o3, ...) routed through an
+        # OpenAI-compatible gateway reject `temperature != 1` and `max_tokens`
+        # (require `max_completion_tokens`). LiteLLM's `custom_openai` provider
+        # is generic and does not apply these transformations, so we route the
+        # reasoning-only fields via `extra_body` (which LiteLLM forwards as-is)
+        # and strip the rejected fields from the top-level kwargs.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
+        if not enable_reasoning and has_reasoning_effort:
+            enable_reasoning = True
+
+        max_tokens = adapter_metadata.get("max_tokens")
+        reasoning_effort = adapter_metadata.get("reasoning_effort") or "medium"
+
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+        validation_metadata = {
+            k: v for k, v in adapter_metadata.items() if k not in exclude_fields
+        }
+        validated = OpenAICompatibleLLMParameters(**validation_metadata).model_dump()
+
+        if enable_reasoning:
+            extra_body = {"reasoning_effort": reasoning_effort}
+            if max_tokens is not None:
+                extra_body["max_completion_tokens"] = max_tokens
+            validated["extra_body"] = extra_body
+            validated.pop("temperature", None)
+            validated.pop("max_tokens", None)
+            validated.pop("reasoning_effort", None)
+        else:
+            validated.pop("reasoning_effort", None)
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
