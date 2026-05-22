@@ -402,7 +402,6 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         if not enable_reasoning and _is_openai_reasoning_model(adapter_metadata["model"]):
             enable_reasoning = True
 
-        max_tokens = adapter_metadata.get("max_tokens")
         reasoning_effort = adapter_metadata.get("reasoning_effort") or "medium"
 
         exclude_fields = {"enable_reasoning"}
@@ -414,6 +413,10 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         validated = OpenAICompatibleLLMParameters(**validation_metadata).model_dump()
 
         if enable_reasoning:
+            # Read max_tokens from the validated dict so Pydantic's `int | None`
+            # coercion (e.g. "4096" -> 4096) has already been applied before the
+            # value is forwarded to the upstream API via extra_body.
+            max_tokens = validated.get("max_tokens")
             extra_body = {"reasoning_effort": reasoning_effort}
             if max_tokens is not None:
                 extra_body["max_completion_tokens"] = max_tokens

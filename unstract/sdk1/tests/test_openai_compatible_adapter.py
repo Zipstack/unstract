@@ -103,6 +103,13 @@ def test_openai_compatible_schema_exposes_reasoning_toggle() -> None:
     assert effort["enum"] == ["low", "medium", "high"]
     assert effort["default"] == "medium"
     assert reasoning_branch["then"]["required"] == ["reasoning_effort"]
+    # `if` must require `enable_reasoning` so the conditional does not fire
+    # vacuously when the property is omitted from the submitted instance
+    # (JSON Schema treats a `properties`-only `if` as valid in that case).
+    for branch in schema["allOf"]:
+        assert branch["if"].get("required") == ["enable_reasoning"], (
+            "if/then branches must anchor on the property being present"
+        )
 
 
 def test_openai_compatible_validate_auto_detects_reasoning_for_known_families() -> None:
@@ -202,11 +209,13 @@ def test_reasoning_omits_max_completion_tokens_when_unset() -> None:
 def test_openai_compatible_validate_infers_reasoning_from_effort_field() -> None:
     # When the adapter is re-validated (e.g. on second call), `enable_reasoning`
     # may already have been consumed but `reasoning_effort` should still trigger
-    # the reasoning code path so the model keeps working.
+    # the reasoning code path so the model keeps working. Use a model name that
+    # is NOT auto-detected as a reasoning family — otherwise the test passes via
+    # `_is_openai_reasoning_model` without ever exercising the inference branch.
     validated = OpenAICompatibleLLMParameters.validate(
         {
-            "api_base": "https://api.openai.com/v1",
-            "model": "gpt-5",
+            "api_base": "https://gateway.example.com/v1",
+            "model": "custom-gateway-model",
             "max_tokens": 2048,
             "reasoning_effort": "low",
         }

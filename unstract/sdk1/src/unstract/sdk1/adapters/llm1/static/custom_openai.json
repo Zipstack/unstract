@@ -70,7 +70,10 @@
           "enable_reasoning": {
             "const": true
           }
-        }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
       },
       "then": {
         "properties": {
@@ -97,7 +100,10 @@
           "enable_reasoning": {
             "const": false
           }
-        }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
       },
       "then": {
         "properties": {}
