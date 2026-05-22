@@ -24,15 +24,18 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         - Pipelines created by the user
         - Pipelines shared with the user
         - Pipelines shared with the entire organization
+        - Pipelines shared with any group the user is a member of
         - Service accounts see all org resources
         """
         if getattr(user, "is_service_account", False):
             return self.all()
 
+        user_groups = user.group_memberships.values_list("group_id", flat=True)
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
+            | Q(shared_groups__in=user_groups)  # Shared via group membership
         ).distinct()
 
 
@@ -116,6 +119,11 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Whether this pipeline is shared with the entire organization",
+    )
+    shared_groups = models.ManyToManyField(
+        "tenant_account_v2.OrganizationGroup",
+        related_name="shared_pipelines",
+        blank=True,
     )
 
     # Manager

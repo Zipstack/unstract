@@ -26,12 +26,14 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         if getattr(user, "is_service_account", False):
             return self.all()
 
+        user_groups = user.group_memberships.values_list("group_id", flat=True)
         return (
             self.get_queryset()
             .filter(
                 models.Q(created_by=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
+                | models.Q(shared_groups__in=user_groups)
             )
             .distinct("tool_id")
         )
@@ -159,6 +161,11 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Flag to share this custom tool with all users in the organization",
+    )
+    shared_groups = models.ManyToManyField(
+        "tenant_account_v2.OrganizationGroup",
+        related_name="shared_custom_tools",
+        blank=True,
     )
 
     # NULL on pre-feature tools; populated on first successful export.

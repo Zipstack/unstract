@@ -37,6 +37,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         if getattr(user, "is_service_account", False):
             return self.all()
 
+        user_groups = user.group_memberships.values_list("group_id", flat=True)
         return (
             self.get_queryset()
             .filter(
@@ -44,6 +45,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
                 | models.Q(is_friction_less=True)
+                | models.Q(shared_groups__in=user_groups)
             )
             .distinct("id")
         )
@@ -134,6 +136,11 @@ class AdapterInstance(DefaultOrganizationMixin, BaseModel):
     # Introduced field to establish M2M relation between users and adapters.
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(User, related_name="shared_adapters_instance")
+    shared_groups = models.ManyToManyField(
+        "tenant_account_v2.OrganizationGroup",
+        related_name="shared_adapter_instances",
+        blank=True,
+    )
     description = models.TextField(blank=True, null=True, default=None)
 
     objects = AdapterInstanceModelManager()

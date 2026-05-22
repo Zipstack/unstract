@@ -1,0 +1,288 @@
+"""ViewSet + permissions for org-scoped group sharing (UN-2977 / mfbt UNS-612)."""
+
+import logging
+from typing import Any
+
+from account_v2.authentication_controller import AuthenticationController
+from account_v2.models import Organization
+from django.db.models import QuerySet
+from django.shortcuts import get_object_or_404
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.permissions import BasePermission, IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+from rest_framework.serializers import BaseSerializer
+from utils.user_context import UserContext
+
+from tenant_account_v2.group_serializers import (
+    GroupMemberAddSerializer,
+    GroupMemberSerializer,
+    OrganizationGroupReadSerializer,
+    OrganizationGroupWriteSerializer,
+    list_groups_with_member_counts,
+)
+from tenant_account_v2.models import (
+    GroupMembership,
+    OrganizationGroup,
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _current_organization(request: Request) -> Organization:
+    organization = UserContext.get_organization()
+    if organization is None:
+        raise PermissionDenied("Organization context is required.")
+    return organization
+
+
+def _is_org_admin(request: Request) -> bool:
+    """Resolve admin role for the current request user.
+
+    Returns False on any lookup failure rather than raising — callers gate
+    individual writes; viewing is allowed for all org members.
+    """
+    if getattr(request.user, "is_service_account", False):
+        return False
+    try:
+        auth_controller = AuthenticationController()
+        member = auth_controller.get_organization_members_by_user(user=request.user)
+        return auth_controller.is_admin_by_role(member.role)
+    except Exception:
+        logger.exception("Error checking admin role for user %s", request.user.id)
+        return False
+
+
+class IsOrgAdminForWrite(BasePermission):
+    """Read for any authenticated org member; write for org admins only."""
+
+    message = "Only organization admins can manage groups."
+
+    def has_permission(self, request: Request, view: Any) -> bool:
+        if not request.user or not request.user.is_authenticated:
+            return False
+        if request.method in ("GET", "HEAD", "OPTIONS"):
+            return True
+        return _is_org_admin(request)
+
+
+class OrganizationGroupViewSet(viewsets.ModelViewSet):
+    """CRUD + member management for org-scoped sharing groups."""
+
+    permission_classes = [IsAuthenticated, IsOrgAdminForWrite]
+    lookup_field = "pk"
+
+    def get_serializer_class(self) -> type[BaseSerializer]:
+        if self.action in ("list", "retrieve", "members"):
+            return OrganizationGroupReadSerializer
+        return OrganizationGroupWriteSerializer
+
+    def get_serializer_context(self) -> dict[str, Any]:
+        ctx = super().get_serializer_context()
+        ctx["organization"] = _current_organization(self.request)
+        return ctx
+
+    def get_queryset(self) -> QuerySet[OrganizationGroup]:
+        organization = _current_organization(self.request)
+        return list_groups_with_member_counts(organization=organization)
+
+    # --- list / retrieve / create / destroy ----------------------------------
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        organization = _current_organization(request)
+        member_filter = request.query_params.get("member")
+        is_admin = _is_org_admin(request)
+
+        if member_filter == "me":
+            qs = list_groups_with_member_counts(
+                organization=organization, user=request.user
+            )
+        elif member_filter and member_filter != "me":
+            if not is_admin:
+                raise PermissionDenied(
+                    "Only admins can query other users' group memberships."
+                )
+            qs = list_groups_with_member_counts(organization=organization).filter(
+                memberships__user_id=member_filter
+            )
+        else:
+            qs = self.get_queryset()
+
+        serializer = self.get_serializer(qs, many=True)
+        return Response(serializer.data)
+
+    def perform_create(self, serializer: BaseSerializer) -> None:
+        organization = _current_organization(self.request)
+        serializer.save(
+            organization=organization,
+            created_by=self.request.user,
+            source=OrganizationGroup.SOURCE_LOCAL,
+            is_managed_externally=False,
+        )
+
+    def perform_destroy(self, instance: OrganizationGroup) -> None:
+        if instance.is_managed_externally:
+            raise PermissionDenied(
+                "Group is managed externally (IdP sync) and cannot be deleted."
+            )
+        super().perform_destroy(instance)
+
+    # --- members -------------------------------------------------------------
+
+    @action(detail=True, methods=["get", "post"], url_path="members")
+    def members(self, request: Request, pk: str | None = None) -> Response:
+        group = self._get_group_or_404(pk)
+        if request.method == "GET":
+            qs = group.memberships.select_related("user").order_by("created_at")
+            data = GroupMemberSerializer(qs, many=True).data
+            return Response(data)
+
+        # POST → bulk add
+        if not _is_org_admin(request):
+            raise PermissionDenied(self.permission_classes[1].message)
+        serializer = GroupMemberAddSerializer(data=request.data, context={"group": group})
+        serializer.is_valid(raise_exception=True)
+        user_ids_to_add: list[int] = serializer.validated_data["user_ids_to_add"]
+        GroupMembership.objects.bulk_create(
+            [GroupMembership(group=group, user_id=uid) for uid in user_ids_to_add],
+            ignore_conflicts=True,
+        )
+        # TODO: notify added users (Phase 2)
+        return Response(
+            {"added_user_ids": user_ids_to_add},
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"members/(?P<user_id>[^/.]+)",
+    )
+    def remove_member(
+        self, request: Request, pk: str | None = None, user_id: str | None = None
+    ) -> Response:
+        if not _is_org_admin(request):
+            raise PermissionDenied(self.permission_classes[1].message)
+        group = self._get_group_or_404(pk)
+        if group.is_managed_externally:
+            raise PermissionDenied(
+                "Group is managed externally (IdP sync) and cannot be edited."
+            )
+        deleted, _ = group.memberships.filter(user_id=user_id).delete()
+        if not deleted:
+            raise NotFound("User is not a member of this group.")
+        # TODO: notify removed user (Phase 2)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    # --- resources shared with this group ------------------------------------
+
+    @action(detail=True, methods=["get"], url_path="resources")
+    def resources(self, request: Request, pk: str | None = None) -> Response:
+        group = self._get_group_or_404(pk)
+        payload = _collect_resources_shared_with_group(group)
+        return Response(payload)
+
+    # --- IDP conflicts -------------------------------------------------------
+
+    @action(detail=False, methods=["get"], url_path="conflicts")
+    def conflicts(self, request: Request) -> Response:
+        if not _is_org_admin(request):
+            raise PermissionDenied(self.permission_classes[1].message)
+        organization = _current_organization(request)
+        # ``IDPGroupConflict`` lives in the cloud-only ``pluggable_apps.idp_sync``
+        # app. OSS-only deployments don't install it, so the conflicts endpoint
+        # returns an empty list there.
+        try:
+            from pluggable_apps.idp_sync.models import IDPGroupConflict
+        except (ImportError, ModuleNotFoundError):
+            return Response([])
+        rows = IDPGroupConflict.objects.filter(organization=organization)
+        return Response(_serialize_conflicts(organization, rows))
+
+    # --- helpers -------------------------------------------------------------
+
+    def _get_group_or_404(self, pk: str | None) -> OrganizationGroup:
+        organization = _current_organization(self.request)
+        obj: OrganizationGroup = get_object_or_404(
+            OrganizationGroup, pk=pk, organization=organization
+        )
+        return obj
+
+
+def _collect_resources_shared_with_group(
+    group: OrganizationGroup,
+) -> list[dict[str, Any]]:
+    """Aggregate the resources currently shared with ``group`` across types.
+
+    Imports are deferred to avoid pulling resource models into the
+    ``tenant_account_v2`` import graph at startup.
+    """
+    from adapter_processor_v2.models import AdapterInstance
+    from api_v2.models import APIDeployment
+    from connector_v2.models import ConnectorInstance
+    from pipeline_v2.models import Pipeline
+    from prompt_studio.prompt_studio_core_v2.models import CustomTool
+    from workflow_manager.workflow_v2.models.workflow import Workflow
+
+    sources = (
+        ("workflow", Workflow, "workflow_name", "id"),
+        ("pipeline", Pipeline, "pipeline_name", "id"),
+        ("api_deployment", APIDeployment, "display_name", "id"),
+        ("adapter_instance", AdapterInstance, "adapter_name", "id"),
+        ("connector_instance", ConnectorInstance, "connector_name", "id"),
+        ("custom_tool", CustomTool, "tool_name", "tool_id"),
+    )
+
+    results: list[dict[str, Any]] = []
+    for kind, model, name_field, id_field in sources:
+        qs = model.objects.filter(shared_groups=group).values_list(id_field, name_field)
+        for resource_id, name in qs:
+            results.append(
+                {
+                    "resource_type": kind,
+                    "resource_id": str(resource_id),
+                    "name": name,
+                }
+            )
+    return results
+
+
+def _serialize_conflicts(organization: Any, conflict_rows: Any) -> list[dict[str, Any]]:
+    """Join each ``IDPGroupConflict`` row with its blocking LOCAL group.
+
+    Returns the response shape mfbt UNS-612 §5.7 specifies: ``idp_claim``,
+    ``external_id``, ``blocking_group_id``, ``blocking_group_name``,
+    ``blocking_group_member_count``, ``blocking_group_shared_resource_count``.
+    """
+    blocking_lookup = {
+        g.name.lower(): g
+        for g in OrganizationGroup.objects.filter(
+            organization=organization,
+            source=OrganizationGroup.SOURCE_LOCAL,
+        )
+    }
+    payload: list[dict[str, Any]] = []
+    for conflict in conflict_rows:
+        blocker = blocking_lookup.get((conflict.idp_claim or "").lower())
+        entry: dict[str, Any] = {
+            "idp_claim": conflict.idp_claim,
+            "external_id": conflict.external_id,
+            "detected_at": (
+                conflict.detected_at.isoformat() if conflict.detected_at else None
+            ),
+            "blocking_group_id": None,
+            "blocking_group_name": None,
+            "blocking_group_member_count": 0,
+            "blocking_group_shared_resource_count": 0,
+        }
+        if blocker is not None:
+            entry["blocking_group_id"] = blocker.id
+            entry["blocking_group_name"] = blocker.name
+            entry["blocking_group_member_count"] = blocker.memberships.count()
+            entry["blocking_group_shared_resource_count"] = len(
+                _collect_resources_shared_with_group(blocker)
+            )
+        payload.append(entry)
+    return payload

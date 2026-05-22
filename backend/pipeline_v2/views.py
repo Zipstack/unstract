@@ -140,6 +140,19 @@ class PipelineViewSet(viewsets.ModelViewSet):
         serializer = SharedUserListSerializer(pipeline)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
+    @action(detail=True, methods=["get"], url_path="effective-members")
+    def effective_members(self, request: Request, pk: str | None = None) -> Response:
+        """Return all users with access (direct/group/org), priority-deduped."""
+        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
+        from tenant_account_v2.sharing_helpers import compute_effective_members
+
+        pipeline = self.get_object()
+        members = compute_effective_members(pipeline)
+        return Response(
+            EffectiveMemberSerializer(members, many=True).data,
+            status=status.HTTP_200_OK,
+        )
+
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
@@ -147,6 +160,7 @@ class PipelineViewSet(viewsets.ModelViewSet):
 
         response = super().partial_update(request, *args, **kwargs)
 
+        # TODO: notify group members when shared_groups changes (Phase 2)
         if (
             response.status_code == 200
             and "shared_users" in request.data

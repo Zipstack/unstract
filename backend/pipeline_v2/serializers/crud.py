@@ -13,8 +13,10 @@ from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
+from tenant_account_v2.sharing_helpers import validate_shared_groups_in_org
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
+from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
@@ -153,6 +155,12 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
             self._validate_comma_pattern(minute_field)
         elif "-" in minute_field:
             self._validate_range_pattern(minute_field)
+
+    def validate_shared_groups(self, value):
+        organization = UserContext.get_organization()
+        if organization is None:
+            return value
+        return validate_shared_groups_in_org(value, organization)
 
     def validate_cron_string(self, value: str | None = None) -> str | None:
         """Validate the cron string provided in the serializer data.

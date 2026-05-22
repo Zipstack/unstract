@@ -9,8 +9,10 @@ from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
 from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
+from tenant_account_v2.sharing_helpers import validate_shared_groups_in_org
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
+from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -33,6 +35,12 @@ class ConnectorInstanceSerializer(AuditSerializer):
 
     def validate_connector_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Connector name")
+
+    def validate_shared_groups(self, value):
+        organization = UserContext.get_organization()
+        if organization is None:
+            return value
+        return validate_shared_groups_in_org(value, organization)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Backfill ``connector_name`` from the JSON schema default when absent.

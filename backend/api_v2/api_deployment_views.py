@@ -369,6 +369,16 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         serializer = SharedUserListSerializer(instance)
         return Response(serializer.data)
 
+    @action(detail=True, methods=["get"], url_path="effective-members")
+    def effective_members(self, request: Request, pk: str | None = None) -> Response:
+        """Return all users with access (direct/group/org), priority-deduped."""
+        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
+        from tenant_account_v2.sharing_helpers import compute_effective_members
+
+        instance = self.get_object()
+        members = compute_effective_members(instance)
+        return Response(EffectiveMemberSerializer(members, many=True).data)
+
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override partial_update to handle sharing notifications."""
         # Get current instance and shared users
@@ -378,6 +388,7 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         # Perform the update
         response = super().partial_update(request, *args, **kwargs)
 
+        # TODO: notify group members when shared_groups changes (Phase 2)
         # If successful and shared_users changed, send notifications
         if (
             response.status_code == 200

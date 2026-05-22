@@ -147,6 +147,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         # Perform the standard partial update
         response = super().partial_update(request, *args, **kwargs)
 
+        # TODO: notify group members when shared_groups changes (Phase 2)
         # If update was successful and shared_users field was modified
         if (
             response.status_code == 200
@@ -358,6 +359,19 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         workflow = self.get_object()
         serializer = SharedUserListSerializer(workflow)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["get"], url_path="effective-members")
+    def effective_members(self, request: Request, pk: str) -> Response:
+        """Return all users with access (direct/group/org), priority-deduped."""
+        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
+        from tenant_account_v2.sharing_helpers import compute_effective_members
+
+        workflow = self.get_object()
+        members = compute_effective_members(workflow)
+        return Response(
+            EffectiveMemberSerializer(members, many=True).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 # =============================================================================

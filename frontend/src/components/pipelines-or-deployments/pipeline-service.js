@@ -101,7 +101,12 @@ function pipelineService() {
       };
       return axiosPrivate(requestOptions);
     },
-    updateSharing: (pipelineId, sharedUsers, shareWithEveryone = false) => {
+    updateSharing: (
+      pipelineId,
+      sharedUsers,
+      shareWithEveryone = false,
+      sharedGroups = [],
+    ) => {
       const requestOptions = {
         method: "PATCH",
         url: `${path}/pipeline/${pipelineId}/`,
@@ -109,6 +114,7 @@ function pipelineService() {
         data: {
           shared_users: sharedUsers,
           shared_to_org: shareWithEveryone,
+          shared_groups: sharedGroups,
         },
       };
       return axiosPrivate(requestOptions);

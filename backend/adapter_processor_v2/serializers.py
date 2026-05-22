@@ -6,7 +6,12 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    validate_shared_groups_in_org,
+)
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -42,6 +47,12 @@ class BaseAdapterSerializer(AuditSerializer):
                 description, field_name="Description"
             )
         return data
+
+    def validate_shared_groups(self, value):
+        organization = UserContext.get_organization()
+        if organization is None:
+            return value
+        return validate_shared_groups_in_org(value, organization)
 
 
 class DefaultAdapterSerializer(serializers.Serializer):
@@ -205,6 +216,7 @@ class SharedUserListSerializer(BaseAdapterSerializer):
     """
 
     shared_users = serializers.SerializerMethodField()
+    shared_groups = serializers.SerializerMethodField()
     created_by = UserSerializer()
 
     class Meta(BaseAdapterSerializer.Meta):
@@ -217,12 +229,16 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "created_by",
             "shared_users",
             "shared_to_org",
+            "shared_groups",
         )  # type: ignore
 
     def get_shared_users(self, obj):
         return UserSerializer(
             obj.shared_users.filter(is_service_account=False), many=True
         ).data
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

@@ -5,12 +5,14 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Tag,
   Typography,
 } from "antd";
 import "./SharePermission.css";
 import {
   DeleteOutlined,
   QuestionCircleOutlined,
+  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import PropTypes from "prop-types";
@@ -25,10 +27,12 @@ function SharePermission({
   permissionEdit,
   loading,
   allUsers,
+  allGroups = [],
   onApply,
   isSharableToOrg = false,
 }) {
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [shareWithEveryone, setShareWithEveryone] = useState(false);
 
@@ -66,6 +70,13 @@ function SharePermission({
         }),
       );
     }
+    if (adapter?.shared_groups) {
+      setSelectedGroupIds(
+        adapter.shared_groups.map((g) => (g?.id !== undefined ? g.id : g)),
+      );
+    } else {
+      setSelectedGroupIds([]);
+    }
   }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
@@ -73,6 +84,11 @@ function SharePermission({
       prevSelectedUsers.filter((user) => user !== userId),
     );
   };
+
+  const handleDeleteGroup = (groupId) => {
+    setSelectedGroupIds((prev) => prev.filter((id) => id !== groupId));
+  };
+
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
 
@@ -80,38 +96,60 @@ function SharePermission({
     setShareWithEveryone(checked);
   };
 
+  const groupCandidateOptions = allGroups
+    .filter((g) => !selectedGroupIds.includes(g.id))
+    .map((g) => ({ label: g.name, value: g.id }));
+
   let sharedWithContent;
   if (shareWithEveryone) {
     sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
-  } else if (selectedUsers.length > 0) {
+  } else if (selectedUsers.length > 0 || selectedGroupIds.length > 0) {
+    const userItems = selectedUsers.map((userId) => {
+      const user = allUsers.find((u) => {
+        if (u?.id !== undefined) {
+          return u?.id.toString() === userId.toString();
+        }
+        return u?.toString() === userId.toString();
+      });
+      return {
+        kind: "user",
+        id: user?.id,
+        email: user?.email,
+      };
+    });
+    const groupItems = selectedGroupIds.map((groupId) => {
+      const group = allGroups.find((g) => g.id === groupId);
+      return {
+        kind: "group",
+        id: groupId,
+        name: group?.name || `Group #${groupId}`,
+        source: group?.source,
+      };
+    });
     sharedWithContent = (
       <List
-        dataSource={selectedUsers.map((userId) => {
-          const user = allUsers.find((u) => {
-            if (u?.id !== undefined) {
-              return u?.id.toString() === userId.toString();
-            } else {
-              return u?.toString() === userId.toString();
-            }
-          });
-          return {
-            id: user?.id,
-            email: user?.email,
-          };
-        })}
+        dataSource={[...userItems, ...groupItems]}
         renderItem={(item) => (
           <List.Item
             extra={
               permissionEdit && (
                 <div onClick={(event) => event.stopPropagation()} role="none">
                   <Popconfirm
-                    key={`${item.id}-delete`}
+                    key={`${item.kind}-${item.id}-delete`}
                     title="Revoke Access"
-                    description={`Are you sure you want to revoke access to '${item?.email}'?`}
+                    description={`Are you sure you want to revoke access to '${
+                      item.kind === "user" ? item.email : item.name
+                    }'?`}
                     okText="Yes"
                     cancelText="No"
                     icon={<QuestionCircleOutlined />}
-                    onConfirm={(event) => handleDeleteUser(item?.id)}
+                    onConfirm={() => {
+                      if (item.kind === "user") {
+                        handleDeleteUser(item.id);
+                      } else {
+                        handleDeleteGroup(item.id);
+                      }
+                    }}
                   >
                     <Typography.Text>
                       <DeleteOutlined className="action-icon-buttons" />
@@ -126,11 +164,18 @@ function SharePermission({
                 <>
                   <Avatar
                     className="shared-user-avatar"
-                    icon={<UserOutlined />}
+                    icon={
+                      item.kind === "user" ? <UserOutlined /> : <TeamOutlined />
+                    }
                   />
                   <Typography.Text className="shared-username">
-                    {item.email}
+                    {item.kind === "user" ? item.email : item.name}
                   </Typography.Text>
+                  {item.kind === "group" && item.source === "IDP" && (
+                    <Tag color="blue" style={{ marginLeft: 8 }}>
+                      IDP
+                    </Tag>
+                  )}
                 </>
               }
             />
@@ -152,7 +197,9 @@ function SharePermission({
         centered
         closable={true}
         okText={"Apply"}
-        onOk={() => onApply(selectedUsers, adapter, shareWithEveryone)}
+        onOk={() =>
+          onApply(selectedUsers, adapter, shareWithEveryone, selectedGroupIds)
+        }
         cancelButtonProps={!permissionEdit && { style: { display: "none" } }}
         okButtonProps={!permissionEdit && { style: { display: "none" } }}
         className="share-permission-modal"
@@ -172,33 +219,43 @@ function SharePermission({
               </Checkbox>
             )}
             {permissionEdit && !shareWithEveryone && (
-              <Select
-                filterOption={filterOption}
-                showSearch
-                size={"middle"}
-                placeholder="Search"
-                value={null}
-                className="share-permission-search"
-                onChange={(selectedValue) => {
-                  const isValueSelected = selectedUsers.includes(selectedValue);
-                  if (!isValueSelected) {
-                    // Update the state only if the selected value is not already present
-                    setSelectedUsers([...selectedUsers, selectedValue]);
-                  }
-                }}
-                options={filteredUsers.map((user) => ({
-                  label: user.email,
-                  value: user.id,
-                }))}
-              >
-                {filteredUsers.map((user) => {
-                  return (
-                    <Select.Option key={user?.id} value={user?.id}>
-                      {user?.email}
-                    </Select.Option>
-                  );
-                })}
-              </Select>
+              <>
+                <Select
+                  filterOption={filterOption}
+                  showSearch
+                  size={"middle"}
+                  placeholder="Search users"
+                  value={null}
+                  className="share-permission-search"
+                  onChange={(selectedValue) => {
+                    const isValueSelected =
+                      selectedUsers.includes(selectedValue);
+                    if (!isValueSelected) {
+                      setSelectedUsers([...selectedUsers, selectedValue]);
+                    }
+                  }}
+                  options={filteredUsers.map((user) => ({
+                    label: user.email,
+                    value: user.id,
+                  }))}
+                />
+                {allGroups.length > 0 && (
+                  <Select
+                    filterOption={filterOption}
+                    showSearch
+                    size={"middle"}
+                    placeholder="Search groups"
+                    value={null}
+                    className="share-permission-search"
+                    onChange={(groupId) => {
+                      if (!selectedGroupIds.includes(groupId)) {
+                        setSelectedGroupIds([...selectedGroupIds, groupId]);
+                      }
+                    }}
+                    options={groupCandidateOptions}
+                  />
+                )}
+              </>
             )}
             <Typography.Title level={5}>Shared with</Typography.Title>
             {sharedWithContent}
@@ -216,6 +273,7 @@ SharePermission.propTypes = {
   permissionEdit: PropTypes.bool,
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
+  allGroups: PropTypes.array,
   onApply: PropTypes.func,
   isSharableToOrg: PropTypes.bool,
 };

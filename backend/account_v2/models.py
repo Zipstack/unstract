@@ -39,6 +39,14 @@ class Organization(models.Model):
         default=-1,
         db_comment="token limit set in case of frition less onbaoarded org",
     )
+    idp_group_allowlist = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Allowed external_id values or fnmatch glob patterns for IdP "
+            "group import. Matching is case-insensitive."
+        ),
+    )
 
     class Meta:
         verbose_name = "Organization"

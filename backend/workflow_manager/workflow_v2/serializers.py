@@ -12,10 +12,15 @@ from rest_framework.serializers import (
     UUIDField,
     ValidationError,
 )
+from tenant_account_v2.sharing_helpers import (
+    serialize_group_refs,
+    validate_shared_groups_in_org,
+)
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
+from utils.user_context import UserContext
 
 from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
@@ -54,6 +59,12 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
         if value is None:
             return value
         return validate_no_html_tags(value, field_name="Description")
+
+    def validate_shared_groups(self, value):
+        organization = UserContext.get_organization()
+        if organization is None:
+            return value
+        return validate_shared_groups_in_org(value, organization)
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)
@@ -171,14 +182,22 @@ class FileHistorySerializer(ModelSerializer):
 
 
 class SharedUserListSerializer(ModelSerializer):
-    """Serializer for returning workflow with shared user details."""
+    """Serializer for returning workflow with shared user + group details."""
 
     shared_users = SerializerMethodField()
+    shared_groups = SerializerMethodField()
     created_by = SerializerMethodField()
 
     class Meta:
         model = Workflow
-        fields = ["id", "workflow_name", "shared_users", "shared_to_org", "created_by"]
+        fields = [
+            "id",
+            "workflow_name",
+            "shared_users",
+            "shared_to_org",
+            "shared_groups",
+            "created_by",
+        ]
 
     def get_shared_users(self, obj):
         """Return list of shared users with id and email."""
@@ -186,6 +205,9 @@ class SharedUserListSerializer(ModelSerializer):
             {"id": user.id, "email": user.email}
             for user in obj.shared_users.filter(is_service_account=False)
         ]
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
     def get_created_by(self, obj):
         """Return creator details."""

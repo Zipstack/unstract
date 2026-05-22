@@ -21,6 +21,19 @@ def _is_service_account(request: Request) -> bool:
     return getattr(request.user, "is_service_account", False)
 
 
+def _has_group_access(user: Any, obj: Any) -> bool:
+    """Check if a user has access to a resource via group membership.
+
+    Returns False for objects that don't carry a ``shared_groups`` field
+    (e.g. resources whose model hasn't been extended yet), so callers can
+    OR this in safely without per-model guards.
+    """
+    if not hasattr(obj, "shared_groups"):
+        return False
+    user_groups = user.group_memberships.values_list("group_id", flat=True)
+    return bool(obj.shared_groups.filter(id__in=user_groups).exists())
+
+
 class IsOwner(permissions.BasePermission):
     """Custom permission to only allow owners of an object."""
 
@@ -45,12 +58,9 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
         if _is_service_account(request):
             return True
         return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-            )
-            else False
+            obj.created_by == request.user
+            or obj.shared_users.filter(pk=request.user.pk).exists()
+            or _has_group_access(request.user, obj)
         )
 
 
@@ -63,13 +73,10 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
         if _is_service_account(request):
             return True
         return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-                or obj.shared_to_org
-            )
-            else False
+            obj.created_by == request.user
+            or obj.shared_users.filter(pk=request.user.pk).exists()
+            or obj.shared_to_org
+            or _has_group_access(request.user, obj)
         )
 
 

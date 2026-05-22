@@ -344,6 +344,7 @@ class AdapterInstanceViewSet(ModelViewSet):
         # Perform the update
         response = super().partial_update(request, *args, **kwargs)
 
+        # TODO: notify group members when shared_groups changes (Phase 2)
         # Send email notifications to newly shared users
         if response.status_code == 200 and AdapterKeys.SHARED_USERS in request.data:
             try:
@@ -387,6 +388,16 @@ class AdapterInstanceViewSet(ModelViewSet):
         serialized_instances = SharedUserListSerializer(adapter).data
 
         return Response(serialized_instances)
+
+    @action(detail=True, methods=["get"], url_path="effective-members")
+    def effective_members(self, request: HttpRequest, pk: Any = None) -> Response:
+        """Return all users with access (direct/group/org), priority-deduped."""
+        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
+        from tenant_account_v2.sharing_helpers import compute_effective_members
+
+        adapter = self.get_object()
+        members = compute_effective_members(adapter)
+        return Response(EffectiveMemberSerializer(members, many=True).data)
 
     def update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]

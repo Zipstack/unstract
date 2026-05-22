@@ -30,12 +30,14 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         if getattr(user, "is_service_account", False):
             return self.all()
 
+        user_groups = user.group_memberships.values_list("group_id", flat=True)
         return (
             self.get_queryset()
             .filter(
                 models.Q(created_by=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
+                | models.Q(shared_groups__in=user_groups)
             )
             .distinct("id")
         )
@@ -99,6 +101,11 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     # This will introduce intermediary table which relates both the models.
     shared_users = models.ManyToManyField(
         User, related_name="shared_connectors", blank=True
+    )
+    shared_groups = models.ManyToManyField(
+        "tenant_account_v2.OrganizationGroup",
+        related_name="shared_connector_instances",
+        blank=True,
     )
 
     objects = ConnectorInstanceModelManager()

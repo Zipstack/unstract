@@ -11,6 +11,7 @@ from django.db.models import ProtectedError, QuerySet
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from plugins import get_plugin
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -208,6 +209,7 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
 
         response = super().partial_update(request, *args, **kwargs)
 
+        # TODO: notify group members when shared_groups changes (Phase 2)
         if (
             response.status_code == 200
             and "shared_users" in request.data
@@ -241,3 +243,13 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
                 )
 
         return response
+
+    @action(detail=True, methods=["get"], url_path="effective-members")
+    def effective_members(self, request: Request, pk: str | None = None) -> Response:
+        """Return all users with access (direct/group/org), priority-deduped."""
+        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
+        from tenant_account_v2.sharing_helpers import compute_effective_members
+
+        connector = self.get_object()
+        members = compute_effective_members(connector)
+        return Response(EffectiveMemberSerializer(members, many=True).data)
