@@ -402,7 +402,16 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
             "reasoning_effort" in adapter_metadata
             and adapter_metadata.get("reasoning_effort") is not None
         )
-        if not enable_reasoning and has_reasoning_effort:
+        # Infer reasoning only when `enable_reasoning` is ABSENT (e.g. on a
+        # re-validation pass that already stripped the field). Skip the inference
+        # if the user explicitly submitted `enable_reasoning: false` with a
+        # leftover `reasoning_effort` — that's an explicit opt-out, not an
+        # implicit opt-in.
+        if (
+            not enable_reasoning
+            and has_reasoning_effort
+            and "enable_reasoning" not in adapter_metadata
+        ):
             enable_reasoning = True
         if not enable_reasoning and _is_openai_reasoning_model(adapter_metadata["model"]):
             enable_reasoning = True

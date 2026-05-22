@@ -4,6 +4,7 @@ from importlib import import_module
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
@@ -235,6 +236,27 @@ def test_openai_compatible_validate_infers_reasoning_from_effort_field() -> None
         "reasoning_effort": "low",
         "max_completion_tokens": 2048,
     }
+
+
+def test_explicit_disable_overrides_leftover_reasoning_effort() -> None:
+    # Regression: when a user explicitly submits `enable_reasoning: false`
+    # while a leftover `reasoning_effort` is still in the stored metadata
+    # (e.g. the form was previously saved with reasoning on), the inference
+    # branch must NOT silently re-enable reasoning. Use a non-auto-detected
+    # model so we isolate the inference branch from the auto-detect branch.
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "custom-gateway-model",
+            "max_tokens": 1024,
+            "enable_reasoning": False,
+            "reasoning_effort": "high",
+        }
+    )
+
+    assert "extra_body" not in validated
+    assert validated["max_tokens"] == 1024
+    assert "temperature" in validated
 
 
 def test_openai_compatible_validate_no_reasoning_unchanged() -> None:
