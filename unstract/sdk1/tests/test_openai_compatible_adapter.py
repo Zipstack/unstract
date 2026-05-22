@@ -4,7 +4,6 @@ from importlib import import_module
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from unstract.sdk1.adapters.base1 import OpenAICompatibleLLMParameters
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
@@ -166,7 +165,9 @@ def test_openai_compatible_validate_preserves_non_reasoning_models() -> None:
             }
         )
 
-        assert validated["temperature"] == _DEFAULT_TEMPERATURE, f"{model} should keep temperature"
+        assert (
+            validated["temperature"] == _DEFAULT_TEMPERATURE
+        ), f"{model} should keep temperature"
         assert validated["max_tokens"] == 1024, f"{model} should keep max_tokens"
         assert "extra_body" not in validated, f"{model} should not set extra_body"
 
