@@ -340,10 +340,36 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         # Only add openai/ prefix if the model doesn't already have it
-        if model.startswith("openai/"):
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
             return model
         else:
-            return f"openai/{model}"
+            return f"{_OPENAI_PROVIDER_PREFIX}{model}"
+
+
+# LiteLLM provider prefixes hoisted to module constants so the same literal is
+# not duplicated across `OpenAILLMParameters`, `OpenAICompatibleLLMParameters`,
+# and the reasoning-model detector below.
+_OPENAI_PROVIDER_PREFIX = "openai/"
+_CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
+_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+
+
+def _is_openai_reasoning_model(model: str) -> bool:
+    """Best-effort detection of OpenAI reasoning model names.
+
+    The check is conservative — it matches only OpenAI's known reasoning
+    families (o1, o3, o4, gpt-5) after stripping the LiteLLM `custom_openai/`
+    prefix and optional `openai/` sub-prefix. Custom gateway model aliases
+    that hide a reasoning model behind an unrelated name still need the
+    explicit `enable_reasoning` opt-in.
+    """
+    if not model:
+        return False
+    if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
+        model = model[len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :]
+    if model.startswith(_OPENAI_PROVIDER_PREFIX):
+        model = model[len(_OPENAI_PROVIDER_PREFIX) :]
+    return bool(_OPENAI_REASONING_MODEL_PATTERN.match(model.lower()))
 
 
 class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
@@ -351,6 +377,7 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
 
     api_key: str | None = None
     api_base: str
+    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -360,16 +387,92 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         api_key = adapter_metadata.get("api_key")
         if isinstance(api_key, str) and not api_key.strip():
             adapter_metadata["api_key"] = None
-        return OpenAICompatibleLLMParameters(**adapter_metadata).model_dump()
+
+        # Reasoning models (OpenAI gpt-5, o1, o3, ...) routed through an
+        # OpenAI-compatible gateway reject `temperature != 1` and `max_tokens`
+        # (require `max_completion_tokens`). LiteLLM's `custom_openai` provider
+        # is generic and does not apply these transformations, so we route the
+        # reasoning-only fields via `extra_body` (which LiteLLM forwards as-is)
+        # and strip the rejected fields from the top-level kwargs.
+        # Auto-detect known OpenAI reasoning model names so users do not have
+        # to know that gpt-5 / o-series need special handling — they can still
+        # opt in explicitly for custom gateway aliases that hide the model id.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        has_reasoning_effort = (
+            "reasoning_effort" in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        )
+        # When validate() runs again on its own previous output, the reasoning
+        # fields live ONLY inside `extra_body` (this method strips them from
+        # the top level on the reasoning path). Recover them from there so
+        # re-validation is idempotent for non-auto-detected aliases too.
+        existing_extra_body = adapter_metadata.get("extra_body")
+        has_reasoning_extra_body = (
+            isinstance(existing_extra_body, dict)
+            and existing_extra_body.get("reasoning_effort") is not None
+        )
+        # Infer reasoning only when `enable_reasoning` is ABSENT (e.g. on a
+        # re-validation pass that already stripped the field). Skip the inference
+        # if the user explicitly submitted `enable_reasoning: false` with a
+        # leftover `reasoning_effort` — that's an explicit opt-out, not an
+        # implicit opt-in.
+        if (
+            not enable_reasoning
+            and "enable_reasoning" not in adapter_metadata
+            and (has_reasoning_effort or has_reasoning_extra_body)
+        ):
+            enable_reasoning = True
+        if not enable_reasoning and _is_openai_reasoning_model(adapter_metadata["model"]):
+            enable_reasoning = True
+
+        reasoning_effort = (
+            adapter_metadata.get("reasoning_effort")
+            or (
+                existing_extra_body.get("reasoning_effort")
+                if isinstance(existing_extra_body, dict)
+                else None
+            )
+            or "medium"
+        )
+
+        exclude_fields = {"enable_reasoning"}
+        if not enable_reasoning:
+            exclude_fields.add("reasoning_effort")
+        validation_metadata = {
+            k: v for k, v in adapter_metadata.items() if k not in exclude_fields
+        }
+        validated = OpenAICompatibleLLMParameters(**validation_metadata).model_dump()
+
+        if enable_reasoning:
+            # Read max_tokens from the validated dict so Pydantic's `int | None`
+            # coercion (e.g. "4096" -> 4096) has already been applied before the
+            # value is forwarded to the upstream API via extra_body. On the
+            # re-validation path the original max_tokens is in extra_body, not
+            # at the top level — fall back to that to keep the value across
+            # passes.
+            max_tokens = validated.get("max_tokens")
+            if max_tokens is None and isinstance(existing_extra_body, dict):
+                max_tokens = existing_extra_body.get("max_completion_tokens")
+            extra_body = {"reasoning_effort": reasoning_effort}
+            if max_tokens is not None:
+                extra_body["max_completion_tokens"] = max_tokens
+            validated["extra_body"] = extra_body
+            validated.pop("temperature", None)
+            validated.pop("max_tokens", None)
+            validated.pop("reasoning_effort", None)
+        else:
+            validated.pop("reasoning_effort", None)
+
+        return validated
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = str(adapter_metadata.get("model", "")).strip()
         if not model:
             raise ValueError("model is required for the OpenAI Compatible adapter.")
-        if model.startswith("custom_openai/"):
+        if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
             return model
-        return f"custom_openai/{model}"
+        return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
