@@ -6,6 +6,7 @@ import re
 from abc import ABC, abstractmethod
 from importlib import import_module
 from typing import TYPE_CHECKING
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from typing import Any
@@ -372,6 +373,13 @@ def _is_openai_reasoning_model(model: str) -> bool:
     return bool(_OPENAI_REASONING_MODEL_PATTERN.match(model.lower()))
 
 
+def _is_openai_api_endpoint(api_base: str | None) -> bool:
+    """Return True when api_base points at OpenAI's own API host."""
+    if not api_base:
+        return False
+    return (urlparse(api_base).hostname or "").lower() == "api.openai.com"
+
+
 class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/openai_compatible/."""
 
@@ -462,6 +470,14 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
             validated.pop("reasoning_effort", None)
         else:
             validated.pop("reasoning_effort", None)
+
+        # The custom_openai/ prefix has no entry in the cost price map. Strip
+        # it only for OpenAI's own endpoint; other gateways price the same
+        # model name differently, so leave their cost unresolved.
+        if _is_openai_api_endpoint(validated.get("api_base")):
+            validated["cost_model"] = validated["model"][
+                len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :
+            ]
 
         return validated
 

@@ -303,6 +303,43 @@ def test_openai_compatible_validate_no_reasoning_unchanged() -> None:
     assert "reasoning_effort" not in validated
 
 
+def test_openai_compatible_validate_sets_cost_model_for_openai_endpoint() -> None:
+    # On OpenAI's endpoint, cost_model drops the prefix so pricing resolves.
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "api_key": "test-key",
+            "model": "gpt-4o",
+        }
+    )
+
+    assert validated["model"] == "custom_openai/gpt-4o"
+    assert validated["cost_model"] == "gpt-4o"
+
+
+def test_openai_compatible_validate_cost_model_keeps_openai_subprefix() -> None:
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "model": "custom_openai/openai/gpt-4o",
+        }
+    )
+
+    assert validated["cost_model"] == "openai/gpt-4o"
+
+
+def test_openai_compatible_validate_no_cost_model_for_other_gateway() -> None:
+    # Non-OpenAI gateways price the same name differently; leave it unresolved.
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "gpt-4o",
+        }
+    )
+
+    assert "cost_model" not in validated
+
+
 def test_openai_compatible_adapter_uses_distinct_description_and_icon() -> None:
     metadata = OpenAICompatibleLLMAdapter.get_metadata()
 
