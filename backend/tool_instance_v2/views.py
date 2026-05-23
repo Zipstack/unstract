@@ -10,6 +10,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
 from utils.user_session import UserSessionUtils
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -94,17 +95,16 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             RequestKey.WORKFLOW,
         )
 
-        # Service accounts (Platform API key holders) need org-wide
-        # tool-instance visibility scoped via the workflows they can
-        # access — otherwise the migration SDK can't enumerate
-        # ToolInstance rows it didn't create. Regular users keep the
-        # original per-creator scope so shared-workflow access does NOT
-        # silently broaden their tool-instance visibility.
-        if getattr(self.request.user, "is_service_account", False):
-            accessible_workflows = Workflow.objects.for_user(self.request.user)
+        # Per-creator scope for regular users avoids leaking sibling rows
+        # in shared workflows; admins and service accounts get org-wide.
+        user = self.request.user
+        if getattr(
+            user, "is_service_account", False
+        ) or OrganizationMemberService.is_user_organization_admin(user):
+            accessible_workflows = Workflow.objects.for_user(user)
             queryset = ToolInstance.objects.filter(workflow__in=accessible_workflows)
         else:
-            queryset = ToolInstance.objects.filter(created_by=self.request.user)
+            queryset = ToolInstance.objects.filter(created_by=user)
         if filter_args:
             queryset = queryset.filter(**filter_args)
         return queryset
