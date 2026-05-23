@@ -13,6 +13,7 @@ from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 from utils.user_session import UserSessionUtils
 from workflow_manager.workflow_v2.constants import WorkflowKey
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.constants import RequestKey
 from tool_instance_v2.constants import ToolInstanceErrors, ToolKey
@@ -92,12 +93,11 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             RequestKey.CREATED_BY,
             RequestKey.WORKFLOW,
         )
+
+        accessible_workflows = Workflow.objects.for_user(self.request.user)
+        queryset = ToolInstance.objects.filter(workflow__in=accessible_workflows)
         if filter_args:
-            queryset = ToolInstance.objects.filter(
-                created_by=self.request.user, **filter_args
-            )
-        else:
-            queryset = ToolInstance.objects.filter(created_by=self.request.user)
+            queryset = queryset.filter(**filter_args)
         return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:

@@ -9,6 +9,8 @@ class PromptAcesssToUser(permissions.BasePermission):
     """Is the crud to Prompt/Notes allowed to user."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if getattr(request.user, "is_service_account", False):
+            return True
         return (
             True
             if (

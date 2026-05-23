@@ -35,7 +35,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
 
     def for_user(self, user: User) -> QuerySet[Any]:
         if getattr(user, "is_service_account", False):
-            return self.all()
+            return self.get_queryset().filter(is_friction_less=False)
 
         return (
             self.get_queryset()
