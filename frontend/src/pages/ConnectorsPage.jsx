@@ -125,8 +125,8 @@ function ConnectorsPage() {
         shared_groups: groupIds,
       };
 
-      await axiosPrivate.patch(
-        getUrl(`connector/${connector.id}/`),
+      await axiosPrivate.post(
+        getUrl(`connector/${connector.id}/share/`),
         updateData,
         {
           headers: {

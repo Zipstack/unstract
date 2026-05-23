@@ -282,17 +282,17 @@ function Workflows() {
         shareWithEveryone,
         selectedGroups,
       );
-      setShareOpen(false);
       setAlertDetails({
         type: "success",
         content: "Workflow sharing updated successfully",
       });
-      getProjectList(); // Refresh the list
+      getProjectList();
     } catch (error) {
       setAlertDetails(
         handleException(error, "Unable to update workflow sharing"),
       );
     } finally {
+      setShareOpen(false);
       setShareLoading(false);
     }
   };

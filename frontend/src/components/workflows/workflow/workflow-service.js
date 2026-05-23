@@ -126,8 +126,8 @@ function workflowService() {
     },
     updateSharing: (id, sharedUsers, shareWithEveryone, sharedGroups = []) => {
       options = {
-        url: `${path}/workflow/${id}/`,
-        method: "PATCH",
+        url: `${path}/workflow/${id}/share/`,
+        method: "POST",
         headers: {
           "X-CSRFToken": csrfToken,
         },

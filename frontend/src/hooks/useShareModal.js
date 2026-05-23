@@ -111,13 +111,16 @@ function useShareModal({
           type: "success",
           content: "Sharing permissions updated successfully",
         });
-        setOpenShareModal(false);
         refreshRef.current?.();
       })
       .catch((err) => {
         setAlertDetails(handleException(err));
       })
       .finally(() => {
+        // Close after every Apply (success or failure) so the modal
+        // doesn't keep showing rejected entries; reopening reseeds from
+        // the server's authoritative state.
+        setOpenShareModal(false);
         setIsLoadingShare(false);
       });
   };

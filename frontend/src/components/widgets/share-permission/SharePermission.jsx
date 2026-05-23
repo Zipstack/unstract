@@ -80,9 +80,7 @@ function SharePermission({
   }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
-    setSelectedUsers((prevSelectedUsers) =>
-      prevSelectedUsers.filter((user) => user !== userId),
-    );
+    setSelectedUsers((prev) => prev.filter((user) => user !== userId));
   };
 
   const handleDeleteGroup = (groupId) => {
@@ -133,29 +131,26 @@ function SharePermission({
           <List.Item
             extra={
               permissionEdit && (
-                <div onClick={(event) => event.stopPropagation()} role="none">
-                  <Popconfirm
-                    key={`${item.kind}-${item.id}-delete`}
-                    title="Revoke Access"
-                    description={`Are you sure you want to revoke access to '${
-                      item.kind === "user" ? item.email : item.name
-                    }'?`}
-                    okText="Yes"
-                    cancelText="No"
-                    icon={<QuestionCircleOutlined />}
-                    onConfirm={() => {
-                      if (item.kind === "user") {
-                        handleDeleteUser(item.id);
-                      } else {
-                        handleDeleteGroup(item.id);
-                      }
-                    }}
-                  >
-                    <Typography.Text>
-                      <DeleteOutlined className="action-icon-buttons" />
-                    </Typography.Text>
-                  </Popconfirm>
-                </div>
+                <Popconfirm
+                  title="Revoke Access"
+                  description={`Are you sure you want to revoke access to '${
+                    item.kind === "user" ? item.email : item.name
+                  }'?`}
+                  okText="Yes"
+                  cancelText="No"
+                  icon={<QuestionCircleOutlined style={{ color: "#faad14" }} />}
+                  onConfirm={() => {
+                    if (item.kind === "user") {
+                      handleDeleteUser(item.id);
+                    } else {
+                      handleDeleteGroup(item.id);
+                    }
+                  }}
+                >
+                  <Typography.Text>
+                    <DeleteOutlined className="action-icon-buttons" />
+                  </Typography.Text>
+                </Popconfirm>
               )
             }
           >

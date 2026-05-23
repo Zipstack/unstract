@@ -6,14 +6,9 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
-from tenant_account_v2.models import OrganizationGroup
 from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
-from tenant_account_v2.sharing_helpers import (
-    serialize_group_refs,
-    validate_shared_groups_in_org,
-)
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
-from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -33,16 +28,17 @@ class TestAdapterSerializer(serializers.Serializer):
 
 class BaseAdapterSerializer(SharedGroupsSerializerMixin, AuditSerializer):
     # ``shared_groups`` is no longer an M2M on AdapterInstance — declare it
-    # explicitly so ``fields = "__all__"`` continues to expose it.
-    shared_groups = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=OrganizationGroup.objects.all(),
-        required=False,
-    )
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /adapter/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = AdapterInstance
         fields = "__all__"
+        extra_kwargs = {
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     def validate(self, data):
         data = super().validate(data)
@@ -57,12 +53,6 @@ class BaseAdapterSerializer(SharedGroupsSerializerMixin, AuditSerializer):
                 description, field_name="Description"
             )
         return data
-
-    def validate_shared_groups(self, value):
-        organization = UserContext.get_organization()
-        if organization is None:
-            return value
-        return validate_shared_groups_in_org(value, organization)
 
 
 class DefaultAdapterSerializer(serializers.Serializer):

@@ -333,8 +333,8 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
 
   const onShare = (userIds, adapter, shareWithEveryone, groupIds = []) => {
     const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/share/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -345,11 +345,11 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       },
     };
     axiosPrivate(requestOptions)
-      .then((response) => {
-        setOpenSharePermissionModal(false);
-      })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
+      })
+      .finally(() => {
+        setOpenSharePermissionModal(false);
       });
   };
 

@@ -36,6 +36,10 @@ function Groups() {
   const [membersOpen, setMembersOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [confirmDeleteLoading, setConfirmDeleteLoading] = useState(false);
+  const [deleteImpact, setDeleteImpact] = useState({
+    loading: false,
+    resourceCount: null,
+  });
 
   const refresh = () => {
     setIsTableLoading(true);
@@ -89,6 +93,18 @@ function Groups() {
   const handleDeleteClick = (record) => {
     setSelectedGroup(record);
     setDeleteOpen(true);
+    setDeleteImpact({ loading: true, resourceCount: null });
+    service
+      .listGroupResources(record.id)
+      .then((res) => {
+        const rows = Array.isArray(res?.data) ? res.data : [];
+        setDeleteImpact({ loading: false, resourceCount: rows.length });
+      })
+      .catch(() => {
+        // Non-blocking: fall back to a generic warning if the impact lookup
+        // fails. The deletion itself doesn't depend on this fetch.
+        setDeleteImpact({ loading: false, resourceCount: null });
+      });
   };
 
   const confirmDelete = () => {
@@ -238,8 +254,15 @@ function Groups() {
         <Typography>Delete group</Typography>
         <Typography.Text strong>{selectedGroup?.name}</Typography.Text>
         <Typography style={{ marginTop: 12 }}>
-          Members will lose access to any resources currently shared with this
-          group (unless they have direct or org-wide access).
+          {deleteImpact.loading
+            ? "Checking affected resources…"
+            : deleteImpact.resourceCount === null
+              ? "Members will lose access to any resources currently shared with this group (unless they have direct or org-wide access)."
+              : `Deleting will revoke access to ${deleteImpact.resourceCount} resource${
+                  deleteImpact.resourceCount === 1 ? "" : "s"
+                } for ${selectedGroup?.member_count ?? 0} member${
+                  (selectedGroup?.member_count ?? 0) === 1 ? "" : "s"
+                } (unless they have direct or org-wide access).`}
         </Typography>
       </Modal>
     </>

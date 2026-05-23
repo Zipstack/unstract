@@ -21,7 +21,7 @@ def _is_service_account(request: Request) -> bool:
     return getattr(request.user, "is_service_account", False)
 
 
-def _has_group_access(user: Any, obj: Any) -> bool:
+def has_group_access(user: Any, obj: Any) -> bool:
     """Check if a user has access to a resource via group membership.
 
     Reads from the polymorphic ``ResourceGroupShare`` table rather than a
@@ -67,7 +67,7 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
         return (
             obj.created_by == request.user
             or obj.shared_users.filter(pk=request.user.pk).exists()
-            or _has_group_access(request.user, obj)
+            or has_group_access(request.user, obj)
         )
 
 
@@ -83,7 +83,7 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
             obj.created_by == request.user
             or obj.shared_users.filter(pk=request.user.pk).exists()
             or obj.shared_to_org
-            or _has_group_access(request.user, obj)
+            or has_group_access(request.user, obj)
         )
 
 

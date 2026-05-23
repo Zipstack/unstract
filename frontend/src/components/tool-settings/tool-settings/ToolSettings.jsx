@@ -197,8 +197,8 @@ function ToolSettings({ type }) {
 
   const onShare = (userIds, adapter, shareWithEveryone, groupIds = []) => {
     const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/share/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -209,11 +209,11 @@ function ToolSettings({ type }) {
       },
     };
     axiosPrivate(requestOptions)
-      .then((response) => {
-        setOpenSharePermissionModal(false);
-      })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update sharing"));
+      })
+      .finally(() => {
+        setOpenSharePermissionModal(false);
       });
   };
 

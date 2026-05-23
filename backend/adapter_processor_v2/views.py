@@ -140,17 +140,21 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
     serializer_class = AdapterInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ["update", "retrieve"]:
+        # Frictionless adapter quirk preserved: blocks update + retrieve so
+        # frictionless adapters stay hidden from non-owners, and lets any
+        # org member delete them. Non-frictionless adapters fall through to
+        # the standard owner / shared-user gating.
+        if self.action in ["update", "partial_update", "retrieve"]:
             return [IsFrictionLessAdapter()]
-
-        elif self.action == "destroy":
+        if self.action == "destroy":
             return [IsFrictionLessAdapterDelete()]
-
-        elif self.action in ["list_of_shared_users", "adapter_info"]:
+        if self.action in [
+            "list_of_shared_users",
+            "adapter_info",
+            "share",
+            "effective_members",
+        ]:
             return [IsOwnerOrSharedUserOrSharedToOrg()]
-
-        # Hack for friction-less onboarding
-        # User cant view/update metadata but can delete/share etc
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:

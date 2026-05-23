@@ -3,7 +3,6 @@
 import logging
 from typing import Any
 
-from account_v2.authentication_controller import AuthenticationController
 from account_v2.models import Organization
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
@@ -44,15 +43,9 @@ def _is_org_admin(request: Request) -> bool:
     Returns False on any lookup failure rather than raising — callers gate
     individual writes; viewing is allowed for all org members.
     """
-    if getattr(request.user, "is_service_account", False):
-        return False
-    try:
-        auth_controller = AuthenticationController()
-        member = auth_controller.get_organization_members_by_user(user=request.user)
-        return auth_controller.is_admin_by_role(member.role)
-    except Exception:
-        logger.exception("Error checking admin role for user %s", request.user.id)
-        return False
+    from tenant_account_v2.sharing_helpers import is_org_admin
+
+    return is_org_admin(request.user)
 
 
 class IsOrgAdminForWrite(BasePermission):

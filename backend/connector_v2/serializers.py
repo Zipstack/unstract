@@ -10,12 +10,9 @@ from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
 from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
-from tenant_account_v2.models import OrganizationGroup
 from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
-from tenant_account_v2.sharing_helpers import validate_shared_groups_in_org
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
-from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
 from connector_v2.constants import ConnectorInstanceKey as CIKey
@@ -31,26 +28,21 @@ class ConnectorInstanceSerializer(SharedGroupsSerializerMixin, AuditSerializer):
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
     # ``shared_groups`` is no longer an M2M on ConnectorInstance — declare it
-    # explicitly so ``fields = "__all__"`` continues to expose it.
-    shared_groups = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=OrganizationGroup.objects.all(),
-        required=False,
-    )
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /connector/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
-        extra_kwargs = {"connector_name": {"required": False}}
+        extra_kwargs = {
+            "connector_name": {"required": False},
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     def validate_connector_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Connector name")
-
-    def validate_shared_groups(self, value):
-        organization = UserContext.get_organization()
-        if organization is None:
-            return value
-        return validate_shared_groups_in_org(value, organization)
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Backfill ``connector_name`` from the JSON schema default when absent.

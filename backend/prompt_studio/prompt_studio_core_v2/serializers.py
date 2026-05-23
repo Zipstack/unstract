@@ -1,22 +1,16 @@
 import logging
 from typing import Any
 
-from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from tenant_account_v2.models import OrganizationGroup
 from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
-from tenant_account_v2.sharing_helpers import (
-    serialize_group_refs,
-    validate_shared_groups_in_org,
-)
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.FileValidator import FileValidator
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
-from utils.user_context import UserContext
 
 from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -85,23 +79,17 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 class CustomToolSerializer(
     SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
 ):
-    shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(is_service_account=False),
-        required=False,
-        allow_null=True,
-        many=True,
-    )
-    # ``shared_groups`` is no longer an M2M on CustomTool — declare it
-    # explicitly so ``fields = "__all__"`` continues to expose it.
-    shared_groups = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=OrganizationGroup.objects.all(),
-        required=False,
-    )
+    # Share mutations go through ``POST /prompt-studio/{id}/share/``;
+    # both axes are read-only on this serializer (UN-2977 plan §B).
+    shared_users = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = CustomTool
         fields = "__all__"
+        extra_kwargs = {
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_tool_name": {
@@ -114,12 +102,6 @@ class CustomToolSerializer(
 
     def validate_tool_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Tool name")
-
-    def validate_shared_groups(self, value):
-        organization = UserContext.get_organization()
-        if organization is None:
-            return value
-        return validate_shared_groups_in_org(value, organization)
 
     def validate_description(self, value: str) -> str:
         if value is None:

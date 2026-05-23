@@ -108,8 +108,8 @@ function pipelineService() {
       sharedGroups = [],
     ) => {
       const requestOptions = {
-        method: "PATCH",
-        url: `${path}/pipeline/${pipelineId}/`,
+        method: "POST",
+        url: `${path}/pipeline/${pipelineId}/share/`,
         headers: requestHeaders,
         data: {
           shared_users: sharedUsers,

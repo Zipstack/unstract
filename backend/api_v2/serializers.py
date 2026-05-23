@@ -23,15 +23,10 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
-from tenant_account_v2.models import OrganizationGroup
 from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
-from tenant_account_v2.sharing_helpers import (
-    serialize_group_refs,
-    validate_shared_groups_in_org,
-)
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
-from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -45,16 +40,17 @@ class APIDeploymentSerializer(
     SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
 ):
     # ``shared_groups`` is no longer an M2M on APIDeployment — declare it
-    # explicitly so ``fields = "__all__"`` continues to expose it.
-    shared_groups = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=OrganizationGroup.objects.all(),
-        required=False,
-    )
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = APIDeployment
         fields = "__all__"
+        extra_kwargs = {
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_api_name": {
@@ -88,12 +84,6 @@ class APIDeploymentSerializer(
         if value is None:
             return value
         return validate_no_html_tags(value, field_name="Description")
-
-    def validate_shared_groups(self, value):
-        organization = UserContext.get_organization()
-        if organization is None:
-            return value
-        return validate_shared_groups_in_org(value, organization)
 
     def validate_workflow(self, workflow):
         """Validate that the workflow has properly configured source and destination endpoints."""

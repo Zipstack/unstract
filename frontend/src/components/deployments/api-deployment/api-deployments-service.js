@@ -113,8 +113,8 @@ function apiDeploymentsService() {
     },
     updateSharing: (id, sharedUsers, shareWithEveryone, sharedGroups = []) => {
       options = {
-        method: "PATCH",
-        url: `${path}/api/deployment/${id}/`,
+        method: "POST",
+        url: `${path}/api/deployment/${id}/share/`,
         headers: requestHeaders,
         data: {
           shared_users: sharedUsers,

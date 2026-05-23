@@ -13,17 +13,12 @@ from rest_framework.serializers import (
     UUIDField,
     ValidationError,
 )
-from tenant_account_v2.models import OrganizationGroup
 from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
-from tenant_account_v2.sharing_helpers import (
-    serialize_group_refs,
-    validate_shared_groups_in_org,
-)
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
-from utils.user_context import UserContext
 
 from backend.constants import RequestKey
 from backend.serializers import AuditSerializer
@@ -41,12 +36,10 @@ class WorkflowSerializer(
 ):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
     # ``shared_groups`` is no longer an M2M on Workflow — declare it
-    # explicitly so ``fields = "__all__"`` continues to expose it.
-    shared_groups = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=OrganizationGroup.objects.all(),
-        required=False,
-    )
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /workflow/{id}/share/``; the field is
+    # read-only on this serializer (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = Workflow
@@ -55,6 +48,8 @@ class WorkflowSerializer(
             WorkflowKey.LLM_RESPONSE: {
                 "required": False,
             },
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
         }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
@@ -71,12 +66,6 @@ class WorkflowSerializer(
         if value is None:
             return value
         return validate_no_html_tags(value, field_name="Description")
-
-    def validate_shared_groups(self, value):
-        organization = UserContext.get_organization()
-        if organization is None:
-            return value
-        return validate_shared_groups_in_org(value, organization)
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)

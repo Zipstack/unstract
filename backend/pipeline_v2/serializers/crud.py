@@ -13,12 +13,9 @@ from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
-from tenant_account_v2.models import OrganizationGroup
 from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
-from tenant_account_v2.sharing_helpers import validate_shared_groups_in_org
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
-from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
@@ -37,16 +34,17 @@ class PipelineSerializer(
     last_5_run_statuses = SerializerMethodField()
     next_run_time = SerializerMethodField()
     # ``shared_groups`` is no longer an M2M on Pipeline — declare it
-    # explicitly so ``fields = "__all__"`` continues to expose it.
-    shared_groups = serializers.PrimaryKeyRelatedField(
-        many=True,
-        queryset=OrganizationGroup.objects.all(),
-        required=False,
-    )
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /pipeline/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = Pipeline
         fields = "__all__"
+        extra_kwargs = {
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_pipeline_name": {
@@ -166,12 +164,6 @@ class PipelineSerializer(
             self._validate_comma_pattern(minute_field)
         elif "-" in minute_field:
             self._validate_range_pattern(minute_field)
-
-    def validate_shared_groups(self, value):
-        organization = UserContext.get_organization()
-        if organization is None:
-            return value
-        return validate_shared_groups_in_org(value, organization)
 
     def validate_cron_string(self, value: str | None = None) -> str | None:
         """Validate the cron string provided in the serializer data.
