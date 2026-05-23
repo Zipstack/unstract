@@ -30,14 +30,17 @@ class ConnectorInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMa
         if getattr(user, "is_service_account", False):
             return self.all()
 
-        user_groups = user.group_memberships.values_list("group_id", flat=True)
+        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
+
+        user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+        group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         return (
             self.get_queryset()
             .filter(
                 models.Q(created_by=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
-                | models.Q(shared_groups__in=user_groups)
+                | models.Q(pk__in=group_shared_ids)
             )
             .distinct("id")
         )
@@ -102,11 +105,15 @@ class ConnectorInstance(DefaultOrganizationMixin, BaseModel):
     shared_users = models.ManyToManyField(
         User, related_name="shared_connectors", blank=True
     )
-    shared_groups = models.ManyToManyField(
-        "tenant_account_v2.OrganizationGroup",
-        related_name="shared_connector_instances",
-        blank=True,
-    )
+
+    # ``shared_groups`` is stored polymorphically in
+    # ``tenant_account_v2.ResourceGroupShare``; the property preserves the
+    # ergonomic read surface for DRF / existing callers.
+    @property
+    def shared_groups(self):
+        from tenant_account_v2.sharing_helpers import get_resource_share_groups
+
+        return get_resource_share_groups(self)
 
     objects = ConnectorInstanceModelManager()
 

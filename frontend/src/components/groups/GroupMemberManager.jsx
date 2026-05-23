@@ -50,9 +50,7 @@ function GroupMemberManager({ open, group, onClose }) {
   }, [open, group?.id]);
 
   const memberIds = new Set(members.map((m) => m.user_id));
-  const candidateUsers = orgUsers.filter(
-    (u) => !memberIds.has(u.id) && !pendingAddIds.includes(u.id),
-  );
+  const candidateUsers = orgUsers.filter((u) => !memberIds.has(u.id));
 
   const handleAdd = () => {
     if (!pendingAddIds.length) {

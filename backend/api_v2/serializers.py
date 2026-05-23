@@ -8,6 +8,7 @@ from django.apps import apps
 from django.core.validators import RegexValidator
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+from rest_framework import serializers
 from rest_framework.serializers import (
     BooleanField,
     CharField,
@@ -22,6 +23,8 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
+from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     validate_shared_groups_in_org,
@@ -38,7 +41,17 @@ from api_v2.models import APIDeployment, APIKey
 from backend.serializers import AuditSerializer
 
 
-class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
+class APIDeploymentSerializer(
+    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
+):
+    # ``shared_groups`` is no longer an M2M on APIDeployment — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it.
+    shared_groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=OrganizationGroup.objects.all(),
+        required=False,
+    )
+
     class Meta:
         model = APIDeployment
         fields = "__all__"

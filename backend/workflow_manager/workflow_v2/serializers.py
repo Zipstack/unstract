@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from rest_framework import serializers
 from rest_framework.serializers import (
     CharField,
     ChoiceField,
@@ -12,6 +13,8 @@ from rest_framework.serializers import (
     UUIDField,
     ValidationError,
 )
+from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     validate_shared_groups_in_org,
@@ -33,8 +36,17 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 logger = logging.getLogger(__name__)
 
 
-class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
+class WorkflowSerializer(
+    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
+):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
+    # ``shared_groups`` is no longer an M2M on Workflow — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it.
+    shared_groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=OrganizationGroup.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = Workflow

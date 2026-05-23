@@ -7,6 +7,8 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     validate_shared_groups_in_org,
@@ -80,12 +82,21 @@ class CustomToolListSerializer(serializers.ModelSerializer):
         return instance.mapped_prompt.count()
 
 
-class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
+class CustomToolSerializer(
+    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
+):
     shared_users = serializers.PrimaryKeyRelatedField(
         queryset=User.objects.filter(is_service_account=False),
         required=False,
         allow_null=True,
         many=True,
+    )
+    # ``shared_groups`` is no longer an M2M on CustomTool — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it.
+    shared_groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=OrganizationGroup.objects.all(),
+        required=False,
     )
 
     class Meta:

@@ -12,6 +12,7 @@ from permissions.permission import (
     IsOwner,
     IsOwnerOrSharedUserOrSharedToOrg,
 )
+from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -135,7 +136,7 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
-class AdapterInstanceViewSet(ModelViewSet):
+class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
     serializer_class = AdapterInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
@@ -294,92 +295,98 @@ class AdapterInstanceViewSet(ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Store current shared users before update (for email notifications)
         adapter = self.get_object()
-        current_shared_users = set(adapter.shared_users.all())
+        before = self.snapshot_share_axes(adapter)
 
         if AdapterKeys.SHARED_USERS in request.data:
-            # find the deleted users
-            shared_users = {
-                int(user_id) for user_id in request.data.get("shared_users", {})
-            }
-            current_users = {user.id for user in adapter.shared_users.all()}
-            removed_users = current_users.difference(shared_users)
+            # Adapter-specific: when a user loses access, clear their
+            # ``UserDefaultAdapter`` rows that pointed at this adapter so they
+            # don't keep a stale default. Must run BEFORE the M2M update.
+            self._clear_default_adapter_for_removed_users(
+                adapter, before["shared_users"], request.data
+            )
 
-            # if removed user use this adapter as default
-            # Remove the same from his default
-            for user_id in removed_users:
-                try:
-                    organization_member = OrganizationMemberService.get_user_by_id(
-                        id=user_id
-                    )
-                    user_default_adapter: UserDefaultAdapter = (
-                        UserDefaultAdapter.objects.get(
-                            organization_member=organization_member
-                        )
-                    )
-
-                    adapter_fields = [
-                        "default_llm_adapter",
-                        "default_embedding_adapter",
-                        "default_vector_db_adapter",
-                        "default_x2text_adapter",
-                    ]
-
-                    updated = False
-                    for field in adapter_fields:
-                        if getattr(user_default_adapter, field) == adapter:
-                            setattr(user_default_adapter, field, None)
-                            updated = True
-
-                    if updated:
-                        user_default_adapter.save()
-                except UserDefaultAdapter.DoesNotExist:
-                    logger.debug(
-                        "User id : %s doesnt have default adapters configured",
-                        user_id,
-                    )
-                    continue
-
-        # Perform the update
         response = super().partial_update(request, *args, **kwargs)
 
-        # TODO: notify group members when shared_groups changes (Phase 2)
-        # Send email notifications to newly shared users
-        if response.status_code == 200 and AdapterKeys.SHARED_USERS in request.data:
-            try:
-                adapter.refresh_from_db()
-                new_shared_users = set(adapter.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
+        if response.status_code != 200 or not notification_plugin:
+            return response
 
-                if newly_shared_users:
-                    # Map adapter type to specific resource type
-                    adapter_type_to_resource = {
-                        "LLM": ResourceType.LLM.value,
-                        "EMBEDDING": ResourceType.EMBEDDING.value,
-                        "VECTOR_DB": ResourceType.VECTOR_DB.value,
-                        "X2TEXT": ResourceType.X2TEXT.value,
-                    }
+        diffs = self.diff_share_axes(adapter, before, request.data)
+        # TODO: notify group members when shared_groups changes (UN-2977 follow-up)
+        users_diff = diffs.get("shared_users")
+        if not (users_diff and users_diff.added):
+            return response
 
-                    resource_type = adapter_type_to_resource.get(
-                        adapter.adapter_type, ResourceType.LLM.value
-                    )
-
-                    # Get notification service from plugin
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    notification_service.send_sharing_notification(
-                        resource_type=resource_type,
-                        resource_name=adapter.adapter_name,
-                        resource_id=str(adapter.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=adapter,
-                    )
-            except Exception as e:
-                logger.exception(f"Failed to send sharing notification: {e}")
+        try:
+            adapter_type_to_resource = {
+                "LLM": ResourceType.LLM.value,
+                "EMBEDDING": ResourceType.EMBEDDING.value,
+                "VECTOR_DB": ResourceType.VECTOR_DB.value,
+                "X2TEXT": ResourceType.X2TEXT.value,
+            }
+            resource_type = adapter_type_to_resource.get(
+                adapter.adapter_type, ResourceType.LLM.value
+            )
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=resource_type,
+                resource_name=adapter.adapter_name,
+                resource_id=str(adapter.id),
+                shared_by=request.user,
+                shared_to=list(users_diff.added),
+                resource_instance=adapter,
+            )
+        except Exception as e:
+            logger.exception("Failed to send sharing notification: %s", e)
 
         return response
+
+    def _clear_default_adapter_for_removed_users(
+        self,
+        adapter: AdapterInstance,
+        current_shared_users: set[Any],
+        request_data: dict[str, Any],
+    ) -> None:
+        """Null out ``UserDefaultAdapter`` rows pointing at ``adapter`` for
+        users about to be unshared.
+
+        Computed against ``request.data`` because this runs *before* the M2M
+        update lands; the post-update diff would be too late.
+        """
+        requested_user_ids = {
+            int(user_id) for user_id in request_data.get("shared_users", [])
+        }
+        current_user_ids = {user.id for user in current_shared_users}
+        removed_user_ids = current_user_ids - requested_user_ids
+
+        adapter_fields = (
+            "default_llm_adapter",
+            "default_embedding_adapter",
+            "default_vector_db_adapter",
+            "default_x2text_adapter",
+        )
+
+        for user_id in removed_user_ids:
+            try:
+                organization_member = OrganizationMemberService.get_user_by_id(id=user_id)
+                user_default_adapter = UserDefaultAdapter.objects.get(
+                    organization_member=organization_member
+                )
+            except UserDefaultAdapter.DoesNotExist:
+                logger.debug(
+                    "User id : %s doesnt have default adapters configured",
+                    user_id,
+                )
+                continue
+
+            updated = False
+            for field_name in adapter_fields:
+                if getattr(user_default_adapter, field_name) == adapter:
+                    setattr(user_default_adapter, field_name, None)
+                    updated = True
+            if updated:
+                user_default_adapter.save()
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:
@@ -388,16 +395,6 @@ class AdapterInstanceViewSet(ModelViewSet):
         serialized_instances = SharedUserListSerializer(adapter).data
 
         return Response(serialized_instances)
-
-    @action(detail=True, methods=["get"], url_path="effective-members")
-    def effective_members(self, request: HttpRequest, pk: Any = None) -> Response:
-        """Return all users with access (direct/group/org), priority-deduped."""
-        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
-        from tenant_account_v2.sharing_helpers import compute_effective_members
-
-        adapter = self.get_object()
-        members = compute_effective_members(adapter)
-        return Response(EffectiveMemberSerializer(members, many=True).data)
 
     def update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]

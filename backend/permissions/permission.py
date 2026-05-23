@@ -24,14 +24,21 @@ def _is_service_account(request: Request) -> bool:
 def _has_group_access(user: Any, obj: Any) -> bool:
     """Check if a user has access to a resource via group membership.
 
-    Returns False for objects that don't carry a ``shared_groups`` field
-    (e.g. resources whose model hasn't been extended yet), so callers can
-    OR this in safely without per-model guards.
+    Reads from the polymorphic ``ResourceGroupShare`` table rather than a
+    per-resource ``shared_groups`` M2M (see UN-2977). Callers can OR this
+    in safely for any resource — non-shareable objects yield no rows.
     """
-    if not hasattr(obj, "shared_groups"):
-        return False
-    user_groups = user.group_memberships.values_list("group_id", flat=True)
-    return bool(obj.shared_groups.filter(id__in=user_groups).exists())
+    # Lazy import — ``permissions`` is imported by `account_v2`/`api_v2`
+    # before `tenant_account_v2` finishes loading.
+    from django.contrib.contenttypes.models import ContentType
+    from tenant_account_v2.models import ResourceGroupShare
+
+    user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+    return ResourceGroupShare.objects.filter(
+        content_type=ContentType.objects.get_for_model(type(obj)),
+        object_id=str(obj.pk),
+        group_id__in=user_group_ids,
+    ).exists()
 
 
 class IsOwner(permissions.BasePermission):

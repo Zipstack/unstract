@@ -145,15 +145,17 @@ function Groups() {
   };
 
   const columns = [
-    { title: "Name", dataIndex: "name" },
-    { title: "Description", dataIndex: "description" },
     {
-      title: "Source",
-      dataIndex: "source",
-      render: (source) => (
-        <Tag color={source === "IDP" ? "blue" : "default"}>{source}</Tag>
+      title: "Name",
+      dataIndex: "name",
+      render: (name, record) => (
+        <Space size="small">
+          <span>{name}</span>
+          {record.source === "IDP" && <Tag color="blue">IdP</Tag>}
+        </Space>
       ),
     },
+    { title: "Description", dataIndex: "description" },
     { title: "Members", dataIndex: "member_count", align: "center" },
     {
       title: "Actions",

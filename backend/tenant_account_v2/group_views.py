@@ -235,9 +235,13 @@ def _collect_resources_shared_with_group(
         ("custom_tool", CustomTool, "tool_name", "tool_id"),
     )
 
+    from tenant_account_v2.sharing_helpers import list_resources_shared_with_group
+
     results: list[dict[str, Any]] = []
     for kind, model, name_field, id_field in sources:
-        qs = model.objects.filter(shared_groups=group).values_list(id_field, name_field)
+        qs = list_resources_shared_with_group(group, model).values_list(
+            id_field, name_field
+        )
         for resource_id, name in qs:
             results.append(
                 {

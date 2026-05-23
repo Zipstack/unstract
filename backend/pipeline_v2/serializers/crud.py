@@ -13,6 +13,8 @@ from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
+from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import validate_shared_groups_in_org
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
@@ -27,11 +29,20 @@ logger = logging.getLogger(__name__)
 DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 
-class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
+class PipelineSerializer(
+    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
+):
     api_endpoint = SerializerMethodField()
     created_by_email = SerializerMethodField()
     last_5_run_statuses = SerializerMethodField()
     next_run_time = SerializerMethodField()
+    # ``shared_groups`` is no longer an M2M on Pipeline — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it.
+    shared_groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=OrganizationGroup.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = Pipeline

@@ -1,4 +1,5 @@
 from account_v2.models import Organization, User
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import (
@@ -97,6 +98,47 @@ class OrganizationGroup(BaseModel):
                 fields=["organization", "name"],
                 name="unique_organization_group_name",
             ),
+        ]
+
+
+class ResourceGroupShare(BaseModel):
+    """Polymorphic group→resource share row.
+
+    Replaces the per-resource ``shared_groups`` M2M join tables with a
+    single table covering every shareable resource. One row per
+    ``(group, resource)`` edge. Multi-tenancy is enforced by the explicit
+    ``organization`` FK plus viewset-level filtering on every read path.
+    """
+
+    group = models.ForeignKey(
+        OrganizationGroup,
+        on_delete=models.CASCADE,
+        related_name="resource_shares",
+    )
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    # ``object_id`` is the resource PK as text; every in-scope resource uses
+    # UUID primary keys but the column stays varchar to keep the schema open
+    # for future non-UUID resources.
+    object_id = models.CharField(max_length=255)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE,
+        related_name="resource_group_shares",
+    )
+
+    class Meta:
+        db_table = "resource_group_share"
+        verbose_name = "Resource Group Share"
+        verbose_name_plural = "Resource Group Shares"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "content_type", "object_id"],
+                name="uniq_resource_group_share",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["content_type", "object_id"]),
+            models.Index(fields=["organization", "group"]),
         ]
 
 

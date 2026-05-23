@@ -9,9 +9,9 @@ from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status, viewsets
-from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -34,7 +34,7 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
 
@@ -205,51 +205,36 @@ class ConnectorInstanceViewSet(viewsets.ModelViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        before = self.snapshot_share_axes(instance)
 
         response = super().partial_update(request, *args, **kwargs)
 
-        # TODO: notify group members when shared_groups changes (Phase 2)
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and bool(notification_plugin)
-        ):
-            try:
-                instance.refresh_from_db()
-                new_shared_users = set(instance.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
+        if response.status_code != 200 or not notification_plugin:
+            return response
 
-                if newly_shared_users:
-                    # Only send notifications if there are newly shared users
-                    SharingNotificationService().send_sharing_notification(
-                        resource_type=ResourceType.CONNECTOR.value,
-                        resource_name=instance.connector_name,
-                        resource_id=str(instance.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=instance,
-                    )
+        diffs = self.diff_share_axes(instance, before, request.data)
+        # TODO: notify group members when shared_groups changes (UN-2977 follow-up)
+        users_diff = diffs.get("shared_users")
+        if not (users_diff and users_diff.added):
+            return response
 
-                    logger.info(
-                        f"Sent sharing notifications for connector "
-                        f"to {len(newly_shared_users)} users"
-                    )
-
-            except Exception as e:
-                # Log error but don't fail the update operation
-                logger.exception(
-                    f"Failed to send sharing notification, continuing update though: {str(e)}"
-                )
+        try:
+            SharingNotificationService().send_sharing_notification(
+                resource_type=ResourceType.CONNECTOR.value,
+                resource_name=instance.connector_name,
+                resource_id=str(instance.id),
+                shared_by=request.user,
+                shared_to=list(users_diff.added),
+                resource_instance=instance,
+            )
+            logger.info(
+                "Sent sharing notifications for connector to %d users",
+                len(users_diff.added),
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification, continuing update though: %s",
+                str(e),
+            )
 
         return response
-
-    @action(detail=True, methods=["get"], url_path="effective-members")
-    def effective_members(self, request: Request, pk: str | None = None) -> Response:
-        """Return all users with access (direct/group/org), priority-deduped."""
-        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
-        from tenant_account_v2.sharing_helpers import compute_effective_members
-
-        connector = self.get_object()
-        members = compute_effective_members(connector)
-        return Response(EffectiveMemberSerializer(members, many=True).data)

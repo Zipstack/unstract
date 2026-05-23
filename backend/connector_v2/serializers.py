@@ -8,7 +8,10 @@ from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
+from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
+from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import validate_shared_groups_in_org
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
@@ -23,10 +26,17 @@ from .models import ConnectorInstance
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceSerializer(AuditSerializer):
+class ConnectorInstanceSerializer(SharedGroupsSerializerMixin, AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
+    # ``shared_groups`` is no longer an M2M on ConnectorInstance — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it.
+    shared_groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=OrganizationGroup.objects.all(),
+        required=False,
+    )
 
     class Meta:
         model = ConnectorInstance

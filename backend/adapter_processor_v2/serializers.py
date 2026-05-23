@@ -6,6 +6,8 @@ from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
+from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import (
     serialize_group_refs,
     validate_shared_groups_in_org,
@@ -29,7 +31,15 @@ class TestAdapterSerializer(serializers.Serializer):
     adapter_type = serializers.JSONField()
 
 
-class BaseAdapterSerializer(AuditSerializer):
+class BaseAdapterSerializer(SharedGroupsSerializerMixin, AuditSerializer):
+    # ``shared_groups`` is no longer an M2M on AdapterInstance — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it.
+    shared_groups = serializers.PrimaryKeyRelatedField(
+        many=True,
+        queryset=OrganizationGroup.objects.all(),
+        required=False,
+    )
+
     class Meta:
         model = AdapterInstance
         fields = "__all__"

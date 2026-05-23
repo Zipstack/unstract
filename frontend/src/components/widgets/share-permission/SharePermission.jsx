@@ -190,7 +190,7 @@ function SharePermission({
   return (
     adapter && (
       <Modal
-        title={"Share Users"}
+        title="Share access"
         open={open}
         onCancel={() => setOpen(false)}
         maskClosable={false}
@@ -220,45 +220,53 @@ function SharePermission({
             )}
             {permissionEdit && !shareWithEveryone && (
               <>
-                <Select
-                  filterOption={filterOption}
-                  showSearch
-                  size={"middle"}
-                  placeholder="Search users"
-                  value={null}
-                  className="share-permission-search"
-                  onChange={(selectedValue) => {
-                    const isValueSelected =
-                      selectedUsers.includes(selectedValue);
-                    if (!isValueSelected) {
-                      setSelectedUsers([...selectedUsers, selectedValue]);
-                    }
-                  }}
-                  options={filteredUsers.map((user) => ({
-                    label: user.email,
-                    value: user.id,
-                  }))}
-                />
-                {allGroups.length > 0 && (
+                <div className="share-permission-section">
+                  <Typography.Text strong>Add users</Typography.Text>
                   <Select
                     filterOption={filterOption}
                     showSearch
                     size={"middle"}
-                    placeholder="Search groups"
+                    placeholder="Find a user by email"
                     value={null}
                     className="share-permission-search"
-                    onChange={(groupId) => {
-                      if (!selectedGroupIds.includes(groupId)) {
-                        setSelectedGroupIds([...selectedGroupIds, groupId]);
+                    onChange={(selectedValue) => {
+                      const isValueSelected =
+                        selectedUsers.includes(selectedValue);
+                      if (!isValueSelected) {
+                        setSelectedUsers([...selectedUsers, selectedValue]);
                       }
                     }}
-                    options={groupCandidateOptions}
+                    options={filteredUsers.map((user) => ({
+                      label: user.email,
+                      value: user.id,
+                    }))}
                   />
+                </div>
+                {allGroups.length > 0 && (
+                  <div className="share-permission-section">
+                    <Typography.Text strong>Add groups</Typography.Text>
+                    <Select
+                      filterOption={filterOption}
+                      showSearch
+                      size={"middle"}
+                      placeholder="Find a group by name"
+                      value={null}
+                      className="share-permission-search"
+                      onChange={(groupId) => {
+                        if (!selectedGroupIds.includes(groupId)) {
+                          setSelectedGroupIds([...selectedGroupIds, groupId]);
+                        }
+                      }}
+                      options={groupCandidateOptions}
+                    />
+                  </div>
                 )}
               </>
             )}
-            <Typography.Title level={5}>Shared with</Typography.Title>
-            {sharedWithContent}
+            <div className="share-permission-section">
+              <Typography.Text strong>Currently shared with</Typography.Text>
+              {sharedWithContent}
+            </div>
           </>
         )}
       </Modal>

@@ -18,6 +18,7 @@ from django.utils import timezone
 from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -119,7 +120,7 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(viewsets.ModelViewSet):
+class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
@@ -295,47 +296,43 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Store current shared users before update for email notifications
         custom_tool = self.get_object()
-        current_shared_users = set(custom_tool.shared_users.all())
+        before = self.snapshot_share_axes(custom_tool)
 
-        # Perform the update
         response = super().partial_update(request, *args, **kwargs)
 
-        # TODO: notify group members when shared_groups changes (Phase 2)
-        # Send email notifications to newly shared users
-        if response.status_code == 200 and "shared_users" in request.data:
-            from plugins import get_plugin
+        if response.status_code != 200:
+            return response
 
-            notification_plugin = get_plugin("notification")
-            if notification_plugin:
-                from plugins.notification.constants import ResourceType
+        notification_plugin = get_plugin("notification")
+        if not notification_plugin:
+            return response
 
-                # Refresh the object to get updated shared_users
-                custom_tool.refresh_from_db()
-                updated_shared_users = set(custom_tool.shared_users.all())
+        diffs = self.diff_share_axes(custom_tool, before, request.data)
+        # TODO: notify group members when shared_groups changes (UN-2977 follow-up)
+        users_diff = diffs.get("shared_users")
+        if not (users_diff and users_diff.added):
+            return response
 
-                # Find newly added users (not previously shared)
-                newly_shared_users = updated_shared_users - current_shared_users
+        from plugins.notification.constants import ResourceType
 
-                if newly_shared_users:
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    try:
-                        notification_service.send_sharing_notification(
-                            resource_type=ResourceType.TEXT_EXTRACTOR.value,
-                            resource_name=custom_tool.tool_name,
-                            resource_id=str(custom_tool.tool_id),
-                            shared_by=request.user,
-                            shared_to=list(newly_shared_users),
-                            resource_instance=custom_tool,
-                        )
-                    except Exception as e:
-                        # Log error but don't fail the request
-                        logger.exception(
-                            f"Failed to send sharing notification for "
-                            f"custom tool {custom_tool.tool_id}: {str(e)}"
-                        )
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=ResourceType.TEXT_EXTRACTOR.value,
+                resource_name=custom_tool.tool_name,
+                resource_id=str(custom_tool.tool_id),
+                shared_by=request.user,
+                shared_to=list(users_diff.added),
+                resource_instance=custom_tool,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification for custom tool %s: %s",
+                custom_tool.tool_id,
+                str(e),
+            )
 
         return response
 
@@ -890,16 +887,6 @@ class PromptStudioCoreView(viewsets.ModelViewSet):
         serialized_instances = SharedUserListSerializer(custom_tool).data
 
         return Response(serialized_instances)
-
-    @action(detail=True, methods=["get"], url_path="effective-members")
-    def effective_members(self, request: HttpRequest, pk: Any = None) -> Response:
-        """Return all users with access (direct/group/org), priority-deduped."""
-        from tenant_account_v2.group_serializers import EffectiveMemberSerializer
-        from tenant_account_v2.sharing_helpers import compute_effective_members
-
-        custom_tool = self.get_object()
-        members = compute_effective_members(custom_tool)
-        return Response(EffectiveMemberSerializer(members, many=True).data)
 
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:

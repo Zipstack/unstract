@@ -37,13 +37,15 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
             return self.all()
 
         from django.db.models import Q
+        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
 
-        user_groups = user.group_memberships.values_list("group_id", flat=True)
+        user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+        group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
-            | Q(shared_groups__in=user_groups)  # Shared via group membership
+            | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
@@ -107,11 +109,15 @@ class APIDeployment(DefaultOrganizationMixin, BaseModel):
         default=False,
         db_comment="Whether this API deployment is shared with the entire organization",
     )
-    shared_groups = models.ManyToManyField(
-        "tenant_account_v2.OrganizationGroup",
-        related_name="shared_api_deployments",
-        blank=True,
-    )
+    # ``shared_groups`` is stored polymorphically in
+    # ``tenant_account_v2.ResourceGroupShare``; the property preserves the
+    # ergonomic read surface for DRF / existing callers.
+
+    @property
+    def shared_groups(self):
+        from tenant_account_v2.sharing_helpers import get_resource_share_groups
+
+        return get_resource_share_groups(self)
 
     # Manager
     objects = APIDeploymentModelManager()
