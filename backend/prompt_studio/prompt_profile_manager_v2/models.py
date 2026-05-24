@@ -4,6 +4,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from utils.models.base_model import BaseModel, BaseModelManager
+from utils.user_context import UserContext
 
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -16,22 +17,31 @@ class ProfileManagerModelManager(BaseModelManager):
         Without this, ProfileManager rows created by another user (notably
         the service account used by org-to-org migration) are invisible to
         every other org member. Service accounts and org admins see all
-        rows.
+        rows within the current org.
+
+        ProfileManager has no direct ``organization`` FK — scope via the
+        parent CustomTool so the ``shared_to_org=True`` branch cannot
+        leak rows across tenants when a UUID is known/guessed.
         """
+        # Service accounts and admins still need to be org-scoped — they
+        # otherwise see rows from every org in the DB.
+        from django.db.models import Q
+
+        org_scope = Q(prompt_studio_tool__organization=UserContext.get_organization())
+
         if getattr(user, "is_service_account", False):
-            return self.all()
+            return self.filter(org_scope)
 
         from tenant_account_v2.organization_member_service import (
             OrganizationMemberService,
         )
 
         if OrganizationMemberService.is_user_organization_admin(user):
-            return self.all()
-
-        from django.db.models import Q
+            return self.filter(org_scope)
 
         return self.filter(
-            Q(created_by=user) | Q(shared_users=user) | Q(shared_to_org=True)
+            org_scope
+            & (Q(created_by=user) | Q(shared_users=user) | Q(shared_to_org=True))
         ).distinct()
 
 
