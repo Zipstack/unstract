@@ -14,13 +14,14 @@ The helper's upload entry points (``PromptStudioFileHelper.upload_for_ide``,
   don't leak orphaned upload parts in S3/GCS.
 
 Tests target the ``streaming_writer`` module directly so they don't
-boot the full Django settings chain via the calling helper.
+boot the full Django settings chain via the calling helper. Pure pytest
+with hand-rolled fakes — no ``unittest.mock`` dependency.
 """
 
 from __future__ import annotations
 
 import io
-from unittest.mock import MagicMock
+from typing import Any, Callable
 
 import pytest
 
@@ -30,34 +31,72 @@ from utils.file_storage.helpers.streaming_writer import (
 )
 
 
-@pytest.fixture
-def mock_storage() -> tuple[MagicMock, MagicMock]:
-    """Return (fs_instance_mock, raw_fs_handle_mock).
+class FakeHandle:
+    """Hand-rolled fsspec-handle stand-in.
 
-    The helper interacts with both: ``fs_instance.write`` for the bytes
-    fast-path and ``fs_instance.fs.open`` for streaming.
+    Captures every ``write(chunk)`` call so tests can assert chunk size
+    and ordering. Optional ``write_side_effect`` lets a test inject a
+    failure mid-stream to exercise the abort path. ``abort_methods``
+    controls which abort hook(s) the handle exposes — different fsspec
+    providers expose different names, so tests parametrise.
     """
-    raw_fs = MagicMock()
-    storage = MagicMock()
-    storage.fs = raw_fs
-    return storage, raw_fs
+
+    def __init__(
+        self,
+        write_side_effect: Callable[[bytes], None] | None = None,
+        abort_methods: tuple[str, ...] = ("abort_mpu",),
+    ) -> None:
+        self.writes: list[bytes] = []
+        self.closed: int = 0
+        self.aborts: list[str] = []
+        self._write_side_effect = write_side_effect
+        for method_name in abort_methods:
+            setattr(
+                self,
+                method_name,
+                lambda name=method_name: self.aborts.append(name),
+            )
+
+    def write(self, chunk: bytes) -> None:
+        if self._write_side_effect is not None:
+            self._write_side_effect(chunk)
+        self.writes.append(chunk)
+
+    def close(self) -> None:
+        self.closed += 1
 
 
-def _open_returns(raw_fs: MagicMock, sink: io.BytesIO) -> MagicMock:
-    """Wire the mocked fsspec handle so its ``open()`` returns a writable
-    object that records bytes into ``sink`` and exposes ``abort_mpu``.
+class FakeFs:
+    """Stand-in for ``fs_instance.fs`` — only needs ``open()``."""
+
+    def __init__(self, handle: FakeHandle) -> None:
+        self._handle = handle
+        self.open_calls: list[dict[str, Any]] = []
+
+    def open(self, path: str, mode: str, block_size: int) -> FakeHandle:
+        self.open_calls.append({"path": path, "mode": mode, "block_size": block_size})
+        return self._handle
+
+
+class FakeStorage:
+    """Stand-in for the ``FileStorage`` wrapper passed to the helper.
+
+    Mirrors only the two attributes the helper actually touches:
+    ``write`` (bytes fast-path) and ``fs`` (streaming path).
     """
-    handle = MagicMock()
-    handle.write.side_effect = sink.write
-    handle.close = MagicMock()
-    raw_fs.open.return_value = handle
-    return handle
+
+    def __init__(self, handle: FakeHandle | None = None) -> None:
+        self.write_calls: list[dict[str, Any]] = []
+        self.fs = FakeFs(handle) if handle is not None else None
+
+    def write(self, *, path: str, mode: str, data: bytes) -> None:
+        self.write_calls.append({"path": path, "mode": mode, "data": data})
 
 
-class _UploadedFileLike:
+class UploadedFileLike:
     """Mimics ``django.core.files.uploadedfile.UploadedFile.chunks``."""
 
-    def __init__(self, payload: bytes, chunk_size: int):
+    def __init__(self, payload: bytes, chunk_size: int) -> None:
         self._payload = payload
         self._chunk_size = chunk_size
         self.chunks_called_with: int | None = None
@@ -68,108 +107,136 @@ class _UploadedFileLike:
             yield self._payload[i : i + chunk_size]
 
 
-class TestWriteStreaming:
-    def test_bytes_input_uses_single_shot_write(
-        self, mock_storage: tuple[MagicMock, MagicMock]
-    ) -> None:
-        storage, raw_fs = mock_storage
+@pytest.fixture
+def handle() -> FakeHandle:
+    return FakeHandle()
 
-        write_streaming(storage, "/p/file.pdf", b"abc")
 
-        storage.write.assert_called_once_with(path="/p/file.pdf", mode="wb", data=b"abc")
-        raw_fs.open.assert_not_called()
+@pytest.fixture
+def storage(handle: FakeHandle) -> FakeStorage:
+    return FakeStorage(handle=handle)
 
-    def test_uploaded_file_streams_via_chunks(
-        self, mock_storage: tuple[MagicMock, MagicMock]
-    ) -> None:
-        storage, raw_fs = mock_storage
-        sink = io.BytesIO()
-        _open_returns(raw_fs, sink)
-        payload = b"PDFBYTES" * 10_000
-        upload = _UploadedFileLike(payload, chunk_size=STREAMING_CHUNK_SIZE)
 
-        write_streaming(storage, "/p/file.pdf", upload)
+def test_bytes_input_uses_single_shot_write(storage: FakeStorage) -> None:
+    write_streaming(storage, "/p/file.pdf", b"abc")
 
-        # Provider-native multipart hint propagated.
-        raw_fs.open.assert_called_once_with(
-            "/p/file.pdf", mode="wb", block_size=STREAMING_CHUNK_SIZE
-        )
-        assert sink.getvalue() == payload
-        assert upload.chunks_called_with == STREAMING_CHUNK_SIZE
-        # Bytes branch must NOT have been used.
-        storage.write.assert_not_called()
+    assert storage.write_calls == [
+        {"path": "/p/file.pdf", "mode": "wb", "data": b"abc"}
+    ]
+    assert storage.fs.open_calls == []
 
-    def test_file_like_without_chunks_falls_back_to_read(
-        self, mock_storage: tuple[MagicMock, MagicMock]
-    ) -> None:
-        storage, raw_fs = mock_storage
-        sink = io.BytesIO()
-        _open_returns(raw_fs, sink)
-        payload = b"X" * (STREAMING_CHUNK_SIZE + 17)
-        # Plain BytesIO has no .chunks() — exercises the read() fallback.
-        file_like = io.BytesIO(payload)
 
-        write_streaming(storage, "/p/file.bin", file_like)
+def test_bytes_input_skips_fs_open_even_if_present(handle: FakeHandle) -> None:
+    storage = FakeStorage(handle=handle)
+    write_streaming(storage, "/p/file.pdf", b"abc")
 
-        assert sink.getvalue() == payload
+    assert handle.writes == []
+    assert handle.closed == 0
 
-    def test_streaming_error_triggers_abort_mpu(
-        self, mock_storage: tuple[MagicMock, MagicMock]
-    ) -> None:
-        storage, raw_fs = mock_storage
-        handle = MagicMock()
-        handle.write.side_effect = RuntimeError("connection reset")
-        handle.abort_mpu = MagicMock()
-        raw_fs.open.return_value = handle
-        upload = _UploadedFileLike(b"abc" * 100, chunk_size=8)
 
-        with pytest.raises(RuntimeError, match="connection reset"):
-            write_streaming(storage, "/p/file.pdf", upload)
+def test_uploaded_file_streams_via_chunks(
+    storage: FakeStorage, handle: FakeHandle
+) -> None:
+    payload = b"PDFBYTES" * 10_000
+    upload = UploadedFileLike(payload, chunk_size=STREAMING_CHUNK_SIZE)
 
-        handle.abort_mpu.assert_called_once()
-        handle.close.assert_called_once()
+    write_streaming(storage, "/p/file.pdf", upload)
 
-    def test_streaming_error_falls_back_to_discard_when_no_abort_mpu(
-        self, mock_storage: tuple[MagicMock, MagicMock]
-    ) -> None:
-        storage, raw_fs = mock_storage
-        handle = MagicMock(spec=["write", "close", "discard"])
-        handle.write.side_effect = RuntimeError("broken pipe")
-        raw_fs.open.return_value = handle
+    assert storage.fs.open_calls == [
+        {"path": "/p/file.pdf", "mode": "wb", "block_size": STREAMING_CHUNK_SIZE}
+    ]
+    assert b"".join(handle.writes) == payload
+    assert upload.chunks_called_with == STREAMING_CHUNK_SIZE
+    assert handle.closed == 1
+    assert storage.write_calls == []
 
-        with pytest.raises(RuntimeError, match="broken pipe"):
-            write_streaming(storage, "/p/file.pdf", _UploadedFileLike(b"X" * 32, 8))
 
-        handle.discard.assert_called_once()
-        handle.close.assert_called_once()
+def test_file_like_without_chunks_falls_back_to_read(
+    storage: FakeStorage, handle: FakeHandle
+) -> None:
+    payload = b"X" * (STREAMING_CHUNK_SIZE + 17)
+    # Plain BytesIO has no .chunks() — exercises the read() fallback.
+    file_like = io.BytesIO(payload)
 
-    def test_streaming_writes_one_chunk_at_a_time_not_coalesced(
-        self, mock_storage: tuple[MagicMock, MagicMock]
-    ) -> None:
-        """Catches the 'collapse chunks into one bytes blob' regression.
+    write_streaming(storage, "/p/file.bin", file_like)
 
-        A 4-chunk generator source must produce 4 distinct ``write`` calls
-        of ``<= chunk_size`` each — proves the helper isn't accumulating
-        in a single buffer before flushing.
-        """
-        storage, raw_fs = mock_storage
-        chunk_sizes: list[int] = []
-        handle = MagicMock()
-        handle.write.side_effect = lambda chunk: chunk_sizes.append(len(chunk))
-        raw_fs.open.return_value = handle
+    assert b"".join(handle.writes) == payload
+    assert handle.closed == 1
 
-        class _GenSource:
-            """Streaming source with chunks() returning a fresh generator —
-            no backing buffer, mimics django's temp-file-backed upload."""
 
-            def chunks(self, chunk_size: int = 64 * 1024):
-                for _ in range(4):
-                    yield b"Z" * STREAMING_CHUNK_SIZE
+def test_streaming_error_triggers_abort_mpu(storage: FakeStorage) -> None:
+    def boom(_: bytes) -> None:
+        raise RuntimeError("connection reset")
 
-        write_streaming(storage, "/p/big.pdf", _GenSource())
+    failing = FakeHandle(write_side_effect=boom, abort_methods=("abort_mpu",))
+    storage.fs = FakeFs(failing)
 
-        assert len(chunk_sizes) == 4
-        assert all(size <= STREAMING_CHUNK_SIZE for size in chunk_sizes)
+    with pytest.raises(RuntimeError, match="connection reset"):
+        write_streaming(storage, "/p/file.pdf", UploadedFileLike(b"abc" * 100, 8))
+
+    assert failing.aborts == ["abort_mpu"]
+    assert failing.closed == 1
+
+
+def test_streaming_error_falls_back_to_discard_when_no_abort_mpu(
+    storage: FakeStorage,
+) -> None:
+    def boom(_: bytes) -> None:
+        raise RuntimeError("broken pipe")
+
+    failing = FakeHandle(write_side_effect=boom, abort_methods=("discard",))
+    storage.fs = FakeFs(failing)
+
+    with pytest.raises(RuntimeError, match="broken pipe"):
+        write_streaming(storage, "/p/file.pdf", UploadedFileLike(b"X" * 32, 8))
+
+    assert failing.aborts == ["discard"]
+    assert failing.closed == 1
+
+
+def test_streaming_writes_one_chunk_at_a_time_not_coalesced(
+    storage: FakeStorage, handle: FakeHandle
+) -> None:
+    """Catches the 'collapse chunks into one bytes blob' regression.
+
+    A 4-chunk generator source must produce 4 distinct ``write`` calls of
+    ``<= chunk_size`` each — proves the helper isn't accumulating in a
+    single buffer before flushing.
+    """
+
+    class _GenSource:
+        def chunks(self, chunk_size: int = 64 * 1024):
+            for _ in range(4):
+                yield b"Z" * STREAMING_CHUNK_SIZE
+
+    write_streaming(storage, "/p/big.pdf", _GenSource())
+
+    assert len(handle.writes) == 4
+    assert all(len(chunk) <= STREAMING_CHUNK_SIZE for chunk in handle.writes)
+
+
+def test_unknown_abort_method_does_not_mask_original_error(
+    storage: FakeStorage, caplog: pytest.LogCaptureFixture
+) -> None:
+    """If the provider exposes neither abort hook, the original exception
+    must propagate cleanly and we must log the leak warning.
+    """
+
+    def boom(_: bytes) -> None:
+        raise RuntimeError("primary failure")
+
+    failing = FakeHandle(write_side_effect=boom, abort_methods=())
+    storage.fs = FakeFs(failing)
+
+    with caplog.at_level(
+        "WARNING", logger="utils.file_storage.helpers.streaming_writer"
+    ):
+        with pytest.raises(RuntimeError, match="primary failure"):
+            write_streaming(storage, "/p/file.pdf", UploadedFileLike(b"X" * 8, 4))
+
+    assert failing.aborts == []
+    assert any("orphaned upload possible" in rec.message for rec in caplog.records)
+    assert failing.closed == 1
 
 
 # Integration smoke (wiring upload_for_ide → write_streaming) is not
