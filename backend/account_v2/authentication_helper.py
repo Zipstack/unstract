@@ -5,7 +5,7 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from account_v2.dto import MemberData
-from account_v2.models import Organization, PlatformKey, User
+from account_v2.models import Organization, User
 from account_v2.user import UserService
 
 logger = logging.getLogger(__name__)
@@ -55,16 +55,12 @@ class AuthenticationHelper:
         return user
 
     def create_initial_platform_key(self, user: User, organization: Organization) -> None:
-        """Ensure the organization has an initial active platform key.
+        """Create the first active platform key for a freshly created org.
 
-        Idempotent: no-op if the org already has any platform key. Safe to
-        call on every login as a self-heal for orgs whose creation flow
-        aborted before the platform-key write.
+        Intended to run once, during the new-organization branch of signup.
+        Failures are propagated — a signup without a platform key is a
+        broken account, better surfaced at signup than 404'd later.
         """
-        # Respect prior admin deactivation; avoid the (key_name, organization)
-        # unique-constraint collision on "Key #1".
-        if PlatformKey.objects.filter(organization=organization).exists():
-            return
         PlatformAuthenticationService.generate_platform_key(
             is_active=True,
             key_name="Key #1",

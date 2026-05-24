@@ -199,14 +199,14 @@ class AuthenticationController:
                 organization=organization, user=user
             )
 
-            # Guarantee an active platform key exists before any flaky side
-            # effect (HTTP onboarding) that could abort the flow and leave an
-            # orphan org. Idempotent — safe on every login.
-            self.authentication_helper.create_initial_platform_key(
-                user=user, organization=organization
-            )
-
             if new_organization:
+                # Run the pure-DB platform-key write before the HTTP onboarding
+                # step, so a failure there cannot leave the org without a key
+                # (the org row is already committed and won't be re-entered).
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
+
                 try:
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
