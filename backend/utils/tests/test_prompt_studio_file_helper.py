@@ -44,12 +44,14 @@ class FakeHandle:
     def __init__(
         self,
         write_side_effect: Callable[[bytes], None] | None = None,
+        close_side_effect: Callable[[], None] | None = None,
         abort_methods: tuple[str, ...] = ("abort_mpu",),
     ) -> None:
         self.writes: list[bytes] = []
         self.closed: int = 0
         self.aborts: list[str] = []
         self._write_side_effect = write_side_effect
+        self._close_side_effect = close_side_effect
         for method_name in abort_methods:
             setattr(
                 self,
@@ -64,6 +66,8 @@ class FakeHandle:
 
     def close(self) -> None:
         self.closed += 1
+        if self._close_side_effect is not None:
+            self._close_side_effect()
 
 
 class FakeFs:
@@ -237,6 +241,61 @@ def test_unknown_abort_method_does_not_mask_original_error(
     assert failing.aborts == []
     assert any("orphaned upload possible" in rec.message for rec in caplog.records)
     assert failing.closed == 1
+
+
+def test_close_failure_on_success_path_propagates(
+    storage: FakeStorage,
+) -> None:
+    """Provider-native multipart commits happen inside ``close()`` — a
+    close failure on the success path means the upload did not finalize.
+    The caller must see the error, not a silent success.
+    """
+
+    def fail_close() -> None:
+        raise RuntimeError("multipart commit failed")
+
+    failing = FakeHandle(close_side_effect=fail_close)
+    storage.fs = FakeFs(failing)
+
+    with pytest.raises(RuntimeError, match="multipart commit failed"):
+        write_streaming(storage, "/p/file.pdf", UploadedFileLike(b"X" * 8, 4))
+
+    assert failing.closed == 1
+    assert failing.aborts == []  # success path doesn't abort
+
+
+def test_close_failure_after_write_error_does_not_mask_original(
+    storage: FakeStorage, caplog: pytest.LogCaptureFixture
+) -> None:
+    """When the write loop already raised, a subsequent close failure
+    must be logged and swallowed so the *original* exception reaches
+    the caller intact."""
+
+    def fail_write(_: bytes) -> None:
+        raise RuntimeError("primary write failure")
+
+    def fail_close() -> None:
+        raise RuntimeError("secondary close failure")
+
+    failing = FakeHandle(
+        write_side_effect=fail_write,
+        close_side_effect=fail_close,
+        abort_methods=("abort_mpu",),
+    )
+    storage.fs = FakeFs(failing)
+
+    with caplog.at_level(
+        "WARNING", logger="utils.file_storage.helpers.streaming_writer"
+    ):
+        with pytest.raises(RuntimeError, match="primary write failure"):
+            write_streaming(storage, "/p/file.pdf", UploadedFileLike(b"X" * 8, 4))
+
+    assert failing.aborts == ["abort_mpu"]
+    assert failing.closed == 1
+    assert any(
+        "close after aborted streaming write failed" in rec.message
+        for rec in caplog.records
+    )
 
 
 # Integration smoke (wiring upload_for_ide → write_streaming) is not

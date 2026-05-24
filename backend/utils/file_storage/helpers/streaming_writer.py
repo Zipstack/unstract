@@ -35,6 +35,7 @@ def write_streaming(fs_instance: Any, file_path: str, file_data: Any) -> None:
         return
 
     out = None
+    success = False
     try:
         out = fs_instance.fs.open(file_path, mode="wb", block_size=STREAMING_CHUNK_SIZE)
         chunks_iter = (
@@ -44,20 +45,27 @@ def write_streaming(fs_instance: Any, file_path: str, file_data: Any) -> None:
         )
         for chunk in chunks_iter:
             out.write(chunk)
+        success = True
     except Exception:
         if out is not None:
             _safe_abort(out, file_path)
         raise
     finally:
         if out is not None:
-            try:
+            if success:
+                # Provider-native multipart commits happen inside close()
+                # for s3fs/gcsfs/etc — a close failure here means the
+                # upload did not finalize, so propagate it.
                 out.close()
-            except Exception as close_err:  # pragma: no cover - close path
-                logger.warning(
-                    "close after streaming write failed for %s: %s",
-                    file_path,
-                    close_err,
-                )
+            else:
+                try:
+                    out.close()
+                except Exception as close_err:  # pragma: no cover - close path
+                    logger.warning(
+                        "close after aborted streaming write failed for %s: %s",
+                        file_path,
+                        close_err,
+                    )
 
 
 def _safe_abort(handle: Any, file_path: str) -> None:
