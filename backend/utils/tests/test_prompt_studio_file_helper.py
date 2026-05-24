@@ -243,6 +243,38 @@ def test_unknown_abort_method_does_not_mask_original_error(
     assert failing.closed == 1
 
 
+def test_non_callable_chunks_attr_uses_read_fallback(
+    storage: FakeStorage, handle: FakeHandle
+) -> None:
+    """A data attribute named ``chunks`` (not a method) must not be
+    invoked — fall back to read-based iteration instead.
+    """
+
+    class _DataAttrChunks:
+        # Intentionally a non-callable attribute, mimicking a class that
+        # happens to expose a `chunks` data field.
+        chunks = "not callable"
+
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+            self._pos = 0
+
+        def read(self, n: int = -1) -> bytes:
+            if n < 0:
+                chunk = self._payload[self._pos :]
+                self._pos = len(self._payload)
+            else:
+                chunk = self._payload[self._pos : self._pos + n]
+                self._pos += len(chunk)
+            return chunk
+
+    source = _DataAttrChunks(b"abcdefgh")
+    write_streaming(storage, "/p/file.bin", source)
+
+    assert b"".join(handle.writes) == b"abcdefgh"
+    assert handle.closed == 1
+
+
 def test_close_failure_on_success_path_propagates(
     storage: FakeStorage,
 ) -> None:
