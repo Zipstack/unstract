@@ -199,6 +199,13 @@ class AuthenticationController:
                 organization=organization, user=user
             )
 
+            # Guarantee an active platform key exists before any flaky side
+            # effect (HTTP onboarding) that could abort the flow and leave an
+            # orphan org. Idempotent — safe on every login.
+            self.authentication_helper.create_initial_platform_key(
+                user=user, organization=organization
+            )
+
             if new_organization:
                 try:
                     self.auth_service.frictionless_onboarding(
@@ -207,9 +214,6 @@ class AuthenticationController:
                 except MethodNotImplemented:
                     logger.info("frictionless_onboarding not implemented")
 
-                self.authentication_helper.create_initial_platform_key(
-                    user=user, organization=organization
-                )
                 logger.info(
                     f"New organization created with Id {organization_id}",
                 )

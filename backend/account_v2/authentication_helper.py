@@ -5,7 +5,7 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from account_v2.dto import MemberData
-from account_v2.models import Organization, User
+from account_v2.models import Organization, PlatformKey, User
 from account_v2.user import UserService
 
 logger = logging.getLogger(__name__)
@@ -55,36 +55,22 @@ class AuthenticationHelper:
         return user
 
     def create_initial_platform_key(self, user: User, organization: Organization) -> None:
-        """Create an initial platform key for the given user and organization.
+        """Ensure the organization has an initial active platform key.
 
-        This method generates a new platform key with the specified parameters
-        and saves it to the database. The generated key is set as active and
-        assigned the name "Key #1". The key is associated with the provided
-        user and organization.
-
-        Parameters:
-            user (User): The user for whom the platform key is being created.
-            organization (Organization):
-                The organization to which the platform key belongs.
-
-        Raises:
-            Exception: If an error occurs while generating the platform key.
-
-        Returns:
-            None
+        Idempotent: no-op if the org already has any platform key. Safe to
+        call on every login as a self-heal for orgs whose creation flow
+        aborted before the platform-key write.
         """
-        try:
-            PlatformAuthenticationService.generate_platform_key(
-                is_active=True,
-                key_name="Key #1",
-                user=user,
-                organization=organization,
-            )
-        except Exception:
-            logger.error(
-                "Failed to create default platform key for "
-                f"organization {organization.organization_id}"
-            )
+        # Respect prior admin deactivation; avoid the (key_name, organization)
+        # unique-constraint collision on "Key #1".
+        if PlatformKey.objects.filter(organization=organization).exists():
+            return
+        PlatformAuthenticationService.generate_platform_key(
+            is_active=True,
+            key_name="Key #1",
+            user=user,
+            organization=organization,
+        )
 
     @staticmethod
     def remove_users_from_organization_by_pks(
