@@ -58,6 +58,18 @@ class WorkflowExecutionManager(BaseModelManager):
                 return self.filter(workflow__organization=org)
             return self.all()
 
+        from tenant_account_v2.organization_member_service import (
+            OrganizationMemberService,
+        )
+
+        if OrganizationMemberService.is_user_organization_admin(user):
+            from utils.user_context import UserContext
+
+            org = UserContext.get_organization()
+            if org:
+                return self.filter(workflow__organization=org)
+            return self.all()
+
         # Filter for workflow access
         workflow_filter = Q(workflow__created_by=user) | Q(workflow__shared_users=user)
 

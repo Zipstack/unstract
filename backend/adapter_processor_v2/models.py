@@ -37,6 +37,13 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         if getattr(user, "is_service_account", False):
             return self.get_queryset().filter(is_friction_less=False)
 
+        from tenant_account_v2.organization_member_service import (
+            OrganizationMemberService,
+        )
+
+        if OrganizationMemberService.is_user_organization_admin(user):
+            return self.get_queryset()
+
         return (
             self.get_queryset()
             .filter(

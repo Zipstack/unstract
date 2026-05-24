@@ -30,9 +30,16 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
         - API deployments created by the user
         - API deployments shared with the user
         - API deployments shared with the entire organization
-        - Service accounts see all org resources
+        - Service accounts and org admins see all org resources
         """
         if getattr(user, "is_service_account", False):
+            return self.all()
+
+        from tenant_account_v2.organization_member_service import (
+            OrganizationMemberService,
+        )
+
+        if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
         from django.db.models import Q

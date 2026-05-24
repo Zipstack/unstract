@@ -1,5 +1,6 @@
 from typing import Any
 
+from account_v2.enums import UserRole
 from utils.cache_service import CacheService
 
 from tenant_account_v2.models import OrganizationMember
@@ -12,6 +13,29 @@ class OrganizationMemberService:
             return OrganizationMember.objects.get(user__email=email)  # type: ignore
         except OrganizationMember.DoesNotExist:
             return None
+
+    @staticmethod
+    def is_user_organization_admin(user: Any) -> bool:
+        """Return True if ``user`` has the admin role in the current org.
+
+        Service accounts are not org admins — they have their own bypass
+        path in the relevant permissions / managers. Returns False on any
+        lookup failure (anonymous user, no membership row, DB unavailable).
+        """
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        if getattr(user, "is_service_account", False):
+            return False
+        try:
+            member = OrganizationMember.objects.get(user=user.id)  # type: ignore
+        except OrganizationMember.DoesNotExist:
+            return False
+        except Exception:
+            return False
+        try:
+            return UserRole(member.role) == UserRole.ADMIN
+        except ValueError:
+            return False
 
     @staticmethod
     def get_user_by_user_id(user_id: str) -> OrganizationMember | None:

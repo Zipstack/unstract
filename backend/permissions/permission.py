@@ -32,37 +32,20 @@ def _is_organization_admin(request: Request) -> bool:
     cached = getattr(request, _REQUEST_ADMIN_CACHE_ATTR, None)
     if cached is not None:
         return cached
-    try:
-        from account_v2.authentication_controller import AuthenticationController
+    from tenant_account_v2.organization_member_service import OrganizationMemberService
 
-        auth_controller = AuthenticationController()
-        member = auth_controller.get_organization_members_by_user(user=request.user)
-        is_admin = bool(member) and auth_controller.is_admin_by_role(member.role)
-    except Exception:
-        is_admin = False
+    is_admin = OrganizationMemberService.is_user_organization_admin(request.user)
     setattr(request, _REQUEST_ADMIN_CACHE_ATTR, is_admin)
     return is_admin
 
 
-def _is_service_account_owned(obj: Any) -> bool:
-    """True if ``obj.created_by`` is a service-account user.
-
-    Migration-created rows have a service-account ``created_by``; this lets
-    the admin-override below stay scoped to those rows and avoid widening
-    edit rights over resources created by other humans in the org.
-    """
-    created_by = getattr(obj, "created_by", None)
-    return bool(created_by) and getattr(created_by, "is_service_account", False)
-
-
 class IsOwner(permissions.BasePermission):
-    """Custom permission to only allow owners of an object.
+    """Allow owners and org admins.
 
-    Org admins are also allowed when the object was created by a service
-    account (e.g. via the Platform API). This unblocks editing/deleting
-    resources that org-to-org migration left owned by the service-account
-    user, without widening admin rights over resources created by human
-    org members.
+    Org admins can manage every resource in their organization regardless of
+    ``created_by``. This matches the "admin role manages everything" model
+    expected by org-to-org migration (resources land owned by a service
+    account) and by typical admin UX.
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
@@ -70,7 +53,7 @@ class IsOwner(permissions.BasePermission):
             return True
         if obj.created_by == request.user:
             return True
-        if _is_service_account_owned(obj) and _is_organization_admin(request):
+        if _is_organization_admin(request):
             return True
         return False
 
@@ -84,38 +67,35 @@ class IsOrganizationMember(permissions.BasePermission):
 
 
 class IsOwnerOrSharedUser(permissions.BasePermission):
-    """Custom permission to only allow owners and shared users of an object."""
+    """Allow owners, shared users, and org admins."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-            )
-            else False
-        )
+        if obj.created_by == request.user:
+            return True
+        if obj.shared_users.filter(pk=request.user.pk).exists():
+            return True
+        if _is_organization_admin(request):
+            return True
+        return False
 
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
-    """Custom permission to only allow owners and shared users of an object or
-    if it is shared to org.
-    """
+    """Allow owners, shared users, org-shared objects, and org admins."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-                or obj.shared_to_org
-            )
-            else False
-        )
+        if obj.created_by == request.user:
+            return True
+        if obj.shared_users.filter(pk=request.user.pk).exists():
+            return True
+        if obj.shared_to_org:
+            return True
+        if _is_organization_admin(request):
+            return True
+        return False
 
 
 class IsFrictionLessAdapter(permissions.BasePermission):
