@@ -4,7 +4,7 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from permissions.permission import IsOwner
+from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -23,18 +23,21 @@ class ProfileManagerView(viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
-    permission_classes = [IsOwner]
     serializer_class = ProfileManagerSerializer
 
+    def get_permissions(self) -> list[Any]:
+        if self.action in ("destroy", "partial_update", "update"):
+            return [IsOwner()]
+        return [IsOwnerOrSharedUserOrSharedToOrg()]
+
     def get_queryset(self) -> QuerySet | None:
+        queryset = ProfileManager.objects.for_user(self.request.user)
         filter_args = FilterHelper.build_filter_args(
             self.request,
             ProfileManagerKeys.CREATED_BY,
         )
         if filter_args:
-            queryset = ProfileManager.objects.filter(**filter_args)
-        else:
-            queryset = ProfileManager.objects.all()
+            queryset = queryset.filter(**filter_args)
         return queryset
 
     def create(
