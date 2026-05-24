@@ -4,6 +4,7 @@ from adapter_processor_v2.models import AdapterInstance
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.user_context import UserContext
 
 _REQUEST_ADMIN_CACHE_ATTR = "_cached_is_organization_admin"
@@ -32,8 +33,6 @@ def _is_organization_admin(request: Request) -> bool:
     cached = getattr(request, _REQUEST_ADMIN_CACHE_ATTR, None)
     if cached is not None:
         return cached
-    from tenant_account_v2.organization_member_service import OrganizationMemberService
-
     is_admin = OrganizationMemberService.is_user_organization_admin(request.user)
     setattr(request, _REQUEST_ADMIN_CACHE_ATTR, is_admin)
     return is_admin

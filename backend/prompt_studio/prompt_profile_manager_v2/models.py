@@ -3,6 +3,8 @@ import uuid
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
+from django.db.models import Q
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.user_context import UserContext
 
@@ -25,16 +27,10 @@ class ProfileManagerModelManager(BaseModelManager):
         """
         # Service accounts and admins still need to be org-scoped — they
         # otherwise see rows from every org in the DB.
-        from django.db.models import Q
-
         org_scope = Q(prompt_studio_tool__organization=UserContext.get_organization())
 
         if getattr(user, "is_service_account", False):
             return self.filter(org_scope)
-
-        from tenant_account_v2.organization_member_service import (
-            OrganizationMemberService,
-        )
 
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.filter(org_scope)
