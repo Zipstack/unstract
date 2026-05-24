@@ -26,7 +26,10 @@ class ProfileManagerView(viewsets.ModelViewSet):
     serializer_class = ProfileManagerSerializer
 
     def get_permissions(self) -> list[Any]:
-        if self.action in ("destroy", "partial_update", "update"):
+        # Mutations require ownership; reads are visible to anyone the
+        # row is shared with. ``create`` is listed for intent even though
+        # DRF skips ``has_object_permission`` on it.
+        if self.action in ("create", "destroy", "partial_update", "update"):
             return [IsOwner()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
