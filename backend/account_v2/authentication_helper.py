@@ -58,15 +58,22 @@ class AuthenticationHelper:
         """Create the first active platform key for a freshly created org.
 
         Intended to run once, during the new-organization branch of signup.
-        Failures are propagated — a signup without a platform key is a
-        broken account, better surfaced at signup than 404'd later.
+        Failures are logged but not propagated — a transient DB issue here
+        shouldn't block the user from completing signup; the missing key
+        can be recreated from settings later.
         """
-        PlatformAuthenticationService.generate_platform_key(
-            is_active=True,
-            key_name="Key #1",
-            user=user,
-            organization=organization,
-        )
+        try:
+            PlatformAuthenticationService.generate_platform_key(
+                is_active=True,
+                key_name="Key #1",
+                user=user,
+                organization=organization,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to create default platform key for "
+                f"organization {organization.organization_id}"
+            )
 
     @staticmethod
     def remove_users_from_organization_by_pks(
