@@ -5,12 +5,15 @@ from tags.views import TagViewSet
 tag_list = TagViewSet.as_view(
     {
         "get": TagViewSet.list.__name__,
+        "post": TagViewSet.create.__name__,
     }
 )
 
 tag_detail = TagViewSet.as_view(
     {
         "get": TagViewSet.retrieve.__name__,
+        "patch": TagViewSet.partial_update.__name__,
+        "delete": TagViewSet.destroy.__name__,
     }
 )
 
