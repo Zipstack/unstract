@@ -26,9 +26,7 @@ class ToolStudioPromptSerializer(AuditSerializer):
     class Meta:
         model = ToolStudioPrompt
         fields = "__all__"
-        # LLM prompt text legitimately contains XML/HTML-like markup
-        # (e.g. <context>, <thinking>). `output` is the LLM response,
-        # which may include any text the model produced.
+        # Prompts and LLM output legitimately contain XML-like markup.
         html_safe_fields = (
             "prompt",
             "assert_prompt",

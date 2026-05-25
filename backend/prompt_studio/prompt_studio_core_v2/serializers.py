@@ -86,8 +86,7 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     class Meta:
         model = CustomTool
         fields = "__all__"
-        # Tool-level LLM context fields and stored LLM output;
-        # may legitimately contain XML/HTML-like markup.
+        # LLM-facing text legitimately contains XML-like markup.
         html_safe_fields = (
             "summarize_prompt",
             "preamble",
