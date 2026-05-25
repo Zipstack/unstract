@@ -116,6 +116,11 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
           label: "Platform API Keys",
           path: `/${orgName}/settings/platform-api-keys`,
         },
+        {
+          key: "globalApiDeploymentKeys",
+          label: "Global API Deployment Keys",
+          path: `/${orgName}/settings/global-api-deployment-keys`,
+        },
       ]
     : []),
   {
@@ -141,6 +146,9 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
+  if (currentPath.includes("/settings/global-api-deployment-keys")) {
+    return "globalApiDeploymentKeys";
+  }
   if (currentPath.includes("/settings/platform-api-keys")) {
     return "platformApiKeys";
   }
@@ -463,6 +471,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
             globalThis.location.pathname === `/${orgName}/settings/platform` ||
             globalThis.location.pathname ===
               `/${orgName}/settings/platform-api-keys` ||
+            globalThis.location.pathname ===
+              `/${orgName}/settings/global-api-deployment-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
             globalThis.location.pathname === `/${orgName}/users`,

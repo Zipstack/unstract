@@ -381,6 +381,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         # Get context from serializer
         api = self.context.get("api")
         api_key = self.context.get("api_key")
+        is_global_key = self.context.get("is_global_key", False)
 
         if not api or not api_key:
             raise ValidationError("Unable to validate LLM profile ownership")
@@ -390,6 +391,10 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             profile = ProfileManager.objects.get(profile_id=value)
         except ProfileManager.DoesNotExist:
             raise ValidationError("Profile not found")
+
+        # Global API Keys are org-level; skip per-user ownership check
+        if is_global_key:
+            return value
 
         # Get the specific API key being used
         try:
