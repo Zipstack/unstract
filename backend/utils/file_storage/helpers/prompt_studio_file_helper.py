@@ -7,6 +7,7 @@ from typing import Any
 from file_management.exceptions import InvalidFileType
 from file_management.file_management_helper import FileManagerHelper
 from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
+from utils.file_storage.helpers.streaming_writer import write_streaming
 
 from unstract.core.utilities import UnstractUtils
 from unstract.sdk1.file_storage import FileStorage
@@ -77,11 +78,7 @@ class PromptStudioFileHelper:
         )
 
         file_path = str(Path(file_system_path) / file_name)
-        fs_instance.write(
-            path=file_path,
-            mode="wb",
-            data=file_data if isinstance(file_data, bytes) else file_data.read(),
-        )
+        write_streaming(fs_instance, file_path, file_data)
 
     @staticmethod
     def upload_converted_for_ide(
@@ -109,11 +106,7 @@ class PromptStudioFileHelper:
             )
         )
         converted_path = str(Path(file_system_path) / "converted" / file_name)
-        fs_instance.write(
-            path=converted_path,
-            mode="wb",
-            data=file_data if isinstance(file_data, bytes) else file_data.read(),
-        )
+        write_streaming(fs_instance, converted_path, file_data)
 
     @staticmethod
     def fetch_file_contents(
