@@ -28,8 +28,8 @@ unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
 test = [
-    "pytest~=9.0.3",
-    "pytest-asyncio>=0.23.0",
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.24.0",
     "pytest-dotenv==0.5.2",
     "pytest-mock~=3.14.0",
     "pytest-md-report>=0.6.2",
@@ -50,6 +50,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/unstract"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "strict"
 
 [tool.poe]
 envfile = ".env"
