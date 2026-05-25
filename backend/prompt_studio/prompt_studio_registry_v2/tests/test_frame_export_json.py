@@ -139,7 +139,11 @@ try:
 
     PromptStudioRegistryHelper = _psrh_mod.PromptStudioRegistryHelper
     _IMPORT_ERROR: str | None = None
-except Exception as exc:  # pragma: no cover — environment guard
+# Only swallow import/dependency failures here (stub drift, missing
+# transitive module). Genuine bugs inside the helper (NameError,
+# SyntaxError, TypeError at module load, etc.) must surface as real test
+# failures, not silently skip the suite.
+except (ImportError, ModuleNotFoundError, AttributeError) as exc:
     _IMPORT_ERROR = (
         f"prompt_studio_registry_helper could not be imported in this "
         f"environment: {type(exc).__name__}: {exc}"
@@ -242,13 +246,40 @@ def _run_export(*, tool: MagicMock, prompt: MagicMock, force_export: bool = Fals
 # ---------------------------------------------------------------------------
 
 
+def _per_prompt_output(result: Any) -> dict[str, Any]:
+    """Return the single per-prompt entry from a frame_export_json result."""
+    outputs = result["outputs"]
+    assert len(outputs) == 1, f"expected exactly one per-prompt output, got {outputs!r}"
+    return outputs[0]
+
+
+def _assert_output_uses_profile(output: dict[str, Any], profile: MagicMock) -> None:
+    """Assert the per-prompt export entry was assembled from ``profile``.
+
+    Covers the fields the exported tool consumes when single-pass is
+    disabled at runtime — these were previously hardcoded to
+    ``prompt.profile_manager`` regardless of single-pass mode.
+    """
+    assert output["llm"] == profile.llm.id
+    assert output["vector-db"] == profile.vector_store.id
+    assert output["embedding"] == profile.embedding_model.id
+    assert output["x2text_adapter"] == profile.x2text.id
+    assert output["chunk-size"] == profile.chunk_size
+    assert output["chunk-overlap"] == profile.chunk_overlap
+    assert output["retrieval-strategy"] == profile.retrieval_strategy
+    assert output["similarity-top-k"] == profile.similarity_top_k
+    assert output["section"] == profile.section
+    assert output["reindex"] == profile.reindex
+
+
 class TestFrameExportJsonProfileLookup:
     """Pin the UN-3332 fix: validation profile depends on single-pass mode."""
 
     def test_single_pass_uses_default_profile_and_single_pass_flag(self) -> None:
-        """When single-pass is on, filter must use the tool's default
-        profile and ``is_single_pass_extract=True`` — NOT the prompt's
-        own profile_manager FK.
+        """When single-pass is on, BOTH the validation filter and the
+        per-prompt export entry must use the tool's default profile (with
+        ``is_single_pass_extract=True``) — NOT the prompt's own
+        ``profile_manager`` FK.
         """
         default_profile = _make_profile("default")
         prompt_profile = _make_profile("prompt")  # the "wrong" one
@@ -260,7 +291,7 @@ class TestFrameExportJsonProfileLookup:
             "get_default_llm_profile",
             return_value=default_profile,
         ):
-            filter_call, _result, raised = _run_export(tool=tool, prompt=prompt)
+            filter_call, result, raised = _run_export(tool=tool, prompt=prompt)
 
         assert raised is None, f"export failed unexpectedly: {raised!r}"
         filter_call.assert_called_once()
@@ -271,10 +302,12 @@ class TestFrameExportJsonProfileLookup:
         assert kwargs["is_single_pass_extract"] is True
         assert kwargs["tool_id"] == tool.tool_id
         assert kwargs["prompt_id"] == prompt.prompt_id
+        _assert_output_uses_profile(_per_prompt_output(result), default_profile)
 
     def test_non_single_pass_uses_prompt_profile_and_normal_flag(self) -> None:
-        """When single-pass is off, filter must use the prompt's own
-        ``profile_manager`` and ``is_single_pass_extract=False``.
+        """When single-pass is off, BOTH the validation filter and the
+        per-prompt export entry must use the prompt's own
+        ``profile_manager`` (with ``is_single_pass_extract=False``).
         """
         default_profile = _make_profile("default")
         prompt_profile = _make_profile("prompt")
@@ -286,7 +319,7 @@ class TestFrameExportJsonProfileLookup:
             "get_default_llm_profile",
             return_value=default_profile,
         ):
-            filter_call, _result, raised = _run_export(tool=tool, prompt=prompt)
+            filter_call, result, raised = _run_export(tool=tool, prompt=prompt)
 
         assert raised is None, f"export failed unexpectedly: {raised!r}"
         filter_call.assert_called_once()
@@ -295,10 +328,12 @@ class TestFrameExportJsonProfileLookup:
             "non-single-pass export must validate against the prompt's profile"
         )
         assert kwargs["is_single_pass_extract"] is False
+        _assert_output_uses_profile(_per_prompt_output(result), prompt_profile)
 
     def test_force_export_skips_output_lookup_entirely(self) -> None:
         """``force_export=True`` bypasses validation: the filter must
-        never be called.
+        never be called. Per-prompt JSON still follows single-pass mode
+        (default profile here, because ``single_pass=True``).
         """
         default_profile = _make_profile("default")
         prompt_profile = _make_profile("prompt")
@@ -310,9 +345,10 @@ class TestFrameExportJsonProfileLookup:
             "get_default_llm_profile",
             return_value=default_profile,
         ):
-            filter_call, _result, raised = _run_export(
+            filter_call, result, raised = _run_export(
                 tool=tool, prompt=prompt, force_export=True,
             )
 
         assert raised is None, f"forced export failed: {raised!r}"
         filter_call.assert_not_called()
+        _assert_output_uses_profile(_per_prompt_output(result), default_profile)
