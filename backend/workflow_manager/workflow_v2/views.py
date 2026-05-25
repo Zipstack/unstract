@@ -84,6 +84,7 @@ class WorkflowViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
             RequestKey.PROJECT,
             WorkflowKey.WF_OWNER,
             WorkflowKey.WF_IS_ACTIVE,
+            WorkflowKey.WF_NAME,
         )
         # Use for_user method to include shared workflows
         queryset = (

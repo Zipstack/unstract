@@ -97,6 +97,8 @@ class IsFrictionLessAdapter(permissions.BasePermission):
     ) -> bool:
         if obj.is_friction_less:
             return False
+        if _is_service_account(request):
+            return True
 
         return True if obj.created_by == request.user else False
 

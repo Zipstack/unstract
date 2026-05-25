@@ -158,15 +158,13 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
+        queryset = AdapterInstance.objects.for_user(self.request.user)
         if filter_args := FilterHelper.build_filter_args(
             self.request,
             constant.ADAPTER_TYPE,
+            constant.ADAPTER_NAME,
         ):
-            queryset = AdapterInstance.objects.for_user(self.request.user).filter(
-                **filter_args
-            )
-        else:
-            queryset = AdapterInstance.objects.for_user(self.request.user)
+            queryset = queryset.filter(**filter_args)
         return queryset
 
     def get_serializer_class(

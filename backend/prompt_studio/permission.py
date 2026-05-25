@@ -15,6 +15,8 @@ class PromptAcesssToUser(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        if getattr(request.user, "is_service_account", False):
+            return True
         tool = obj.tool_id
         if tool.created_by == request.user:
             return True

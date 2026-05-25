@@ -35,7 +35,7 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
 
     def for_user(self, user: User) -> QuerySet[Any]:
         if getattr(user, "is_service_account", False):
-            return self.all()
+            return self.get_queryset().filter(is_friction_less=False)
 
         from tenant_account_v2.sharing_helpers import resources_visible_via_groups
 
