@@ -175,6 +175,8 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/<uuid:pk>/owners/<int:user_id>/",
             prompt_studio_remove_owner,
             name="prompt-studio-remove-owner",
+        ),
+        path(
             "prompt-studio/<uuid:pk>/task-status/<str:task_id>",
             prompt_studio_task_status,
             name="prompt-studio-task-status",

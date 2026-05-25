@@ -1,5 +1,6 @@
 """Serializers for pipeline sharing functionality."""
 
+from account_v2.serializer import UserSerializer
 from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
