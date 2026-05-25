@@ -287,9 +287,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       .listGroups()
       .then((res) => {
         const items = Array.isArray(res?.data) ? res.data : [];
-        setAllGroupList(
-          items.map((g) => ({ id: g.id, name: g.name, source: g.source })),
-        );
+        setAllGroupList(items.map((g) => ({ id: g.id, name: g.name })));
       })
       .catch(() => setAllGroupList([]));
     axiosPrivate(requestOptions)

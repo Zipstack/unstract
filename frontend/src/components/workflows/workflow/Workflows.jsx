@@ -253,7 +253,6 @@ function Workflows() {
           ? groupsResponse.data.map((g) => ({
               id: g.id,
               name: g.name,
-              source: g.source,
             }))
           : [],
       );

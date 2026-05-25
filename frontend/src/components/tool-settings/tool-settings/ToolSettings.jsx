@@ -151,9 +151,7 @@ function ToolSettings({ type }) {
       .listGroups()
       .then((res) => {
         const items = Array.isArray(res?.data) ? res.data : [];
-        setGroupList(
-          items.map((g) => ({ id: g.id, name: g.name, source: g.source })),
-        );
+        setGroupList(items.map((g) => ({ id: g.id, name: g.name })));
       })
       .catch(() => setGroupList([]));
     axiosPrivate(requestOptions)

@@ -18,7 +18,7 @@ Helpers exposed:
   manager's ``for_user()`` Q-chain.
 * ``compute_effective_members`` — union-with-priority dedup feeding the
   ``effective-members/`` resource action.
-* ``serialize_group_refs`` — small ``[{id, name, source}]`` listing for
+* ``serialize_group_refs`` — small ``[{id, name}]`` listing for
   the share modal's currently-shared listing.
 """
 
@@ -153,8 +153,8 @@ def resources_visible_via_groups(
 
 
 def serialize_group_refs(resource_obj: Any) -> list[dict[str, Any]]:
-    """Return a compact ``[{id, name, source}]`` listing for share modals."""
-    return list(get_resource_share_groups(resource_obj).values("id", "name", "source"))
+    """Return a compact ``[{id, name}]`` listing for share modals."""
+    return list(get_resource_share_groups(resource_obj).values("id", "name"))
 
 
 def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:

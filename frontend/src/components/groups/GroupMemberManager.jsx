@@ -1,5 +1,5 @@
 import { DeleteOutlined, QuestionCircleOutlined } from "@ant-design/icons";
-import { Avatar, List, Modal, Popconfirm, Select, Typography } from "antd";
+import { Avatar, List, Modal, Popconfirm, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
@@ -18,8 +18,6 @@ function GroupMemberManager({ open, group, onClose }) {
   const [orgUsers, setOrgUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [pendingAddIds, setPendingAddIds] = useState([]);
-
-  const isExternallyManaged = !!group?.is_managed_externally;
 
   const loadMembers = () => {
     if (!group?.id) {
@@ -92,7 +90,7 @@ function GroupMemberManager({ open, group, onClose }) {
       onOk={handleAdd}
       okText="Add selected"
       okButtonProps={{
-        disabled: !pendingAddIds.length || isExternallyManaged,
+        disabled: !pendingAddIds.length,
       }}
       cancelText="Close"
       centered
@@ -102,49 +100,40 @@ function GroupMemberManager({ open, group, onClose }) {
         <SpinnerLoader />
       ) : (
         <>
-          {isExternallyManaged ? (
-            <Typography.Text type="secondary">
-              This group is managed externally (IdP sync). Membership cannot be
-              edited from the UI.
-            </Typography.Text>
-          ) : (
-            <Select
-              mode="multiple"
-              style={{ width: "100%", marginBottom: 12 }}
-              placeholder="Add members"
-              value={pendingAddIds}
-              onChange={setPendingAddIds}
-              options={candidateUsers.map((u) => ({
-                value: u.id,
-                label: u.email,
-              }))}
-              filterOption={(input, option) =>
-                (option?.label ?? "")
-                  .toString()
-                  .toLowerCase()
-                  .includes(input.toLowerCase())
-              }
-              showSearch
-            />
-          )}
+          <Select
+            mode="multiple"
+            style={{ width: "100%", marginBottom: 12 }}
+            placeholder="Add members"
+            value={pendingAddIds}
+            onChange={setPendingAddIds}
+            options={candidateUsers.map((u) => ({
+              value: u.id,
+              label: u.email,
+            }))}
+            filterOption={(input, option) =>
+              (option?.label ?? "")
+                .toString()
+                .toLowerCase()
+                .includes(input.toLowerCase())
+            }
+            showSearch
+          />
           <List
             dataSource={members}
             locale={{ emptyText: "No members yet" }}
             renderItem={(item) => (
               <List.Item
                 extra={
-                  !isExternallyManaged && (
-                    <Popconfirm
-                      title="Remove member"
-                      description={`Remove ${item.email} from this group?`}
-                      okText="Remove"
-                      cancelText="Cancel"
-                      icon={<QuestionCircleOutlined />}
-                      onConfirm={() => handleRemove(item.user_id)}
-                    >
-                      <DeleteOutlined style={{ cursor: "pointer" }} />
-                    </Popconfirm>
-                  )
+                  <Popconfirm
+                    title="Remove member"
+                    description={`Remove ${item.email} from this group?`}
+                    okText="Remove"
+                    cancelText="Cancel"
+                    icon={<QuestionCircleOutlined />}
+                    onConfirm={() => handleRemove(item.user_id)}
+                  >
+                    <DeleteOutlined style={{ cursor: "pointer" }} />
+                  </Popconfirm>
                 }
               >
                 <List.Item.Meta

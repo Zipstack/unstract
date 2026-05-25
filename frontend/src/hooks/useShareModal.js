@@ -82,7 +82,6 @@ function useShareModal({
         groupItems.map((g) => ({
           id: g.id,
           name: g.name,
-          source: g.source,
         })),
       );
       setOpenShareModal(true);

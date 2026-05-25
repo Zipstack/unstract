@@ -5,7 +5,6 @@ import {
   Modal,
   Popconfirm,
   Select,
-  Tag,
   Typography,
 } from "antd";
 import "./SharePermission.css";
@@ -121,7 +120,6 @@ function SharePermission({
         kind: "group",
         id: groupId,
         name: group?.name || `Group #${groupId}`,
-        source: group?.source,
       };
     });
     sharedWithContent = (
@@ -166,11 +164,6 @@ function SharePermission({
                   <Typography.Text className="shared-username">
                     {item.kind === "user" ? item.email : item.name}
                   </Typography.Text>
-                  {item.kind === "group" && item.source === "IDP" && (
-                    <Tag color="blue" style={{ marginLeft: 8 }}>
-                      IDP
-                    </Tag>
-                  )}
                 </>
               }
             />
