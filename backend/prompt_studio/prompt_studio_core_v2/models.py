@@ -8,7 +8,7 @@ from django.db import models
 from django.db.models import QuerySet
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -21,8 +21,11 @@ from unstract.sdk1.file_storage.env_helper import EnvHelper
 logger = logging.getLogger(__name__)
 
 
-class CustomToolModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user: User) -> QuerySet[Any]:
+        if getattr(user, "is_service_account", False):
+            return self.all()
+
         return (
             self.get_queryset()
             .filter(
@@ -162,6 +165,15 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
     shared_to_org = models.BooleanField(
         default=False,
         db_comment="Flag to share this custom tool with all users in the organization",
+    )
+
+    # NULL on pre-feature tools; populated on first successful export.
+    # Drives staleness checks (e.g. lookup-change banner) without requiring
+    # a data backfill.
+    last_exported_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment="Timestamp of the last successful export; NULL if never exported since the field was introduced.",
     )
 
     objects = CustomToolModelManager()

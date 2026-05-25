@@ -1,20 +1,33 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
 import litellm
+import unstract.sdk1.patches.litellm_cohere_timeout  # noqa: F401
 from llama_index.core.embeddings import BaseEmbedding
 from pydantic import ValidationError
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.embedding1 import adapters
+from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import SdkError, parse_litellm_err
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.utils.callback_manager import CallbackManager
+from unstract.sdk1.utils.retry_utils import (
+    acall_with_retry,
+    call_with_retry,
+    is_retryable_litellm_error,
+    pop_litellm_retry_kwargs,
+)
 
 if TYPE_CHECKING:
     from unstract.sdk1.tool.base import BaseTool
+
+logger = logging.getLogger(__name__)
+
+litellm.drop_params = True
 
 
 class Embedding:
@@ -66,6 +79,7 @@ class Embedding:
                 self._adapter_id = embedding_config[Common.ADAPTER_ID]
                 self._adapter_metadata = embedding_config[Common.ADAPTER_METADATA]
                 self._adapter_instance_id = adapter_instance_id
+                self._adapter_name = embedding_config.pop(SdkCommon.ADAPTER_NAME, "")
                 self._tool = tool
             else:
                 self._adapter_id = adapter_id
@@ -75,6 +89,7 @@ class Embedding:
                 else:
                     self._adapter_metadata = adapters[self._adapter_id][Common.METADATA]
                 self._adapter_instance_id = ""
+                self._adapter_name = ""
                 self._tool = None
 
             # Retrieve the adapter class.
@@ -88,69 +103,89 @@ class Embedding:
             self.platform_kwargs: dict[str, object] = kwargs
             self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
             self._cost_model: str | None = self.kwargs.pop("cost_model", None)
-        except ValidationError as e:
+        except (ValidationError, ValueError) as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 
         # Test connection - wrap in error handling
         try:
             self._length = len(self.get_embedding(self._TEST_SNIPPET))
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
+
+    def _get_adapter_info(self) -> str:
+        """Build a display string identifying this adapter for errors."""
+        name = self.adapter.get_name()
+        if self._adapter_name:
+            return f"{self._adapter_name} ({name})"
+        return name
 
     def get_embedding(self, text: str) -> list[float]:
         """Return embedding vector for query string."""
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
-            litellm.drop_params = True
-
-            resp = litellm.embedding(model=model, input=[text], **kwargs)
-
+            resp = call_with_retry(
+                lambda: litellm.embedding(model=model, input=[text], **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return resp["data"][0]["embedding"]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     def get_embeddings(self, texts: list[str]) -> list[list[float]]:
         """Return embedding vectors for list of query strings."""
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
-            resp = litellm.embedding(model=model, input=texts, **kwargs)
-
+            resp = call_with_retry(
+                lambda: litellm.embedding(model=model, input=texts, **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     async def get_aembedding(self, text: str) -> list[float]:
         """Return async embedding vector for query string."""
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
-            resp = await litellm.aembedding(model=model, input=[text], **kwargs)
-
+            resp = await acall_with_retry(
+                lambda: litellm.aembedding(model=model, input=[text], **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return resp["data"][0]["embedding"]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     async def get_aembeddings(self, texts: list[str]) -> list[list[float]]:
         """Return async embedding vectors for list of query strings."""
         try:
             kwargs = self.kwargs.copy()
             model = kwargs.pop("model")
+            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
 
-            resp = await litellm.aembedding(model=model, input=texts, **kwargs)
-
+            resp = await acall_with_retry(
+                lambda: litellm.aembedding(model=model, input=texts, **kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
+            )
             return [data["embedding"] for data in resp["data"]]
         except Exception as e:
-            provider_name = f"{self.adapter.get_name()}"
-            raise parse_litellm_err(e, provider_name) from e
+            raise parse_litellm_err(e, self._get_adapter_info()) from e
 
     def test_connection(self) -> bool:
         """Test connection to the embedding provider."""
@@ -246,3 +281,22 @@ class EmbeddingCompat(BaseEmbedding):
 
     def test_connection(self) -> bool:
         return self._embedding_instance.test_connection()
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Drain pending usage rows from registered callback handlers."""
+        if not self.callback_manager:
+            return []
+        records: list[dict] = []
+        for handler in self.callback_manager.handlers:
+            if not hasattr(handler, "flush_pending_usage"):
+                continue
+            # Per-handler guard so one bad handler doesn't drop the rest.
+            try:
+                records.extend(handler.flush_pending_usage())
+            except Exception:
+                logger.warning(
+                    "Failed to flush usage from embedding handler %s",
+                    type(handler).__name__,
+                    exc_info=True,
+                )
+        return records

@@ -7,6 +7,20 @@ from rest_framework.views import APIView
 from utils.user_context import UserContext
 
 
+def _is_service_account(request: Request) -> bool:
+    """Allow service accounts through for all non-DELETE methods.
+
+    Two constraints are enforced upstream in the authentication middleware
+    before this check is ever reached:
+      1. DELETE is blocked for all API keys.
+      2. Write methods (POST/PUT/PATCH) are blocked for READ-only API keys.
+
+    Therefore any service-account request that arrives here is permitted to
+    proceed regardless of HTTP method.
+    """
+    return getattr(request.user, "is_service_account", False)
+
+
 class IsOwner(permissions.BasePermission):
     """Custom permission to only allow owners of an object.
 
@@ -16,6 +30,8 @@ class IsOwner(permissions.BasePermission):
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if obj.created_by == request.user:
+            return True
+        if _is_service_account(request):
             return True
         if (
             hasattr(obj, "co_owners")
@@ -37,16 +53,19 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if obj.created_by == request.user:
+
+        if _is_service_account(request):
             return True
-        if (
-            hasattr(obj, "co_owners")
-            and obj.co_owners.filter(pk=request.user.pk).exists()
-        ):
-            return True
-        if obj.shared_users.filter(pk=request.user.pk).exists():
-            return True
-        return False
+        return (
+            True
+            if (
+                obj.created_by == request.user
+                or obj.shared_users.filter(pk=request.user.pk).exists()
+                or (hasattr(obj, "co_owners") and obj.co_owners.filter(pk=request.user.pk).exists())
+            )
+            else False
+        )
+
 
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
@@ -55,18 +74,20 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if obj.created_by == request.user:
+
+        if _is_service_account(request):
             return True
-        if (
-            hasattr(obj, "co_owners")
-            and obj.co_owners.filter(pk=request.user.pk).exists()
-        ):
-            return True
-        if obj.shared_users.filter(pk=request.user.pk).exists():
-            return True
-        if obj.shared_to_org:
-            return True
-        return False
+        return (
+            True
+            if (
+                obj.created_by == request.user
+                or obj.shared_users.filter(pk=request.user.pk).exists()
+                or obj.shared_to_org
+                or (hasattr(obj, "co_owners") and obj.co_owners.filter(pk=request.user.pk).exists())
+            )
+            else False
+        )
+
 
 
 class IsFrictionLessAdapter(permissions.BasePermission):

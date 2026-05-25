@@ -2,11 +2,9 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
-  ReloadOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
-  Button,
   Card,
   Empty,
   Spin,
@@ -17,7 +15,7 @@ import {
   Typography,
 } from "antd";
 import PropTypes from "prop-types";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ApiDeployments, ETLIcon, Task, Workflows } from "../../assets/index";
 import { useDeploymentUsage } from "../../hooks/useMetricsData";
@@ -25,6 +23,24 @@ import { useDeploymentUsage } from "../../hooks/useMetricsData";
 import "./MetricsDashboard.css";
 
 const { Text } = Typography;
+
+/**
+ * Format large numbers with K/M/B suffixes.
+ * Shows full value on hover via Tooltip.
+ */
+function formatCompactNumber(value) {
+  const num = value || 0;
+  if (num >= 1_000_000_000) {
+    return `${(num / 1_000_000_000).toFixed(1)}B`;
+  }
+  if (num >= 1_000_000) {
+    return `${(num / 1_000_000).toFixed(1)}M`;
+  }
+  if (num >= 10_000) {
+    return `${(num / 1_000).toFixed(1)}K`;
+  }
+  return num.toLocaleString();
+}
 
 const columns = [
   {
@@ -47,8 +63,12 @@ const columns = [
     key: "total_tokens",
     sorter: (a, b) => a.total_tokens - b.total_tokens,
     defaultSortOrder: "descend",
-    render: (value) => (value || 0).toLocaleString(),
-    width: 130,
+    render: (value) => (
+      <Tooltip title={(value || 0).toLocaleString()}>
+        {formatCompactNumber(value)}
+      </Tooltip>
+    ),
+    width: 120,
   },
   {
     title: "LLM Calls",
@@ -68,26 +88,26 @@ const columns = [
       const completed = record.completed_executions || 0;
       const failed = record.failed_executions || 0;
       return (
-        <span>
-          {total.toLocaleString()}{" "}
-          {completed > 0 && (
-            <Tooltip title={`${completed} completed`}>
-              <Tag color="success" className="llm-usage-tag-compact">
-                <CheckCircleOutlined /> {completed}
-              </Tag>
-            </Tooltip>
-          )}
-          {failed > 0 && (
-            <Tooltip title={`${failed} failed`}>
-              <Tag color="error">
-                <CloseCircleOutlined /> {failed}
-              </Tag>
-            </Tooltip>
-          )}
-        </span>
+        <Tooltip
+          title={`${completed.toLocaleString()} completed, ${failed.toLocaleString()} failed`}
+        >
+          <span className="execution-compact">
+            <span>{total.toLocaleString()}</span>
+            {completed > 0 && (
+              <span className="execution-success">
+                <CheckCircleOutlined /> {formatCompactNumber(completed)}
+              </span>
+            )}
+            {failed > 0 && (
+              <span className="execution-error">
+                <CloseCircleOutlined /> {formatCompactNumber(failed)}
+              </span>
+            )}
+          </span>
+        </Tooltip>
       );
     },
-    width: 180,
+    width: 170,
   },
   {
     title: "Pages",
@@ -110,12 +130,14 @@ const columns = [
     title: "Last Run",
     dataIndex: "last_execution_at",
     key: "last_execution_at",
+    sorter: (a, b) =>
+      (a.last_execution_at || "").localeCompare(b.last_execution_at || ""),
     render: (value) => (value ? value.split("T")[0] : "-"),
     width: 110,
   },
 ];
 
-function DeploymentUsageTable({ startDate, endDate }) {
+function DeploymentUsageTable({ startDate, endDate, refetchRef }) {
   const [activeType, setActiveType] = useState("API");
 
   const { data, loading, error, refetch } = useDeploymentUsage(
@@ -123,6 +145,18 @@ function DeploymentUsageTable({ startDate, endDate }) {
     startDate,
     endDate,
   );
+
+  // Expose refetch to parent via ref
+  useEffect(() => {
+    if (refetchRef) {
+      refetchRef.current = refetch;
+    }
+    return () => {
+      if (refetchRef) {
+        refetchRef.current = null;
+      }
+    };
+  }, [refetch, refetchRef]);
 
   const handleTabChange = (key) => {
     setActiveType(key);
@@ -166,17 +200,6 @@ function DeploymentUsageTable({ startDate, endDate }) {
       ),
     },
   ];
-
-  const refreshButton = (
-    <Tooltip title="Refresh (bypasses cache)">
-      <Button
-        icon={<ReloadOutlined />}
-        size="small"
-        onClick={refetch}
-        loading={loading}
-      />
-    </Tooltip>
-  );
 
   const renderContent = () => {
     if (loading) {
@@ -222,7 +245,6 @@ function DeploymentUsageTable({ startDate, endDate }) {
         <Text strong className="llm-usage-title">
           Usage by Deployment
         </Text>
-        {refreshButton}
       </div>
       <Tabs
         items={deploymentTabs}
@@ -244,11 +266,13 @@ function DeploymentUsageTable({ startDate, endDate }) {
 DeploymentUsageTable.propTypes = {
   startDate: PropTypes.string,
   endDate: PropTypes.string,
+  refetchRef: PropTypes.shape({ current: PropTypes.func }),
 };
 
 DeploymentUsageTable.defaultProps = {
   startDate: null,
   endDate: null,
+  refetchRef: null,
 };
 
 export { DeploymentUsageTable };

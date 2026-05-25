@@ -19,7 +19,9 @@ const STORE_VARIABLES = {
 const useAlertStore = create((setState) => ({
   ...STORE_VARIABLES,
   setAlertDetails: (details) => {
-    if (!details) return STORE_VARIABLES;
+    if (!details) {
+      return STORE_VARIABLES;
+    }
 
     const isErrorType = details?.type === "error";
     const isSuccessType = details?.type === "success";

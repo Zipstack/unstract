@@ -27,11 +27,14 @@ class SharedUserListSerializer(serializers.ModelSerializer):
 
     def get_shared_users(self, obj):
         """Get list of shared users with their details."""
-        return [{"id": u.id, "email": u.email} for u in obj.shared_users.all()]
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
     def get_co_owners(self, obj):
         """Get list of co-owners with their details."""
         return [{"id": u.id, "email": u.email} for u in obj.co_owners.all()]
+
 
     def get_created_by(self, obj):
         """Get the creator's username."""

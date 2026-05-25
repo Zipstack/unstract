@@ -71,7 +71,7 @@ class BaseUsageResponse(APIResponse, Generic[T]):
 
     def is_success(self) -> bool:
         """Check if the response indicates success."""
-        return self.success_response and self.status == ResponseStatus.SUCCESS
+        return self.success and self.status == ResponseStatus.SUCCESS
 
 
 @dataclass
@@ -119,6 +119,8 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
         Returns:
             UsageResponse containing aggregated usage data
         """
+        # Pre-bind so the except handler can log even if validation raises.
+        validated_file_execution_id = str(file_execution_id)
         try:
             validated_file_execution_id = self._validate_file_execution_id(
                 file_execution_id
@@ -170,6 +172,41 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
                 file_execution_id=validated_file_execution_id,
                 message="Failed to retrieve usage data",
             )
+
+    def bulk_create_usage(
+        self, records: list[dict], organization_id: str | None = None
+    ) -> bool:
+        """Bulk create usage records at execution finalization.
+
+        Args:
+            records: List of usage record dicts to create.
+            organization_id: Optional organization ID override.
+
+        Returns:
+            True if records were created successfully.
+        """
+        if not records:
+            return True
+        try:
+            response = self.post(
+                "v1/usage/batch/",
+                data={"records": records},
+                organization_id=organization_id,
+            )
+            # The success path returns ``{"created": N}`` (no ``success``
+            # key); the error path returns ``{"success": False, "error":
+            # ...}``. Accept either an explicit success flag or the
+            # presence of ``created`` *as long as* ``success`` isn't
+            # explicitly False — guards against future contracts that may
+            # report a partial body.
+            if response.get("success") is False:
+                return False
+            return response.get("success") is True or "created" in response
+        except Exception:
+            logger.error(
+                "Failed to bulk create %d usage records", len(records), exc_info=True
+            )
+            return False
 
     def get_aggregated_pages_processed(
         self, file_execution_id: str | uuid.UUID, organization_id: str | None = None

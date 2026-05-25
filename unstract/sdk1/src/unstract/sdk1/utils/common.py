@@ -37,6 +37,17 @@ class Utils:
         return string.lower() == "true"
 
     @staticmethod
+    def strip_adapter_name(*configs: dict | None) -> None:
+        """Strip the private ``_adapter_name`` key from adapter configs.
+
+        Call this before hashing configs for index key generation so the
+        adapter name (added for error reporting) does not affect the hash.
+        """
+        for config in configs:
+            if config:
+                config.pop(Common.ADAPTER_NAME, None)
+
+    @staticmethod
     def pretty_file_size(num: float, suffix: str = "B") -> str:
         """Gets the human readable size for a file.
 
@@ -151,10 +162,12 @@ class LLMResponseCompat:
 
     def __str__(self) -> str:
         """Return text for string operations like join()."""
-        return self.text
+        return self.text or ""
 
     def __repr__(self) -> str:
         """Return detailed representation with text preview."""
+        if self.text is None:
+            return "LLMResponseCompat(text=None)"
         text_preview = self.text[:50] + "..." if len(self.text) > 50 else self.text
         return f"LLMResponseCompat(text={text_preview!r})"
 
@@ -210,6 +223,10 @@ def capture_metrics(func: object) -> object:
         if self._run_id and self._capture_metrics:
             metrics_mixin = MetricsMixin(run_id=self._run_id)
 
+        # Snapshot index so timing stamps every row appended during this call —
+        # internal retries would otherwise leave NULL execution_time_ms rows.
+        pending_at_entry = len(getattr(self, "_pending_usage", []))
+
         try:
             result = func(self, *args, **kwargs)
         finally:
@@ -236,6 +253,14 @@ def capture_metrics(func: object) -> object:
                 else:
                     # If the key isn't in self._metrics, set it to new_metrics
                     self._metrics = new_metrics
+
+                # Stamp timing on every record appended during this call.
+                pending = getattr(self, "_pending_usage", [])
+                time_taken = new_metrics.get(time_taken_key)
+                if time_taken is not None and len(pending) > pending_at_entry:
+                    elapsed_ms = int(time_taken * 1000)
+                    for record in pending[pending_at_entry:]:
+                        record["execution_time_ms"] = elapsed_ms
 
         return result
 

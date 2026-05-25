@@ -9,6 +9,7 @@ from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from utils.FileValidator import FileValidator
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.serializers import AuditSerializer
@@ -34,11 +35,53 @@ except ImportError:
     from file_management.constants import FileInformationKey as FileKey
 
 
-class CustomToolSerializer(
-    CoOwnerRepresentationMixin, IntegrityErrorMixin, AuditSerializer
-):
+class CustomToolListSerializer(serializers.ModelSerializer):
+    """Lightweight serializer for the list endpoint.
+
+    Avoids the O(tools x prompts) queries that CustomToolSerializer.to_representation
+    causes by skipping profile lookups, prompt fetching, and coverage calculation.
+    """
+
+    created_by_email = serializers.SerializerMethodField()
+    prompt_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CustomTool
+        fields = [
+            "tool_id",
+            "tool_name",
+            "description",
+            "author",
+            "created_by",
+            "created_at",
+            "modified_at",
+            "shared_to_org",
+            "icon",
+            "created_by_email",
+            "prompt_count",
+        ]
+
+    def get_created_by_email(self, instance):
+        return instance.created_by.email if instance.created_by else ""
+
+    def get_prompt_count(self, instance):
+        if hasattr(instance, "_prompt_count"):
+            return instance._prompt_count or 0
+        # Fallback triggers a per-instance query if annotation is missing
+        logger.warning(
+            "CustomToolListSerializer used without _prompt_count annotation "
+            "for tool %s — falling back to per-instance query",
+            instance.tool_id,
+        )
+        return instance.mapped_prompt.count()
+
+
+class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.all(), required=False, allow_null=True, many=True
+        queryset=User.objects.filter(is_service_account=False),
+        required=False,
+        allow_null=True,
+        many=True,
     )
 
     class Meta:
@@ -53,6 +96,14 @@ class CustomToolSerializer(
             ),
         }
     }
+
+    def validate_tool_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Tool name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""
@@ -120,6 +171,10 @@ class CustomToolSerializer(
             tool_id=data.get(TSKeys.TOOL_ID)
         ).order_by("sequence_number")
 
+        data["created_by_email"] = (
+            instance.created_by.email if instance.created_by else ""
+        )
+
         if not prompt_instances.exists():
             data[TSKeys.PROMPTS] = []
             return data
@@ -177,8 +232,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     """Used for listing users of Custom tool."""
 
     created_by = UserSerializer()
-    co_owners = UserSerializer(many=True, read_only=True)
-    shared_users = UserSerializer(many=True)
+    shared_users = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -190,6 +244,11 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "shared_to_org",
         )
+
+    def get_shared_users(self, obj):
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
 
 class FileInfoIdeSerializer(serializers.Serializer):
@@ -210,3 +269,16 @@ class FileUploadIdeSerializer(serializers.Serializer):
             )
         ],
     )
+
+
+class SyncPromptsSerializer(serializers.Serializer):
+    data = serializers.DictField(required=True)
+    create_copy = serializers.BooleanField(default=False)
+
+    def validate_data(self, value):
+        required_keys = {"prompts"}
+        if not required_keys.issubset(value.keys()):
+            raise serializers.ValidationError(
+                f"Export JSON must contain keys: {required_keys}"
+            )
+        return value

@@ -14,8 +14,9 @@
         "date":"date",
         "boolean":"boolean",
         "json":"json",
-        "line_item":"line-item",
-        "table":"table"
+        "table":"table",
+        "agentic_table":"agentic_table",
+        "line-item":"line-item"
     },
     "output_processing":{
         "DEFAULT":"Default"

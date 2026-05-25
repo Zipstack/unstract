@@ -7,6 +7,7 @@ from django.conf import settings
 from permissions.co_owner_serializers import CoOwnerRepresentationMixin
 from rest_framework import serializers
 from rest_framework.serializers import ModelSerializer
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
@@ -28,6 +29,20 @@ class BaseAdapterSerializer(AuditSerializer):
     class Meta:
         model = AdapterInstance
         fields = "__all__"
+
+    def validate(self, data):
+        data = super().validate(data)
+        adapter_name = data.get("adapter_name")
+        if adapter_name is not None:
+            data["adapter_name"] = validate_name_field(
+                adapter_name, field_name="Adapter name"
+            )
+        description = data.get("description")
+        if description is not None:
+            data["description"] = validate_no_html_tags(
+                description, field_name="Description"
+            )
+        return data
 
 
 class DefaultAdapterSerializer(serializers.Serializer):
@@ -206,6 +221,11 @@ class SharedUserListSerializer(BaseAdapterSerializer):
             "shared_users",
             "shared_to_org",
         )  # type: ignore
+
+    def get_shared_users(self, obj):
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
 
 
 class UserDefaultAdapterSerializer(ModelSerializer):

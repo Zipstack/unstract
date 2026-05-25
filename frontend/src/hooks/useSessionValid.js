@@ -167,6 +167,8 @@ function useSessionValid() {
       }
       userAndOrgDetails["role"] = userSessionData.role;
       userAndOrgDetails["provider"] = userSessionData.provider;
+      userAndOrgDetails["disable_sso_idp_authorization"] =
+        userSessionData.disable_sso_idp_authorization;
     } catch (err) {
       // TODO: Throw popup error message
       // REVIEW: Add condition to check for trial period status

@@ -209,17 +209,14 @@ function ConnectorsPage() {
     });
   };
 
-  const renderCreateConnectorButtons = useCallback(
-    () => (
-      <Button
-        type="primary"
-        icon={<PlusOutlined />}
-        onClick={handleCreateConnector}
-      >
-        New Connector
-      </Button>
-    ),
-    [],
+  const newConnectorButton = (
+    <Button
+      type="primary"
+      icon={<PlusOutlined />}
+      onClick={handleCreateConnector}
+    >
+      New Connector
+    </Button>
   );
 
   return (
@@ -229,7 +226,7 @@ function ConnectorsPage() {
         enableSearch
         setSearchList={setDisplayList}
         onSearch={onSearch}
-        CustomButtons={renderCreateConnectorButtons}
+        customButtons={newConnectorButton}
       />
       <div className="connectors-pg-layout">
         <div className="connectors-pg-body">

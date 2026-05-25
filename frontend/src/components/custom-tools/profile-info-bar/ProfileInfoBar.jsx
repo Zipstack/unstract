@@ -1,4 +1,4 @@
-import { Col, Row, Tag } from "antd";
+import { Tag } from "antd";
 import PropTypes from "prop-types";
 import "./ProfileInfoBar.css";
 
@@ -10,43 +10,29 @@ const ProfileInfoBar = ({ profiles, profileId }) => {
   }
 
   return (
-    <Row className="profile-info-bar">
-      <Col>
-        <Tag>
-          <strong>Profile Name:</strong> {profile?.profile_name}
-        </Tag>
-      </Col>
-      <Col>
-        <Tag>
-          <strong>Chunk Size:</strong> {profile?.chunk_size}
-        </Tag>
-      </Col>
-      <Col>
-        <Tag>
-          <strong>Vector Store:</strong> {profile?.vector_store}
-        </Tag>
-      </Col>
-      <Col>
-        <Tag>
-          <strong>Embedding Model:</strong> {profile?.embedding_model}
-        </Tag>
-      </Col>
-      <Col>
-        <Tag>
-          <strong>LLM:</strong> {profile?.llm}
-        </Tag>
-      </Col>
-      <Col>
-        <Tag>
-          <strong>X2Text:</strong> {profile?.x2text}
-        </Tag>
-      </Col>
-      <Col>
-        <Tag>
-          <strong>Reindex:</strong> {profile?.reindex ? "Yes" : "No"}
-        </Tag>
-      </Col>
-    </Row>
+    <div className="profile-info-bar">
+      <Tag>
+        <strong>Profile Name:</strong> {profile?.profile_name}
+      </Tag>
+      <Tag>
+        <strong>Chunk Size:</strong> {profile?.chunk_size}
+      </Tag>
+      <Tag>
+        <strong>Vector Store:</strong> {profile?.vector_store}
+      </Tag>
+      <Tag>
+        <strong>Embedding Model:</strong> {profile?.embedding_model}
+      </Tag>
+      <Tag>
+        <strong>LLM:</strong> {profile?.llm}
+      </Tag>
+      <Tag>
+        <strong>X2Text:</strong> {profile?.x2text}
+      </Tag>
+      <Tag>
+        <strong>Reindex:</strong> {profile?.reindex ? "Yes" : "No"}
+      </Tag>
+    </div>
   );
 };
 

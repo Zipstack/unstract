@@ -12,7 +12,7 @@ from usage_v2.constants import UsageKeys
 from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
 
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_ERROR_LENGTH = 256
 
 
-class WorkflowExecutionManager(models.Manager):
+class WorkflowExecutionManager(BaseModelManager):
     """Custom manager for WorkflowExecution model to handle user-specific filtering."""
 
     def for_user(self, user) -> QuerySet:
@@ -42,12 +42,22 @@ class WorkflowExecutionManager(models.Manager):
         3. Both shared -> User can see all executions
         4. Neither shared -> User cannot see executions
 
+        Service accounts see all executions (org-scoped by view).
+
         Args:
             user: The user to filter executions for
 
         Returns:
             QuerySet of executions that the user has permission to access
         """
+        if getattr(user, "is_service_account", False):
+            from utils.user_context import UserContext
+
+            org = UserContext.get_organization()
+            if org:
+                return self.filter(workflow__organization=org)
+            return self.all()
+
         # Filter for workflow access
         workflow_filter = Q(workflow__created_by=user) | Q(workflow__shared_users=user)
 

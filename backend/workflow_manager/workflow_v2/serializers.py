@@ -18,6 +18,7 @@ from rest_framework.serializers import (
 )
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
+from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.constants import RequestKey
@@ -51,6 +52,14 @@ class WorkflowSerializer(
             "message": "A workflow with this name already exists.",
         }
     }
+
+    def validate_workflow_name(self, value: str) -> str:
+        return validate_name_field(value, field_name="Workflow name")
+
+    def validate_description(self, value: str) -> str:
+        if value is None:
+            return value
+        return validate_no_html_tags(value, field_name="Description")
 
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)
@@ -175,11 +184,17 @@ class SharedUserListSerializer(SharedUserListMixin, ModelSerializer):
 
     class Meta:
         model = Workflow
-        fields = [
-            "id",
-            "workflow_name",
-            "shared_users",
-            "co_owners",
-            "shared_to_org",
-            "created_by",
+        fields = ["id", "workflow_name", "shared_users", "shared_to_org", "created_by"]
+
+    def get_shared_users(self, obj):
+        """Return list of shared users with id and email."""
+        return [
+            {"id": user.id, "email": user.email}
+            for user in obj.shared_users.filter(is_service_account=False)
         ]
+
+    def get_created_by(self, obj):
+        """Return creator details."""
+        if obj.created_by:
+            return {"id": obj.created_by.id, "email": obj.created_by.email}
+        return None

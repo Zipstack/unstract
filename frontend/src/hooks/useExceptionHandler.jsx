@@ -3,6 +3,14 @@ import { useNavigate } from "react-router-dom";
 
 const useExceptionHandler = () => {
   const navigate = useNavigate();
+
+  const buildAlert = (content, title, duration) => ({
+    type: "error",
+    content,
+    title,
+    duration,
+  });
+
   const handleException = (
     err,
     errMessage = "Something went wrong",
@@ -11,27 +19,16 @@ const useExceptionHandler = () => {
     duration = 0,
   ) => {
     if (!err) {
-      return {
-        type: "error",
-        content: errMessage,
-        title: title,
-        duration: duration,
-      };
+      return buildAlert(errMessage, title, duration);
     }
     if (err.code === "ERR_NETWORK" && !navigator.onLine) {
-      return {
-        type: "error",
-        content: "Please check your internet connection.",
-        title: title,
-        duration: duration,
-      };
+      return buildAlert(
+        "Please check your internet connection.",
+        title,
+        duration,
+      );
     } else if (err.code === "ERR_CANCELED") {
-      return {
-        type: "error",
-        content: "Request has been canceled.",
-        title: title,
-        duration: duration,
-      };
+      return buildAlert("Request has been canceled.", title, duration);
     }
 
     if (err?.response?.status === 404) {
@@ -57,12 +54,7 @@ const useExceptionHandler = () => {
         responseData.error || responseData.detail || responseData.message;
 
       if (commonErrorMessage) {
-        return {
-          title: title,
-          type: "error",
-          content: commonErrorMessage,
-          duration: duration,
-        };
+        return buildAlert(commonErrorMessage, title, duration);
       }
 
       // Then handle specific error types
@@ -95,45 +87,24 @@ const useExceptionHandler = () => {
                     .join("\n");
               }
             }
-            return {
-              title: title,
-              type: "error",
-              content: errorMessage,
-              duration: duration,
-            };
+            return buildAlert(errorMessage, title, duration);
           }
           break;
         case "subscription_error":
           navigate("/subscription-expired");
-          return {
-            title: title,
-            type: "error",
-            content: errors,
-            duration: duration,
-          };
+          return buildAlert(errors, title, duration);
         case "client_error":
         case "server_error":
-          return {
-            title: title,
-            type: "error",
-            content: errors?.[0]?.detail ? errors[0].detail : errMessage,
-            duration: duration,
-          };
+          return buildAlert(
+            errors?.[0]?.detail ? errors[0].detail : errMessage,
+            title,
+            duration,
+          );
         default:
-          return {
-            title: title,
-            type: "error",
-            content: errMessage,
-            duration: duration,
-          };
+          return buildAlert(errMessage, title, duration);
       }
     } else {
-      return {
-        title: title,
-        type: "error",
-        content: errMessage,
-        duration: duration,
-      };
+      return buildAlert(errMessage, title, duration);
     }
   };
 

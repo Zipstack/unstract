@@ -7,6 +7,7 @@ from requests import RequestException, Response
 from requests.exceptions import ConnectionError, HTTPError
 from unstract.sdk1.constants import (
     AdapterKeys,
+    Common,
     LogLevel,
     MimeType,
     PromptStudioKeys,
@@ -16,6 +17,7 @@ from unstract.sdk1.constants import (
 )
 from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.tool.base import BaseTool
+from unstract.sdk1.tool.stream import StreamMixin
 from unstract.sdk1.utils.common import Utils
 from unstract.sdk1.utils.retry_utils import retry_platform_service_call
 
@@ -99,7 +101,7 @@ class PlatformHelper:
     @retry_platform_service_call
     def _get_adapter_configuration(
         cls: type[Self],
-        tool: BaseTool,
+        tool: BaseTool | StreamMixin,
         adapter_instance_id: str,
     ) -> dict[str, Any]:
         """Get Adapter.
@@ -138,10 +140,13 @@ class PlatformHelper:
             adapter_name = adapter_data.pop("adapter_name", "")
             adapter_type = adapter_data.pop("adapter_type", "")
             provider = adapter_data.get("adapter_id", "").split("|")[0]
+            # Store adapter name under a private key for use in error messages.
+            # This key is stripped before hashing in index key generation.
+            adapter_data[Common.ADAPTER_NAME] = adapter_name
             # TODO: Print metadata after redacting sensitive information
             tool.stream_log(
-                f"Retrieved config for '{adapter_instance_id}', type: "
-                f"'{adapter_type}', provider: '{provider}', name: '{adapter_name}'",
+                f"Retrieved adapter config — name: '{adapter_name}', "
+                f"type: '{adapter_type}', provider: '{provider}'",
                 level=LogLevel.DEBUG,
             )
         except HTTPError as e:
@@ -163,7 +168,7 @@ class PlatformHelper:
 
     @classmethod
     def get_adapter_config(
-        cls: type[Self], tool: BaseTool, adapter_instance_id: str
+        cls: type[Self], tool: BaseTool | StreamMixin, adapter_instance_id: str
     ) -> dict[str, Any] | None:
         """Get adapter spec by the help of unstract DB tool.
 
@@ -188,7 +193,7 @@ class PlatformHelper:
             return adapter_metadata
 
         tool.stream_log(
-            f"Retrieving config from DB for '{adapter_instance_id}'",
+            "Retrieving adapter configuration from platform service",
             level=LogLevel.DEBUG,
         )
 

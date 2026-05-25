@@ -54,14 +54,14 @@ function ExecutionLogs() {
     ? location.state?.from || `/${sessionDetails?.orgName}/logs`
     : null;
 
-  // State to pass back for scroll restoration
+  // Scroll-restoration wins; otherwise preserve caller's upstream UI state.
   const backRouteState =
     id && location.state?.scrollToCardId
       ? {
           scrollToCardId: location.state.scrollToCardId,
           cardExpanded: location.state.cardExpanded,
         }
-      : null;
+      : location.state?.backRouteState || null;
 
   const items = [
     {
@@ -164,16 +164,14 @@ function ExecutionLogs() {
     }
   };
 
-  const customButtons = () => {
-    return (
-      <Tabs
-        activeKey={activeTab}
-        items={items}
-        onChange={onChange}
-        className="log-tab"
-      />
-    );
-  };
+  const logTabs = (
+    <Tabs
+      activeKey={activeTab}
+      items={items}
+      onChange={onChange}
+      className="log-tab"
+    />
+  );
 
   useEffect(() => {
     if (!currentPath) {
@@ -220,7 +218,7 @@ function ExecutionLogs() {
     <>
       <ToolNavBar
         title={"Execution Logs"}
-        CustomButtons={customButtons}
+        customButtons={logTabs}
         enableSearch={false}
         previousRoute={backRoute}
         previousRouteState={backRouteState}

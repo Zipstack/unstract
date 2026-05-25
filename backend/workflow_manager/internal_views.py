@@ -7,7 +7,6 @@ import uuid
 
 from django.db import transaction
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -49,6 +48,11 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = WorkflowExecutionSerializer
     lookup_field = "id"
+    # Backward compat: workers may call without X-Organization-ID during
+    # rolling deployments. Safe because internal APIs require service API key
+    # and get_queryset() applies org filtering when header is present.
+    # Remove once all workers reliably pass X-Organization-ID.
+    skip_org_filter = True
 
     def get_queryset(self):
         """Get workflow executions filtered by organization context."""
@@ -2004,7 +2008,6 @@ class BatchStatusUpdateAPIView(APIView):
                         if update.get("execution_time") is not None:
                             execution.execution_time = update["execution_time"]
 
-                        execution.modified_at = timezone.now()
                         execution.save()
 
                         successful_updates.append(

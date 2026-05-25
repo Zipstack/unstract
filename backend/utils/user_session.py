@@ -10,7 +10,14 @@ class UserSessionUtils:
     @staticmethod
     def get_organization_id(request: HttpRequest) -> str | None:
         session_org_id = request.session.get("organization")
-        requested_org_id = request.organization_id
+        requested_org_id = getattr(request, "organization_id", None)
+
+        # For Bearer token (API key) requests the middleware has already
+        # validated the key's org. Return the URL org unconditionally —
+        # ignore any stale session cookie that may also be present.
+        if getattr(request, "platform_api_key", None):
+            return requested_org_id
+
         if requested_org_id and (session_org_id != requested_org_id):
             return None
         return session_org_id

@@ -50,7 +50,7 @@ DefaultCustomButtons.propTypes = {
   handleNewProjectBtnClick: PropTypes.func.isRequired,
 };
 
-function ListOfTools() {
+function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isListLoading, setIsListLoading] = useState(false);
   const [openAddTool, setOpenAddTool] = useState(false);
   const [openImportTool, setOpenImportTool] = useState(false);
@@ -258,8 +258,8 @@ function ListOfTools() {
       setPostHogCustomEvent("intent_new_ps_project", {
         info: "Clicked on '+ New Project' button",
       });
-    } catch (err) {
-      console.debug("PostHog event error", err);
+    } catch (_err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
 
@@ -269,8 +269,8 @@ function ListOfTools() {
         info: "Importing project from projects list",
         file_name: file.name,
       });
-    } catch (err) {
-      console.debug("PostHog event error", err);
+    } catch (_err) {
+      // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
     setIsImportLoading(true);
@@ -372,7 +372,7 @@ function ListOfTools() {
   const onShare = (userIds, adapter, shareWithEveryone) => {
     const requestOptions = {
       method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}`,
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
@@ -414,7 +414,7 @@ function ListOfTools() {
     </div>
   );
 
-  const CustomButtonsComponent = useCallback(
+  const customButtonsElement = useMemo(
     () => (
       <DefaultCustomButtons
         setOpenImportTool={setOpenImportTool}
@@ -428,12 +428,15 @@ function ListOfTools() {
   return (
     <>
       <ToolNavBar
-        title={"Prompt Studio"}
+        title="Prompt Studio"
         enableSearch
         onSearch={onSearch}
         searchList={listOfTools}
         setSearchList={setFilteredListOfTools}
-        CustomButtons={CustomButtonsComponent}
+        customButtons={customButtonsElement}
+        segmentOptions={segmentOptions}
+        segmentValue={segmentValue}
+        segmentFilter={onSegmentChange}
       />
       <div className="list-of-tools-layout">
         <div className="list-of-tools-island">{defaultContent}</div>
@@ -478,5 +481,11 @@ function ListOfTools() {
     </>
   );
 }
+
+ListOfTools.propTypes = {
+  segmentOptions: PropTypes.arrayOf(PropTypes.string),
+  segmentValue: PropTypes.string,
+  onSegmentChange: PropTypes.func,
+};
 
 export { ListOfTools };

@@ -15,7 +15,6 @@ import { useEffect, useRef, useState } from "react";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
-import { TABLE } from "./constants";
 import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
@@ -26,6 +25,24 @@ try {
     "../../../plugins/prompt-card/TableExtractionSettingsBtn"
   );
   TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
+} catch {
+  // The component will remain null of it is not available
+}
+
+let LookupIndicator;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/prompt-card/LookupIndicator"
+  );
+  LookupIndicator = mod.LookupIndicator;
+} catch {}
+
+let AgenticTableChecklist;
+try {
+  const mod = await import(
+    "../../../plugins/prompt-card/AgenticTableChecklist"
+  );
+  AgenticTableChecklist = mod.AgenticTableChecklist;
 } catch {
   // The component will remain null of it is not available
 }
@@ -82,6 +99,7 @@ function PromptCardItems({
   const divRef = useRef(null);
   const [enforceType, setEnforceType] = useState("");
   const [tableSettings, setTableSettings] = useState({});
+  const [isAgenticTableReady, setIsAgenticTableReady] = useState(true);
   const promptId = promptDetails?.prompt_id;
 
   useEffect(() => {
@@ -113,7 +131,9 @@ function PromptCardItems({
       if (adapter) {
         result.conf[key.label] =
           adapter?.model || adapter?.adapter_id?.split("|")[0];
-        if (adapter?.adapter_type === "LLM") result.icon = adapter?.icon;
+        if (adapter?.adapter_type === "LLM") {
+          result.icon = adapter?.icon;
+        }
         result.conf["Profile Name"] = profile?.profile_name;
       }
     });
@@ -163,8 +183,12 @@ function PromptCardItems({
           isDefault: profile?.profile_id === selectedLlmProfileId,
         }))
         .sort((a, b) => {
-          if (a?.isDefault) return -1; // Default profile comes first
-          if (b?.isDefault) return 1;
+          if (a?.isDefault) {
+            return -1; // Default profile comes first
+          }
+          if (b?.isDefault) {
+            return 1;
+          }
           return 0;
         }),
     );
@@ -206,6 +230,7 @@ function PromptCardItems({
             spsLoading={spsLoading}
             handleSpsLoading={handleSpsLoading}
             enforceType={enforceType}
+            isAgenticTableReady={isAgenticTableReady}
           />
         </Space>
       </div>
@@ -216,6 +241,14 @@ function PromptCardItems({
       >
         <Collapse.Panel key={"1"} showArrow={false}>
           <div className="prompt-card-div-body">
+            {AgenticTableChecklist && (
+              <AgenticTableChecklist
+                promptId={promptDetails?.prompt_id}
+                promptText={promptText}
+                enforceType={enforceType}
+                onReadinessChange={setIsAgenticTableReady}
+              />
+            )}
             <EditableText
               isEditing={isEditingPrompt}
               setIsEditing={setIsEditingPrompt}
@@ -254,6 +287,9 @@ function PromptCardItems({
                           </Typography.Link>
                         </Space>
                       </Button>
+                      {LookupIndicator && (
+                        <LookupIndicator promptDetails={promptDetails} />
+                      )}
                     </Space>
                     <Space>
                       {details?.enable_highlight &&
@@ -272,7 +308,7 @@ function PromptCardItems({
                         )}
                     </Space>
                     <Space>
-                      {enforceType === TABLE && TableExtractionSettingsBtn && (
+                      {TableExtractionSettingsBtn && (
                         <TableExtractionSettingsBtn
                           promptId={promptDetails?.prompt_id}
                           enforceType={enforceType}
@@ -317,6 +353,8 @@ function PromptCardItems({
               promptRunStatus={promptRunStatus}
               isChallenge={isChallenge}
               handleSelectHighlight={handleSelectHighlight}
+              progressMsg={progressMsg}
+              isAgenticTableReady={isAgenticTableReady}
             />
           </Row>
         </Collapse.Panel>

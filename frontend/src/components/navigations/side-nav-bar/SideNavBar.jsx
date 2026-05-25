@@ -89,6 +89,12 @@ try {
   // Plugin unavailable
 }
 
+let lookupStudioEnabled = false;
+try {
+  await import("../../../plugins/lookup-studio");
+  lookupStudioEnabled = true;
+} catch {}
+
 let manualReviewSettingsEnabled = false;
 try {
   await import("../../../plugins/manual-review/settings/Settings.jsx");
@@ -97,12 +103,21 @@ try {
   // Plugin unavailable
 }
 
-const getSettingsMenuItems = (orgName) => [
+const getSettingsMenuItems = (orgName, isAdmin) => [
   {
     key: "platform",
     label: "Platform Settings",
     path: `/${orgName}/settings/platform`,
   },
+  ...(isAdmin
+    ? [
+        {
+          key: "platformApiKeys",
+          label: "Platform API Keys",
+          path: `/${orgName}/settings/platform-api-keys`,
+        },
+      ]
+    : []),
   {
     key: "users",
     label: "User Management",
@@ -110,7 +125,7 @@ const getSettingsMenuItems = (orgName) => [
   },
   {
     key: "triad",
-    label: "Default Triad",
+    label: "Default LLM Profile",
     path: `/${orgName}/settings/triad`,
   },
   ...(manualReviewSettingsEnabled
@@ -126,6 +141,9 @@ const getSettingsMenuItems = (orgName) => [
 
 const getActiveSettingsKey = () => {
   const currentPath = globalThis.location.pathname;
+  if (currentPath.includes("/settings/platform-api-keys")) {
+    return "platformApiKeys";
+  }
   if (currentPath.includes("/settings/platform")) {
     return "platform";
   }
@@ -141,8 +159,8 @@ const getActiveSettingsKey = () => {
   return "platform";
 };
 
-const SettingsPopoverContent = ({ orgName, navigate }) => {
-  const settingsMenuItems = getSettingsMenuItems(orgName);
+const SettingsPopoverContent = ({ orgName, navigate, isAdmin }) => {
+  const settingsMenuItems = getSettingsMenuItems(orgName, isAdmin);
   const currentActiveKey = getActiveSettingsKey();
 
   const handleMenuClick = (path) => {
@@ -170,6 +188,7 @@ const SettingsPopoverContent = ({ orgName, navigate }) => {
 SettingsPopoverContent.propTypes = {
   orgName: PropTypes.string.isRequired,
   navigate: PropTypes.func.isRequired,
+  isAdmin: PropTypes.bool,
 };
 
 const HITL_MENU_ITEMS = [
@@ -442,6 +461,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
           active:
             globalThis.location.pathname === `/${orgName}/settings` ||
             globalThis.location.pathname === `/${orgName}/settings/platform` ||
+            globalThis.location.pathname ===
+              `/${orgName}/settings/platform-api-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
             globalThis.location.pathname === `/${orgName}/users`,
@@ -489,6 +510,19 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
       ),
       tag: "BETA",
     });
+  }
+
+  // Keep Prompt Studio highlighted on /lookups. Replace, don't mutate —
+  // `data` may alias the `menu` prop.
+  if (lookupStudioEnabled && isUnstract && data[0]?.subMenu) {
+    const onLookupPath = globalThis.location.pathname.startsWith(
+      `/${orgName}/lookups`,
+    );
+    if (onLookupPath) {
+      data[0].subMenu = data[0].subMenu.map((el) =>
+        el.id === 1.1 ? { ...el, active: true } : el,
+      );
+    }
   }
 
   // Add HITL Review section if plugin is available and user has HITL role
@@ -672,6 +706,7 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
                             <SettingsPopoverContent
                               orgName={orgName}
                               navigate={navigate}
+                              isAdmin={sessionDetails?.isAdmin}
                             />
                           }
                           trigger="hover"

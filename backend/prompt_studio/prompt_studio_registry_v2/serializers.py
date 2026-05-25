@@ -15,7 +15,7 @@ class PromptStudioRegistrySerializer(AuditSerializer):
 
 
 class PromptStudioRegistryInfoSerializer(AuditSerializer):
-    shared_users = UserSerializer(many=True)
+    shared_users = serializers.SerializerMethodField()
     prompt_studio_users = serializers.SerializerMethodField()
 
     class Meta:
@@ -27,8 +27,15 @@ class PromptStudioRegistryInfoSerializer(AuditSerializer):
             "prompt_studio_users",
         )
 
+    def get_shared_users(self, obj: PromptStudioRegistry) -> Any:
+        return UserSerializer(
+            obj.shared_users.filter(is_service_account=False), many=True
+        ).data
+
     def get_prompt_studio_users(self, obj: PromptStudioRegistry) -> Any:
-        prompt_studio_users = obj.custom_tool.shared_users
+        prompt_studio_users = obj.custom_tool.shared_users.filter(
+            is_service_account=False
+        )
         return UserSerializer(prompt_studio_users, many=True).data
 
 

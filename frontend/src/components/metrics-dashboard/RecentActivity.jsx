@@ -79,7 +79,9 @@ function RecentActivity({ data, loading }) {
   const orgName = sessionDetails?.orgName;
 
   const handleActivityClick = (item) => {
-    if (!item.execution_id || !orgName) return;
+    if (!item.execution_id || !orgName) {
+      return;
+    }
     const typeConfig = TYPE_CONFIG[item.type] || TYPE_CONFIG.workflow;
     navigate(`/${orgName}/logs/${typeConfig.logType}/${item.execution_id}`, {
       state: { from: "dashboard" },

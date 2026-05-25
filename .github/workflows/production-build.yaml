@@ -19,7 +19,80 @@ on:
 run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
 jobs:
+  # Validates tag format and version monotonicity within the same major.minor line.
+  # This guards the workflow_dispatch tag input and any release event.
+  # The primary defense against bad tags should be a GitHub tag protection ruleset
+  # restricting v* tag creation to the release bot; this job is the in-workflow
+  # safety net that runs regardless.
+  validate-tag:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -euo pipefail {0}
+    steps:
+      - name: Determine tag
+        id: get-tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="${RELEASE_TAG:-$INPUT_TAG}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Validate tag format
+        env:
+          TAG: ${{ steps.get-tag.outputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag '$TAG' does not match expected format 'vX.Y.Z'."
+            exit 1
+          fi
+          echo "Tag format valid: $TAG"
+
+      - name: Validate version increment (same-line)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_TAG: ${{ steps.get-tag.outputs.tag }}
+        run: |
+          # Find the previous release on the same major.minor line. This handles
+          # both normal releases (next patch/minor on main) and hotfixes on older
+          # lines, which are NOT marked as "latest" and would otherwise compare
+          # incorrectly against the unrelated main-line latest.
+          NEW_VER="${NEW_TAG#v}"
+          NEW_MAJOR_MINOR=$(echo "$NEW_VER" | cut -d. -f1-2)
+
+          PREV_TAG=$(gh release list --repo "${{ github.repository }}" \
+            --limit 100 --exclude-drafts --exclude-pre-releases \
+            --json tagName \
+            --jq "[.[] | select(.tagName != \"$NEW_TAG\" and (.tagName | startswith(\"v${NEW_MAJOR_MINOR}.\")))] | .[0].tagName // empty")
+
+          if [[ -z "$PREV_TAG" ]]; then
+            echo "No prior release in line v${NEW_MAJOR_MINOR}.x (new minor/major bump). Skipping increment check."
+            exit 0
+          fi
+
+          if [[ ! "$PREV_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Previous tag '$PREV_TAG' has unexpected format. Refusing to compare."
+            exit 1
+          fi
+
+          echo "Previous release on line: $PREV_TAG"
+          echo "New release:              $NEW_TAG"
+
+          PREV_VER="${PREV_TAG#v}"
+          if [[ "$PREV_VER" == "$NEW_VER" ]]; then
+            echo "::error::New version $NEW_TAG equals previous version $PREV_TAG on the same line."
+            exit 1
+          fi
+          if ! printf '%s\n%s\n' "$PREV_VER" "$NEW_VER" | sort -V -C; then
+            echo "::error::New version $NEW_TAG is not greater than previous version $PREV_TAG on line v${NEW_MAJOR_MINOR}.x."
+            exit 1
+          fi
+
+          echo "Version increment valid: $PREV_TAG -> $NEW_TAG"
+
   build-and-push:
+    needs: validate-tag
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -37,37 +110,41 @@ jobs:
     steps:
       - name: Checkout code for release
         if: github.event_name == 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
         with:
           platforms: linux/amd64,linux/arm64/v8
 
       # Set up Docker Buildx for better caching and multi-arch builds
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
         with:
           platforms: linux/amd64,linux/arm64/v8
 
       # Log in to Docker Hub
       - name: Login to Docker Hub
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Set version tag based on event type
+      # Set version tag based on event type. Uses env: to avoid interpolating
+      # user input directly into the run block.
       - name: Set version tag
         id: set-tag
-        run: echo "DOCKER_VERSION_TAG=${{ github.event.release.tag_name || github.event.inputs.tag }}" >> $GITHUB_ENV
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: echo "DOCKER_VERSION_TAG=${RELEASE_TAG:-$INPUT_TAG}" >> "$GITHUB_ENV"
 
       # Set up additional tags for release builds
       - name: Set image tags
@@ -91,7 +168,7 @@ jobs:
 
       # Build and push using Docker Bake
       - name: Build and push image
-        uses: docker/bake-action@v5
+        uses: docker/bake-action@v7
         env:
           VERSION: ${{ env.DOCKER_VERSION_TAG }}
         with:
@@ -123,21 +200,22 @@ jobs:
       # Upload status for summary job
       - name: Upload build status
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-status-${{ matrix.service_name }}
           path: build-status/${{ matrix.service_name }}.json
           retention-days: 1
 
-  # Summary job that runs after all builds
+  # Summary job that runs after all builds. Depends on validate-tag so it doesn't
+  # produce misleading output when validation blocked the build.
   build-summary:
-    needs: build-and-push
+    needs: [validate-tag, build-and-push]
     runs-on: ubuntu-latest
-    if: always()
+    if: always() && needs.validate-tag.result == 'success'
     steps:
       # Download all build status artifacts
       - name: Download build statuses
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: build-status-*
           merge-multiple: true
@@ -275,7 +353,7 @@ jobs:
       # Send summary notification to Slack
       - name: Send Slack summary notification
         if: always()
-        uses: slackapi/slack-github-action@v2.1.0
+        uses: slackapi/slack-github-action@v3.0.1
         with:
           webhook-type: incoming-webhook
           payload: |

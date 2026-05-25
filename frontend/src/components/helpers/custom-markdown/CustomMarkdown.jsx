@@ -1,6 +1,10 @@
 import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useMemo } from "react";
+import { Link as RouterLink } from "react-router-dom";
+
+import { isSafeExternalUrl } from "../../../helpers/urlSafety";
+import { useSessionStore } from "../../../store/session-store";
 
 const { Text, Link, Paragraph } = Typography;
 
@@ -10,6 +14,8 @@ const CustomMarkdown = ({
   isSecondary = false,
   styleClassName,
 }) => {
+  const { sessionDetails } = useSessionStore();
+  const orgName = sessionDetails?.orgName;
   const textType = isSecondary ? "secondary" : undefined;
 
   /*
@@ -48,12 +54,22 @@ const CustomMarkdown = ({
             {content}
           </Text>
         );
-      case "link":
+      case "link": {
+        // Exclude protocol-relative `//evil.com` from internal-route branch.
+        const isInternal = url?.startsWith("/") && !url.startsWith("//");
+        if (isInternal) {
+          const resolvedUrl = orgName ? `/${orgName}${url}` : url;
+          return <RouterLink to={resolvedUrl}>{content}</RouterLink>;
+        }
+        if (!isSafeExternalUrl(url)) {
+          return content;
+        }
         return (
           <Link href={url} target="_blank" rel="noopener noreferrer">
             {content}
           </Link>
         );
+      }
       case "newline":
         return renderNewLines ? <br /> : "\n";
       default:
@@ -93,7 +109,7 @@ const CustomMarkdown = ({
     });
 
     return elements;
-  }, [text, renderNewLines, textType]);
+  }, [text, renderNewLines, textType, orgName]);
 
   return (
     <Text type={textType} className={styleClassName}>

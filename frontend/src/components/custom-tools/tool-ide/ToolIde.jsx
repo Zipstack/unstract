@@ -45,6 +45,28 @@ try {
 } catch {
   // Do nothing if plugins are not loaded.
 }
+
+// Cloud-only — OSS stub.
+let useLookupDirtySeed = () => {};
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/useLookupDirtySeed.js"
+  );
+  useLookupDirtySeed = mod.useLookupDirtySeed;
+} catch {}
+
+// Cloud-only — OSS stub resolves true to skip the gate.
+let useLookupExportGate = () => ({
+  checkLookups: () => Promise.resolve(true),
+  modalEl: null,
+});
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/useLookupExportGate"
+  );
+  useLookupExportGate = mod.useLookupExportGate;
+} catch {}
+
 function ToolIde() {
   const [openSettings, setOpenSettings] = useState(false);
   const customToolStore = useCustomToolStore();
@@ -78,6 +100,7 @@ function ToolIde() {
   const isCheckingUsageRef = useRef(false);
   const hasCheckedForCurrentSessionRef = useRef(false);
   const abortControllerRef = useRef(null);
+  const { checkLookups, modalEl: lookupGateModalEl } = useLookupExportGate();
 
   useEffect(() => {
     if (openShareModal) {
@@ -180,6 +203,9 @@ function ToolIde() {
     }
   }, [details?.tool_id]);
 
+  // Surfaces re-export banner when /lookups page edits made the tool stale.
+  useLookupDirtySeed(details?.tool_id);
+
   // Cleanup abort controller on unmount
   useEffect(() => {
     return () => {
@@ -191,6 +217,10 @@ function ToolIde() {
 
   // Handle export from reminder bar
   const handleExportFromReminder = useCallback(async () => {
+    const ok = await checkLookups(details?.tool_id, "export");
+    if (!ok) {
+      return;
+    }
     setIsExporting(true);
     try {
       const requestOptions = {
@@ -223,8 +253,8 @@ function ToolIde() {
           info: "Exported from reminder bar",
           tool_name: details?.tool_name,
         });
-      } catch (err) {
-        console.debug("PostHog event error", err);
+      } catch (_err) {
+        // Ignore posthog errors
       }
     } catch (err) {
       setAlertDetails(handleException(err, "Failed to export"));
@@ -239,6 +269,7 @@ function ToolIde() {
     handleException,
     markChangesAsExported,
     setPostHogCustomEvent,
+    checkLookups,
   ]);
 
   const generateIndex = async (doc) => {
@@ -267,29 +298,14 @@ function ToolIde() {
     };
 
     pushIndexDoc(docId);
-    return axiosPrivate(requestOptions)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: `${doc?.document_name} - Indexed successfully`,
-        });
-
-        try {
-          setPostHogCustomEvent("intent_success_ps_indexed_file", {
-            info: "Indexing completed",
-          });
-        } catch (err) {
-          console.debug("PostHog event error", err);
-        }
-      })
-      .catch((err) => {
-        setAlertDetails(
-          handleException(err, `${doc?.document_name} - Failed to index`),
-        );
-      })
-      .finally(() => {
-        deleteIndexDoc(docId);
-      });
+    return axiosPrivate(requestOptions).catch((err) => {
+      // Only clear spinner on POST network failure (not 2xx).
+      // On success the spinner stays until a socket event arrives.
+      deleteIndexDoc(docId);
+      setAlertDetails(
+        handleException(err, `${doc?.document_name} - Failed to index`),
+      );
+    });
   };
 
   const handleUpdateTool = async (body) => {
@@ -366,14 +382,14 @@ function ToolIde() {
           isExporting={isExporting}
         />
       )}
-      <div>
-        <Header
-          handleUpdateTool={handleUpdateTool}
-          setOpenSettings={setOpenSettings}
-          setOpenShareModal={setOpenShareModal}
-          setOpenCloneModal={setOpenCloneModal}
-        />
-      </div>
+      {lookupGateModalEl}
+      <Header
+        handleUpdateTool={handleUpdateTool}
+        setOpenSettings={setOpenSettings}
+        setOpenShareModal={setOpenShareModal}
+        setOpenCloneModal={setOpenCloneModal}
+        checkLookups={checkLookups}
+      />
       <div
         className={isPublicSource ? "public-tool-ide-body" : "tool-ide-body"}
       >

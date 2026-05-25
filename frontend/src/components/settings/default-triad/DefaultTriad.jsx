@@ -128,7 +128,7 @@ function DefaultTriad() {
         info: "Selected default triad",
         adapter_name: adapterType,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
   };
@@ -181,7 +181,7 @@ function DefaultTriad() {
           <ArrowLeftOutlined />
         </Button>
         <Typography.Text className="plt-set-head-typo">
-          Default Triad
+          Default LLM Profile
         </Typography.Text>
       </div>
       <div className="plt-set-layout">

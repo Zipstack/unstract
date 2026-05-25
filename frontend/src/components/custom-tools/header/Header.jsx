@@ -1,7 +1,7 @@
 import { SettingOutlined } from "@ant-design/icons";
-import { Button, Dropdown, Modal, Tooltip, Typography } from "antd";
+import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
 import PropTypes from "prop-types";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -10,9 +10,9 @@ import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CreateApiDeploymentFromPromptStudio } from "../../deployments/create-api-deployment-from-prompt-studio/CreateApiDeploymentFromPromptStudio.jsx";
+import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
-import { HeaderTitle } from "../header-title/HeaderTitle.jsx";
 import "./Header.css";
 
 let SinglePassToggleSwitch;
@@ -23,30 +23,28 @@ try {
     "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
   );
   SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx"
   );
   PromptShareButton = mod.PromptShareButton;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
 try {
   const mod = await import(
     "../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx"
   );
   CloneButton = mod.CloneButton;
-} catch {
-  // The variable will remain undefined if the component is not available.
-}
+} catch {}
+
+const noopCheckLookups = () => Promise.resolve(true);
+
 function Header({
   setOpenSettings,
   handleUpdateTool,
   setOpenShareModal,
   setOpenCloneModal,
+  checkLookups = noopCheckLookups,
 }) {
   const [isExportLoading, setIsExportLoading] = useState(false);
   const { details, isPublicSource, markChangesAsExported } =
@@ -70,6 +68,8 @@ function Header({
   ] = useState(false);
   const [existingApiDeployments, setExistingApiDeployments] = useState([]);
   const [isApiDeploymentLoading, setIsApiDeploymentLoading] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editForm] = Form.useForm();
 
   const handleExport = (
     selectedUsers,
@@ -127,15 +127,18 @@ function Header({
     setConfirmModalVisible(false);
   }, [lastExportParams, handleExport]);
 
-  const handleShare = (isEdit) => {
+  const handleShare = async (isEdit) => {
     try {
       setPostHogCustomEvent("ps_exported_tool", {
         info: `Clicked on the 'Export' button`,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
+
+    const ok = await checkLookups(details?.tool_id, "export");
+    if (!ok) return;
 
     const requestOptions = {
       method: "GET",
@@ -199,7 +202,7 @@ function Header({
         tool_id: details?.tool_id,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
 
@@ -253,16 +256,19 @@ function Header({
       });
   };
 
-  const handleCreateApiDeployment = () => {
+  const handleCreateApiDeployment = async () => {
     try {
       setPostHogCustomEvent("intent_create_api_deployment_from_prompt_studio", {
         info: "Clicked Create API Deployment in tool IDE",
         tool_id: details?.tool_id,
         tool_name: details?.tool_name,
       });
-    } catch (err) {
+    } catch (_err) {
       // If an error occurs while setting custom posthog event, ignore it and continue
     }
+
+    const ok = await checkLookups(details?.tool_id, "API deployment");
+    if (!ok) return;
 
     // Check for existing API deployments before proceeding
     setIsApiDeploymentLoading(true);
@@ -294,17 +300,34 @@ function Header({
     setOpenCreateApiDeploymentModal(true);
   }, []);
 
-  return (
-    <div className="custom-tools-header-layout">
-      {isPublicSource ? (
-        <div>
-          <Typography.Text className="custom-tools-name" strong>
-            {details?.tool_name}
-          </Typography.Text>
-        </div>
-      ) : (
-        <HeaderTitle />
-      )}
+  const handleOpenEditModal = useCallback(() => {
+    editForm.setFieldsValue({
+      tool_name: details?.tool_name || "",
+      description: details?.description || "",
+    });
+    setEditModalOpen(true);
+  }, [details, editForm]);
+
+  const handleEditSubmit = useCallback(async () => {
+    try {
+      const values = await editForm.validateFields();
+      const res = await handleUpdateTool(values);
+      const updatedData = res?.data;
+      if (updatedData) {
+        useCustomToolStore.setState({ details: updatedData });
+      }
+      setEditModalOpen(false);
+      setAlertDetails({ type: "success", content: "Updated successfully" });
+    } catch (err) {
+      if (err?.errorFields) {
+        return;
+      }
+      setAlertDetails(handleException(err, "Failed to update"));
+    }
+  }, [editForm, handleUpdateTool, setAlertDetails, handleException]);
+
+  const actionButtons = useMemo(
+    () => (
       <div className="custom-tools-header-btns">
         {SinglePassToggleSwitch && (
           <SinglePassToggleSwitch handleUpdateTool={handleUpdateTool} />
@@ -384,6 +407,60 @@ function Header({
           />
         )}
       </div>
+    ),
+    [
+      handleUpdateTool,
+      setOpenSettings,
+      setOpenCloneModal,
+      setOpenShareModal,
+      isPublicSource,
+      isExportLoading,
+      isApiDeploymentLoading,
+      userList,
+      openExportToolModal,
+      toolDetails,
+      details,
+      openCreateApiDeploymentModal,
+    ],
+  );
+
+  return (
+    <>
+      <ToolNavBar
+        title={details?.tool_name || ""}
+        subtitle={isPublicSource ? undefined : details?.description}
+        previousRoute={
+          isPublicSource || !sessionDetails?.orgName
+            ? undefined
+            : `/${sessionDetails.orgName}/tools`
+        }
+        onEditTitle={
+          isPublicSource || !details?.tool_id ? undefined : handleOpenEditModal
+        }
+        customButtons={actionButtons}
+      />
+      <Modal
+        title="Edit Project"
+        open={editModalOpen}
+        onOk={handleEditSubmit}
+        onCancel={() => setEditModalOpen(false)}
+        okText="Save"
+        centered
+        destroyOnClose
+      >
+        <Form form={editForm} layout="vertical">
+          <Form.Item
+            name="tool_name"
+            label="Project Name"
+            rules={[{ required: true, message: "Name is required" }]}
+          >
+            <Input />
+          </Form.Item>
+          <Form.Item name="description" label="Description">
+            <Input.TextArea rows={3} />
+          </Form.Item>
+        </Form>
+      </Modal>
       <Modal
         onOk={handleConfirmForceExport} // Pass the confirm action
         onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
@@ -445,7 +522,7 @@ function Header({
         )}
         <p>Do you want to proceed with creating the API deployment?</p>
       </Modal>
-    </div>
+    </>
   );
 }
 
@@ -454,6 +531,7 @@ Header.propTypes = {
   handleUpdateTool: PropTypes.func.isRequired,
   setOpenCloneModal: PropTypes.func.isRequired,
   setOpenShareModal: PropTypes.func.isRequired,
+  checkLookups: PropTypes.func,
 };
 
 export { Header };

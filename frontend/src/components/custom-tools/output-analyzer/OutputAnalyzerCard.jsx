@@ -37,7 +37,9 @@ function OutputAnalyzerCard({ doc, selectedPrompts, totalFields }) {
 
   // Memoize the file URL endpoint to prevent unnecessary recalculations
   const fileUrlEndpoint = useMemo(() => {
-    if (!doc) return null;
+    if (!doc) {
+      return null;
+    }
 
     if (isPublicSource) {
       return publicDocumentApi?.(id, doc.document_id, null);
@@ -72,7 +74,9 @@ function OutputAnalyzerCard({ doc, selectedPrompts, totalFields }) {
 
   // Calculate fill rate
   const fillRate = useMemo(() => {
-    if (totalFields === 0) return "0";
+    if (totalFields === 0) {
+      return "0";
+    }
     return ((filledFields / totalFields) * 100).toFixed(2);
   }, [filledFields, totalFields]);
 

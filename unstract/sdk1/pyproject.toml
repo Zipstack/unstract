@@ -26,8 +26,8 @@ dependencies = [
     "python-magic~=0.4.27",
     "python-dotenv==1.0.1",
     # # Adapter changes
-    "tiktoken~=0.9.0",
-    "litellm==1.81.7",
+    "tiktoken~=0.12.0",
+    "litellm==1.83.10",
     "llama-index>=0.14.13",
     "llama-index-vector-stores-postgres>=0.7.3",
     "llama-index-vector-stores-milvus>=0.9.6",
@@ -48,6 +48,8 @@ dependencies = [
     "redis>=5.2.1",
     # # LLMWhisperer client
     "llmwhisperer-client>=2.6.2",
+    # # Core utilities (Redis Sentinel-aware client factory, etc.)
+    "unstract-core",
 ]
 
 [project.optional-dependencies]
@@ -70,9 +72,13 @@ test = [
     "parameterized==0.9.0",
     "pytest==8.3.3",
     "pytest-mock==3.14.0",
+    "pytest-asyncio>=0.24.0",
     "pytest-cov>=6.0.0",
     "pytest-md-report>=0.6.2",
 ]
+
+[tool.uv.sources]
+unstract-core = { path = "../core", editable = true }
 
 [build-system]
 requires = ["hatchling"]

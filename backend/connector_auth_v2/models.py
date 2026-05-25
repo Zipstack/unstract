@@ -10,7 +10,7 @@ from social_django.fields import JSONField
 from social_django.models import AbstractUserSocialAuth, DjangoStorage
 from social_django.strategy import DjangoStrategy
 
-from connector_auth_v2.constants import SocialAuthConstants
+from connector_auth_v2.constants import OAUTH_TOKEN_KEYS, SocialAuthConstants
 from connector_auth_v2.pipeline.google import GoogleAuthHelper
 
 logger = logging.getLogger(__name__)
@@ -96,11 +96,27 @@ class ConnectorAuth(AbstractUserSocialAuth):
             refreshed_token = True
             related_connector_instances = self.connectorinstance_set.all()
             for connector_instance in related_connector_instances:
-                connector_instance.connector_metadata = self.extra_data
+                # Whitelist-merge: only OAuth token keys flow from the shared
+                # extra_data into each sibling's metadata. Non-token keys (form
+                # fields like site_url, drive_id, or provider-enrichment stored
+                # in extra_data) must NOT leak between connectors sharing the
+                # same (provider, uid).
+                existing_metadata = connector_instance.connector_metadata or {}
+                token_updates = {
+                    key: self.extra_data[key]
+                    for key in OAUTH_TOKEN_KEYS
+                    if self.extra_data.get(key) is not None
+                }
+                connector_instance.connector_metadata = {
+                    **existing_metadata,
+                    **token_updates,
+                }
                 connector_instance.save()
                 logger.info(
-                    f"Refreshed access token for connector {connector_instance.id}, "
-                    f"provider: {self.provider}, uid: {self.uid}"
+                    "Refreshed access token for connector %s, provider: %s, uid: %s",
+                    connector_instance.id,
+                    self.provider,
+                    self.uid,
                 )
 
         return self.extra_data, refreshed_token

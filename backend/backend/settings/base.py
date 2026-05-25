@@ -12,11 +12,12 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 import logging
 import os
 from pathlib import Path
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 import httpx
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
+from utils.cors_origin import normalize_web_app_origin
 
 missing_settings = []
 
@@ -68,10 +69,18 @@ WORKFLOW_ACTION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
 )
 # Maximum number of files allowed per workflow page execution
 WORKFLOW_PAGE_MAX_FILES = int(os.environ.get("WORKFLOW_PAGE_MAX_FILES", 2))
-WEB_APP_ORIGIN_URL = os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
-parsed_url = urlparse(WEB_APP_ORIGIN_URL)
-WEB_APP_ORIGIN_URL_WITH_WILD_CARD = f"{parsed_url.scheme}://*.{parsed_url.netloc}"
+(
+    WEB_APP_ORIGIN_URL,
+    WEB_APP_ORIGIN_URL_WITH_WILD_CARD,
+    _CORS_SUBDOMAIN_REGEX,
+) = normalize_web_app_origin(
+    os.environ.get("WEB_APP_ORIGIN_URL", "http://localhost:3000")
+)
 CORS_ALLOWED_ORIGINS = [WEB_APP_ORIGIN_URL]
+# Wildcard subdomain regex consumed by django-cors-headers and (via the
+# RegexOrigin wrapper in utils/log_events.py) by the SocketIO engine.io
+# handshake — a single source of truth so HTTP and WS CORS cannot diverge.
+CORS_ALLOWED_ORIGIN_REGEXES = [_CORS_SUBDOMAIN_REGEX]
 
 DJANGO_APP_BACKEND_URL = os.environ.get("DJANGO_APP_BACKEND_URL", "http://localhost:8000")
 INTERNAL_SERVICE_API_KEY = os.environ.get("INTERNAL_SERVICE_API_KEY")
@@ -344,6 +353,7 @@ SHARED_APPS = (
     "tags",
     "configuration",
     "dashboard_metrics",
+    "platform_api",
 )
 TENANT_APPS = []
 
@@ -418,10 +428,15 @@ MIDDLEWARE = [
     "social_django.middleware.SocialAuthExceptionMiddleware",
     "middleware.remove_allow_header.RemoveAllowHeaderMiddleware",
     "middleware.cache_control.CacheControlMiddleware",
+    "middleware.content_security_policy.ContentSecurityPolicyMiddleware",
 ]
 
 TENANT_SUBFOLDER_PREFIX = f"{PATH_PREFIX}/unstract"
 SHOW_PUBLIC_IF_NO_TENANT_FOUND = True
+
+DISABLE_SSO_IDP_AUTHORIZATION = (
+    os.environ.get("DISABLE_SSO_IDP_AUTHORIZATION", "False").strip().lower() == "true"
+)
 
 TEMPLATES = [
     {
@@ -477,6 +492,8 @@ if REDIS_SENTINEL_MODE:
             "LOCATION": f"redis://{_user_prefix}{REDIS_SENTINEL_MASTER_NAME}/{_redis_db}",
             "OPTIONS": {
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
+                "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
+                "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
                 "DB": int(_redis_db),
@@ -570,6 +587,7 @@ REST_FRAMEWORK = {
     "TEST_REQUEST_DEFAULT_FORMAT": "json",
     "EXCEPTION_HANDLER": "middleware.exception.drf_logging_exc_handler",
     "DEFAULT_FILTER_BACKENDS": [
+        "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
         "rest_framework.filters.OrderingFilter",
     ],
@@ -622,7 +640,6 @@ for key in [
     "GOOGLE_OAUTH2_SECRET",
     "AZUREAD_TENANT_OAUTH2_KEY",
     "AZUREAD_TENANT_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_TENANT_ID",
 ]:
     exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
 
@@ -685,4 +702,6 @@ if missing_settings:
     )
     raise ValueError(ERROR_MESSAGE)
 
-ENABLE_HIGHLIGHT_API_DEPLOYMENT = os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", False)
+ENABLE_HIGHLIGHT_API_DEPLOYMENT = CommonUtils.str_to_bool(
+    os.environ.get("ENABLE_HIGHLIGHT_API_DEPLOYMENT", "False")
+)

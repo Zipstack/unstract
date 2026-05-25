@@ -21,3 +21,8 @@
   border-color: #1677ff;
   color: #1677ff;
 }
+
+.log-modal-title .export-btn-outlined {
+  margin-left: 16px;
+  height: auto;
+}

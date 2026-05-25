@@ -6,7 +6,6 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models.query import QuerySet
 from django.shortcuts import get_object_or_404
-from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -386,6 +385,11 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = WorkflowExecutionSerializer
     lookup_field = "id"
+    # Backward compat: workers may call without X-Organization-ID during
+    # rolling deployments. Safe because internal APIs require service API key
+    # and get_queryset() applies org filtering when header is present.
+    # Remove once all workers reliably pass X-Organization-ID.
+    skip_org_filter = True
 
     def get_queryset(self):
         """Get workflow executions filtered by organization context."""
@@ -536,7 +540,6 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 if validated_data.get("execution_time") is not None:
                     execution.execution_time = validated_data["execution_time"]
 
-                execution.modified_at = timezone.now()
                 execution.save()
 
                 logger.info(

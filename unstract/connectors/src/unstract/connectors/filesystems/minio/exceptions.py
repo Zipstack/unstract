@@ -1,18 +1,112 @@
+from enum import Enum
+
+from botocore.exceptions import ClientError
+
 from unstract.connectors.exceptions import ConnectorError
 
-S3FS_EXC_TO_UNSTRACT_EXC = {
+
+class BucketProbeDisposition(Enum):
+    """Action for a `list_objects_v2` probe failure, per S3 error code."""
+
+    DROP = "drop"  # Hide the bucket (no access, bucket gone, or unreachable).
+    FAIL_OPEN = "fail_open"  # Keep the bucket visible despite the probe error.
+    RETRY_FAIL_OPEN = "retry_fail_open"  # Throttled — retry once, then keep.
+
+
+# S3 `Error.Code` → probe disposition. Unlisted codes propagate.
+# `RequestTimeTooSkewed` is omitted deliberately: it's a system-wide clock
+# issue, not a bucket outcome — let it surface via `handle_s3fs_exception`.
+# `PermanentRedirect` / `IllegalLocationConstraintException` are dropped: the
+# connector is pinned to one `endpoint_url`, so cross-region buckets can't
+# be browsed through it regardless of IAM — listing them only surfaces a
+# confusing `[Errno 78]` on click.
+BUCKET_PROBE_DISPOSITION: dict[str, BucketProbeDisposition] = {
+    "AccessDenied": BucketProbeDisposition.DROP,
+    "AllAccessDisabled": BucketProbeDisposition.DROP,
+    "NoSuchBucket": BucketProbeDisposition.DROP,
+    "PermanentRedirect": BucketProbeDisposition.DROP,
+    "IllegalLocationConstraintException": BucketProbeDisposition.DROP,
+    "SlowDown": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "Throttling": BucketProbeDisposition.RETRY_FAIL_OPEN,
+    "ThrottlingException": BucketProbeDisposition.RETRY_FAIL_OPEN,
+}
+
+
+def s3_error_code(exc: BaseException) -> str:
+    """Return the S3 `Error.Code` from a `ClientError` or its s3fs-translated
+    wrapper (`PermissionError` / `FileNotFoundError` / `OSError`).
+
+    Walks `__cause__` first (explicit `raise X from original`), then falls
+    back to `__context__` (implicit chaining inside an `except` block). A
+    `seen` set guards against pathological cycles.
+    """
+    seen: set[int] = set()
+    target: BaseException | None = exc
+    while target is not None and id(target) not in seen:
+        seen.add(id(target))
+        if isinstance(target, ClientError):
+            return str(target.response.get("Error", {}).get("Code", "") or "")
+        target = target.__cause__ or target.__context__
+    return ""
+
+
+S3FS_EXC_TO_UNSTRACT_EXC: dict[str, str] = {
+    # Auth errors
     "The AWS Access Key Id you provided does not exist in our records": (
         "Invalid Key (Access Key ID) provided, please provide a valid one."
     ),
     "The request signature we calculated does not match the signature you provided": (
         "Invalid Secret (Secret Access Key) provided, please provide a valid one."
     ),
+    "Unable to locate credentials": (
+        "No AWS credentials found. Provide a valid access key/secret or ensure "
+        "the instance/pod has an IAM role attached."
+    ),
+    "AssumeRoleWithWebIdentity": (
+        "Failed to assume IAM role via web identity. Verify the IAM role exists "
+        "and has the correct trust policy."
+    ),
+    "InvalidIdentityToken": (
+        "The identity token provided is invalid. Verify the OIDC provider "
+        "and ServiceAccount configuration."
+    ),
+    "ExpiredToken": (
+        "AWS security token has expired. Refresh your credentials or ensure "
+        "IAM role session duration is sufficient."
+    ),
+    # Permission errors
+    "AccessDenied": (
+        "Access denied. The IAM user or role does not have sufficient S3 "
+        "permissions. Ensure the policy grants the required S3 actions "
+        "(s3:ListAllMyBuckets, s3:ListBucket, s3:GetObject, s3:PutObject) "
+        "on the target bucket."
+    ),
+    # Bucket errors
+    "NoSuchBucket": (
+        "The specified bucket does not exist. Please check the bucket name."
+    ),
+    # Endpoint / connectivity errors
     "[Errno 22] S3 API Requests must be made to API port": (  # Minio only
         "Request made to invalid port, please check the port of the endpoint URL."
     ),
     "Invalid endpoint": (
         "Could not connect to the endpoint URL. Please check if the URL is correct "
         "and accessible."
+    ),
+    "timed out": (
+        "Connection timed out. Check network connectivity and the endpoint URL."
+    ),
+    "SSL: CERTIFICATE_VERIFY_FAILED": (
+        "SSL certificate verification failed. If using a self-signed certificate "
+        "(e.g. MinIO), check your endpoint configuration."
+    ),
+    "Name or service not known": (
+        "Could not resolve the endpoint hostname. Please check the endpoint URL."
+    ),
+    # Clock / request errors
+    "RequestTimeTooSkewed": (
+        "The system clock is out of sync with AWS. Ensure the host's clock "
+        "is accurate (max allowed skew is 15 minutes)."
     ),
 }
 
