@@ -100,6 +100,10 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
 class IsFrictionLessAdapter(permissions.BasePermission):
     """Hack for friction-less onboarding not allowing user to view or updating
     friction less adapter.
+
+    Friction-less adapters wrap platform-owned credentials, so they remain
+    blocked for everyone including org admins -- exposing them would leak
+    the platform's keys.
     """
 
     def has_object_permission(
@@ -109,8 +113,9 @@ class IsFrictionLessAdapter(permissions.BasePermission):
             return False
         if _is_service_account(request):
             return True
-
-        return True if obj.created_by == request.user else False
+        if obj.created_by == request.user:
+            return True
+        return _is_organization_admin(request)
 
 
 class IsFrictionLessAdapterDelete(permissions.BasePermission):
@@ -123,5 +128,6 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
     ) -> bool:
         if obj.is_friction_less:
             return True
-
-        return True if obj.created_by == request.user else False
+        if obj.created_by == request.user:
+            return True
+        return _is_organization_admin(request)

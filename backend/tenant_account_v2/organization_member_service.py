@@ -1,9 +1,11 @@
+import logging
 from typing import Any
 
-from account_v2.enums import UserRole
 from utils.cache_service import CacheService
 
 from tenant_account_v2.models import OrganizationMember
+
+logger = logging.getLogger(__name__)
 
 
 class OrganizationMemberService:
@@ -31,11 +33,16 @@ class OrganizationMemberService:
         except OrganizationMember.DoesNotExist:
             return False
         except Exception:
+            logger.exception(
+                "admin-role lookup failed for user %s; denying",
+                getattr(user, "id", None),
+            )
             return False
-        try:
-            return UserRole(member.role) == UserRole.ADMIN
-        except ValueError:
-            return False
+        # Lazy import: AuthenticationController -> OrganizationMemberService (circular).
+        # Delegate so admin-role string handling matches the active auth plugin.
+        from account_v2.authentication_controller import AuthenticationController
+
+        return AuthenticationController().is_admin_by_role(member.role)
 
     @staticmethod
     def get_user_by_user_id(user_id: str) -> OrganizationMember | None:
