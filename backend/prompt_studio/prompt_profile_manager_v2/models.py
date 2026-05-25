@@ -3,10 +3,35 @@ import uuid
 from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
-from utils.models.base_model import BaseModel
+from django.db.models import Q
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.models.base_model import BaseModel, BaseModelManager
+from utils.user_context import UserContext
 
 from prompt_studio.prompt_studio_core_v2.exceptions import DefaultProfileError
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
+
+
+class ProfileManagerModelManager(BaseModelManager):
+    def for_user(self, user):
+        """Mirror the visibility model used by Workflow/Pipeline/etc.
+
+        Org-scoped via the parent CustomTool — ProfileManager has no
+        direct ``organization`` FK, so the ``shared_to_org=True`` branch
+        would otherwise leak rows across tenants for guessed UUIDs.
+        """
+        org_scope = Q(prompt_studio_tool__organization=UserContext.get_organization())
+
+        if getattr(user, "is_service_account", False):
+            return self.filter(org_scope)
+
+        if OrganizationMemberService.is_user_organization_admin(user):
+            return self.filter(org_scope)
+
+        return self.filter(
+            org_scope
+            & (Q(created_by=user) | Q(shared_users=user) | Q(shared_to_org=True))
+        ).distinct()
 
 
 class ProfileManager(BaseModel):
@@ -100,6 +125,16 @@ class ProfileManager(BaseModel):
         default=False,
         db_comment="DEPRECATED: Default LLM Profile used for summarizing. Use CustomTool.summarize_llm_adapter instead.",
     )
+
+    shared_users = models.ManyToManyField(
+        User, related_name="shared_profile_managers", blank=True
+    )
+    shared_to_org = models.BooleanField(
+        default=False,
+        db_comment="Whether this profile is shared with the entire organization",
+    )
+
+    objects = ProfileManagerModelManager()
 
     class Meta:
         verbose_name = "Profile Manager"
