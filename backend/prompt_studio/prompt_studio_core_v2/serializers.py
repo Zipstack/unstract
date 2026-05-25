@@ -106,8 +106,7 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
         extra_kwargs = {
             "shared_to_org": {"read_only": True},
         }
-        # Tool-level LLM context fields and stored LLM output;
-        # may legitimately contain XML/HTML-like markup.
+        # LLM-facing text legitimately contains XML-like markup.
         html_safe_fields = (
             "summarize_prompt",
             "preamble",
