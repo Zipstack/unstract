@@ -300,19 +300,26 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
         before = self.snapshot_share_axes(custom_tool)
 
         response = super().partial_update(request, *args, **kwargs)
+        if response.status_code == 200:
+            self._notify_shared_users(custom_tool, before, request.data, request.user)
+        return response
 
-        if response.status_code != 200:
-            return response
-
+    def _notify_shared_users(
+        self,
+        custom_tool: CustomTool,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
         notification_plugin = get_plugin("notification")
         if not notification_plugin:
-            return response
-
-        diffs = self.diff_share_axes(custom_tool, before, request.data)
-        # TODO: notify group members when shared_groups changes (UN-2977 follow-up)
-        users_diff = diffs.get("shared_users")
+            return
+        users_diff = self.diff_share_axes(custom_tool, before, request_data).get(
+            "shared_users"
+        )
         if not (users_diff and users_diff.added):
-            return response
+            return
 
         from plugins.notification.constants import ResourceType
 
@@ -323,7 +330,7 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 resource_type=ResourceType.TEXT_EXTRACTOR.value,
                 resource_name=custom_tool.tool_name,
                 resource_id=str(custom_tool.tool_id),
-                shared_by=request.user,
+                shared_by=actor,
                 shared_to=list(users_diff.added),
                 resource_instance=custom_tool,
             )
@@ -333,8 +340,6 @@ class PromptStudioCoreView(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 custom_tool.tool_id,
                 str(e),
             )
-
-        return response
 
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:

@@ -209,22 +209,29 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
         before = self.snapshot_share_axes(instance)
 
         response = super().partial_update(request, *args, **kwargs)
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
+        return response
 
-        if response.status_code != 200 or not notification_plugin:
-            return response
-
-        diffs = self.diff_share_axes(instance, before, request.data)
-        # TODO: notify group members when shared_groups changes (UN-2977 follow-up)
-        users_diff = diffs.get("shared_users")
+    def _notify_shared_users(
+        self,
+        instance: ConnectorInstance,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
         if not (users_diff and users_diff.added):
-            return response
-
+            return
         try:
             SharingNotificationService().send_sharing_notification(
                 resource_type=ResourceType.CONNECTOR.value,
                 resource_name=instance.connector_name,
                 resource_id=str(instance.id),
-                shared_by=request.user,
+                shared_by=actor,
                 shared_to=list(users_diff.added),
                 resource_instance=instance,
             )
@@ -237,5 +244,3 @@ class ConnectorInstanceViewSet(ResourceShareManagementMixin, viewsets.ModelViewS
                 "Failed to send sharing notification, continuing update though: %s",
                 str(e),
             )
-
-        return response

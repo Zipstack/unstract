@@ -24,29 +24,29 @@ function GroupCreateEditModal({ open, mode, group, onClose, onSaved }) {
   }, [open, mode, group, form]);
 
   const handleOk = async () => {
-    try {
-      const values = await form.validateFields();
-      setSubmitting(true);
-      const call =
-        mode === "edit"
-          ? service.updateGroup(group.id, values)
-          : service.createGroup(values);
-      call
-        .then(() => {
-          setAlertDetails({
-            type: "success",
-            content: mode === "edit" ? "Group updated" : "Group created",
-          });
-          form.resetFields();
-          onSaved?.();
-        })
-        .catch((err) =>
-          setAlertDetails(handleException(err, "Failed to save group")),
-        )
-        .finally(() => setSubmitting(false));
-    } catch (_validationError) {
-      // form validation error — Ant Design surfaces it inline
+    // Ant Design surfaces validation errors inline; bail out quietly on failure.
+    const values = await form.validateFields().catch(() => null);
+    if (!values) {
+      return;
     }
+    setSubmitting(true);
+    const call =
+      mode === "edit"
+        ? service.updateGroup(group.id, values)
+        : service.createGroup(values);
+    call
+      .then(() => {
+        setAlertDetails({
+          type: "success",
+          content: mode === "edit" ? "Group updated" : "Group created",
+        });
+        form.resetFields();
+        onSaved?.();
+      })
+      .catch((err) =>
+        setAlertDetails(handleException(err, "Failed to save group")),
+      )
+      .finally(() => setSubmitting(false));
   };
 
   return (

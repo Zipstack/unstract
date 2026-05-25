@@ -152,33 +152,40 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         before = self.snapshot_share_axes(instance)
 
         response = super().partial_update(request, *args, **kwargs)
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
+        return response
 
-        if response.status_code != 200 or not notification_plugin:
-            return response
+    def _notify_shared_users(
+        self,
+        instance: Pipeline,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort).
 
-        diffs = self.diff_share_axes(instance, before, request.data)
-        # TODO: notify group members when shared_groups changes (UN-2977 follow-up)
-        users_diff = diffs.get("shared_users")
+        Only ETL/TASK pipelines map to a notification ``ResourceType``;
+        DEFAULT/APP pipelines have no analogue and skip the fan-out.
+        """
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
         if not (users_diff and users_diff.added):
-            return response
-
-        # Only ETL/TASK pipelines map to a notification ``ResourceType``;
-        # DEFAULT/APP pipelines have no analogue and skip the fan-out.
+            return
         if instance.pipeline_type not in (
             ResourceType.ETL.value,
             ResourceType.TASK.value,
         ):
-            return response
-
+            return
         try:
-            resource_type = instance.pipeline_type
             service_class = notification_plugin["service_class"]
             notification_service = service_class()
             notification_service.send_sharing_notification(
-                resource_type=resource_type,
+                resource_type=instance.pipeline_type,
                 resource_name=instance.pipeline_name,
                 resource_id=str(instance.id),
-                shared_by=request.user,
+                shared_by=actor,
                 shared_to=list(users_diff.added),
                 resource_instance=instance,
             )
@@ -192,8 +199,6 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
                 "Failed to send sharing notification, continuing update though: %s",
                 str(e),
             )
-
-        return response
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(

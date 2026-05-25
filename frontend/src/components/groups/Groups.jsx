@@ -21,6 +21,20 @@ import { GroupMemberManager } from "./GroupMemberManager.jsx";
 import { groupsService } from "./groups-service.js";
 import "./Groups.css";
 
+const getDeleteImpactText = (deleteImpact, memberCount) => {
+  if (deleteImpact.loading) {
+    return "Checking affected resources…";
+  }
+  if (deleteImpact.resourceCount === null) {
+    return "Members will lose access to any resources currently shared with this group (unless they have direct or org-wide access).";
+  }
+  const resources = `${deleteImpact.resourceCount} resource${
+    deleteImpact.resourceCount === 1 ? "" : "s"
+  }`;
+  const members = `${memberCount} member${memberCount === 1 ? "" : "s"}`;
+  return `Deleting will revoke access to ${resources} for ${members} (unless they have direct or org-wide access).`;
+};
+
 function Groups() {
   const service = groupsService();
   const handleException = useExceptionHandler();
@@ -242,15 +256,7 @@ function Groups() {
         <Typography>Delete group</Typography>
         <Typography.Text strong>{selectedGroup?.name}</Typography.Text>
         <Typography style={{ marginTop: 12 }}>
-          {deleteImpact.loading
-            ? "Checking affected resources…"
-            : deleteImpact.resourceCount === null
-              ? "Members will lose access to any resources currently shared with this group (unless they have direct or org-wide access)."
-              : `Deleting will revoke access to ${deleteImpact.resourceCount} resource${
-                  deleteImpact.resourceCount === 1 ? "" : "s"
-                } for ${selectedGroup?.member_count ?? 0} member${
-                  (selectedGroup?.member_count ?? 0) === 1 ? "" : "s"
-                } (unless they have direct or org-wide access).`}
+          {getDeleteImpactText(deleteImpact, selectedGroup?.member_count ?? 0)}
         </Typography>
       </Modal>
     </>

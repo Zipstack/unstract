@@ -30,7 +30,7 @@ from tenant_account_v2.models import (
 logger = logging.getLogger(__name__)
 
 
-def _current_organization(request: Request) -> Organization:
+def _current_organization() -> Organization:
     organization = UserContext.get_organization()
     if organization is None:
         raise PermissionDenied("Organization context is required.")
@@ -74,17 +74,17 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
 
     def get_serializer_context(self) -> dict[str, Any]:
         ctx = super().get_serializer_context()
-        ctx["organization"] = _current_organization(self.request)
+        ctx["organization"] = _current_organization()
         return ctx
 
     def get_queryset(self) -> QuerySet[OrganizationGroup]:
-        organization = _current_organization(self.request)
+        organization = _current_organization()
         return list_groups_with_member_counts(organization=organization)
 
     # --- list / retrieve / create / destroy ----------------------------------
 
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        organization = _current_organization(request)
+        organization = _current_organization()
         member_filter = request.query_params.get("member")
         is_admin = _is_org_admin(request)
 
@@ -107,7 +107,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
     def perform_create(self, serializer: BaseSerializer) -> None:
-        organization = _current_organization(self.request)
+        organization = _current_organization()
         serializer.save(
             organization=organization,
             created_by=self.request.user,
@@ -133,7 +133,6 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
             [GroupMembership(group=group, user_id=uid) for uid in user_ids_to_add],
             ignore_conflicts=True,
         )
-        # TODO: notify added users (Phase 2)
         return Response(
             {"added_user_ids": user_ids_to_add},
             status=status.HTTP_201_CREATED,
@@ -153,7 +152,6 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         deleted, _ = group.memberships.filter(user_id=user_id).delete()
         if not deleted:
             raise NotFound("User is not a member of this group.")
-        # TODO: notify removed user (Phase 2)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # --- resources shared with this group ------------------------------------
@@ -167,7 +165,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
     # --- helpers -------------------------------------------------------------
 
     def _get_group_or_404(self, pk: str | None) -> OrganizationGroup:
-        organization = _current_organization(self.request)
+        organization = _current_organization()
         obj: OrganizationGroup = get_object_or_404(
             OrganizationGroup, pk=pk, organization=organization
         )

@@ -204,28 +204,35 @@ def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
         }
 
     # Org-wide share
-    if getattr(resource_obj, "shared_to_org", False):
-        organization = getattr(resource_obj, "organization", None)
-        if organization is not None:
-            org_members = (
-                OrganizationMember.objects.filter(organization=organization)
-                .exclude(user__is_service_account=True)
-                .select_related("user")
-            )
-            for member in org_members:
-                user = member.user
-                if user.id in seen:
-                    continue
-                seen[user.id] = {
-                    "user_id": user.id,
-                    "email": user.email,
-                    "display_name": _user_display_name(user),
-                    "access_via": "org",
-                    "group_id": None,
-                    "group_name": None,
-                }
+    _add_org_members(seen, resource_obj)
 
     return list(seen.values())
+
+
+def _add_org_members(seen: dict[int, dict[str, Any]], resource_obj: Any) -> None:
+    """Add org-wide members to ``seen`` (skips users already recorded)."""
+    if not getattr(resource_obj, "shared_to_org", False):
+        return
+    organization = getattr(resource_obj, "organization", None)
+    if organization is None:
+        return
+    org_members = (
+        OrganizationMember.objects.filter(organization=organization)
+        .exclude(user__is_service_account=True)
+        .select_related("user")
+    )
+    for member in org_members:
+        user = member.user
+        if user.id in seen:
+            continue
+        seen[user.id] = {
+            "user_id": user.id,
+            "email": user.email,
+            "display_name": _user_display_name(user),
+            "access_via": "org",
+            "group_id": None,
+            "group_name": None,
+        }
 
 
 def _display_name(user_dict: dict[str, Any]) -> str:
@@ -398,7 +405,7 @@ class ShareAuthorizationService:
             return
         label = ShareAuthorizationService.AXIS_LABELS.get(axis, axis)
         ShareAuthorizationService._raise_permission_denied(
-            f"Only the resource owner or an organization admin can remove " f"{label}."
+            f"Only the resource owner or an organization admin can remove {label}."
         )
 
     @staticmethod

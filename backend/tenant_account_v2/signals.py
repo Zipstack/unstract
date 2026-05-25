@@ -74,4 +74,3 @@ def cleanup_user_org_access(
                 model_name,
                 instance.organization_id,
             )
-    # TODO: notify affected resource owners of access change (Phase 2)

@@ -71,7 +71,7 @@ function SharePermission({
     }
     if (adapter?.shared_groups) {
       setSelectedGroupIds(
-        adapter.shared_groups.map((g) => (g?.id !== undefined ? g.id : g)),
+        adapter.shared_groups.map((g) => (g?.id === undefined ? g : g.id)),
       );
     } else {
       setSelectedGroupIds([]);
