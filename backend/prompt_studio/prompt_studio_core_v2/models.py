@@ -6,6 +6,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance
 from django.db import models
 from django.db.models import QuerySet
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.models.base_model import BaseModel, BaseModelManager
@@ -26,10 +27,14 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         if getattr(user, "is_service_account", False):
             return self.all()
 
+        if OrganizationMemberService.is_user_organization_admin(user):
+            return self.all()
+
         from tenant_account_v2.sharing_helpers import resources_visible_via_groups
 
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+
         return (
             self.get_queryset()
             .filter(

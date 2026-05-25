@@ -9,6 +9,7 @@ from django.conf import settings
 from django.db import models
 from django.db.models import QuerySet
 from tenant_account_v2.models import OrganizationMember
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.exceptions import InvalidEncryptionKey
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
@@ -37,10 +38,14 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         if getattr(user, "is_service_account", False):
             return self.get_queryset().filter(is_friction_less=False)
 
+        if OrganizationMemberService.is_user_organization_admin(user):
+            return self.get_queryset()
+
         from tenant_account_v2.sharing_helpers import resources_visible_via_groups
 
         user_group_ids = user.group_memberships.values_list("group_id", flat=True)
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+
         return (
             self.get_queryset()
             .filter(
