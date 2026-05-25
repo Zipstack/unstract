@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 2
 requires-python = "==3.12.*"
 
 [manifest]
@@ -3795,7 +3795,9 @@ dev = [
     { name = "unstract-tool-sandbox", editable = "../unstract/tool-sandbox" },
     { name = "unstract-workflow-execution", editable = "../unstract/workflow-execution" },
 ]
-test = [{ name = "pytest", specifier = ">=8.0.1" }]
+test = [
+    { name = "pytest", specifier = ">=8.0.1" },
+]
 
 [[package]]
 name = "unstract-connectors"
