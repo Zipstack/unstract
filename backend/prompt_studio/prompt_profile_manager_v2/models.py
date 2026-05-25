@@ -16,17 +16,10 @@ class ProfileManagerModelManager(BaseModelManager):
     def for_user(self, user):
         """Mirror the visibility model used by Workflow/Pipeline/etc.
 
-        Without this, ProfileManager rows created by another user (notably
-        the service account used by org-to-org migration) are invisible to
-        every other org member. Service accounts and org admins see all
-        rows within the current org.
-
-        ProfileManager has no direct ``organization`` FK — scope via the
-        parent CustomTool so the ``shared_to_org=True`` branch cannot
-        leak rows across tenants when a UUID is known/guessed.
+        Org-scoped via the parent CustomTool — ProfileManager has no
+        direct ``organization`` FK, so the ``shared_to_org=True`` branch
+        would otherwise leak rows across tenants for guessed UUIDs.
         """
-        # Service accounts and admins still need to be org-scoped — they
-        # otherwise see rows from every org in the DB.
         org_scope = Q(prompt_studio_tool__organization=UserContext.get_organization())
 
         if getattr(user, "is_service_account", False):
