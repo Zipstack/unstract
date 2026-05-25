@@ -55,13 +55,6 @@ class AuthenticationHelper:
         return user
 
     def create_initial_platform_key(self, user: User, organization: Organization) -> None:
-        """Create the first active platform key for a freshly created org.
-
-        Intended to run once, during the new-organization branch of signup.
-        Failures are logged but not propagated — a transient DB issue here
-        shouldn't block the user from completing signup; the missing key
-        can be recreated from settings later.
-        """
         try:
             PlatformAuthenticationService.generate_platform_key(
                 is_active=True,

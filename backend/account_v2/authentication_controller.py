@@ -200,9 +200,6 @@ class AuthenticationController:
             )
 
             if new_organization:
-                # Run the pure-DB platform-key write before the HTTP onboarding
-                # step, so a failure there cannot leave the org without a key
-                # (the org row is already committed and won't be re-entered).
                 self.authentication_helper.create_initial_platform_key(
                     user=user, organization=organization
                 )
