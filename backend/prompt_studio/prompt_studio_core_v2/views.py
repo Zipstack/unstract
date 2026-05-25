@@ -120,7 +120,7 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(CoOwnerManagementMixin,viewsets.ModelViewSet):
+class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
@@ -148,9 +148,7 @@ class PromptStudioCoreView(CoOwnerManagementMixin,viewsets.ModelViewSet):
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        qs = CustomTool.objects.for_user(self.request.user).prefetch_related(
-            "co_owners"
-        )
+        qs = CustomTool.objects.for_user(self.request.user).prefetch_related("co_owners")
         if self.action == "list":
             # Subquery avoids conflict with distinct("tool_id") from for_user()
             prompt_count_sq = (

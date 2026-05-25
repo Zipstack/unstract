@@ -7,7 +7,6 @@ from backend.constants import RequestKey
 
 class AuditSerializer(ModelSerializer):
     def create(self, validated_data: dict[str, Any]) -> Any:
-
         request = self.context.get(RequestKey.REQUEST)
         if request:
             validated_data[RequestKey.CREATED_BY] = request.user

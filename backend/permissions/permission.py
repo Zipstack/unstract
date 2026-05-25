@@ -53,7 +53,6 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     """Custom permission to only allow owners and shared users of an object."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-
         if _is_service_account(request):
             return True
         return (
@@ -61,11 +60,13 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
             if (
                 obj.created_by == request.user
                 or obj.shared_users.filter(pk=request.user.pk).exists()
-                or (hasattr(obj, "co_owners") and obj.co_owners.filter(pk=request.user.pk).exists())
+                or (
+                    hasattr(obj, "co_owners")
+                    and obj.co_owners.filter(pk=request.user.pk).exists()
+                )
             )
             else False
         )
-
 
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
@@ -74,7 +75,6 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-
         if _is_service_account(request):
             return True
         return (
@@ -83,11 +83,13 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
                 obj.created_by == request.user
                 or obj.shared_users.filter(pk=request.user.pk).exists()
                 or obj.shared_to_org
-                or (hasattr(obj, "co_owners") and obj.co_owners.filter(pk=request.user.pk).exists())
+                or (
+                    hasattr(obj, "co_owners")
+                    and obj.co_owners.filter(pk=request.user.pk).exists()
+                )
             )
             else False
         )
-
 
 
 class IsFrictionLessAdapter(permissions.BasePermission):

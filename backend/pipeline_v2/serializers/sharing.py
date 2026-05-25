@@ -35,7 +35,6 @@ class SharedUserListSerializer(serializers.ModelSerializer):
         """Get list of co-owners with their details."""
         return [{"id": u.id, "email": u.email} for u in obj.co_owners.all()]
 
-
     def get_created_by(self, obj):
         """Get the creator's username."""
         return obj.created_by.username if obj.created_by else None
