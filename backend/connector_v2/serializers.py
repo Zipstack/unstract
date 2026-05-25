@@ -29,9 +29,7 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
-        # connector_mode is overridden in to_representation from the catalog,
-        # so any client-supplied value is silently discarded — mark it read_only
-        # to make that explicit (and to keep DRF OPTIONS schema honest).
+        # connector_mode is derived from the catalog in to_representation.
         extra_kwargs = {
             "connector_name": {"required": False},
             "connector_mode": {"read_only": True},
