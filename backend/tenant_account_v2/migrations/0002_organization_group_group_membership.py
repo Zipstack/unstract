@@ -30,21 +30,6 @@ class Migration(migrations.Migration):
                 ("name", models.CharField(max_length=255)),
                 ("description", models.TextField(blank=True)),
                 (
-                    "external_id",
-                    models.CharField(
-                        blank=True, db_index=True, max_length=255, null=True
-                    ),
-                ),
-                (
-                    "source",
-                    models.CharField(
-                        choices=[("LOCAL", "Local"), ("IDP", "IDP")],
-                        default="LOCAL",
-                        max_length=10,
-                    ),
-                ),
-                ("is_managed_externally", models.BooleanField(default=False)),
-                (
                     "created_by",
                     models.ForeignKey(
                         blank=True,

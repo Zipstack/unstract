@@ -6,7 +6,7 @@ import {
   ReloadOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
-import { Button, Dropdown, Modal, Space, Table, Tag, Typography } from "antd";
+import { Button, Dropdown, Modal, Space, Table, Typography } from "antd";
 import { useEffect, useState } from "react";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
@@ -53,8 +53,6 @@ function Groups() {
             id: g.id,
             name: g.name,
             description: g.description,
-            source: g.source,
-            is_managed_externally: g.is_managed_externally,
             member_count: g.member_count ?? 0,
           })),
         );
@@ -125,51 +123,41 @@ function Groups() {
       .finally(() => setConfirmDeleteLoading(false));
   };
 
-  const buildActionItems = (record) => {
-    const items = [
-      {
-        key: "members",
-        label: (
-          <Space onClick={() => handleManageMembers(record)}>
-            <TeamOutlined />
-            <span>Manage members</span>
-          </Space>
-        ),
-      },
-    ];
-    if (!record.is_managed_externally) {
-      items.push({
-        key: "edit",
-        label: (
-          <Space onClick={() => handleEdit(record)}>
-            <EditOutlined />
-            <span>Edit</span>
-          </Space>
-        ),
-      });
-      items.push({
-        key: "delete",
-        label: (
-          <Space onClick={() => handleDeleteClick(record)}>
-            <DeleteOutlined />
-            <span>Delete</span>
-          </Space>
-        ),
-      });
-    }
-    return items;
-  };
+  const buildActionItems = (record) => [
+    {
+      key: "members",
+      label: (
+        <Space onClick={() => handleManageMembers(record)}>
+          <TeamOutlined />
+          <span>Manage members</span>
+        </Space>
+      ),
+    },
+    {
+      key: "edit",
+      label: (
+        <Space onClick={() => handleEdit(record)}>
+          <EditOutlined />
+          <span>Edit</span>
+        </Space>
+      ),
+    },
+    {
+      key: "delete",
+      label: (
+        <Space onClick={() => handleDeleteClick(record)}>
+          <DeleteOutlined />
+          <span>Delete</span>
+        </Space>
+      ),
+    },
+  ];
 
   const columns = [
     {
       title: "Name",
       dataIndex: "name",
-      render: (name, record) => (
-        <Space size="small">
-          <span>{name}</span>
-          {record.source === "IDP" && <Tag color="blue">IdP</Tag>}
-        </Space>
-      ),
+      render: (name) => <span>{name}</span>,
     },
     { title: "Description", dataIndex: "description" },
     { title: "Members", dataIndex: "member_count", align: "center" },

@@ -55,20 +55,8 @@ class OrganizationGroup(BaseModel):
 
     Org filtering is explicit on every query (no DefaultOrganizationMixin)
     because group CRUD is admin-driven from a request context where
-    UserContext is reliably populated — but services and signals that
-    touch this model from non-request contexts (e.g. IdP sync) cannot
-    depend on UserContext.
-
-    SSO forward-compat fields (`external_id`, `source`, `is_managed_externally`)
-    are reserved for IdP sync (Phase 2) and write-locked from the public API.
+    UserContext is reliably populated.
     """
-
-    SOURCE_LOCAL = "LOCAL"
-    SOURCE_IDP = "IDP"
-    SOURCE_CHOICES = [
-        (SOURCE_LOCAL, "Local"),
-        (SOURCE_IDP, "IDP"),
-    ]
 
     organization = models.ForeignKey(
         Organization, on_delete=models.CASCADE, related_name="groups"
@@ -82,12 +70,9 @@ class OrganizationGroup(BaseModel):
         blank=True,
         related_name="created_groups",
     )
-    external_id = models.CharField(max_length=255, null=True, blank=True, db_index=True)
-    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default=SOURCE_LOCAL)
-    is_managed_externally = models.BooleanField(default=False)
 
     def __str__(self):  # type: ignore
-        return f"OrganizationGroup({self.id}, {self.name}, {self.source})"
+        return f"OrganizationGroup({self.id}, {self.name})"
 
     class Meta:
         db_table = "organization_group"

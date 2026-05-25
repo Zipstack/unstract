@@ -103,14 +103,6 @@ try {
   // Plugin unavailable
 }
 
-let idpGroupImportEnabled = false;
-try {
-  await import("../../../plugins/idp-group-import/IdpGroupImport.jsx");
-  idpGroupImportEnabled = true;
-} catch {
-  // Plugin unavailable (OSS-only deployment)
-}
-
 const getSettingsMenuItems = (orgName, isAdmin) => [
   {
     key: "platform",
@@ -140,15 +132,6 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
         },
       ]
     : []),
-  ...(isAdmin && idpGroupImportEnabled
-    ? [
-        {
-          key: "idpGroupImport",
-          label: "IdP Group Import",
-          path: `/${orgName}/groups/idp-import`,
-        },
-      ]
-    : []),
   {
     key: "triad",
     label: "Default LLM Profile",
@@ -175,9 +158,6 @@ const getActiveSettingsKey = () => {
   }
   if (currentPath.includes("/users")) {
     return "users";
-  }
-  if (currentPath.includes("/groups/idp-import")) {
-    return "idpGroupImport";
   }
   if (currentPath.includes("/groups")) {
     return "groups";

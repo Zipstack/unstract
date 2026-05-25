@@ -12,7 +12,6 @@ import ConnectorsPage from "../pages/ConnectorsPage.jsx";
 import { CustomTools } from "../pages/CustomTools.jsx";
 import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
 import { GroupsPage } from "../pages/GroupsPage.jsx";
-import { IdpGroupImportPage } from "../pages/IdpGroupImportPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
 import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
@@ -256,7 +255,6 @@ function useMainAppRoutes() {
           <Route path="users/invite" element={<InviteEditUserPage />} />
           <Route path="users/edit" element={<InviteEditUserPage />} />
           <Route path="groups" element={<GroupsPage />} />
-          <Route path="groups/idp-import" element={<IdpGroupImportPage />} />
           <Route
             path="settings/platform-api-keys"
             element={<PlatformApiKeysPage />}

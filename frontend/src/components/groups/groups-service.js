@@ -69,8 +69,6 @@ function groupsService() {
       }),
     listGroupResources: (id) =>
       axiosPrivate({ method: "GET", url: `${path}/groups/${id}/resources/` }),
-    getGroupConflicts: () =>
-      axiosPrivate({ method: "GET", url: `${path}/groups/conflicts/` }),
     getEffectiveMembers: (resourceType, resourceId) => {
       const segment = RESOURCE_PATHS[resourceType];
       if (!segment) {

@@ -6,7 +6,7 @@ from typing import Any
 from django.conf import settings
 from django.db.models import Count, Q
 from rest_framework import serializers
-from rest_framework.exceptions import PermissionDenied, ValidationError
+from rest_framework.exceptions import ValidationError
 
 from tenant_account_v2.models import (
     GroupMembership,
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class OrganizationGroupReadSerializer(serializers.ModelSerializer):
-    """Read-side serializer. ``source`` is read-only (LOCAL vs IDP indicator)."""
+    """Read-side serializer for org-scoped groups."""
 
     member_count = serializers.SerializerMethodField()
 
@@ -29,8 +29,6 @@ class OrganizationGroupReadSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "created_by",
-            "source",
-            "is_managed_externally",
             "member_count",
             "created_at",
             "modified_at",
@@ -47,7 +45,7 @@ class OrganizationGroupReadSerializer(serializers.ModelSerializer):
 
 
 class OrganizationGroupWriteSerializer(serializers.ModelSerializer):
-    """Write-side serializer. SSO fields are write-locked from the public API."""
+    """Write-side serializer for org-scoped groups."""
 
     class Meta:
         model = OrganizationGroup
@@ -64,7 +62,6 @@ class OrganizationGroupWriteSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         organization = self._organization()
-        name = attrs.get("name")
 
         # Quota check applies on create only (rename within an existing row
         # doesn't change the group count).
@@ -80,39 +77,7 @@ class OrganizationGroupWriteSerializer(serializers.ModelSerializer):
                         ),
                     }
                 )
-
-        # Block LOCAL create/rename that would collide with an IDP-managed row
-        # (the symmetric direction — IDP-side refusal — is enforced by the
-        # sync service in the cloud PR).
-        if name is not None:
-            collision = OrganizationGroup.objects.filter(
-                organization=organization,
-                name__iexact=name,
-                source=OrganizationGroup.SOURCE_IDP,
-            )
-            if self.instance is not None:
-                collision = collision.exclude(pk=self.instance.pk)
-            if collision.exists():
-                raise ValidationError(
-                    {
-                        "code": "GROUP_NAME_COLLIDES_WITH_IDP",
-                        "detail": (
-                            "An IdP-managed group with this name already exists. "
-                            "Choose a different name or remove the IdP allowlist entry."
-                        ),
-                    }
-                )
         return attrs
-
-    def update(
-        self, instance: OrganizationGroup, validated_data: dict[str, Any]
-    ) -> OrganizationGroup:
-        # Externally-managed groups are owned by IdP sync; reject public writes.
-        if instance.is_managed_externally:
-            raise PermissionDenied(
-                "Group is managed externally (IdP sync) and cannot be edited."
-            )
-        return super().update(instance, validated_data)  # type: ignore[no-any-return]
 
 
 class GroupMemberSerializer(serializers.ModelSerializer):
@@ -140,11 +105,6 @@ class GroupMemberAddSerializer(serializers.Serializer):
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         group: OrganizationGroup = self.context["group"]
-        if group.is_managed_externally:
-            raise PermissionDenied(
-                "Group is managed externally (IdP sync) and cannot be edited."
-            )
-
         user_ids = list(dict.fromkeys(attrs["user_ids"]))  # dedupe, preserve order
 
         # All targets must be members of the same org.

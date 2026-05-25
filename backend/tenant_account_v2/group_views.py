@@ -111,16 +111,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         serializer.save(
             organization=organization,
             created_by=self.request.user,
-            source=OrganizationGroup.SOURCE_LOCAL,
-            is_managed_externally=False,
         )
-
-    def perform_destroy(self, instance: OrganizationGroup) -> None:
-        if instance.is_managed_externally:
-            raise PermissionDenied(
-                "Group is managed externally (IdP sync) and cannot be deleted."
-            )
-        super().perform_destroy(instance)
 
     # --- members -------------------------------------------------------------
 
@@ -159,10 +150,6 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         if not _is_org_admin(request):
             raise PermissionDenied(self.permission_classes[1].message)
         group = self._get_group_or_404(pk)
-        if group.is_managed_externally:
-            raise PermissionDenied(
-                "Group is managed externally (IdP sync) and cannot be edited."
-            )
         deleted, _ = group.memberships.filter(user_id=user_id).delete()
         if not deleted:
             raise NotFound("User is not a member of this group.")
@@ -176,23 +163,6 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         group = self._get_group_or_404(pk)
         payload = _collect_resources_shared_with_group(group)
         return Response(payload)
-
-    # --- IDP conflicts -------------------------------------------------------
-
-    @action(detail=False, methods=["get"], url_path="conflicts")
-    def conflicts(self, request: Request) -> Response:
-        if not _is_org_admin(request):
-            raise PermissionDenied(self.permission_classes[1].message)
-        organization = _current_organization(request)
-        # ``IDPGroupConflict`` lives in the cloud-only ``pluggable_apps.idp_sync``
-        # app. OSS-only deployments don't install it, so the conflicts endpoint
-        # returns an empty list there.
-        try:
-            from pluggable_apps.idp_sync.models import IDPGroupConflict
-        except (ImportError, ModuleNotFoundError):
-            return Response([])
-        rows = IDPGroupConflict.objects.filter(organization=organization)
-        return Response(_serialize_conflicts(organization, rows))
 
     # --- helpers -------------------------------------------------------------
 
@@ -244,42 +214,3 @@ def _collect_resources_shared_with_group(
                 }
             )
     return results
-
-
-def _serialize_conflicts(organization: Any, conflict_rows: Any) -> list[dict[str, Any]]:
-    """Join each ``IDPGroupConflict`` row with its blocking LOCAL group.
-
-    Returns the response shape mfbt UNS-612 §5.7 specifies: ``idp_claim``,
-    ``external_id``, ``blocking_group_id``, ``blocking_group_name``,
-    ``blocking_group_member_count``, ``blocking_group_shared_resource_count``.
-    """
-    blocking_lookup = {
-        g.name.lower(): g
-        for g in OrganizationGroup.objects.filter(
-            organization=organization,
-            source=OrganizationGroup.SOURCE_LOCAL,
-        )
-    }
-    payload: list[dict[str, Any]] = []
-    for conflict in conflict_rows:
-        blocker = blocking_lookup.get((conflict.idp_claim or "").lower())
-        entry: dict[str, Any] = {
-            "idp_claim": conflict.idp_claim,
-            "external_id": conflict.external_id,
-            "detected_at": (
-                conflict.detected_at.isoformat() if conflict.detected_at else None
-            ),
-            "blocking_group_id": None,
-            "blocking_group_name": None,
-            "blocking_group_member_count": 0,
-            "blocking_group_shared_resource_count": 0,
-        }
-        if blocker is not None:
-            entry["blocking_group_id"] = blocker.id
-            entry["blocking_group_name"] = blocker.name
-            entry["blocking_group_member_count"] = blocker.memberships.count()
-            entry["blocking_group_shared_resource_count"] = len(
-                _collect_resources_shared_with_group(blocker)
-            )
-        payload.append(entry)
-    return payload

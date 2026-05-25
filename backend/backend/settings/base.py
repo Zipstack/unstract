@@ -216,7 +216,6 @@ MAX_FILE_EXECUTION_COUNT = int(os.environ.get("MAX_FILE_EXECUTION_COUNT", 3))
 # Org-scoped group sharing (UN-2977 / mfbt UNS-612)
 MAX_GROUPS_PER_ORG = int(os.environ.get("MAX_GROUPS_PER_ORG", 200))
 MAX_MEMBERS_PER_GROUP = int(os.environ.get("MAX_MEMBERS_PER_GROUP", 500))
-IDP_GROUP_SYNC_INTERVAL_MIN = int(os.environ.get("IDP_GROUP_SYNC_INTERVAL_MIN", 30))
 
 CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
