@@ -29,6 +29,13 @@ function GroupCreateEditModal({ open, mode, group, onClose, onSaved }) {
     if (!values) {
       return;
     }
+    if (mode === "edit" && !group?.id) {
+      setAlertDetails({
+        type: "error",
+        content: "Missing group context for edit.",
+      });
+      return;
+    }
     setSubmitting(true);
     const call =
       mode === "edit"

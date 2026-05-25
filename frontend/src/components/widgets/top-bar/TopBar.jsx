@@ -10,6 +10,7 @@ function TopBar({
   enableSearch,
   searchData,
   setFilteredUserList,
+  searchKey = "email",
   children,
 }) {
   const navigate = useNavigate();
@@ -23,10 +24,10 @@ function TopBar({
       return;
     }
 
-    const filteredList = [...searchData].filter((user) => {
-      const username = user?.email?.toLowerCase();
-      const searchTextLowerCase = searchText.toLowerCase();
-      return username.includes(searchTextLowerCase);
+    const searchTextLowerCase = searchText.toLowerCase();
+    const filteredList = [...searchData].filter((item) => {
+      const value = item?.[searchKey]?.toLowerCase() ?? "";
+      return value.includes(searchTextLowerCase);
     });
     setFilteredUserList(filteredList);
   };
@@ -53,6 +54,7 @@ TopBar.propTypes = {
   enableSearch: PropTypes.bool.isRequired,
   searchData: PropTypes.array,
   setFilteredUserList: PropTypes.func,
+  searchKey: PropTypes.string,
   children: PropTypes.element,
 };
 

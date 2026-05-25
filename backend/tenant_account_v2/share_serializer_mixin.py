@@ -23,6 +23,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db import transaction
+
 from tenant_account_v2.sharing_helpers import set_resource_share_groups
 
 
@@ -31,14 +33,18 @@ class SharedGroupsSerializerMixin:
 
     def create(self, validated_data: dict[str, Any]) -> Any:
         groups = validated_data.pop("shared_groups", None)
-        instance = super().create(validated_data)  # type: ignore[misc]
-        if groups is not None:
-            set_resource_share_groups(instance, [g.id for g in groups])
+        # Model save and group-share write must commit together so a failure
+        # in the second step can't leave a created-but-unshared resource.
+        with transaction.atomic():
+            instance = super().create(validated_data)  # type: ignore[misc]
+            if groups is not None:
+                set_resource_share_groups(instance, [g.id for g in groups])
         return instance
 
     def update(self, instance: Any, validated_data: dict[str, Any]) -> Any:
         groups = validated_data.pop("shared_groups", None)
-        instance = super().update(instance, validated_data)  # type: ignore[misc]
-        if groups is not None:
-            set_resource_share_groups(instance, [g.id for g in groups])
+        with transaction.atomic():
+            instance = super().update(instance, validated_data)  # type: ignore[misc]
+            if groups is not None:
+                set_resource_share_groups(instance, [g.id for g in groups])
         return instance

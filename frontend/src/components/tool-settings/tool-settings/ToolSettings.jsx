@@ -207,11 +207,11 @@ function ToolSettings({ type }) {
       },
     };
     axiosPrivate(requestOptions)
+      .then(() => {
+        setOpenSharePermissionModal(false);
+      })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to update sharing"));
-      })
-      .finally(() => {
-        setOpenSharePermissionModal(false);
       });
   };
 

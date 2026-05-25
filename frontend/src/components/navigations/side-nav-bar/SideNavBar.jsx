@@ -477,7 +477,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
               `/${orgName}/settings/platform-api-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
-            globalThis.location.pathname === `/${orgName}/users`,
+            globalThis.location.pathname === `/${orgName}/users` ||
+            globalThis.location.pathname === `/${orgName}/groups`,
         },
       ],
     },

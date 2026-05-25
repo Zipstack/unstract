@@ -300,17 +300,29 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         adapter = self.get_object()
         before = self.snapshot_share_axes(adapter)
 
-        if AdapterKeys.SHARED_USERS in request.data:
-            # Adapter-specific: when a user loses access, clear their
-            # ``UserDefaultAdapter`` rows that pointed at this adapter so they
-            # don't keep a stale default. Must run BEFORE the M2M update.
-            self._clear_default_adapter_for_removed_users(
-                adapter, before["shared_users"], request.data
-            )
-
         response = super().partial_update(request, *args, **kwargs)
         if response.status_code == 200 and notification_plugin:
             self._notify_shared_users(adapter, before, request.data, request.user)
+        return response
+
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request: Request, pk: str | None = None) -> Response:
+        """Apply share state, then clear default-adapter links for any user
+        who lost access.
+
+        ``shared_users`` is read-only on the serializer, so unsharing happens
+        only here (not via ``partial_update``). Diff the M2M before/after the
+        commit so cleanup keys off who actually lost access.
+        """
+        adapter = self.get_object()
+        before_user_ids = set(adapter.shared_users.values_list("id", flat=True))
+        response = super().share(request, pk)
+        if response.status_code == status.HTTP_200_OK:
+            adapter.refresh_from_db()
+            after_user_ids = set(adapter.shared_users.values_list("id", flat=True))
+            self._clear_default_adapter_for_removed_users(
+                adapter, before_user_ids - after_user_ids
+            )
         return response
 
     def _notify_shared_users(
@@ -352,21 +364,11 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
     def _clear_default_adapter_for_removed_users(
         self,
         adapter: AdapterInstance,
-        current_shared_users: set[Any],
-        request_data: dict[str, Any],
+        removed_user_ids: set[int],
     ) -> None:
         """Null out ``UserDefaultAdapter`` rows pointing at ``adapter`` for
-        users about to be unshared.
-
-        Computed against ``request.data`` because this runs *before* the M2M
-        update lands; the post-update diff would be too late.
+        users who just lost access via the ``share`` action.
         """
-        requested_user_ids = {
-            int(user_id) for user_id in request_data.get("shared_users", [])
-        }
-        current_user_ids = {user.id for user in current_shared_users}
-        removed_user_ids = current_user_ids - requested_user_ids
-
         adapter_fields = (
             "default_llm_adapter",
             "default_embedding_adapter",

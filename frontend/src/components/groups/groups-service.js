@@ -13,7 +13,8 @@ const RESOURCE_PATHS = {
 function groupsService() {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
-  const path = `/api/v1/unstract/${sessionDetails?.orgId.replaceAll('"', "")}`;
+  const orgId = sessionDetails?.orgId?.replaceAll?.('"', "") ?? "";
+  const path = `/api/v1/unstract/${orgId}`;
   const csrfToken = sessionDetails.csrfToken;
 
   const requestHeaders = {

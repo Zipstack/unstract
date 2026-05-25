@@ -31,6 +31,7 @@ from typing import Any
 
 from account_v2.models import Organization, User
 from django.contrib.contenttypes.models import ContentType
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import models, transaction
 from django.db.models import Model, QuerySet
 from rest_framework.exceptions import ValidationError
@@ -123,12 +124,21 @@ def list_resources_shared_with_group(
 ) -> QuerySet:
     """Resources of ``model`` shared with ``group`` (replaces
     ``model.objects.filter(shared_groups=group)``).
+
+    Materialises IDs to Python so UUID-keyed PKs can be cast before the
+    ``pk__in`` lookup — Postgres refuses the implicit ``uuid = character
+    varying`` comparison when the varchar ``object_id`` subquery is fed in
+    directly (same constraint as :func:`resources_visible_via_groups`).
     """
-    shared_object_ids = ResourceGroupShare.objects.filter(
+    raw_ids = ResourceGroupShare.objects.filter(
         group=group,
         content_type=ContentType.objects.get_for_model(model),
-    ).values("object_id")
-    return model.objects.filter(pk__in=shared_object_ids)
+    ).values_list("object_id", flat=True)
+    if isinstance(model._meta.pk, models.UUIDField):
+        pks: list[Any] = [uuid.UUID(s) for s in raw_ids if s]
+    else:
+        pks = list(raw_ids)
+    return model.objects.filter(pk__in=pks)
 
 
 def resources_visible_via_groups(
@@ -274,6 +284,10 @@ def is_org_admin(user: Any) -> bool:
         controller = AuthenticationController()
         member = controller.get_organization_members_by_user(user=user)
         return controller.is_admin_by_role(member.role)
+    except (ObjectDoesNotExist, LookupError):
+        # Not a member of any org (onboarding / just removed) is a normal
+        # state, not an error — treat as non-admin without logging noise.
+        return False
     except Exception:
         logger.exception("Error resolving admin role for user_id=%s", user.pk)
         return False

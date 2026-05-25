@@ -197,6 +197,7 @@ function Groups() {
         title="Manage Groups"
         searchData={groupList}
         setFilteredUserList={setFilteredGroupList}
+        searchKey="name"
       >
         <CustomButton
           type="primary"

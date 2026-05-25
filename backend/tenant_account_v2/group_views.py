@@ -8,7 +8,7 @@ from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import NotFound, PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
 from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -97,8 +97,12 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied(
                     "Only admins can query other users' group memberships."
                 )
+            try:
+                member_id = int(member_filter)
+            except (TypeError, ValueError) as exc:
+                raise ValidationError({"member": "Must be a numeric user ID."}) from exc
             qs = list_groups_with_member_counts(organization=organization).filter(
-                memberships__user_id=member_filter
+                memberships__user_id=member_id
             )
         else:
             qs = self.get_queryset()
@@ -125,7 +129,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
 
         # POST → bulk add
         if not _is_org_admin(request):
-            raise PermissionDenied(self.permission_classes[1].message)
+            raise PermissionDenied(IsOrgAdminForWrite.message)
         serializer = GroupMemberAddSerializer(data=request.data, context={"group": group})
         serializer.is_valid(raise_exception=True)
         user_ids_to_add: list[int] = serializer.validated_data["user_ids_to_add"]
@@ -147,7 +151,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         self, request: Request, pk: str | None = None, user_id: str | None = None
     ) -> Response:
         if not _is_org_admin(request):
-            raise PermissionDenied(self.permission_classes[1].message)
+            raise PermissionDenied(IsOrgAdminForWrite.message)
         group = self._get_group_or_404(pk)
         deleted, _ = group.memberships.filter(user_id=user_id).delete()
         if not deleted:
