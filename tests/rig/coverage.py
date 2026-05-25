@@ -27,10 +27,18 @@ _COVERAGE_TIMEOUT_SECONDS = 300
 def _clean_env() -> dict[str, str]:
     """Env for ``uv run`` that drops a leaked ``VIRTUAL_ENV`` (e.g. tox's
     ``.tox/<env>``) so uv resolves the project venv without a mismatch warning.
+
+    Also strips ``COVERAGE_FILE``: per-group coverage files are scoped via the
+    subprocess env that ``coverage_env()`` builds, never via the rig parent's
+    own environ. If the rig is itself running under coverage (e.g. the unit-rig
+    self-tests of ``combine_and_report``), an inherited ``COVERAGE_FILE`` would
+    redirect ``coverage combine``'s output back into the parent's data file and
+    either corrupt it or fail with `no such table: coverage_schema`.
     """
     env = os.environ.copy()
     env.pop("VIRTUAL_ENV", None)
     env.pop("UV_PROJECT_ENVIRONMENT", None)
+    env.pop("COVERAGE_FILE", None)
     return env
 
 
