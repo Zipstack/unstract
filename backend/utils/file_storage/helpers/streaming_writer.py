@@ -28,12 +28,12 @@ def write_streaming(fs_instance: Any, file_path: str, file_data: Any) -> None:
         return
 
     out = fs_instance.fs.open(file_path, mode="wb", block_size=STREAMING_CHUNK_SIZE)
-    chunks_iter = (
-        file_data.chunks(chunk_size=STREAMING_CHUNK_SIZE)
-        if callable(getattr(file_data, "chunks", None))
-        else iter(lambda: file_data.read(STREAMING_CHUNK_SIZE), b"")
-    )
     try:
+        chunks_iter = (
+            file_data.chunks(chunk_size=STREAMING_CHUNK_SIZE)
+            if callable(getattr(file_data, "chunks", None))
+            else iter(lambda: file_data.read(STREAMING_CHUNK_SIZE), b"")
+        )
         for chunk in chunks_iter:
             out.write(chunk)
     except Exception:
