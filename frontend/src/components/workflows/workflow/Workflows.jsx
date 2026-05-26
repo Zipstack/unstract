@@ -286,12 +286,14 @@ function Workflows() {
         content: "Workflow sharing updated successfully",
       });
       getProjectList();
+      // Close only on success; keep the modal open on failure so the user
+      // can see the rejected entries and retry.
+      setShareOpen(false);
     } catch (error) {
       setAlertDetails(
         handleException(error, "Unable to update workflow sharing"),
       );
     } finally {
-      setShareOpen(false);
       setShareLoading(false);
     }
   };

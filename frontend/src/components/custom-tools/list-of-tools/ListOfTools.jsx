@@ -343,11 +343,13 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       },
     };
     axiosPrivate(requestOptions)
+      .then(() => {
+        // Close only on success; keep the modal open on failure so the user
+        // can see the rejected entries and retry.
+        setOpenSharePermissionModal(false);
+      })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load"));
-      })
-      .finally(() => {
-        setOpenSharePermissionModal(false);
       });
   };
 
