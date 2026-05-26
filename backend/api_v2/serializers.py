@@ -23,7 +23,6 @@ from rest_framework.serializers import (
     ValidationError,
 )
 from tags.serializers import TagParamsSerializer
-from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -36,9 +35,7 @@ from api_v2.models import APIDeployment, APIKey
 from backend.serializers import AuditSerializer
 
 
-class APIDeploymentSerializer(
-    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
-):
+class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     # ``shared_groups`` is no longer an M2M on APIDeployment — declare it
     # explicitly so ``fields = "__all__"`` continues to expose it. Share
     # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).

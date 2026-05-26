@@ -13,7 +13,6 @@ from rest_framework.serializers import (
     UUIDField,
     ValidationError,
 )
-from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import serialize_group_refs
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
@@ -31,9 +30,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 logger = logging.getLogger(__name__)
 
 
-class WorkflowSerializer(
-    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
-):
+class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     tool_instances = ToolInstanceSerializer(many=True, read_only=True)
     # ``shared_groups`` is no longer an M2M on Workflow — declare it
     # explicitly so ``fields = "__all__"`` continues to expose it. Share

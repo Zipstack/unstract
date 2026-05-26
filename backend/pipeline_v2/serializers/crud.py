@@ -13,7 +13,6 @@ from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
 from scheduler.helper import SchedulerHelper
-from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from utils.serializer_utils import SerializerUtils
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
@@ -26,9 +25,7 @@ logger = logging.getLogger(__name__)
 DEPLOYMENT_ENDPOINT = settings.API_DEPLOYMENT_PATH_PREFIX + "/pipeline"
 
 
-class PipelineSerializer(
-    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
-):
+class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
     api_endpoint = SerializerMethodField()
     created_by_email = SerializerMethodField()
     last_5_run_statuses = SerializerMethodField()

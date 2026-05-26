@@ -6,7 +6,6 @@ from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
-from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.FileValidator import FileValidator
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
@@ -76,9 +75,7 @@ class CustomToolListSerializer(serializers.ModelSerializer):
         return instance.mapped_prompt.count()
 
 
-class CustomToolSerializer(
-    SharedGroupsSerializerMixin, IntegrityErrorMixin, AuditSerializer
-):
+class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     # Share mutations go through ``POST /prompt-studio/{id}/share/``;
     # both axes are read-only on this serializer (UN-2977 plan §B).
     shared_users = serializers.PrimaryKeyRelatedField(many=True, read_only=True)

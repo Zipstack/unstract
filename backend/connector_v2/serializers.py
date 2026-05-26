@@ -10,7 +10,6 @@ from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import InvalidConnectorID, OAuthTimeOut
 from rest_framework import serializers
 from rest_framework.serializers import CharField, SerializerMethodField, ValidationError
-from tenant_account_v2.share_serializer_mixin import SharedGroupsSerializerMixin
 from utils.fields import EncryptedBinaryFieldSerializer
 from utils.input_sanitizer import validate_name_field
 
@@ -23,7 +22,7 @@ from .models import ConnectorInstance
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceSerializer(SharedGroupsSerializerMixin, AuditSerializer):
+class ConnectorInstanceSerializer(AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
