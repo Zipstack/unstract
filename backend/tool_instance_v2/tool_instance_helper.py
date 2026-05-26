@@ -483,8 +483,6 @@ class ToolInstanceHelper:
         adapter_ids: set[str],
     ) -> None:
         adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids).all()
-        # Org admins implicitly have access to every adapter in the org,
-        # matching AdapterInstance.objects.for_user semantics.
         is_admin = OrganizationMemberService.is_user_organization_admin(user)
 
         for adapter_instance in adapter_instances:
@@ -526,7 +524,6 @@ class ToolInstanceHelper:
         Raises:
             PermissionDenied: If user doesn't have access to the tool
         """
-        # Org admins implicitly have access to every tool in the org.
         is_admin = OrganizationMemberService.is_user_organization_admin(user)
 
         # Try to find the tool in PromptStudioRegistry first

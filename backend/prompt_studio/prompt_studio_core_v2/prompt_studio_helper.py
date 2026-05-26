@@ -190,11 +190,8 @@ class PromptStudioHelper:
         """
         profile_manager_owner = profile_manager.created_by
         if profile_manager_owner is None:
-            # No owner on this profile manager — skip ownership validation
             return
 
-        # Org admins implicitly have access to every adapter in the org,
-        # matching AdapterInstance.objects.for_user semantics.
         if OrganizationMemberService.is_user_organization_admin(profile_manager_owner):
             return
 

@@ -36,7 +36,6 @@ class IsWorkflowOwnerOrShared(BasePermission):
         workflow = request._workflow_cache
         user = request.user
 
-        # Check access: owner OR shared user OR shared to organization OR org admin
         has_access = (
             workflow.created_by == user
             or user in workflow.shared_users.all()

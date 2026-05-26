@@ -16,5 +16,4 @@ class PromptAcesssToUser(permissions.BasePermission):
             return True
         if obj.tool_id.shared_users.filter(pk=request.user.pk).exists():
             return True
-        # Org admins implicitly have access to every tool in the org.
         return OrganizationMemberService.is_user_organization_admin(request.user)
