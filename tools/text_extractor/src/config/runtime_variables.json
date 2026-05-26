@@ -1,0 +1,18 @@
+{
+  "title": "Runtime Variables",
+  "description": "Runtime Variables for text extractor",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "X2TEXT_HOST": {
+      "type": "string",
+      "title": "X2Text service host",
+      "description": "The host where the x2text service is running"
+    },
+    "X2TEXT_PORT": {
+      "type": "string",
+      "title": "X2Text service port",
+      "description": "The port where the x2text service is running"
+    }
+  }
+}

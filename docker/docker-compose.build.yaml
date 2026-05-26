@@ -30,6 +30,11 @@ services:
     build:
       dockerfile: docker/dockerfiles/x2text.Dockerfile
       context: ..
+  tool-text_extractor:
+    image: unstract/tool-text_extractor:${VERSION}
+    build:
+      dockerfile: tools/text_extractor/Dockerfile
+      context: ..
   # Unified worker image (replaces all individual worker images)
   worker-unified:
     image: unstract/worker-unified:${VERSION}
