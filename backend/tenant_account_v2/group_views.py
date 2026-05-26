@@ -166,6 +166,11 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="resources")
     def resources(self, request: Request, pk: str | None = None) -> Response:
+        # Admin-only: this is the delete blast-radius view. Leaving it open to
+        # any org member would leak names/UUIDs of resources shared with groups
+        # they are not in (org admin has no implicit resource access).
+        if not _is_org_admin(request):
+            raise PermissionDenied(IsOrgAdminForWrite.message)
         group = self._get_group_or_404(pk)
         payload = _collect_resources_shared_with_group(group)
         return Response(payload)
