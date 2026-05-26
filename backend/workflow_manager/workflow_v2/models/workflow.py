@@ -24,7 +24,6 @@ class WorkflowModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         - Workflows shared with the user
         - Workflows shared with the entire organization
         - Workflows shared with any group the user is a member of
-        - Service accounts see all org resources
         - Service accounts and org admins see all org resources
         """
         if getattr(user, "is_service_account", False):

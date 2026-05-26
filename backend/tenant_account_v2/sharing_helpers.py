@@ -119,6 +119,24 @@ def set_resource_share_groups(resource_obj: Any, group_ids: Iterable[int]) -> No
         )
 
 
+def _safe_uuids(raw_ids: Iterable[Any]) -> list[uuid.UUID]:
+    """Cast varchar ``object_id`` values to UUID, skipping malformed ones.
+
+    ``ResourceGroupShare.object_id`` is intentionally varchar, so one corrupt
+    value must not 500 the entire resource list for every member of the group.
+    Malformed ids are skipped and logged rather than raised.
+    """
+    result: list[uuid.UUID] = []
+    for s in raw_ids:
+        if not s:
+            continue
+        try:
+            result.append(uuid.UUID(s))
+        except (ValueError, AttributeError, TypeError):
+            logger.warning("Skipping malformed ResourceGroupShare.object_id=%r", s)
+    return result
+
+
 def list_resources_shared_with_group(
     group: OrganizationGroup, model: type[Model]
 ) -> QuerySet:
@@ -135,7 +153,7 @@ def list_resources_shared_with_group(
         content_type=ContentType.objects.get_for_model(model),
     ).values_list("object_id", flat=True)
     if isinstance(model._meta.pk, models.UUIDField):
-        pks: list[Any] = [uuid.UUID(s) for s in raw_ids if s]
+        pks: list[Any] = _safe_uuids(raw_ids)
     else:
         pks = list(raw_ids)
     return model.objects.filter(pk__in=pks)
@@ -158,7 +176,7 @@ def resources_visible_via_groups(
         group_id__in=user_group_ids,
     ).values_list("object_id", flat=True)
     if isinstance(model._meta.pk, models.UUIDField):
-        return [uuid.UUID(s) for s in raw_ids if s]
+        return _safe_uuids(raw_ids)
     return list(raw_ids)
 
 

@@ -4,7 +4,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
-from django.db.models import Count, Q
+from django.db.models import Count, IntegerField, OuterRef, Subquery
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 
@@ -172,9 +172,19 @@ def list_groups_with_member_counts(organization: Any, user: Any | None = None) -
     When ``user`` is provided, the result is restricted to groups the user
     belongs to — used by the ``?member=me`` filter for non-admin callers.
     """
+    # Count via a decoupled subquery: an optional ``memberships__user`` filter
+    # below constrains the same relation, so a join-based Count would collapse
+    # to the filtered rows (member_count=1). The subquery counts independently.
+    member_count_sq = (
+        GroupMembership.objects.filter(group=OuterRef("pk"))
+        .order_by()
+        .values("group")
+        .annotate(c=Count("pk"))
+        .values("c")
+    )
     qs = OrganizationGroup.objects.filter(organization=organization)
     if user is not None:
         qs = qs.filter(memberships__user=user)
     return qs.annotate(
-        memberships__count=Count("memberships", filter=Q(memberships__isnull=False))
+        memberships__count=Subquery(member_count_sq, output_field=IntegerField())
     ).distinct()

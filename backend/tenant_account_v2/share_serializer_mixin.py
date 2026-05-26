@@ -9,9 +9,18 @@ model (returns ``QuerySet[OrganizationGroup]``); DRF's natural
 ``PrimaryKeyRelatedField`` serialization then yields a list of group IDs
 without any custom ``to_representation``.
 
-Usage::
+Two write modes share this mixin:
 
-    class PipelineSerializer(SharedGroupsSerializerMixin, ...):
+* **Writable field** (``queryset=…``) — ``create``/``update`` below commit the
+  groups. Used by serializers that accept ``shared_groups`` on the resource
+  payload directly (e.g. the cloud ``AgenticProject`` serializer).
+* **Read-only field** (``read_only=True``) — the OSS resource serializers route
+  every share mutation through the ``POST /<resource>/{id}/share/`` action, so
+  ``create``/``update`` see no ``shared_groups`` and no-op for them.
+
+Writable usage::
+
+    class AgenticProjectSerializer(SharedGroupsSerializerMixin, ...):
         shared_groups = serializers.PrimaryKeyRelatedField(
             many=True,
             queryset=OrganizationGroup.objects.all(),

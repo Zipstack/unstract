@@ -1,9 +1,10 @@
 """Shared share-management surface for resource ViewSets.
 
-The mixin is **axis-agnostic** — it operates over any number of M2M sharing
-"axes" declared on the resource model. The current axes are
-``shared_users`` and ``shared_groups``; new axes can be added by extending
-:attr:`ResourceShareManagementMixin.share_axes`.
+The mixin is **axis-agnostic** — it operates over the sharing "axes" declared
+in :attr:`ResourceShareManagementMixin.share_axes`. ``shared_users`` is an M2M
+on the resource model, while ``shared_groups`` is stored polymorphically in
+``ResourceGroupShare`` (not an M2M) and routed through the sharing helpers; new
+axes can be added by extending that attribute.
 """
 
 from dataclasses import dataclass, field

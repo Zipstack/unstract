@@ -395,7 +395,18 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
                     setattr(user_default_adapter, field_name, None)
                     updated = True
             if updated:
-                user_default_adapter.save()
+                # Best-effort: the share already committed, so log a cleanup
+                # failure instead of letting it surface as a 500 on a successful
+                # share or silently disappear.
+                try:
+                    user_default_adapter.save()
+                except Exception:
+                    logger.exception(
+                        "Failed clearing default adapter for user_id=%s after "
+                        "share on adapter=%s",
+                        user_id,
+                        adapter.id,
+                    )
 
     @action(detail=True, methods=["get"])
     def list_of_shared_users(self, request: HttpRequest, pk: Any = None) -> Response:

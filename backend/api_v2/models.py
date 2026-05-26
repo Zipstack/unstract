@@ -33,7 +33,6 @@ class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManage
         - API deployments shared with the user
         - API deployments shared with the entire organization
         - API deployments shared with any group the user is a member of
-        - Service accounts see all org resources
         - Service accounts and org admins see all org resources
         """
         if getattr(user, "is_service_account", False):
