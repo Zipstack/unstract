@@ -10,6 +10,7 @@ from django.core.exceptions import PermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from jsonschema.exceptions import ValidationError as JSONValidationError
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from workflow_manager.workflow_v2.constants import WorkflowKey
 
 from tool_instance_v2.constants import JsonSchemaKey
@@ -482,6 +483,9 @@ class ToolInstanceHelper:
         adapter_ids: set[str],
     ) -> None:
         adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids).all()
+        # Org admins implicitly have access to every adapter in the org,
+        # matching AdapterInstance.objects.for_user semantics.
+        is_admin = OrganizationMemberService.is_user_organization_admin(user)
 
         for adapter_instance in adapter_instances:
             if not adapter_instance.is_usable:
@@ -494,7 +498,8 @@ class ToolInstanceHelper:
                 raise PermissionDenied(error_msg)
 
             if not (
-                adapter_instance.shared_to_org
+                is_admin
+                or adapter_instance.shared_to_org
                 or adapter_instance.created_by == user
                 or adapter_instance.shared_users.filter(pk=user.pk).exists()
             ):
@@ -521,11 +526,16 @@ class ToolInstanceHelper:
         Raises:
             PermissionDenied: If user doesn't have access to the tool
         """
+        # Org admins implicitly have access to every tool in the org.
+        is_admin = OrganizationMemberService.is_user_organization_admin(user)
+
         # Try to find the tool in PromptStudioRegistry first
         try:
             prompt_registry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
             if (
-                prompt_registry_tool.shared_to_org
+                is_admin
+                or prompt_registry_tool.created_by == user
+                or prompt_registry_tool.shared_to_org
                 or prompt_registry_tool.shared_users.filter(pk=user.pk).exists()
             ):
                 return
@@ -543,7 +553,9 @@ class ToolInstanceHelper:
             try:
                 agentic_registry_tool = AgenticStudioRegistry.objects.get(pk=tool_uid)
                 if (
-                    agentic_registry_tool.shared_to_org
+                    is_admin
+                    or agentic_registry_tool.created_by == user
+                    or agentic_registry_tool.shared_to_org
                     or agentic_registry_tool.shared_users.filter(pk=user.pk).exists()
                 ):
                     return
