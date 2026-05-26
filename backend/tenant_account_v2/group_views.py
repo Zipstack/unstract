@@ -152,8 +152,12 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
     ) -> Response:
         if not _is_org_admin(request):
             raise PermissionDenied(IsOrgAdminForWrite.message)
+        try:
+            user_id_int = int(user_id)  # type: ignore[arg-type]
+        except (TypeError, ValueError) as exc:
+            raise ValidationError({"user_id": "Must be a numeric user ID."}) from exc
         group = self._get_group_or_404(pk)
-        deleted, _ = group.memberships.filter(user_id=user_id).delete()
+        deleted, _ = group.memberships.filter(user_id=user_id_int).delete()
         if not deleted:
             raise NotFound("User is not a member of this group.")
         return Response(status=status.HTTP_204_NO_CONTENT)

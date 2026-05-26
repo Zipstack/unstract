@@ -11,6 +11,7 @@ function TopBar({
   searchData,
   setFilteredUserList,
   searchKey = "email",
+  searchPlaceholder = "Search Users",
   children,
 }) {
   const navigate = useNavigate();
@@ -40,7 +41,10 @@ function TopBar({
       <Col>
         <div className="invite-user-search">
           {enableSearch && (
-            <Input placeholder="Search Users" onChange={onSearchDebounce} />
+            <Input
+              placeholder={searchPlaceholder}
+              onChange={onSearchDebounce}
+            />
           )}
           {children}
         </div>
@@ -55,6 +59,7 @@ TopBar.propTypes = {
   searchData: PropTypes.array,
   setFilteredUserList: PropTypes.func,
   searchKey: PropTypes.string,
+  searchPlaceholder: PropTypes.string,
   children: PropTypes.element,
 };
 
