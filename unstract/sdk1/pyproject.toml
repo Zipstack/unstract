@@ -26,8 +26,8 @@ dependencies = [
     "python-magic~=0.4.27",
     "python-dotenv==1.0.1",
     # # Adapter changes
-    "tiktoken~=0.9.0",
-    "litellm",
+    "tiktoken~=0.12.0",
+    "litellm==1.83.10",
     "llama-index>=0.14.13",
     "llama-index-vector-stores-postgres>=0.7.3",
     "llama-index-vector-stores-milvus>=0.9.6",
@@ -79,7 +79,6 @@ test = [
 
 [tool.uv.sources]
 unstract-core = { path = "../core", editable = true }
-litellm = { git = "https://github.com/Zipstack/litellm.git", tag = "v1.82.3" }
 
 [build-system]
 requires = ["hatchling"]

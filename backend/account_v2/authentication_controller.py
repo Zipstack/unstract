@@ -3,7 +3,6 @@ from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
-from django.db import transaction
 from django.db.utils import IntegrityError
 from django.http import HttpRequest
 from django.middleware import csrf
@@ -164,7 +163,6 @@ class AuthenticationController:
 
         return response
 
-    @transaction.atomic
     def set_user_organization(self, request: Request, organization_id: str) -> Response:
         user: User = request.user
         new_organization = False
@@ -202,6 +200,10 @@ class AuthenticationController:
             )
 
             if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
+
                 try:
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
@@ -209,9 +211,6 @@ class AuthenticationController:
                 except MethodNotImplemented:
                     logger.info("frictionless_onboarding not implemented")
 
-                self.authentication_helper.create_initial_platform_key(
-                    user=user, organization=organization
-                )
                 logger.info(
                     f"New organization created with Id {organization_id}",
                 )
