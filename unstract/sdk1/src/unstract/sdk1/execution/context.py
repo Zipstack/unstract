@@ -96,8 +96,7 @@ class ExecutionContext:
             raise ValueError("run_id is required")
         if not self.execution_source:
             raise ValueError("execution_source is required")
-        # When execution_id is set, organization_id must be too — they
-        # travel together for workflow-level log correlation.
+        # Workflow-level log correlation needs both fields together.
         if self.execution_id and not self.organization_id:
             raise ValueError("organization_id is required when execution_id is set")
 

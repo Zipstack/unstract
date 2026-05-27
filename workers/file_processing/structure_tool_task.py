@@ -459,6 +459,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             execution_source="tool",
             organization_id=organization_id,
             request_id=file_execution_id,
+            log_events_id=log_events_id,
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
             executor_params=agentic_params,
         )
         at_result = dispatcher.dispatch(at_ctx, timeout=EXECUTOR_TIMEOUT)
@@ -488,6 +491,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             execution_source="tool",
             organization_id=organization_id,
             request_id=file_execution_id,
+            log_events_id=log_events_id,
+            execution_id=execution_id,
+            file_execution_id=file_execution_id,
             executor_params={
                 "extract_params": extract_params,
                 "index_template": index_template,

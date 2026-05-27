@@ -19,6 +19,18 @@ try {
 } catch {
   // Do nothing, Not-found Page will be triggered.
 }
+
+let fetchLookupAssignments;
+let fetchLookupOutputs;
+let resetLookupAssignments;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/store/useFetchLookupAssignments"
+  );
+  fetchLookupAssignments = mod.fetchLookupAssignments;
+  fetchLookupOutputs = mod.fetchLookupOutputs;
+  resetLookupAssignments = mod.resetLookupAssignments;
+} catch {}
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();
@@ -115,6 +127,14 @@ function CustomToolsHelper() {
       .then((res) => {
         const data = res?.data;
         updatedCusTool["adapters"] = data;
+
+        if (fetchLookupAssignments) {
+          const toolId = updatedCusTool["details"]?.tool_id;
+          fetchLookupAssignments(axiosPrivate, sessionDetails?.orgId, toolId);
+          if (fetchLookupOutputs) {
+            fetchLookupOutputs(axiosPrivate, sessionDetails?.orgId, toolId);
+          }
+        }
       })
       .catch((err) => {
         setAlertDetails(handleException(err, "Failed to load the custom tool"));
@@ -131,6 +151,9 @@ function CustomToolsHelper() {
       setDefaultCustomTool();
       emptyCusToolMessages();
       resetTokenUsage();
+      if (resetLookupAssignments) {
+        resetLookupAssignments();
+      }
     };
   }, []);
 
