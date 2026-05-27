@@ -32,9 +32,9 @@ import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 import "../platform/PlatformSettings.css";
 import "./PlatformApiKeys.css";
 
-const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:()/]+$/;
+const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:'()/]+$/;
 const SAFE_TEXT_MESSAGE =
-  "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, parentheses, and forward slashes are allowed.";
+  "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, apostrophes, parentheses, and forward slashes are allowed.";
 
 const PERMISSION_OPTIONS = [
   { value: "read_write", label: "Read/Write", color: "blue" },

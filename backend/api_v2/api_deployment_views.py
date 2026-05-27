@@ -81,6 +81,9 @@ class DeploymentExecution(views.APIView):
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+        include_extracted_text = serializer.validated_data.get(
+            ApiExecution.INCLUDE_EXTRACTED_TEXT
+        )
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
@@ -117,6 +120,7 @@ class DeploymentExecution(views.APIView):
                 timeout=timeout,
                 include_metadata=include_metadata,
                 include_metrics=include_metrics,
+                include_extracted_text=include_extracted_text,
                 use_file_history=use_file_history,
                 tag_names=tag_names,
                 llm_profile_id=llm_profile_id,
@@ -171,6 +175,9 @@ class DeploymentExecution(views.APIView):
         execution_id = serializer.validated_data.get(ApiExecution.EXECUTION_ID)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+        include_extracted_text = serializer.validated_data.get(
+            ApiExecution.INCLUDE_EXTRACTED_TEXT
+        )
 
         # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
@@ -218,6 +225,7 @@ class DeploymentExecution(views.APIView):
                 deployment_execution_dto=deployment_execution_dto,
                 include_metadata=include_metadata,
                 include_metrics=include_metrics,
+                include_extracted_text=include_extracted_text,
             )
         return Response(
             data={
@@ -259,6 +267,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get("search", None)
         if search:
             queryset = queryset.filter(display_name__icontains=search)
+
+        # Exact-match api_name filter for migration SDK's get-or-create flow.
+        api_name = self.request.query_params.get("api_name")
+        if api_name:
+            queryset = queryset.filter(api_name=api_name)
 
         return queryset
 

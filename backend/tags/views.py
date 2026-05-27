@@ -20,6 +20,7 @@ class TagViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPagination
     ordering_fields = ["created_at"]
     filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filterset_fields = ["name"]
 
     def get_queryset(self):
         """Retrieve the base queryset for the Tag model, allowing additional

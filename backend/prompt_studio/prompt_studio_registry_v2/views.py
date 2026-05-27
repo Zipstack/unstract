@@ -27,6 +27,7 @@ class PromptStudioRegistryView(viewsets.ModelViewSet):
         filterArgs = FilterHelper.build_filter_args(
             self.request,
             PromptStudioRegistryKeys.PROMPT_REGISTRY_ID,
+            "custom_tool",
         )
         queryset = None
         if filterArgs:

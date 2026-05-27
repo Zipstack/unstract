@@ -155,6 +155,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         timeout: int,
         include_metadata: bool = False,
         include_metrics: bool = False,
+        include_extracted_text: bool = False,
         use_file_history: bool = False,
         tag_names: list[str] = [],
         llm_profile_id: str | None = None,
@@ -275,7 +276,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 )
             if not enable_highlight:
                 result.remove_result_metadata_keys(["highlight_data"])
-                result.remove_result_metadata_keys(["extracted_text"])
+                if not include_extracted_text:
+                    result.remove_result_metadata_keys(["extracted_text"])
+            if include_extracted_text:
+                result.promote_extracted_text()
             if include_metadata or include_metrics:
                 cls._enrich_result_with_usage_metadata(result)
             if not include_metadata:
@@ -458,6 +462,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         deployment_execution_dto: Any,
         include_metadata: bool,
         include_metrics: bool,
+        include_extracted_text: bool = False,
     ) -> None:
         """Enrich and clean up the response for a completed execution."""
         api_deployment = deployment_execution_dto.api
@@ -476,7 +481,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
         if not enable_highlight:
             response.remove_result_metadata_keys(["highlight_data"])
-            response.remove_result_metadata_keys(["extracted_text"])
+            if not include_extracted_text:
+                response.remove_result_metadata_keys(["extracted_text"])
+        if include_extracted_text:
+            response.promote_extracted_text()
         if include_metadata or include_metrics:
             DeploymentHelper._enrich_result_with_usage_metadata(response)
         if not include_metadata:

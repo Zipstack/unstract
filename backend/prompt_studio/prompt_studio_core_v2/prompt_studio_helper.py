@@ -16,6 +16,7 @@ from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
@@ -189,7 +190,9 @@ class PromptStudioHelper:
         """
         profile_manager_owner = profile_manager.created_by
         if profile_manager_owner is None:
-            # No owner on this profile manager — skip ownership validation
+            return
+
+        if OrganizationMemberService.is_user_organization_admin(profile_manager_owner):
             return
 
         is_llm_owned = (
