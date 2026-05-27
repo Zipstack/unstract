@@ -13,6 +13,7 @@ const STORE_VARIABLES = {
     title: "",
     duration: DEFAULT_DURATION,
     key: null,
+    requestId: null,
   },
 };
 
