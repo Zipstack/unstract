@@ -10,7 +10,7 @@ from utils.user_session import UserSessionUtils
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
-from backend.constants import RequestHeader, RequestMethod
+from backend.constants import RequestHeader
 from backend.internal_api_constants import INTERNAL_API_PREFIX
 
 logger = logging.getLogger(__name__)
@@ -83,13 +83,6 @@ class CustomAuthMiddleware:
         except (ValueError, AttributeError):
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
-        # Block DELETE before any DB lookup — never allowed via API key
-        if request.method == RequestMethod.DELETE:
-            return JsonResponse(
-                {"message": "DELETE operations are not allowed via API key"},
-                status=403,
-            )
-
         try:
             key = PlatformApiKey.objects.select_related(
                 "created_by", "api_user", "organization"
@@ -116,13 +109,26 @@ class CustomAuthMiddleware:
                 status=401,
             )
 
-        # Block write operations for read-only keys
-        if (
-            key.permission == ApiKeyPermission.READ
-            and request.method not in RequestMethod.SAFE_METHODS
-        ):
+        if key.permission not in ApiKeyPermission.values:
+            logger.error(
+                "API key %s has unrecognized permission tier %r",
+                key.id,
+                key.permission,
+            )
             return JsonResponse(
-                {"message": "API key has read-only permission"},
+                {"message": "API key has an unrecognized permission tier"},
+                status=403,
+            )
+
+        permission = ApiKeyPermission(key.permission)
+        if not permission.allows(request.method):
+            return JsonResponse(
+                {
+                    "message": (
+                        f"API key with permission '{permission.value}' "
+                        f"does not allow {request.method}"
+                    )
+                },
                 status=403,
             )
 

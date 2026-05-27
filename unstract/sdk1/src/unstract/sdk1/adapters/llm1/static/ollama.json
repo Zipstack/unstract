@@ -48,6 +48,14 @@
       "default": 3900,
       "description": "The maximum number of context tokens for the model."
     },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 3,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
     "request_timeout": {
       "type": "number",
       "minimum": 0,

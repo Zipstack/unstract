@@ -14,6 +14,19 @@ import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
 
+let useEnforceTypeSwitchGatePlugin;
+try {
+  const mod = await import(
+    "../../../plugins/lookup-studio/hooks/useEnforceTypeSwitchGate"
+  );
+  useEnforceTypeSwitchGatePlugin = mod.useEnforceTypeSwitchGate;
+} catch {
+  // Cloud plugin not present; gate falls back to no-op below.
+}
+
+const useEnforceTypeSwitchGate =
+  useEnforceTypeSwitchGatePlugin || (() => () => null);
+
 const PromptCard = memo(
   ({
     promptDetails,
@@ -56,6 +69,7 @@ const PromptCard = memo(
     const { messages } = useSocketCustomToolStore();
     const { setAlertDetails } = useAlertStore();
     const { setPostHogCustomEvent } = usePostHogEvents();
+    const enforceTypeSwitchGate = useEnforceTypeSwitchGate();
 
     useEffect(() => {
       if (
@@ -260,6 +274,11 @@ const PromptCard = memo(
     };
 
     const handleTypeChange = (value) => {
+      const block = enforceTypeSwitchGate(promptDetailsState?.prompt_id, value);
+      if (block) {
+        setAlertDetails({ type: "error", content: block.reason });
+        return;
+      }
       handleChange(value, promptDetailsState?.prompt_id, "enforce_type", true);
     };
 

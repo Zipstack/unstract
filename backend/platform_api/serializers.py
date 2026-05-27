@@ -7,11 +7,12 @@ from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
 
 # Alphanumeric, spaces, hyphens, underscores, periods, commas, colons,
-# parentheses, forward slashes. No HTML tags or angle brackets.
-SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:()/]+$")
+# apostrophes, parentheses, forward slashes. No HTML tags or angle brackets.
+SAFE_TEXT_PATTERN = re.compile(r"^[a-zA-Z0-9 \-_.,:'()/]+$")
 SAFE_TEXT_ERROR = (
     "Only alphanumeric characters, spaces, hyphens, underscores, "
-    "periods, commas, colons, parentheses, and forward slashes are allowed."
+    "periods, commas, colons, apostrophes, parentheses, and forward slashes "
+    "are allowed."
 )
 
 

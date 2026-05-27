@@ -8,11 +8,13 @@ from django.db import models
 from django.db.models import Q, QuerySet, Sum
 from pipeline_v2.models import Pipeline
 from tags.models import Tag
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from usage_v2.constants import UsageKeys
 from usage_v2.helper import UsageHelper
 from usage_v2.models import Usage
 from utils.common_utils import CommonUtils
-from utils.models.base_model import BaseModel
+from utils.models.base_model import BaseModel, BaseModelManager
+from utils.user_context import UserContext
 
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
@@ -26,7 +28,7 @@ logger = logging.getLogger(__name__)
 EXECUTION_ERROR_LENGTH = 256
 
 
-class WorkflowExecutionManager(models.Manager):
+class WorkflowExecutionManager(BaseModelManager):
     """Custom manager for WorkflowExecution model to handle user-specific filtering."""
 
     def for_user(self, user) -> QuerySet:
@@ -51,8 +53,12 @@ class WorkflowExecutionManager(models.Manager):
             QuerySet of executions that the user has permission to access
         """
         if getattr(user, "is_service_account", False):
-            from utils.user_context import UserContext
+            org = UserContext.get_organization()
+            if org:
+                return self.filter(workflow__organization=org)
+            return self.all()
 
+        if OrganizationMemberService.is_user_organization_admin(user):
             org = UserContext.get_organization()
             if org:
                 return self.filter(workflow__organization=org)

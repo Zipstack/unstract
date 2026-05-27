@@ -9,11 +9,9 @@ from typing import Any, NoReturn, cast
 import litellm
 
 # from litellm import get_supported_openai_params
-from litellm import get_max_tokens, token_counter
-from pydantic import ValidationError
+from litellm import get_max_tokens
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
-from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
 from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
@@ -21,8 +19,14 @@ from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import (
     LLMResponseCompat,
-    TokenCounterCompat,
     capture_metrics,
+)
+from unstract.sdk1.utils.retry_utils import (
+    acall_with_retry,
+    call_with_retry,
+    is_retryable_litellm_error,
+    iter_with_retry,
+    pop_litellm_retry_kwargs,
 )
 
 logger = logging.getLogger(__name__)
@@ -185,7 +189,8 @@ class LLM:
             #     if s not in self.kwargs:
             #         logger.warning("Missing supported parameter for '%s': %s",
             #             self.adapter.get_provider(), s)
-        except ValidationError as e:
+        except ValueError as e:
+            # `pydantic.ValidationError` subclasses `ValueError` — this catches both.
             raise SdkError("Invalid LLM adapter metadata: " + str(e)) from e
 
         self._system_prompt = system_prompt or self.SYSTEM_PROMPT
@@ -204,6 +209,7 @@ class LLM:
         if capture_metrics_from_platform is not None:
             self._capture_metrics = capture_metrics_from_platform
         self._metrics: dict[str, object] = {}
+        self._pending_usage: list[dict] = []
 
     def _get_adapter_info(self) -> str:
         """Build a display string identifying this adapter for errors."""
@@ -285,9 +291,14 @@ class LLM:
             # if hasattr(self, "thinking_dict") and self.thinking_dict is not None:
             #     completion_kwargs["temperature"] = 1
 
-            response: dict[str, object] = litellm.completion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response: dict[str, object] = call_with_retry(
+                lambda: litellm.completion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
 
             response_text = response["choices"][0]["message"]["content"]
@@ -351,6 +362,96 @@ class LLM:
                 message=error_msg, status_code=status_code, actual_err=e
             ) from e
 
+    @capture_metrics
+    def complete_vision(
+        self,
+        messages: list[dict[str, Any]],
+        **kwargs: object,
+    ) -> dict[str, object]:
+        """Chat completion with multimodal (text + image) messages.
+
+        Accepts pre-built messages with image_url content blocks::
+
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "..."},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": "data:image/png;base64,..."},
+                        },
+                    ],
+                }
+            ]
+
+        LiteLLM auto-translates the OpenAI-style image format for
+        Anthropic, Bedrock, Vertex, and other providers.
+
+        Same error handling, usage tracking, and metrics as complete().
+
+        Args:
+            messages: List of message dicts with multimodal content.
+            **kwargs: Additional arguments passed to litellm.completion().
+
+        Returns:
+            dict with "response" key containing LLMResponseCompat.
+        """
+        try:
+            litellm.drop_params = True
+
+            logger.debug(
+                f"[sdk1][LLM]Invoking {self.adapter.get_provider()} "
+                f"vision completion API"
+            )
+
+            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs.pop("cost_model", None)
+
+            response: dict[str, object] = litellm.completion(
+                messages=messages,
+                **completion_kwargs,
+            )
+
+            response_text = response["choices"][0]["message"]["content"]
+            finish_reason = response["choices"][0].get("finish_reason")
+
+            self._record_usage(
+                self._cost_model or self.kwargs["model"],
+                messages,
+                response.get("usage"),
+                "complete_vision",
+            )
+
+            if response_text is None:
+                self._raise_for_empty_response(finish_reason)
+
+            response_object = LLMResponseCompat(response_text)
+            response_object.raw = response
+            return {"response": response_object}
+
+        except LLMError:
+            raise
+        except SdkError:
+            raise
+        except Exception as e:
+            logger.error(f"[sdk1][LLM] Error during vision completion: {e}")
+
+            status_code = None
+            if hasattr(e, "status_code"):
+                status_code = e.status_code
+            elif hasattr(e, "http_status"):
+                status_code = e.http_status
+
+            error_msg = (
+                f"Error from LLM adapter '{self._get_adapter_info()}': "
+                f"{strip_litellm_prefix(str(e))}"
+            )
+
+            raise LLMError(
+                message=error_msg, status_code=status_code, actual_err=e
+            ) from e
+
     def stream_complete(
         self,
         prompt: str,
@@ -373,14 +474,20 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
             has_yielded_content = False
-            for chunk in litellm.completion(
-                messages=messages,
-                stream=True,
-                stream_options={
-                    "include_usage": True,
-                },
-                **completion_kwargs,
+            for chunk in iter_with_retry(
+                lambda: litellm.completion(
+                    messages=messages,
+                    stream=True,
+                    stream_options={"include_usage": True},
+                    **completion_kwargs,
+                ),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             ):
                 if chunk.get("usage"):
                     self._record_usage(
@@ -437,9 +544,14 @@ class LLM:
             completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
             completion_kwargs.pop("cost_model", None)
 
-            response = await litellm.acompletion(
-                messages=messages,
-                **completion_kwargs,
+            max_retries = pop_litellm_retry_kwargs(
+                completion_kwargs, self._get_adapter_info()
+            )
+            response = await acall_with_retry(
+                lambda: litellm.acompletion(messages=messages, **completion_kwargs),
+                max_retries=max_retries,
+                retry_predicate=is_retryable_litellm_error,
+                description=self._get_adapter_info(),
             )
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
@@ -529,8 +641,38 @@ class LLM:
     def get_metrics(self) -> dict[str, object]:
         return self._metrics
 
+    def get_last_usage(self) -> Mapping[str, int]:
+        """Token usage from the most recent LLM call (sync, async, or streaming)."""
+        if not self._pending_usage:
+            return {}
+        last = self._pending_usage[-1]
+        return {
+            "prompt_tokens": last["prompt_tokens"],
+            "completion_tokens": last["completion_tokens"],
+            "total_tokens": last["total_tokens"],
+        }
+
+    def get_last_usage_record(self) -> dict | None:
+        """Full usage record for the most recent LLM call.
+
+        Returns tokens + cost + model + reason metadata; ``None`` if no
+        call has been made yet.
+        """
+        if not self._pending_usage:
+            return None
+        return self._pending_usage[-1]
+
     def get_usage_reason(self) -> object:
         return self.platform_kwargs.get("llm_usage_reason")
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Return and clear all pending usage records.
+
+        Called at executor finalization.
+        """
+        records = self._pending_usage
+        self._pending_usage = []
+        return records
 
     def _record_usage(
         self,
@@ -539,23 +681,74 @@ class LLM:
         usage: Mapping[str, int] | None,
         llm_api: str,
     ) -> None:
-        prompt_tokens = token_counter(model=model, messages=messages)
         usage_data: Mapping[str, int] = usage or {}
-        all_tokens = TokenCounterCompat(
-            prompt_tokens=usage_data.get("prompt_tokens", 0),
-            completion_tokens=usage_data.get("completion_tokens", 0),
-            total_tokens=usage_data.get("total_tokens", 0),
+        prompt_tokens = usage_data.get("prompt_tokens", 0)
+        completion_tokens = usage_data.get("completion_tokens", 0)
+        total_tokens = usage_data.get("total_tokens", 0)
+
+        # Fall back to litellm when providers omit prompt tokens — avoids 0-token billing.
+        if prompt_tokens == 0 and messages:
+            try:
+                prompt_tokens = litellm.token_counter(model=model, messages=messages)
+                if total_tokens == 0:
+                    total_tokens = prompt_tokens + completion_tokens
+            except Exception:
+                logger.warning(
+                    "[sdk1][LLM][%s] prompt_tokens missing on response and "
+                    "litellm.token_counter() fallback failed; recording 0",
+                    model,
+                    exc_info=True,
+                )
+
+        logger.info(
+            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d",
+            model,
+            llm_api,
+            prompt_tokens,
+            completion_tokens,
+            total_tokens,
         )
 
-        logger.info(f"[sdk1][LLM][{model}][{llm_api}] Prompt Tokens: {prompt_tokens}")
-        logger.info(f"[sdk1][LLM][{model}][{llm_api}] LLM Usage: {all_tokens}")
+        try:
+            prompt_cost, compl_cost = litellm.cost_per_token(
+                model=model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+            )
+            cost = prompt_cost + compl_cost
+        except Exception:
+            logger.warning(
+                "Failed to compute cost for model=%s; recording as 0.0",
+                model,
+                exc_info=True,
+            )
+            cost = 0.0
 
-        Audit().push_usage_data(
-            platform_api_key=self._platform_api_key,
-            token_counter=all_tokens,
-            event_type="llm",
-            model_name=model,
-            kwargs={"provider": self.adapter.get_provider(), **self.platform_kwargs},
+        # Trailing segment matches legacy Audit semantics (e.g. bedrock/anthropic/claude).
+        display_model = model.rsplit("/", 1)[-1] if model else model
+
+        # Spread _usage_kwargs first so computed billing fields below win.
+        self._pending_usage.append(
+            {
+                **self._usage_kwargs,
+                "usage_type": "llm",
+                "model_name": display_model,
+                "provider": self.adapter.get_provider(),
+                "adapter_instance_id": self.platform_kwargs.get(
+                    "adapter_instance_id", ""
+                ),
+                # run_id lands in a UUIDField — "" fails the cast; keep None.
+                "run_id": self.platform_kwargs.get("run_id") or None,
+                "execution_id": self.platform_kwargs.get("execution_id", ""),
+                # "" isn't a valid choice for llm_usage_reason.
+                "llm_usage_reason": self.platform_kwargs.get("llm_usage_reason") or None,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+                "total_tokens": total_tokens,
+                "embedding_tokens": 0,
+                "cost_in_dollars": cost,
+                "status": "SUCCESS",
+            }
         )
 
     # Finish reasons indicating a safety/policy refusal across providers:
@@ -940,9 +1133,17 @@ class LLMCompat:
         """Get captured metrics."""
         return self._llm_instance.get_metrics()
 
+    def get_last_usage(self) -> Mapping[str, int]:
+        """Token usage from the most recent complete() call."""
+        return self._llm_instance.get_last_usage()
+
     def get_usage_reason(self) -> object:
         """Get usage reason from platform kwargs."""
         return self._llm_instance.get_usage_reason()
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Return and clear all pending usage records."""
+        return self._llm_instance.flush_pending_usage()
 
     def test_connection(self) -> bool:
         """Test connection to the LLM provider."""

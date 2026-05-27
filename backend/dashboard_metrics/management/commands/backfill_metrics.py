@@ -424,7 +424,7 @@ class Command(BaseCommand):
                 "project",
                 "tag",
             ],
-            update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+            update_fields=["metric_type", "metric_value", "metric_count"],
         )
         return len(objects)
 
@@ -457,7 +457,7 @@ class Command(BaseCommand):
                 "project",
                 "tag",
             ],
-            update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+            update_fields=["metric_type", "metric_value", "metric_count"],
         )
         return len(objects)
 
@@ -490,6 +490,6 @@ class Command(BaseCommand):
                 "project",
                 "tag",
             ],
-            update_fields=["metric_type", "metric_value", "metric_count", "modified_at"],
+            update_fields=["metric_type", "metric_value", "metric_count"],
         )
         return len(objects)

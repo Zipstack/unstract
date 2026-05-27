@@ -4,10 +4,12 @@ from typing import Any
 
 from account_v2.models import User
 from django.db import models
+from django.db.models import Q
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 from pipeline_v2.models import Pipeline
-from utils.models.base_model import BaseModel
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -24,18 +26,19 @@ DESCRIPTION_MAX_LENGTH = 255
 API_ENDPOINT_MAX_LENGTH = 255
 
 
-class APIDeploymentModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class APIDeploymentModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user):
         """Filter API deployments that the user can access:
         - API deployments created by the user
         - API deployments shared with the user
         - API deployments shared with the entire organization
-        - Service accounts see all org resources
+        - Service accounts and org admins see all org resources
         """
         if getattr(user, "is_service_account", False):
             return self.all()
 
-        from django.db.models import Q
+        if OrganizationMemberService.is_user_organization_admin(user):
+            return self.all()
 
         return self.filter(
             Q(created_by=user)  # Owned by user

@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 _OUTPUT_ENDPOINT = "v1/prompt-studio/output/"
 _INDEX_ENDPOINT = "v1/prompt-studio/index/"
 _INDEXING_STATUS_ENDPOINT = "v1/prompt-studio/indexing-status/"
+_EXTRACTION_STATUS_ENDPOINT = "v1/prompt-studio/extraction-status/"
 _PROFILE_ENDPOINT = "v1/prompt-studio/profile/{profile_id}/"
 _HUBSPOT_ENDPOINT = "v1/prompt-studio/hubspot-notify/"
 _SUMMARY_INDEX_KEY_ENDPOINT = "v1/prompt-studio/summary-index-key/"
@@ -70,6 +71,33 @@ class PromptStudioAPIClient(BaseAPIClient):
             "is_summary": is_summary,
         }
         return self.post(_INDEX_ENDPOINT, data=payload, organization_id=organization_id)
+
+    def mark_extraction_status(
+        self,
+        document_id: str,
+        profile_manager_id: str,
+        x2text_config_hash: str,
+        enable_highlight: bool,
+        organization_id: str | None = None,
+        extracted: bool = True,
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        """Mark IndexManager.extraction_status for a document+profile pair.
+
+        Called from the ide_index_complete callback so that subsequent
+        Answer Prompt dispatches can short-circuit re-extraction.
+        """
+        payload = {
+            "document_id": document_id,
+            "profile_manager_id": profile_manager_id,
+            "x2text_config_hash": x2text_config_hash,
+            "enable_highlight": enable_highlight,
+            "extracted": extracted,
+            "error_message": error_message,
+        }
+        return self.post(
+            _EXTRACTION_STATUS_ENDPOINT, data=payload, organization_id=organization_id
+        )
 
     def mark_document_indexed(
         self,

@@ -4,7 +4,8 @@ from account_v2.models import User
 from django.conf import settings
 from django.db import models
 from django.db.models import Q
-from utils.models.base_model import BaseModel
+from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
     DefaultOrganizationMixin,
@@ -18,15 +19,18 @@ APP_ID_LENGTH = 32
 PIPELINE_NAME_LENGTH = 32
 
 
-class PipelineModelManager(DefaultOrganizationManagerMixin, models.Manager):
+class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
     def for_user(self, user):
         """Filter pipelines that the user can access:
         - Pipelines created by the user
         - Pipelines shared with the user
         - Pipelines shared with the entire organization
-        - Service accounts see all org resources
+        - Service accounts and org admins see all org resources
         """
         if getattr(user, "is_service_account", False):
+            return self.all()
+
+        if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
         return self.filter(

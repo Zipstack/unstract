@@ -1,11 +1,14 @@
+import logging
 from typing import Any
 
+import litellm
 from llama_index.core.callbacks import CBEventType, TokenCountingHandler
 from llama_index.core.callbacks.base_handler import BaseCallbackHandler
 from llama_index.core.embeddings import BaseEmbedding
-from unstract.sdk1.audit import Audit
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.tool.stream import StreamMixin
+
+logger = logging.getLogger(__name__)
 
 
 class UsageHandler(StreamMixin, BaseCallbackHandler):
@@ -57,6 +60,7 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
         self._verbose = verbose
         self.token_counter = token_counter
         self.embed_model = embed_model
+        self._pending_usage: list[dict] = []
         self.platform_api_key = platform_api_key
         super().__init__(
             log_level=log_level,  # StreamMixin's args
@@ -101,17 +105,60 @@ class UsageHandler(StreamMixin, BaseCallbackHandler):
             and event_type not in self.event_ends_to_ignore
             and payload is not None
         ):
+            if self.embed_model is None:
+                return
+            if self.token_counter is None:
+                logger.warning(
+                    "Embedding usage callback invoked without token_counter; "
+                    "skipping usage record."
+                )
+                return
             model_name = self.embed_model.model_name
-            # Need to push the data to via platform service
+            embedding_tokens = self.token_counter.total_embedding_token_count
             self.stream_log(
-                log=f"Pushing embedding usage for model {model_name}",
+                log=f"Recording embedding usage for model {model_name}",
                 level=LogLevel.DEBUG,
             )
-            Audit(log_level=self.log_level).push_usage_data(
-                platform_api_key=self.platform_api_key,
-                token_counter=self.token_counter,
-                event_type=event_type,
-                model_name=self.embed_model.model_name,
-                kwargs=self.kwargs,
+
+            try:
+                prompt_cost, _ = litellm.cost_per_token(
+                    model=model_name,
+                    prompt_tokens=embedding_tokens,
+                    completion_tokens=0,
+                )
+                cost = prompt_cost
+            except Exception:
+                logger.warning(
+                    "Failed to compute embedding cost for model=%s; recording 0.0",
+                    model_name,
+                    exc_info=True,
+                )
+                cost = 0.0
+
+            # Collapse multi-segment IDs (``bedrock/anthropic/claude``) to
+            # the trailing segment to match legacy Audit semantics.
+            display_model = model_name.rsplit("/", 1)[-1] if model_name else model_name
+
+            self._pending_usage.append(
+                {
+                    "usage_type": "embedding",
+                    "model_name": display_model,
+                    "adapter_instance_id": self.kwargs.get("adapter_instance_id", ""),
+                    # run_id lands in a UUIDField — "" fails the cast; keep None.
+                    "run_id": self.kwargs.get("run_id") or None,
+                    "execution_id": self.kwargs.get("execution_id", ""),
+                    "embedding_tokens": embedding_tokens,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "total_tokens": 0,
+                    "cost_in_dollars": cost,
+                    "status": "SUCCESS",
+                }
             )
             self.token_counter.reset_counts()
+
+    def flush_pending_usage(self) -> list[dict]:
+        """Return and clear all pending usage records."""
+        records = self._pending_usage
+        self._pending_usage = []
+        return records

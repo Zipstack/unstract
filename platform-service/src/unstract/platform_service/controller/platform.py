@@ -15,7 +15,6 @@ from unstract.platform_service.extensions import db, get_redis_client, safe_curs
 from unstract.platform_service.helper.adapter_instance import (
     AdapterInstanceRequestHelper,
 )
-from unstract.platform_service.helper.cost_calculation import CostCalculationHelper
 from unstract.platform_service.helper.prompt_studio import PromptStudioRequestHelper
 
 platform_bp = Blueprint("platform", __name__)
@@ -213,23 +212,11 @@ def usage() -> Any:
     usage_type = payload.get("usage_type", "")
     llm_usage_reason = payload.get("llm_usage_reason", "")
     model_name = payload.get("model_name", "")
-    provider = payload.get("provider", "")
     embedding_tokens = payload.get("embedding_tokens", 0)
     prompt_tokens = payload.get("prompt_tokens", 0)
     completion_tokens = payload.get("completion_tokens", 0)
     total_tokens = payload.get("total_tokens", 0)
-    input_tokens = prompt_tokens
-    if usage_type == "embedding":
-        input_tokens = embedding_tokens
-    cost_in_dollars = 0.0
-    if provider:
-        cost_calculation_helper = CostCalculationHelper()
-        cost_in_dollars = cost_calculation_helper.calculate_cost(
-            model_name=model_name,
-            provider=provider,
-            input_tokens=input_tokens,
-            output_tokens=completion_tokens,
-        )
+    cost_in_dollars = payload.get("cost_in_dollars", 0.0)
     usage_id = uuid.uuid4()
     current_time = datetime.now()
     query = f"""

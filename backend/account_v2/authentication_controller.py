@@ -100,8 +100,8 @@ class AuthenticationController:
             return self.auth_service.handle_authorization_callback(
                 request=request, backend=backend
             )
-        except Exception as ex:
-            logger.error(f"Error while handling authorization callback: {ex}")
+        except Exception:
+            logger.exception("Error while handling authorization callback")
             return redirect("/error")
 
     def user_organizations(self, request: Request) -> Any:
@@ -200,6 +200,10 @@ class AuthenticationController:
             )
 
             if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
+
                 try:
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
@@ -207,12 +211,20 @@ class AuthenticationController:
                 except MethodNotImplemented:
                     logger.info("frictionless_onboarding not implemented")
 
-                self.authentication_helper.create_initial_platform_key(
-                    user=user, organization=organization
-                )
                 logger.info(
                     f"New organization created with Id {organization_id}",
                 )
+            else:
+                try:
+                    self.auth_service.setup_default_adapters_for_user(
+                        organization=organization, user=user
+                    )
+                except MethodNotImplemented:
+                    logger.info(
+                        "setup_default_adapters_for_user not implemented, "
+                        "default adapters will not be set for user %s",
+                        user.email,
+                    )
 
             user_info: UserInfo | None = self.get_user_info(request)
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data

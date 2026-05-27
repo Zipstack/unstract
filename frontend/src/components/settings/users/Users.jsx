@@ -96,46 +96,51 @@ function Users() {
     }
   };
 
-  const actionItems = [
-    {
-      key: "1",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={() =>
-            navigate(`/${sessionDetails?.orgName}/users/edit`, {
-              state: selectedUserEmail,
-            })
-          }
-        >
-          <div>
-            <EditOutlined />
-          </div>
-          <div>
-            <Typography.Text>Edit</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-    {
-      key: "2",
-      label: (
-        <Space
-          direction="horizontal"
-          className="action-items"
-          onClick={showModal}
-        >
-          <div>
-            <DeleteOutlined />
-          </div>
-          <div>
-            <Typography.Text>Delete</Typography.Text>
-          </div>
-        </Space>
-      ),
-    },
-  ];
+  const isSsoLocalAuthz =
+    !!sessionDetails?.provider && !!sessionDetails?.disableSsoIdpAuthorization;
+
+  const editItem = {
+    key: "1",
+    label: (
+      <Space
+        direction="horizontal"
+        className="action-items"
+        onClick={() =>
+          navigate(`/${sessionDetails?.orgName}/users/edit`, {
+            state: selectedUserEmail,
+          })
+        }
+      >
+        <div>
+          <EditOutlined />
+        </div>
+        <div>
+          <Typography.Text>Edit</Typography.Text>
+        </div>
+      </Space>
+    ),
+  };
+
+  const deleteItem = {
+    key: "2",
+    label: (
+      <Space
+        direction="horizontal"
+        className="action-items"
+        onClick={showModal}
+      >
+        <div>
+          <DeleteOutlined />
+        </div>
+        <div>
+          <Typography.Text>Delete</Typography.Text>
+        </div>
+      </Space>
+    ),
+  };
+
+  const actionItems = isSsoLocalAuthz ? [editItem] : [editItem, deleteItem];
+
   const baseColumns = [
     {
       title: "Email",
@@ -165,9 +170,10 @@ function Users() {
     ),
   };
 
-  const columns = !sessionDetails?.provider
-    ? [...baseColumns, actionColumn]
-    : baseColumns;
+  const columns =
+    !sessionDetails?.provider || isSsoLocalAuthz
+      ? [...baseColumns, actionColumn]
+      : baseColumns;
 
   const handleInviteUsers = () => {
     navigate(`/${sessionDetails?.orgName}/users/invite`);

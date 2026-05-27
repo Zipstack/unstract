@@ -268,6 +268,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(display_name__icontains=search)
 
+        # Exact-match api_name filter for migration SDK's get-or-create flow.
+        api_name = self.request.query_params.get("api_name")
+        if api_name:
+            queryset = queryset.filter(api_name=api_name)
+
         return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:
