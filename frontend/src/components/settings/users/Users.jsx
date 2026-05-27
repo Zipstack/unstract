@@ -359,8 +359,14 @@ function Users() {
 
   useEffect(() => {
     getAllUsers();
-    getAllInvitations();
   }, []);
+
+  useEffect(() => {
+    if (activeTab === INVITATIONS_TAB && invitationList.length === 0) {
+      getAllInvitations();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   useEffect(() => {
     setFilteredUserList(userList);
@@ -380,7 +386,7 @@ function Users() {
     () => [
       {
         key: MEMBERS_TAB,
-        label: `Members (${userList.length})`,
+        label: "Members",
         children: (
           <div className="user-table">
             <Table
@@ -397,7 +403,7 @@ function Users() {
       },
       {
         key: INVITATIONS_TAB,
-        label: `Invitations (${invitationList.length})`,
+        label: "Invitations",
         children: (
           <div className="user-table">
             <Table
@@ -419,8 +425,6 @@ function Users() {
       filteredInvitationList,
       isTableLoading,
       isInvitationsLoading,
-      userList.length,
-      invitationList.length,
       columns,
     ],
   );
@@ -446,6 +450,11 @@ function Users() {
           shape="circle"
           icon={<ReloadOutlined />}
           onClick={handleReload}
+          loading={
+            activeTab === INVITATIONS_TAB
+              ? isInvitationsLoading
+              : isTableLoading
+          }
           className="user-reload-button"
         />
       </TopBar>

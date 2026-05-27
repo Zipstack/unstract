@@ -36,12 +36,11 @@ class InvitationViewSet(viewsets.ViewSet):
             invitation_id=id,
         )
         if is_deleted:
-            return Response(
-                status=status.HTTP_204_NO_CONTENT,
-                data={"status": "success", "message": "success"},
-            )
-        else:
-            return Response(
-                status=status.HTTP_404_NOT_FOUND,
-                data={"status": "failed", "message": "failed"},
-            )
+            # 204 must not include a body per RFC 7230 §3.3.3 — some clients
+            # (including axios's response transform) treat a Content-Length
+            # mismatch as a network error when browsers strip the body.
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            status=status.HTTP_404_NOT_FOUND,
+            data={"status": "failed", "message": "failed"},
+        )

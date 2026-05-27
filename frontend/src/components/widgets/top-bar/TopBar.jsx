@@ -53,7 +53,7 @@ TopBar.propTypes = {
   enableSearch: PropTypes.bool.isRequired,
   searchData: PropTypes.array,
   setFilteredUserList: PropTypes.func,
-  children: PropTypes.element,
+  children: PropTypes.node,
 };
 
 export { TopBar };
