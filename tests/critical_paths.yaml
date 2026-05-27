@@ -13,7 +13,10 @@ paths:
   - id: auth-login
     description: "User can log in and obtain a session cookie."
     entry: "POST /api/v1/auth/login"
-    covered_by: [e2e-smoke]
+    # Honest declaration: e2e-smoke only exercises the session sentinel +
+    # /health/, never POST /api/v1/auth/login. Track as a gap until a real
+    # login test exists (likely under tests/e2e/smoke/ or tests/e2e/auth/).
+    covered_by: []
 
   - id: adapter-register-llm
     description: "Register and validate an LLM adapter."

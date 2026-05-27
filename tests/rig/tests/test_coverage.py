@@ -11,6 +11,7 @@ the loss.
 
 from __future__ import annotations
 
+import errno
 import shutil
 from pathlib import Path
 
@@ -122,3 +123,42 @@ def test_combine_idempotent_with_only_prior_data(tmp_path: Path) -> None:
     assert merged.get("mod_a.py") == {1, 2, 3}, (
         f"re-combine with only prior data must preserve it; got {merged}"
     )
+
+
+def test_combine_swallows_rename_oserror(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """If the carry-forward ``target.rename(prior)`` raises ``OSError`` (EXDEV
+    on overlay mounts, EROFS/ENOSPC on the reports volume, etc.),
+    ``combine_and_report`` must log and continue — never raise. Both call
+    sites (``cli.cmd_run`` post-loop and ``cli.cmd_report``) sit outside
+    ``cmd_run``'s try/finally, so a raise here would replace the test run's
+    real exit code with a coverage-plumbing traceback and skip summary
+    emission. This test locks in the "errors logged, not raised" contract.
+    """
+    reports = tmp_path / "reports"
+    reports.mkdir()
+    # Seed a prior `.coverage` so the rename branch is entered.
+    (reports / ".coverage").write_bytes(b"sentinel")
+
+    real_rename = Path.rename
+
+    def _exdev_on_prior(self: Path, target: Path) -> Path:
+        if target.name == ".coverage.__prior__":
+            raise OSError(errno.EXDEV, "Invalid cross-device link")
+        return real_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", _exdev_on_prior)
+
+    caplog.set_level("WARNING", logger="tests.rig.coverage")
+    # Must not raise.
+    combine_and_report(reports)
+
+    assert any(
+        "could not carry prior coverage forward" in rec.message
+        for rec in caplog.records
+    ), f"expected carry-forward warning; got {[r.message for r in caplog.records]}"
+    # Source stays in place when rename fails (rename is atomic).
+    assert (reports / ".coverage").exists()

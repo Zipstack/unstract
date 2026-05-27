@@ -1,20 +1,20 @@
 name: Run e2e tests (rig + docker compose)
 
+# Image-build wiring is not yet in place: the base docker/docker-compose.yaml
+# references ${VERSION} for ~15 services without a default, and this workflow
+# does not build/pull images or export VERSION/UNSTRACT_TEST_VERSION. Running
+# the compose lane on push:main + nightly would fail deterministically (empty-
+# tag image refs) before any test executes. Restore the `push: main` and
+# `schedule:` triggers once a build step that exports the SHA tag lands.
 on:
-  push:
-    branches:
-      - main
   pull_request:
     types: [labeled, synchronize]
     branches: [main]
-  schedule:
-    # Nightly at 02:00 UTC.
-    - cron: "0 2 * * *"
   workflow_dispatch:
 
 jobs:
   e2e:
-    # Only run on PRs that opt in via the `run-e2e` label, plus main + nightly + manual.
+    # Only run on PRs that opt in via the `run-e2e` label, plus manual dispatch.
     if: >
       github.event_name != 'pull_request' ||
       contains(github.event.pull_request.labels.*.name, 'run-e2e')
@@ -54,6 +54,8 @@ jobs:
           UNSTRACT_E2E_RUNTIME: compose
         run: |
           # Use --tier e2e (not `all`) so this workflow runs only e2e groups.
+          # The main-branch baseline-update path is preserved for the eventual
+          # `workflow_dispatch` from main and future restoration of push: main.
           if [ "${{ github.ref }}" = "refs/heads/main" ]; then
             tox -e e2e -- --fail-on-critical-gap --update-baseline
           else

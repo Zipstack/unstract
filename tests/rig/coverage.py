@@ -90,8 +90,29 @@ def combine_and_report(reports_dir: Path) -> None:
     # to the union; the suffix just needs to match the `.coverage.*` glob.
     if target.exists():
         prior = reports_dir / ".coverage.__prior__"
-        target.rename(prior)
-        files = [prior, *files]
+        try:
+            target.rename(prior)
+        except OSError as exc:
+            # Degrade like every other coverage step: log + continue. A raise
+            # here would propagate past `cmd_run`'s try/finally (both call
+            # sites — `cli.py` `cmd_run` post-loop and `cmd_report` — sit
+            # outside it), replacing the test run's real exit code with a
+            # coverage-plumbing traceback and skipping summary emission.
+            # Conditions that trip this in CI: EXDEV on overlay/tmpfs mounts,
+            # EROFS/ENOSPC on the reports volume, or a stale lock from a
+            # crashed prior run. On failure the source `.coverage` is left in
+            # place (rename is atomic) and the next successful call's rename
+            # will pick it up — at the cost of this tier's combine omitting
+            # earlier tiers' data, which is strictly better than dropping the
+            # exit code.
+            log.warning(
+                "could not carry prior coverage forward (%s): %s; "
+                "this tier's combine will omit earlier tiers' data",
+                prior,
+                exc,
+            )
+        else:
+            files = [prior, *files]
     if not files:
         return
 
