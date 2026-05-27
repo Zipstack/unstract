@@ -97,26 +97,24 @@ class ToolInstanceHelper:
         """
         if adapter_key in metadata:
             adapter_value = metadata[adapter_key]
-            adapter_id = None
             if ToolInstanceHelper.is_uuid_format(adapter_value):
                 logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
                 adapter = AdapterInstance.objects.get(
                     id=adapter_value, adapter_type=adapter_type.value
                 )
-                adapter_id = str(adapter.id)
-                metadata_key_for_id = adapter_property.get(
-                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-                )
-                metadata[metadata_key_for_id] = adapter_id
             else:
                 adapter = AdapterProcessor.get_adapter_by_name_and_type(
                     adapter_type=adapter_type, adapter_name=adapter_value
                 )
-                adapter_id = str(adapter.id)
-                metadata_key_for_id = adapter_property.get(
-                    AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
-                )
-                metadata[metadata_key_for_id] = adapter_id
+            adapter_id = str(adapter.id)
+            metadata_key_for_id = adapter_property.get(
+                AdapterPropertyKey.ADAPTER_ID_KEY, AdapterPropertyKey.ADAPTER_ID
+            )
+            # Keep adapter_key and adapter_id_key both canonical to the resolved
+            # target UUID; otherwise stale UUID-shaped values at adapter_key
+            # bypass the lazy migrator and fail schema enum validation later.
+            metadata[adapter_key] = adapter_id
+            metadata[metadata_key_for_id] = adapter_id
 
     @staticmethod
     def update_metadata_with_adapter_instances(
