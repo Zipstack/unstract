@@ -71,7 +71,7 @@ dev = [
     "responses>=0.25.7",
     "psutil>=7.0.0",
 ]
-test = ["pytest>=8.0.1", "pytest-dotenv==0.5.2"]
+test = ["pytest>=8.0.1"]
 deploy = [
     "gunicorn~=23.0", # For serving the application
     # Keep versions empty and let uv decide version
@@ -98,7 +98,8 @@ constraint-dependencies = [
 ]
 
 [tool.pytest.ini_options]
-env_files = "test.env" # Load env from particular env file
+# Note: test.env is loaded by backend/conftest.py via python-dotenv directly
+# (replaces the unmaintained pytest-dotenv plugin).
 addopts = "-s"
 
 [tool.poe]
