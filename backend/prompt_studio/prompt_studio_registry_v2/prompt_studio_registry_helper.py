@@ -318,14 +318,8 @@ class PromptStudioRegistryHelper:
             if not prompt.profile_manager:
                 prompt.profile_manager = default_llm_profile
 
-            # Single-pass execution always runs prompts via the tool's
-            # default profile (see
-            # OutputManagerHelper.handle_prompt_output_update). Both
-            # validation lookup AND the per-prompt export payload must
-            # therefore source their settings from the default profile in
-            # single-pass mode — otherwise the exported tool would embed
-            # the stale prompt-level profile and the validation lookup
-            # would miss the rows actually produced by the run.
+            # Single-pass runs every prompt via the tool's default profile;
+            # otherwise each prompt uses its own profile_manager.
             if tool.single_pass_extraction_mode:
                 output_profile = default_llm_profile
             else:
