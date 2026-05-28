@@ -19,44 +19,36 @@
       "default": "amazon.titan-text-express-v1",
       "description": "Model name. Refer to [Bedrock's documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) for the list of available models."
     },
-    "region_name": {
+    "model_id": {
       "type": "string",
-      "title": "AWS Region Name",
-      "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
+      "title": "Application Inference Profile ARN",
+      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
+    },
+    "auth_type": {
+      "type": "string",
+      "title": "Authentication Type",
+      "enum": [
+        "access_keys",
+        "iam_role",
+        "bearer_token"
+      ],
+      "enumNames": [
+        "Access Keys",
+        "IAM Role / Instance Profile (on-prem AWS only)",
+        "Bedrock API Key (Bearer Token)"
+      ],
+      "default": "access_keys",
+      "description": "Choose **Access Keys** for any deployment (provide your AWS Access Key ID and Secret). Choose **IAM Role / Instance Profile** only when Unstract is hosted on AWS infrastructure that already has ambient credentials — for example EKS pods with IRSA, ECS tasks with a task role, or EC2 instances with an instance profile. Choose **Bedrock API Key (Bearer Token)** to authenticate with an AWS Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). The token is region-scoped — ensure the AWS Region below matches the key's region."
     },
     "aws_profile_name": {
       "type": "string",
       "title": "AWS Profile Name",
       "description": "AWS SSO profile name for authentication. Use this instead of access keys when using AWS SSO. Example: dev-profile"
     },
-    "model_id": {
+    "region_name": {
       "type": "string",
-      "title": "Application Inference Profile ARN",
-      "description": "Optional ARN for Application Inference Profile for cost tracking. Example: arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/xxxx"
-    },
-    "max_tokens": {
-      "type": "number",
-      "minimum": 0,
-      "multipleOf": 1,
-      "default": 4096,
-      "title": "Maximum Output Tokens",
-      "description": "Maximum number of output tokens to limit LLM replies, the maximum possible differs from model to model."
-    },
-    "max_retries": {
-      "type": "number",
-      "minimum": 0,
-      "multipleOf": 1,
-      "title": "Max Retries",
-      "default": 5,
-      "description": "Maximum number of retries to attempt when a request fails."
-    },
-    "timeout": {
-      "type": "number",
-      "minimum": 0,
-      "multipleOf": 1,
-      "title": "Timeout",
-      "default": 900,
-      "description": "Timeout in seconds"
+      "title": "AWS Region Name",
+      "description": "Provide the AWS Region name where the service is running. Eg. us-east-1"
     },
     "enable_thinking": {
       "type": "boolean",
@@ -84,21 +76,29 @@
       "default": "disabled",
       "description": "Enable to include guardrail trace info in the response (useful for debugging which rule was triggered)."
     },
-    "auth_type": {
-      "type": "string",
-      "title": "Authentication Type",
-      "enum": [
-        "access_keys",
-        "iam_role",
-        "bearer_token"
-      ],
-      "enumNames": [
-        "Access Keys",
-        "IAM Role / Instance Profile (on-prem AWS only)",
-        "Bedrock API Key (Bearer Token)"
-      ],
-      "default": "access_keys",
-      "description": "Choose **Access Keys** for any deployment (provide your AWS Access Key ID and Secret). Choose **IAM Role / Instance Profile** only when Unstract is hosted on AWS infrastructure that already has ambient credentials — for example EKS pods with IRSA, ECS tasks with a task role, or EC2 instances with an instance profile. Choose **Bedrock API Key (Bearer Token)** to authenticate with an AWS Bedrock API key (`AWS_BEARER_TOKEN_BEDROCK`). The token is region-scoped — ensure the AWS Region below matches the key's region."
+    "max_tokens": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "default": 4096,
+      "title": "Maximum Output Tokens",
+      "description": "Maximum number of output tokens to limit LLM replies, the maximum possible differs from model to model."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 5,
+      "description": "Maximum number of retries to attempt when a request fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 900,
+      "description": "Timeout in seconds"
     }
   },
   "dependencies": {
