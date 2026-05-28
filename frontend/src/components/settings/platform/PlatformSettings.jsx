@@ -355,9 +355,29 @@ function PlatformSettings() {
                                     ? "plt-set-key-pill-clickable"
                                     : undefined
                                 }
+                                role={canActivate ? "button" : undefined}
+                                tabIndex={canActivate ? 0 : -1}
+                                aria-label={
+                                  canActivate
+                                    ? `Activate ${keyDetails?.keyName}`
+                                    : undefined
+                                }
                                 onClick={
                                   canActivate
                                     ? () => handleToggle(keyIndex)
+                                    : undefined
+                                }
+                                onKeyDown={
+                                  canActivate
+                                    ? (e) => {
+                                        if (
+                                          e.key === "Enter" ||
+                                          e.key === " "
+                                        ) {
+                                          e.preventDefault();
+                                          handleToggle(keyIndex);
+                                        }
+                                      }
                                     : undefined
                                 }
                               >
