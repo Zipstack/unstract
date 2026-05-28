@@ -852,6 +852,21 @@ def _resolve_bedrock_aws_credentials(
     return validated
 
 
+def _pack_bedrock_guardrail_config(metadata: dict[str, "Any"]) -> None:
+    """Translate snake_case guardrail_* fields into LiteLLM's guardrailConfig."""
+    identifier = metadata.get("guardrail_identifier")
+    if not identifier:
+        return
+    cfg: dict[str, str] = {"guardrailIdentifier": identifier}
+    version = metadata.get("guardrail_version")
+    if version:
+        cfg["guardrailVersion"] = version
+    trace = metadata.get("guardrail_trace")
+    if trace:
+        cfg["trace"] = trace
+    metadata["guardrailConfig"] = cfg
+
+
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
@@ -866,6 +881,9 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     aws_profile_name: str | None = None  # For AWS SSO authentication
     model_id: str | None = None  # For Application Inference Profile (cost tracking)
     max_retries: int | None = None
+    # Declared so it survives Pydantic re-validation of kwargs.
+    # Matches LiteLLM's Bedrock kwarg name, hence the mixed case.
+    guardrailConfig: dict | None = None  # noqa: N815
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -908,15 +926,30 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
+        _pack_bedrock_guardrail_config(result_metadata)
+
         # Create validation metadata excluding control fields. `auth_type` is
         # a UI-only selector that drives form rendering; LiteLLM never sees it.
         validation_metadata = {
             k: v
             for k, v in result_metadata.items()
-            if k not in ("enable_thinking", "budget_tokens", "thinking", "auth_type")
+            if k
+            not in (
+                "enable_thinking",
+                "budget_tokens",
+                "thinking",
+                "auth_type",
+                "guardrail_identifier",
+                "guardrail_version",
+                "guardrail_trace",
+            )
         }
 
         validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
+
+        # Drop unset value so it isn't forwarded as `None`.
+        if not validated.get("guardrailConfig"):
+            validated.pop("guardrailConfig", None)
 
         # Add thinking config to final result if enabled
         if enable_thinking and "thinking" in result_metadata:

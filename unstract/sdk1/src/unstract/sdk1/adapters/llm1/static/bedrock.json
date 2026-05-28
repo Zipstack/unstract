@@ -64,6 +64,26 @@
       "default": false,
       "description": "Enhance reasoning for complex tasks with step-by-step transparency. Available only for Claude 3.7 Sonnet."
     },
+    "guardrail_identifier": {
+      "type": "string",
+      "title": "Bedrock Guardrail Identifier",
+      "description": "Optional. Apply an [AWS Bedrock Guardrail](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to moderate prompts and completions. Provide the guardrail ID (e.g. `ff6ujrregl1q`). Leave blank to disable."
+    },
+    "guardrail_version": {
+      "type": "string",
+      "title": "Bedrock Guardrail Version",
+      "description": "Version of the guardrail to apply. Use `DRAFT` for the working draft or a numeric version like `1`. Required when `Bedrock Guardrail Identifier` is set."
+    },
+    "guardrail_trace": {
+      "type": "string",
+      "title": "Bedrock Guardrail Trace",
+      "enum": [
+        "enabled",
+        "disabled"
+      ],
+      "default": "disabled",
+      "description": "Enable to include guardrail trace info in the response (useful for debugging which rule was triggered)."
+    },
     "auth_type": {
       "type": "string",
       "title": "Authentication Type",
