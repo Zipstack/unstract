@@ -4,13 +4,14 @@ from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
+from django.db.models import Q
 from django.db.models.query import QuerySet
+from permissions.permission import IsParentWorkflowOwner
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
 from utils.user_session import UserSessionUtils
 from workflow_manager.workflow_v2.constants import WorkflowKey
@@ -94,20 +95,25 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             RequestKey.CREATED_BY,
             RequestKey.WORKFLOW,
         )
-
-        # Per-creator scope for regular users avoids leaking sibling rows
-        # in shared workflows; admins and service accounts get org-wide.
+        # Union: own rows + rows under accessible workflows. The parent-shared
+        # branch lets ``IsParentWorkflowOwner`` return 403 on sibling mutation
+        # attempts instead of DRF raising 404 first. Admins / service accounts
+        # get org-wide via ``Workflow.for_user``'s short-circuit.
         user = self.request.user
-        if getattr(
-            user, "is_service_account", False
-        ) or OrganizationMemberService.is_user_organization_admin(user):
-            accessible_workflows = Workflow.objects.for_user(user)
-            queryset = ToolInstance.objects.filter(workflow__in=accessible_workflows)
-        else:
-            queryset = ToolInstance.objects.filter(created_by=user)
+        accessible_workflows = Workflow.objects.for_user(user)
+        queryset = ToolInstance.objects.filter(
+            Q(created_by=user) | Q(workflow__in=accessible_workflows)
+        ).distinct()
         if filter_args:
             queryset = queryset.filter(**filter_args)
         return queryset
+
+    def get_permissions(self) -> list[Any]:
+        # Mutation requires parent-workflow ownership; sibling read access
+        # via shared workflows must not imply mutate rights.
+        if self.action in ("update", "partial_update", "destroy"):
+            return [IsParentWorkflowOwner()]
+        return list(super().get_permissions())
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "reorder":
