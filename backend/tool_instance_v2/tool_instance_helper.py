@@ -97,8 +97,6 @@ class ToolInstanceHelper:
         """
         if adapter_key in metadata:
             adapter_value = metadata[adapter_key]
-            # Skip empty/None — nothing to resolve, and the backend has no
-            # default-adapter fallback for an unnamed slot.
             if not adapter_value:
                 return
             if ToolInstanceHelper.is_uuid_format(adapter_value):
