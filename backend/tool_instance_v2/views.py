@@ -10,9 +10,11 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.filtering import FilterHelper
 from utils.user_session import UserSessionUtils
 from workflow_manager.workflow_v2.constants import WorkflowKey
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from backend.constants import RequestKey
 from tool_instance_v2.constants import ToolInstanceErrors, ToolKey
@@ -92,12 +94,19 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             RequestKey.CREATED_BY,
             RequestKey.WORKFLOW,
         )
-        if filter_args:
-            queryset = ToolInstance.objects.filter(
-                created_by=self.request.user, **filter_args
-            )
+
+        # Per-creator scope for regular users avoids leaking sibling rows
+        # in shared workflows; admins and service accounts get org-wide.
+        user = self.request.user
+        if getattr(
+            user, "is_service_account", False
+        ) or OrganizationMemberService.is_user_organization_admin(user):
+            accessible_workflows = Workflow.objects.for_user(user)
+            queryset = ToolInstance.objects.filter(workflow__in=accessible_workflows)
         else:
-            queryset = ToolInstance.objects.filter(created_by=self.request.user)
+            queryset = ToolInstance.objects.filter(created_by=user)
+        if filter_args:
+            queryset = queryset.filter(**filter_args)
         return queryset
 
     def get_serializer_class(self) -> serializers.Serializer:
