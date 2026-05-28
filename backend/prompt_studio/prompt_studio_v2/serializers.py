@@ -26,6 +26,13 @@ class ToolStudioPromptSerializer(AuditSerializer):
     class Meta:
         model = ToolStudioPrompt
         fields = "__all__"
+        # Prompts and LLM output legitimately contain XML-like markup.
+        html_safe_fields = (
+            "prompt",
+            "assert_prompt",
+            "assertion_failure_prompt",
+            "output",
+        )
 
 
 class ToolStudioIndexSerializer(serializers.Serializer):

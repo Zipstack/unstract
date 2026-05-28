@@ -74,6 +74,7 @@ function PromptCardItems({
   coverageCountData,
   isChallenge,
   handleSelectHighlight,
+  fieldErrors,
 }) {
   const {
     llmProfiles,
@@ -231,6 +232,7 @@ function PromptCardItems({
             handleSpsLoading={handleSpsLoading}
             enforceType={enforceType}
             isAgenticTableReady={isAgenticTableReady}
+            promptKeyError={fieldErrors?.prompt_key}
           />
         </Space>
       </div>
@@ -369,6 +371,7 @@ function PromptCardItems({
 }
 
 PromptCardItems.propTypes = {
+  fieldErrors: PropTypes.object,
   promptDetails: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array,
   allTableSettings: PropTypes.array,
