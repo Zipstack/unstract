@@ -778,6 +778,16 @@ function Agency() {
       const execIdValue = initialRes?.data?.execution_id;
 
       setExecutionId(execIdValue);
+      if (execIdValue && !isStepExecution) {
+        // Live progress on this page is stale; point users at the logs page.
+        setAlertDetails({
+          type: "info",
+          title: "Workflow run started",
+          content: `[View logs](/logs/WF/${execIdValue}) to track progress`,
+          executionId: execIdValue,
+          duration: 0,
+        });
+      }
       body["execution_id"] = execIdValue;
       if (isStepExecution) {
         body["execution_action"] = wfExecutionTypes[executionAction];

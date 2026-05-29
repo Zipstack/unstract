@@ -3,6 +3,7 @@
 This module contains Celery tasks for processing execution logs.
 """
 
+import json
 import os
 from typing import Any
 from urllib.parse import quote
@@ -107,7 +108,10 @@ def logs_consumer(**kwargs: Any) -> None:
 
     # Emit WebSocket event directly through Socket.IO (via Redis broker)
     try:
-        payload = {"data": log_message}
+        # Coerce UUID/datetime/etc. to JSON-safe primitives — Socket.IO's
+        # serializer is stdlib json and chokes on non-primitive types.
+        safe_message = json.loads(json.dumps(log_message, default=str))
+        payload = {"data": safe_message}
         sio.emit(event, data=payload, room=room)
         logger.debug(f"WebSocket event emitted successfully for room {room}")
     except Exception as e:
