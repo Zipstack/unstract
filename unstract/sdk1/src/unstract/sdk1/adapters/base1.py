@@ -854,17 +854,31 @@ def _resolve_bedrock_aws_credentials(
 
 def _pack_bedrock_guardrail_config(metadata: dict[str, "Any"]) -> None:
     """Translate snake_case guardrail_* fields into LiteLLM's guardrailConfig."""
-    identifier = metadata.get("guardrail_identifier")
+    identifier = _clean_str(metadata.get("guardrail_identifier"))
     if not identifier:
         return
-    cfg: dict[str, str] = {"guardrailIdentifier": identifier}
-    version = metadata.get("guardrail_version")
-    if version:
-        cfg["guardrailVersion"] = version
-    trace = metadata.get("guardrail_trace")
+    version = _clean_str(metadata.get("guardrail_version"))
+    # Fail fast — Bedrock rejects identifier without version with an opaque error.
+    if not version:
+        raise ValueError(
+            "guardrail_version is required when guardrail_identifier is set."
+        )
+    cfg: dict[str, str] = {
+        "guardrailIdentifier": identifier,
+        "guardrailVersion": version,
+    }
+    trace = _clean_str(metadata.get("guardrail_trace"))
     if trace:
         cfg["trace"] = trace
     metadata["guardrailConfig"] = cfg
+
+
+def _clean_str(value: str | None) -> str | None:
+    """Strip surrounding whitespace; return None if the result is empty."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
 
 
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):

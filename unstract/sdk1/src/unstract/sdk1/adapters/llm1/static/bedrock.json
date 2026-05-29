@@ -195,6 +195,24 @@
       "then": {
         "properties": {}
       }
+    },
+    {
+      "if": {
+        "properties": {
+          "guardrail_identifier": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "guardrail_identifier"
+        ]
+      },
+      "then": {
+        "required": [
+          "guardrail_version"
+        ]
+      }
     }
   ]
 }
