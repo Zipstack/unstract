@@ -96,6 +96,11 @@ class PipelineViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(pipeline_name__icontains=search)
 
+        # Exact-match name filter for migration SDK's get-or-create flow.
+        pipeline_name = self.request.query_params.get(PK.PIPELINE_NAME)
+        if pipeline_name:
+            queryset = queryset.filter(pipeline_name=pipeline_name)
+
         # Apply default ordering: last_run_time desc (nulls last), then created_at desc
         # This ensures pipelines with recent runs appear first, never-run pipelines at end
         queryset = queryset.order_by(

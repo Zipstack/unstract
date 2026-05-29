@@ -31,7 +31,13 @@ class ConnectorInstanceSerializer(CoOwnerRepresentationMixin, AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
-        extra_kwargs = {"connector_name": {"required": False}}
+        # connector_mode is overridden in to_representation from the catalog,
+        # so any client-supplied value is silently discarded — mark it read_only
+        # to make that explicit (and to keep DRF OPTIONS schema honest).
+        extra_kwargs = {
+            "connector_name": {"required": False},
+            "connector_mode": {"read_only": True},
+        }
 
     def validate_connector_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Connector name")

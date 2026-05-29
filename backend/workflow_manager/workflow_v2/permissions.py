@@ -1,5 +1,6 @@
 from django.shortcuts import get_object_or_404
 from rest_framework.permissions import BasePermission
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -41,6 +42,7 @@ class IsWorkflowOwnerOrShared(BasePermission):
             or user in workflow.co_owners.all()
             or user in workflow.shared_users.all()
             or (workflow.shared_to_org and workflow.organization == user.organization)
+            or OrganizationMemberService.is_user_organization_admin(user)
         )
 
         return has_access

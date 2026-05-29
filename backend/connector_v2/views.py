@@ -62,6 +62,7 @@ class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
             RequestKey.WORKFLOW,
             RequestKey.CREATED_BY,
             CIKey.CONNECTOR_TYPE,
+            CIKey.CONNECTOR_NAME,
         )
         if filter_args:
             queryset = queryset.filter(**filter_args)

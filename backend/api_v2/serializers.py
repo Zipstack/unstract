@@ -214,6 +214,9 @@ class ExecutionRequestSerializer(TagParamsSerializer):
                 If -1 it corresponds to async execution. Defaults to -1
             include_metadata (bool): Flag to include metadata in API response
             include_metrics (bool): Flag to include metrics in API response
+            include_extracted_text (bool): Flag to include the full extracted text
+                of the input file in the API response. The extracted text is returned
+                at the top level of each file result, independent of include_metadata.
             use_file_history (bool): Flag to use FileHistory to save and retrieve
                 responses quickly. This is undocumented to the user and can be
                 helpful for demos.
@@ -236,6 +239,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     )
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
+    include_extracted_text = BooleanField(default=False)
     use_file_history = BooleanField(default=False)
 
     presigned_urls = ListField(child=URLField(), required=False)
@@ -412,6 +416,7 @@ class ExecutionQuerySerializer(Serializer):
     execution_id = CharField(required=True)
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
+    include_extracted_text = BooleanField(default=False)
 
     def validate_execution_id(self, value):
         """Trim spaces, validate UUID format, and check if execution_id exists."""
