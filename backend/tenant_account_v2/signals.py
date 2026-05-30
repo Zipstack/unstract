@@ -2,25 +2,14 @@ import logging
 
 from django.apps import apps
 from django.db import transaction
+from django.db.models.fields.related import ManyToManyRel
 from django.db.models.signals import post_delete
 from django.dispatch import receiver
 
 from tenant_account_v2.models import GroupMembership, OrganizationMember
+from tenant_account_v2.shareable_resources import SHAREABLE_RESOURCES
 
 logger = logging.getLogger(__name__)
-
-# (app_label, model_name) for every shareable resource. Lazy-loaded via
-# ``apps.get_model`` so signals can fire before cross-app imports resolve, and
-# so OSS-only deployments without the cloud agentic app skip cleanly.
-_SHAREABLE_MODELS: tuple[tuple[str, str], ...] = (
-    ("workflow_v2", "Workflow"),
-    ("pipeline_v2", "Pipeline"),
-    ("api_v2", "APIDeployment"),
-    ("connector_v2", "ConnectorInstance"),
-    ("adapter_processor_v2", "AdapterInstance"),
-    ("prompt_studio_core_v2", "CustomTool"),
-    ("agentic_studio_v1", "AgenticProject"),  # cloud-only
-)
 
 
 @receiver(post_delete, sender=OrganizationMember)
@@ -54,29 +43,34 @@ def cleanup_user_org_access(
                 instance.organization_id,
             )
 
-        for app_label, model_name in _SHAREABLE_MODELS:
+        for resource in SHAREABLE_RESOURCES:
             try:
-                model = apps.get_model(app_label, model_name)
+                model = apps.get_model(resource.app_label, resource.model_name)
             except LookupError:
                 # App not installed in this deployment (e.g. cloud-only
                 # agentic_studio_v1 in pure OSS). Skip cleanly.
                 continue
+            # Delete via the M2M through table, not ``model.objects``: the
+            # default manager is org-scoped on ``UserContext`` (None outside
+            # an HTTP request), so it would match zero rows in tests /
+            # management commands. The through manager is unscoped; scope it
+            # explicitly by the resource's own organization.
+            m2m_rel = model._meta.get_field("shared_users").remote_field
+            assert isinstance(m2m_rel, ManyToManyRel)
+            through = m2m_rel.through
+            source_fk = model._meta.model_name
             try:
-                resources = model.objects.filter(
-                    organization=instance.organization,
-                    shared_users=instance.user,
-                )
-                removed = 0
-                for resource in resources:
-                    resource.shared_users.remove(instance.user)
-                    removed += 1
+                removed, _ = through.objects.filter(
+                    user=instance.user,
+                    **{f"{source_fk}__organization": instance.organization},
+                ).delete()
             except Exception:
                 logger.exception(
                     "Failed purging shared_users for user=%s on %s.%s org=%s; "
                     "rolling back the whole purge",
                     instance.user_id,
-                    app_label,
-                    model_name,
+                    resource.app_label,
+                    resource.model_name,
                     instance.organization_id,
                 )
                 raise
@@ -85,8 +79,8 @@ def cleanup_user_org_access(
                     "Removed user=%s from shared_users on %s %s.%s rows in org=%s",
                     instance.user_id,
                     removed,
-                    app_label,
-                    model_name,
+                    resource.app_label,
+                    resource.model_name,
                     instance.organization_id,
                 )
 
@@ -121,15 +115,17 @@ def _connect_resource_group_share_cleanup() -> None:
     model. Lazy per-model connect so OSS deployments without the cloud agentic
     app skip it cleanly; ``dispatch_uid`` keeps the connect idempotent.
     """
-    for app_label, model_name in _SHAREABLE_MODELS:
+    for resource in SHAREABLE_RESOURCES:
         try:
-            model = apps.get_model(app_label, model_name)
+            model = apps.get_model(resource.app_label, resource.model_name)
         except LookupError:
             continue
         post_delete.connect(
             cleanup_resource_group_shares,
             sender=model,
-            dispatch_uid=f"cleanup_resource_group_shares_{app_label}_{model_name}",
+            dispatch_uid=(
+                f"cleanup_resource_group_shares_{resource.app_label}_{resource.model_name}"
+            ),
         )
 
 

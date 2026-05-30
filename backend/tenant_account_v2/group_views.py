@@ -190,36 +190,28 @@ def _collect_resources_shared_with_group(
 ) -> list[dict[str, Any]]:
     """Aggregate the resources currently shared with ``group`` across types.
 
-    Imports are deferred to avoid pulling resource models into the
-    ``tenant_account_v2`` import graph at startup.
+    Resolves each shareable model from ``SHAREABLE_RESOURCES`` via
+    ``apps.get_model`` (cloud-only models absent in OSS skip cleanly), so this
+    view and the cleanup signals share one source of truth and cannot drift.
     """
-    from adapter_processor_v2.models import AdapterInstance
-    from api_v2.models import APIDeployment
-    from connector_v2.models import ConnectorInstance
-    from pipeline_v2.models import Pipeline
-    from prompt_studio.prompt_studio_core_v2.models import CustomTool
-    from workflow_manager.workflow_v2.models.workflow import Workflow
+    from django.apps import apps
 
-    sources = (
-        ("workflow", Workflow, "workflow_name", "id"),
-        ("pipeline", Pipeline, "pipeline_name", "id"),
-        ("api_deployment", APIDeployment, "display_name", "id"),
-        ("adapter_instance", AdapterInstance, "adapter_name", "id"),
-        ("connector_instance", ConnectorInstance, "connector_name", "id"),
-        ("custom_tool", CustomTool, "tool_name", "tool_id"),
-    )
-
+    from tenant_account_v2.shareable_resources import SHAREABLE_RESOURCES
     from tenant_account_v2.sharing_helpers import list_resources_shared_with_group
 
     results: list[dict[str, Any]] = []
-    for kind, model, name_field, id_field in sources:
+    for resource in SHAREABLE_RESOURCES:
+        try:
+            model = apps.get_model(resource.app_label, resource.model_name)
+        except LookupError:
+            continue  # cloud-only app not installed in this deployment
         qs = list_resources_shared_with_group(group, model).values_list(
-            id_field, name_field
+            resource.id_field, resource.name_field
         )
         for resource_id, name in qs:
             results.append(
                 {
-                    "resource_type": kind,
+                    "resource_type": resource.kind,
                     "resource_id": str(resource_id),
                     "name": name,
                 }

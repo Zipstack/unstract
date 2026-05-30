@@ -140,10 +140,8 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
     serializer_class = AdapterInstanceSerializer
 
     def get_permissions(self) -> list[Any]:
-        # Frictionless adapter quirk preserved: blocks update + retrieve so
-        # frictionless adapters stay hidden from non-owners, and lets any
-        # org member delete them. Non-frictionless adapters fall through to
-        # the standard owner / shared-user gating.
+        # Frictionless adapters: hidden from non-owners (update/retrieve),
+        # deletable by any org member. Others use owner / shared-user gating.
         if self.action in ["update", "partial_update", "retrieve"]:
             return [IsFrictionLessAdapter()]
         if self.action == "destroy":

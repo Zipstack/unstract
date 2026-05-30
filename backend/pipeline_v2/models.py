@@ -129,11 +129,9 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         default=False,
         db_comment="Whether this pipeline is shared with the entire organization",
     )
-    # ``shared_groups`` is no longer an M2M; group shares are stored
-    # polymorphically in ``tenant_account_v2.ResourceGroupShare``. The
-    # property below preserves the ergonomic ``instance.shared_groups``
-    # read surface (queryset of ``OrganizationGroup``) so DRF and existing
-    # callers don't have to change.
+    # ``shared_groups`` is stored polymorphically in
+    # ``tenant_account_v2.ResourceGroupShare``; the property preserves the
+    # ergonomic read surface for DRF / existing callers.
 
     @property
     def shared_groups(self):
