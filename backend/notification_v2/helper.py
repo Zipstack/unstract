@@ -53,8 +53,8 @@ def get_org_club_interval_seconds(organization: Organization) -> int:
 
     Reads from the generic configuration KV table; returns the env-derived
     default when the org has no override. The value is read at enqueue time
-    and baked into the row's flush_after — see mfbt §EC-2 / §EC-8: changing
-    the override only affects rows enqueued after the change.
+    and baked into the row's flush_after, so changing the override only affects
+    rows enqueued after the change.
     """
     # Local import: configuration depends on Django settings at import time
     # and notification_v2.helper is imported during app boot.
@@ -102,7 +102,7 @@ def _resolve_organization(notification: Notification) -> Organization | None:
     return None
 
 
-def dispatch_with_delivery_mode(
+def dispatch_notifications(
     notifications: "Iterable[Notification]",
     payload: dict[str, Any],
     *,

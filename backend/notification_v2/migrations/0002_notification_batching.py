@@ -7,21 +7,19 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
     dependencies = [
         ("account_v2", "0001_initial"),
-        ("notification_v2", "0002_notification_notify_on_failures"),
+        ("notification_v2", "0001_initial"),
     ]
 
     operations = [
         migrations.AddField(
             model_name="notification",
-            name="delivery_mode",
-            field=models.CharField(
-                choices=[("IMMEDIATE", "Immediate"), ("BATCHED", "Batched")],
-                default="BATCHED",
-                max_length=16,
+            name="notify_on_failures",
+            field=models.BooleanField(
+                default=False,
                 db_comment=(
-                    "BATCHED (default) buffers events and dispatches a single "
-                    "clubbed message per (org, webhook_url, auth_sig) every "
-                    "NOTIFICATION_CLUB_INTERVAL. IMMEDIATE fires on every "
+                    "When True, fire only on failed runs — terminal status "
+                    "ERROR/STOPPED or any file in the run errored (partial "
+                    "failure). When False (default), fire on every terminal "
                     "completion."
                 ),
             ),
@@ -29,8 +27,6 @@ class Migration(migrations.Migration):
         migrations.CreateModel(
             name="NotificationBuffer",
             fields=[
-                ("created_at", models.DateTimeField(auto_now_add=True)),
-                ("modified_at", models.DateTimeField(auto_now=True)),
                 (
                     "id",
                     models.UUIDField(
@@ -40,52 +36,39 @@ class Migration(migrations.Migration):
                         serialize=False,
                     ),
                 ),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("modified_at", models.DateTimeField(auto_now=True)),
                 (
                     "webhook_url",
                     models.URLField(
-                        db_comment="Denormalized destination URL; grouping key.",
+                        db_comment="Denormalized destination URL; grouping key."
                     ),
                 ),
                 (
                     "payload",
                     models.JSONField(
-                        db_comment=(
-                            "Pre-structured execution data (execution_id, status, "
-                            "error_message, pipeline_name, pipeline_type) — NOT a "
-                            "final rendered message. The renderer formats this at "
-                            "dispatch time."
-                        ),
+                        db_comment="Pre-structured execution data (execution_id, status, error_message, pipeline_name, pipeline_type) — NOT a final rendered message. The renderer formats this at dispatch time."
                     ),
                 ),
                 (
                     "platform",
                     models.CharField(
                         choices=[("SLACK", "Slack"), ("API", "Api")],
+                        db_comment="SLACK / API — drives renderer selection at flush time.",
                         max_length=50,
-                        db_comment=(
-                            "SLACK / API — drives renderer selection at flush time."
-                        ),
                     ),
                 ),
                 (
                     "auth_sig",
                     models.CharField(
+                        db_comment="SHA-256 hex of (auth_type + auth_key + auth_header), computed at enqueue time. Grouping key — never store raw credentials here.",
                         max_length=64,
-                        db_comment=(
-                            "SHA-256 hex of (auth_type + auth_key + auth_header), "
-                            "computed at enqueue time. Grouping key — never store "
-                            "raw credentials here."
-                        ),
                     ),
                 ),
                 (
                     "flush_after",
                     models.DateTimeField(
-                        db_comment=(
-                            "created_at + NOTIFICATION_CLUB_INTERVAL, precomputed "
-                            "at enqueue. Read-at-enqueue contract: changing the "
-                            "env var only affects rows enqueued after the restart."
-                        ),
+                        db_comment="created_at + NOTIFICATION_CLUB_INTERVAL, precomputed at enqueue. Read-at-enqueue contract: changing the env var only affects rows enqueued after the restart."
                     ),
                 ),
                 ("dispatched_at", models.DateTimeField(blank=True, null=True)),
@@ -94,40 +77,31 @@ class Migration(migrations.Migration):
                     models.CharField(
                         choices=[
                             ("PENDING", "Pending"),
+                            ("SENDING", "Sending"),
                             ("DISPATCHED", "Dispatched"),
                             ("DEAD_LETTER", "Dead letter"),
                         ],
+                        db_comment="PENDING -> DISPATCHED on success, PENDING -> DEAD_LETTER on retry exhaustion.",
                         default="PENDING",
                         max_length=16,
-                        db_comment=(
-                            "PENDING -> DISPATCHED on success, "
-                            "PENDING -> DEAD_LETTER on retry exhaustion."
-                        ),
                     ),
                 ),
                 (
                     "notification",
                     models.ForeignKey(
+                        db_comment="Source Notification. Cascade-delete is intentional: removing a Notification expresses intent to stop all future deliveries, including buffered ones.",
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="buffer_rows",
                         to="notification_v2.notification",
-                        db_comment=(
-                            "Source Notification. Cascade-delete is intentional: "
-                            "removing a Notification expresses intent to stop all "
-                            "future deliveries, including buffered ones."
-                        ),
                     ),
                 ),
                 (
                     "organization",
                     models.ForeignKey(
+                        db_comment="Tenant scope. Mandatory grouping key — prevents cross-tenant leakage at flush time.",
                         on_delete=django.db.models.deletion.CASCADE,
                         related_name="notification_buffer_rows",
                         to="account_v2.organization",
-                        db_comment=(
-                            "Tenant scope. Mandatory grouping key — prevents "
-                            "cross-tenant leakage at flush time."
-                        ),
                     ),
                 ),
             ],

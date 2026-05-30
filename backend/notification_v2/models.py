@@ -9,7 +9,6 @@ from utils.models.base_model import BaseModel
 from .enums import (
     AuthorizationType,
     BufferStatus,
-    DeliveryMode,
     NotificationType,
     PlatformType,
 )
@@ -63,16 +62,6 @@ class Notification(BaseModel):
             "(default), fire on every terminal completion."
         ),
     )
-    delivery_mode = models.CharField(
-        max_length=16,
-        choices=DeliveryMode.choices(),
-        default=DeliveryMode.BATCHED.value,
-        db_comment=(
-            "BATCHED (default) buffers events and dispatches a single clubbed "
-            "message per (org, webhook_url, auth_sig) every "
-            "NOTIFICATION_CLUB_INTERVAL. IMMEDIATE fires on every completion."
-        ),
-    )
     # Foreign keys to specific models
     pipeline = models.ForeignKey(
         Pipeline,
@@ -121,10 +110,9 @@ class Notification(BaseModel):
 
 
 class NotificationBuffer(BaseModel):
-    """Per-execution event buffered for a BATCHED notification.
+    """Per-execution event buffered for clubbed (batched) dispatch.
 
-    One row is written per workflow completion when the source Notification
-    has delivery_mode=BATCHED. The flush job groups rows by
+    One row is written per workflow completion. The flush job groups rows by
     (organization, webhook_url, auth_sig), renders one clubbed message per
     group, and dispatches via the existing send_webhook_notification Celery
     task. Group key includes auth_sig because two notifications may share the

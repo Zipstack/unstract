@@ -40,12 +40,42 @@ def mark_buffer_dead_letter(
         )
         return 0
     ids = list(buffer_row_ids)
-    updated: int = NotificationBuffer.objects.filter(id__in=ids).update(
-        status=BufferStatus.DEAD_LETTER.value
-    )
+    # Only transition rows still in SENDING — a row the reaper has already
+    # reclaimed (back to PENDING / re-dispatched) must not be clobbered by a
+    # stale callback from a superseded attempt.
+    updated: int = NotificationBuffer.objects.filter(
+        id__in=ids, status=BufferStatus.SENDING.value
+    ).update(status=BufferStatus.DEAD_LETTER.value)
     logger.warning(
         "metric=notification_batch_dispatched_total result=dead_letter rows=%d exc=%r",
         updated,
         exc,
+    )
+    return updated
+
+
+@celery_app.task(name="notification_v2.mark_buffer_dispatched")
+def mark_buffer_dispatched(
+    result: Any = None,
+    *,
+    buffer_row_ids: Iterable[str] | None = None,
+) -> int:
+    """Mark a clubbed dispatch's rows DISPATCHED on delivery success.
+
+    Wired as the Celery ``link`` (success callback) of
+    ``send_webhook_notification``. Celery passes the parent task's return value
+    as the first positional arg, hence ``result``; the buffer ids are bound at
+    dispatch time via task kwargs. Only flips rows still in SENDING so a
+    reaper-reclaimed / re-dispatched row is not clobbered by a stale callback.
+    """
+    if not buffer_row_ids:
+        return 0
+    ids = list(buffer_row_ids)
+    updated: int = NotificationBuffer.objects.filter(
+        id__in=ids, status=BufferStatus.SENDING.value
+    ).update(status=BufferStatus.DISPATCHED.value)
+    logger.info(
+        "metric=notification_batch_dispatched_total result=delivered rows=%d",
+        updated,
     )
     return updated

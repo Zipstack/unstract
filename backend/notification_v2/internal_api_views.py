@@ -25,11 +25,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import render_clubbed_message
-from notification_v2.enums import FAILURE_STATUSES, BufferStatus
+from notification_v2.enums import BufferStatus
 from notification_v2.helper import (
     build_webhook_headers,
     enqueue,
@@ -70,7 +71,7 @@ def _apply_failure_filter(
     if execution is None:
         return notifications_qs
     failed_files = execution.failed_files or 0
-    is_failure = execution.status in FAILURE_STATUSES or failed_files > 0
+    is_failure = ExecutionStatus.is_failure(execution.status) or failed_files > 0
     if not is_failure:
         notifications_qs = notifications_qs.filter(notify_on_failures=False)
     return notifications_qs
@@ -284,10 +285,9 @@ def get_api_data(request: HttpRequest, api_id: str) -> JsonResponse:
 
 
 # `execution_id` is required except for INPROGRESS, which fires from the
-# scheduler (workers/scheduler/tasks.py, UN-2850) before WorkflowExecution
-# exists. INPROGRESS rows therefore store execution_id=null — receivers
-# cannot correlate with execution logs until the producer-reorder lands
-# (UN-3056).
+# scheduler before the WorkflowExecution exists. INPROGRESS rows therefore
+# store execution_id=null — receivers cannot correlate with execution logs
+# until the producer ordering is changed.
 _ENQUEUE_REQUIRED_FIELDS = (
     "notification_id",
     "pipeline_id",
@@ -402,6 +402,26 @@ def _gc_terminal_rows() -> int:
     return int(terminal_deleted) + int(inactive_deleted)
 
 
+def _reclaim_stale_sending() -> int:
+    """Return rows stuck in SENDING past the dispatch lease to PENDING.
+
+    Covers the crash window where a flush committed the SENDING claim but no
+    terminal callback ever ran (e.g. the backend died before the on_commit
+    publish, or the worker vanished). The lease must exceed the worst-case retry
+    duration so genuinely in-flight dispatches are never reclaimed mid-flight.
+    """
+    cutoff = timezone.now() - timedelta(
+        seconds=settings.NOTIFICATION_DISPATCH_LEASE_SECONDS
+    )
+    reclaimed = NotificationBuffer.objects.filter(
+        status=BufferStatus.SENDING.value,
+        dispatched_at__lt=cutoff,
+    ).update(status=BufferStatus.PENDING.value, dispatched_at=None)
+    if reclaimed:
+        logger.warning("metric=notification_buffer_reclaimed_total rows=%d", reclaimed)
+    return int(reclaimed)
+
+
 def _send_clubbed(
     *,
     url: str,
@@ -428,8 +448,16 @@ def _send_clubbed(
                 "max_retries": max_retries,
                 "retry_delay": 10,
                 "platform": platform,
+                # Re-raise on retry exhaustion so the task ends in FAILURE and the
+                # link_error below runs — otherwise the worker returns None (SUCCESS)
+                # and the buffer rows would never reach DEAD_LETTER.
+                "raise_on_final_failure": True,
             },
             queue="notifications",
+            link=celery_app.signature(
+                "notification_v2.mark_buffer_dispatched",
+                kwargs={"buffer_row_ids": buffer_ids},
+            ),
             link_error=celery_app.signature(
                 "notification_v2.mark_buffer_dead_letter",
                 kwargs={"buffer_row_ids": buffer_ids},
@@ -506,13 +534,16 @@ def _dispatch_group(
         buffer_ids = [str(r.id) for r in rows]
         max_retries = max(r.notification.max_retries for r in rows)
 
-        # Mark DISPATCHED first; if commit succeeds the on_commit hook
-        # publishes the broker task. If commit fails, rows stay PENDING and
-        # no task is published — eliminates the broker-vs-DB duplicate-send
-        # race that bit us when the order was reversed.
+        # Claim the rows as SENDING (the lease starts at dispatched_at) inside
+        # the transaction; the on_commit hook then publishes the broker task. If
+        # the commit fails, rows stay PENDING and nothing is published —
+        # eliminating the broker-vs-DB duplicate-send race. SENDING rows are
+        # excluded from the flush query, so they are not re-claimed until the
+        # dispatch task's success/failure callback resolves them to
+        # DISPATCHED / DEAD_LETTER (or the reaper reclaims a stale lease).
         now = timezone.now()
         NotificationBuffer.objects.filter(id__in=buffer_ids).update(
-            status=BufferStatus.DISPATCHED.value,
+            status=BufferStatus.SENDING.value,
             dispatched_at=now,
         )
         transaction.on_commit(
@@ -542,9 +573,11 @@ def process_notification_buffer(request: HttpRequest) -> JsonResponse:
 
     Algorithm:
     1. GROUP BY (org, url, auth_sig, platform), HAVING MIN(flush_after) <= NOW()
-    2. For each group, in its own transaction: lock-skip-locked rows,
-       render, mark rows DISPATCHED, on_commit-dispatch a single Celery task.
-    3. Sweep terminal rows older than NOTIFICATION_BUFFER_RETENTION_DAYS.
+    2. For each group, in its own transaction: lock-skip-locked rows, render,
+       mark rows SENDING, on_commit-dispatch a single Celery task whose success /
+       failure callbacks move the rows to DISPATCHED / DEAD_LETTER.
+    3. Reclaim rows stuck in SENDING past the dispatch lease back to PENDING.
+    4. Sweep terminal rows older than NOTIFICATION_BUFFER_RETENTION_DAYS.
 
     Concurrency: SELECT FOR UPDATE SKIP LOCKED makes parallel calls safe —
     each replica skips groups another worker is already dispatching.
@@ -578,15 +611,17 @@ def process_notification_buffer(request: HttpRequest) -> JsonResponse:
             dispatched_groups += 1
             dispatched_rows += rows
 
+    reclaimed_rows = _reclaim_stale_sending()
     gc_deleted = _gc_terminal_rows()
     return JsonResponse(
         {
             "status": "success",
             "dispatched_groups": dispatched_groups,
             "dispatched_rows": dispatched_rows,
-            # DEAD_LETTER transitions are async (Celery link_error) — this
-            # response only covers transitions visible to this request.
+            # DISPATCHED / DEAD_LETTER transitions are async (Celery success /
+            # link_error callbacks) and are not reflected in this response.
             "dead_letter_rows": 0,
+            "reclaimed_rows": reclaimed_rows,
             "gc_deleted_rows": gc_deleted,
         }
     )

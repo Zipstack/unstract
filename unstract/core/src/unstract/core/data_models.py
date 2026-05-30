@@ -388,6 +388,25 @@ def _is_completed(cls, status: str) -> bool:
 ExecutionStatus.is_completed = classmethod(_is_completed)
 
 
+# Terminal statuses treated as a failed run for notification routing.
+# STOPPED counts alongside ERROR (a stopped run is not a success).
+def _failure_statuses(cls) -> frozenset["ExecutionStatus"]:
+    """Return the set of statuses that represent a failed run."""
+    return frozenset({cls.ERROR, cls.STOPPED})
+
+
+def _is_failure(cls, status: str) -> bool:
+    """Check if the given status is a terminal failure state."""
+    try:
+        return cls(status) in cls.failure_statuses()
+    except ValueError:
+        return False
+
+
+ExecutionStatus.failure_statuses = classmethod(_failure_statuses)
+ExecutionStatus.is_failure = classmethod(_is_failure)
+
+
 # Add the get_skip_processing_statuses method as a class method
 def _get_skip_processing_statuses(cls) -> list["ExecutionStatus"]:
     """Get list of statuses that should skip file processing.

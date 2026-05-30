@@ -6,7 +6,7 @@ from .models import Notification
 
 
 class NotificationSettingsSerializer(serializers.Serializer):
-    """Org-scoped notification batching settings (UNS-611 v2)."""
+    """Org-scoped notification batching settings."""
 
     # Bounds (1 min – 2 h) mirror ConfigKey.NOTIFICATION_CLUB_INTERVAL so DRF
     # returns a structured 400 before ConfigKey.cast_value re-raises.

@@ -1,8 +1,8 @@
 import logging
 
-from notification_v2.enums import FAILURE_STATUSES
-from notification_v2.helper import dispatch_with_delivery_mode
+from notification_v2.helper import dispatch_notifications
 from notification_v2.models import Notification
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from pipeline_v2.dto import PipelineStatusPayload
@@ -51,7 +51,7 @@ class PipelineNotification:
         failed_files = (execution.failed_files or 0) if execution else 0
         execution_status = execution.status if execution else None
         is_failure = (
-            execution_status in FAILURE_STATUSES
+            ExecutionStatus.is_failure(execution_status)
             or failed_files > 0
             or self.pipeline.last_run_status == Pipeline.PipelineStatus.FAILURE
         )
@@ -87,7 +87,7 @@ class PipelineNotification:
             successful_files=successful_files,
             failed_files=failed_files,
         )
-        dispatch_with_delivery_mode(
+        dispatch_notifications(
             list(self.notifications),
             payload_dto.to_dict(),
             error_context=f"pipeline={self.pipeline.id}",

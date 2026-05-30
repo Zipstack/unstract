@@ -174,6 +174,7 @@ def send_webhook_notification(
     max_retries: int | None = None,
     retry_delay: int = 10,
     platform: str | None = None,
+    raise_on_final_failure: bool = False,
 ) -> None:
     """Backward compatible webhook notification task.
 
@@ -189,12 +190,17 @@ def send_webhook_notification(
         max_retries: The maximum number of retries allowed
         retry_delay: The delay between retries in seconds
         platform: Platform type from notification config (SLACK, API, etc.)
+        raise_on_final_failure: When True, re-raise on retry exhaustion so the
+            task ends in FAILURE and any Celery ``link_error`` callback runs
+            (used by the clubbed/buffered dispatch to dead-letter the rows).
+            When False (default), preserve the legacy "return None" behavior.
 
     Returns:
         None (matches original behavior)
 
     Raises:
-        Exception: If webhook delivery fails (for Celery retry mechanism)
+        Exception: If webhook delivery fails (for Celery retry mechanism), or on
+            final failure when ``raise_on_final_failure`` is set.
     """
     try:
         logger.debug(
@@ -256,9 +262,13 @@ def send_webhook_notification(
                     f"Failed to send webhook to {url} after {max_retries} attempts. "
                     f"Error: {e}"
                 )
+                if raise_on_final_failure:
+                    raise
                 return None  # Final failure - matches original behavior
         else:
             logger.error(f"Webhook request to {url} failed with error: {e}")
+            if raise_on_final_failure:
+                raise
             return None  # No retries configured - matches original behavior
 
     except Exception as e:
@@ -275,9 +285,13 @@ def send_webhook_notification(
                     f"Failed to send webhook to {url} after {max_retries} attempts. "
                     f"Error: {e}"
                 )
+                if raise_on_final_failure:
+                    raise
                 return None
         else:
             logger.error(f"Webhook request to {url} failed with error: {e}")
+            if raise_on_final_failure:
+                raise
             return None
 
 

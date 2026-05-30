@@ -16,8 +16,8 @@ notification_detail = NotificationViewSet.as_view(
 urlpatterns = format_suffix_patterns(
     [
         path("", notification_list, name="notification-list"),
-        # Org-scoped notification batching settings (UNS-611 v2). Mounted
-        # before the <uuid:pk> route so "settings" is not interpreted as a UUID.
+        # Org-scoped notification batching settings. Mounted before the
+        # <uuid:pk> route so "settings" is not interpreted as a UUID.
         path(
             "settings/",
             NotificationSettingsView.as_view(),

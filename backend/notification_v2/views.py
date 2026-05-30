@@ -59,9 +59,9 @@ class NotificationSettingsView(APIView):
     GET returns the org's effective interval (override or env-derived default).
     PATCH writes/updates the override via the generic configuration KV table.
 
-    Read-at-enqueue contract (mfbt §EC-2 / §EC-8): updates take effect for
-    notifications enqueued after the change. Existing PENDING buffer rows
-    keep their original flush_after.
+    Read-at-enqueue contract: updates take effect for notifications enqueued
+    after the change. Existing PENDING buffer rows keep their original
+    flush_after.
     """
 
     permission_classes = [IsAuthenticated, IsOrganizationAdmin]
