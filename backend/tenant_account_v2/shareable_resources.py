@@ -45,7 +45,7 @@ SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
         "agentic_studio_v1",
         "AgenticProject",
         "agentic_project",
-        "project_name",
-        "project_id",
+        "name",
+        "id",
     ),
 )
