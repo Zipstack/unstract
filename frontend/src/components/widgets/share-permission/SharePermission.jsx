@@ -79,7 +79,9 @@ function SharePermission({
   }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
-    setSelectedUsers((prev) => prev.filter((user) => user !== userId));
+    setSelectedUsers((prev) =>
+      prev.filter((user) => String(user) !== String(userId)),
+    );
   };
 
   const handleDeleteGroup = (groupId) => {
