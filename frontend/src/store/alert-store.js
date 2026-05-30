@@ -14,6 +14,7 @@ const STORE_VARIABLES = {
     duration: DEFAULT_DURATION,
     key: null,
     requestId: null,
+    executionId: null,
   },
 };
 
