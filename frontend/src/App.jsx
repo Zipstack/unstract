@@ -1,10 +1,11 @@
-import { Button, ConfigProvider, notification, Typography, theme } from "antd";
+import { Button, ConfigProvider, notification, theme } from "antd";
 import axios from "axios";
 import { useEffect } from "react";
 import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.jsx";
+import { NotificationIdLine } from "./components/notification/NotificationIdLine.jsx";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { THEME } from "./helpers/GetStaticData.js";
 import { attachRequestIdInterceptor } from "./helpers/requestId.js";
@@ -63,20 +64,22 @@ function App() {
 
     const showRequestId =
       alertDetails?.type === "error" && alertDetails?.requestId;
+    const showExecutionId = Boolean(alertDetails?.executionId);
     const description = (
       <>
         <CustomMarkdown text={alertDetails?.content} />
+        {showExecutionId && (
+          <NotificationIdLine
+            label="Execution ID"
+            value={alertDetails?.executionId}
+            stacked
+          />
+        )}
         {showRequestId && (
-          <div className="notification-request-id">
-            <Typography.Text type="secondary">Request ID:</Typography.Text>{" "}
-            <Typography.Text
-              code
-              copyable={{ text: alertDetails?.requestId }}
-              className="notification-request-id__value"
-            >
-              {alertDetails?.requestId}
-            </Typography.Text>
-          </div>
+          <NotificationIdLine
+            label="Request ID"
+            value={alertDetails?.requestId}
+          />
         )}
       </>
     );
@@ -90,8 +93,14 @@ function App() {
       key: alertDetails?.key,
     });
 
-    const logMessage = showRequestId
-      ? `${alertDetails.content}\nRequest ID: \`${alertDetails.requestId}\``
+    const logSuffix = [
+      showExecutionId && `Execution ID: \`${alertDetails.executionId}\``,
+      showRequestId && `Request ID: \`${alertDetails.requestId}\``,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const logMessage = logSuffix
+      ? `${alertDetails.content}\n${logSuffix}`
       : alertDetails.content;
 
     pushLogMessages([
