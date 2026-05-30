@@ -31,9 +31,8 @@ def _enqueue_to_buffer(
     rows. Raises on any failure so the outer trigger_* caller's except block
     logs the drop instead of silently treating BATCHED delivery as successful.
     """
-    # Forward the full per-event shape so the backend renderer can match
-    # the canonical KV layout per event (Type / Pipeline Id / Pipeline Name /
-    # Status / Execution Id / Timestamp / Additional Data). Older backend
+    # Forward the full per-event shape so the backend can buffer it and the
+    # shared clubbed renderer can format each event consistently. Older backend
     # builds that ignore the extra fields stay unaffected.
     payload_type = payload.type.value if hasattr(payload.type, "value") else payload.type
     payload_status = (
@@ -97,10 +96,12 @@ def _route_notification(
     try:
         _enqueue_to_buffer(api_client, notification, payload)
     # Already logged with stack inside _enqueue_to_buffer; broad catch keeps
-    # sibling notifications going.
+    # sibling notifications going. Emit a metric so a dropped failure alert is
+    # observable here (this is the path's final swallow point).
     except Exception:  # noqa: BLE001
         logger.warning(
-            "Buffer enqueue failed for notification %s; continuing with others",
+            "metric=notification_dropped_total notification_id=%s; "
+            "buffer enqueue failed, continuing with others",
             notification.get("id"),
         )
 

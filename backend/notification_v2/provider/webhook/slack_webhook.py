@@ -22,10 +22,10 @@ class SlackWebhook(Webhook):
         return headers
 
     def format_payload(self) -> dict[str, Any]:
-        """Render the IMMEDIATE event through the canonical envelope.
+        """Render the single event through the canonical envelope.
 
-        Single shared renderer for IMMEDIATE and BATCHED so receivers see the
-        same Slack body shape regardless of delivery mode.
+        Single shared renderer for one-off and clubbed dispatches so receivers
+        see the same Slack body shape either way.
         """
         return render_clubbed_message(
             payloads=[self.payload],

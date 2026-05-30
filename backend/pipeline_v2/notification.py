@@ -1,8 +1,7 @@
 import logging
 
-from notification_v2.helper import dispatch_notifications
+from notification_v2.helper import dispatch_notifications, is_failure_run
 from notification_v2.models import Notification
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from pipeline_v2.dto import PipelineStatusPayload
@@ -50,9 +49,12 @@ class PipelineNotification:
         # at least one file succeeded.
         failed_files = (execution.failed_files or 0) if execution else 0
         execution_status = execution.status if execution else None
+        # Shared rule (see notification_v2.helper.is_failure_run), plus a
+        # pipeline-only backstop: when the WorkflowExecution can't be loaded
+        # (legacy caller / missing execution_id) the per-run aggregate is
+        # unavailable, so fall back to the pipeline's collapsed last_run_status.
         is_failure = (
-            ExecutionStatus.is_failure(execution_status)
-            or failed_files > 0
+            is_failure_run(execution_status, failed_files)
             or self.pipeline.last_run_status == Pipeline.PipelineStatus.FAILURE
         )
         if not is_failure:

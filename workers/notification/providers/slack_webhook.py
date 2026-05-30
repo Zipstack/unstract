@@ -1,8 +1,10 @@
 """Slack Webhook Notification Provider
 
-Renders worker-callback payloads (flat per-event dict) into the same
-single-line Slack body the backend produces via ``clubbed_renderer``.
-Backend-rendered payloads (`{"text": "<mrkdwn>"}`) pass through unchanged.
+Renders single-event payloads (flat per-event dict) into the same single-line
+Slack body the backend produces via ``clubbed_renderer``. Only the generic
+internal webhook-send endpoints reach this flat-wrap path; status-callback
+notifications go through the backend buffer and arrive already rendered
+(`{"text": "<mrkdwn>"}`), so they pass through unchanged.
 """
 
 from typing import Any
@@ -21,7 +23,7 @@ logger = WorkerLogger.get_logger(__name__)
 class SlackWebhook(WebhookProvider):
     """Slack-specific webhook provider.
 
-    Renders flat per-event payloads via the worker-side mirror of the
+    Renders flat single-event payloads via the worker-side mirror of the
     backend clubbed renderer, then sends them as Slack-native ``text``
     mrkdwn.
     """
@@ -53,9 +55,9 @@ class SlackWebhook(WebhookProvider):
         Two input shapes are accepted:
         - Backend-rendered ``{"text": "<mrkdwn>"}`` (any backend dispatch
           through ``clubbed_renderer``) — passed through.
-        - Flat per-event dict from a worker callback — wrapped in a
-          single-event envelope and rendered to the canonical single-line
-          mrkdwn body.
+        - Flat per-event dict from the generic internal webhook-send endpoints —
+          wrapped in a single-event envelope and rendered to the canonical
+          single-line mrkdwn body.
         """
         if "text" in payload and "events" not in payload:
             return {"text": payload["text"]}

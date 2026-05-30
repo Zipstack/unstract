@@ -1,9 +1,8 @@
 import logging
 
-from notification_v2.helper import dispatch_notifications
+from notification_v2.helper import dispatch_notifications, is_failure_run
 from notification_v2.models import Notification
 from pipeline_v2.dto import PipelineStatusPayload
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.models import APIDeployment
@@ -18,13 +17,10 @@ class APINotification:
         self.workflow_execution = workflow_execution
 
     def send(self) -> None:
-        # Failure if the run hit a non-success terminal state OR any file errored.
-        # Partial-success runs land as status=COMPLETED with failed_files>0, so the
-        # status check alone misses them — see callback aggregation rules.
+        # Shared failure rule (status ∈ {ERROR, STOPPED} OR any file errored) —
+        # see notification_v2.helper.is_failure_run.
         failed_files = self.workflow_execution.failed_files or 0
-        is_failure = (
-            ExecutionStatus.is_failure(self.workflow_execution.status) or failed_files > 0
-        )
+        is_failure = is_failure_run(self.workflow_execution.status, failed_files)
         if not is_failure:
             # Success path: skip rows that opted into failure-only alerts.
             self.notifications = self.notifications.filter(notify_on_failures=False)

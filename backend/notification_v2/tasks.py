@@ -46,10 +46,15 @@ def mark_buffer_dead_letter(
     updated: int = NotificationBuffer.objects.filter(
         id__in=ids, status=BufferStatus.SENDING.value
     ).update(status=BufferStatus.DEAD_LETTER.value)
+    # A dead-lettered batch is a delivered-never event — include a row-id sample
+    # so it is traceable back to specific buffer rows (and their org/url) without
+    # grepping the whole batch.
     logger.warning(
-        "metric=notification_batch_dispatched_total result=dead_letter rows=%d exc=%r",
+        "metric=notification_batch_dispatched_total result=dead_letter rows=%d "
+        "exc=%r sample=%s",
         updated,
         exc,
+        ids[0] if ids else "none",
     )
     return updated
 

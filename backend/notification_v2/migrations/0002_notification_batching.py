@@ -81,7 +81,7 @@ class Migration(migrations.Migration):
                             ("DISPATCHED", "Dispatched"),
                             ("DEAD_LETTER", "Dead letter"),
                         ],
-                        db_comment="PENDING -> DISPATCHED on success, PENDING -> DEAD_LETTER on retry exhaustion.",
+                        db_comment="Lifecycle: PENDING -> SENDING (claimed by a flush tick) -> DISPATCHED on success / DEAD_LETTER on retry exhaustion. A SENDING row whose lease expires is reclaimed back to PENDING by the reaper.",
                         default="PENDING",
                         max_length=16,
                     ),

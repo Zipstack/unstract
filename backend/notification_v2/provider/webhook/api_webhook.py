@@ -8,8 +8,8 @@ class APIWebhook(Webhook):
     def send(self) -> None:
         """Send the API webhook notification.
 
-        Wraps the IMMEDIATE event in the canonical envelope before queueing
-        so the receiver-visible JSON shape matches BATCHED dispatches —
+        Wraps the single event in the canonical envelope before queueing so the
+        receiver-visible JSON shape matches the clubbed dispatch —
         `{"summary": {...}, "events": [{...}]}`.
         """
         self.payload = self.format_payload()
@@ -22,9 +22,9 @@ class APIWebhook(Webhook):
         return headers
 
     def format_payload(self) -> dict[str, Any]:
-        """Wrap a single IMMEDIATE event in the canonical envelope.
+        """Wrap a single event in the canonical envelope.
 
-        Receivers parse the same `{summary, events}` shape regardless of
-        whether the dispatch was IMMEDIATE or BATCHED.
+        Receivers parse the same `{summary, events}` shape whether the event
+        was sent on its own or as part of a clubbed batch.
         """
         return build_envelope(payloads=[self.payload])

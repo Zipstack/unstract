@@ -67,12 +67,20 @@ def process_notification_buffer() -> bool:
         )
         return False
 
-    result = response.json()
+    # A 200 with a non-JSON body (proxy/error page) would raise here; keep the
+    # "never raises" contract so the scheduler keeps ticking.
+    try:
+        result = response.json()
+    except ValueError:
+        logger.error("Non-JSON 200 response from process-buffer: %s", response.text[:500])
+        return False
+
     if result.get("dispatched_groups", 0) > 0 or result.get("gc_deleted_rows", 0) > 0:
         logger.info(
-            "Notification buffer flush: groups=%s rows=%s gc=%s",
+            "Notification buffer flush: groups=%s rows=%s reclaimed=%s gc=%s",
             result.get("dispatched_groups", 0),
             result.get("dispatched_rows", 0),
+            result.get("reclaimed_rows", 0),
             result.get("gc_deleted_rows", 0),
         )
     return True

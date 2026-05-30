@@ -1,9 +1,10 @@
 """API Webhook Notification Provider
 
-Wraps worker-callback payloads (flat per-event dict) in the canonical
-envelope so API webhook receivers always see the same
-``{"summary": {...}, "events": [...]}`` shape. Backend dispatches already
-arrive in envelope form and pass through.
+Wraps single-event payloads (flat per-event dict) in the canonical envelope so
+API webhook receivers always see the same ``{"summary": {...}, "events": [...]}``
+shape. Only the generic internal webhook-send endpoints reach this flat-wrap
+path; status-callback notifications go through the backend buffer and arrive
+already in envelope form, so they pass through.
 """
 
 from typing import Any
@@ -33,7 +34,7 @@ class APIWebhook(WebhookProvider):
         """Prepare API webhook data.
 
         Wraps a flat per-event payload in the canonical envelope; payloads
-        already in envelope shape (backend-built) pass through.
+        already in envelope shape (backend buffer-rendered) pass through.
         """
         prepared_data = super().prepare_data(notification_data)
 

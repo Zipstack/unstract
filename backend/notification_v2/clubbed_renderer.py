@@ -15,13 +15,14 @@ from typing import Any
 
 from notification_v2.enums import PlatformType
 from unstract.core.notification_clubbed_renderer import (
+    MAX_BATCH_SIZE,
     build_envelope,
     render_slack_text,
 )
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["build_envelope", "render_clubbed_message"]
+__all__ = ["MAX_BATCH_SIZE", "build_envelope", "render_clubbed_message"]
 
 
 def _render_for_slack(envelope: dict[str, Any]) -> dict[str, Any]:

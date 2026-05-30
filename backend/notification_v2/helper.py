@@ -7,6 +7,7 @@ from typing import Any
 
 from account_v2.models import Organization
 from django.utils import timezone
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 from notification_v2.enums import (
     AuthorizationType,
@@ -16,6 +17,22 @@ from notification_v2.enums import (
 from notification_v2.models import Notification, NotificationBuffer
 
 logger = logging.getLogger(__name__)
+
+
+def is_failure_run(execution_status: str | None, failed_files: int | None) -> bool:
+    """Single source of truth for "did this run fail?" across all dispatch paths.
+
+    A run counts as a failure if it reached a non-success terminal state
+    (ERROR/STOPPED) OR any file errored. Partial-success runs land as
+    status=COMPLETED with failed_files>0, so the status check alone misses them.
+
+    Used by api_v2/notification.py, pipeline_v2/notification.py and
+    internal_api_views._apply_failure_filter so every code path agrees on the
+    rule. The pipeline backend path ORs an extra last_run_status==FAILURE
+    backstop on top for the case where no WorkflowExecution can be loaded.
+    """
+    return ExecutionStatus.is_failure(execution_status) or (failed_files or 0) > 0
+
 
 # Used as a stable salt-free input for SHA-256 grouping; collisions are
 # vanishingly improbable and the digest is never used as a security primitive.
@@ -122,10 +139,15 @@ def dispatch_notifications(
         try:
             enqueue(notification, payload)
         except Exception:
+            # A dropped enqueue means a failure alert may never be delivered —
+            # the exact event this feature exists to surface. Emit a metric so
+            # the drop is observable, not just buried in a stack trace.
             logger.exception(
-                "Failed to enqueue notification %s%s",
+                "metric=notification_enqueue_failed_total notification_id=%s "
+                "webhook_url_hash=%s%s",
                 notification.id,
-                f" ({error_context})" if error_context else "",
+                webhook_url_hash(notification.url),
+                f" context={error_context}" if error_context else "",
             )
 
 

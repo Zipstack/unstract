@@ -25,15 +25,15 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from backend.celery_service import app as celery_app
-from notification_v2.clubbed_renderer import render_clubbed_message
+from notification_v2.clubbed_renderer import MAX_BATCH_SIZE, render_clubbed_message
 from notification_v2.enums import BufferStatus
 from notification_v2.helper import (
     build_webhook_headers,
     enqueue,
+    is_failure_run,
     webhook_url_hash,
 )
 from notification_v2.models import Notification, NotificationBuffer
@@ -61,18 +61,19 @@ def _apply_failure_filter(
 ) -> QuerySet[Notification]:
     """Drop notify_on_failures=True rows on success runs.
 
-    Mirrors the dispatch-side rule in backend/api_v2/notification.py and
-    backend/pipeline_v2/notification.py so both code paths agree on what
-    counts as a failure (status ∈ {ERROR, STOPPED} OR any file errored).
+    Uses the shared rule in notification_v2.helper.is_failure_run (status ∈
+    {ERROR, STOPPED} OR any file errored), the same rule applied by
+    backend/api_v2/notification.py. The pipeline backend path
+    (backend/pipeline_v2/notification.py) ORs an additional last_run_status
+    backstop on top for the case where no WorkflowExecution exists; this
+    callback path always has the execution, so it does not need that term.
 
     No execution → no filter, preserving legacy "return every active row"
     behavior for callers that don't pass execution_id.
     """
     if execution is None:
         return notifications_qs
-    failed_files = execution.failed_files or 0
-    is_failure = ExecutionStatus.is_failure(execution.status) or failed_files > 0
-    if not is_failure:
+    if not is_failure_run(execution.status, execution.failed_files):
         notifications_qs = notifications_qs.filter(notify_on_failures=False)
     return notifications_qs
 
@@ -350,8 +351,8 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
         return JsonResponse({"status": "ok", "buffer_row_id": None})
 
     # type / timestamp / additional_data stay optional during rollout — older
-    # worker builds that don't forward them still produce a usable row
-    # (renderer falls back to "Type: —" / no Additional Data line).
+    # worker builds that don't forward them still produce a usable row; the
+    # single-line clubbed renderer simply omits the missing fields.
     payload = {
         "type": body.get("type", ""),
         "execution_id": body.get("execution_id"),
@@ -560,10 +561,11 @@ def _dispatch_group(
         return len(rows), len(rows)
 
 
-# Per-group cap; matches the renderer's MAX_BATCH_SIZE so the rendered
-# events list and the dispatched row set stay in lock-step. Anything beyond
-# this rolls into the next flush tick.
-_PROCESS_BUFFER_CAP = 500
+# Per-group cap, bound to the renderer's MAX_BATCH_SIZE so the rendered events
+# list and the dispatched row set stay in lock-step by construction (raising one
+# can no longer silently mark un-rendered rows DISPATCHED). Anything beyond this
+# rolls into the next flush tick.
+_PROCESS_BUFFER_CAP = MAX_BATCH_SIZE
 
 
 @csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
