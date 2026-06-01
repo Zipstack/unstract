@@ -320,9 +320,12 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         if response.status_code == status.HTTP_200_OK:
             adapter.refresh_from_db()
             after_user_ids = self._effective_member_ids(adapter)
-            self._clear_default_adapter_for_removed_users(
-                adapter, before_user_ids - after_user_ids
-            )
+            removed = before_user_ids - after_user_ids
+            # The owner always retains access via ``created_by``; never clear
+            # their defaults on a share-axis change (e.g. a ``shared_to_org``
+            # toggle-off, which drops the owner from the org-member set).
+            removed.discard(adapter.created_by_id)
+            self._clear_default_adapter_for_removed_users(adapter, removed)
         return response
 
     @staticmethod
