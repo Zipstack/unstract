@@ -31,14 +31,6 @@
       "default": "https://integrate.api.nvidia.com/v1",
       "description": "NVIDIA Build endpoint. Pre-filled with the default; change only if NVIDIA moves the base URL."
     },
-    "embed_batch_size": {
-      "type": "number",
-      "minimum": 1,
-      "multipleOf": 1,
-      "title": "Embed Batch Size",
-      "default": 10,
-      "description": "Number of texts to embed in each batch."
-    },
     "max_retries": {
       "type": "number",
       "minimum": 0,

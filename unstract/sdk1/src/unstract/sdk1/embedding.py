@@ -103,6 +103,10 @@ class Embedding:
             self.platform_kwargs: dict[str, object] = kwargs
             self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
             self._cost_model: str | None = self.kwargs.pop("cost_model", None)
+            # embed_batch_size is a llama-index client-side batching hint, not an
+            # API field. Strip it so it isn't forwarded to litellm.embedding and
+            # rejected by strict gateways (e.g. NVIDIA Build returns 400).
+            self.kwargs.pop("embed_batch_size", None)
         except (ValidationError, ValueError) as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
 

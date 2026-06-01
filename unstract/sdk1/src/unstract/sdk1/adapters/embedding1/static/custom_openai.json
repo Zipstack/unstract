@@ -33,14 +33,6 @@
       "title": "API Base",
       "description": "Base URL for the OpenAI-compatible embeddings endpoint. Examples: https://gateway.example.com/v1, https://llm.example.net/openai/v1"
     },
-    "embed_batch_size": {
-      "type": "number",
-      "minimum": 1,
-      "multipleOf": 1,
-      "title": "Embed Batch Size",
-      "default": 10,
-      "description": "Number of texts to embed in each batch."
-    },
     "max_retries": {
       "type": "number",
       "minimum": 0,

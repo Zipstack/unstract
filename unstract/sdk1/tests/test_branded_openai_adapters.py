@@ -202,3 +202,44 @@ def test_compatible_embedding_schema_loadable() -> None:
     assert schema["title"] == "OpenAI Compatible Embedding"
     assert "api_base" in schema["required"]
     assert "model" in schema["required"]
+
+
+@pytest.mark.parametrize(
+    "adapter",
+    [NvidiaBuildEmbeddingAdapter, OpenAICompatibleEmbeddingAdapter],
+)
+def test_embedding_schema_drops_embed_batch_size(adapter: type) -> None:
+    # embed_batch_size is an inert llama-index hint; it must not be shown.
+    schema = json.loads(adapter.get_json_schema())
+    assert "embed_batch_size" not in schema["properties"]
+
+
+def test_embedding_strips_embed_batch_size_before_litellm(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # embed_batch_size must never reach litellm.embedding (strict gateways
+    # like NVIDIA reject it). Also asserts encoding_format="float" is sent.
+    import unstract.sdk1.embedding as emb_mod
+
+    captured: dict = {}
+
+    def fake_embedding(model: str, input: list, **kwargs: object) -> dict:  # noqa: A002
+        captured["model"] = model
+        captured.update(kwargs)
+        return {"data": [{"embedding": [0.0, 1.0, 2.0]}]}
+
+    monkeypatch.setattr(emb_mod.litellm, "embedding", fake_embedding)
+
+    emb_mod.Embedding(
+        adapter_id=NvidiaBuildEmbeddingAdapter.get_id(),
+        adapter_metadata={
+            "adapter_name": "n",
+            "model": "nvidia/nv-embedqa-e5-v5",
+            "api_key": "k",
+            "embed_batch_size": 10,
+        },
+    )
+
+    assert "embed_batch_size" not in captured
+    assert captured["encoding_format"] == "float"
+    assert captured["model"] == "nvidia_nim/nvidia/nv-embedqa-e5-v5"
