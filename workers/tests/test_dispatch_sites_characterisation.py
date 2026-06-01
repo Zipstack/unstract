@@ -110,7 +110,10 @@ class TestNotificationDispatchSite:
 
         assert result is True
 
-    def test_dispatch_returns_false_on_send_task_failure(self):
+    def test_helper_swallows_dispatch_exception(self):
+        """The helper's try/except contract: any exception from ``dispatch``
+        is caught and surfaced as ``False``. Patches the helper-side seam,
+        so this is purely a Python-level error-handling assertion."""
         from shared.patterns.notification.helper import send_notification_to_worker
 
         with patch("shared.patterns.notification.helper.dispatch") as mock_dispatch:
@@ -124,6 +127,31 @@ class TestNotificationDispatchSite:
             )
 
         assert result is False
+
+    def test_substrate_failure_surfaces_as_false(self):
+        """End-to-end seam → substrate failure path.
+
+        Leaves ``dispatch`` itself unpatched and patches the substrate
+        boundary (``queue_backend.dispatch.current_app``). Models a real
+        broker outage: ``send_task`` raises ``ConnectionError``,
+        ``dispatch`` propagates, the helper's ``except`` catches it,
+        return value is ``False``. Complements the helper-side test
+        above — together they exercise the full failure path without
+        either side being trivially mocked."""
+        from shared.patterns.notification.helper import send_notification_to_worker
+
+        with patch("queue_backend.dispatch.current_app") as mock_app:
+            mock_app.send_task.side_effect = ConnectionError("broker down")
+            result = send_notification_to_worker(
+                url="https://example.com/hook",
+                payload=self._make_payload(),
+                auth_type="NONE",
+                auth_key=None,
+                auth_header=None,
+            )
+
+        assert result is False
+        mock_app.send_task.assert_called_once()
 
 
 # --- Site 2: scheduler/tasks.py ---
@@ -259,38 +287,70 @@ class TestDispatchSiteInventory:
     """
 
     def test_no_raw_dispatch_sites_outside_seam(self):
-        """Zero raw ``current_app.send_task`` references should exist in
-        workers/ source outside the queue_backend/ seam.
+        """Zero raw Celery dispatch calls should exist in workers/ source
+        outside the queue_backend/ seam.
 
-        ``queue_backend/dispatch.py`` is the canonical home: it's the one
-        file that calls ``current_app.send_task`` (today, while the
+        ``queue_backend/dispatch.py`` is the canonical home: it's the
+        one file that calls ``current_app.send_task`` (today, while the
         substrate is still Celery). Everything else must call
         ``queue_backend.dispatch(...)`` instead.
+
+        Uses an AST walker rather than a regex so the canary covers:
+
+        * aliased imports (``from celery import current_app as app``;
+          ``app.send_task(...)``),
+        * locally-constructed apps (``Celery(...).send_task(...)``),
+        * ``.apply_async`` (the other half of how Celery sends tasks,
+          including ``signature(...).apply_async()``),
+        * multi-line dotted access after autoformatter wrap.
         """
+        import ast
         import pathlib
-        import re
 
         workers_root = pathlib.Path(__file__).parent.parent
         # Anchor skip to the top-level directory relative to workers_root so
         # we don't accidentally exclude legitimately-named subdirectories
         # (e.g. workers/shared/tests_helpers/).
         skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
+        # ``plugins/manual_review`` predates this seam and uses
+        # ``task.apply_async`` lambda overrides to inject queues — out of
+        # scope for the queue_backend transport seam PR. Tracked as a
+        # follow-up so this canary is exact for everything we own.
+        skip_subpaths = {"plugins/manual_review"}
+        forbidden_attrs = {"send_task", "apply_async"}
 
-        pattern = re.compile(r"current_app\.send_task\b")
-        hits = []
+        class DispatchCallFinder(ast.NodeVisitor):
+            def __init__(self) -> None:
+                self.hits: list[int] = []
+
+            def visit_Call(self, node: ast.Call) -> None:
+                func = node.func
+                if isinstance(func, ast.Attribute) and func.attr in forbidden_attrs:
+                    self.hits.append(node.lineno)
+                self.generic_visit(node)
+
+        hits: list[str] = []
         for py in workers_root.rglob("*.py"):
-            rel_parts = py.relative_to(workers_root).parts
+            rel = py.relative_to(workers_root)
+            rel_parts = rel.parts
             if rel_parts and rel_parts[0] in skip_top_dirs:
                 continue
-            text = py.read_text()
-            for line_no, line in enumerate(text.splitlines(), start=1):
-                if pattern.search(line):
-                    hits.append(f"{py.relative_to(workers_root)}:{line_no}")
+            rel_str = rel.as_posix()
+            if any(rel_str.startswith(skip + "/") for skip in skip_subpaths):
+                continue
+            try:
+                tree = ast.parse(py.read_text(), filename=str(py))
+            except SyntaxError:
+                continue
+            finder = DispatchCallFinder()
+            finder.visit(tree)
+            for line_no in finder.hits:
+                hits.append(f"{py.relative_to(workers_root)}:{line_no}")
 
         assert hits == [], (
-            "Raw current_app.send_task call(s) found outside queue_backend/. "
-            "All task dispatch must go through queue_backend.dispatch(). "
-            "Found:\n  " + "\n  ".join(hits)
+            "Raw Celery dispatch call(s) (send_task / apply_async) found "
+            "outside queue_backend/. All task dispatch must go through "
+            "queue_backend.dispatch(). Found:\n  " + "\n  ".join(hits)
         )
 
     def test_canonical_seam_exists(self):

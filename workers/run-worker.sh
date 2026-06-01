@@ -23,6 +23,7 @@ ENV_FILE="$WORKERS_DIR/.env"
 
 # Worker type constant for the executor worker
 readonly EXECUTOR_WORKER_TYPE="executor"
+readonly IDE_CALLBACK_WORKER_TYPE="ide_callback"
 
 # Available workers
 declare -A WORKERS=(
@@ -41,8 +42,8 @@ declare -A WORKERS=(
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
-    ["ide-callback"]="ide_callback"
-    ["ide_callback"]="ide_callback"
+    ["ide-callback"]="${IDE_CALLBACK_WORKER_TYPE}"
+    ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
     ["all"]="all"
 )
 
@@ -59,7 +60,7 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
-    ["ide_callback"]="ide_callback"
+    ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
 )
 
 # Worker health ports
@@ -72,7 +73,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["notification"]="8085"
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
-    ["ide_callback"]="8089"
+    ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
 )
 
 # Function to display usage
@@ -294,10 +295,13 @@ validate_env() {
 
 # Function to get worker PIDs
 # Anchors the match on the hostname value's start (preceded by a non-word
-# character) so e.g. "callback" doesn't also match "ide_callback".
+# character) so e.g. "callback" doesn't also match "ide_callback". The
+# trailing `(@|-)` covers both Celery hostname forms emitted by run_worker:
+#   --hostname=callback-worker@%h         (default, no WORKER_INSTANCE_ID)
+#   --hostname=callback-worker-${id}@%h   (when WORKER_INSTANCE_ID is set)
 get_worker_pids() {
     local worker_type=$1
-    pgrep -f -- "[^[:alnum:]_]${worker_type}-worker-" 2>/dev/null || true
+    pgrep -f -- "[^[:alnum:]_]${worker_type}-worker(@|-)" || true
 }
 
 # Function to resolve canonical worker dir names from the WORKERS map
@@ -401,35 +405,52 @@ clear_logs() {
 
 # Function to kill a single worker by its canonical dir name.
 # Uses the anchored matcher from get_worker_pids so callback vs ide_callback
-# don't bleed into each other.
+# don't bleed into each other. Surfaces kill failures (EPERM, ESRCH) and
+# verifies the processes are gone before reporting success.
 kill_one_worker() {
     local worker_dir=$1
     local pids
     pids=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
     if [[ -z "$pids" ]]; then
         print_status $YELLOW "  $worker_dir: not running"
-        return
+        return 0
     fi
     print_status $YELLOW "  $worker_dir: killing $pids"
-    echo "$pids" | xargs kill -TERM 2>/dev/null || true
+    # shellcheck disable=SC2086
+    kill -TERM $pids || print_status $RED "  $worker_dir: kill -TERM failed"
     sleep 1
-    echo "$pids" | xargs kill -KILL 2>/dev/null || true
+    local survivors
+    survivors=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
+    if [[ -n "$survivors" ]]; then
+        # shellcheck disable=SC2086
+        kill -KILL $survivors || print_status $RED "  $worker_dir: kill -KILL failed"
+        sleep 1
+        survivors=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
+        if [[ -n "$survivors" ]]; then
+            print_status $RED "  $worker_dir: survivors after SIGKILL: $survivors"
+            return 1
+        fi
+    fi
+    return 0
 }
 
-# Function to kill workers
+# Function to kill all known workers. Iterates the canonical dir list and
+# delegates to kill_one_worker so the anchored matcher is the single source
+# of truth — avoids killing unrelated `celery worker` processes on the host.
 kill_workers() {
     print_status $YELLOW "Killing all running workers..."
-    local pids
-    pids=$(pgrep -f "uv run celery.*worker" || true)
-    if [[ -z "$pids" ]]; then
-        print_status $GREEN "No workers running"
-        return
+    local any_failed=0
+    local workers_to_kill
+    workers_to_kill="$(list_core_worker_dirs) $(list_pluggable_worker_dirs)"
+    for worker in $workers_to_kill; do
+        kill_one_worker "$worker" || any_failed=1
+    done
+    if [[ $any_failed -eq 0 ]]; then
+        print_status $GREEN "All workers stopped"
+    else
+        print_status $RED "One or more workers could not be stopped"
+        return 1
     fi
-    print_status $YELLOW "Killing worker processes: $pids"
-    echo "$pids" | xargs kill -TERM 2>/dev/null || true
-    sleep 2
-    echo "$pids" | xargs kill -KILL 2>/dev/null || true
-    print_status $GREEN "All workers stopped"
 }
 
 # Function to show worker status
@@ -527,7 +548,7 @@ run_worker() {
             "${EXECUTOR_WORKER_TYPE}")
                 export EXECUTOR_HEALTH_PORT="$health_port"
                 ;;
-            "ide_callback")
+            "${IDE_CALLBACK_WORKER_TYPE}")
                 export IDE_CALLBACK_HEALTH_PORT="$health_port"
                 ;;
             *)
@@ -606,7 +627,7 @@ run_worker() {
             "${EXECUTOR_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
-            "ide_callback")
+            "${IDE_CALLBACK_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
             *)

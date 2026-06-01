@@ -8,9 +8,9 @@ Today both entry points are no-op aliases over Celery primitives:
 * ``dispatch(task_name, args, kwargs, queue)`` -> ``current_app.send_task(...)``
 * ``@worker_task`` -> ``@shared_task``
 
-In a later PR these will gain per-task routing: when a task name appears
-in ``WORKER_PG_QUEUE_ENABLED_TASKS``, dispatch routes through the PG Queue
-backend instead. Default (env var empty) keeps 100% of traffic on Celery.
+A later phase will route specific tasks through a non-Celery substrate
+(PG Queue) based on configuration; until then everything goes to Celery.
+The exact routing mechanism is intentionally not pinned here.
 
 Call sites should migrate to this module so the eventual substrate switch
 is a single-flag operation rather than a codebase-wide rewrite.

@@ -7,11 +7,13 @@ proved to preserve the Celery default path.
 Two layers:
 
 1. **dispatch()** must produce the same ``current_app.send_task`` call
-   as the raw idiom used at the two existing dispatch sites
-   (``notification/helper.py:76``, ``scheduler/tasks.py:157``).
+   as the raw idiom used at the two existing dispatch sites:
+   ``shared/patterns/notification/helper.py::send_notification_to_worker``
+   and ``scheduler/tasks.py::_execute_scheduled_workflow``.
 
-2. **@worker_task** must be the same object as ``@shared_task`` so that
-   functions decorated with it register identically with the Celery app.
+2. **@worker_task** must register a task with the Celery app so that
+   functions decorated with it behave identically to ones decorated
+   with ``@shared_task``.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from celery import current_app
 
 # --- dispatch() equivalence ---
 
@@ -62,23 +65,28 @@ class TestDispatchEquivalence:
 
         assert mock_app.send_task.call_args.kwargs["queue"] == "notifications"
 
-    def test_defaults_args_to_empty_list(self):
-        """Omitting args must produce [], not None — Celery treats them differently."""
+    def test_omitted_args_forwarded_as_none(self):
+        """Omitted ``args`` is forwarded verbatim as ``None``.
+
+        Celery's own ``send_task`` normalises ``None`` to its native default
+        (a tuple) internally — the seam doesn't coerce, so any third-party
+        router that checks ``isinstance(args, tuple)`` sees Celery's default.
+        """
         from queue_backend import dispatch
 
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch("any_task")
 
-        assert mock_app.send_task.call_args.kwargs["args"] == []
+        assert mock_app.send_task.call_args.kwargs["args"] is None
 
-    def test_defaults_kwargs_to_empty_dict(self):
-        """Omitting kwargs must produce {}, not None."""
+    def test_omitted_kwargs_forwarded_as_none(self):
+        """Same as args — omitted kwargs reaches Celery as ``None``."""
         from queue_backend import dispatch
 
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch("any_task")
 
-        assert mock_app.send_task.call_args.kwargs["kwargs"] == {}
+        assert mock_app.send_task.call_args.kwargs["kwargs"] is None
 
     def test_returns_underlying_handle(self):
         """Whatever send_task returns is what dispatch returns."""
@@ -92,9 +100,9 @@ class TestDispatchEquivalence:
         assert result is sentinel
 
     def test_matches_notification_helper_shape(self):
-        """dispatch() output is identical to the raw send_task at notification/helper.py:76.
+        """Output mirrors the raw send_task at ``send_notification_to_worker``.
 
-        Reference call from helper.py (paraphrased):
+        Reference call from helper (paraphrased):
 
             current_app.send_task(
                 "send_webhook_notification",
@@ -102,8 +110,6 @@ class TestDispatchEquivalence:
                 kwargs={"max_retries": ..., "retry_delay": ..., "platform": ...},
                 queue="notifications",
             )
-
-        The seam must produce the same call.
         """
         from queue_backend import dispatch
 
@@ -126,7 +132,7 @@ class TestDispatchEquivalence:
         assert call.kwargs["queue"] == "notifications"
 
     def test_matches_scheduler_dispatch_shape(self):
-        """dispatch() output is identical to the raw send_task at scheduler/tasks.py:157."""
+        """Output mirrors the raw send_task at ``_execute_scheduled_workflow``."""
         from queue_backend import dispatch
 
         with patch("queue_backend.dispatch.current_app") as mock_app:
@@ -151,54 +157,101 @@ class TestDispatchEquivalence:
 
 
 class TestWorkerTaskEquivalence:
-    """@worker_task produces Celery-task-equivalent objects today.
+    """@worker_task registers tasks indistinguishably from @shared_task today.
 
-    The seam is a thin function wrapper (not an identity alias) so PR #15
-    can grow consumer-registration logic without restructuring callers.
+    The seam is a thin function wrapper (not an identity alias) so a later
+    phase can grow consumer-registration logic without restructuring callers.
+    Assertions go through Celery's task registry so they fail loudly if the
+    decorator stops producing real Celery tasks.
     """
 
-    def test_worker_task_is_callable_passthrough(self):
-        """worker_task delegates to shared_task — verified by calling it with
-        the same args and asserting the produced task carries the same name.
-        """
-        from celery import shared_task
-
-        from queue_backend import worker_task
-
-        @worker_task(name="queue_backend_test.passthrough")
-        def via_seam():
-            return "ok"
-
-        @shared_task(name="queue_backend_test.passthrough_native")
-        def via_native():
-            return "ok"
-
-        # Both should produce something Celery considers a registered task.
-        for t in (via_seam, via_native):
-            assert hasattr(t, "apply") or hasattr(t, "delay")
-
-    def test_bare_decorator_form(self):
-        """@worker_task on a function registers a Celery task."""
+    def test_bare_decorator_registers_with_celery(self):
+        """@worker_task on a function registers the task by its module-qualified name."""
         from queue_backend import worker_task
 
         @worker_task
-        def some_function(x):
+        def queue_backend_test_bare(x):
             return x * 2
 
-        # shared_task returns a Task instance (or a PromiseProxy on import).
-        # We don't care about the concrete type — just that the decorator
-        # produced something call-able with .delay/.apply.
-        assert hasattr(some_function, "apply") or hasattr(some_function, "delay")
+        # Force PromiseProxy resolution — MagicMock.name wouldn't survive this.
+        resolved_name = queue_backend_test_bare.name
+        assert resolved_name in current_app.tasks
+        # Round-trip the registered task to confirm it actually runs.
+        assert current_app.tasks[resolved_name].apply(args=(3,)).get() == 6
 
-    def test_parameterised_decorator_form(self):
-        """@worker_task(name=..., queue=...) accepts kwargs like @shared_task."""
+    def test_parameterised_decorator_uses_explicit_name(self):
+        """@worker_task(name=..., queue=...) registers under the explicit name."""
         from queue_backend import worker_task
 
         @worker_task(name="queue_backend_test.parameterised", queue="general")
         def some_function():
             return "ok"
 
-        assert hasattr(some_function, "apply") or hasattr(some_function, "delay")
+        assert some_function.name == "queue_backend_test.parameterised"
+        assert "queue_backend_test.parameterised" in current_app.tasks
+
+    def test_worker_task_matches_shared_task_registration(self):
+        """A function decorated with @worker_task is the same kind of object as
+        one decorated with @shared_task — same registration semantics, same
+        invocation interface."""
+        from celery import shared_task
+
+        from queue_backend import worker_task
+
+        @worker_task(name="queue_backend_test.via_seam")
+        def via_seam():
+            return "ok"
+
+        @shared_task(name="queue_backend_test.via_native")
+        def via_native():
+            return "ok"
+
+        for task, expected_name in (
+            (via_seam, "queue_backend_test.via_seam"),
+            (via_native, "queue_backend_test.via_native"),
+        ):
+            assert task.name == expected_name
+            assert expected_name in current_app.tasks
+            assert current_app.tasks[expected_name].apply().get() == "ok"
+
+    def test_forwards_decorator_kwargs(self):
+        """All Celery decorator kwargs reach @shared_task.
+
+        Guards against a refactor like ``return shared_task(*args)`` that
+        would silently drop every retry policy, name override, and bind
+        flag in the codebase.
+        """
+        from queue_backend import worker_task
+
+        @worker_task(
+            name="queue_backend_test.kwargs",
+            bind=True,
+            autoretry_for=(ValueError,),
+            max_retries=7,
+            default_retry_delay=42,
+        )
+        def with_policy(self):
+            return "ok"
+
+        assert with_policy.name == "queue_backend_test.kwargs"
+        registered = current_app.tasks["queue_backend_test.kwargs"]
+        assert ValueError in (registered.autoretry_for or ())
+        assert registered.max_retries == 7
+        assert registered.default_retry_delay == 42
+
+    def test_bare_decorator_form_uses_module_qualified_name(self):
+        """``@worker_task`` (no parens) gives Celery's auto-generated name."""
+        from queue_backend import worker_task
+
+        @worker_task
+        def queue_backend_test_auto_named():
+            return "ok"
+
+        # Default name is ``<module>.<function>``.
+        assert queue_backend_test_auto_named.name.endswith(
+            ".queue_backend_test_auto_named"
+        )
+        assert queue_backend_test_auto_named.name in current_app.tasks
 
 
 # --- Module surface ---

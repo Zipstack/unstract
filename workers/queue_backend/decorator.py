@@ -26,8 +26,9 @@ def worker_task(*args: Any, **kwargs: Any) -> Any:
     """Register a function as a worker task via the queue_backend seam.
 
     Today this is a one-line passthrough to ``celery.shared_task``. The
-    indirection is the seam: when PR #15 adds PG Queue routing, the
-    consumer-registration logic lands here without touching call sites.
+    indirection is the seam: when a later phase adds PG Queue routing,
+    the consumer-registration logic lands here without touching call
+    sites.
 
     The return type is ``Any`` because ``shared_task`` returns different
     objects depending on call form — a ``PromiseProxy`` for the bare
