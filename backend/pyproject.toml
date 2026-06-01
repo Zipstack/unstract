@@ -67,7 +67,7 @@ dev = [
     "inotify>=0.2.10",
     "poethepoet>=0.33.1",
     "debugpy>=1.8.14",
-    "pytest>=8.3.5",
+    "pytest>=9.0.3",
     "responses>=0.25.7",
     "psutil>=7.0.0",
 ]

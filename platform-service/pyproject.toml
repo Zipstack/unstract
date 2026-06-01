@@ -26,7 +26,7 @@ unstract-core = { path = "../unstract/core", editable = true }
 unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
-test = ["pytest>=8.0.1"]
+test = ["pytest>=9.0.3"]
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling
