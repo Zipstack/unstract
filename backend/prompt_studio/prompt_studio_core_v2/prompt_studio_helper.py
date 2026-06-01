@@ -126,19 +126,26 @@ class PromptStudioHelper:
             )
             return
 
-        ProfileManager.objects.create(
-            prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
-            is_default=True,
-            created_by=user,
-            modified_by=user,
-            profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
-            chunk_size=0,
-            chunk_overlap=0,
-            section="Default",
-            retrieval_strategy="simple",
-            similarity_top_k=3,
-            **adapters,
-        )
+        # Best-effort: a profile creation hiccup must never break project creation
+        try:
+            ProfileManager.objects.create(
+                prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
+                is_default=True,
+                created_by=user,
+                modified_by=user,
+                profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
+                chunk_size=0,
+                chunk_overlap=0,
+                section="Default",
+                retrieval_strategy="simple",
+                similarity_top_k=3,
+                **adapters,
+            )
+        except Exception:
+            logger.warning(
+                "Skipping default profile creation: failed to create profile",
+                exc_info=True,
+            )
 
     @staticmethod
     def validate_adapter_status(
