@@ -494,11 +494,9 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
 
 
-# Branded OpenAI-compatible providers. Wire protocol is identical to the
-# generic OpenAI Compatible adapter; the only difference is a hard-coded
-# endpoint so users pick a model + API key without typing a URL. Cost stays
-# unresolved (same as any non-OpenAI gateway) since requests route through
-# LiteLLM's generic custom_openai provider.
+# NVIDIA Build reuses the generic OpenAI Compatible adapter wire protocol with a
+# hard-coded endpoint. Cost stays unresolved (LiteLLM prices nothing under the
+# generic custom_openai provider, and ships no nvidia_nim prices either).
 def _validate_branded_openai_compatible(
     adapter_metadata: dict[str, "Any"], default_api_base: str
 ) -> dict[str, "Any"]:
@@ -515,6 +513,7 @@ def _validate_branded_openai_compatible(
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 
 
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
@@ -532,15 +531,49 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         )
 
 
-class OpenRouterLLMParameters(OpenAICompatibleLLMParameters):
-    """OpenAI-compatible adapter for OpenRouter (openrouter.ai)."""
+class OpenRouterLLMParameters(BaseChatCompletionParameters):
+    """Adapter for OpenRouter (openrouter.ai).
 
+    Routed through LiteLLM's native `openrouter/` provider (not the generic
+    `custom_openai` path) so that per-token costs resolve for the OpenRouter
+    models LiteLLM prices, and reasoning params map natively. LiteLLM's
+    openrouter handler applies the provider-specific transforms itself, so the
+    `custom_openai` extra_body workaround is intentionally not used here.
+    """
+
+    api_key: str
     # Endpoint defaults to OpenRouter; users may override it in the schema.
     api_base: str = _OPENROUTER_API_BASE
+    reasoning_effort: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        return _validate_branded_openai_compatible(adapter_metadata, _OPENROUTER_API_BASE)
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _OPENROUTER_API_BASE
+        adapter_metadata["model"] = OpenRouterLLMParameters.validate_model(
+            adapter_metadata
+        )
+        # Forward reasoning_effort natively only when reasoning is enabled;
+        # LiteLLM's openrouter handler maps it to OpenRouter's reasoning param.
+        # Drop temperature on the reasoning path — OpenAI o-series models reject
+        # a non-default temperature, and OpenRouter forwards it upstream as-is.
+        enable_reasoning = adapter_metadata.pop("enable_reasoning", False)
+        if enable_reasoning:
+            adapter_metadata["temperature"] = None
+        else:
+            adapter_metadata.pop("reasoning_effort", None)
+        return OpenRouterLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenRouter adapter.")
+        if model.startswith(_OPENROUTER_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENROUTER_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):

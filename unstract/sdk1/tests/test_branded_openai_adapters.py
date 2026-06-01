@@ -34,20 +34,57 @@ def test_branded_llm_adapter_is_registered(adapter: type) -> None:
     assert llm_adapters[adapter_id][Common.MODULE] is adapter
 
 
-@pytest.mark.parametrize(
-    ("params", "default_base"),
-    [
-        (NvidiaBuildLLMParameters, _NVIDIA_BUILD_API_BASE),
-        (OpenRouterLLMParameters, _OPENROUTER_API_BASE),
-    ],
-)
-def test_branded_llm_prefixes_model_and_defaults_api_base(
-    params: type, default_base: str
-) -> None:
-    validated = params.validate({"model": "some-model", "api_key": "k"})
+def test_nvidia_llm_prefixes_model_via_custom_openai() -> None:
+    validated = NvidiaBuildLLMParameters.validate({"model": "some-model", "api_key": "k"})
 
     assert validated["model"] == "custom_openai/some-model"
-    assert validated["api_base"] == default_base
+    assert validated["api_base"] == _NVIDIA_BUILD_API_BASE
+
+
+def test_openrouter_llm_routes_via_native_openrouter_provider() -> None:
+    from litellm import get_llm_provider
+
+    validated = OpenRouterLLMParameters.validate(
+        {"model": "openai/gpt-4o", "api_key": "k"}
+    )
+
+    assert validated["model"] == "openrouter/openai/gpt-4o"
+    assert validated["api_base"] == _OPENROUTER_API_BASE
+    # Native routing is what lets LiteLLM resolve OpenRouter pricing.
+    assert get_llm_provider(validated["model"])[1] == "openrouter"
+
+
+def test_openrouter_model_prefix_is_idempotent() -> None:
+    once = OpenRouterLLMParameters.validate({"model": "openai/gpt-4o", "api_key": "k"})
+    twice = OpenRouterLLMParameters.validate(dict(once))
+
+    assert twice["model"] == once["model"] == "openrouter/openai/gpt-4o"
+
+
+def test_openrouter_forwards_reasoning_effort_only_when_enabled() -> None:
+    on = OpenRouterLLMParameters.validate(
+        {
+            "model": "openai/gpt-5",
+            "api_key": "k",
+            "enable_reasoning": True,
+            "reasoning_effort": "high",
+        }
+    )
+    assert on["reasoning_effort"] == "high"
+    # enable_reasoning is a UI-only toggle and must not leak to LiteLLM.
+    assert "enable_reasoning" not in on
+    # temperature dropped so OpenAI o-series (via OpenRouter) don't reject it.
+    assert on["temperature"] is None
+
+    off = OpenRouterLLMParameters.validate(
+        {
+            "model": "openai/gpt-4o",
+            "api_key": "k",
+            "enable_reasoning": False,
+            "reasoning_effort": "high",
+        }
+    )
+    assert off["reasoning_effort"] is None
 
 
 @pytest.mark.parametrize(

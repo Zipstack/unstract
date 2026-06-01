@@ -17,12 +17,12 @@
       "type": "string",
       "title": "API Key",
       "format": "password",
-      "description": "Your NVIDIA API key from build.nvidia.com."
+      "description": "Your NVIDIA API key from [build.nvidia.com](https://build.nvidia.com)."
     },
     "model": {
       "type": "string",
       "title": "Model",
-      "description": "The model name as listed on build.nvidia.com. Examples: nvidia/nemotron-mini-4b-instruct, meta/llama-3.1-70b-instruct"
+      "description": "The model name as listed on [build.nvidia.com/models](https://build.nvidia.com/models). Examples: nvidia/nemotron-mini-4b-instruct, meta/llama-3.1-70b-instruct"
     },
     "api_base": {
       "type": "string",

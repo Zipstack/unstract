@@ -16,13 +16,13 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "description": "The embedding model name as listed on build.nvidia.com. Examples: nvidia/nv-embedqa-e5-v5, nvidia/llama-3.2-nv-embedqa-1b-v2"
+      "description": "The embedding model name as listed on [build.nvidia.com/models](https://build.nvidia.com/models). Examples: nvidia/nv-embedqa-e5-v5, nvidia/llama-3.2-nv-embedqa-1b-v2"
     },
     "api_key": {
       "type": "string",
       "title": "API Key",
       "format": "password",
-      "description": "Your NVIDIA API key from build.nvidia.com."
+      "description": "Your NVIDIA API key from [build.nvidia.com](https://build.nvidia.com)."
     },
     "api_base": {
       "type": "string",

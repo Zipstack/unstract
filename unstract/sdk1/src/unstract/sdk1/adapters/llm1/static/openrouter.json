@@ -17,12 +17,12 @@
       "type": "string",
       "title": "API Key",
       "format": "password",
-      "description": "Your OpenRouter API key from openrouter.ai/keys."
+      "description": "Your OpenRouter API key from [openrouter.ai/keys](https://openrouter.ai/keys)."
     },
     "model": {
       "type": "string",
       "title": "Model",
-      "description": "The model slug as listed on openrouter.ai/models. Examples: openai/gpt-4o, anthropic/claude-3.5-sonnet, meta-llama/llama-3.1-70b-instruct"
+      "description": "The model slug as listed on [openrouter.ai/models](https://openrouter.ai/models). Examples: openai/gpt-4o, anthropic/claude-3.5-sonnet, meta-llama/llama-3.1-70b-instruct"
     },
     "api_base": {
       "type": "string",
@@ -37,7 +37,7 @@
       "multipleOf": 1,
       "title": "Maximum Output Tokens",
       "default": 4096,
-      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default. Sent as `max_completion_tokens` when Enable Reasoning is on."
+      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default."
     },
     "max_retries": {
       "type": "number",
@@ -59,7 +59,7 @@
       "type": "boolean",
       "title": "Enable Reasoning",
       "default": false,
-      "description": "Toggle on for reasoning models to drop `temperature` and send `max_completion_tokens` and `reasoning_effort` via `extra_body` so the upstream API accepts them."
+      "description": "Toggle on for reasoning models to send `reasoning_effort` to OpenRouter. See [OpenRouter reasoning docs](https://openrouter.ai/docs/use-cases/reasoning-tokens)."
     }
   },
   "allOf": [
