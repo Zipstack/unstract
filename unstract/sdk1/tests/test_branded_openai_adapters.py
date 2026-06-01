@@ -243,3 +243,52 @@ def test_embedding_strips_embed_batch_size_before_litellm(
     assert "embed_batch_size" not in captured
     assert captured["encoding_format"] == "float"
     assert captured["model"] == "nvidia_nim/nvidia/nv-embedqa-e5-v5"
+    # Test-connection embeds the snippet as a query; NVIDIA requires input_type.
+    assert captured["input_type"] == "query"
+
+
+def _patch_capture_embedding(monkeypatch: pytest.MonkeyPatch) -> dict:
+    import unstract.sdk1.embedding as emb_mod
+
+    captured: dict = {}
+
+    def fake_embedding(model: str, input: list, **kwargs: object) -> dict:  # noqa: A002
+        captured["model"] = model
+        captured.update(kwargs)
+        return {"data": [{"embedding": [0.0, 1.0]}] * len(input)}
+
+    monkeypatch.setattr(emb_mod.litellm, "embedding", fake_embedding)
+    return captured
+
+
+def test_nvidia_embedding_batch_sends_passage_input_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import unstract.sdk1.embedding as emb_mod
+
+    captured = _patch_capture_embedding(monkeypatch)
+    emb = emb_mod.Embedding(
+        adapter_id=NvidiaBuildEmbeddingAdapter.get_id(),
+        adapter_metadata={"model": "nvidia/nv-embedqa-e5-v5", "api_key": "k"},
+    )
+    emb.get_embeddings(["a", "b"])
+    assert captured["input_type"] == "passage"
+
+
+def test_compatible_embedding_omits_input_type(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # input_type is NVIDIA-only; non-nvidia_nim models must not receive it.
+    import unstract.sdk1.embedding as emb_mod
+
+    captured = _patch_capture_embedding(monkeypatch)
+    emb_mod.Embedding(
+        adapter_id=OpenAICompatibleEmbeddingAdapter.get_id(),
+        adapter_metadata={
+            "model": "BAAI/bge-m3",
+            "api_base": "https://gw.example/v1",
+            "api_key": "k",
+        },
+    )
+    assert "input_type" not in captured
+    assert captured["model"] == "openai/BAAI/bge-m3"

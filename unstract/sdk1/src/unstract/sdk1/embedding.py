@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 
 litellm.drop_params = True
 
+# NVIDIA's asymmetric retrieval embedding models require an input_type of
+# "query" or "passage"; litellm forwards it via extra_body for nvidia_nim.
+# Other providers reject the field, so it's only sent for nvidia_nim models.
+_NVIDIA_NIM_MODEL_PREFIX = "nvidia_nim/"
+
 
 class Embedding:
     """Unified embedding interface powered by LiteLLM.
@@ -123,13 +128,19 @@ class Embedding:
             return f"{self._adapter_name} ({name})"
         return name
 
-    def get_embedding(self, text: str) -> list[float]:
+    def _prepare_call(self, input_type: str | None) -> tuple[str, dict, int | None]:
+        """Split model/retries out of kwargs and inject NVIDIA's input_type."""
+        kwargs = self.kwargs.copy()
+        model = kwargs.pop("model")
+        max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
+        if input_type and str(model).startswith(_NVIDIA_NIM_MODEL_PREFIX):
+            kwargs["input_type"] = input_type
+        return model, kwargs, max_retries
+
+    def get_embedding(self, text: str, input_type: str = "query") -> list[float]:
         """Return embedding vector for query string."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
             resp = call_with_retry(
                 lambda: litellm.embedding(model=model, input=[text], **kwargs),
                 max_retries=max_retries,
@@ -140,13 +151,12 @@ class Embedding:
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
-    def get_embeddings(self, texts: list[str]) -> list[list[float]]:
+    def get_embeddings(
+        self, texts: list[str], input_type: str = "passage"
+    ) -> list[list[float]]:
         """Return embedding vectors for list of query strings."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
             resp = call_with_retry(
                 lambda: litellm.embedding(model=model, input=texts, **kwargs),
                 max_retries=max_retries,
@@ -157,13 +167,10 @@ class Embedding:
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
-    async def get_aembedding(self, text: str) -> list[float]:
+    async def get_aembedding(self, text: str, input_type: str = "query") -> list[float]:
         """Return async embedding vector for query string."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
             resp = await acall_with_retry(
                 lambda: litellm.aembedding(model=model, input=[text], **kwargs),
                 max_retries=max_retries,
@@ -174,13 +181,12 @@ class Embedding:
         except Exception as e:
             raise parse_litellm_err(e, self._get_adapter_info()) from e
 
-    async def get_aembeddings(self, texts: list[str]) -> list[list[float]]:
+    async def get_aembeddings(
+        self, texts: list[str], input_type: str = "passage"
+    ) -> list[list[float]]:
         """Return async embedding vectors for list of query strings."""
         try:
-            kwargs = self.kwargs.copy()
-            model = kwargs.pop("model")
-            max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())
-
+            model, kwargs, max_retries = self._prepare_call(input_type)
             resp = await acall_with_retry(
                 lambda: litellm.aembedding(model=model, input=texts, **kwargs),
                 max_retries=max_retries,
@@ -260,25 +266,25 @@ class EmbeddingCompat(BaseEmbedding):
             )
 
     def _get_query_embedding(self, query: str) -> list[float]:
-        return self._embedding_instance.get_embedding(query)
+        return self._embedding_instance.get_embedding(query, input_type="query")
 
     def _get_text_embedding(self, text: str) -> list[float]:
-        return self._embedding_instance.get_embedding(text)
+        return self._embedding_instance.get_embedding(text, input_type="passage")
 
     def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        return self._embedding_instance.get_embeddings(texts)
+        return self._embedding_instance.get_embeddings(texts, input_type="passage")
 
     def get_query_embedding(self, query: str) -> list[float]:
         return self._get_query_embedding(query)
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
-        return await self._embedding_instance.get_aembedding(query)
+        return await self._embedding_instance.get_aembedding(query, input_type="query")
 
     async def _aget_text_embedding(self, text: str) -> list[float]:
-        return await self._embedding_instance.get_aembedding(text)
+        return await self._embedding_instance.get_aembedding(text, input_type="passage")
 
     async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        return await self._embedding_instance.get_aembeddings(texts)
+        return await self._embedding_instance.get_aembeddings(texts, input_type="passage")
 
     async def get_aquery_embedding(self, query: str) -> list[float]:
         return await self._aget_query_embedding(query)
