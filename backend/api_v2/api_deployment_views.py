@@ -386,17 +386,16 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         """Override partial_update to handle sharing notifications."""
         # Get current instance and shared users
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        shared_users_updated = "shared_users" in request.data
+        current_shared_users = set()
+        if shared_users_updated:
+            current_shared_users = set(instance.shared_users.all())
 
         # Perform the update
         response = super().partial_update(request, *args, **kwargs)
 
         # If successful and shared_users changed, send notifications
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and notification_plugin
-        ):
+        if response.status_code == 200 and shared_users_updated and notification_plugin:
             try:
                 instance.refresh_from_db()
                 new_shared_users = set(instance.shared_users.all())

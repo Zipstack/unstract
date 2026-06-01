@@ -141,9 +141,12 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         """Override partial_update to handle sharing notifications."""
         # Get the workflow instance before update
         workflow = self.get_object()
+        shared_users_updated = "shared_users" in request.data
 
-        # Store current shared users for comparison
-        current_shared_users = set(workflow.shared_users.all())
+        # Store current shared users for comparison only when sharing changes.
+        current_shared_users = set()
+        if shared_users_updated:
+            current_shared_users = set(workflow.shared_users.all())
 
         # Perform the standard partial update
         response = super().partial_update(request, *args, **kwargs)
@@ -151,7 +154,7 @@ class WorkflowViewSet(viewsets.ModelViewSet):
         # If update was successful and shared_users field was modified
         if (
             response.status_code == 200
-            and "shared_users" in request.data
+            and shared_users_updated
             and bool(notification_plugin)
         ):
             try:

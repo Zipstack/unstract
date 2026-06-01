@@ -292,16 +292,17 @@ class AdapterInstanceViewSet(ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Store current shared users before update (for email notifications)
         adapter = self.get_object()
-        current_shared_users = set(adapter.shared_users.all())
+        shared_users_updated = AdapterKeys.SHARED_USERS in request.data
+        current_shared_users = set()
 
-        if AdapterKeys.SHARED_USERS in request.data:
+        if shared_users_updated:
+            current_shared_users = set(adapter.shared_users.all())
             # find the deleted users
             shared_users = {
                 int(user_id) for user_id in request.data.get("shared_users", {})
             }
-            current_users = {user.id for user in adapter.shared_users.all()}
+            current_users = {user.id for user in current_shared_users}
             removed_users = current_users.difference(shared_users)
 
             # if removed user use this adapter as default
@@ -343,7 +344,11 @@ class AdapterInstanceViewSet(ModelViewSet):
         response = super().partial_update(request, *args, **kwargs)
 
         # Send email notifications to newly shared users
-        if response.status_code == 200 and AdapterKeys.SHARED_USERS in request.data:
+        if (
+            response.status_code == 200
+            and shared_users_updated
+            and bool(notification_plugin)
+        ):
             try:
                 adapter.refresh_from_db()
                 new_shared_users = set(adapter.shared_users.all())
