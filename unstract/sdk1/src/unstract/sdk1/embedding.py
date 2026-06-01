@@ -29,9 +29,8 @@ logger = logging.getLogger(__name__)
 
 litellm.drop_params = True
 
-# NVIDIA's asymmetric retrieval embedding models require an input_type of
-# "query" or "passage"; litellm forwards it via extra_body for nvidia_nim.
-# Other providers reject the field, so it's only sent for nvidia_nim models.
+# Asymmetric embedding models need an input_type (query|passage); other
+# providers reject the field, so it's sent only for this prefix.
 _NVIDIA_NIM_MODEL_PREFIX = "nvidia_nim/"
 
 
@@ -108,9 +107,7 @@ class Embedding:
             self.platform_kwargs: dict[str, object] = kwargs
             self.kwargs: dict[str, object] = self.adapter.validate(self._adapter_metadata)
             self._cost_model: str | None = self.kwargs.pop("cost_model", None)
-            # embed_batch_size is a llama-index client-side batching hint, not an
-            # API field. Strip it so it isn't forwarded to litellm.embedding and
-            # rejected by strict gateways (e.g. NVIDIA Build returns 400).
+            # Client-side batching hint, not an API field — keep it off the wire.
             self.kwargs.pop("embed_batch_size", None)
         except (ValidationError, ValueError) as e:
             raise SdkError("Invalid embedding adapter metadata: " + str(e)) from e
@@ -129,7 +126,7 @@ class Embedding:
         return name
 
     def _prepare_call(self, input_type: str | None) -> tuple[str, dict, int | None]:
-        """Split model/retries out of kwargs and inject NVIDIA's input_type."""
+        """Split model/retries out of kwargs and inject input_type when applicable."""
         kwargs = self.kwargs.copy()
         model = kwargs.pop("model")
         max_retries = pop_litellm_retry_kwargs(kwargs, self._get_adapter_info())

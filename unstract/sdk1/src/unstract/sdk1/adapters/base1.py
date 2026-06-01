@@ -1378,8 +1378,7 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_base: str | None = None
     embed_batch_size: int | None = 10
     dimensions: int | None = None  # For text-embedding-3-* models
-    # LiteLLM sends encoding_format=null when unset; strict OpenAI-compatible
-    # endpoints (e.g. NVIDIA Build) reject null, so subclasses default it.
+    # Strict endpoints reject the null LiteLLM sends when this is unset.
     encoding_format: str | None = None
 
     @staticmethod
@@ -1419,7 +1418,7 @@ class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
         api_base = adapter_metadata.get("api_base")
         if not (isinstance(api_base, str) and api_base.strip()):
             adapter_metadata["api_base"] = _NVIDIA_BUILD_API_BASE
-        # NVIDIA rejects the null LiteLLM sends by default; pin a real value.
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
         adapter_metadata.setdefault("encoding_format", "float")
         adapter_metadata["model"] = NvidiaBuildEmbeddingParameters.validate_model(
             adapter_metadata
@@ -1455,7 +1454,7 @@ class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
         api_key = adapter_metadata.get("api_key")
         if isinstance(api_key, str) and not api_key.strip():
             adapter_metadata["api_key"] = None
-        # Strict gateways reject the null encoding_format LiteLLM sends by default.
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
         adapter_metadata.setdefault("encoding_format", "float")
         adapter_metadata["model"] = OpenAICompatibleEmbeddingParameters.validate_model(
             adapter_metadata
