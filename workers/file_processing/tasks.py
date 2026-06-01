@@ -10,6 +10,8 @@ import os
 import time
 from typing import Any
 
+from queue_backend import worker_task
+
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
 
@@ -39,9 +41,6 @@ from shared.models.execution_models import (
     create_organization_context,
 )
 from shared.processing.files.processor import FileProcessor
-
-# Import manual review service with WorkflowUtil access
-from worker import app
 
 from unstract.core.data_models import (
     ExecutionStatus,
@@ -255,7 +254,7 @@ def _process_file_batch_core(
     return _compile_batch_result(context)
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.PROCESS_FILE_BATCH,
     max_retries=0,  # Match Django backend pattern
@@ -1507,7 +1506,7 @@ def _process_file(
     )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.PROCESS_FILE_BATCH_API,
     max_retries=0,  # Match Django backend
@@ -1993,7 +1992,7 @@ def resilient_executor(func):
 
 
 # Resilient file processor
-@app.task(bind=True)
+@worker_task(bind=True)
 @resilient_executor
 @with_execution_context
 def process_file_batch_resilient(
@@ -2030,7 +2029,7 @@ def process_file_batch_resilient(
 # Register the same task function with the old Django task names for compatibility
 
 
-@app.task(
+@worker_task(
     bind=True,
     name="workflow_manager.workflow_v2.file_execution_tasks.process_file_batch",
     max_retries=0,

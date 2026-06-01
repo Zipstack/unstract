@@ -53,16 +53,19 @@ function useShareModal({
         userList = responseData.map((user) => ({
           id: user.id,
           email: user.email,
+          is_admin: user.is_admin,
         }));
       } else if (responseData?.members && Array.isArray(responseData.members)) {
         userList = responseData.members.map((member) => ({
           id: member.id,
           email: member.email,
+          is_admin: member.is_admin,
         }));
       } else if (responseData?.users && Array.isArray(responseData.users)) {
         userList = responseData.users.map((user) => ({
           id: user.id,
           email: user.email,
+          is_admin: user.is_admin,
         }));
       }
 

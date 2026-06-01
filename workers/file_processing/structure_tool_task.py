@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from file_processing.worker import app
+from queue_backend import worker_task
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
 
@@ -190,7 +191,7 @@ def _should_skip_extraction_for_smart_table(
 # -----------------------------------------------------------------------
 
 
-@app.task(bind=True, name=str(TaskName.EXECUTE_STRUCTURE_TOOL))
+@worker_task(bind=True, name=str(TaskName.EXECUTE_STRUCTURE_TOOL))
 def execute_structure_tool(self, params: dict) -> dict:
     """Execute structure tool as a Celery task.
 

@@ -17,6 +17,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
+import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
 function SharePermission({
@@ -30,6 +31,8 @@ function SharePermission({
   onApply,
   isSharableToOrg = false,
 }) {
+  const { sessionDetails } = useSessionStore();
+  const currentUserId = sessionDetails?.id?.toString();
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
@@ -37,25 +40,40 @@ function SharePermission({
 
   useEffect(() => {
     if (permissionEdit && adapter && adapter?.shared_users) {
-      // If permissionEdit is true, and adapter is available,
-      // set the selectedUsers to the IDs of shared users
+      const creatorId = (
+        adapter?.created_by?.id ?? adapter?.created_by
+      )?.toString();
       const users = allUsers.filter((user) => {
-        if (adapter?.created_by?.id !== undefined) {
-          return isSharableToOrg
-            ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== adapter?.created_by?.id?.toString() &&
-                !selectedUsers.includes(user?.id?.toString());
-        } else {
-          return isSharableToOrg
-            ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== adapter?.created_by?.toString() &&
-                !selectedUsers.includes(user?.id?.toString());
+        const userId = user?.id?.toString();
+        // Already-selected users shouldn't reappear as options
+        if (selectedUsers.includes(userId)) {
+          return false;
         }
+        // Can't share a resource with yourself
+        if (userId === currentUserId) {
+          return false;
+        }
+        // Admins already have access to everything — sharing is a no-op
+        if (user?.is_admin) {
+          return false;
+        }
+        // The creator already owns it, unless we're sharing org-wide
+        if (!isSharableToOrg && userId === creatorId) {
+          return false;
+        }
+        return true;
       });
       setFilteredUsers(users);
       setShareWithEveryone(adapter?.shared_to_org || false);
     }
-  }, [permissionEdit, adapter, allUsers, selectedUsers]);
+  }, [
+    permissionEdit,
+    adapter,
+    allUsers,
+    selectedUsers,
+    currentUserId,
+    isSharableToOrg,
+  ]);
 
   useEffect(() => {
     if (adapter?.shared_users) {
@@ -99,31 +117,37 @@ function SharePermission({
     .filter((g) => !selectedGroupIds.includes(g.id))
     .map((g) => ({ label: g.name, value: g.id }));
 
-  let sharedWithContent;
-  if (shareWithEveryone) {
-    sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
-  } else if (selectedUsers.length > 0 || selectedGroupIds.length > 0) {
-    const userItems = selectedUsers.map((userId) => {
-      const user = allUsers.find((u) => {
-        if (u?.id !== undefined) {
-          return u?.id.toString() === userId.toString();
-        }
-        return u?.toString() === userId.toString();
-      });
+  // Admins have org-wide access, so they aren't listed as explicit shares.
+  // This also hides legacy admin rows created before the auto-share removal.
+  const userItems = selectedUsers
+    .map((userId) => {
+      const user = allUsers.find((u) =>
+        u?.id !== undefined
+          ? u?.id.toString() === userId.toString()
+          : u?.toString() === userId.toString(),
+      );
       return {
         kind: "user",
         id: user?.id,
         email: user?.email,
+        is_admin: user?.is_admin,
       };
-    });
-    const groupItems = selectedGroupIds.map((groupId) => {
-      const group = allGroups.find((g) => g.id === groupId);
-      return {
-        kind: "group",
-        id: groupId,
-        name: group?.name || `Group #${groupId}`,
-      };
-    });
+    })
+    .filter((user) => !user.is_admin);
+
+  const groupItems = selectedGroupIds.map((groupId) => {
+    const group = allGroups.find((g) => g.id === groupId);
+    return {
+      kind: "group",
+      id: groupId,
+      name: group?.name || `Group #${groupId}`,
+    };
+  });
+
+  let sharedWithContent;
+  if (shareWithEveryone) {
+    sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
+  } else if (userItems.length > 0 || groupItems.length > 0) {
     sharedWithContent = (
       <List
         dataSource={[...userItems, ...groupItems]}
