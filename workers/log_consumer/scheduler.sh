@@ -29,23 +29,27 @@ cleanup() {
     echo "Scheduler received shutdown signal"
     echo "Exiting gracefully..."
     echo "=========================================="
-    exit 0
+    return 0
 }
 
-trap cleanup SIGTERM SIGINT
+# The trap exits after cleanup runs; cleanup itself returns so the function
+# has an explicit terminal return (no unreachable code after exit).
+trap 'cleanup; exit 0' SIGTERM SIGINT
 
 run_task() {
     # $1 = display name, $2 = command. Returns the command's exit code but
     # never propagates failure — the caller logs it and moves on.
     local task_name="$1"
     local cmd="$2"
+    local exit_code=0
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Run #${run_count}] Triggering ${task_name}..."
     if eval "${cmd}" 2>&1; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Run #${run_count}] ✓ ${task_name} OK"
     else
-        local exit_code=$?
+        exit_code=$?
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] [Run #${run_count}] ✗ ${task_name} failed with exit code ${exit_code}"
     fi
+    return "${exit_code}"
 }
 
 run_count=0

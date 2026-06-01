@@ -13,6 +13,7 @@ import {
   Tag,
   Typography,
 } from "antd";
+import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -41,6 +42,40 @@ const defaultKeys = [
     isActive: false,
   },
 ];
+
+// Keyboard-accessible "Inactive" pill. Split out of the key-row render so the
+// activation control's conditional handlers don't inflate the row's complexity.
+function InactivePlatformKeyTag({ keyName, canActivate, onActivate }) {
+  if (!canActivate) {
+    return <Tag tabIndex={-1}>Inactive</Tag>;
+  }
+
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      onActivate();
+    }
+  };
+
+  return (
+    <Tag
+      className="plt-set-key-pill-clickable"
+      role="button"
+      tabIndex={0}
+      aria-label={`Activate ${keyName}`}
+      onClick={onActivate}
+      onKeyDown={handleKeyDown}
+    >
+      Inactive
+    </Tag>
+  );
+}
+
+InactivePlatformKeyTag.propTypes = {
+  keyName: PropTypes.string,
+  canActivate: PropTypes.bool,
+  onActivate: PropTypes.func.isRequired,
+};
 
 function PlatformSettings() {
   const [activeKey, setActiveKey] = useState(null);
@@ -349,40 +384,11 @@ function PlatformSettings() {
                             {isActive ? (
                               <Tag color="success">Active</Tag>
                             ) : (
-                              <Tag
-                                className={
-                                  canActivate
-                                    ? "plt-set-key-pill-clickable"
-                                    : undefined
-                                }
-                                role={canActivate ? "button" : undefined}
-                                tabIndex={canActivate ? 0 : -1}
-                                aria-label={
-                                  canActivate
-                                    ? `Activate ${keyDetails?.keyName}`
-                                    : undefined
-                                }
-                                onClick={
-                                  canActivate
-                                    ? () => handleToggle(keyIndex)
-                                    : undefined
-                                }
-                                onKeyDown={
-                                  canActivate
-                                    ? (e) => {
-                                        if (
-                                          e.key === "Enter" ||
-                                          e.key === " "
-                                        ) {
-                                          e.preventDefault();
-                                          handleToggle(keyIndex);
-                                        }
-                                      }
-                                    : undefined
-                                }
-                              >
-                                Inactive
-                              </Tag>
+                              <InactivePlatformKeyTag
+                                keyName={keyDetails?.keyName}
+                                canActivate={canActivate}
+                                onActivate={() => handleToggle(keyIndex)}
+                              />
                             )}
                           </div>
                           <div>

@@ -201,19 +201,22 @@ class WorkflowExecutionStatusUpdateSerializer(serializers.Serializer):
                         "total_files": "total_files is required when file aggregates are provided."
                     }
                 )
-            return attrs
-
-        if successful is not None and successful > total:
-            raise serializers.ValidationError(
-                {"successful_files": "successful_files cannot exceed total_files."}
-            )
-        if failed is not None and failed > total:
-            raise serializers.ValidationError(
-                {"failed_files": "failed_files cannot exceed total_files."}
-            )
-        if successful is not None and failed is not None and successful + failed > total:
-            msg = "successful_files + failed_files cannot exceed total_files."
-            raise serializers.ValidationError({"non_field_errors": msg})
+        else:
+            if successful is not None and successful > total:
+                raise serializers.ValidationError(
+                    {"successful_files": "successful_files cannot exceed total_files."}
+                )
+            if failed is not None and failed > total:
+                raise serializers.ValidationError(
+                    {"failed_files": "failed_files cannot exceed total_files."}
+                )
+            if (
+                successful is not None
+                and failed is not None
+                and successful + failed > total
+            ):
+                msg = "successful_files + failed_files cannot exceed total_files."
+                raise serializers.ValidationError({"non_field_errors": msg})
         return attrs
 
 

@@ -52,8 +52,8 @@ def process_notification_buffer() -> bool:
                 headers={"Authorization": f"Bearer {internal_api_key}"},
                 timeout=60.0,
             )
-    except httpx.HTTPError as e:
-        logger.error("HTTP error calling process-buffer: %s", e)
+    except httpx.HTTPError:
+        logger.exception("HTTP error calling process-buffer")
         return False
     except Exception:
         logger.exception("Unexpected error calling process-buffer")
