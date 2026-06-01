@@ -6,7 +6,7 @@ No Django dependencies, works in pure worker environment.
 
 import logging
 
-from celery import current_app
+from queue_backend import dispatch
 
 # Import shared data models from @unstract/core
 from unstract.core.data_models import (
@@ -73,7 +73,7 @@ def send_notification_to_worker(
         payload_dict = payload.to_webhook_payload()
 
         # Send task to notification worker
-        current_app.send_task(
+        dispatch(
             "send_webhook_notification",
             args=[
                 url,

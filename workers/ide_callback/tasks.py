@@ -15,6 +15,7 @@ from datetime import date, datetime
 from typing import Any
 
 from celery import current_app as app
+from queue_backend import worker_task
 from shared.clients.prompt_studio_client import PromptStudioAPIClient
 
 logger = logging.getLogger(__name__)
@@ -140,7 +141,7 @@ def _track_subscription_usage(org_id: str, run_id: str) -> None:
 # ------------------------------------------------------------------
 
 
-@app.task(name="ide_index_complete")
+@worker_task(name="ide_index_complete")
 def ide_index_complete(
     result_dict: dict[str, Any],
     callback_kwargs: dict[str, Any] | None = None,
@@ -299,7 +300,7 @@ def ide_index_complete(
         raise
 
 
-@app.task(name="ide_index_error")
+@worker_task(name="ide_index_error")
 def ide_index_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
@@ -345,7 +346,7 @@ def ide_index_error(
         logger.exception("ide_index_error callback failed")
 
 
-@app.task(name="ide_prompt_complete")
+@worker_task(name="ide_prompt_complete")
 def ide_prompt_complete(
     result_dict: dict[str, Any],
     callback_kwargs: dict[str, Any] | None = None,
@@ -480,7 +481,7 @@ def ide_prompt_complete(
         raise
 
 
-@app.task(name="ide_prompt_error")
+@worker_task(name="ide_prompt_error")
 def ide_prompt_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
@@ -533,7 +534,7 @@ def _get_extraction_client():
     return ExtractionAPIClient()
 
 
-@app.task(name="extraction_complete")
+@worker_task(name="extraction_complete")
 def extraction_complete(
     result_dict: dict[str, Any],
     callback_kwargs: dict[str, Any] | None = None,
@@ -625,7 +626,7 @@ def extraction_complete(
             raise
 
 
-@app.task(name="extraction_error")
+@worker_task(name="extraction_error")
 def extraction_error(
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,

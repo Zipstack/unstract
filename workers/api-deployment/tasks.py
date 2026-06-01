@@ -7,6 +7,7 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
+from queue_backend import worker_task
 from shared.api import InternalAPIClient
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
@@ -289,7 +290,7 @@ def _unified_api_execution(
             logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN_API,
     autoretry_for=(Exception,),
@@ -348,7 +349,7 @@ def async_execute_bin_api(
     )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN,
     autoretry_for=(Exception,),
@@ -993,7 +994,7 @@ def _calculate_manual_review_decisions_for_batch_api(
         return [False] * len(batch)
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 @monitor_performance
 @retry(max_attempts=3, base_delay=2.0)
 @with_execution_context
@@ -1064,7 +1065,7 @@ def api_deployment_status_check(
         raise
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 @monitor_performance
 @with_execution_context
 def api_deployment_cleanup(
