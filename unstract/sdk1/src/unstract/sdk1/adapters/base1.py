@@ -500,8 +500,15 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
 # unresolved (same as any non-OpenAI gateway) since requests route through
 # LiteLLM's generic custom_openai provider.
 def _validate_branded_openai_compatible(
-    adapter_metadata: dict[str, "Any"], api_base: str
+    adapter_metadata: dict[str, "Any"], default_api_base: str
 ) -> dict[str, "Any"]:
+    # Endpoint is exposed in the schema with a sane default; honour a user
+    # override but fall back to the default when blank/absent (e.g. if the
+    # provider ever changes its base URL, users can point at the new one
+    # without an adapter release).
+    api_base = adapter_metadata.get("api_base")
+    if not (isinstance(api_base, str) and api_base.strip()):
+        api_base = default_api_base
     adapter_metadata = {**adapter_metadata, "api_base": api_base}
     return OpenAICompatibleLLMParameters.validate(adapter_metadata)
 
@@ -1354,19 +1361,24 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
 # (used by the branded LLM adapters) has no embedding support, so embeddings
 # route through LiteLLM's native `nvidia_nim` provider instead — it reuses the
 # OpenAI embedding handler and resolves the integrate.api.nvidia.com endpoint
-# automatically. api_base is still pinned for clarity.
+# automatically. The endpoint is exposed with a sane default for overrides.
 _NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
 
 
 class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
     """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
 
-    # Endpoint is hard-coded; users never supply api_base.
+    # Endpoint defaults to NVIDIA Build; users may override it in the schema.
     api_base: str | None = _NVIDIA_BUILD_API_BASE
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        adapter_metadata = {**adapter_metadata, "api_base": _NVIDIA_BUILD_API_BASE}
+        adapter_metadata = dict(adapter_metadata)
+        # Endpoint is exposed in the schema with a sane default; honour an
+        # override but fall back to the default when blank/absent.
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _NVIDIA_BUILD_API_BASE
         adapter_metadata["model"] = NvidiaBuildEmbeddingParameters.validate_model(
             adapter_metadata
         )
@@ -1380,6 +1392,42 @@ class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
         if model.startswith(_NVIDIA_NIM_PROVIDER_PREFIX):
             return model
         return f"{_NVIDIA_NIM_PROVIDER_PREFIX}{model}"
+
+
+class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
+    """Embeddings for any server implementing the OpenAI embeddings API.
+
+    LiteLLM has no generic `custom_openai` embedding handler, so requests route
+    through the `openai/` provider with a user-supplied `api_base` (vLLM,
+    self-hosted gateways, third-party providers). Cost stays unresolved since
+    the endpoint is arbitrary.
+    """
+
+    # api_key is optional (some gateways are keyless); api_base is required.
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_key = adapter_metadata.get("api_key")
+        if isinstance(api_key, str) and not api_key.strip():
+            adapter_metadata["api_key"] = None
+        adapter_metadata["model"] = OpenAICompatibleEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAICompatibleEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError(
+                "model is required for the OpenAI Compatible embedding adapter."
+            )
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENAI_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):

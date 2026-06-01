@@ -24,6 +24,13 @@
       "title": "Model",
       "description": "The model name as listed on build.nvidia.com. Examples: nvidia/nemotron-mini-4b-instruct, meta/llama-3.1-70b-instruct"
     },
+    "api_base": {
+      "type": "string",
+      "format": "url",
+      "title": "API Base",
+      "default": "https://integrate.api.nvidia.com/v1",
+      "description": "NVIDIA Build endpoint. Pre-filled with the default; change only if NVIDIA moves the base URL."
+    },
     "max_tokens": {
       "type": "number",
       "minimum": 0,

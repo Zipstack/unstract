@@ -1,35 +1,37 @@
 {
-  "title": "NVIDIA Build Embedding",
+  "title": "OpenAI Compatible Embedding",
   "type": "object",
   "required": [
     "adapter_name",
-    "api_key",
-    "model"
+    "model",
+    "api_base"
   ],
   "properties": {
     "adapter_name": {
       "type": "string",
       "title": "Name",
       "default": "",
-      "description": "Provide a unique name for this adapter instance. Example: nvidia-build-emb-1"
+      "description": "Provide a unique name for this adapter instance. Example: compatible-emb-1"
     },
     "model": {
       "type": "string",
       "title": "Model",
-      "description": "The embedding model name as listed on build.nvidia.com. Examples: nvidia/nv-embedqa-e5-v5, nvidia/llama-3.2-nv-embedqa-1b-v2"
+      "description": "The embedding model name expected by your OpenAI-compatible endpoint. Examples: text-embedding-3-small, BAAI/bge-m3, nomic-embed-text"
     },
     "api_key": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "title": "API Key",
       "format": "password",
-      "description": "Your NVIDIA API key from build.nvidia.com."
+      "description": "API key for your OpenAI-compatible endpoint. Leave empty if the endpoint does not require one."
     },
     "api_base": {
       "type": "string",
       "format": "uri",
       "title": "API Base",
-      "default": "https://integrate.api.nvidia.com/v1",
-      "description": "NVIDIA Build endpoint. Pre-filled with the default; change only if NVIDIA moves the base URL."
+      "description": "Base URL for the OpenAI-compatible embeddings endpoint. Examples: https://gateway.example.com/v1, https://llm.example.net/openai/v1"
     },
     "embed_batch_size": {
       "type": "number",
