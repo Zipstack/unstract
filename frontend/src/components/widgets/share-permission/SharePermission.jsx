@@ -16,6 +16,7 @@ import {
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 
+import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
 function SharePermission({
@@ -28,31 +29,48 @@ function SharePermission({
   onApply,
   isSharableToOrg = false,
 }) {
+  const { sessionDetails } = useSessionStore();
+  const currentUserId = sessionDetails?.userId?.toString();
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [shareWithEveryone, setShareWithEveryone] = useState(false);
 
   useEffect(() => {
     if (permissionEdit && adapter && adapter?.shared_users) {
-      // If permissionEdit is true, and adapter is available,
-      // set the selectedUsers to the IDs of shared users
+      const creatorId = (
+        adapter?.created_by?.id ?? adapter?.created_by
+      )?.toString();
       const users = allUsers.filter((user) => {
-        if (adapter?.created_by?.id !== undefined) {
-          return isSharableToOrg
-            ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== adapter?.created_by?.id?.toString() &&
-                !selectedUsers.includes(user?.id?.toString());
-        } else {
-          return isSharableToOrg
-            ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== adapter?.created_by?.toString() &&
-                !selectedUsers.includes(user?.id?.toString());
+        const userId = user?.id?.toString();
+        // Already-selected users shouldn't reappear as options
+        if (selectedUsers.includes(userId)) {
+          return false;
         }
+        // Can't share a resource with yourself
+        if (userId === currentUserId) {
+          return false;
+        }
+        // Admins already have access to everything — sharing is a no-op
+        if (user?.is_admin) {
+          return false;
+        }
+        // The creator already owns it, unless we're sharing org-wide
+        if (!isSharableToOrg && userId === creatorId) {
+          return false;
+        }
+        return true;
       });
       setFilteredUsers(users);
       setShareWithEveryone(adapter?.shared_to_org || false);
     }
-  }, [permissionEdit, adapter, allUsers, selectedUsers]);
+  }, [
+    permissionEdit,
+    adapter,
+    allUsers,
+    selectedUsers,
+    currentUserId,
+    isSharableToOrg,
+  ]);
 
   useEffect(() => {
     if (adapter?.shared_users) {
