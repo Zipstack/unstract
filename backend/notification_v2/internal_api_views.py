@@ -483,9 +483,14 @@ def _send_clubbed(
         )
         # Revert outside the committed transaction so a transient broker
         # outage degrades to "retried next tick" rather than "stuck DISPATCHED".
+        # Refund the dispatch_attempts increment from the SENDING claim: a broker
+        # publish failure means no task was queued and no webhook was sent, so
+        # this claim must not consume the redelivery budget — otherwise N
+        # consecutive broker outages would dead-letter a never-delivered row.
         NotificationBuffer.objects.filter(id__in=buffer_ids).update(
             status=BufferStatus.PENDING.value,
             dispatched_at=None,
+            dispatch_attempts=F("dispatch_attempts") - 1,
         )
 
 
@@ -525,8 +530,9 @@ def _dispatch_group(
         # Bound the reaper reclaim loop: a row reclaimed past its dispatch budget
         # (e.g. a crash that recurs in the dispatch->callback window keeps
         # returning it to PENDING) is dead-lettered here rather than re-dispatched
-        # forever. The cap is checked at claim time so it covers both the reaper
-        # path and the broker-failure revert path in a single chokepoint.
+        # forever. The increment happens at the SENDING claim below; a clean
+        # broker-publish failure refunds it (see _send_clubbed), so only attempts
+        # that actually reached the broker — or were lost after it — count here.
         cap = settings.NOTIFICATION_MAX_DISPATCH_ATTEMPTS
         exhausted_ids = [str(r.id) for r in rows if r.dispatch_attempts >= cap]
         if exhausted_ids:
