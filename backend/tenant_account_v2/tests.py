@@ -10,6 +10,7 @@ to a deterministic predicate so these tests exercise the sharing logic itself,
 not the active authentication plugin's role handling.
 """
 
+import secrets
 from unittest.mock import patch
 
 from account_v2.models import Organization, User
@@ -36,7 +37,7 @@ from tenant_account_v2.sharing_helpers import (
 
 def _make_user(email: str, **kwargs) -> User:
     return User.objects.create_user(
-        username=email, email=email, password="irrelevant", **kwargs
+        username=email, email=email, password=secrets.token_urlsafe(), **kwargs
     )
 
 
