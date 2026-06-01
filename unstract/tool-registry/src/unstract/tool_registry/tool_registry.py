@@ -207,6 +207,10 @@ class ToolRegistry:
                     ToolKey.DESCRIPTION: data.get(PropKey.DESCRIPTION),
                     ToolKey.ICON: icon,
                     ToolKey.FUNCTION_NAME: data.get(PropKey.FUNCTION_NAME),
+                    "deprecated": configuration.get("deprecated", False),
+                    "deprecation_message": configuration.get(
+                        "deprecation_message", ""
+                    ),
                 }
                 tools_list.append(tool_data)
         return tools_list
