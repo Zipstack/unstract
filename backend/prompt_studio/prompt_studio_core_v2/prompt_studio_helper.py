@@ -8,11 +8,9 @@ from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
-from adapter_processor_v2.constants import AdapterKeys
-from adapter_processor_v2.models import AdapterInstance
+from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
-from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
@@ -96,57 +94,51 @@ class PromptStudioHelper:
     def create_default_profile_manager(user: User, tool_id: uuid) -> None:
         """Create a default profile manager for a given user and tool.
 
-        Args:
-            user (User): The user for whom the default profile manager is
-            created.
-            tool_id (uuid): The ID of the tool for which the default profile
-            manager is created.
-
-        Raises:
-            AdapterInstance.DoesNotExist: If no suitable adapter instance is
-            found for creating the default profile manager.
+        Builds the profile from the creator's default-set adapters
+        (UserDefaultAdapter). In cloud these are the frictionless adapters
+        seeded at onboarding; in OSS/on-prem they are auto-set as the user
+        adds the first adapter of each type. Skips silently when a usable
+        default is missing for any of the four types, so a project can still
+        be created before adapters are configured.
 
         Returns:
             None
         """
-        try:
-            AdapterInstance.objects.get(
-                is_friction_less=True,
-                is_usable=True,
-                adapter_type=AdapterKeys.LLM,
+        organization_member = OrganizationMemberService.get_user_by_id(id=user.id)
+        default_adapter = UserDefaultAdapter.objects.filter(
+            organization_member=organization_member
+        ).first()
+        if not default_adapter:
+            logger.info("Skipping default profile creation: no default adapters set")
+            return
+
+        adapters = {
+            "llm": default_adapter.default_llm_adapter,
+            "embedding_model": default_adapter.default_embedding_adapter,
+            "vector_store": default_adapter.default_vector_db_adapter,
+            "x2text": default_adapter.default_x2text_adapter,
+        }
+        # A valid profile needs a usable default for every adapter type
+        if not all(adapter and adapter.is_usable for adapter in adapters.values()):
+            logger.info(
+                "Skipping default profile creation: "
+                "incomplete or unusable default adapters"
             )
+            return
 
-            default_adapters: BaseManager[AdapterInstance] = (
-                AdapterInstance.objects.filter(is_friction_less=True)
-            )
-
-            profile_manager = ProfileManager(
-                prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
-                is_default=True,
-                created_by=user,
-                modified_by=user,
-                chunk_size=0,
-                profile_name="sample profile",
-                chunk_overlap=0,
-                section="Default",
-                retrieval_strategy="simple",
-                similarity_top_k=3,
-            )
-
-            for adapter in default_adapters:
-                if adapter.adapter_type == AdapterKeys.LLM:
-                    profile_manager.llm = adapter
-                elif adapter.adapter_type == AdapterKeys.VECTOR_DB:
-                    profile_manager.vector_store = adapter
-                elif adapter.adapter_type == AdapterKeys.X2TEXT:
-                    profile_manager.x2text = adapter
-                elif adapter.adapter_type == AdapterKeys.EMBEDDING:
-                    profile_manager.embedding_model = adapter
-
-            profile_manager.save()
-
-        except AdapterInstance.DoesNotExist:
-            logger.info("skipping default profile creation")
+        ProfileManager.objects.create(
+            prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
+            is_default=True,
+            created_by=user,
+            modified_by=user,
+            profile_name="sample profile",
+            chunk_size=0,
+            chunk_overlap=0,
+            section="Default",
+            retrieval_strategy="simple",
+            similarity_top_k=3,
+            **adapters,
+        )
 
     @staticmethod
     def validate_adapter_status(
