@@ -53,7 +53,7 @@ dependencies = [
 
 [dependency-groups]
 test = [
-    "pytest>=8.0.1",
+    "pytest>=9.0.3",
     "python-dotenv~=1.0.0",
     "unstract-filesystem",
 ]
