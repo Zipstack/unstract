@@ -520,8 +520,10 @@ _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
     """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
 
-    # Endpoint is hard-coded; users never supply api_base.
-    api_base: str | None = None
+    # Endpoint defaults to NVIDIA Build; users may override it in the schema.
+    # Kept as a required `str` (not widened to None) so a directly-constructed
+    # instance is always valid even without going through validate().
+    api_base: str = _NVIDIA_BUILD_API_BASE
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -533,7 +535,8 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
 class OpenRouterLLMParameters(OpenAICompatibleLLMParameters):
     """OpenAI-compatible adapter for OpenRouter (openrouter.ai)."""
 
-    api_base: str | None = None
+    # Endpoint defaults to OpenRouter; users may override it in the schema.
+    api_base: str = _OPENROUTER_API_BASE
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -1359,17 +1362,18 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
 
 # Branded NVIDIA Build embeddings. LiteLLM's generic `custom_openai` provider
 # (used by the branded LLM adapters) has no embedding support, so embeddings
-# route through LiteLLM's native `nvidia_nim` provider instead — it reuses the
-# OpenAI embedding handler and resolves the integrate.api.nvidia.com endpoint
-# automatically. The endpoint is exposed with a sane default for overrides.
+# route through LiteLLM's native `nvidia_nim` provider instead, which reuses the
+# OpenAI embedding handler. `nvidia_nim` already defaults its api_base to
+# `_NVIDIA_BUILD_API_BASE` (https://integrate.api.nvidia.com/v1); we pin the same
+# value explicitly so it shows in the schema as an overridable default.
 _NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
 
 
 class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
     """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
 
-    # Endpoint defaults to NVIDIA Build; users may override it in the schema.
-    api_base: str | None = _NVIDIA_BUILD_API_BASE
+    # Same value LiteLLM's nvidia_nim provider defaults to; users may override it.
+    api_base: str = _NVIDIA_BUILD_API_BASE
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
