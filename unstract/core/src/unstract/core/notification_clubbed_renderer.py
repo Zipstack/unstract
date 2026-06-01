@@ -78,10 +78,13 @@ def _is_effective_success(status: str | None, counts: dict[str, Any]) -> bool:
 
 
 def _humanize_timestamp(iso: str | None) -> str:
-    """Render an ISO timestamp as `2026 May 11 11:38:31 AM` (POSIX `%-d`).
+    """Render an ISO timestamp as `2026 May 11 11:38:31 AM`.
 
     Falls back to the missing placeholder on falsy / unparseable input so a
-    partial row still renders without raising.
+    partial row still renders without raising. The day is interpolated from
+    ``dt.day`` rather than a ``%-d`` directive: ``%-d`` is a glibc extension
+    that raises ``ValueError`` on macOS/Windows, and this call sits in the
+    flush render path where an unhandled raise drops the whole batch.
     """
     if not iso:
         return _MISSING
@@ -89,7 +92,7 @@ def _humanize_timestamp(iso: str | None) -> str:
         dt = datetime.datetime.fromisoformat(iso)
     except (TypeError, ValueError):
         return _MISSING
-    return dt.strftime("%Y %b %-d %I:%M:%S %p")
+    return f"{dt.strftime('%Y %b')} {dt.day} {dt.strftime('%I:%M:%S %p')}"
 
 
 def _format_file_count(event: dict[str, Any]) -> str:
