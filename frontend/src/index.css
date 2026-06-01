@@ -252,12 +252,12 @@ body {
   z-index: 2000;
 }
 
-.notification-request-id,
-.notification-request-id__value {
+.notification-id-line,
+.notification-id-line__value {
   font-size: 12px;
 }
 
-.notification-request-id {
+.notification-id-line {
   margin-top: 8px;
   display: flex;
   align-items: center;
@@ -265,6 +265,12 @@ body {
   gap: 4px;
 }
 
-.notification-request-id__value {
+.notification-id-line--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.notification-id-line__value {
   word-break: break-all;
 }

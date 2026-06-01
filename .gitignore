@@ -713,3 +713,7 @@ AGENTS.md
 
 # MCP servers
 .serena
+
+# Unstract test rig
+reports/
+.test-selection

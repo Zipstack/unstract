@@ -1,4 +1,4 @@
-name: Run tox tests with UV
+name: Run unit + integration tests (rig)
 
 on:
   push:
@@ -24,11 +24,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # rig --changed-only needs git history
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
-          # Install a specific version of uv.
           version: "0.6.14"
           python-version: 3.12.9
 
@@ -40,29 +41,78 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-tox-uv-
 
+      - name: Restore main-branch test baseline (for regression detection)
+        # actions/cache only saves on a cache miss. Include the run id in the
+        # key so each main build writes a fresh cache entry; the prefix in
+        # restore-keys pulls the most recent baseline.
+        #
+        # The unit/integration lane keeps a SEPARATE baseline from the e2e
+        # workflow because their `scope_groups` don't overlap — restoring an
+        # e2e-tier baseline here would flag every e2e-covered path as a
+        # regression in this lane (and vice versa). Each workflow is the
+        # source of truth for the paths covered by its own tiers.
+        uses: actions/cache@v5
+        with:
+          path: reports/previous-summary.json
+          key: unstract-test-baseline-ut-main-${{ github.run_id }}
+          restore-keys: |
+            unstract-test-baseline-ut-main-
+            unstract-test-baseline-ut-
+
       - name: Install tox with UV
         run: uv tool install tox --with tox-uv
 
-      - name: Run tox
-        id: tox
-        run: |
-          tox
+      - name: Validate test manifests
+        # Cheap pre-flight: catches groups.yaml / critical_paths.yaml schema
+        # errors before we spend minutes on tier runs. Also catches malformed
+        # manifests on PRs that only touch paths-ignored files (because this
+        # step always runs).
+        run: tox -e rig -- validate
 
-      - name: Combine test reports
-        if: always() && (hashFiles('runner-report.md') != '' || hashFiles('sdk1-report.md') != '')
+      - name: Run unit tier
+        # Each tier runs as a separate rig invocation so its results land in
+        # reports/<group>/ before the next tier starts. --update-baseline (on
+        # main only) merges this tier's covered paths into the cached
+        # previous-summary.json; later tiers union on top.
         run: |
-          bash .github/scripts/combine-test-reports.sh
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tox -e unit -- --fail-on-critical-gap --update-baseline
+          else
+            tox -e unit
+          fi
+
+      - name: Run integration tier
+        if: always()
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            tox -e integration -- --fail-on-critical-gap --update-baseline
+          else
+            tox -e integration
+          fi
+
+      - name: Re-aggregate reports from both tiers
+        if: always()
+        run: tox -e rig -- report combine
 
       - name: Render combined test report to PR
         uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
-        if: always() && hashFiles('combined-test-report.md') != '' && github.event.pull_request.head.repo.fork == false
+        if: always() && hashFiles('reports/combined-test-report.md') != '' && github.event.pull_request.head.repo.fork == false
         with:
           header: test-results
           recreate: true
-          path: combined-test-report.md
+          path: reports/combined-test-report.md
 
       - name: Output combined report to job summary
-        if: always() && hashFiles('combined-test-report.md') != ''
+        if: always() && hashFiles('reports/summary.md') != ''
         shell: bash
         run: |
-          cat combined-test-report.md >> $GITHUB_STEP_SUMMARY
+          cat reports/summary.md >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports-unit-integration
+          path: reports/
+          if-no-files-found: ignore
+          retention-days: 14
