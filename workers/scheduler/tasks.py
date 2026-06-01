@@ -7,7 +7,7 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
-from queue_backend import dispatch, worker_task
+from queue_backend import FairnessKey, dispatch, worker_task
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -165,6 +165,7 @@ def _execute_scheduled_workflow(
                     "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
                 },
                 queue=QueueName.GENERAL,  # Route to General queue for proper separation
+                fairness=FairnessKey.for_org(context.organization_id),
             )
 
             task_id = async_result.id

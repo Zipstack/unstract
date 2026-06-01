@@ -5,8 +5,8 @@ A later phase will introduce per-task routing through a non-Celery
 substrate (PG Queue); call sites stay untouched.
 
 The signature intentionally exposes only what the current call sites
-actually use (args, kwargs, queue). More Celery options can be added
-when a real call site needs them — not before.
+actually use (args, kwargs, queue, fairness). More Celery options can
+be added when a real call site needs them — not before.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Protocol
 
 from celery import current_app
+
+from .fairness import FAIRNESS_KWARG_NAME, FairnessKey
 
 
 class DispatchHandle(Protocol):
@@ -35,6 +37,7 @@ def dispatch(
     args: Sequence[Any] | None = None,
     kwargs: Mapping[str, Any] | None = None,
     queue: str | None = None,
+    fairness: FairnessKey | None = None,
 ) -> DispatchHandle:
     """Enqueue a task by name.
 
@@ -45,11 +48,20 @@ def dispatch(
         kwargs: Keyword task args. Forwarded verbatim; Celery normalises
             ``None`` internally.
         queue: Target queue name. Defaults to the task's bound queue.
+        fairness: Multi-tenant routing metadata (org_id, priority, tier).
+            When provided, merged into the outgoing kwargs under
+            ``_fairness_key``. No consumer reads it yet — Phase 8 (PG
+            Queue Gate) will introduce the reader.
 
     Returns:
         A handle to the enqueued task. ``.id`` is guaranteed; everything
         else is substrate-specific and callers must not rely on it.
     """
+    if fairness is not None:
+        merged: dict[str, Any] = dict(kwargs or {})
+        merged[FAIRNESS_KWARG_NAME] = fairness.to_dict()
+        kwargs = merged
+
     return current_app.send_task(
         task_name,
         args=args,

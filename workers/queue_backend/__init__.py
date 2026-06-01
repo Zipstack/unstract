@@ -18,5 +18,6 @@ is a single-flag operation rather than a codebase-wide rewrite.
 
 from .decorator import worker_task
 from .dispatch import dispatch
+from .fairness import FairnessKey
 
-__all__ = ["dispatch", "worker_task"]
+__all__ = ["FairnessKey", "dispatch", "worker_task"]

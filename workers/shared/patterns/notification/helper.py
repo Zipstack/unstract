@@ -6,7 +6,7 @@ No Django dependencies, works in pure worker environment.
 
 import logging
 
-from queue_backend import dispatch
+from queue_backend import FairnessKey, dispatch
 
 # Import shared data models from @unstract/core
 from unstract.core.data_models import (
@@ -87,6 +87,7 @@ def send_notification_to_worker(
                 "platform": platform,
             },
             queue="notifications",
+            fairness=FairnessKey.for_org(payload.organization_id),
         )
 
         logger.info(
