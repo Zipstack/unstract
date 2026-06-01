@@ -1,0 +1,26 @@
+{
+  "title": "Document classifier tool settings",
+  "description": "Classify documents based on their content",
+  "type": "object",
+  "required": [
+    "classificationBins"
+  ],
+  "properties": {
+    "classificationBins": {
+      "type": "array",
+      "title": "Classification bins",
+      "description": "Specify at least two unique classification bins. `unknown` and `__unstract_failed` are reserved bins.\n - `unknown` indicates the LLM can't determine the classification\n - `__unstract_failed` indicates a tool run failure for the given file.",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "uniqueItems": true
+    },
+    "useCache": {
+      "type": "boolean",
+      "title": "Cache and use cached results",
+      "default": true,
+      "description": "Use cached results"
+    }
+  }
+}
