@@ -304,6 +304,14 @@ get_worker_pids() {
     pgrep -f -- "[^[:alnum:]_]${worker_type}-worker(@|-)" || true
 }
 
+# Returns get_worker_pids output as a single space-separated string with
+# the trailing space stripped — the form xargs and `kill` want. Wrapping
+# this avoids repeating the `tr | sed` pipeline at every caller.
+get_worker_pids_oneline() {
+    local worker_type=$1
+    get_worker_pids "$worker_type" | tr '\n' ' ' | sed 's/ $//'
+}
+
 # Function to resolve canonical worker dir names from the WORKERS map
 # (skips aliases and "all"). Includes discovered pluggable workers.
 list_core_worker_dirs() {
@@ -410,7 +418,7 @@ clear_logs() {
 kill_one_worker() {
     local worker_dir=$1
     local pids
-    pids=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
+    pids=$(get_worker_pids_oneline "$worker_dir")
     if [[ -z "$pids" ]]; then
         print_status $YELLOW "  $worker_dir: not running"
         return 0
@@ -420,12 +428,12 @@ kill_one_worker() {
     kill -TERM $pids || print_status $RED "  $worker_dir: kill -TERM failed"
     sleep 1
     local survivors
-    survivors=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
+    survivors=$(get_worker_pids_oneline "$worker_dir")
     if [[ -n "$survivors" ]]; then
         # shellcheck disable=SC2086
         kill -KILL $survivors || print_status $RED "  $worker_dir: kill -KILL failed"
         sleep 1
-        survivors=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
+        survivors=$(get_worker_pids_oneline "$worker_dir")
         if [[ -n "$survivors" ]]; then
             print_status $RED "  $worker_dir: survivors after SIGKILL: $survivors"
             return 1
@@ -465,7 +473,7 @@ show_status() {
 
     for worker in $workers_to_check; do
         local pids
-        pids=$(get_worker_pids "$worker" | tr '\n' ' ' | sed 's/ $//')
+        pids=$(get_worker_pids_oneline "$worker")
 
         printf '  %-22s ' "$worker:"
 
