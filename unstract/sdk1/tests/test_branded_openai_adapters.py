@@ -145,6 +145,21 @@ def test_nvidia_embedding_registered_and_routes_via_nvidia_nim() -> None:
     assert validated["api_base"] == _NVIDIA_BUILD_API_BASE
 
 
+def test_nvidia_embedding_defaults_encoding_format_to_float() -> None:
+    # NVIDIA rejects the null encoding_format LiteLLM sends when unset.
+    validated = NvidiaBuildEmbeddingParameters.validate(
+        {"model": "nvidia/nv-embedqa-e5-v5", "api_key": "k"}
+    )
+    assert validated["encoding_format"] == "float"
+
+
+def test_compatible_embedding_defaults_encoding_format_to_float() -> None:
+    validated = OpenAICompatibleEmbeddingParameters.validate(
+        {"model": "BAAI/bge-m3", "api_base": "https://gw.example/v1"}
+    )
+    assert validated["encoding_format"] == "float"
+
+
 def test_nvidia_embedding_honours_api_base_override() -> None:
     validated = NvidiaBuildEmbeddingParameters.validate(
         {"model": "m", "api_key": "k", "api_base": "https://proxy.internal/v1"}
