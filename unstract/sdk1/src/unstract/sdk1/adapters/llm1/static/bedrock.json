@@ -1,6 +1,18 @@
 {
   "title": "Bedrock LLM",
   "type": "object",
+  "ui:order": [
+    "adapter_name",
+    "model",
+    "model_id",
+    "auth_type",
+    "aws_access_key_id",
+    "aws_secret_access_key",
+    "aws_bearer_token",
+    "aws_profile_name",
+    "region_name",
+    "*"
+  ],
   "required": [
     "region_name",
     "model",

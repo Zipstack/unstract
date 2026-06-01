@@ -97,6 +97,8 @@ class ToolInstanceHelper:
         """
         if adapter_key in metadata:
             adapter_value = metadata[adapter_key]
+            if not adapter_value:
+                return
             if ToolInstanceHelper.is_uuid_format(adapter_value):
                 logger.debug(f"Adapter value '{adapter_value}' is already in UUID format")
                 adapter = AdapterInstance.objects.get(
