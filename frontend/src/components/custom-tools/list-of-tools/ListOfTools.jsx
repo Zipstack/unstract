@@ -308,6 +308,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
+            is_admin: user?.is_admin,
           })),
         );
       })
