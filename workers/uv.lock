@@ -4653,7 +4653,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 test = [
     { name = "pytest", specifier = ">=9.0.3" },
-    { name = "python-dotenv", specifier = "~=1.0.0" },
+    { name = "python-dotenv", specifier = "~=1.2.2" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },
 ]
 
