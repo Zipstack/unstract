@@ -1350,6 +1350,38 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
         return model
 
 
+# Branded NVIDIA Build embeddings. LiteLLM's generic `custom_openai` provider
+# (used by the branded LLM adapters) has no embedding support, so embeddings
+# route through LiteLLM's native `nvidia_nim` provider instead — it reuses the
+# OpenAI embedding handler and resolves the integrate.api.nvidia.com endpoint
+# automatically. api_base is still pinned for clarity.
+_NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
+
+
+class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
+    """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
+
+    # Endpoint is hard-coded; users never supply api_base.
+    api_base: str | None = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = {**adapter_metadata, "api_base": _NVIDIA_BUILD_API_BASE}
+        adapter_metadata["model"] = NvidiaBuildEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the NVIDIA Build embedding adapter.")
+        if model.startswith(_NVIDIA_NIM_PROVIDER_PREFIX):
+            return model
+        return f"{_NVIDIA_NIM_PROVIDER_PREFIX}{model}"
+
+
 class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
     """See https://docs.litellm.ai/docs/providers/azure."""
 
