@@ -41,6 +41,8 @@ declare -A WORKERS=(
     ["scheduler"]="scheduler"
     ["schedule"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
+    ["ide-callback"]="ide_callback"
+    ["ide_callback"]="ide_callback"
     ["all"]="all"
 )
 
@@ -57,6 +59,7 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
+    ["ide_callback"]="ide_callback"
 )
 
 # Worker health ports
@@ -69,6 +72,7 @@ declare -A WORKER_HEALTH_PORTS=(
     ["notification"]="8085"
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
+    ["ide_callback"]="8089"
 )
 
 # Function to display usage
@@ -87,6 +91,7 @@ WORKER_TYPE:
     notification, notify  Run notification worker
     scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
     executor              Run executor worker (extraction execution tasks)
+    ide-callback          Run IDE callback worker (Prompt Studio post-execution callbacks)
     all                   Run all workers (in separate processes, includes auto-discovered pluggable workers)
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
@@ -101,7 +106,11 @@ OPTIONS:
     -P, --pool TYPE       Set Celery pool type (threads, prefork, gevent, solo, eventlet)
     -n, --hostname NAME   Set custom worker hostname/name
     -k, --kill            Kill running workers and exit
+    -r, --restart         Kill matching worker(s) then relaunch (with WORKER_TYPE,
+                          restarts only that worker; without it, restarts all)
     -s, --status          Show status of running workers
+    -L, --logs [WORKER]   Live-tail worker log files (all if WORKER omitted)
+    -C, --clear-logs      Delete worker .log files created by -d / 'all' runs
     -h, --help            Show this help message
 
 EXAMPLES:
@@ -134,6 +143,21 @@ EXAMPLES:
     # Kill all running workers
     $0 -k
 
+    # Live-tail all worker logs
+    $0 -L
+
+    # Tail just one worker's log
+    $0 -L general
+
+    # Wipe out old log files
+    $0 -C
+
+    # Restart all workers
+    $0 -r -P prefork
+
+    # Restart just one worker
+    $0 -r general -l DEBUG
+
 ENVIRONMENT:
     The script will load environment variables from .env file if present.
     Required variables:
@@ -146,16 +170,10 @@ ENVIRONMENT:
     See sample.env for full configuration options.
 
 HEALTH CHECKS:
-    Each worker exposes a health check endpoint:
-    - API Deployment: http://localhost:8080/health
-    - General: http://localhost:8081/health
-    - File Processing: http://localhost:8082/health
-    - Callback: http://localhost:8083/health
-    - Log Consumer: http://localhost:8084/health
-    - Notification: http://localhost:8085/health
-    - Scheduler: http://localhost:8087/health
-    - Executor: http://localhost:8088/health
-    - Pluggable workers: http://localhost:8090+/health (auto-assigned ports)
+    Workers can optionally bind an HTTP health server on the port assigned
+    via {WORKER}_HEALTH_PORT env vars (8080-8089 by default). It's used by
+    K8s liveness probes in production but is NOT load-bearing locally —
+    'run-worker.sh -s' only reports whether the Celery process is alive.
 
 EOF
 }
@@ -275,32 +293,142 @@ validate_env() {
 }
 
 # Function to get worker PIDs
+# Anchors the match on the hostname value's start (preceded by a non-word
+# character) so e.g. "callback" doesn't also match "ide_callback".
 get_worker_pids() {
     local worker_type=$1
-    pgrep -f "uv run celery.*worker.*$worker_type" || true
+    pgrep -f -- "[^[:alnum:]_]${worker_type}-worker-" 2>/dev/null || true
+}
+
+# Function to resolve canonical worker dir names from the WORKERS map
+# (skips aliases and "all"). Includes discovered pluggable workers.
+list_core_worker_dirs() {
+    local seen=""
+    for key in "${!WORKERS[@]}"; do
+        local value="${WORKERS[$key]}"
+        if [[ "$value" == "all" ]]; then
+            continue
+        fi
+        if [[ "$seen" == *" $value "* ]]; then
+            continue
+        fi
+        seen="$seen $value "
+        echo "$value"
+    done
+}
+
+list_pluggable_worker_dirs() {
+    for key in "${!PLUGGABLE_WORKERS[@]}"; do
+        local value="${PLUGGABLE_WORKERS[$key]}"
+        if [[ "$key" == "$value" ]]; then
+            echo "$value"
+        fi
+    done
+}
+
+# Function to resolve the log file path for a given canonical worker dir.
+# Core workers live at WORKERS_DIR/$dir/$dir.log; pluggable workers
+# live at WORKERS_DIR/pluggable_worker/$dir/$dir.log.
+resolve_log_file() {
+    local worker_dir=$1
+    local core_path="$WORKERS_DIR/$worker_dir/$worker_dir.log"
+    local pluggable_path="$WORKERS_DIR/pluggable_worker/$worker_dir/$worker_dir.log"
+    if [[ -f "$core_path" ]]; then
+        echo "$core_path"
+    elif [[ -f "$pluggable_path" ]]; then
+        echo "$pluggable_path"
+    fi
+}
+
+# Function to tail one or all worker log files (-L|--logs)
+tail_logs() {
+    local requested=$1  # may be empty → tail all
+    local log_files=()
+
+    if [[ -z "$requested" || "$requested" == "all" ]]; then
+        for d in $(list_core_worker_dirs) $(list_pluggable_worker_dirs); do
+            local f
+            f=$(resolve_log_file "$d")
+            [[ -n "$f" ]] && log_files+=("$f")
+        done
+    else
+        # Resolve alias (e.g. "api" → "api-deployment") via WORKERS / PLUGGABLE_WORKERS
+        local canonical="${WORKERS[$requested]:-${PLUGGABLE_WORKERS[$requested]:-}}"
+        if [[ -z "$canonical" || "$canonical" == "all" ]]; then
+            print_status $RED "Error: Unknown worker type for logs: $requested"
+            print_status $BLUE "Tip: omit the worker type to tail all logs"
+            exit 1
+        fi
+        local f
+        f=$(resolve_log_file "$canonical")
+        if [[ -z "$f" ]]; then
+            print_status $YELLOW "No log file found for $canonical. Did you start it with -d?"
+            exit 0
+        fi
+        log_files+=("$f")
+    fi
+
+    if [[ ${#log_files[@]} -eq 0 ]]; then
+        print_status $YELLOW "No log files found. Workers must be started in detached mode (-d or 'all') for logs to be written to files."
+        exit 0
+    fi
+
+    print_status $BLUE "Tailing ${#log_files[@]} log file(s) — Ctrl+C to stop"
+    for f in "${log_files[@]}"; do
+        print_status $GREEN "  $f"
+    done
+    exec tail -F "${log_files[@]}"
+}
+
+# Function to delete worker log files (-C|--clear-logs)
+clear_logs() {
+    local count=0
+    for d in $(list_core_worker_dirs) $(list_pluggable_worker_dirs); do
+        local f
+        f=$(resolve_log_file "$d")
+        if [[ -n "$f" ]]; then
+            rm -f "$f"
+            print_status $GREEN "Removed: $f"
+            ((count++)) || true
+        fi
+    done
+    if [[ $count -eq 0 ]]; then
+        print_status $YELLOW "No worker log files to clear"
+    else
+        print_status $BLUE "Cleared $count log file(s)"
+    fi
+}
+
+# Function to kill a single worker by its canonical dir name.
+# Uses the anchored matcher from get_worker_pids so callback vs ide_callback
+# don't bleed into each other.
+kill_one_worker() {
+    local worker_dir=$1
+    local pids
+    pids=$(get_worker_pids "$worker_dir" | tr '\n' ' ' | sed 's/ $//')
+    if [[ -z "$pids" ]]; then
+        print_status $YELLOW "  $worker_dir: not running"
+        return
+    fi
+    print_status $YELLOW "  $worker_dir: killing $pids"
+    echo "$pids" | xargs kill -TERM 2>/dev/null || true
+    sleep 1
+    echo "$pids" | xargs kill -KILL 2>/dev/null || true
 }
 
 # Function to kill workers
 kill_workers() {
     print_status $YELLOW "Killing all running workers..."
-
-    for worker in "${!WORKERS[@]}"; do
-        if [[ "$worker" == "all" ]]; then
-            continue
-        fi
-
-        local worker_dir="${WORKERS[${worker}]}"
-        local pids=$(pgrep -f "uv run celery.*worker" || true)
-
-        if [[ -n "$pids" ]]; then
-            print_status $YELLOW "Killing worker processes: $pids"
-            echo "$pids" | xargs kill -TERM 2>/dev/null || true
-            sleep 2
-            # Force kill if still running
-            echo "$pids" | xargs kill -KILL 2>/dev/null || true
-        fi
-    done
-
+    local pids
+    pids=$(pgrep -f "uv run celery.*worker" || true)
+    if [[ -z "$pids" ]]; then
+        print_status $GREEN "No workers running"
+        return
+    fi
+    print_status $YELLOW "Killing worker processes: $pids"
+    echo "$pids" | xargs kill -TERM 2>/dev/null || true
+    sleep 2
+    echo "$pids" | xargs kill -KILL 2>/dev/null || true
     print_status $GREEN "All workers stopped"
 }
 
@@ -309,38 +437,21 @@ show_status() {
     print_status $BLUE "Worker Status:"
     echo "=============="
 
-    local workers_to_check="api-deployment general file_processing callback log_consumer notification scheduler executor"
-
-    # Add discovered pluggable workers
-    if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
-        for pluggable_name in "${!PLUGGABLE_WORKERS[@]}"; do
-            local canonical_name="${PLUGGABLE_WORKERS[$pluggable_name]}"
-            # Only add canonical names (skip aliases)
-            if [[ "$pluggable_name" == "$canonical_name" ]]; then
-                workers_to_check="$workers_to_check $canonical_name"
-            fi
-        done
-    fi
+    # Derive list from WORKERS (skips aliases & "all") so adding a new
+    # worker in one place keeps status in sync. Pluggable workers included.
+    local workers_to_check
+    workers_to_check="$(list_core_worker_dirs) $(list_pluggable_worker_dirs)"
 
     for worker in $workers_to_check; do
-        local worker_dir="$WORKERS_DIR/$worker"
-        local health_port="${WORKER_HEALTH_PORTS[$worker]}"
-        local pids=$(get_worker_pids "$worker")
+        local pids
+        pids=$(get_worker_pids "$worker" | tr '\n' ' ' | sed 's/ $//')
 
-        echo -n "  $worker: "
+        printf '  %-22s ' "$worker:"
 
         if [[ -n "$pids" ]]; then
-            print_status $GREEN "RUNNING (PID: $pids)"
-
-            # Check health endpoint if possible
-            if command -v curl >/dev/null 2>&1; then
-                local health_url="http://localhost:$health_port/health"
-                if curl -s --max-time 2 "$health_url" >/dev/null 2>&1; then
-                    echo "    Health: http://localhost:$health_port/health - OK"
-                else
-                    echo "    Health: http://localhost:$health_port/health - UNREACHABLE"
-                fi
-            fi
+            local count
+            count=$(echo "$pids" | wc -w)
+            print_status $GREEN "RUNNING ($count proc, PID: $pids)"
         else
             print_status $RED "STOPPED"
         fi
@@ -415,6 +526,9 @@ run_worker() {
                 ;;
             "${EXECUTOR_WORKER_TYPE}")
                 export EXECUTOR_HEALTH_PORT="$health_port"
+                ;;
+            "ide_callback")
+                export IDE_CALLBACK_HEALTH_PORT="$health_port"
                 ;;
             *)
                 # Handle pluggable workers dynamically
@@ -492,6 +606,9 @@ run_worker() {
             "${EXECUTOR_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
+            "ide_callback")
+                cmd_args+=("--concurrency=2")
+                ;;
             *)
                 # Default for pluggable and other workers
                 if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
@@ -539,7 +656,7 @@ run_all_workers() {
     print_status $GREEN "Starting all workers..."
 
     # Define core workers
-    local core_workers="api-deployment general file_processing callback log_consumer notification scheduler executor"
+    local core_workers="api-deployment general file_processing callback log_consumer notification scheduler executor ide_callback"
 
     # Add discovered pluggable workers
     if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
@@ -594,6 +711,9 @@ POOL_TYPE=""
 CUSTOM_HOSTNAME=""
 KILL_WORKERS=false
 SHOW_STATUS=false
+LOGS_MODE=false
+CLEAR_LOGS_MODE=false
+RESTART_MODE=false
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -603,6 +723,14 @@ while [[ $# -gt 0 ]]; do
             ;;
         -d|--detach)
             DETACH=true
+            shift
+            ;;
+        -L|--logs)
+            LOGS_MODE=true
+            shift
+            ;;
+        -C|--clear-logs)
+            CLEAR_LOGS_MODE=true
             shift
             ;;
         -l|--log-level)
@@ -633,6 +761,10 @@ while [[ $# -gt 0 ]]; do
             KILL_WORKERS=true
             shift
             ;;
+        -r|--restart)
+            RESTART_MODE=true
+            shift
+            ;;
         -s|--status)
             SHOW_STATUS=true
             shift
@@ -660,8 +792,41 @@ if [[ "$KILL_WORKERS" == "true" ]]; then
 fi
 
 if [[ "$SHOW_STATUS" == "true" ]]; then
+    discover_pluggable_workers
     show_status
     exit 0
+fi
+
+if [[ "$LOGS_MODE" == "true" ]]; then
+    discover_pluggable_workers
+    tail_logs "$WORKER_TYPE"
+    exit 0
+fi
+
+if [[ "$CLEAR_LOGS_MODE" == "true" ]]; then
+    discover_pluggable_workers
+    clear_logs
+    exit 0
+fi
+
+# Restart = kill matching + fall through to the normal launch path.
+# - If WORKER_TYPE is set (and not "all"), kill only that worker.
+# - Otherwise kill everything; the launch path will treat the unset
+#   WORKER_TYPE as "all" once we set it below.
+if [[ "$RESTART_MODE" == "true" ]]; then
+    discover_pluggable_workers
+    if [[ -n "$WORKER_TYPE" && "$WORKER_TYPE" != "all" ]]; then
+        restart_target_dir="${WORKERS[$WORKER_TYPE]:-${PLUGGABLE_WORKERS[$WORKER_TYPE]:-}}"
+        if [[ -z "$restart_target_dir" ]]; then
+            print_status $RED "Error: Unknown worker type for restart: $WORKER_TYPE"
+            exit 1
+        fi
+        print_status $BLUE "Restarting $restart_target_dir..."
+        kill_one_worker "$restart_target_dir"
+    else
+        kill_workers
+        WORKER_TYPE="all"
+    fi
 fi
 
 # Validate worker type

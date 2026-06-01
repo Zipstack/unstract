@@ -8,7 +8,7 @@ from typing import Any
 from urllib.parse import quote
 
 import socketio
-from celery import shared_task
+from queue_backend import worker_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 from shared.utils.api_client_singleton import get_singleton_api_client
@@ -68,7 +68,7 @@ sio = socketio.Server(
 )
 
 
-@shared_task(name=LogProcessingTask.TASK_NAME)
+@worker_task(name=LogProcessingTask.TASK_NAME)
 def logs_consumer(**kwargs: Any) -> None:
     """Task to process logs from log publisher.
 
@@ -115,7 +115,7 @@ def logs_consumer(**kwargs: Any) -> None:
 
 
 # Health check task for monitoring
-@shared_task(name="log_consumer_health_check")
+@worker_task(name="log_consumer_health_check")
 def health_check() -> dict[str, Any]:
     """Health check task for log consumer worker.
 
