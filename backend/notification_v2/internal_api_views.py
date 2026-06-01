@@ -17,7 +17,7 @@ from typing import Any, cast
 from api_v2.models import APIDeployment
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Min, QuerySet
+from django.db.models import F, Min, QuerySet
 from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
@@ -522,6 +522,29 @@ def _dispatch_group(
             # row-level lock. Either way: nothing to do here.
             return 0, 0
 
+        # Bound the reaper reclaim loop: a row reclaimed past its dispatch budget
+        # (e.g. a crash that recurs in the dispatch->callback window keeps
+        # returning it to PENDING) is dead-lettered here rather than re-dispatched
+        # forever. The cap is checked at claim time so it covers both the reaper
+        # path and the broker-failure revert path in a single chokepoint.
+        cap = settings.NOTIFICATION_MAX_DISPATCH_ATTEMPTS
+        exhausted_ids = [str(r.id) for r in rows if r.dispatch_attempts >= cap]
+        if exhausted_ids:
+            NotificationBuffer.objects.filter(id__in=exhausted_ids).update(
+                status=BufferStatus.DEAD_LETTER.value,
+            )
+            logger.warning(
+                "metric=notification_buffer_dispatch_exhausted_total rows=%d "
+                "org_id=%s platform=%s cap=%d",
+                len(exhausted_ids),
+                org_id,
+                platform,
+                cap,
+            )
+            rows = [r for r in rows if r.dispatch_attempts < cap]
+            if not rows:
+                return 0, 0
+
         # Live auth — read from the FIRST row's notification. If multiple
         # notifications collide on (url, auth_sig, platform) we have, by
         # definition, identical auth + format, so this is safe. Retry budget
@@ -546,6 +569,7 @@ def _dispatch_group(
         NotificationBuffer.objects.filter(id__in=buffer_ids).update(
             status=BufferStatus.SENDING.value,
             dispatched_at=now,
+            dispatch_attempts=F("dispatch_attempts") + 1,
         )
         transaction.on_commit(
             lambda: _send_clubbed(

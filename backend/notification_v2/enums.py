@@ -46,7 +46,9 @@ class BufferStatus(Enum):
                     its success/failure callback. Reclaimed to PENDING by the
                     reaper if it stays here past the dispatch lease (crash window).
     DISPATCHED    — delivery succeeded.
-    DEAD_LETTER   — Celery exhausted retries; terminal, never re-picked.
+    DEAD_LETTER   — Celery exhausted retries, or the row hit
+                    NOTIFICATION_MAX_DISPATCH_ATTEMPTS reclaim attempts; terminal,
+                    never re-picked.
     """
 
     PENDING = "PENDING"

@@ -73,6 +73,13 @@ class Migration(migrations.Migration):
                 ),
                 ("dispatched_at", models.DateTimeField(blank=True, null=True)),
                 (
+                    "dispatch_attempts",
+                    models.PositiveIntegerField(
+                        db_comment="Count of times this row has been claimed for dispatch (incremented on each PENDING -> SENDING transition). Bounds the reaper reclaim loop: at NOTIFICATION_MAX_DISPATCH_ATTEMPTS the row is dead-lettered instead of re-dispatched, so a lost terminal callback cannot redeliver forever.",
+                        default=0,
+                    ),
+                ),
+                (
                     "status",
                     models.CharField(
                         choices=[
@@ -81,7 +88,7 @@ class Migration(migrations.Migration):
                             ("DISPATCHED", "Dispatched"),
                             ("DEAD_LETTER", "Dead letter"),
                         ],
-                        db_comment="Lifecycle: PENDING -> SENDING (claimed by a flush tick) -> DISPATCHED on success / DEAD_LETTER on retry exhaustion. A SENDING row whose lease expires is reclaimed back to PENDING by the reaper.",
+                        db_comment="Lifecycle: PENDING -> SENDING (claimed by a flush tick) -> DISPATCHED on success / DEAD_LETTER on retry exhaustion or once dispatch_attempts hits NOTIFICATION_MAX_DISPATCH_ATTEMPTS. A SENDING row whose lease expires is reclaimed back to PENDING by the reaper.",
                         default="PENDING",
                         max_length=16,
                     ),

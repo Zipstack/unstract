@@ -238,6 +238,14 @@ NOTIFICATION_BUFFER_RETENTION_DAYS = int(
 NOTIFICATION_DISPATCH_LEASE_SECONDS = int(
     os.environ.get("NOTIFICATION_DISPATCH_LEASE_SECONDS", "900")
 )
+# Hard ceiling on how many times a buffer row may be claimed for dispatch. Each
+# SENDING claim increments NotificationBuffer.dispatch_attempts; once it reaches
+# this cap the row is dead-lettered instead of re-dispatched. Bounds the reaper
+# reclaim loop so a row whose terminal callback never fires (e.g. a crash that
+# recurs in the dispatch->callback window) cannot be redelivered forever.
+NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
+    os.environ.get("NOTIFICATION_MAX_DISPATCH_ATTEMPTS", "5")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )

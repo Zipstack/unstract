@@ -169,13 +169,24 @@ class NotificationBuffer(BaseModel):
         ),
     )
     dispatched_at = models.DateTimeField(null=True, blank=True)
+    dispatch_attempts = models.PositiveIntegerField(
+        default=0,
+        db_comment=(
+            "Count of times this row has been claimed for dispatch (incremented "
+            "on each PENDING -> SENDING transition). Bounds the reaper reclaim "
+            "loop: at NOTIFICATION_MAX_DISPATCH_ATTEMPTS the row is dead-lettered "
+            "instead of re-dispatched, so a lost terminal callback cannot redeliver "
+            "forever."
+        ),
+    )
     status = models.CharField(
         max_length=16,
         choices=BufferStatus.choices(),
         default=BufferStatus.PENDING.value,
         db_comment=(
             "Lifecycle: PENDING -> SENDING (claimed by a flush tick) -> "
-            "DISPATCHED on success / DEAD_LETTER on retry exhaustion. A SENDING "
+            "DISPATCHED on success / DEAD_LETTER on retry exhaustion or once "
+            "dispatch_attempts hits NOTIFICATION_MAX_DISPATCH_ATTEMPTS. A SENDING "
             "row whose lease expires is reclaimed back to PENDING by the reaper."
         ),
     )
