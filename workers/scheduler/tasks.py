@@ -7,7 +7,7 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
-from celery import shared_task
+from queue_backend import dispatch, worker_task
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -145,16 +145,13 @@ def _execute_scheduled_workflow(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Triggering async execution for workflow {context.workflow_id}"
         )
 
-        # Use Celery to dispatch async execution task directly (like backend scheduler does)
-        from celery import current_app
-
         logger.info(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Dispatching async_execute_bin task for scheduled execution"
         )
 
         try:
-            # Dispatch the Celery task directly to the general queue
-            async_result = current_app.send_task(
+            # Dispatch through the queue_backend seam (Celery underneath today).
+            async_result = dispatch(
                 "async_execute_bin",
                 args=[
                     context.organization_id,  # schema_name (organization_id)
@@ -211,7 +208,7 @@ def _execute_scheduled_workflow(
         )
 
 
-@shared_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
+@worker_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
 def execute_pipeline_task(
     self,
     workflow_id: Any,
@@ -234,7 +231,7 @@ def execute_pipeline_task(
     )
 
 
-@shared_task(name="execute_pipeline_task_v2", bind=True)
+@worker_task(name="execute_pipeline_task_v2", bind=True)
 def execute_pipeline_task_v2(
     self,
     organization_id: Any,
@@ -415,7 +412,7 @@ def execute_pipeline_task_v2(
 
 
 # Health check task for monitoring
-@shared_task(name="scheduler_health_check")
+@worker_task(name="scheduler_health_check")
 def health_check() -> dict[str, Any]:
     """Health check task for scheduler worker.
 

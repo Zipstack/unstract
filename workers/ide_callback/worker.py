@@ -1,22 +1,21 @@
-"""General Worker
+"""IDE Callback Worker
 
-Celery worker for general tasks including webhooks, background
-processing, and workflow orchestration.
+Celery worker for Prompt Studio IDE post-execution callbacks.
+Serves the ``ide_callback`` queue defined in shared/infrastructure/config/registry.py.
 """
 
-from queue_backend import worker_task
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.config.registry import WorkerRegistry
 from shared.infrastructure.logging import WorkerLogger
 
-# Setup worker
-logger = WorkerLogger.setup(WorkerType.GENERAL)
-app, config = WorkerBuilder.build_celery_app(WorkerType.GENERAL)
+# Setup worker - this executes when module is imported by Celery
+logger = WorkerLogger.setup(WorkerType.IDE_CALLBACK)
+app, config = WorkerBuilder.build_celery_app(WorkerType.IDE_CALLBACK)
 
 
-def check_general_worker_health():
-    """Custom health check for general worker."""
+def check_ide_callback_health():
+    """Custom health check for IDE callback worker."""
     from shared.infrastructure.monitoring.health import HealthCheckResult, HealthStatus
 
     try:
@@ -27,26 +26,26 @@ def check_general_worker_health():
 
         if api_healthy:
             return HealthCheckResult(
-                name="general_worker_health",
+                name="ide_callback_health",
                 status=HealthStatus.HEALTHY,
-                message="General worker is healthy",
+                message="IDE callback worker is healthy",
                 details={
-                    "worker_type": "general",
+                    "worker_type": "ide_callback",
                     "api_client": "healthy",
-                    "queue": "celery",
+                    "queue": "ide_callback",
                 },
             )
         else:
             return HealthCheckResult(
-                name="general_worker_health",
+                name="ide_callback_health",
                 status=HealthStatus.DEGRADED,
-                message="General worker partially functional",
+                message="IDE callback worker partially functional",
                 details={"api_client": "unhealthy"},
             )
 
     except Exception as e:
         return HealthCheckResult(
-            name="general_worker_health",
+            name="ide_callback_health",
             status=HealthStatus.DEGRADED,
             message=f"Health check failed: {e}",
             details={"error": str(e)},
@@ -54,18 +53,6 @@ def check_general_worker_health():
 
 
 # Register health check
-
 WorkerRegistry.register_health_check(
-    WorkerType.GENERAL, "general_worker_health", check_general_worker_health
+    WorkerType.IDE_CALLBACK, "ide_callback_health", check_ide_callback_health
 )
-
-
-@worker_task(bind=True)
-def healthcheck(self):
-    """Health check task for monitoring systems."""
-    return {
-        "status": "healthy",
-        "worker_type": "general",
-        "task_id": self.request.id,
-        "worker_name": config.worker_name if config else "general-worker",
-    }
