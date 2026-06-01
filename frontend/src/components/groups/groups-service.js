@@ -4,7 +4,7 @@ import { useSessionStore } from "../../store/session-store";
 const RESOURCE_PATHS = {
   workflow: "workflow",
   pipeline: "pipeline",
-  api_deployment: "api/api",
+  api_deployment: "api/deployment",
   adapter_instance: "adapter",
   connector_instance: "connector",
   custom_tool: "prompt-studio",

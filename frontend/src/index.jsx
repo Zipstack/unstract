@@ -1,5 +1,6 @@
 import posthog from "posthog-js";
 import { PostHogProvider } from "posthog-js/react";
+import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
@@ -38,13 +39,15 @@ setFavicon(config.favicon);
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(
-  <PostHogProvider client={posthog}>
-    <SocketProvider>
-      <LazyLoader
-        loader={<GenericLoader />}
-        component={() => import("./App.jsx")}
-        componentName="App"
-      />
-    </SocketProvider>
-  </PostHogProvider>,
+  <React.StrictMode>
+    <PostHogProvider client={posthog}>
+      <SocketProvider>
+        <LazyLoader
+          loader={<GenericLoader />}
+          component={() => import("./App.jsx")}
+          componentName="App"
+        />
+      </SocketProvider>
+    </PostHogProvider>
+  </React.StrictMode>,
 );

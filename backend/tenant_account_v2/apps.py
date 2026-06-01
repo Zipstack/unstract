@@ -6,4 +6,4 @@ class TenantAccountV2Config(AppConfig):
     name = "tenant_account_v2"
 
     def ready(self):
-        from tenant_account_v2 import signals  # noqa: F401
+        from tenant_account_v2 import checks, signals  # noqa: F401

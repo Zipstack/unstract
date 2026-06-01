@@ -1,6 +1,7 @@
 import logging
 
 from django.apps import apps
+from django.core.exceptions import FieldDoesNotExist
 from django.db import transaction
 from django.db.models.fields.related import ManyToManyRel
 from django.db.models.signals import post_delete
@@ -55,7 +56,14 @@ def cleanup_user_org_access(
             # an HTTP request), so it would match zero rows in tests /
             # management commands. The through manager is unscoped; scope it
             # explicitly by the resource's own organization.
-            m2m_rel = model._meta.get_field("shared_users").remote_field
+            try:
+                m2m_rel = model._meta.get_field("shared_users").remote_field
+            except FieldDoesNotExist:
+                # A registered model can legitimately lack the sharing field
+                # during the OSS<->cloud sync window (e.g. AgenticProject
+                # before #1508 applies its migration). Group memberships were
+                # already purged above; skip the direct-share purge here.
+                continue
             assert isinstance(m2m_rel, ManyToManyRel)
             through = m2m_rel.through
             source_fk = model._meta.model_name
@@ -97,10 +105,22 @@ def cleanup_resource_group_shares(
 
     from tenant_account_v2.models import ResourceGroupShare
 
-    deleted, _ = ResourceGroupShare.objects.filter(
-        content_type=ContentType.objects.get_for_model(sender),
-        object_id=str(instance.pk),
-    ).delete()
+    # post_delete fires inside the resource-delete transaction; on failure the
+    # delete rolls back. Mirror ``cleanup_user_org_access``: name the
+    # sender/pk so the rollback is diagnosable, then re-raise.
+    try:
+        deleted, _ = ResourceGroupShare.objects.filter(
+            content_type=ContentType.objects.get_for_model(sender),
+            object_id=str(instance.pk),
+        ).delete()
+    except Exception:
+        logger.exception(
+            "Failed purging ResourceGroupShare rows after %s(%s) delete; "
+            "rolling back the resource deletion",
+            sender.__name__,
+            instance.pk,
+        )
+        raise
     if deleted:
         logger.info(
             "Removed %s ResourceGroupShare rows after %s(%s) delete",

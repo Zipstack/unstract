@@ -116,7 +116,9 @@ function useShareModal({
         setOpenShareModal(false);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        setAlertDetails(
+          handleException(err, "Unable to update sharing permissions"),
+        );
       })
       .finally(() => {
         setIsLoadingShare(false);

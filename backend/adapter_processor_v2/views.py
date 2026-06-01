@@ -309,19 +309,28 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         who lost access.
 
         ``shared_users`` is read-only on the serializer, so unsharing happens
-        only here (not via ``partial_update``). Diff the M2M before/after the
-        commit so cleanup keys off who actually lost access.
+        only here (not via ``partial_update``). Diff *effective* access
+        (direct + group + org) before/after the commit so cleanup also covers
+        users who lose access via a group-unshare or ``shared_to_org``
+        toggle-off, not just direct removals.
         """
         adapter = self.get_object()
-        before_user_ids = set(adapter.shared_users.values_list("id", flat=True))
+        before_user_ids = self._effective_member_ids(adapter)
         response = super().share(request, pk)
         if response.status_code == status.HTTP_200_OK:
             adapter.refresh_from_db()
-            after_user_ids = set(adapter.shared_users.values_list("id", flat=True))
+            after_user_ids = self._effective_member_ids(adapter)
             self._clear_default_adapter_for_removed_users(
                 adapter, before_user_ids - after_user_ids
             )
         return response
+
+    @staticmethod
+    def _effective_member_ids(adapter: AdapterInstance) -> set[int]:
+        """User ids with effective access to ``adapter`` (direct/group/org)."""
+        from tenant_account_v2.sharing_helpers import compute_effective_members
+
+        return {member["user_id"] for member in compute_effective_members(adapter)}
 
     def _notify_shared_users(
         self,

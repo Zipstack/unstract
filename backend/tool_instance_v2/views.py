@@ -6,9 +6,11 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import Q
 from django.db.models.query import QuerySet
-from permissions.permission import IsParentWorkflowOwner
+from django.shortcuts import get_object_or_404
+from permissions.permission import IsParentWorkflowOwner, is_workflow_mutator
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import api_view
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
@@ -191,7 +193,18 @@ class ToolInstanceViewSet(viewsets.ModelViewSet):
             WorkflowKey.WF_TOOL_INSTANCES
         ]
 
-        ToolInstanceHelper.reorder_tool_instances(instances_to_reorder)
+        # Reordering mutates step ordering, so require owner / org-admin /
+        # service-account — parity with update/destroy. This is a collection
+        # action (no get_object), so IsParentWorkflowOwner can't gate it; the
+        # for_user() fetch also scopes out cross-org workflow ids (404).
+        workflow = get_object_or_404(Workflow.objects.for_user(request.user), pk=wf_id)
+        if not is_workflow_mutator(request, workflow):
+            raise PermissionDenied(
+                "Only the workflow owner or an organization admin can "
+                "reorder its tool instances."
+            )
+
+        ToolInstanceHelper.reorder_tool_instances(instances_to_reorder, workflow_id=wf_id)
         tool_instances = ToolInstance.objects.get_instances_for_workflow(workflow=wf_id)
         ti_serializer = ToolInstanceSerializer(instance=tool_instances, many=True)
         return Response(ti_serializer.data, status=status.HTTP_200_OK)

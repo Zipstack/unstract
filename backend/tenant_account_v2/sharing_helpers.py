@@ -65,12 +65,19 @@ def validate_shared_groups_in_org(
 
 def get_resource_share_groups(resource_obj: Any) -> QuerySet[OrganizationGroup]:
     """Return the groups currently shared with ``resource_obj``."""
-    return OrganizationGroup.objects.filter(
-        resource_shares__content_type=ContentType.objects.get_for_model(
+    filters: dict[str, Any] = {
+        "resource_shares__content_type": ContentType.objects.get_for_model(
             type(resource_obj)
         ),
-        resource_shares__object_id=str(resource_obj.pk),
-    )
+        "resource_shares__object_id": str(resource_obj.pk),
+    }
+    # Defense in depth: constrain to the resource's org so tenant isolation
+    # lives in the read query itself, not only in UUID uniqueness + write-time
+    # checks. ``organization_id`` is present on every shareable resource.
+    organization_id = getattr(resource_obj, "organization_id", None)
+    if organization_id is not None:
+        filters["resource_shares__organization_id"] = organization_id
+    return OrganizationGroup.objects.filter(**filters)
 
 
 @transaction.atomic
@@ -105,6 +112,20 @@ def set_resource_share_groups(resource_obj: Any, group_ids: Iterable[int]) -> No
         current_qs.filter(group_id__in=to_remove).delete()
 
     if to_add:
+        # Guard the representable illegal state: a share row whose
+        # ``organization`` disagrees with its group's. Callers validate org
+        # membership upstream, so a mismatch here is a programming error.
+        valid_ids = set(
+            OrganizationGroup.objects.filter(
+                id__in=to_add, organization_id=organization_id
+            ).values_list("id", flat=True)
+        )
+        invalid = to_add - valid_ids
+        if invalid:
+            raise ValueError(
+                "Cannot share with groups outside the resource's organization: "
+                f"{sorted(invalid)}"
+            )
         ResourceGroupShare.objects.bulk_create(
             [
                 ResourceGroupShare(
@@ -151,6 +172,7 @@ def list_resources_shared_with_group(
     raw_ids = ResourceGroupShare.objects.filter(
         group=group,
         content_type=ContentType.objects.get_for_model(model),
+        organization_id=group.organization_id,
     ).values_list("object_id", flat=True)
     if isinstance(model._meta.pk, models.UUIDField):
         pks: list[Any] = _safe_uuids(raw_ids)

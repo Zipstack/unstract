@@ -9,6 +9,21 @@ import { SpinnerLoader } from "../widgets/spinner-loader/SpinnerLoader.jsx";
 
 import { groupsService } from "./groups-service.js";
 
+// getAllOrgUsers may return a bare array, { members: [...] }, or { users: [...] }.
+// Mirror useShareModal's defensive handling so the candidate list can't
+// silently go empty if the response shape changes.
+const normalizeOrgUsers = (data) => {
+  let list = [];
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (Array.isArray(data?.members)) {
+    list = data.members;
+  } else if (Array.isArray(data?.users)) {
+    list = data.users;
+  }
+  return list.map((user) => ({ id: user.id, email: user.email }));
+};
+
 function GroupMemberManager({ open, group, onClose }) {
   const service = groupsService();
   const handleException = useExceptionHandler();
@@ -27,13 +42,7 @@ function GroupMemberManager({ open, group, onClose }) {
     Promise.all([service.listGroupMembers(group.id), service.getAllOrgUsers()])
       .then(([memberRes, usersRes]) => {
         setMembers(memberRes?.data || []);
-        const all = usersRes?.data?.members || [];
-        setOrgUsers(
-          all.map((m) => ({
-            id: m.id,
-            email: m.email,
-          })),
-        );
+        setOrgUsers(normalizeOrgUsers(usersRes?.data));
       })
       .catch((err) => setAlertDetails(handleException(err, "Failed to load")))
       .finally(() => setLoading(false));
