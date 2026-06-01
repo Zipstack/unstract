@@ -34,7 +34,15 @@ def docker_client(mocker):
 
 
 @pytest.fixture
-def docker_client_with_sidecar():
+def docker_client_with_sidecar(mocker):
+    # Mirror `docker_client`: mock DockerClient.from_env so constructing the
+    # Client doesn't reach for a real Docker daemon (CI runners have one, bare
+    # dev/sandbox environments don't — and the test is about sidecar wiring,
+    # not the daemon connection).
+    mock_client = MagicMock()
+    mocker.patch(f"{DOCKER_MODULE}.DockerClient.from_env", return_value=mock_client)
+    mocker.patch(f"{DOCKER_MODULE}.Client._Client__private_login")
+
     image_name = "test-image"
     image_tag = "latest"
     logger = logging.getLogger("test-logger")

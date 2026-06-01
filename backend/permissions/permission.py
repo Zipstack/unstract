@@ -4,7 +4,10 @@ from adapter_processor_v2.models import AdapterInstance
 from rest_framework import permissions
 from rest_framework.request import Request
 from rest_framework.views import APIView
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.user_context import UserContext
+
+_REQUEST_ADMIN_CACHE_ATTR = "_cached_is_organization_admin"
 
 
 def _is_service_account(request: Request) -> bool:
@@ -21,13 +24,37 @@ def _is_service_account(request: Request) -> bool:
     return getattr(request.user, "is_service_account", False)
 
 
+def _is_organization_admin(request: Request) -> bool:
+    """Return True if the requesting user has the org-admin role.
+
+    Result is cached per-request to keep cost at one membership lookup per
+    incoming HTTP call regardless of how many permission classes ask.
+    """
+    cached = getattr(request, _REQUEST_ADMIN_CACHE_ATTR, None)
+    if cached is not None:
+        return cached
+    is_admin = OrganizationMemberService.is_user_organization_admin(request.user)
+    setattr(request, _REQUEST_ADMIN_CACHE_ATTR, is_admin)
+    return is_admin
+
+
 class IsOwner(permissions.BasePermission):
-    """Custom permission to only allow owners of an object."""
+    """Allow owners and org admins.
+
+    Org admins can manage every resource in their organization regardless of
+    ``created_by``. This matches the "admin role manages everything" model
+    expected by org-to-org migration (resources land owned by a service
+    account) and by typical admin UX.
+    """
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        return True if obj.created_by == request.user else False
+        if obj.created_by == request.user:
+            return True
+        if _is_organization_admin(request):
+            return True
+        return False
 
 
 class IsOrganizationMember(permissions.BasePermission):
@@ -39,43 +66,44 @@ class IsOrganizationMember(permissions.BasePermission):
 
 
 class IsOwnerOrSharedUser(permissions.BasePermission):
-    """Custom permission to only allow owners and shared users of an object."""
+    """Allow owners, shared users, and org admins."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-            )
-            else False
-        )
+        if obj.created_by == request.user:
+            return True
+        if obj.shared_users.filter(pk=request.user.pk).exists():
+            return True
+        if _is_organization_admin(request):
+            return True
+        return False
 
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
-    """Custom permission to only allow owners and shared users of an object or
-    if it is shared to org.
-    """
+    """Allow owners, shared users, org-shared objects, and org admins."""
 
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        return (
-            True
-            if (
-                obj.created_by == request.user
-                or obj.shared_users.filter(pk=request.user.pk).exists()
-                or obj.shared_to_org
-            )
-            else False
-        )
+        if obj.created_by == request.user:
+            return True
+        if obj.shared_users.filter(pk=request.user.pk).exists():
+            return True
+        if obj.shared_to_org:
+            return True
+        if _is_organization_admin(request):
+            return True
+        return False
 
 
 class IsFrictionLessAdapter(permissions.BasePermission):
     """Hack for friction-less onboarding not allowing user to view or updating
     friction less adapter.
+
+    Friction-less adapters wrap platform-owned credentials, so they remain
+    blocked for everyone including org admins -- exposing them would leak
+    the platform's keys.
     """
 
     def has_object_permission(
@@ -85,8 +113,9 @@ class IsFrictionLessAdapter(permissions.BasePermission):
             return False
         if _is_service_account(request):
             return True
-
-        return True if obj.created_by == request.user else False
+        if obj.created_by == request.user:
+            return True
+        return _is_organization_admin(request)
 
 
 class IsFrictionLessAdapterDelete(permissions.BasePermission):
@@ -99,5 +128,6 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
     ) -> bool:
         if obj.is_friction_less:
             return True
-
-        return True if obj.created_by == request.user else False
+        if obj.created_by == request.user:
+            return True
+        return _is_organization_admin(request)

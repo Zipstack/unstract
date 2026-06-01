@@ -16,6 +16,7 @@ from django.db.models.manager import BaseManager
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
@@ -189,7 +190,9 @@ class PromptStudioHelper:
         """
         profile_manager_owner = profile_manager.created_by
         if profile_manager_owner is None:
-            # No owner on this profile manager — skip ownership validation
+            return
+
+        if OrganizationMemberService.is_user_organization_admin(profile_manager_owner):
             return
 
         is_llm_owned = (
@@ -2725,30 +2728,6 @@ class PromptStudioHelper:
             modified_by=user,
             organization=organization,
         )
-
-        # When a service account creates a tool, add the API key owner
-        # as a shared user so they can see it in the UI.
-        if getattr(user, "is_service_account", False):
-            from platform_api.models import PlatformApiKey
-
-            try:
-                key = PlatformApiKey.objects.get(api_user=user)
-                if key.created_by:
-                    tool.shared_users.add(key.created_by)
-                else:
-                    logger.warning(
-                        "PlatformApiKey for service account %s has no "
-                        "created_by while creating tool %s",
-                        user.id,
-                        tool.tool_id,
-                    )
-            except PlatformApiKey.DoesNotExist:
-                logger.warning(
-                    "No PlatformApiKey found for service account %s "
-                    "while creating tool %s",
-                    user.id,
-                    tool.tool_id,
-                )
 
         return tool
 

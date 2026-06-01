@@ -116,7 +116,8 @@ known_first_party = [
     "notification",
     "scheduler",
     "log_consumer",
-    "ide_callback"
+    "ide_callback",
+    "queue_backend"
 ]
 
 [tool.mypy]
@@ -164,6 +165,7 @@ addopts = [
     "--cov=scheduler",
     "--cov=log_consumer",
     "--cov=ide_callback",
+    "--cov=queue_backend",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml"
@@ -186,7 +188,8 @@ source = [
     "notification",
     "scheduler",
     "log_consumer",
-    "ide_callback"
+    "ide_callback",
+    "queue_backend"
 ]
 omit = [
     "*/tests/*",

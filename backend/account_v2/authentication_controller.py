@@ -200,6 +200,10 @@ class AuthenticationController:
             )
 
             if new_organization:
+                self.authentication_helper.create_initial_platform_key(
+                    user=user, organization=organization
+                )
+
                 try:
                     self.auth_service.frictionless_onboarding(
                         organization=organization, user=user
@@ -207,9 +211,6 @@ class AuthenticationController:
                 except MethodNotImplemented:
                     logger.info("frictionless_onboarding not implemented")
 
-                self.authentication_helper.create_initial_platform_key(
-                    user=user, organization=organization
-                )
                 logger.info(
                     f"New organization created with Id {organization_id}",
                 )
