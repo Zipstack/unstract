@@ -35,6 +35,8 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+from unstract.core.data_models import is_failure_run
+
 # Hard cap on events per dispatch; the rest roll into the next flush tick.
 MAX_BATCH_SIZE = 500
 # Slack inlines this many events before collapsing the rest under an
@@ -42,7 +44,16 @@ MAX_BATCH_SIZE = 500
 # readability tanks past ~25 lines.
 SLACK_MAX_DISPLAY_EVENTS = 25
 
-_SUCCESS_STATUSES = frozenset({"COMPLETED", "SUCCESS"})
+# Legacy single-run webhook keys (pre-clubbing flat shape). Spread onto a
+# single-event envelope for backward compatibility — see build_envelope.
+_LEGACY_FLAT_KEYS = (
+    "type",
+    "pipeline_id",
+    "pipeline_name",
+    "status",
+    "execution_id",
+    "error_message",
+)
 
 # Middle dot (U+00B7) padded by single spaces — the per-event field separator.
 _SEPARATOR = " · "
@@ -55,26 +66,14 @@ _EMOJI_SUCCESS = ":white_check_mark:"
 _EMOJI_FAILURE = ":x:"
 
 
-def _is_success(status: str | None) -> bool:
-    if not status:
-        return False
-    return status.upper() in _SUCCESS_STATUSES
+def _is_effective_failure(status: str | None, counts: dict[str, Any]) -> bool:
+    """Did this event fail? Single-sourced via core ``is_failure_run``.
 
-
-def _has_failed_files(counts: dict[str, Any]) -> bool:
-    """True when file-level aggregates show at least one failure."""
-    failed = counts.get("failed_files")
-    return isinstance(failed, int) and failed > 0
-
-
-def _is_effective_success(status: str | None, counts: dict[str, Any]) -> bool:
-    """Treat a COMPLETED run with any file failures as a partial failure.
-
-    Mirrors the failure-filter contract at dispatch time so renderer summary
-    counts and the per-event file-count emoji match the reason the alert
-    fired.
+    Summary counts and the per-event emoji are derived from the same rule the
+    dispatch filter uses (ERROR/STOPPED or any failed file), so the rendered
+    outcome can never disagree with the reason the alert fired.
     """
-    return _is_success(status) and not _has_failed_files(counts)
+    return is_failure_run(status, counts.get("failed_files"))
 
 
 def _humanize_timestamp(iso: str | None) -> str:
@@ -105,14 +104,11 @@ def _format_file_count(event: dict[str, Any]) -> str:
     total = counts.get("total_files")
     if total is None:
         return ""
-    if _has_failed_files(counts):
+    if _is_effective_failure(event.get("status"), counts):
         failed = counts.get("failed_files", 0)
         return f"{_EMOJI_FAILURE} {failed}/{total} files"
-    if _is_success(event.get("status")):
-        successful = counts.get("successful_files", 0)
-        return f"{_EMOJI_SUCCESS} {successful}/{total} files"
-    failed = counts.get("failed_files", 0)
-    return f"{_EMOJI_FAILURE} {failed}/{total} files"
+    successful = counts.get("successful_files", 0)
+    return f"{_EMOJI_SUCCESS} {successful}/{total} files"
 
 
 def _format_event_line(event: dict[str, Any]) -> str:
@@ -159,24 +155,35 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
 def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     """Build the canonical envelope used by every dispatch path.
 
-    Summary carries only `{total, succeeded, failed}` — one envelope shape
-    so receivers parse a single schema, not two.
+    Summary carries `{total, succeeded, failed}`; `events` is the per-run list.
+
+    Backward compatibility: when the batch holds exactly one event, the legacy
+    flat top-level fields (the pre-clubbing single-run shape) are also spread
+    onto the envelope alongside `summary`/`events`. Receivers written against
+    the old `{type, pipeline_name, status, …}` body keep working; new receivers
+    read `events`. Multi-event batches are envelope-only (there was never a flat
+    shape for them). Removable once all receivers have migrated to `events`.
     """
     capped = payloads[:MAX_BATCH_SIZE]
-    succeeded = sum(
+    failed = sum(
         1
         for p in capped
-        if _is_effective_success(p.get("status"), p.get("additional_data") or {})
+        if _is_effective_failure(p.get("status"), p.get("additional_data") or {})
     )
-    failed = len(capped) - succeeded
-    return {
+    envelope: dict[str, Any] = {
         "summary": {
             "total": len(capped),
-            "succeeded": succeeded,
+            "succeeded": len(capped) - failed,
             "failed": failed,
         },
         "events": [_event_from_payload(p) for p in capped],
     }
+    if len(capped) == 1:
+        single = capped[0]
+        for key in _LEGACY_FLAT_KEYS:
+            if single.get(key) is not None:
+                envelope[key] = single[key]
+    return envelope
 
 
 def render_slack_text(envelope: dict[str, Any]) -> str:

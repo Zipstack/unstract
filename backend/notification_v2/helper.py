@@ -7,7 +7,6 @@ from typing import Any
 
 from account_v2.models import Organization
 from django.utils import timezone
-from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 from notification_v2.enums import (
     AuthorizationType,
@@ -15,23 +14,23 @@ from notification_v2.enums import (
     PlatformType,
 )
 from notification_v2.models import Notification, NotificationBuffer
+from unstract.core.data_models import is_failure_run as _core_is_failure_run
 
 logger = logging.getLogger(__name__)
 
 
 def is_failure_run(execution_status: str | None, failed_files: int | None) -> bool:
-    """Single source of truth for "did this run fail?" across all dispatch paths.
+    """Backend entry point for the "did this run fail?" rule.
 
-    A run counts as a failure if it reached a non-success terminal state
-    (ERROR/STOPPED) OR any file errored. Partial-success runs land as
-    status=COMPLETED with failed_files>0, so the status check alone misses them.
-
-    Used by api_v2/notification.py, pipeline_v2/notification.py and
-    internal_api_views._apply_failure_filter so every code path agrees on the
-    rule. The pipeline backend path ORs an extra last_run_status==FAILURE
-    backstop on top for the case where no WorkflowExecution can be loaded.
+    Delegates to the canonical predicate in ``unstract.core`` (which lives beside
+    ``ExecutionStatus`` and is shared with the clubbed renderer) so the dispatch
+    filter and the rendered summary can't drift. Kept as the public name here for
+    the backend paths: api_v2/notification.py, pipeline_v2/notification.py and
+    internal_api_views._apply_failure_filter. The pipeline path ORs an extra
+    last_run_status==FAILURE backstop on top for the case where no
+    WorkflowExecution can be loaded.
     """
-    return ExecutionStatus.is_failure(execution_status) or (failed_files or 0) > 0
+    return _core_is_failure_run(execution_status, failed_files)
 
 
 # Used as a stable salt-free input for SHA-256 grouping; collisions are

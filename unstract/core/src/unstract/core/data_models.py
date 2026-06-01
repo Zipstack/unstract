@@ -407,6 +407,21 @@ ExecutionStatus.failure_statuses = classmethod(_failure_statuses)
 ExecutionStatus.is_failure = classmethod(_is_failure)
 
 
+def is_failure_run(execution_status: str | None, failed_files: int | None) -> bool:
+    """Canonical "did this run fail?" rule, shared across every dispatch path.
+
+    A run counts as a failure if it reached a terminal failure state
+    (ERROR/STOPPED) OR any file errored. Partial-success runs land as
+    status=COMPLETED with failed_files>0, so the status check alone misses them.
+
+    Lives here, beside ``ExecutionStatus``, as the single source of truth: the
+    backend ``notification_v2.helper.is_failure_run`` re-exports it and the
+    clubbed renderer derives its success/failure counts from it, so the routing
+    filter and the rendered summary can never drift apart.
+    """
+    return ExecutionStatus.is_failure(execution_status) or (failed_files or 0) > 0
+
+
 # Add the get_skip_processing_statuses method as a class method
 def _get_skip_processing_statuses(cls) -> list["ExecutionStatus"]:
     """Get list of statuses that should skip file processing.
