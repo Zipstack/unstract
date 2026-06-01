@@ -46,6 +46,10 @@ SLACK_MAX_DISPLAY_EVENTS = 25
 
 # Legacy single-run webhook keys (pre-clubbing flat shape). Spread onto a
 # single-event envelope for backward compatibility — see build_envelope.
+# Covers both pre-clubbing wire shapes: the backend dispatch DTO
+# (pipeline_v2.dto.PipelineStatusPayload.to_dict — the first six keys) and the
+# worker callback path (core.data_models.NotificationPayload.to_webhook_payload),
+# which additionally emitted top-level ``timestamp`` and ``additional_data``.
 _LEGACY_FLAT_KEYS = (
     "type",
     "pipeline_id",
@@ -53,6 +57,8 @@ _LEGACY_FLAT_KEYS = (
     "status",
     "execution_id",
     "error_message",
+    "timestamp",
+    "additional_data",
 )
 
 # Middle dot (U+00B7) padded by single spaces — the per-event field separator.
@@ -159,10 +165,13 @@ def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
 
     Backward compatibility: when the batch holds exactly one event, the legacy
     flat top-level fields (the pre-clubbing single-run shape) are also spread
-    onto the envelope alongside `summary`/`events`. Receivers written against
-    the old `{type, pipeline_name, status, …}` body keep working; new receivers
-    read `events`. Multi-event batches are envelope-only (there was never a flat
-    shape for them). Removable once all receivers have migrated to `events`.
+    onto the envelope alongside `summary`/`events`. This reproduces both legacy
+    wire shapes — the backend DTO (`type, pipeline_id, pipeline_name, status,
+    execution_id?, error_message?`) and the worker callback body, which also
+    carried top-level `timestamp` and `additional_data`. Receivers written
+    against either old body keep working; new receivers read `events`.
+    Multi-event batches are envelope-only (there was never a flat shape for
+    them). Removable once all receivers have migrated to `events`.
     """
     capped = payloads[:MAX_BATCH_SIZE]
     failed = sum(
