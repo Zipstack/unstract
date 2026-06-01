@@ -494,6 +494,45 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
 
 
+# Branded OpenAI-compatible providers. Wire protocol is identical to the
+# generic OpenAI Compatible adapter; the only difference is a hard-coded
+# endpoint so users pick a model + API key without typing a URL. Cost stays
+# unresolved (same as any non-OpenAI gateway) since requests route through
+# LiteLLM's generic custom_openai provider.
+def _validate_branded_openai_compatible(
+    adapter_metadata: dict[str, "Any"], api_base: str
+) -> dict[str, "Any"]:
+    adapter_metadata = {**adapter_metadata, "api_base": api_base}
+    return OpenAICompatibleLLMParameters.validate(adapter_metadata)
+
+
+_NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
+_OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+
+
+class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
+
+    # Endpoint is hard-coded; users never supply api_base.
+    api_base: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(
+            adapter_metadata, _NVIDIA_BUILD_API_BASE
+        )
+
+
+class OpenRouterLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for OpenRouter (openrouter.ai)."""
+
+    api_base: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(adapter_metadata, _OPENROUTER_API_BASE)
+
+
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/azure/#completion---using-azure_ad_token-api_base-api_version."""
 
