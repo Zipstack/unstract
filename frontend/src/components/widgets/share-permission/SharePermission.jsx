@@ -30,7 +30,7 @@ function SharePermission({
   isSharableToOrg = false,
 }) {
   const { sessionDetails } = useSessionStore();
-  const currentUserId = sessionDetails?.userId?.toString();
+  const currentUserId = sessionDetails?.id?.toString();
   const [selectedUsers, setSelectedUsers] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [shareWithEveryone, setShareWithEveryone] = useState(false);
@@ -98,25 +98,30 @@ function SharePermission({
     setShareWithEveryone(checked);
   };
 
+  // Admins have org-wide access, so they aren't listed as explicit shares.
+  // This also hides legacy admin rows created before the auto-share removal.
+  const sharedUsersToDisplay = selectedUsers
+    .map((userId) => {
+      const user = allUsers.find((u) =>
+        u?.id !== undefined
+          ? u?.id.toString() === userId.toString()
+          : u?.toString() === userId.toString(),
+      );
+      return {
+        id: user?.id,
+        email: user?.email,
+        is_admin: user?.is_admin,
+      };
+    })
+    .filter((user) => !user.is_admin);
+
   let sharedWithContent;
   if (shareWithEveryone) {
     sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
-  } else if (selectedUsers.length > 0) {
+  } else if (sharedUsersToDisplay.length > 0) {
     sharedWithContent = (
       <List
-        dataSource={selectedUsers.map((userId) => {
-          const user = allUsers.find((u) => {
-            if (u?.id !== undefined) {
-              return u?.id.toString() === userId.toString();
-            } else {
-              return u?.toString() === userId.toString();
-            }
-          });
-          return {
-            id: user?.id,
-            email: user?.email,
-          };
-        })}
+        dataSource={sharedUsersToDisplay}
         renderItem={(item) => (
           <List.Item
             extra={
