@@ -131,7 +131,7 @@ class PromptStudioHelper:
             is_default=True,
             created_by=user,
             modified_by=user,
-            profile_name="sample profile",
+            profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
             chunk_size=0,
             chunk_overlap=0,
             section="Default",
