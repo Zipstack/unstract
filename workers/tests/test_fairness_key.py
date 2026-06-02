@@ -17,13 +17,20 @@ from __future__ import annotations
 import ast
 import json
 import pathlib
+from dataclasses import FrozenInstanceError
 from unittest.mock import patch
+
+import pytest
+from celery import Celery
 
 from queue_backend import FairnessKey, dispatch
 from queue_backend.fairness import (
     DEFAULT_PRIORITY,
     DEFAULT_TIER,
     FAIRNESS_HEADER_NAME,
+    MAX_PRIORITY,
+    MIN_PRIORITY,
+    SYSTEM_TIER,
 )
 
 
@@ -54,12 +61,28 @@ class TestFairnessKey:
 
     def test_is_frozen(self):
         key = FairnessKey(org_id="x")
-        try:
+        with pytest.raises(FrozenInstanceError):
             key.org_id = "y"  # type: ignore[misc]
-        except Exception as exc:
-            assert "frozen" in str(exc).lower() or isinstance(exc, AttributeError)
-        else:
-            raise AssertionError("FairnessKey should be frozen / immutable")
+
+    def test_priority_below_range_rejected(self):
+        with pytest.raises(ValueError, match="pipeline_priority out of range"):
+            FairnessKey(org_id="x", pipeline_priority=MIN_PRIORITY - 1)
+
+    def test_priority_above_range_rejected(self):
+        with pytest.raises(ValueError, match="pipeline_priority out of range"):
+            FairnessKey(org_id="x", pipeline_priority=MAX_PRIORITY + 1)
+
+    def test_priority_boundaries_accepted(self):
+        FairnessKey(org_id="x", pipeline_priority=MIN_PRIORITY)
+        FairnessKey(org_id="x", pipeline_priority=MAX_PRIORITY)
+
+    def test_for_org_rejects_misspelled_kwargs(self):
+        """``priority=`` (instead of ``pipeline_priority=``) and other
+        typos must fail loudly, not silently fall back to defaults."""
+        with pytest.raises(TypeError, match="priority"):
+            FairnessKey.for_org("org-1", priority=80)  # type: ignore[call-arg]
+        with pytest.raises(TypeError, match="tiers"):
+            FairnessKey.for_org("org-1", tiers="enterprise")  # type: ignore[call-arg]
 
     def test_to_dict_shape(self):
         key = FairnessKey(org_id="org-1", pipeline_priority=80, tier="enterprise")
@@ -76,14 +99,23 @@ class TestFairnessKey:
         round_tripped = json.loads(json.dumps(key.to_dict()))
         assert round_tripped == key.to_dict()
 
+    def test_system_key_encodes_partition_in_tier(self):
+        """``FairnessKey.system()`` must put the partition in ``tier``
+        (not implicit via ``org_id is None``) so the Phase 8 scheduler
+        can match on a single closed-set field."""
+        key = FairnessKey.system()
+        assert key.org_id is None
+        assert key.tier == SYSTEM_TIER
+
     def test_system_key_round_trips(self):
-        """``org_id=None`` is JSON-safe (becomes JSON null)."""
+        """``org_id=None`` is JSON-safe (becomes JSON null) and the
+        tier is preserved through serialisation."""
         key = FairnessKey.system()
         round_tripped = json.loads(json.dumps(key.to_dict()))
         assert round_tripped == {
             "org_id": None,
             "pipeline_priority": DEFAULT_PRIORITY,
-            "tier": DEFAULT_TIER,
+            "tier": SYSTEM_TIER,
         }
 
 
@@ -138,7 +170,7 @@ class TestDispatchAttachesFairness:
             FAIRNESS_HEADER_NAME: {
                 "org_id": None,
                 "pipeline_priority": DEFAULT_PRIORITY,
-                "tier": DEFAULT_TIER,
+                "tier": SYSTEM_TIER,
             }
         }
 
@@ -165,6 +197,40 @@ class TestDispatchCallSitesPassFairness:
     """AST-based audit: every ``dispatch(...)`` call in production code
     paths must include a ``fairness=`` keyword. Tests and the seam
     module itself are exempt (they exercise/define the mechanism)."""
+
+    def test_dispatch_must_be_imported_unaliased(self):
+        """The fairness canary below only matches the bare name
+        ``dispatch``. If a producer imports it as ``from queue_backend
+        import dispatch as foo``, the canary would silently miss any
+        ``foo(...)`` call. Forbid the alias form so the canary stays
+        complete.
+        """
+        workers_root = pathlib.Path(__file__).parent.parent
+        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
+
+        aliased: list[str] = []
+        for py in workers_root.rglob("*.py"):
+            rel = py.relative_to(workers_root)
+            if rel.parts and rel.parts[0] in skip_top_dirs:
+                continue
+            try:
+                tree = ast.parse(py.read_text(), filename=str(py))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "queue_backend":
+                    for alias in node.names:
+                        if alias.name == "dispatch" and alias.asname not in (
+                            None,
+                            "dispatch",
+                        ):
+                            aliased.append(f"{rel}:{node.lineno} (as {alias.asname})")
+
+        assert aliased == [], (
+            "``queue_backend.dispatch`` must be imported under its real "
+            "name — alias imports defeat the fairness inventory canary. "
+            "Found:\n  " + "\n  ".join(aliased)
+        )
 
     def test_every_production_dispatch_passes_fairness(self):
         workers_root = pathlib.Path(__file__).parent.parent
@@ -244,3 +310,45 @@ class TestNoConsumerYet:
             "Phase 5.1 is additive-only — no consumer should exist yet. "
             "Found:\n  " + "\n  ".join(readers)
         )
+
+
+# --- End-to-end: header survives Celery's signature pipeline ---
+
+
+class TestHeaderSurvivesCeleryPipeline:
+    """Belt-and-braces over the mock-based tests above.
+
+    Real Celery in eager mode with a memory broker: enqueue a task via
+    ``dispatch(...)``, capture the message ``Celery`` would put on the
+    wire, and assert the fairness header is present in the right shape.
+    Catches the (rare but expensive) case where a future Celery or
+    kombu serializer upgrade silently drops unknown headers.
+    """
+
+    def test_header_present_on_outbound_message(self):
+        # Self-contained Celery app on a memory broker — exercises the
+        # real ``send_task`` codepath without needing RabbitMQ. We don't
+        # need eager execution; the assertion is on the message Celery
+        # would put on the wire, captured via a wraps= patch.
+        app = Celery("test_fairness_e2e", broker="memory://", backend="cache+memory://")
+
+        with patch("queue_backend.dispatch.current_app", app), patch.object(
+            app, "send_task", wraps=app.send_task
+        ) as wrapped_send:
+            dispatch(
+                "qb.e2e.echo",
+                fairness=FairnessKey.for_org(
+                    "org-1", pipeline_priority=80, tier="enterprise"
+                ),
+            )
+
+        # ``send_task`` is invoked with the headers dict carrying the
+        # fairness payload in the documented shape.
+        call_headers = wrapped_send.call_args.kwargs["headers"]
+        assert call_headers == {
+            FAIRNESS_HEADER_NAME: {
+                "org_id": "org-1",
+                "pipeline_priority": 80,
+                "tier": "enterprise",
+            }
+        }

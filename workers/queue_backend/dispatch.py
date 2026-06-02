@@ -60,10 +60,7 @@ def dispatch(
         A handle to the enqueued task. ``.id`` is guaranteed; everything
         else is substrate-specific and callers must not rely on it.
     """
-    headers: dict[str, Any] | None = None
-    if fairness is not None:
-        headers = {FAIRNESS_HEADER_NAME: fairness.to_dict()}
-
+    headers = {FAIRNESS_HEADER_NAME: fairness.to_dict()} if fairness is not None else None
     return current_app.send_task(
         task_name,
         args=args,

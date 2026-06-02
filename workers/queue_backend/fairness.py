@@ -14,8 +14,8 @@ extra field. On the consumer side it's reachable via
 
 This module is additive-only:
 
-* No worker code reads ``_fairness_key`` today (verified by
-  ``test_fairness_key.py``).
+* No worker code reads ``x-fairness-key`` today (verified by
+  ``test_fairness_key.py::TestNoConsumerYet``).
 * A producer that omits the field is still accepted by ``dispatch()`` —
   the inventory canary in the characterisation suite is the place that
   forbids omission in production code paths.
@@ -24,12 +24,26 @@ This module is additive-only:
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Literal
 
-# Default values used when the caller has no better signal — e.g. system
-# tasks (log persistence) that aren't tied to a specific org or pipeline.
+# Closed vocabulary for ``tier``. Phase 8's scheduler matches on this
+# set; widening the set is an explicit decision (e.g. add a new tenant
+# class), not a typo. ``"system"`` is the special partition for tasks
+# without tenant context (periodic log flush, healthchecks, etc.).
+Tier = Literal["standard", "enterprise", "system"]
+
+# Bounds for ``pipeline_priority``. The scheduler interprets 0..100 with
+# higher = sooner; anything outside this range is rejected at
+# construction so producers can't accidentally invent edge values that
+# Phase 8 then has to special-case.
+MIN_PRIORITY: Final[int] = 0
+MAX_PRIORITY: Final[int] = 100
+
+# Default values used when the caller has no better signal — e.g. a
+# request with no per-pipeline priority configured.
 DEFAULT_PRIORITY: Final[int] = 50
-DEFAULT_TIER: Final[str] = "standard"
+DEFAULT_TIER: Final[Tier] = "standard"
+SYSTEM_TIER: Final[Tier] = "system"
 
 # Celery message-header slot that carries the fairness key. Headers
 # travel with the AMQP message but are NOT passed to the task body's
@@ -45,16 +59,30 @@ class FairnessKey:
 
     ``org_id=None`` is a valid value — it denotes a system / cross-org
     task that doesn't belong to a tenant partition (e.g. periodic log
-    flushing, healthchecks). PG Queue's scheduler treats those as a
-    distinct "system" partition rather than as belonging to any tenant.
+    flushing, healthchecks). Producers building those keys should also
+    set ``tier="system"`` (see :meth:`FairnessKey.system`) so the Phase 8
+    scheduler can match on the tier alone, without special-casing
+    ``org_id is None``.
+
+    ``pipeline_priority`` is bounded to ``MIN_PRIORITY..MAX_PRIORITY``
+    (0..100). Higher = sooner.
     """
 
     org_id: str | None
     pipeline_priority: int = DEFAULT_PRIORITY
-    tier: str = DEFAULT_TIER
+    tier: Tier = DEFAULT_TIER
+
+    def __post_init__(self) -> None:
+        if not MIN_PRIORITY <= self.pipeline_priority <= MAX_PRIORITY:
+            raise ValueError(
+                "pipeline_priority out of range "
+                f"[{MIN_PRIORITY}, {MAX_PRIORITY}]: {self.pipeline_priority}"
+            )
 
     def to_dict(self) -> dict[str, str | int | None]:
-        """JSON-safe representation suitable for ``kwargs["_fairness_key"]``."""
+        """JSON-safe representation carried in the Celery message header
+        ``x-fairness-key``.
+        """
         return {
             "org_id": self.org_id,
             "pipeline_priority": self.pipeline_priority,
@@ -63,16 +91,31 @@ class FairnessKey:
 
     @classmethod
     def system(cls) -> FairnessKey:
-        """Fairness key for a task with no tenant context."""
-        return cls(org_id=None)
+        """Fairness key for a task with no tenant context.
+
+        ``tier="system"`` encodes the partition in the message itself
+        (rather than leaving it implicit via ``org_id is None``), so the
+        future PG Queue scheduler matches on a single closed-set field.
+        """
+        return cls(org_id=None, tier=SYSTEM_TIER)
 
     @classmethod
-    def for_org(cls, org_id: str | None, **overrides: object) -> FairnessKey:
+    def for_org(
+        cls,
+        org_id: str | None,
+        *,
+        pipeline_priority: int = DEFAULT_PRIORITY,
+        tier: Tier = DEFAULT_TIER,
+    ) -> FairnessKey:
         """Convenience constructor for the common case: a known org_id
         and defaults for the rest.
+
+        Keyword-only overrides (no ``**kwargs``) so a typo like
+        ``priority=80`` or ``tiers="enterprise"`` raises ``TypeError``
+        at the call site instead of silently dropping the override.
         """
         return cls(
             org_id=org_id,
-            pipeline_priority=int(overrides.get("pipeline_priority", DEFAULT_PRIORITY)),
-            tier=str(overrides.get("tier", DEFAULT_TIER)),
+            pipeline_priority=pipeline_priority,
+            tier=tier,
         )
