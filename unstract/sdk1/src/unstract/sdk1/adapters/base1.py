@@ -353,6 +353,9 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 _OPENAI_PROVIDER_PREFIX = "openai/"
 _CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
 _OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+# Keyless gateways still need a non-empty key; the OpenAI SDK rejects a
+# null/blank one before any request reaches the endpoint.
+_NO_AUTH_API_KEY = "no-auth"
 
 
 def _is_openai_reasoning_model(model: str) -> bool:
@@ -492,6 +495,86 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
             return model
         return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
+
+
+# Shared validation for branded adapters that reuse the OpenAI-compatible wire
+# protocol with a fixed default endpoint.
+def _validate_branded_openai_compatible(
+    adapter_metadata: dict[str, "Any"], default_api_base: str
+) -> dict[str, "Any"]:
+    # Endpoint stays overridable so a provider URL change needs no release.
+    api_base = adapter_metadata.get("api_base")
+    if not (isinstance(api_base, str) and api_base.strip()):
+        api_base = default_api_base
+    adapter_metadata = {**adapter_metadata, "api_base": api_base}
+    return OpenAICompatibleLLMParameters.validate(adapter_metadata)
+
+
+_NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
+_OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_OPENROUTER_PROVIDER_PREFIX = "openrouter/"
+
+
+class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
+
+    # Required str so a directly-constructed instance stays valid.
+    api_base: str = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(
+            adapter_metadata, _NVIDIA_BUILD_API_BASE
+        )
+
+
+class OpenRouterLLMParameters(BaseChatCompletionParameters):
+    """Adapter for OpenRouter (openrouter.ai).
+
+    Routed through LiteLLM's native `openrouter/` provider so per-token costs
+    resolve and reasoning params map without provider-specific workarounds.
+    """
+
+    api_key: str
+    api_base: str = _OPENROUTER_API_BASE
+    reasoning_effort: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _OPENROUTER_API_BASE
+        adapter_metadata["model"] = OpenRouterLLMParameters.validate_model(
+            adapter_metadata
+        )
+        # Reasoning models reject a non-default temperature; drop it and send
+        # reasoning_effort only when reasoning is enabled. On a re-validation
+        # pass `enable_reasoning` is absent (it isn't serialized), so recover the
+        # state from a surviving reasoning_effort to keep reload idempotent —
+        # unless the user explicitly opted out with `enable_reasoning: false`.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        if (
+            not enable_reasoning
+            and "enable_reasoning" not in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        ):
+            enable_reasoning = True
+        adapter_metadata.pop("enable_reasoning", None)
+        if enable_reasoning:
+            adapter_metadata["temperature"] = None
+        else:
+            adapter_metadata.pop("reasoning_effort", None)
+        return OpenRouterLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenRouter adapter.")
+        if model.startswith(_OPENROUTER_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENROUTER_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
@@ -1296,6 +1379,8 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_base: str | None = None
     embed_batch_size: int | None = 10
     dimensions: int | None = None  # For text-embedding-3-* models
+    # Strict endpoints reject the null LiteLLM sends when this is unset.
+    encoding_format: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -1309,6 +1394,77 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         return model
+
+
+# custom_openai has no embedding support, so these route through LiteLLM's
+# native nvidia_nim provider; its default api_base is pinned for the schema.
+_NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
+
+
+class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
+    """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
+
+    # Overridable default endpoint.
+    api_base: str = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        # Endpoint stays overridable so a provider URL change needs no release.
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _NVIDIA_BUILD_API_BASE
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
+        adapter_metadata.setdefault("encoding_format", "float")
+        adapter_metadata["model"] = NvidiaBuildEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the NVIDIA Build embedding adapter.")
+        if model.startswith(_NVIDIA_NIM_PROVIDER_PREFIX):
+            return model
+        return f"{_NVIDIA_NIM_PROVIDER_PREFIX}{model}"
+
+
+class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
+    """Embeddings for any OpenAI-compatible server (vLLM, self-hosted, etc.).
+
+    Routes through the `openai/` provider with a user-supplied `api_base`;
+    cost stays unresolved since the endpoint is arbitrary.
+    """
+
+    # Some gateways are keyless; the endpoint is always required.
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_key = adapter_metadata.get("api_key")
+        if not (isinstance(api_key, str) and api_key.strip()):
+            adapter_metadata["api_key"] = _NO_AUTH_API_KEY
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
+        adapter_metadata.setdefault("encoding_format", "float")
+        adapter_metadata["model"] = OpenAICompatibleEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAICompatibleEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError(
+                "model is required for the OpenAI Compatible embedding adapter."
+            )
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENAI_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
