@@ -11,6 +11,7 @@ import { AgencyPage } from "../pages/AgencyPage.jsx";
 import ConnectorsPage from "../pages/ConnectorsPage.jsx";
 import { CustomTools } from "../pages/CustomTools.jsx";
 import { DeploymentsPage } from "../pages/DeploymentsPage.jsx";
+import { GroupsPage } from "../pages/GroupsPage.jsx";
 import { InviteEditUserPage } from "../pages/InviteEditUserPage.jsx";
 import { LogsPage } from "../pages/LogsPage.jsx";
 import { MetricsDashboardPage } from "../pages/MetricsDashboardPage.jsx";
@@ -253,6 +254,7 @@ function useMainAppRoutes() {
           <Route path="users" element={<UsersPage />} />
           <Route path="users/invite" element={<InviteEditUserPage />} />
           <Route path="users/edit" element={<InviteEditUserPage />} />
+          <Route path="groups" element={<GroupsPage />} />
           <Route
             path="settings/platform-api-keys"
             element={<PlatformApiKeysPage />}

@@ -26,6 +26,8 @@ workflow_clear_file_marker = WorkflowViewSet.as_view({"get": "clear_file_marker"
 workflow_schema = WorkflowViewSet.as_view({"get": "get_schema"})
 can_update = WorkflowViewSet.as_view({"get": "can_update"})
 list_shared_users = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
+workflow_share = WorkflowViewSet.as_view({"post": "share"})
+workflow_effective_members = WorkflowViewSet.as_view({"get": "effective_members"})
 
 # File History views
 file_history_list = FileHistoryViewSet.as_view({"get": "list"})
@@ -50,6 +52,12 @@ urlpatterns = format_suffix_patterns(
             "<uuid:pk>/users/",
             list_shared_users,
             name="list-shared-users",
+        ),
+        path("<uuid:pk>/share/", workflow_share, name="workflow-share"),
+        path(
+            "<uuid:pk>/effective-members/",
+            workflow_effective_members,
+            name="workflow-effective-members",
         ),
         path("execute/", workflow_execute, name="execute-workflow"),
         path(

@@ -14,11 +14,13 @@ from prompt_studio.prompt_studio_core_v2.models import CustomTool
 
 class ProfileManagerModelManager(BaseModelManager):
     def for_user(self, user):
-        """Mirror the visibility model used by Workflow/Pipeline/etc.
+        """Read visibility: profile's own share fields OR parent CustomTool sharing.
 
-        Org-scoped via the parent CustomTool — ProfileManager has no
-        direct ``organization`` FK, so the ``shared_to_org=True`` branch
-        would otherwise leak rows across tenants for guessed UUIDs.
+        Org-scoped via the parent (no ``organization`` FK on this model).
+        The parent-tool branch lets shared-project users see existing
+        profiles so ``IsOwner`` on the viewset returns 403 on mutation
+        instead of DRF raising 404 first. Mutation gating lives on the
+        viewset; this method governs read visibility only.
         """
         org_scope = Q(prompt_studio_tool__organization=UserContext.get_organization())
 
@@ -28,9 +30,17 @@ class ProfileManagerModelManager(BaseModelManager):
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.filter(org_scope)
 
+        # Union the legacy own-share branches with the parent-tool branch
+        # so any row visible before the UN-2977 fix stays visible.
+        accessible_tools = CustomTool.objects.for_user(user)
         return self.filter(
             org_scope
-            & (Q(created_by=user) | Q(shared_users=user) | Q(shared_to_org=True))
+            & (
+                Q(created_by=user)
+                | Q(shared_users=user)
+                | Q(shared_to_org=True)
+                | Q(prompt_studio_tool__in=accessible_tools)
+            )
         ).distinct()
 
 

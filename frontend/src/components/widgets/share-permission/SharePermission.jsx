@@ -11,6 +11,7 @@ import "./SharePermission.css";
 import {
   DeleteOutlined,
   QuestionCircleOutlined,
+  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import PropTypes from "prop-types";
@@ -26,12 +27,14 @@ function SharePermission({
   permissionEdit,
   loading,
   allUsers,
+  allGroups = [],
   onApply,
   isSharableToOrg = false,
 }) {
   const { sessionDetails } = useSessionStore();
   const currentUserId = sessionDetails?.id?.toString();
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [shareWithEveryone, setShareWithEveryone] = useState(false);
 
@@ -84,13 +87,25 @@ function SharePermission({
         }),
       );
     }
+    if (adapter?.shared_groups) {
+      setSelectedGroupIds(
+        adapter.shared_groups.map((g) => (g?.id === undefined ? g : g.id)),
+      );
+    } else {
+      setSelectedGroupIds([]);
+    }
   }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
-    setSelectedUsers((prevSelectedUsers) =>
-      prevSelectedUsers.filter((user) => user !== userId),
+    setSelectedUsers((prev) =>
+      prev.filter((user) => String(user) !== String(userId)),
     );
   };
+
+  const handleDeleteGroup = (groupId) => {
+    setSelectedGroupIds((prev) => prev.filter((id) => id !== groupId));
+  };
+
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
 
@@ -98,9 +113,13 @@ function SharePermission({
     setShareWithEveryone(checked);
   };
 
+  const groupCandidateOptions = allGroups
+    .filter((g) => !selectedGroupIds.includes(g.id))
+    .map((g) => ({ label: g.name, value: g.id }));
+
   // Admins have org-wide access, so they aren't listed as explicit shares.
   // This also hides legacy admin rows created before the auto-share removal.
-  const sharedUsersToDisplay = selectedUsers
+  const userItems = selectedUsers
     .map((userId) => {
       const user = allUsers.find((u) =>
         u?.id !== undefined
@@ -108,6 +127,7 @@ function SharePermission({
           : u?.toString() === userId.toString(),
       );
       return {
+        kind: "user",
         id: user?.id,
         email: user?.email,
         is_admin: user?.is_admin,
@@ -115,32 +135,46 @@ function SharePermission({
     })
     .filter((user) => !user.is_admin);
 
+  const groupItems = selectedGroupIds.map((groupId) => {
+    const group = allGroups.find((g) => g.id === groupId);
+    return {
+      kind: "group",
+      id: groupId,
+      name: group?.name || `Group #${groupId}`,
+    };
+  });
+
   let sharedWithContent;
   if (shareWithEveryone) {
     sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
-  } else if (sharedUsersToDisplay.length > 0) {
+  } else if (userItems.length > 0 || groupItems.length > 0) {
     sharedWithContent = (
       <List
-        dataSource={sharedUsersToDisplay}
+        dataSource={[...userItems, ...groupItems]}
         renderItem={(item) => (
           <List.Item
             extra={
               permissionEdit && (
-                <div onClick={(event) => event.stopPropagation()} role="none">
-                  <Popconfirm
-                    key={`${item.id}-delete`}
-                    title="Revoke Access"
-                    description={`Are you sure you want to revoke access to '${item?.email}'?`}
-                    okText="Yes"
-                    cancelText="No"
-                    icon={<QuestionCircleOutlined />}
-                    onConfirm={(event) => handleDeleteUser(item?.id)}
-                  >
-                    <Typography.Text>
-                      <DeleteOutlined className="action-icon-buttons" />
-                    </Typography.Text>
-                  </Popconfirm>
-                </div>
+                <Popconfirm
+                  title="Revoke Access"
+                  description={`Are you sure you want to revoke access to '${
+                    item.kind === "user" ? item.email : item.name
+                  }'?`}
+                  okText="Yes"
+                  cancelText="No"
+                  icon={<QuestionCircleOutlined style={{ color: "#faad14" }} />}
+                  onConfirm={() => {
+                    if (item.kind === "user") {
+                      handleDeleteUser(item.id);
+                    } else {
+                      handleDeleteGroup(item.id);
+                    }
+                  }}
+                >
+                  <Typography.Text>
+                    <DeleteOutlined className="action-icon-buttons" />
+                  </Typography.Text>
+                </Popconfirm>
               )
             }
           >
@@ -149,10 +183,12 @@ function SharePermission({
                 <>
                   <Avatar
                     className="shared-user-avatar"
-                    icon={<UserOutlined />}
+                    icon={
+                      item.kind === "user" ? <UserOutlined /> : <TeamOutlined />
+                    }
                   />
                   <Typography.Text className="shared-username">
-                    {item.email}
+                    {item.kind === "user" ? item.email : item.name}
                   </Typography.Text>
                 </>
               }
@@ -168,14 +204,16 @@ function SharePermission({
   return (
     adapter && (
       <Modal
-        title={"Share Users"}
+        title="Share access"
         open={open}
         onCancel={() => setOpen(false)}
         maskClosable={false}
         centered
         closable={true}
         okText={"Apply"}
-        onOk={() => onApply(selectedUsers, adapter, shareWithEveryone)}
+        onOk={() =>
+          onApply(selectedUsers, adapter, shareWithEveryone, selectedGroupIds)
+        }
         cancelButtonProps={!permissionEdit && { style: { display: "none" } }}
         okButtonProps={!permissionEdit && { style: { display: "none" } }}
         className="share-permission-modal"
@@ -195,36 +233,54 @@ function SharePermission({
               </Checkbox>
             )}
             {permissionEdit && !shareWithEveryone && (
-              <Select
-                filterOption={filterOption}
-                showSearch
-                size={"middle"}
-                placeholder="Search"
-                value={null}
-                className="share-permission-search"
-                onChange={(selectedValue) => {
-                  const isValueSelected = selectedUsers.includes(selectedValue);
-                  if (!isValueSelected) {
-                    // Update the state only if the selected value is not already present
-                    setSelectedUsers([...selectedUsers, selectedValue]);
-                  }
-                }}
-                options={filteredUsers.map((user) => ({
-                  label: user.email,
-                  value: user.id,
-                }))}
-              >
-                {filteredUsers.map((user) => {
-                  return (
-                    <Select.Option key={user?.id} value={user?.id}>
-                      {user?.email}
-                    </Select.Option>
-                  );
-                })}
-              </Select>
+              <>
+                <div className="share-permission-section">
+                  <Typography.Text strong>Add users</Typography.Text>
+                  <Select
+                    filterOption={filterOption}
+                    showSearch
+                    size={"middle"}
+                    placeholder="Find a user by email"
+                    value={null}
+                    className="share-permission-search"
+                    onChange={(selectedValue) => {
+                      const isValueSelected =
+                        selectedUsers.includes(selectedValue);
+                      if (!isValueSelected) {
+                        setSelectedUsers([...selectedUsers, selectedValue]);
+                      }
+                    }}
+                    options={filteredUsers.map((user) => ({
+                      label: user.email,
+                      value: user.id,
+                    }))}
+                  />
+                </div>
+                {allGroups.length > 0 && (
+                  <div className="share-permission-section">
+                    <Typography.Text strong>Add groups</Typography.Text>
+                    <Select
+                      filterOption={filterOption}
+                      showSearch
+                      size={"middle"}
+                      placeholder="Find a group by name"
+                      value={null}
+                      className="share-permission-search"
+                      onChange={(groupId) => {
+                        if (!selectedGroupIds.includes(groupId)) {
+                          setSelectedGroupIds([...selectedGroupIds, groupId]);
+                        }
+                      }}
+                      options={groupCandidateOptions}
+                    />
+                  </div>
+                )}
+              </>
             )}
-            <Typography.Title level={5}>Shared with</Typography.Title>
-            {sharedWithContent}
+            <div className="share-permission-section">
+              <Typography.Text strong>Currently shared with</Typography.Text>
+              {sharedWithContent}
+            </div>
           </>
         )}
       </Modal>
@@ -239,6 +295,7 @@ SharePermission.propTypes = {
   permissionEdit: PropTypes.bool,
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
+  allGroups: PropTypes.array,
   onApply: PropTypes.func,
   isSharableToOrg: PropTypes.bool,
 };

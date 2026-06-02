@@ -25,6 +25,7 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         - Pipelines created by the user
         - Pipelines shared with the user
         - Pipelines shared with the entire organization
+        - Pipelines shared with any group the user is a member of
         - Service accounts and org admins see all org resources
         """
         if getattr(user, "is_service_account", False):
@@ -33,10 +34,17 @@ class PipelineModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
+        # Lazy import — avoids a circular at app load.
+        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
+
+        user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+        group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+
         return self.filter(
             Q(created_by=user)  # Owned by user
             | Q(shared_users=user)  # Shared with user
             | Q(shared_to_org=True)  # Shared to entire organization
+            | Q(pk__in=group_shared_ids)  # Shared via group membership
         ).distinct()
 
 
@@ -121,6 +129,15 @@ class Pipeline(DefaultOrganizationMixin, BaseModel):
         default=False,
         db_comment="Whether this pipeline is shared with the entire organization",
     )
+    # ``shared_groups`` is stored polymorphically in
+    # ``tenant_account_v2.ResourceGroupShare``; the property preserves the
+    # ergonomic read surface for DRF / existing callers.
+
+    @property
+    def shared_groups(self):
+        from tenant_account_v2.sharing_helpers import get_resource_share_groups
+
+        return get_resource_share_groups(self)
 
     # Manager
     objects = PipelineModelManager()
