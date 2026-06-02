@@ -3,8 +3,16 @@
 # A "critical path" is an end-to-end user or system flow whose failure would
 # constitute a production incident. The rig reports:
 #   ✅ covered    — at least one group in `covered_by` ran green this build
-#   ⚠️ gap        — `covered_by` is empty OR no group covering it ran
+#   ⚠️ gap        — no covering group ran green this build
 #   ❌ regression — a path that was ✅ on the cached main baseline is now not ✅
+#
+# Only one kind of gap gates --fail-on-critical-gap:
+#   • in-scope gap     — a covering group ran in this tier but not green; fails.
+#   • out-of-scope gap — covered only by an unrun tier, or no group declared;
+#                        warn-only (a tier can't fail for coverage it can't run).
+#
+# Only wire `covered_by` to a group that really exercises the path — a bogus
+# mapping fails the build when that group breaks, for the wrong reason.
 #
 # We intentionally do NOT chase 100% coverage. Focus on filling these gaps first.
 version: 1
@@ -21,10 +29,10 @@ paths:
   - id: adapter-register-llm
     description: "Register and validate an LLM adapter."
     entry: "POST /api/v1/adapter/"
-    # Honest declaration: unit-backend is currently optional/gated and
-    # e2e-smoke only hits /health/. Track as a gap until a real adapter test
-    # exists (likely under tests/e2e/smoke/ or a new tests/e2e/adapters/ group).
-    covered_by: []
+    # unit-sdk1 covers adapter registration + parameter validation at the SDK
+    # layer (the logic the endpoint delegates to). The HTTP round-trip stays an
+    # e2e concern; promote when an e2e adapter group exists.
+    covered_by: [unit-sdk1]
 
   - id: workflow-create-execute
     description: "Create a workflow, configure source+destination, execute, poll, fetch result."

@@ -158,6 +158,43 @@ def test_scope_demotes_out_of_scope_regressions_to_gaps() -> None:
     assert by_id["straddle-path"].state == "regression"  # partially in scope
 
 
+def test_in_scope_flag_distinguishes_gap_flavours() -> None:
+    """The ``in_scope`` flag on a status is what lets --fail-on-critical-gap
+    gate only on coverage that this tier was actually responsible for. An
+    out-of-scope gap (e2e path during the unit tier, or a path with no declared
+    coverage) must report ``in_scope=False``; an in-scope gap (a declared
+    in-tier group that didn't run green) must report ``in_scope=True``.
+    """
+    registry = _registry(
+        ("in-scope", ("unit-g",)),  # declared group is in scope, but not green
+        ("e2e-only", ("e2e-g",)),  # declared group is out of scope this run
+        ("undeclared", ()),  # no declared coverage anywhere
+    )
+    statuses = evaluate(
+        registry,
+        groups_run_green=set(),  # nothing passed → all three are gaps
+        baseline=None,
+        scope_groups={"unit-g"},
+    )
+    by_id = {s.path.id: s for s in statuses}
+    assert all(s.state == "gap" for s in statuses)
+    assert by_id["in-scope"].in_scope is True
+    assert by_id["e2e-only"].in_scope is False
+    assert by_id["undeclared"].in_scope is False
+
+
+def test_covered_path_is_in_scope() -> None:
+    registry = _registry(("p1", ("g1",)))
+    statuses = evaluate(
+        registry,
+        groups_run_green={"g1"},
+        baseline=None,
+        scope_groups={"g1"},
+    )
+    assert statuses[0].state == "covered"
+    assert statuses[0].in_scope is True
+
+
 def test_scope_none_preserves_legacy_behavior() -> None:
     """scope_groups=None disables scope-filtering so callers that don't pass it
     keep the old "everything in baseline counts" semantics.

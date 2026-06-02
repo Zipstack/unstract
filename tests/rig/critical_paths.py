@@ -65,6 +65,10 @@ class CriticalPathStatus:
     state: CriticalPathState
     covering_groups_run: tuple[str, ...]
     notes: str = ""
+    # True when a declared covering group belongs to the tier(s) this run
+    # covered. An out-of-scope gap (coverage only in an unrun tier, or none
+    # declared) must not gate under --fail-on-critical-gap.
+    in_scope: bool = True
 
     def __post_init__(self) -> None:
         # Make the contradictory states unrepresentable rather than relying on
@@ -164,6 +168,7 @@ def evaluate(
                 state=state,
                 covering_groups_run=covering,
                 notes=note,
+                in_scope=in_scope,
             )
         )
     return statuses

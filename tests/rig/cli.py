@@ -486,11 +486,25 @@ def cmd_run(args: argparse.Namespace) -> int:
         if overall_exit == 0:
             overall_exit = 1
 
+    # Only in-scope gaps gate: a declared covering group ran in this tier but
+    # not green. Out-of-scope gaps (covered only by other tiers, or undeclared)
+    # are reported but must not fail a tier for coverage it can't produce.
     gaps = [s for s in statuses if s.state == "gap"]
-    if gaps and args.fail_on_critical_gap:
+    in_scope_gaps = [s for s in gaps if s.in_scope]
+    out_of_scope_gaps = [s for s in gaps if not s.in_scope]
+    if out_of_scope_gaps:
+        ids = ", ".join(s.path.id for s in out_of_scope_gaps)
         print(
-            f"\n[rig] ⚠️  {len(gaps)} critical-path gap(s) detected "
-            f"(fail-on-critical-gap)",
+            f"[rig] ℹ️  {len(out_of_scope_gaps)} critical-path gap(s) out of scope "
+            f"for this run (warn-only, not covered by any group in this tier): "
+            f"{ids}",
+            file=sys.stderr,
+        )
+    if in_scope_gaps and args.fail_on_critical_gap:
+        ids = ", ".join(s.path.id for s in in_scope_gaps)
+        print(
+            f"\n[rig] ⚠️  {len(in_scope_gaps)} critical-path gap(s) detected "
+            f"(fail-on-critical-gap): {ids}",
             file=sys.stderr,
         )
         if overall_exit == 0:

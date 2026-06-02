@@ -216,6 +216,109 @@ def test_optional_group_failure_does_not_block_overall_exit(
     )
 
 
+def _run_gap_scenario(
+    tmp_path: Path, monkeypatch, *, covered_by: str, fail_on_gap: bool
+) -> int:
+    """Drive cmd_run with a single optional group ``unit-cov`` that runs RED and
+    one critical path covered by ``covered_by`` (a YAML list literal like
+    ``[unit-cov]`` or ``[]``). The group is optional so its own red exit never
+    gates — isolating the critical-gap logic. Returns the overall exit code.
+    """
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  unit-cov:\n"
+        "    tier: unit\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+        "    optional: true\n"
+    )
+    cp_yaml = (
+        "version: 1\n"
+        "paths:\n"
+        "  - id: p1\n"
+        "    description: ''\n"
+        "    entry: ''\n"
+        f"    covered_by: {covered_by}\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text(cp_yaml)
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    def fake_execute_group(group, **kwargs):
+        # The covering group runs red, so it never counts as green coverage.
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=1,
+            passed=0,
+            failed=1,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 1
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    argv = [
+        "run",
+        "unit-cov",
+        "--no-coverage",
+        "--no-parallel",
+        "--reports-dir",
+        str(tmp_path / "reports"),
+        "--baseline",
+        str(tmp_path / "reports" / "previous-summary.json"),
+    ]
+    if fail_on_gap:
+        argv.append("--fail-on-critical-gap")
+    args = cli_mod._build_parser().parse_args(argv)
+    return cli_mod.cmd_run(args)
+
+
+def test_fail_on_critical_gap_gates_on_in_scope_gap(tmp_path: Path, monkeypatch) -> None:
+    """A critical path covered by an in-tier group that ran red is an IN-SCOPE
+    gap: --fail-on-critical-gap must fail the build on it (real coverage is
+    gone). Without the flag, it's reported but doesn't gate.
+    """
+    assert (
+        _run_gap_scenario(
+            tmp_path, monkeypatch, covered_by="[unit-cov]", fail_on_gap=True
+        )
+        == 1
+    )
+    assert (
+        _run_gap_scenario(
+            tmp_path, monkeypatch, covered_by="[unit-cov]", fail_on_gap=False
+        )
+        == 0
+    )
+
+
+def test_fail_on_critical_gap_ignores_out_of_scope_gap(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A path with no declared coverage (or coverage only in another tier) is an
+    OUT-OF-SCOPE gap: --fail-on-critical-gap must NOT fail this tier on it.
+    This is the fix for the perma-red `main`: e2e-only and not-yet-covered paths
+    can't fail the unit/integration tiers.
+    """
+    assert (
+        _run_gap_scenario(tmp_path, monkeypatch, covered_by="[]", fail_on_gap=True)
+        == 0
+    )
+
+
 def test_cmd_run_teardown_failure_does_not_mask_up_failure(
     tmp_path: Path, monkeypatch
 ) -> None:
