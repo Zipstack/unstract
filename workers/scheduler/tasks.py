@@ -8,6 +8,7 @@ import traceback
 from typing import Any
 
 from queue_backend import FairnessKey, dispatch, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -150,27 +151,23 @@ def _execute_scheduled_workflow(
         )
 
         try:
-            # Dispatch through the queue_backend seam (Celery underneath today).
             async_result = dispatch(
                 "async_execute_bin",
                 args=[
-                    context.organization_id,  # schema_name (organization_id)
-                    context.workflow_id,  # workflow_id
-                    execution_id,  # execution_id
-                    {},  # hash_values_of_files (empty for scheduled)
-                    True,  # scheduled (THIS IS A SCHEDULED EXECUTION)
+                    context.organization_id,
+                    context.workflow_id,
+                    execution_id,
+                    {},
+                    True,  # scheduled
                 ],
                 kwargs={
-                    "use_file_history": context.use_file_history,  # Pass as kwarg
-                    "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
+                    "use_file_history": context.use_file_history,
+                    "pipeline_id": context.pipeline_id,
                 },
-                queue=QueueName.GENERAL,  # Route to General queue for proper separation
-                # Scheduled pipelines fire ETL-style workflow executions
-                # (cron-triggered batch processing). ``organization_id``
-                # is non-Optional on ``ScheduledPipelineContext``.
+                queue=QueueName.GENERAL,
                 fairness=FairnessKey(
                     org_id=context.organization_id,
-                    workload_type="etl",
+                    workload_type=WorkloadType.NON_API,
                 ),
             )
 

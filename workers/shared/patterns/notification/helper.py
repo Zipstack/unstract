@@ -6,7 +6,7 @@ No Django dependencies, works in pure worker environment.
 
 import logging
 
-from queue_backend import FairnessKey, dispatch
+from queue_backend import dispatch
 
 # Import shared data models from @unstract/core
 from unstract.core.data_models import (
@@ -87,15 +87,7 @@ def send_notification_to_worker(
                 "platform": platform,
             },
             queue="notifications",
-            # Webhook delivery is customer-facing API traffic. The org_id
-            # is optional — callback paths build the payload via
-            # ``NotificationPayload.from_execution_status`` which doesn't
-            # always set it, and that's fine: the scheduler treats
-            # org-less keys as their own partition.
-            fairness=FairnessKey(
-                org_id=payload.organization_id,
-                workload_type="api",
-            ),
+            fairness=None,  # not a workflow-execution dispatch
         )
 
         logger.info(

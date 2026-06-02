@@ -1,16 +1,4 @@
-"""Tests for the fairness-key plumbing (PG Queue Phase 5.1).
-
-Today the fairness key is **emitted** by every producer and **read** by
-no one. These tests lock in the additive-only invariant so a Phase 8
-reader can be added later with confidence that:
-
-1. The shape on the wire is stable (``headers["x-fairness-key"]`` is a
-   JSON-safe dict with ``org_id``, ``pipeline_priority``, ``tier``).
-2. Omitting fairness on ``dispatch()`` is silent (back-compat for tests
-   / system tasks).
-3. Every production ``dispatch(...)`` call site DOES pass a fairness
-   key (inventory canary).
-"""
+"""Tests for the fairness-key plumbing (PG Queue Phase 5.1)."""
 
 from __future__ import annotations
 
@@ -29,13 +17,11 @@ from queue_backend.fairness import (
     FAIRNESS_HEADER_NAME,
     MAX_PRIORITY,
     MIN_PRIORITY,
+    WorkloadType,
 )
 
-# --- shared scan helpers ---
-#
-# Pulled out of the audit tests so the tests themselves stay flat
-# (cognitive-complexity friendly). Each test then composes these
-# generators / predicates without re-walking the directory.
+# Helpers extracted so the audit tests below stay flat (SonarCloud
+# S3776 cognitive-complexity threshold).
 
 _WORKERS_ROOT = pathlib.Path(__file__).parent.parent
 _SKIP_TOP_DIRS = frozenset(
@@ -44,12 +30,6 @@ _SKIP_TOP_DIRS = frozenset(
 
 
 def _iter_production_trees() -> list[tuple[pathlib.Path, ast.AST]]:
-    """Yield ``(rel_path, parsed_tree)`` for every production .py file.
-
-    Skips tests/, the seam itself, and anything we can't parse. Pure
-    helper — pushing the loop + parse + skip logic here keeps the
-    audit tests below SonarCloud's cognitive-complexity threshold.
-    """
     out: list[tuple[pathlib.Path, ast.AST]] = []
     for py in _WORKERS_ROOT.rglob("*.py"):
         rel = py.relative_to(_WORKERS_ROOT)
@@ -64,8 +44,6 @@ def _iter_production_trees() -> list[tuple[pathlib.Path, ast.AST]]:
 
 
 def _aliased_dispatch_imports(tree: ast.AST) -> list[tuple[int, str]]:
-    """Return ``(lineno, alias)`` for every ``from queue_backend import
-    dispatch as <alias>`` in the given tree."""
     hits: list[tuple[int, str]] = []
     for node in ast.walk(tree):
         if not (isinstance(node, ast.ImportFrom) and node.module == "queue_backend"):
@@ -77,15 +55,8 @@ def _aliased_dispatch_imports(tree: ast.AST) -> list[tuple[int, str]]:
 
 
 def _dispatch_calls_missing_fairness(tree: ast.AST) -> list[int]:
-    """Return linenos of bare ``dispatch(...)`` calls that don't pass
-    ``fairness=``.
-
-    Only matches the bare name — method calls like
-    ``dispatcher.dispatch(...)`` belong to ExecutionDispatcher
-    (executor-side RPC, not a queue boundary) and must not be audited.
-    The companion ``_aliased_dispatch_imports`` check forbids alias
-    imports so this name-based match has no blind spot.
-    """
+    # Only matches the bare name ``dispatch`` — ``dispatcher.dispatch(...)``
+    # is ExecutionDispatcher (executor RPC), a different concept.
     hits: list[int] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -98,80 +69,81 @@ def _dispatch_calls_missing_fairness(tree: ast.AST) -> list[int]:
     return hits
 
 
-# --- FairnessKey value object ---
-
-
 class TestFairnessKey:
     def test_minimal_construction(self):
-        key = FairnessKey(org_id="org-123", workload_type="api")
+        key = FairnessKey(org_id="org-123", workload_type=WorkloadType.API)
         assert key.org_id == "org-123"
         assert key.workload_type == "api"
         assert key.pipeline_priority == DEFAULT_PRIORITY  # default 5
 
     def test_org_id_can_be_none(self):
-        """System / cross-org tasks have no tenant partition. The
-        scheduler's ``org_config`` JOIN simply doesn't match for them."""
-        key = FairnessKey(org_id=None, workload_type="api")
+        key = FairnessKey(org_id=None, workload_type=WorkloadType.API)
         assert key.org_id is None
 
-    def test_workload_type_etl(self):
-        key = FairnessKey(org_id="x", workload_type="etl")
-        assert key.workload_type == "etl"
+    def test_workload_type_non_api(self):
+        key = FairnessKey(org_id="x", workload_type=WorkloadType.NON_API)
+        assert key.workload_type == "non_api"
+        assert key.workload_type == WorkloadType.NON_API
 
     def test_pipeline_priority_override(self):
-        key = FairnessKey(org_id="x", workload_type="api", pipeline_priority=9)
+        key = FairnessKey(org_id="x", workload_type=WorkloadType.API, pipeline_priority=9)
         assert key.pipeline_priority == 9
 
     def test_is_frozen(self):
-        key = FairnessKey(org_id="x", workload_type="api")
+        key = FairnessKey(org_id="x", workload_type=WorkloadType.API)
         with pytest.raises(FrozenInstanceError):
             key.org_id = "y"  # type: ignore[misc]
 
     def test_priority_below_range_rejected(self):
         with pytest.raises(ValueError, match="pipeline_priority out of range"):
             FairnessKey(
-                org_id="x", workload_type="api", pipeline_priority=MIN_PRIORITY - 1
+                org_id="x", workload_type=WorkloadType.API, pipeline_priority=MIN_PRIORITY - 1
             )
 
     def test_priority_above_range_rejected(self):
         with pytest.raises(ValueError, match="pipeline_priority out of range"):
             FairnessKey(
-                org_id="x", workload_type="api", pipeline_priority=MAX_PRIORITY + 1
+                org_id="x", workload_type=WorkloadType.API, pipeline_priority=MAX_PRIORITY + 1
             )
 
     def test_priority_boundaries_accepted(self):
-        FairnessKey(org_id="x", workload_type="api", pipeline_priority=MIN_PRIORITY)
-        FairnessKey(org_id="x", workload_type="api", pipeline_priority=MAX_PRIORITY)
+        FairnessKey(org_id="x", workload_type=WorkloadType.API, pipeline_priority=MIN_PRIORITY)
+        FairnessKey(org_id="x", workload_type=WorkloadType.API, pipeline_priority=MAX_PRIORITY)
 
     def test_typo_in_field_name_raises(self):
-        """``pipeline_prio=`` and other typos must fail loudly at the
-        dataclass boundary instead of silently being ignored."""
         with pytest.raises(TypeError, match="pipeline_prio"):
             FairnessKey(
                 org_id="x",
-                workload_type="api",
+                workload_type=WorkloadType.API,
                 pipeline_prio=9,  # type: ignore[call-arg]
             )
 
     def test_to_dict_shape(self):
-        key = FairnessKey(org_id="org-1", workload_type="etl", pipeline_priority=9)
+        key = FairnessKey(
+            org_id="org-1", workload_type=WorkloadType.NON_API, pipeline_priority=9
+        )
         assert key.to_dict() == {
             "org_id": "org-1",
-            "workload_type": "etl",
+            "workload_type": "non_api",
             "pipeline_priority": 9,
         }
 
+    def test_to_dict_uses_plain_string_not_enum_member(self):
+        # Downstream consumers shouldn't need to import WorkloadType.
+        key = FairnessKey(org_id="x", workload_type=WorkloadType.API)
+        wt = key.to_dict()["workload_type"]
+        assert type(wt) is str
+        assert wt == "api"
+
     def test_to_dict_is_json_safe(self):
-        """The dict must round-trip through ``json.dumps`` — Celery's
-        default serializer is JSON."""
-        key = FairnessKey(org_id="org-1", workload_type="api", pipeline_priority=7)
+        key = FairnessKey(
+            org_id="org-1", workload_type=WorkloadType.API, pipeline_priority=7
+        )
         round_tripped = json.loads(json.dumps(key.to_dict()))
         assert round_tripped == key.to_dict()
 
     def test_orgless_key_round_trips(self):
-        """``org_id=None`` is JSON-safe (becomes JSON null) and all
-        other fields are preserved through serialisation."""
-        key = FairnessKey(org_id=None, workload_type="api")
+        key = FairnessKey(org_id=None, workload_type=WorkloadType.API)
         round_tripped = json.loads(json.dumps(key.to_dict()))
         assert round_tripped == {
             "org_id": None,
@@ -185,16 +157,21 @@ class TestFairnessKey:
 
 class TestDispatchAttachesFairness:
     def test_omitted_fairness_no_header_sent(self):
-        """Back-compat: ``dispatch(...)`` without ``fairness=`` does not
-        attach a headers dict — Celery sees the same args/kwargs/queue
-        call shape as before Phase 5.1."""
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch("any_task", kwargs={"foo": "bar"})
 
         call_kwargs = mock_app.send_task.call_args.kwargs
         assert call_kwargs["headers"] is None
-        # Business kwargs untouched.
         assert call_kwargs["kwargs"] == {"foo": "bar"}
+
+    def test_explicit_fairness_none_no_header_sent(self):
+        # Documented opt-out for non-workflow dispatches.
+        with patch("queue_backend.dispatch.current_app") as mock_app:
+            dispatch("send_webhook_notification", kwargs={"x": 1}, fairness=None)
+
+        call_kwargs = mock_app.send_task.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        assert call_kwargs["kwargs"] == {"x": 1}
 
     def test_provided_fairness_attached_as_message_header(self):
         with patch("queue_backend.dispatch.current_app") as mock_app:
@@ -202,7 +179,7 @@ class TestDispatchAttachesFairness:
                 "any_task",
                 kwargs={"foo": "bar"},
                 fairness=FairnessKey(
-                    org_id="org-1", workload_type="api", pipeline_priority=9
+                    org_id="org-1", workload_type=WorkloadType.API, pipeline_priority=9
                 ),
             )
 
@@ -214,20 +191,17 @@ class TestDispatchAttachesFairness:
                 "pipeline_priority": 9,
             }
         }
-        # Critically: the business kwargs must NOT contain the fairness
-        # slot — otherwise tasks without ``**kwargs`` blow up on the
-        # extra keyword argument.
+        # Business kwargs must NOT contain the fairness slot — tasks
+        # without **kwargs would break.
         sent_kwargs = call_kwargs["kwargs"]
         assert sent_kwargs == {"foo": "bar"}
         assert FAIRNESS_HEADER_NAME not in sent_kwargs
 
     def test_fairness_with_no_business_kwargs(self):
-        """``dispatch`` accepts fairness even when caller passes no
-        business kwargs. Header carries the routing data."""
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch(
                 "any_task",
-                fairness=FairnessKey(org_id=None, workload_type="etl"),
+                fairness=FairnessKey(org_id=None, workload_type=WorkloadType.NON_API),
             )
 
         call_kwargs = mock_app.send_task.call_args.kwargs
@@ -235,42 +209,29 @@ class TestDispatchAttachesFairness:
         assert call_kwargs["headers"] == {
             FAIRNESS_HEADER_NAME: {
                 "org_id": None,
-                "workload_type": "etl",
+                "workload_type": "non_api",
                 "pipeline_priority": DEFAULT_PRIORITY,
             }
         }
 
     def test_caller_kwargs_not_mutated_in_place(self):
-        """``dispatch`` must not mutate the caller's kwargs dict —
-        guards against compounding state across calls if implementation
-        ever drifts back to a kwargs-merge strategy."""
         caller_kwargs = {"foo": "bar"}
         with patch("queue_backend.dispatch.current_app"):
             dispatch(
                 "any_task",
                 kwargs=caller_kwargs,
-                fairness=FairnessKey(org_id="org-1", workload_type="api"),
+                fairness=FairnessKey(org_id="org-1", workload_type=WorkloadType.API),
             )
 
         assert caller_kwargs == {"foo": "bar"}
         assert FAIRNESS_HEADER_NAME not in caller_kwargs
 
 
-# --- Inventory canary: every production dispatch() must pass fairness ---
-
-
 class TestDispatchCallSitesPassFairness:
-    """AST-based audit: every ``dispatch(...)`` call in production code
-    paths must include a ``fairness=`` keyword. Tests and the seam
-    module itself are exempt (they exercise/define the mechanism)."""
+    """AST audit: every production ``dispatch(...)`` declares fairness."""
 
     def test_dispatch_must_be_imported_unaliased(self):
-        """The fairness canary below only matches the bare name
-        ``dispatch``. If a producer imports it as ``from queue_backend
-        import dispatch as foo``, the canary would silently miss any
-        ``foo(...)`` call. Forbid the alias form so the canary stays
-        complete.
-        """
+        # Alias imports would defeat the bare-name canary below.
         aliased = [
             f"{rel}:{lineno} (as {alias})"
             for rel, tree in _iter_production_trees()
@@ -297,17 +258,8 @@ class TestDispatchCallSitesPassFairness:
         )
 
 
-# --- No worker reads the fairness slot yet (additive-only invariant) ---
-
-
 class TestNoConsumerYet:
-    """Phase 5.1 is *additive only* — Phase 8 will introduce the reader.
-
-    Until then, no code path in ``workers/`` should reference
-    ``x-fairness-key`` or ``FAIRNESS_HEADER_NAME`` outside the seam +
-    these tests. If a consumer slips in earlier, this canary fails and
-    we can re-evaluate the rollout order.
-    """
+    """Additive-only invariant — no production code reads the slot yet."""
 
     def test_no_consumer_reads_fairness_header(self):
         forbidden_tokens = ("x-fairness-key", "FAIRNESS_HEADER_NAME")
@@ -328,25 +280,13 @@ class TestNoConsumerYet:
         )
 
 
-# --- End-to-end: header survives Celery's signature pipeline ---
-
-
 class TestHeaderSurvivesCeleryPipeline:
-    """Belt-and-braces over the mock-based tests above.
-
-    Real Celery in eager mode with a memory broker: enqueue a task via
-    ``dispatch(...)``, capture the message ``Celery`` would put on the
-    wire, and assert the fairness header is present in the right shape.
-    Catches the (rare but expensive) case where a future Celery or
-    kombu serializer upgrade silently drops unknown headers.
-    """
+    """End-to-end: header survives Celery's real send_task code path."""
 
     def test_header_present_on_outbound_message(self):
-        # Self-contained Celery app on a memory broker — exercises the
-        # real ``send_task`` codepath without needing RabbitMQ. We don't
-        # need eager execution; the assertion is on the message Celery
-        # would put on the wire, captured via a wraps= patch.
-        app = Celery("test_fairness_e2e", broker="memory://", backend="cache+memory://")
+        app = Celery(
+            "test_fairness_e2e", broker="memory://", backend="cache+memory://"
+        )
 
         with patch("queue_backend.dispatch.current_app", app), patch.object(
             app, "send_task", wraps=app.send_task
@@ -354,17 +294,17 @@ class TestHeaderSurvivesCeleryPipeline:
             dispatch(
                 "qb.e2e.echo",
                 fairness=FairnessKey(
-                    org_id="org-1", workload_type="etl", pipeline_priority=9
+                    org_id="org-1",
+                    workload_type=WorkloadType.NON_API,
+                    pipeline_priority=9,
                 ),
             )
 
-        # ``send_task`` is invoked with the headers dict carrying the
-        # fairness payload in the documented shape.
         call_headers = wrapped_send.call_args.kwargs["headers"]
         assert call_headers == {
             FAIRNESS_HEADER_NAME: {
                 "org_id": "org-1",
-                "workload_type": "etl",
+                "workload_type": "non_api",
                 "pipeline_priority": 9,
             }
         }
