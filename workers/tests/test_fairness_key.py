@@ -4,10 +4,10 @@ Today the fairness key is **emitted** by every producer and **read** by
 no one. These tests lock in the additive-only invariant so a Phase 8
 reader can be added later with confidence that:
 
-1. The shape on the wire is stable (``kwargs["_fairness_key"]`` is a
+1. The shape on the wire is stable (``headers["x-fairness-key"]`` is a
    JSON-safe dict with ``org_id``, ``pipeline_priority``, ``tier``).
-2. Omitting fairness on ``dispatch()`` is silent (back-compat for
-   tests / system tasks).
+2. Omitting fairness on ``dispatch()`` is silent (back-compat for tests
+   / system tasks).
 3. Every production ``dispatch(...)`` call site DOES pass a fairness
    key (inventory canary).
 """
@@ -23,7 +23,7 @@ from queue_backend import FairnessKey, dispatch
 from queue_backend.fairness import (
     DEFAULT_PRIORITY,
     DEFAULT_TIER,
-    FAIRNESS_KWARG_NAME,
+    FAIRNESS_HEADER_NAME,
 )
 
 
@@ -53,11 +53,6 @@ class TestFairnessKey:
         assert key.tier == "enterprise"
 
     def test_is_frozen(self):
-        import dataclasses
-
-        with patch.object(dataclasses, "FrozenInstanceError", AttributeError):
-            pass
-
         key = FairnessKey(org_id="x")
         try:
             key.org_id = "y"  # type: ignore[misc]
@@ -96,17 +91,19 @@ class TestFairnessKey:
 
 
 class TestDispatchAttachesFairness:
-    def test_omitted_fairness_no_field_added(self):
-        """Back-compat: ``dispatch(...)`` without ``fairness=`` leaves
-        the kwargs untouched."""
+    def test_omitted_fairness_no_header_sent(self):
+        """Back-compat: ``dispatch(...)`` without ``fairness=`` does not
+        attach a headers dict — Celery sees the same args/kwargs/queue
+        call shape as before Phase 5.1."""
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch("any_task", kwargs={"foo": "bar"})
 
-        sent_kwargs = mock_app.send_task.call_args.kwargs["kwargs"]
-        assert sent_kwargs == {"foo": "bar"}
-        assert FAIRNESS_KWARG_NAME not in (sent_kwargs or {})
+        call_kwargs = mock_app.send_task.call_args.kwargs
+        assert call_kwargs["headers"] is None
+        # Business kwargs untouched.
+        assert call_kwargs["kwargs"] == {"foo": "bar"}
 
-    def test_provided_fairness_attached_under_underscored_key(self):
+    def test_provided_fairness_attached_as_message_header(self):
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch(
                 "any_task",
@@ -114,23 +111,31 @@ class TestDispatchAttachesFairness:
                 fairness=FairnessKey.for_org("org-1", pipeline_priority=80),
             )
 
-        sent_kwargs = mock_app.send_task.call_args.kwargs["kwargs"]
-        assert sent_kwargs[FAIRNESS_KWARG_NAME] == {
-            "org_id": "org-1",
-            "pipeline_priority": 80,
-            "tier": DEFAULT_TIER,
+        call_kwargs = mock_app.send_task.call_args.kwargs
+        assert call_kwargs["headers"] == {
+            FAIRNESS_HEADER_NAME: {
+                "org_id": "org-1",
+                "pipeline_priority": 80,
+                "tier": DEFAULT_TIER,
+            }
         }
-        # Business kwargs are preserved alongside the routing slot.
-        assert sent_kwargs["foo"] == "bar"
+        # Critically: the business kwargs must NOT contain the fairness
+        # slot — otherwise tasks without ``**kwargs`` blow up on the
+        # extra keyword argument.
+        sent_kwargs = call_kwargs["kwargs"]
+        assert sent_kwargs == {"foo": "bar"}
+        assert FAIRNESS_HEADER_NAME not in sent_kwargs
 
     def test_fairness_with_no_business_kwargs(self):
-        """``dispatch`` accepts fairness even when caller passes no kwargs."""
+        """``dispatch`` accepts fairness even when caller passes no kwargs.
+        Business kwargs stay None — header carries the routing data."""
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch("any_task", fairness=FairnessKey.system())
 
-        sent_kwargs = mock_app.send_task.call_args.kwargs["kwargs"]
-        assert sent_kwargs == {
-            FAIRNESS_KWARG_NAME: {
+        call_kwargs = mock_app.send_task.call_args.kwargs
+        assert call_kwargs["kwargs"] is None
+        assert call_kwargs["headers"] == {
+            FAIRNESS_HEADER_NAME: {
                 "org_id": None,
                 "pipeline_priority": DEFAULT_PRIORITY,
                 "tier": DEFAULT_TIER,
@@ -138,9 +143,9 @@ class TestDispatchAttachesFairness:
         }
 
     def test_caller_kwargs_not_mutated_in_place(self):
-        """``dispatch`` must not mutate the caller's kwargs dict — the
-        underscored fairness slot lands on a *copy*, otherwise repeated
-        sends would compound across calls."""
+        """``dispatch`` must not mutate the caller's kwargs dict —
+        guards against compounding state across calls if implementation
+        ever drifts back to a kwargs-merge strategy."""
         caller_kwargs = {"foo": "bar"}
         with patch("queue_backend.dispatch.current_app"):
             dispatch(
@@ -149,8 +154,8 @@ class TestDispatchAttachesFairness:
                 fairness=FairnessKey.for_org("org-1"),
             )
 
-        assert FAIRNESS_KWARG_NAME not in caller_kwargs
         assert caller_kwargs == {"foo": "bar"}
+        assert FAIRNESS_HEADER_NAME not in caller_kwargs
 
 
 # --- Inventory canary: every production dispatch() must pass fairness ---
@@ -215,14 +220,15 @@ class TestNoConsumerYet:
     """Phase 5.1 is *additive only* — Phase 8 will introduce the reader.
 
     Until then, no code path in ``workers/`` should reference
-    ``_fairness_key`` or ``FAIRNESS_KWARG_NAME`` outside the seam +
+    ``x-fairness-key`` or ``FAIRNESS_HEADER_NAME`` outside the seam +
     these tests. If a consumer slips in earlier, this canary fails and
     we can re-evaluate the rollout order.
     """
 
-    def test_no_consumer_reads_fairness_kwarg(self):
+    def test_no_consumer_reads_fairness_header(self):
         workers_root = pathlib.Path(__file__).parent.parent
         skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
+        forbidden_tokens = ("x-fairness-key", "FAIRNESS_HEADER_NAME")
 
         readers: list[str] = []
         for py in workers_root.rglob("*.py"):
@@ -230,7 +236,7 @@ class TestNoConsumerYet:
             if rel.parts and rel.parts[0] in skip_top_dirs:
                 continue
             for line_no, line in enumerate(py.read_text().splitlines(), start=1):
-                if "_fairness_key" in line or "FAIRNESS_KWARG_NAME" in line:
+                if any(token in line for token in forbidden_tokens):
                     readers.append(f"{rel}:{line_no}")
 
         assert readers == [], (

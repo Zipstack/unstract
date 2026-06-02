@@ -6,9 +6,11 @@ fairness scheduler will route by ``org_id`` (per-tenant partition),
 ``pipeline_priority`` (within-tenant ordering), and ``tier`` (cross-tier
 preemption / capacity allocation).
 
-Until then the field sits inertly inside the task's ``kwargs`` under the
-``_fairness_key`` slot — underscored to mark it as routing metadata,
-not business payload.
+Until then the field travels in the Celery message header
+``x-fairness-key`` — out-of-band of the task body's kwargs, so a task
+whose signature does not accept ``**kwargs`` doesn't blow up on the
+extra field. On the consumer side it's reachable via
+``self.request.headers["x-fairness-key"]`` when needed.
 
 This module is additive-only:
 
@@ -29,11 +31,12 @@ from typing import Final
 DEFAULT_PRIORITY: Final[int] = 50
 DEFAULT_TIER: Final[str] = "standard"
 
-# Underscore-prefixed key so it's visually distinct from business kwargs
-# in Celery introspection (Flower, ``inspect.active()``) and so a
-# downstream task body doing ``**kwargs`` reflection has a clean
-# convention for skipping routing metadata.
-FAIRNESS_KWARG_NAME: Final[str] = "_fairness_key"
+# Celery message-header slot that carries the fairness key. Headers
+# travel with the AMQP message but are NOT passed to the task body's
+# function signature — exactly what we want for routing metadata.
+# (Earlier iteration of this module put the key in ``kwargs``; that
+# blew up tasks whose signature didn't accept ``**kwargs``.)
+FAIRNESS_HEADER_NAME: Final[str] = "x-fairness-key"
 
 
 @dataclass(frozen=True)

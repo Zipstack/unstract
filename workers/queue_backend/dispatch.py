@@ -16,7 +16,7 @@ from typing import Any, Protocol
 
 from celery import current_app
 
-from .fairness import FAIRNESS_KWARG_NAME, FairnessKey
+from .fairness import FAIRNESS_HEADER_NAME, FairnessKey
 
 
 class DispatchHandle(Protocol):
@@ -49,22 +49,25 @@ def dispatch(
             ``None`` internally.
         queue: Target queue name. Defaults to the task's bound queue.
         fairness: Multi-tenant routing metadata (org_id, priority, tier).
-            When provided, merged into the outgoing kwargs under
-            ``_fairness_key``. No consumer reads it yet — Phase 8 (PG
-            Queue Gate) will introduce the reader.
+            When provided, attached to the Celery message as a header
+            (``x-fairness-key``) — out-of-band of the task body's
+            kwargs, so a task whose signature doesn't accept
+            ``**kwargs`` does not blow up. No consumer reads it yet;
+            Phase 8 (PG Queue Gate) will introduce the reader via
+            ``self.request.headers`` on bound tasks.
 
     Returns:
         A handle to the enqueued task. ``.id`` is guaranteed; everything
         else is substrate-specific and callers must not rely on it.
     """
+    headers: dict[str, Any] | None = None
     if fairness is not None:
-        merged: dict[str, Any] = dict(kwargs or {})
-        merged[FAIRNESS_KWARG_NAME] = fairness.to_dict()
-        kwargs = merged
+        headers = {FAIRNESS_HEADER_NAME: fairness.to_dict()}
 
     return current_app.send_task(
         task_name,
         args=args,
         kwargs=kwargs,
         queue=queue,
+        headers=headers,
     )
