@@ -120,7 +120,8 @@ def _emit_websocket_event(room: str, event: str, data: dict[str, Any]) -> None:
     """
     payload = {"data": data}
     try:
-        logger.debug(f"[{os.getpid()}] Push websocket event: {event}, {payload}")
+        # TEMP debug (revert after WS-loss diagnosis): trace every emit attempt
+        logger.info(f"[{os.getpid()}] Push websocket event: {event}, room={room}")
         sio.emit(event, data=payload, room=room)
     except Exception as e:
         logger.error(f"Error emitting WebSocket event: {e}")

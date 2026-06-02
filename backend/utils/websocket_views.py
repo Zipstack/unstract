@@ -63,7 +63,8 @@ def emit_websocket(request):
         # Emit the WebSocket event
         _emit_websocket_event(room=room, event=event, data=message_data)
 
-        logger.debug(f"WebSocket event emitted: room={room}, event={event}")
+        # TEMP debug (revert after WS-loss diagnosis): confirm emit endpoint hit
+        logger.info(f"WebSocket event emitted: room={room}, event={event}")
 
         return JsonResponse(
             {

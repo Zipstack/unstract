@@ -58,6 +58,8 @@ def _emit_websocket(
     """Emit a WebSocket event via the backend's internal emit-websocket endpoint."""
     try:
         payload = {"room": room, "event": event, "data": data}
+        # TEMP debug (revert after WS-loss diagnosis): empty room => backend 400 silently
+        logger.info("Dispatching WS event %s to room=%r", event, room)
         api_client.post(_EMIT_WEBSOCKET_ENDPOINT, data=payload)
     except Exception as e:
         logger.error("Failed to emit WebSocket event: %s", e)
