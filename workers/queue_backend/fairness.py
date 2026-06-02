@@ -102,7 +102,7 @@ class FairnessKey:
     @classmethod
     def for_org(
         cls,
-        org_id: str | None,
+        org_id: str,
         *,
         pipeline_priority: int = DEFAULT_PRIORITY,
         tier: Tier = DEFAULT_TIER,
@@ -113,7 +113,18 @@ class FairnessKey:
         Keyword-only overrides (no ``**kwargs``) so a typo like
         ``priority=80`` or ``tiers="enterprise"`` raises ``TypeError``
         at the call site instead of silently dropping the override.
+
+        ``org_id`` is required and non-None. For tasks without tenant
+        context use :meth:`FairnessKey.system` — passing a missing org
+        through here would produce an inconsistent key (``org_id=None``
+        with ``tier="standard"``) that Phase 8 would have to
+        special-case.
         """
+        if org_id is None:
+            raise ValueError(
+                "org_id must not be None for org-bound tasks; "
+                "use FairnessKey.system() for tasks without tenant context."
+            )
         return cls(
             org_id=org_id,
             pipeline_priority=pipeline_priority,

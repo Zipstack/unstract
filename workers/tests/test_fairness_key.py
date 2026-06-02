@@ -150,6 +150,14 @@ class TestFairnessKey:
         with pytest.raises(TypeError, match="tiers"):
             FairnessKey.for_org("org-1", tiers="enterprise")  # type: ignore[call-arg]
 
+    def test_for_org_rejects_none_org_id(self):
+        """``for_org(None)`` would produce an inconsistent key
+        (``tier="standard"`` with no org). Callers must use
+        :meth:`FairnessKey.system` for tasks without tenant context.
+        """
+        with pytest.raises(ValueError, match="use FairnessKey.system"):
+            FairnessKey.for_org(None)  # type: ignore[arg-type]
+
     def test_to_dict_shape(self):
         key = FairnessKey(org_id="org-1", pipeline_priority=80, tier="enterprise")
         assert key.to_dict() == {
@@ -310,14 +318,12 @@ class TestNoConsumerYet:
     """
 
     def test_no_consumer_reads_fairness_header(self):
-        workers_root = pathlib.Path(__file__).parent.parent
-        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
         forbidden_tokens = ("x-fairness-key", "FAIRNESS_HEADER_NAME")
 
         readers: list[str] = []
-        for py in workers_root.rglob("*.py"):
-            rel = py.relative_to(workers_root)
-            if rel.parts and rel.parts[0] in skip_top_dirs:
+        for py in _WORKERS_ROOT.rglob("*.py"):
+            rel = py.relative_to(_WORKERS_ROOT)
+            if rel.parts and rel.parts[0] in _SKIP_TOP_DIRS:
                 continue
             for line_no, line in enumerate(py.read_text().splitlines(), start=1):
                 if any(token in line for token in forbidden_tokens):

@@ -87,7 +87,15 @@ def send_notification_to_worker(
                 "platform": platform,
             },
             queue="notifications",
-            fairness=FairnessKey.for_org(payload.organization_id),
+            # ``payload.organization_id`` is ``str | None`` — callback paths
+            # may build the payload without an org context, so use the
+            # ``system`` fairness key in that case (``tier="system"``)
+            # rather than passing None to ``for_org`` (which would now raise).
+            fairness=(
+                FairnessKey.for_org(payload.organization_id)
+                if payload.organization_id
+                else FairnessKey.system()
+            ),
         )
 
         logger.info(
