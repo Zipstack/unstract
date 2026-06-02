@@ -1,16 +1,14 @@
 """Fairness key — multi-tenant routing metadata attached to every dispatch.
 
-The key is **emitted** by every producer today; **read** by no one yet.
-A later phase (PG Queue Gate) introduces the consumer: the PG Queue
-fairness scheduler will route by ``org_id`` (per-tenant partition),
-``pipeline_priority`` (within-tenant ordering), and ``tier`` (cross-tier
-preemption / capacity allocation).
+The key is emitted by every producer today; no consumer reads it yet.
+When a future dispatch scheduler comes online, it will route by
+``org_id`` (per-tenant partition), ``pipeline_priority`` (within-tenant
+ordering), and ``tier`` (cross-tier preemption / capacity allocation).
 
-Until then the field travels in the Celery message header
-``x-fairness-key`` — out-of-band of the task body's kwargs, so a task
-whose signature does not accept ``**kwargs`` doesn't blow up on the
-extra field. On the consumer side it's reachable via
-``self.request.headers["x-fairness-key"]`` when needed.
+The field travels in the Celery message header ``x-fairness-key`` —
+out-of-band of the task body's kwargs, so a task whose signature does
+not accept ``**kwargs`` isn't broken by the extra field. Consumers
+reach it via ``self.request.headers["x-fairness-key"]`` on bound tasks.
 
 This module is additive-only:
 
@@ -26,30 +24,27 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Literal
 
-# Closed vocabulary for ``tier``. Phase 8's scheduler matches on this
-# set; widening the set is an explicit decision (e.g. add a new tenant
-# class), not a typo. ``"system"`` is the special partition for tasks
-# without tenant context (periodic log flush, healthchecks, etc.).
+# Tier is a cross-tenant resource-allocation tag. The future dispatch
+# scheduler uses it for preemption and capacity allocation across orgs
+# (e.g. enterprise traffic shouldn't be blocked by standard traffic
+# during contention). Closed vocabulary so typos become type errors
+# rather than silent new partitions. ``"system"`` is the partition for
+# tasks with no tenant context (periodic log flush, healthchecks).
 Tier = Literal["standard", "enterprise", "system"]
 
-# Bounds for ``pipeline_priority``. The scheduler interprets 0..100 with
-# higher = sooner; anything outside this range is rejected at
-# construction so producers can't accidentally invent edge values that
-# Phase 8 then has to special-case.
+# Bounds for ``pipeline_priority`` (0..100, higher = sooner). Enforced
+# at construction so the wire contract stays closed.
 MIN_PRIORITY: Final[int] = 0
 MAX_PRIORITY: Final[int] = 100
 
-# Default values used when the caller has no better signal — e.g. a
-# request with no per-pipeline priority configured.
+# Defaults when the caller has no better signal.
 DEFAULT_PRIORITY: Final[int] = 50
 DEFAULT_TIER: Final[Tier] = "standard"
 SYSTEM_TIER: Final[Tier] = "system"
 
 # Celery message-header slot that carries the fairness key. Headers
-# travel with the AMQP message but are NOT passed to the task body's
+# travel with the AMQP message but are not passed to the task body's
 # function signature — exactly what we want for routing metadata.
-# (Earlier iteration of this module put the key in ``kwargs``; that
-# blew up tasks whose signature didn't accept ``**kwargs``.)
 FAIRNESS_HEADER_NAME: Final[str] = "x-fairness-key"
 
 
@@ -57,12 +52,11 @@ FAIRNESS_HEADER_NAME: Final[str] = "x-fairness-key"
 class FairnessKey:
     """Routing metadata attached to every ``dispatch(...)``.
 
-    ``org_id=None`` is a valid value — it denotes a system / cross-org
-    task that doesn't belong to a tenant partition (e.g. periodic log
-    flushing, healthchecks). Producers building those keys should also
-    set ``tier="system"`` (see :meth:`FairnessKey.system`) so the Phase 8
-    scheduler can match on the tier alone, without special-casing
-    ``org_id is None``.
+    ``org_id=None`` is valid for system / cross-org tasks (periodic log
+    flushing, healthchecks). Producers building those keys should use
+    :meth:`FairnessKey.system` so ``tier="system"`` rides along — the
+    scheduler then matches on a single closed-set field instead of
+    special-casing ``org_id is None``.
 
     ``pipeline_priority`` is bounded to ``MIN_PRIORITY..MAX_PRIORITY``
     (0..100). Higher = sooner.
@@ -94,8 +88,8 @@ class FairnessKey:
         """Fairness key for a task with no tenant context.
 
         ``tier="system"`` encodes the partition in the message itself
-        (rather than leaving it implicit via ``org_id is None``), so the
-        future PG Queue scheduler matches on a single closed-set field.
+        rather than leaving it implicit via ``org_id is None``, so the
+        scheduler matches on a single closed-set field.
         """
         return cls(org_id=None, tier=SYSTEM_TIER)
 
