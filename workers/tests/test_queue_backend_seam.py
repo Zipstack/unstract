@@ -275,7 +275,7 @@ class TestPublicSurface:
     def test_all_exports(self):
         import queue_backend
 
-        assert set(queue_backend.__all__) == {"dispatch", "worker_task"}
+        assert set(queue_backend.__all__) == {"FairnessKey", "dispatch", "worker_task"}
 
 
 if __name__ == "__main__":

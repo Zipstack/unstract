@@ -87,6 +87,7 @@ def send_notification_to_worker(
                 "platform": platform,
             },
             queue="notifications",
+            fairness=None,  # not a workflow-execution dispatch
         )
 
         logger.info(
