@@ -251,10 +251,11 @@ class TestDispatchCallSitesPassFairness:
         ]
         assert offenders == [], (
             "Production dispatch(...) call site(s) missing fairness=. "
-            "Every production dispatch must declare its fairness key — "
-            "pass ``fairness=FairnessKey.system()`` for system / "
-            "cross-org tasks if there's no tenant context. Found:\n  "
-            + "\n  ".join(offenders)
+            "Every production dispatch must declare its fairness — pass "
+            "``fairness=FairnessKey(org_id=..., workload_type=WorkloadType...)`` "
+            "for a workflow-execution dispatch, or ``fairness=None`` "
+            "for a worker-internal task that doesn't start a workflow "
+            "execution. Found:\n  " + "\n  ".join(offenders)
         )
 
 
