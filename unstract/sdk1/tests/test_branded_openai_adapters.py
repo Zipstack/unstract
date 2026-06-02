@@ -217,8 +217,7 @@ def test_embedding_schema_drops_embed_batch_size(adapter: type) -> None:
 def test_embedding_strips_embed_batch_size_before_litellm(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # embed_batch_size must never reach litellm.embedding (strict gateways
-    # like NVIDIA reject it). Also asserts encoding_format="float" is sent.
+    # Non-API fields must not reach the provider; encoding_format must be sent.
     import unstract.sdk1.embedding as emb_mod
 
     captured: dict = {}
@@ -243,7 +242,7 @@ def test_embedding_strips_embed_batch_size_before_litellm(
     assert "embed_batch_size" not in captured
     assert captured["encoding_format"] == "float"
     assert captured["model"] == "nvidia_nim/nvidia/nv-embedqa-e5-v5"
-    # Test-connection embeds the snippet as a query; NVIDIA requires input_type.
+    # Query path must send input_type for asymmetric models.
     assert captured["input_type"] == "query"
 
 

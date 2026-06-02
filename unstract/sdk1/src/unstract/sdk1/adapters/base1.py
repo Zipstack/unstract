@@ -494,16 +494,12 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
 
 
-# NVIDIA Build reuses the generic OpenAI Compatible adapter wire protocol with a
-# hard-coded endpoint. Cost stays unresolved (LiteLLM prices nothing under the
-# generic custom_openai provider, and ships no nvidia_nim prices either).
+# Shared validation for branded adapters that reuse the OpenAI-compatible wire
+# protocol with a fixed default endpoint.
 def _validate_branded_openai_compatible(
     adapter_metadata: dict[str, "Any"], default_api_base: str
 ) -> dict[str, "Any"]:
-    # Endpoint is exposed in the schema with a sane default; honour a user
-    # override but fall back to the default when blank/absent (e.g. if the
-    # provider ever changes its base URL, users can point at the new one
-    # without an adapter release).
+    # Endpoint stays overridable so a provider URL change needs no release.
     api_base = adapter_metadata.get("api_base")
     if not (isinstance(api_base, str) and api_base.strip()):
         api_base = default_api_base
@@ -519,9 +515,7 @@ _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
     """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
 
-    # Endpoint defaults to NVIDIA Build; users may override it in the schema.
-    # Kept as a required `str` (not widened to None) so a directly-constructed
-    # instance is always valid even without going through validate().
+    # Required str so a directly-constructed instance stays valid.
     api_base: str = _NVIDIA_BUILD_API_BASE
 
     @staticmethod
@@ -534,15 +528,11 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
 class OpenRouterLLMParameters(BaseChatCompletionParameters):
     """Adapter for OpenRouter (openrouter.ai).
 
-    Routed through LiteLLM's native `openrouter/` provider (not the generic
-    `custom_openai` path) so that per-token costs resolve for the OpenRouter
-    models LiteLLM prices, and reasoning params map natively. LiteLLM's
-    openrouter handler applies the provider-specific transforms itself, so the
-    `custom_openai` extra_body workaround is intentionally not used here.
+    Routed through LiteLLM's native `openrouter/` provider so per-token costs
+    resolve and reasoning params map without provider-specific workarounds.
     """
 
     api_key: str
-    # Endpoint defaults to OpenRouter; users may override it in the schema.
     api_base: str = _OPENROUTER_API_BASE
     reasoning_effort: str | None = None
 
@@ -555,10 +545,8 @@ class OpenRouterLLMParameters(BaseChatCompletionParameters):
         adapter_metadata["model"] = OpenRouterLLMParameters.validate_model(
             adapter_metadata
         )
-        # Forward reasoning_effort natively only when reasoning is enabled;
-        # LiteLLM's openrouter handler maps it to OpenRouter's reasoning param.
-        # Drop temperature on the reasoning path — OpenAI o-series models reject
-        # a non-default temperature, and OpenRouter forwards it upstream as-is.
+        # Reasoning models reject a non-default temperature; drop it and send
+        # reasoning_effort only when reasoning is enabled.
         enable_reasoning = adapter_metadata.pop("enable_reasoning", False)
         if enable_reasoning:
             adapter_metadata["temperature"] = None
@@ -1395,26 +1383,21 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
         return model
 
 
-# Branded NVIDIA Build embeddings. LiteLLM's generic `custom_openai` provider
-# (used by the branded LLM adapters) has no embedding support, so embeddings
-# route through LiteLLM's native `nvidia_nim` provider instead, which reuses the
-# OpenAI embedding handler. `nvidia_nim` already defaults its api_base to
-# `_NVIDIA_BUILD_API_BASE` (https://integrate.api.nvidia.com/v1); we pin the same
-# value explicitly so it shows in the schema as an overridable default.
+# custom_openai has no embedding support, so these route through LiteLLM's
+# native nvidia_nim provider; its default api_base is pinned for the schema.
 _NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
 
 
 class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
     """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
 
-    # Same value LiteLLM's nvidia_nim provider defaults to; users may override it.
+    # Overridable default endpoint.
     api_base: str = _NVIDIA_BUILD_API_BASE
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata = dict(adapter_metadata)
-        # Endpoint is exposed in the schema with a sane default; honour an
-        # override but fall back to the default when blank/absent.
+        # Endpoint stays overridable so a provider URL change needs no release.
         api_base = adapter_metadata.get("api_base")
         if not (isinstance(api_base, str) and api_base.strip()):
             adapter_metadata["api_base"] = _NVIDIA_BUILD_API_BASE
@@ -1436,15 +1419,13 @@ class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
 
 
 class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
-    """Embeddings for any server implementing the OpenAI embeddings API.
+    """Embeddings for any OpenAI-compatible server (vLLM, self-hosted, etc.).
 
-    LiteLLM has no generic `custom_openai` embedding handler, so requests route
-    through the `openai/` provider with a user-supplied `api_base` (vLLM,
-    self-hosted gateways, third-party providers). Cost stays unresolved since
-    the endpoint is arbitrary.
+    Routes through the `openai/` provider with a user-supplied `api_base`;
+    cost stays unresolved since the endpoint is arbitrary.
     """
 
-    # api_key is optional (some gateways are keyless); api_base is required.
+    # Some gateways are keyless; the endpoint is always required.
     api_key: str | None = None
     api_base: str
 
