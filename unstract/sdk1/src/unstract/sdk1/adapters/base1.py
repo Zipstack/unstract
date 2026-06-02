@@ -353,6 +353,9 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 _OPENAI_PROVIDER_PREFIX = "openai/"
 _CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
 _OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+# Keyless gateways still need a non-empty key; the OpenAI SDK rejects a
+# null/blank one before any request reaches the endpoint.
+_NO_AUTH_API_KEY = "no-auth"
 
 
 def _is_openai_reasoning_model(model: str) -> bool:
@@ -546,8 +549,18 @@ class OpenRouterLLMParameters(BaseChatCompletionParameters):
             adapter_metadata
         )
         # Reasoning models reject a non-default temperature; drop it and send
-        # reasoning_effort only when reasoning is enabled.
-        enable_reasoning = adapter_metadata.pop("enable_reasoning", False)
+        # reasoning_effort only when reasoning is enabled. On a re-validation
+        # pass `enable_reasoning` is absent (it isn't serialized), so recover the
+        # state from a surviving reasoning_effort to keep reload idempotent —
+        # unless the user explicitly opted out with `enable_reasoning: false`.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        if (
+            not enable_reasoning
+            and "enable_reasoning" not in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        ):
+            enable_reasoning = True
+        adapter_metadata.pop("enable_reasoning", None)
         if enable_reasoning:
             adapter_metadata["temperature"] = None
         else:
@@ -1433,8 +1446,8 @@ class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
         adapter_metadata = dict(adapter_metadata)
         api_key = adapter_metadata.get("api_key")
-        if isinstance(api_key, str) and not api_key.strip():
-            adapter_metadata["api_key"] = None
+        if not (isinstance(api_key, str) and api_key.strip()):
+            adapter_metadata["api_key"] = _NO_AUTH_API_KEY
         # Strict endpoints reject the null LiteLLM sends; pin a real value.
         adapter_metadata.setdefault("encoding_format", "float")
         adapter_metadata["model"] = OpenAICompatibleEmbeddingParameters.validate_model(

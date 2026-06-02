@@ -87,6 +87,22 @@ def test_openrouter_forwards_reasoning_effort_only_when_enabled() -> None:
     assert off["reasoning_effort"] is None
 
 
+def test_openrouter_reasoning_survives_revalidation() -> None:
+    once = OpenRouterLLMParameters.validate(
+        {
+            "model": "openai/gpt-5",
+            "api_key": "k",
+            "enable_reasoning": True,
+            "reasoning_effort": "high",
+        }
+    )
+    assert once["reasoning_effort"] == "high"
+    # Reloading a saved config (no enable_reasoning key) must keep reasoning on.
+    twice = OpenRouterLLMParameters.validate(dict(once))
+    assert twice["reasoning_effort"] == "high"
+    assert twice["temperature"] is None
+
+
 @pytest.mark.parametrize(
     ("params", "default_base"),
     [
@@ -185,11 +201,13 @@ def test_compatible_embedding_registered_and_routes_via_openai() -> None:
     assert validated["api_base"] == "https://gw.example/v1"
 
 
-def test_compatible_embedding_blank_api_key_normalized_to_none() -> None:
+def test_compatible_embedding_blank_api_key_uses_placeholder() -> None:
+    # Keyless gateways still need a non-empty key or the OpenAI SDK rejects it.
     validated = OpenAICompatibleEmbeddingParameters.validate(
         {"model": "m", "api_base": "https://gw.example/v1", "api_key": "  "}
     )
-    assert validated["api_key"] is None
+    assert isinstance(validated["api_key"], str)
+    assert validated["api_key"].strip()
 
 
 def test_compatible_embedding_requires_api_base() -> None:
