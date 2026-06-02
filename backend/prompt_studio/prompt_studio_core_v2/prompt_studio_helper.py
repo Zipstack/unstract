@@ -105,6 +105,12 @@ class PromptStudioHelper:
             None
         """
         organization_member = OrganizationMemberService.get_user_by_id(id=user.id)
+        if not organization_member:
+            logger.info(
+                "Skipping default profile creation: user has no organization membership"
+            )
+            return
+
         default_adapter = UserDefaultAdapter.objects.filter(
             organization_member=organization_member
         ).first()
@@ -126,21 +132,24 @@ class PromptStudioHelper:
             )
             return
 
-        # Best-effort: a profile creation hiccup must never break project creation
+        # Best-effort: a profile creation hiccup must never break project creation.
+        # The savepoint keeps a DB error from poisoning the request's outer
+        # transaction when ATOMIC_REQUESTS is enabled.
         try:
-            ProfileManager.objects.create(
-                prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
-                is_default=True,
-                created_by=user,
-                modified_by=user,
-                profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
-                chunk_size=0,
-                chunk_overlap=0,
-                section="Default",
-                retrieval_strategy="simple",
-                similarity_top_k=3,
-                **adapters,
-            )
+            with transaction.atomic():
+                ProfileManager.objects.create(
+                    prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
+                    is_default=True,
+                    created_by=user,
+                    modified_by=user,
+                    profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
+                    chunk_size=0,
+                    chunk_overlap=0,
+                    section="Default",
+                    retrieval_strategy="simple",
+                    similarity_top_k=3,
+                    **adapters,
+                )
         except Exception:
             logger.warning(
                 "Skipping default profile creation: failed to create profile",
