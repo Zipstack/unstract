@@ -39,9 +39,10 @@ class TestGeminiEmbeddingAdapter:
         schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
         assert set(schema["required"]) == {"adapter_name", "api_key", "model"}
 
-    def test_json_schema_no_batch_size_default(self) -> None:
+    def test_json_schema_omits_batch_size(self) -> None:
+        # embed_batch_size is an inert client-side hint and is not exposed.
         schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
-        assert "default" not in schema["properties"]["embed_batch_size"]
+        assert "embed_batch_size" not in schema["properties"]
 
     def test_json_schema_api_key_password_format(self) -> None:
         schema = json.loads(GeminiEmbeddingAdapter.get_json_schema())
