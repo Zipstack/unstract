@@ -18,6 +18,7 @@ import { usePromptStudioStore } from "../../../store/prompt-studio-store";
 import { useSessionStore } from "../../../store/session-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
+import { groupsService } from "../../groups/groups-service.js";
 import { LogsModal } from "../../pipelines-or-deployments/log-modal/LogsModal.jsx";
 import { NotificationModal } from "../../pipelines-or-deployments/notification-modal/NotificationModal.jsx";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
@@ -89,15 +90,18 @@ function ApiDeployment() {
     setAlertDetails,
   });
 
+  const groupsApi = groupsService();
   const {
     openShareModal,
     setOpenShareModal,
     allUsers,
+    allGroups,
     isLoadingShare,
     handleShare,
     onShare,
   } = useShareModal({
     apiService: apiDeploymentsApiService,
+    groupsApi,
     setSelectedItem: setSelectedRow,
     setAlertDetails,
     handleException,
@@ -355,6 +359,7 @@ function ApiDeployment() {
         permissionEdit={true}
         loading={isLoadingShare}
         allUsers={allUsers}
+        allGroups={Array.isArray(allGroups) ? allGroups : []}
         onApply={onShare}
         isSharableToOrg={true}
       />

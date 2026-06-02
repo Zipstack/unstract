@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
+import { groupsService } from "../../groups/groups-service.js";
 import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { AddCustomToolFormModal } from "../add-custom-tool-form-modal/AddCustomToolFormModal";
 import { ViewTools } from "../view-tools/ViewTools";
@@ -59,6 +60,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const groupsApi = groupsService();
 
   const [listOfTools, setListOfTools] = useState([]);
   const [filteredListOfTools, setFilteredListOfTools] = useState([]);
@@ -69,6 +71,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [allUserList, setAllUserList] = useState([]);
+  const [allGroupList, setAllGroupList] = useState([]);
 
   useEffect(() => {
     getListOfTools();
@@ -280,6 +283,13 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     };
     setIsShareLoading(true);
     getAllUsers();
+    groupsApi
+      .listGroups()
+      .then((res) => {
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setAllGroupList(items.map((g) => ({ id: g.id, name: g.name })));
+      })
+      .catch(() => setAllGroupList([]));
     axiosPrivate(requestOptions)
       .then((res) => {
         setOpenSharePermissionModal(true);
@@ -320,20 +330,23 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       });
   };
 
-  const onShare = (userIds, adapter, shareWithEveryone) => {
+  const onShare = (userIds, adapter, shareWithEveryone, groupIds = []) => {
     const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/share/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,
+        shared_groups: groupIds,
       },
     };
     axiosPrivate(requestOptions)
-      .then((response) => {
+      .then(() => {
+        // Close only on success; keep the modal open on failure so the user
+        // can see the rejected entries and retry.
         setOpenSharePermissionModal(false);
       })
       .catch((err) => {
@@ -409,6 +422,7 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}
         allUsers={allUserList}
+        allGroups={allGroupList}
         onApply={onShare}
         isSharableToOrg={true}
       />

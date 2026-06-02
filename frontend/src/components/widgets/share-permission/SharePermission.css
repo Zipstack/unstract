@@ -14,3 +14,12 @@
 .share-per-checkbox {
   margin: 10px 0px;
 }
+
+.share-permission-section {
+  margin-top: 16px;
+}
+
+.share-permission-section > .ant-typography {
+  display: block;
+  margin-bottom: 6px;
+}

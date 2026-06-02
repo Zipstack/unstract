@@ -10,6 +10,7 @@ import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import "./ConnectorsPage.css";
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
+import { groupsService } from "../components/groups/groups-service.js";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { SharePermission } from "../components/widgets/share-permission/SharePermission";
@@ -21,8 +22,10 @@ function ConnectorsPage() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [sharingConnector, setSharingConnector] = useState(null);
   const [userList, setUserList] = useState([]);
+  const [groupList, setGroupList] = useState([]);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
+  const groupsApi = groupsService();
 
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
@@ -97,18 +100,31 @@ function ConnectorsPage() {
     setSharingConnector(connector);
     setIsPermissionEdit(isEdit);
     setShareModalVisible(true);
+    groupsApi
+      .listGroups()
+      .then((res) => {
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setGroupList(items.map((g) => ({ id: g.id, name: g.name })));
+      })
+      .catch(() => setGroupList([]));
   };
 
-  const handleShareSave = async (userIds, connector, shareWithEveryone) => {
+  const handleShareSave = async (
+    userIds,
+    connector,
+    shareWithEveryone,
+    groupIds = [],
+  ) => {
     setIsShareLoading(true);
     try {
       const updateData = {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,
+        shared_groups: groupIds,
       };
 
-      await axiosPrivate.patch(
-        getUrl(`connector/${connector.id}/`),
+      await axiosPrivate.post(
+        getUrl(`connector/${connector.id}/share/`),
         updateData,
         {
           headers: {
@@ -193,6 +209,7 @@ function ConnectorsPage() {
         setOpen={setShareModalVisible}
         adapter={sharingConnector}
         allUsers={userList}
+        allGroups={groupList}
         onApply={handleShareSave}
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}

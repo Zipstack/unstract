@@ -124,16 +124,17 @@ function workflowService() {
       };
       return axiosPrivate(options);
     },
-    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+    updateSharing: (id, sharedUsers, shareWithEveryone, sharedGroups = []) => {
       options = {
-        url: `${path}/workflow/${id}/`,
-        method: "PATCH",
+        url: `${path}/workflow/${id}/share/`,
+        method: "POST",
         headers: {
           "X-CSRFToken": csrfToken,
         },
         data: {
           shared_users: sharedUsers,
           shared_to_org: shareWithEveryone,
+          shared_groups: sharedGroups,
         },
       };
       return axiosPrivate(options);
