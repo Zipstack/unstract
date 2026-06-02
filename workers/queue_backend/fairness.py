@@ -1,9 +1,22 @@
 """Fairness key — multi-tenant routing metadata attached to every dispatch.
 
+Three fields, matching the staging-queue columns + ORDER BY in the labs
+PG Queue implementation guide
+(`Zipstack/labs:labs-ali/workflow-execution-architecture/docs/pg-queue-implementation-guide.md`):
+
+* ``org_id`` — per-tenant partition. Used server-side by the scheduler
+  to JOIN against ``org_config`` and look up the tenant's
+  ``tier_priority`` and ``burst_max``. (Tier itself is *not* on the
+  task payload; it's an org-level lookup.)
+* ``workload_type`` — ``"api"`` vs ``"etl"``. The scheduler's L2
+  fairness check prefers ``api`` so customer-facing requests aren't
+  blocked by background ETL.
+* ``pipeline_priority`` — 1..10, higher = sooner. The scheduler's L3
+  fairness check; tiebreaker within (tier, workload_type).
+
 The key is emitted by every producer today; no consumer reads it yet.
-When a future dispatch scheduler comes online, it will route by
-``org_id`` (per-tenant partition), ``pipeline_priority`` (within-tenant
-ordering), and ``tier`` (cross-tier preemption / capacity allocation).
+When a future dispatch scheduler comes online (PG Queue + ``SELECT FOR
+UPDATE SKIP LOCKED``), the same three fields drive its ORDER BY.
 
 The field travels in the Celery message header ``x-fairness-key`` —
 out-of-band of the task body's kwargs, so a task whose signature does
@@ -24,23 +37,17 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final, Literal
 
-# Tier is a cross-tenant resource-allocation tag. The future dispatch
-# scheduler uses it for preemption and capacity allocation across orgs
-# (e.g. enterprise traffic shouldn't be blocked by standard traffic
-# during contention). Closed vocabulary so typos become type errors
-# rather than silent new partitions. ``"system"`` is the partition for
-# tasks with no tenant context (periodic log flush, healthchecks).
-Tier = Literal["standard", "enterprise", "system"]
+# Closed vocabulary for ``workload_type``. Matches the labs design's
+# L2 fairness check (``(workload_type = 'api')::int DESC``). Anything
+# that isn't customer-facing API traffic is ``etl``.
+WorkloadType = Literal["api", "etl"]
 
-# Bounds for ``pipeline_priority`` (0..100, higher = sooner). Enforced
-# at construction so the wire contract stays closed.
-MIN_PRIORITY: Final[int] = 0
-MAX_PRIORITY: Final[int] = 100
-
-# Defaults when the caller has no better signal.
-DEFAULT_PRIORITY: Final[int] = 50
-DEFAULT_TIER: Final[Tier] = "standard"
-SYSTEM_TIER: Final[Tier] = "system"
+# Bounds for ``pipeline_priority`` (1..10, higher = sooner) per the
+# labs schema. Enforced at construction so the wire contract stays
+# closed.
+MIN_PRIORITY: Final[int] = 1
+MAX_PRIORITY: Final[int] = 10
+DEFAULT_PRIORITY: Final[int] = 5
 
 # Celery message-header slot that carries the fairness key. Headers
 # travel with the AMQP message but are not passed to the task body's
@@ -53,18 +60,16 @@ class FairnessKey:
     """Routing metadata attached to every ``dispatch(...)``.
 
     ``org_id=None`` is valid for system / cross-org tasks (periodic log
-    flushing, healthchecks). Producers building those keys should use
-    :meth:`FairnessKey.system` so ``tier="system"`` rides along — the
-    scheduler then matches on a single closed-set field instead of
-    special-casing ``org_id is None``.
+    flushing, healthchecks). The scheduler treats those as a distinct
+    partition because the ``org_config`` JOIN won't match.
 
     ``pipeline_priority`` is bounded to ``MIN_PRIORITY..MAX_PRIORITY``
-    (0..100). Higher = sooner.
+    (1..10). Higher = sooner.
     """
 
     org_id: str | None
+    workload_type: WorkloadType
     pipeline_priority: int = DEFAULT_PRIORITY
-    tier: Tier = DEFAULT_TIER
 
     def __post_init__(self) -> None:
         if not MIN_PRIORITY <= self.pipeline_priority <= MAX_PRIORITY:
@@ -79,48 +84,6 @@ class FairnessKey:
         """
         return {
             "org_id": self.org_id,
+            "workload_type": self.workload_type,
             "pipeline_priority": self.pipeline_priority,
-            "tier": self.tier,
         }
-
-    @classmethod
-    def system(cls) -> FairnessKey:
-        """Fairness key for a task with no tenant context.
-
-        ``tier="system"`` encodes the partition in the message itself
-        rather than leaving it implicit via ``org_id is None``, so the
-        scheduler matches on a single closed-set field.
-        """
-        return cls(org_id=None, tier=SYSTEM_TIER)
-
-    @classmethod
-    def for_org(
-        cls,
-        org_id: str,
-        *,
-        pipeline_priority: int = DEFAULT_PRIORITY,
-        tier: Tier = DEFAULT_TIER,
-    ) -> FairnessKey:
-        """Convenience constructor for the common case: a known org_id
-        and defaults for the rest.
-
-        Keyword-only overrides (no ``**kwargs``) so a typo like
-        ``priority=80`` or ``tiers="enterprise"`` raises ``TypeError``
-        at the call site instead of silently dropping the override.
-
-        ``org_id`` is required and non-None. For tasks without tenant
-        context use :meth:`FairnessKey.system` — passing a missing org
-        through here would produce an inconsistent key (``org_id=None``
-        with ``tier="standard"``) that Phase 8 would have to
-        special-case.
-        """
-        if org_id is None:
-            raise ValueError(
-                "org_id must not be None for org-bound tasks; "
-                "use FairnessKey.system() for tasks without tenant context."
-            )
-        return cls(
-            org_id=org_id,
-            pipeline_priority=pipeline_priority,
-            tier=tier,
-        )

@@ -87,14 +87,14 @@ def send_notification_to_worker(
                 "platform": platform,
             },
             queue="notifications",
-            # ``payload.organization_id`` is ``str | None`` — callback paths
-            # may build the payload without an org context, so use the
-            # ``system`` fairness key in that case (``tier="system"``)
-            # rather than passing None to ``for_org`` (which would now raise).
-            fairness=(
-                FairnessKey.for_org(payload.organization_id)
-                if payload.organization_id
-                else FairnessKey.system()
+            # Webhook delivery is customer-facing API traffic. The org_id
+            # is optional — callback paths build the payload via
+            # ``NotificationPayload.from_execution_status`` which doesn't
+            # always set it, and that's fine: the scheduler treats
+            # org-less keys as their own partition.
+            fairness=FairnessKey(
+                org_id=payload.organization_id,
+                workload_type="api",
             ),
         )
 

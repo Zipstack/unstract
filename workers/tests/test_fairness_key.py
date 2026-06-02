@@ -26,11 +26,9 @@ from celery import Celery
 from queue_backend import FairnessKey, dispatch
 from queue_backend.fairness import (
     DEFAULT_PRIORITY,
-    DEFAULT_TIER,
     FAIRNESS_HEADER_NAME,
     MAX_PRIORITY,
     MIN_PRIORITY,
-    SYSTEM_TIER,
 )
 
 # --- shared scan helpers ---
@@ -104,92 +102,81 @@ def _dispatch_calls_missing_fairness(tree: ast.AST) -> list[int]:
 
 
 class TestFairnessKey:
-    def test_required_field_is_org_id(self):
-        key = FairnessKey(org_id="org-123")
+    def test_minimal_construction(self):
+        key = FairnessKey(org_id="org-123", workload_type="api")
         assert key.org_id == "org-123"
-        assert key.pipeline_priority == DEFAULT_PRIORITY
-        assert key.tier == DEFAULT_TIER
+        assert key.workload_type == "api"
+        assert key.pipeline_priority == DEFAULT_PRIORITY  # default 5
 
-    def test_org_id_can_be_none_for_system_tasks(self):
-        key = FairnessKey.system()
+    def test_org_id_can_be_none(self):
+        """System / cross-org tasks have no tenant partition. The
+        scheduler's ``org_config`` JOIN simply doesn't match for them."""
+        key = FairnessKey(org_id=None, workload_type="api")
         assert key.org_id is None
 
-    def test_for_org_convenience_constructor(self):
-        key = FairnessKey.for_org("org-1")
-        assert key.org_id == "org-1"
-        assert key.pipeline_priority == DEFAULT_PRIORITY
-        assert key.tier == DEFAULT_TIER
+    def test_workload_type_etl(self):
+        key = FairnessKey(org_id="x", workload_type="etl")
+        assert key.workload_type == "etl"
 
-    def test_for_org_accepts_overrides(self):
-        key = FairnessKey.for_org("org-1", pipeline_priority=80, tier="enterprise")
-        assert key.pipeline_priority == 80
-        assert key.tier == "enterprise"
+    def test_pipeline_priority_override(self):
+        key = FairnessKey(org_id="x", workload_type="api", pipeline_priority=9)
+        assert key.pipeline_priority == 9
 
     def test_is_frozen(self):
-        key = FairnessKey(org_id="x")
+        key = FairnessKey(org_id="x", workload_type="api")
         with pytest.raises(FrozenInstanceError):
             key.org_id = "y"  # type: ignore[misc]
 
     def test_priority_below_range_rejected(self):
         with pytest.raises(ValueError, match="pipeline_priority out of range"):
-            FairnessKey(org_id="x", pipeline_priority=MIN_PRIORITY - 1)
+            FairnessKey(
+                org_id="x", workload_type="api", pipeline_priority=MIN_PRIORITY - 1
+            )
 
     def test_priority_above_range_rejected(self):
         with pytest.raises(ValueError, match="pipeline_priority out of range"):
-            FairnessKey(org_id="x", pipeline_priority=MAX_PRIORITY + 1)
+            FairnessKey(
+                org_id="x", workload_type="api", pipeline_priority=MAX_PRIORITY + 1
+            )
 
     def test_priority_boundaries_accepted(self):
-        FairnessKey(org_id="x", pipeline_priority=MIN_PRIORITY)
-        FairnessKey(org_id="x", pipeline_priority=MAX_PRIORITY)
+        FairnessKey(org_id="x", workload_type="api", pipeline_priority=MIN_PRIORITY)
+        FairnessKey(org_id="x", workload_type="api", pipeline_priority=MAX_PRIORITY)
 
-    def test_for_org_rejects_misspelled_kwargs(self):
-        """``priority=`` (instead of ``pipeline_priority=``) and other
-        typos must fail loudly, not silently fall back to defaults."""
-        with pytest.raises(TypeError, match="priority"):
-            FairnessKey.for_org("org-1", priority=80)  # type: ignore[call-arg]
-        with pytest.raises(TypeError, match="tiers"):
-            FairnessKey.for_org("org-1", tiers="enterprise")  # type: ignore[call-arg]
-
-    def test_for_org_rejects_none_org_id(self):
-        """``for_org(None)`` would produce an inconsistent key
-        (``tier="standard"`` with no org). Callers must use
-        :meth:`FairnessKey.system` for tasks without tenant context.
-        """
-        with pytest.raises(ValueError, match="use FairnessKey.system"):
-            FairnessKey.for_org(None)  # type: ignore[arg-type]
+    def test_typo_in_field_name_raises(self):
+        """``pipeline_prio=`` and other typos must fail loudly at the
+        dataclass boundary instead of silently being ignored."""
+        with pytest.raises(TypeError, match="pipeline_prio"):
+            FairnessKey(
+                org_id="x",
+                workload_type="api",
+                pipeline_prio=9,  # type: ignore[call-arg]
+            )
 
     def test_to_dict_shape(self):
-        key = FairnessKey(org_id="org-1", pipeline_priority=80, tier="enterprise")
+        key = FairnessKey(org_id="org-1", workload_type="etl", pipeline_priority=9)
         assert key.to_dict() == {
             "org_id": "org-1",
-            "pipeline_priority": 80,
-            "tier": "enterprise",
+            "workload_type": "etl",
+            "pipeline_priority": 9,
         }
 
     def test_to_dict_is_json_safe(self):
         """The dict must round-trip through ``json.dumps`` — Celery's
         default serializer is JSON."""
-        key = FairnessKey.for_org("org-1", pipeline_priority=80, tier="enterprise")
+        key = FairnessKey(org_id="org-1", workload_type="api", pipeline_priority=7)
         round_tripped = json.loads(json.dumps(key.to_dict()))
         assert round_tripped == key.to_dict()
 
-    def test_system_key_encodes_partition_in_tier(self):
-        """``FairnessKey.system()`` must put the partition in ``tier``
-        (not implicit via ``org_id is None``) so the Phase 8 scheduler
-        can match on a single closed-set field."""
-        key = FairnessKey.system()
-        assert key.org_id is None
-        assert key.tier == SYSTEM_TIER
-
-    def test_system_key_round_trips(self):
-        """``org_id=None`` is JSON-safe (becomes JSON null) and the
-        tier is preserved through serialisation."""
-        key = FairnessKey.system()
+    def test_orgless_key_round_trips(self):
+        """``org_id=None`` is JSON-safe (becomes JSON null) and all
+        other fields are preserved through serialisation."""
+        key = FairnessKey(org_id=None, workload_type="api")
         round_tripped = json.loads(json.dumps(key.to_dict()))
         assert round_tripped == {
             "org_id": None,
+            "workload_type": "api",
             "pipeline_priority": DEFAULT_PRIORITY,
-            "tier": SYSTEM_TIER,
         }
 
 
@@ -214,15 +201,17 @@ class TestDispatchAttachesFairness:
             dispatch(
                 "any_task",
                 kwargs={"foo": "bar"},
-                fairness=FairnessKey.for_org("org-1", pipeline_priority=80),
+                fairness=FairnessKey(
+                    org_id="org-1", workload_type="api", pipeline_priority=9
+                ),
             )
 
         call_kwargs = mock_app.send_task.call_args.kwargs
         assert call_kwargs["headers"] == {
             FAIRNESS_HEADER_NAME: {
                 "org_id": "org-1",
-                "pipeline_priority": 80,
-                "tier": DEFAULT_TIER,
+                "workload_type": "api",
+                "pipeline_priority": 9,
             }
         }
         # Critically: the business kwargs must NOT contain the fairness
@@ -233,18 +222,21 @@ class TestDispatchAttachesFairness:
         assert FAIRNESS_HEADER_NAME not in sent_kwargs
 
     def test_fairness_with_no_business_kwargs(self):
-        """``dispatch`` accepts fairness even when caller passes no kwargs.
-        Business kwargs stay None — header carries the routing data."""
+        """``dispatch`` accepts fairness even when caller passes no
+        business kwargs. Header carries the routing data."""
         with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("any_task", fairness=FairnessKey.system())
+            dispatch(
+                "any_task",
+                fairness=FairnessKey(org_id=None, workload_type="etl"),
+            )
 
         call_kwargs = mock_app.send_task.call_args.kwargs
         assert call_kwargs["kwargs"] is None
         assert call_kwargs["headers"] == {
             FAIRNESS_HEADER_NAME: {
                 "org_id": None,
+                "workload_type": "etl",
                 "pipeline_priority": DEFAULT_PRIORITY,
-                "tier": SYSTEM_TIER,
             }
         }
 
@@ -257,7 +249,7 @@ class TestDispatchAttachesFairness:
             dispatch(
                 "any_task",
                 kwargs=caller_kwargs,
-                fairness=FairnessKey.for_org("org-1"),
+                fairness=FairnessKey(org_id="org-1", workload_type="api"),
             )
 
         assert caller_kwargs == {"foo": "bar"}
@@ -361,8 +353,8 @@ class TestHeaderSurvivesCeleryPipeline:
         ) as wrapped_send:
             dispatch(
                 "qb.e2e.echo",
-                fairness=FairnessKey.for_org(
-                    "org-1", pipeline_priority=80, tier="enterprise"
+                fairness=FairnessKey(
+                    org_id="org-1", workload_type="etl", pipeline_priority=9
                 ),
             )
 
@@ -372,7 +364,7 @@ class TestHeaderSurvivesCeleryPipeline:
         assert call_headers == {
             FAIRNESS_HEADER_NAME: {
                 "org_id": "org-1",
-                "pipeline_priority": 80,
-                "tier": "enterprise",
+                "workload_type": "etl",
+                "pipeline_priority": 9,
             }
         }

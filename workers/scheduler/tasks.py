@@ -165,7 +165,13 @@ def _execute_scheduled_workflow(
                     "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
                 },
                 queue=QueueName.GENERAL,  # Route to General queue for proper separation
-                fairness=FairnessKey.for_org(context.organization_id),
+                # Scheduled pipelines fire ETL-style workflow executions
+                # (cron-triggered batch processing). ``organization_id``
+                # is non-Optional on ``ScheduledPipelineContext``.
+                fairness=FairnessKey(
+                    org_id=context.organization_id,
+                    workload_type="etl",
+                ),
             )
 
             task_id = async_result.id
