@@ -103,6 +103,7 @@ class ExecutionDispatcher:
         self,
         context: ExecutionContext,
         timeout: int | None = None,
+        headers: dict[str, Any] | None = None,
     ) -> ExecutionResult:
         """Dispatch context as a Celery task and wait for result.
 
@@ -111,6 +112,9 @@ class ExecutionDispatcher:
             timeout: Max seconds to wait.  ``None`` reads from
                 the ``EXECUTOR_RESULT_TIMEOUT`` env var,
                 falling back to 3600s.
+            headers: Optional Celery message headers (routing metadata
+                out-of-band of the task body — see callers for
+                ``x-fairness-key`` usage).
 
         Returns:
             ExecutionResult from the executor.
@@ -136,11 +140,13 @@ class ExecutionDispatcher:
             queue,
         )
 
-        async_result = self._app.send_task(
-            _TASK_NAME,
-            args=[context.to_dict()],
-            queue=queue,
-        )
+        send_kwargs: dict[str, Any] = {
+            "args": [context.to_dict()],
+            "queue": queue,
+        }
+        if headers is not None:
+            send_kwargs["headers"] = headers
+        async_result = self._app.send_task(_TASK_NAME, **send_kwargs)
         logger.info(
             "Task sent: celery_task_id=%s, waiting for result...",
             async_result.id,
@@ -172,11 +178,13 @@ class ExecutionDispatcher:
     def dispatch_async(
         self,
         context: ExecutionContext,
+        headers: dict[str, Any] | None = None,
     ) -> str:
         """Dispatch without waiting.  Returns task_id for polling.
 
         Args:
             context: ExecutionContext to dispatch.
+            headers: Optional Celery message headers (see ``dispatch``).
 
         Returns:
             The Celery task ID (use with ``AsyncResult`` to poll).
@@ -198,11 +206,13 @@ class ExecutionDispatcher:
             queue,
         )
 
-        async_result = self._app.send_task(
-            _TASK_NAME,
-            args=[context.to_dict()],
-            queue=queue,
-        )
+        send_kwargs: dict[str, Any] = {
+            "args": [context.to_dict()],
+            "queue": queue,
+        }
+        if headers is not None:
+            send_kwargs["headers"] = headers
+        async_result = self._app.send_task(_TASK_NAME, **send_kwargs)
         return async_result.id
 
     def dispatch_with_callback(
@@ -211,6 +221,7 @@ class ExecutionDispatcher:
         on_success: Signature | None = None,
         on_error: Signature | None = None,
         task_id: str | None = None,
+        headers: dict[str, Any] | None = None,
     ) -> AsyncResult:
         """Fire-and-forget dispatch with Celery link callbacks.
 
@@ -267,6 +278,8 @@ class ExecutionDispatcher:
             send_kwargs["link_error"] = on_error
         if task_id is not None:
             send_kwargs["task_id"] = task_id
+        if headers is not None:
+            send_kwargs["headers"] = headers
 
         async_result = self._app.send_task(
             _TASK_NAME,

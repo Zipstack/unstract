@@ -23,7 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from file_processing.worker import app
-from queue_backend import worker_task
+from queue_backend import FairnessKey, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
 
@@ -37,6 +38,20 @@ logger = logging.getLogger(__name__)
 # Timeout for executor worker calls (seconds).
 # Reads from EXECUTOR_RESULT_TIMEOUT env, defaults to 3600.
 EXECUTOR_TIMEOUT = int(os.environ.get("EXECUTOR_RESULT_TIMEOUT", 3600))
+
+
+def _fairness_headers(organization_id: str) -> dict[str, object]:
+    """Fairness header for executor dispatches.
+
+    Structure-tool dispatches are workflow-execution work — both ETL
+    and API workflows route through here. Defaults to ``NON_API``;
+    propagating the actual workload type from the caller is Phase 6
+    work (chord lift).
+    """
+    return FairnessKey(
+        org_id=organization_id,
+        workload_type=WorkloadType.NON_API,
+    ).as_header()
 
 
 # -----------------------------------------------------------------------
@@ -465,7 +480,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             file_execution_id=file_execution_id,
             executor_params=agentic_params,
         )
-        at_result = dispatcher.dispatch(at_ctx, timeout=EXECUTOR_TIMEOUT)
+        at_result = dispatcher.dispatch(
+            at_ctx,
+            timeout=EXECUTOR_TIMEOUT,
+            headers=_fairness_headers(organization_id),
+        )
         if not at_result.success:
             return at_result.to_dict()
         at_output_data = at_result.data.get("output", {}) or {}
@@ -504,7 +523,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             },
         )
         pipeline_start = time.monotonic()
-        pipeline_result = dispatcher.dispatch(pipeline_ctx, timeout=EXECUTOR_TIMEOUT)
+        pipeline_result = dispatcher.dispatch(
+            pipeline_ctx,
+            timeout=EXECUTOR_TIMEOUT,
+            headers=_fairness_headers(organization_id),
+        )
         pipeline_elapsed = time.monotonic() - pipeline_start
 
         if not pipeline_result.success:
@@ -717,7 +740,11 @@ def _run_agentic_extraction(
             "include_source_refs": enable_highlight,
         },
     )
-    agentic_result = dispatcher.dispatch(agentic_ctx, timeout=EXECUTOR_TIMEOUT)
+    agentic_result = dispatcher.dispatch(
+        agentic_ctx,
+        timeout=EXECUTOR_TIMEOUT,
+        headers=_fairness_headers(organization_id),
+    )
 
     if not agentic_result.success:
         return agentic_result.to_dict()

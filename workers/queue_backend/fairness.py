@@ -53,3 +53,7 @@ class FairnessKey:
             "workload_type": self.workload_type.value,
             "pipeline_priority": self.pipeline_priority,
         }
+
+    def as_header(self) -> dict[str, dict[str, str | int | None]]:
+        """Wire-ready Celery ``headers=`` payload."""
+        return {FAIRNESS_HEADER_NAME: self.to_dict()}
