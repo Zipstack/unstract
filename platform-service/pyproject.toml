@@ -14,7 +14,7 @@ dependencies = [
     "python-dotenv~=1.2.2",
     "redis~=5.2.1",
     "cryptography>=41.0.7",
-    "requests>=2.31.0",
+    "requests>=2.33.0",
     "unstract-flags",
     "unstract-core[flask]",
     "unstract-sdk1[gcs, azure, aws]"
