@@ -33,6 +33,72 @@ from queue_backend.fairness import (
     SYSTEM_TIER,
 )
 
+# --- shared scan helpers ---
+#
+# Pulled out of the audit tests so the tests themselves stay flat
+# (cognitive-complexity friendly). Each test then composes these
+# generators / predicates without re-walking the directory.
+
+_WORKERS_ROOT = pathlib.Path(__file__).parent.parent
+_SKIP_TOP_DIRS = frozenset(
+    {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
+)
+
+
+def _iter_production_trees() -> list[tuple[pathlib.Path, ast.AST]]:
+    """Yield ``(rel_path, parsed_tree)`` for every production .py file.
+
+    Skips tests/, the seam itself, and anything we can't parse. Pure
+    helper — pushing the loop + parse + skip logic here keeps the
+    audit tests below SonarCloud's cognitive-complexity threshold.
+    """
+    out: list[tuple[pathlib.Path, ast.AST]] = []
+    for py in _WORKERS_ROOT.rglob("*.py"):
+        rel = py.relative_to(_WORKERS_ROOT)
+        if rel.parts and rel.parts[0] in _SKIP_TOP_DIRS:
+            continue
+        try:
+            tree = ast.parse(py.read_text(), filename=str(py))
+        except SyntaxError:
+            continue
+        out.append((rel, tree))
+    return out
+
+
+def _aliased_dispatch_imports(tree: ast.AST) -> list[tuple[int, str]]:
+    """Return ``(lineno, alias)`` for every ``from queue_backend import
+    dispatch as <alias>`` in the given tree."""
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if not (isinstance(node, ast.ImportFrom) and node.module == "queue_backend"):
+            continue
+        for alias in node.names:
+            if alias.name == "dispatch" and alias.asname not in (None, "dispatch"):
+                hits.append((node.lineno, alias.asname))
+    return hits
+
+
+def _dispatch_calls_missing_fairness(tree: ast.AST) -> list[int]:
+    """Return linenos of bare ``dispatch(...)`` calls that don't pass
+    ``fairness=``.
+
+    Only matches the bare name — method calls like
+    ``dispatcher.dispatch(...)`` belong to ExecutionDispatcher
+    (executor-side RPC, not a queue boundary) and must not be audited.
+    The companion ``_aliased_dispatch_imports`` check forbids alias
+    imports so this name-based match has no blind spot.
+    """
+    hits: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        callee = node.func
+        if not (isinstance(callee, ast.Name) and callee.id == "dispatch"):
+            continue
+        if not any(kw.arg == "fairness" for kw in node.keywords):
+            hits.append(node.lineno)
+    return hits
+
 
 # --- FairnessKey value object ---
 
@@ -205,27 +271,11 @@ class TestDispatchCallSitesPassFairness:
         ``foo(...)`` call. Forbid the alias form so the canary stays
         complete.
         """
-        workers_root = pathlib.Path(__file__).parent.parent
-        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
-
-        aliased: list[str] = []
-        for py in workers_root.rglob("*.py"):
-            rel = py.relative_to(workers_root)
-            if rel.parts and rel.parts[0] in skip_top_dirs:
-                continue
-            try:
-                tree = ast.parse(py.read_text(), filename=str(py))
-            except SyntaxError:
-                continue
-            for node in ast.walk(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == "queue_backend":
-                    for alias in node.names:
-                        if alias.name == "dispatch" and alias.asname not in (
-                            None,
-                            "dispatch",
-                        ):
-                            aliased.append(f"{rel}:{node.lineno} (as {alias.asname})")
-
+        aliased = [
+            f"{rel}:{lineno} (as {alias})"
+            for rel, tree in _iter_production_trees()
+            for lineno, alias in _aliased_dispatch_imports(tree)
+        ]
         assert aliased == [], (
             "``queue_backend.dispatch`` must be imported under its real "
             "name — alias imports defeat the fairness inventory canary. "
@@ -233,43 +283,11 @@ class TestDispatchCallSitesPassFairness:
         )
 
     def test_every_production_dispatch_passes_fairness(self):
-        workers_root = pathlib.Path(__file__).parent.parent
-        skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
-
-        class FairnessAuditor(ast.NodeVisitor):
-            def __init__(self) -> None:
-                self.violations: list[int] = []
-
-            def visit_Call(self, node: ast.Call) -> None:
-                # Only match bare ``dispatch(...)`` — i.e. the function
-                # imported as ``from queue_backend import dispatch``.
-                # Method calls like ``dispatcher.dispatch(...)`` belong
-                # to ExecutionDispatcher (executor-side RPC) and aren't
-                # queue boundaries — different concept, must not be
-                # audited here.
-                callee = node.func
-                if isinstance(callee, ast.Name) and callee.id == "dispatch":
-                    has_fairness = any(
-                        kw.arg == "fairness" for kw in node.keywords
-                    )
-                    if not has_fairness:
-                        self.violations.append(node.lineno)
-                self.generic_visit(node)
-
-        offenders: list[str] = []
-        for py in workers_root.rglob("*.py"):
-            rel = py.relative_to(workers_root)
-            if rel.parts and rel.parts[0] in skip_top_dirs:
-                continue
-            try:
-                tree = ast.parse(py.read_text(), filename=str(py))
-            except SyntaxError:
-                continue
-            auditor = FairnessAuditor()
-            auditor.visit(tree)
-            for line_no in auditor.violations:
-                offenders.append(f"{rel}:{line_no}")
-
+        offenders = [
+            f"{rel}:{lineno}"
+            for rel, tree in _iter_production_trees()
+            for lineno in _dispatch_calls_missing_fairness(tree)
+        ]
         assert offenders == [], (
             "Production dispatch(...) call site(s) missing fairness=. "
             "Every production dispatch must declare its fairness key — "
