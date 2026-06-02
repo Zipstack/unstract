@@ -10,8 +10,8 @@ license = { text = "MIT" }
 dependencies = [
     "Flask>=3.0.1",
     "flask-sqlalchemy>=3.1.1",
-    "python-dotenv~=1.0.0",
-    "requests>=2.31.0",
+    "python-dotenv~=1.2.2",
+    "requests>=2.33.0",
     "peewee>=3.17.0",
     "psycopg2-binary~=2.9",
 ]

@@ -7,7 +7,7 @@ requires-python = ">=3.12,<3.13"
 readme = "README.md"
 # license = {text = "MIT"}
 
-dependencies = ["requests==2.31.0", "unstract-core"]
+dependencies = ["requests==2.33.0", "unstract-core"]
 
 [tool.uv.sources]
 unstract-core = { path = "../core", editable = true }

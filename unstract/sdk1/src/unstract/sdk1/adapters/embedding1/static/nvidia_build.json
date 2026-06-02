@@ -1,41 +1,35 @@
 {
-  "title": "OpenAI Embedding",
+  "title": "NVIDIA Build Embedding",
   "type": "object",
   "required": [
     "adapter_name",
-    "api_key"
+    "api_key",
+    "model"
   ],
   "properties": {
     "adapter_name": {
       "type": "string",
       "title": "Name",
       "default": "",
-      "description": "Provide a unique name for this adapter instance. Example: openai-emb-1"
+      "description": "Provide a unique name for this adapter instance. Example: nvidia-build-emb-1"
     },
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "text-embedding-3-small",
-      "description": "Provide the name of the model. Recommended: text-embedding-3-small, text-embedding-3-large"
+      "description": "The embedding model name as listed on [build.nvidia.com/models](https://build.nvidia.com/models). Examples: nvidia/nv-embedqa-e5-v5, nvidia/llama-3.2-nv-embedqa-1b-v2"
     },
     "api_key": {
       "type": "string",
       "title": "API Key",
-      "default": "",
-      "format": "password"
+      "format": "password",
+      "description": "Your NVIDIA API key from [build.nvidia.com](https://build.nvidia.com)."
     },
     "api_base": {
       "type": "string",
-      "title": "API Base",
       "format": "uri",
-      "default": "https://api.openai.com/v1/"
-    },
-    "dimensions": {
-      "type": "number",
-      "minimum": 1,
-      "multipleOf": 1,
-      "title": "Dimensions",
-      "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions (1536 for small, 3072 for large)."
+      "title": "API Base",
+      "default": "https://integrate.api.nvidia.com/v1",
+      "description": "NVIDIA Build endpoint. Pre-filled with the default; change only if NVIDIA moves the base URL."
     },
     "max_retries": {
       "type": "number",

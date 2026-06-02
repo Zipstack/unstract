@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "MIT"}
 dependencies = [
     "redis>=4.5.0",
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.2",
     "python-json-logger>=2.0.0",
     "unstract-core"
 ]

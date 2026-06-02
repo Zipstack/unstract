@@ -1,41 +1,37 @@
 {
-  "title": "OpenAI Embedding",
+  "title": "OpenAI Compatible Embedding",
   "type": "object",
   "required": [
     "adapter_name",
-    "api_key"
+    "model",
+    "api_base"
   ],
   "properties": {
     "adapter_name": {
       "type": "string",
       "title": "Name",
       "default": "",
-      "description": "Provide a unique name for this adapter instance. Example: openai-emb-1"
+      "description": "Provide a unique name for this adapter instance. Example: compatible-emb-1"
     },
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "text-embedding-3-small",
-      "description": "Provide the name of the model. Recommended: text-embedding-3-small, text-embedding-3-large"
+      "description": "The embedding model name expected by your OpenAI-compatible endpoint. Examples: text-embedding-3-small, BAAI/bge-m3, nomic-embed-text"
     },
     "api_key": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "title": "API Key",
-      "default": "",
-      "format": "password"
+      "format": "password",
+      "description": "API key for your OpenAI-compatible endpoint. Leave empty if the endpoint does not require one."
     },
     "api_base": {
       "type": "string",
-      "title": "API Base",
       "format": "uri",
-      "default": "https://api.openai.com/v1/"
-    },
-    "dimensions": {
-      "type": "number",
-      "minimum": 1,
-      "multipleOf": 1,
-      "title": "Dimensions",
-      "description": "Output embedding dimensions. Only supported by text-embedding-3-* models. Leave empty for default dimensions (1536 for small, 3072 for large)."
+      "title": "API Base",
+      "description": "Base URL for the OpenAI-compatible embeddings endpoint. Examples: https://gateway.example.com/v1, https://llm.example.net/openai/v1"
     },
     "max_retries": {
       "type": "number",
