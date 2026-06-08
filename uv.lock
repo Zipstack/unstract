@@ -4219,7 +4219,7 @@ deploy = [
     { name = "opentelemetry-exporter-otlp" },
 ]
 dev = [
-    { name = "black", specifier = ">=23.7.0" },
+    { name = "black", specifier = ">=26.5.1" },
     { name = "debugpy", specifier = ">=1.8.14" },
     { name = "flake8", specifier = ">=6.0.0" },
     { name = "isort", specifier = ">=5.12.0" },
