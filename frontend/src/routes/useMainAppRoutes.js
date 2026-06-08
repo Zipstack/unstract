@@ -174,9 +174,23 @@ try {
   const mod = await import("../plugins/marketplace");
   MarketplaceLandingPage = mod.MarketplaceLandingPage;
   MarketplaceStripeConflictPage = mod.MarketplaceStripeConflictPage;
-} catch {
-  // OSS build does not ship the marketplace plugin; the marketplace
-  // landing routes silently de-register.
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent. Surface
+  // anything that isn't a missing-module error so syntax/runtime
+  // failures inside the plugin don't silently de-register the routes.
+  const msg = err?.message || "";
+  const isModuleMissing =
+    err?.code === "MODULE_NOT_FOUND" ||
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Cannot find module");
+  if (!isModuleMissing) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[marketplace] Plugin import failed unexpectedly; marketplace " +
+        "routes disabled",
+      err,
+    );
+  }
 }
 
 function useMainAppRoutes() {
