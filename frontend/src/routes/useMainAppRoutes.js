@@ -168,11 +168,34 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let MarketplaceLandingPage;
+let MarketplaceStripeConflictPage;
+try {
+  const mod = await import("../plugins/marketplace");
+  MarketplaceLandingPage = mod.MarketplaceLandingPage;
+  MarketplaceStripeConflictPage = mod.MarketplaceStripeConflictPage;
+} catch {
+  // OSS build does not ship the marketplace plugin; the marketplace
+  // landing routes silently de-register.
+}
+
 function useMainAppRoutes() {
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
         <Route path="onboard" element={<OnBoardPage />} />
+        {MarketplaceLandingPage && (
+          <Route
+            path="marketplace-landing"
+            element={<MarketplaceLandingPage />}
+          />
+        )}
+        {MarketplaceStripeConflictPage && (
+          <Route
+            path="marketplace-stripe-conflict"
+            element={<MarketplaceStripeConflictPage />}
+          />
+        )}
       </Route>
       {ChatAppLayout && ChatAppPage && (
         <Route path=":orgName" element={<ChatAppLayout />}>
