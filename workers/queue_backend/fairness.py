@@ -55,5 +55,8 @@ class FairnessKey:
         }
 
     def as_header(self) -> dict[str, dict[str, str | int | None]]:
-        """Wire-ready Celery ``headers=`` payload."""
+        """Celery ``send_task(headers=...)`` payload.
+
+        Shape: ``{FAIRNESS_HEADER_NAME: self.to_dict()}``.
+        """
         return {FAIRNESS_HEADER_NAME: self.to_dict()}

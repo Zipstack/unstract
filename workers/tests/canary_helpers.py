@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import pathlib
+import warnings
 
 WORKERS_ROOT = pathlib.Path(__file__).parent.parent
 
@@ -22,8 +23,11 @@ def iter_production_trees(
 ) -> list[tuple[pathlib.Path, ast.AST]]:
     """Yield ``(rel_path, parsed_tree)`` for every .py file outside the skip set.
 
-    Files that fail to parse are silently dropped — the canaries assume
-    well-formed production source.
+    Unparseable files emit a ``UserWarning`` and are skipped — silent
+    skipping would let canaries pass vacuously on a botched merge.
+    Tests can promote the warning to an error via
+    ``warnings.simplefilter("error", UserWarning)`` if they want
+    strict enforcement.
     """
     out: list[tuple[pathlib.Path, ast.AST]] = []
     for py in WORKERS_ROOT.rglob("*.py"):
@@ -32,7 +36,12 @@ def iter_production_trees(
             continue
         try:
             tree = ast.parse(py.read_text(), filename=str(py))
-        except SyntaxError:
+        except SyntaxError as exc:
+            warnings.warn(
+                f"canary scan skipping unparseable file {rel}: {exc}",
+                UserWarning,
+                stacklevel=2,
+            )
             continue
         out.append((rel, tree))
     return out

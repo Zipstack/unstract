@@ -99,6 +99,37 @@ class ExecutionDispatcher:
         """
         return f"{_QUEUE_PREFIX}{executor_name}"
 
+    @staticmethod
+    def _build_send_kwargs(
+        context: ExecutionContext,
+        queue: str,
+        *,
+        headers: dict[str, Any] | None = None,
+        link: Signature | None = None,
+        link_error: Signature | None = None,
+        task_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Common ``send_task`` kwargs builder for the three dispatch modes.
+
+        Optional kwargs are dropped when ``None`` so the resulting call
+        shape matches the minimum-arity form Celery expects for ``link``
+        / ``link_error`` handling and so callers that pass no headers
+        see the same on-wire call as before headers existed.
+        """
+        out: dict[str, Any] = {
+            "args": [context.to_dict()],
+            "queue": queue,
+        }
+        if headers is not None:
+            out["headers"] = headers
+        if link is not None:
+            out["link"] = link
+        if link_error is not None:
+            out["link_error"] = link_error
+        if task_id is not None:
+            out["task_id"] = task_id
+        return out
+
     def dispatch(
         self,
         context: ExecutionContext,
@@ -113,8 +144,12 @@ class ExecutionDispatcher:
                 the ``EXECUTOR_RESULT_TIMEOUT`` env var,
                 falling back to 3600s.
             headers: Optional Celery message headers (routing metadata
-                out-of-band of the task body — see callers for
-                ``x-fairness-key`` usage).
+                out-of-band of the task body — see
+                ``queue_backend.fairness.FAIRNESS_HEADER_NAME``
+                (currently ``"x-fairness-key"``) for the canonical
+                constant). Caller is responsible for the header schema;
+                passing ``{}`` is forwarded as-is and likely indicates
+                a producer-side build bug.
 
         Returns:
             ExecutionResult from the executor.
@@ -140,12 +175,7 @@ class ExecutionDispatcher:
             queue,
         )
 
-        send_kwargs: dict[str, Any] = {
-            "args": [context.to_dict()],
-            "queue": queue,
-        }
-        if headers is not None:
-            send_kwargs["headers"] = headers
+        send_kwargs = self._build_send_kwargs(context, queue, headers=headers)
         async_result = self._app.send_task(_TASK_NAME, **send_kwargs)
         logger.info(
             "Task sent: celery_task_id=%s, waiting for result...",
@@ -206,12 +236,7 @@ class ExecutionDispatcher:
             queue,
         )
 
-        send_kwargs: dict[str, Any] = {
-            "args": [context.to_dict()],
-            "queue": queue,
-        }
-        if headers is not None:
-            send_kwargs["headers"] = headers
+        send_kwargs = self._build_send_kwargs(context, queue, headers=headers)
         async_result = self._app.send_task(_TASK_NAME, **send_kwargs)
         return async_result.id
 
@@ -242,6 +267,7 @@ class ExecutionDispatcher:
             task_id: Optional pre-generated Celery task ID. Useful
                 when the caller needs to know the task ID before
                 dispatch (e.g. to include it in callback kwargs).
+            headers: Optional Celery message headers (see ``dispatch``).
 
         Returns:
             The ``AsyncResult`` from ``send_task``.  Callers can
@@ -268,23 +294,15 @@ class ExecutionDispatcher:
             queue,
         )
 
-        send_kwargs: dict[str, Any] = {
-            "args": [context.to_dict()],
-            "queue": queue,
-        }
-        if on_success is not None:
-            send_kwargs["link"] = on_success
-        if on_error is not None:
-            send_kwargs["link_error"] = on_error
-        if task_id is not None:
-            send_kwargs["task_id"] = task_id
-        if headers is not None:
-            send_kwargs["headers"] = headers
-
-        async_result = self._app.send_task(
-            _TASK_NAME,
-            **send_kwargs,
+        send_kwargs = self._build_send_kwargs(
+            context,
+            queue,
+            headers=headers,
+            link=on_success,
+            link_error=on_error,
+            task_id=task_id,
         )
+        async_result = self._app.send_task(_TASK_NAME, **send_kwargs)
         logger.info(
             "Task sent with callbacks: celery_task_id=%s",
             async_result.id,

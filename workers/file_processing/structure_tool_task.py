@@ -40,13 +40,19 @@ logger = logging.getLogger(__name__)
 EXECUTOR_TIMEOUT = int(os.environ.get("EXECUTOR_RESULT_TIMEOUT", 3600))
 
 
-def _fairness_headers(organization_id: str) -> dict[str, object]:
+def _fairness_headers(
+    organization_id: str,
+) -> dict[str, dict[str, str | int | None]]:
     """Fairness header for executor dispatches.
 
     Structure-tool dispatches are workflow-execution work — both ETL
-    and API workflows route through here. Defaults to ``NON_API``;
-    propagating the actual workload type from the caller is Phase 6
-    work (chord lift).
+    and API workflows route through here. ``NON_API`` is the safe
+    default (API traffic preempting is a strictly weaker mistake than
+    the inverse).
+
+    TODO(UN-3504): propagate the caller's WorkloadType (API vs ETL)
+    instead of hard-coding ``NON_API``. Requires the chord-lift work
+    so the workflow type flows from the chord caller down to here.
     """
     return FairnessKey(
         org_id=organization_id,
