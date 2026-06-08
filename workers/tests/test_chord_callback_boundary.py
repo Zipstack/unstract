@@ -185,18 +185,23 @@ class TestFileExecutionResultWireShape:
             assert json.loads(json.dumps(wire)) == wire
 
     def test_none_valued_optional_fields_stripped_from_wire(self):
-        """``serialize_dataclass_to_dict`` drops ``None`` values.
+        """``None`` defaults are stripped both standalone AND when
+        nested inside ``BatchExecutionResult.file_results``.
 
-        Documents the behaviour so consumers using membership checks
-        (``"x" in wire``) instead of ``.get(..., default)`` know what
-        to expect. Aliases default to ``None`` and only appear on the
-        wire when explicitly populated.
+        ``serialize_dataclass_to_dict`` only filters ``None`` at the
+        outermost level; ``BatchExecutionResult.to_dict`` adds a
+        secondary filter so the per-file shape stays symmetric. Without
+        that fixup a consumer doing ``"x" in result`` membership checks
+        would behave differently for a standalone wire vs one read out
+        of ``batch["file_results"][i]``.
         """
         minimal = FileExecutionResult(
             file="a.pdf",
             file_execution_id="fx",
             status=ApiDeploymentResultStatus.SUCCESS,
         )
+
+        # ---- Standalone wire ----
         wire = minimal.to_dict()
         # Required fields and zero-valued numerics survive.
         assert wire["file"] == "a.pdf"
@@ -204,8 +209,27 @@ class TestFileExecutionResultWireShape:
         assert wire["processing_time"] == pytest.approx(0.0)
         assert wire["file_size"] == 0
         # None defaults are dropped — not in the wire dict at all.
-        for absent in ("error", "result", "metadata", "file_name", "result_data", "skipped"):
+        absent_keys = (
+            "error", "result", "metadata", "file_name",
+            "result_data", "skipped", "storage_result",
+        )
+        for absent in absent_keys:
             assert absent not in wire, f"expected {absent!r} to be stripped when None"
+
+        # ---- Same shape when nested inside a batch ----
+        batch_wire = BatchExecutionResult(
+            total_files=1,
+            successful_files=1,
+            failed_files=0,
+            execution_time=0.0,
+            file_results=[minimal],
+        ).to_dict()
+        nested_wire = batch_wire["file_results"][0]
+        for absent in absent_keys:
+            assert absent not in nested_wire, (
+                f"{absent!r} leaked into nested file_results wire"
+            )
+        assert sorted(wire.keys()) == sorted(nested_wire.keys())
 
 
 class TestProducerBinding:

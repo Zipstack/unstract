@@ -403,8 +403,23 @@ class BatchExecutionResult:
         return (self.successful_files / self.total_files) * 100
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for API response."""
-        return serialize_dataclass_to_dict(self)
+        """Convert to dictionary for API response.
+
+        Strips ``None`` from nested ``file_results`` so a per-file dict
+        read from ``batch["file_results"][i]`` has the same wire shape
+        as a standalone ``FileExecutionResult.to_dict()`` — both omit
+        unset optional fields. ``serialize_dataclass_to_dict`` only
+        strips ``None`` at the outer level, so without this fixup the
+        per-file dicts nested in the batch wire would carry explicit
+        ``"file_name": None`` etc. entries and break consumers that
+        rely on membership checks.
+        """
+        wire = serialize_dataclass_to_dict(self)
+        wire["file_results"] = [
+            {k: v for k, v in fr.items() if v is not None}
+            for fr in wire.get("file_results", [])
+        ]
+        return wire
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "BatchExecutionResult":
