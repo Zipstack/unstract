@@ -18,7 +18,7 @@
             "default": "",
             "description": "Provide the token (API Key) of the Llama Parse server"
         },
-      "url": {
+      "base_url": {
         "type": "string",
         "title": "URL",
         "format": "url",
