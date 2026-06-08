@@ -5,7 +5,7 @@ ExecutionContext dict, runs the appropriate executor via
 ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
-from celery import shared_task
+from queue_backend import worker_task
 from shared.clients import UsageAPIClient
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.config import WorkerConfig
@@ -27,7 +27,7 @@ _LLM_BEARING_OPS = frozenset(
 )
 
 
-@shared_task(
+@worker_task(
     bind=True,
     name=TaskName.EXECUTE_EXTRACTION,
     autoretry_for=(ConnectionError, TimeoutError, OSError),

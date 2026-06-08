@@ -1,12 +1,12 @@
 import logging
 from typing import Any
 
-from account_v2.models import User
 from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 from utils.FileValidator import FileValidator
 from utils.input_sanitizer import validate_name_field, validate_no_html_tags
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
@@ -76,16 +76,17 @@ class CustomToolListSerializer(serializers.ModelSerializer):
 
 
 class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
-    shared_users = serializers.PrimaryKeyRelatedField(
-        queryset=User.objects.filter(is_service_account=False),
-        required=False,
-        allow_null=True,
-        many=True,
-    )
+    # Share mutations go through ``POST /prompt-studio/{id}/share/``;
+    # both axes are read-only on this serializer (UN-2977 plan §B).
+    shared_users = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = CustomTool
         fields = "__all__"
+        extra_kwargs = {
+            "shared_to_org": {"read_only": True},
+        }
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_tool_name": {
@@ -224,10 +225,11 @@ class PromptStudioResponseSerializer(serializers.Serializer):
 
 
 class SharedUserListSerializer(serializers.ModelSerializer):
-    """Used for listing users of Custom tool."""
+    """Used for listing users + groups of Custom tool."""
 
     created_by = UserSerializer()
     shared_users = serializers.SerializerMethodField()
+    shared_groups = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -237,12 +239,16 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "created_by",
             "shared_users",
             "shared_to_org",
+            "shared_groups",
         )
 
     def get_shared_users(self, obj):
         return UserSerializer(
             obj.shared_users.filter(is_service_account=False), many=True
         ).data
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
 
 class FileInfoIdeSerializer(serializers.Serializer):

@@ -213,6 +213,10 @@ MAX_PARALLEL_FILE_BATCHES_MAX_VALUE = int(
 # Maximum number of times a file can be executed in a workflow
 MAX_FILE_EXECUTION_COUNT = int(os.environ.get("MAX_FILE_EXECUTION_COUNT", 3))
 
+# Org-scoped group sharing (UN-2977 / mfbt UNS-612)
+MAX_GROUPS_PER_ORG = int(os.environ.get("MAX_GROUPS_PER_ORG", 200))
+MAX_MEMBERS_PER_GROUP = int(os.environ.get("MAX_MEMBERS_PER_GROUP", 500))
+
 CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
     os.environ.get("CELERY_RESULT_CHORD_RETRY_INTERVAL", "3")
 )

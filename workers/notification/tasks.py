@@ -8,7 +8,6 @@ while maintaining backward compatibility.
 import os
 from typing import Any
 
-from celery import shared_task
 from notification.enums import PlatformType
 from notification.providers.base_provider import (
     DeliveryError,
@@ -22,6 +21,7 @@ from notification.utils import (
     log_notification_failure,
     log_notification_success,
 )
+from queue_backend import worker_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 
@@ -64,7 +64,7 @@ def _get_webhook_provider_for_url(url: str):
         return WebhookProvider()
 
 
-@shared_task(name="process_notification")
+@worker_task(name="process_notification")
 def process_notification(
     notification_type: str, priority: bool = False, **kwargs: Any
 ) -> dict[str, Any]:
@@ -164,7 +164,7 @@ def process_notification(
         }
 
 
-@shared_task(bind=True, name="send_webhook_notification")
+@worker_task(bind=True, name="send_webhook_notification")
 def send_webhook_notification(
     self,
     url: str,
@@ -295,7 +295,7 @@ def send_webhook_notification(
             return None
 
 
-@shared_task(name="send_batch_notifications")
+@worker_task(name="send_batch_notifications")
 def send_batch_notifications(
     notifications: list[dict[str, Any]],
     batch_id: str | None = None,
@@ -381,7 +381,7 @@ def send_batch_notifications(
     return results
 
 
-@shared_task(name="priority_notification")
+@worker_task(name="priority_notification")
 def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, Any]:
     """High-priority notification processor.
 
@@ -401,7 +401,7 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
     return process_notification(notification_type, priority=True, **kwargs)
 
 
-@shared_task(name="notification_health_check")
+@worker_task(name="notification_health_check")
 def notification_health_check() -> dict[str, Any]:
     """Health check task for notification worker."""
     try:

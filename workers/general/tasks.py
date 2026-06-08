@@ -7,7 +7,7 @@ and general workflow executions using internal APIs.
 import time
 from typing import Any
 
-from celery import shared_task
+from queue_backend import worker_task
 from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
@@ -133,7 +133,7 @@ def _log_batch_creation_statistics(
         )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN_GENERAL,
     autoretry_for=(Exception,),
@@ -1440,7 +1440,7 @@ def _validate_batch_data_integrity_dataclass(
         )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name="async_execute_bin",
     autoretry_for=(Exception,),
@@ -1536,7 +1536,7 @@ def async_execute_bin(
 logger.info("✅ Registered scheduler tasks in general worker for backward compatibility")
 
 
-@shared_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
+@worker_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
 def execute_pipeline_task(
     self,
     workflow_id: Any,
