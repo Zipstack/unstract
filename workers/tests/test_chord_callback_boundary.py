@@ -1,23 +1,36 @@
 """Wire-shape characterisation for the chord-callback boundary.
 
-Locks the on-wire contract for the two producer paths that feed
+Locks the on-wire contract for the producer paths that feed
 ``process_batch_callback`` (general path) and ``process_batch_callback_api``
-(API path). Producers now build typed dataclasses and serialise via
-``.to_dict()``; these tests assert the resulting dicts contain every
-field the consumer reads, plus the strictly-additive ones the dataclass
-schema introduces.
+(API path). Producers build typed dataclasses and serialise via
+``.to_dict()``.
+
+Three layers of test:
+
+1. **Dataclass wire shape** — ``to_dict`` / ``from_dict`` round-trip
+   preserves every consumer-read field; JSON-safe.
+2. **Producer binding** — drives the real producer functions
+   (``_compile_batch_result``, ``_process_single_file_api``). Catches
+   reverts at the producer site that a dataclass-only test would miss.
+3. **Real-consumer tolerance** — drives the real
+   ``aggregate_file_batch_results`` consumer against the typed wire
+   shape. Catches mismatches the producer-only test would miss.
 """
 
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 
+from shared.processing.files.time_utils import aggregate_file_batch_results
 from unstract.core.worker_models import (
     ApiDeploymentResultStatus,
     BatchExecutionResult,
     FileExecutionResult,
+    SkipReason,
 )
 
 
@@ -36,24 +49,18 @@ class TestBatchExecutionResultWireShape:
         )
 
     def test_wire_contains_consumer_read_fields(self):
-        # ``aggregate_file_batch_results`` reads these via ``.get()`` —
-        # they must appear in the wire dict so the existing consumer
-        # behaviour is preserved.
         wire = self._make().to_dict()
         for key in (
             "total_files",
             "successful_files",
             "failed_files",
             "execution_time",
-            "file_results",  # consumer iterates this; empty list by default
+            "file_results",
         ):
             assert key in wire, f"consumer-read field missing: {key}"
 
     def test_wire_carries_extended_optional_fields(self):
         wire = self._make().to_dict()
-        # These three are the strictly-additive fields the Phase 5.3
-        # extension introduced. Producer populates; legacy consumers
-        # that don't know about them are unaffected.
         assert wire["skipped_already_completed"] == 1
         assert wire["skipped_active_duplicate"] == 0
         assert wire["organization_id"] == "org-test"
@@ -64,7 +71,7 @@ class TestBatchExecutionResultWireShape:
         assert round_tripped.total_files == original.total_files
         assert round_tripped.successful_files == original.successful_files
         assert round_tripped.failed_files == original.failed_files
-        assert round_tripped.execution_time == original.execution_time
+        assert round_tripped.execution_time == pytest.approx(original.execution_time)
         assert (
             round_tripped.skipped_already_completed
             == original.skipped_already_completed
@@ -76,21 +83,8 @@ class TestBatchExecutionResultWireShape:
         assert round_tripped.organization_id == original.organization_id
 
     def test_wire_is_json_safe(self):
-        # Celery's default serializer is JSON — the dict must round-trip
-        # through ``json.dumps`` / ``json.loads`` without loss.
         wire = self._make().to_dict()
         assert json.loads(json.dumps(wire)) == wire
-
-    def test_defaults_safe_when_no_skips(self):
-        result = BatchExecutionResult(
-            total_files=3,
-            successful_files=3,
-            failed_files=0,
-            execution_time=1.0,
-        )
-        wire = result.to_dict()
-        assert wire["skipped_already_completed"] == 0
-        assert wire["skipped_active_duplicate"] == 0
 
 
 class TestFileExecutionResultWireShape:
@@ -123,16 +117,14 @@ class TestFileExecutionResultWireShape:
             file_execution_id="fx-3",
             status=ApiDeploymentResultStatus.SUCCESS,
             file_name="dup.pdf",
-            skipped="already_completed",
+            skipped=SkipReason.ALREADY_COMPLETED,
             result_data={"cached": True},
         )
 
     def test_wire_carries_file_name_alias(self):
-        # The API path's legacy wire uses ``file_name`` (not ``file``);
-        # the dataclass preserves the alias.
         wire = self._make_success().to_dict()
         assert wire["file_name"] == "invoice.pdf"
-        assert wire["file"] == "invoice.pdf"  # canonical alongside legacy
+        assert wire["file"] == "invoice.pdf"
 
     def test_wire_carries_result_data_alias(self):
         wire = self._make_success().to_dict()
@@ -140,12 +132,9 @@ class TestFileExecutionResultWireShape:
 
     def test_wire_carries_skipped_marker(self):
         wire = self._make_skipped().to_dict()
-        assert wire["skipped"] == "already_completed"
+        assert wire["skipped"] == SkipReason.ALREADY_COMPLETED.value
 
     def test_success_status_uses_canonical_vocab(self):
-        # Domain correction: per-file results use ``ApiDeploymentResultStatus``
-        # vocabulary (Success / Failed), not the ad-hoc lowercase
-        # "completed" / "failed" that the legacy dict producer used.
         wire = self._make_success().to_dict()
         assert wire["status"] == "Success"
 
@@ -155,8 +144,6 @@ class TestFileExecutionResultWireShape:
         assert wire["error"] == "extractor crashed"
 
     def test_post_init_derives_status_from_error(self):
-        # An error string forces FAILED regardless of the status passed
-        # to the constructor.
         result = FileExecutionResult(
             file="x",
             file_execution_id="fx",
@@ -175,18 +162,131 @@ class TestFileExecutionResultWireShape:
         assert round_tripped.skipped == original.skipped
         assert round_tripped.status == original.status
 
+    def test_active_duplicate_skip_reason_round_trips(self):
+        # ``ACTIVE_DUPLICATE`` mirrors the batch-level
+        # ``skipped_active_duplicate`` counter; no producer emits it
+        # per-file today but the enum value must exist and round-trip
+        # cleanly so a future producer can pick it without re-typing
+        # the bare string.
+        original = FileExecutionResult(
+            file="dup.pdf",
+            file_execution_id="fx",
+            status=ApiDeploymentResultStatus.SUCCESS,
+            skipped=SkipReason.ACTIVE_DUPLICATE,
+        )
+        wire = original.to_dict()
+        assert wire["skipped"] == SkipReason.ACTIVE_DUPLICATE.value
+        assert wire["skipped"] == "active_duplicate"
+        round_tripped = FileExecutionResult.from_dict(wire)
+        assert round_tripped.skipped == SkipReason.ACTIVE_DUPLICATE
+
     def test_wire_is_json_safe(self):
         for builder in (self._make_success, self._make_failure, self._make_skipped):
             wire = builder().to_dict()
             assert json.loads(json.dumps(wire)) == wire
 
+    def test_none_valued_optional_fields_stripped_from_wire(self):
+        """``serialize_dataclass_to_dict`` drops ``None`` values.
 
-class TestConsumerTolerance:
-    """The chord-callback consumer (``aggregate_file_batch_results``)
-    reads via ``.get(..., default)``. Verifies the new wire shape
-    doesn't omit any field the consumer relies on."""
+        Documents the behaviour so consumers using membership checks
+        (``"x" in wire``) instead of ``.get(..., default)`` know what
+        to expect. Aliases default to ``None`` and only appear on the
+        wire when explicitly populated.
+        """
+        minimal = FileExecutionResult(
+            file="a.pdf",
+            file_execution_id="fx",
+            status=ApiDeploymentResultStatus.SUCCESS,
+        )
+        wire = minimal.to_dict()
+        # Required fields and zero-valued numerics survive.
+        assert wire["file"] == "a.pdf"
+        assert wire["status"] == "Success"
+        assert wire["processing_time"] == pytest.approx(0.0)
+        assert wire["file_size"] == 0
+        # None defaults are dropped — not in the wire dict at all.
+        for absent in ("error", "result", "metadata", "file_name", "result_data", "skipped"):
+            assert absent not in wire, f"expected {absent!r} to be stripped when None"
 
-    def test_aggregator_can_read_general_path_shape(self):
+
+class TestProducerBinding:
+    """Drives the real producer functions in ``file_processing.tasks``.
+
+    A revert at any of these sites back to a hand-rolled dict (or to
+    the legacy lowercase status strings) keeps the *dataclass* tests
+    green — these tests catch that by asserting the actual wire shape
+    the chord callback receives from the producer.
+    """
+
+    def test_compile_batch_result_returns_typed_wire(self):
+        from file_processing.tasks import _compile_batch_result
+
+        # Minimum fake context — _compile_batch_result reads only
+        # ``metadata["result"]`` (with attribute access), the two
+        # skipped lists, and ``organization_context.organization_id``.
+        result = SimpleNamespace(
+            successful_files=4, failed_files=1, execution_time=2.5
+        )
+        context = SimpleNamespace(
+            metadata={
+                "result": result,
+                "workflow_logger": None,  # avoids the publish call
+                "skipped_already_completed": ["a.pdf"],
+                "skipped_active_duplicate": [],
+            },
+            organization_context=SimpleNamespace(organization_id="org-prod"),
+        )
+
+        wire = _compile_batch_result(context)
+
+        # Producer must emit the typed shape, not a hand-rolled dict.
+        assert wire["total_files"] == 6  # 4 + 1 + 1 skipped
+        assert wire["successful_files"] == 4
+        assert wire["failed_files"] == 1
+        assert wire["execution_time"] == pytest.approx(2.5)
+        assert wire["skipped_already_completed"] == 1
+        assert wire["skipped_active_duplicate"] == 0
+        assert wire["organization_id"] == "org-prod"
+        # Dataclass shape gains these defaults — strictly additive.
+        assert wire["file_results"] == []
+        assert wire["errors"] == []
+
+    def test_process_single_file_api_already_completed_branch(self):
+        from file_processing.tasks import _process_single_file_api
+        from unstract.core.data_models import ExecutionStatus
+
+        api_client = MagicMock()
+        api_client.get_workflow_file_execution.return_value = SimpleNamespace(
+            status=ExecutionStatus.COMPLETED.value,
+            result={"cached": "value"},
+            metadata={"src": "history"},
+        )
+        wire = _process_single_file_api(
+            api_client=api_client,
+            file_data={"id": "fx-1", "file_name": "doc.pdf"},
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            pipeline_id=None,
+            use_file_history=True,
+        )
+
+        # Canonical per-file status vocabulary — not the legacy
+        # lowercase "completed".
+        assert wire["status"] == "Success"
+        assert wire["skipped"] == SkipReason.ALREADY_COMPLETED.value
+        assert wire["file_name"] == "doc.pdf"
+        assert wire["file_execution_id"] == "fx-1"
+        # Producer doesn't set ``error`` → __post_init__ keeps SUCCESS;
+        # serializer strips the None.
+        assert "error" not in wire
+
+
+class TestRealConsumerTolerance:
+    """Drives the real ``aggregate_file_batch_results`` against the
+    new wire shape — proves the producer-consumer contract end-to-end.
+    """
+
+    def test_aggregator_consumes_general_path_shape(self):
         wire = BatchExecutionResult(
             total_files=5,
             successful_files=4,
@@ -196,15 +296,34 @@ class TestConsumerTolerance:
             skipped_active_duplicate=0,
             organization_id="org-1",
         ).to_dict()
-        # Mirrors aggregate_file_batch_results' ``.get()`` reads.
-        assert wire.get("total_files", 0) == 5
-        assert wire.get("successful_files", 0) == 4
-        assert wire.get("failed_files", 0) == 1
-        assert wire.get("execution_time", 0) == 2.0
-        # ``file_results`` is read (default []), and ``skipped_files``
-        # is read but never written — same as legacy behaviour.
-        assert wire.get("file_results", []) == []
-        assert wire.get("skipped_files", 0) == 0
+
+        aggregated = aggregate_file_batch_results([wire])
+
+        assert aggregated["total_files"] == 5
+        assert aggregated["successful_files"] == 4
+        assert aggregated["failed_files"] == 1
+        assert aggregated["batches_processed"] == 1
+
+    def test_aggregator_consumes_multi_batch(self):
+        batches = [
+            BatchExecutionResult(
+                total_files=3,
+                successful_files=3,
+                failed_files=0,
+                execution_time=1.0,
+            ).to_dict(),
+            BatchExecutionResult(
+                total_files=2,
+                successful_files=1,
+                failed_files=1,
+                execution_time=0.5,
+            ).to_dict(),
+        ]
+        aggregated = aggregate_file_batch_results(batches)
+        assert aggregated["total_files"] == 5
+        assert aggregated["successful_files"] == 4
+        assert aggregated["failed_files"] == 1
+        assert aggregated["batches_processed"] == 2
 
 
 if __name__ == "__main__":

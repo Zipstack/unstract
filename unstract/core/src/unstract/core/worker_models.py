@@ -112,6 +112,28 @@ class ApiDeploymentResultStatus(str, Enum):
     FAILED = "Failed"
 
 
+class SkipReason(str, Enum):
+    """Reasons a per-file execution can be skipped.
+
+    Closed vocabulary so typos at producer call sites fail at
+    construction time rather than silently producing an
+    unrecognisable value on the wire. StrEnum semantics — members
+    serialise to their string value and compare equal to the
+    underlying string.
+
+    Values mirror the batch-level skip counters on
+    :class:`BatchExecutionResult` (``skipped_already_completed`` /
+    ``skipped_active_duplicate``) so per-file and batch-level
+    vocabulary stay in lockstep.
+    """
+
+    # WorkflowFileExecution.status was already COMPLETED — another
+    # worker finished this file before we got to it.
+    ALREADY_COMPLETED = "already_completed"
+    # Another worker is currently processing the same file content.
+    ACTIVE_DUPLICATE = "active_duplicate"
+
+
 class NotificationMethod(str, Enum):
     """Notification delivery methods."""
 
@@ -256,14 +278,14 @@ class FileExecutionResult:
     metadata: dict[str, Any] | None = None
     processing_time: float = 0.0
     file_size: int = 0
-    # Optional API-path aliases for the legacy dict shape. Strictly
-    # additive — consumers reading the existing ``file`` / ``result``
-    # fields are unaffected; consumers reading ``file_name`` /
-    # ``result_data`` get the value the producer populated.
+    # TODO(UN-3516): remove these three legacy API-path aliases once
+    # consumers have migrated to the canonical ``file`` / ``result``
+    # fields and to a typed skip-reason. Kept additive in the meantime
+    # so the chord-callback producer can preserve its current dict
+    # vocabulary without consumer breakage.
     file_name: str | None = None
     result_data: Any | None = None
-    # Marker for files skipped at the API path (e.g. "already_completed").
-    skipped: str | None = None
+    skipped: SkipReason | None = None
 
     def __post_init__(self) -> None:
         if self.error:
@@ -310,7 +332,7 @@ class FileExecutionResult:
             file_size=data.get("file_size", 0),
             file_name=data.get("file_name"),
             result_data=data.get("result_data"),
-            skipped=data.get("skipped"),
+            skipped=SkipReason(data["skipped"]) if data.get("skipped") else None,
         )
 
     def is_successful(self) -> bool:

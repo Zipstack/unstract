@@ -55,6 +55,7 @@ from unstract.core.worker_models import (
     BatchExecutionResult,
     FileExecutionResult,
     FileProcessingResult,
+    SkipReason,
 )
 
 logger = WorkerLogger.get_logger(__name__)
@@ -1655,11 +1656,24 @@ def process_file_batch_api(
                 else:
                     successful_files += 1
 
-            # Return result matching Django FileBatchResult structure
-            batch_result = {
-                "successful_files": successful_files,
-                "failed_files": failed_files,
-            }
+            # Return result matching Django FileBatchResult structure.
+            # Note: ``successful_files`` here counts every non-error file,
+            # INCLUDING skipped-already-completed ones (legacy API-path
+            # semantic). Separating the skipped count from the successful
+            # count is deferred — would change consumer-visible counters
+            # and is tracked separately.
+            batch_result = BatchExecutionResult(
+                total_files=len(file_results),
+                successful_files=successful_files,
+                failed_files=failed_files,
+                file_results=[FileExecutionResult.from_dict(r) for r in file_results],
+                skipped_already_completed=sum(
+                    1
+                    for r in file_results
+                    if r.get("skipped") == SkipReason.ALREADY_COMPLETED.value
+                ),
+                organization_id=schema_name,
+            ).to_dict()
 
             logger.info(f"Successfully processed API file batch {batch_id}")
             return batch_result
@@ -1714,7 +1728,7 @@ def _process_single_file_api(
                 processing_time=0.0,
                 result_data=getattr(workflow_file_execution, "result", None),
                 metadata=getattr(workflow_file_execution, "metadata", None) or {},
-                skipped="already_completed",
+                skipped=SkipReason.ALREADY_COMPLETED,
             ).to_dict()
     except Exception as e:
         logger.exception(
