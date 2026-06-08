@@ -21,7 +21,8 @@ DEFAULT_SKIP_TOP_DIRS = frozenset({"tests", "__pycache__", "htmlcov", ".venv"})
 def iter_production_trees(
     skip_top_dirs: frozenset[str] = DEFAULT_SKIP_TOP_DIRS,
 ) -> list[tuple[pathlib.Path, ast.AST]]:
-    """Yield ``(rel_path, parsed_tree)`` for every .py file outside the skip set.
+    """Return a list of ``(rel_path, parsed_tree)`` tuples for every
+    .py file outside the skip set.
 
     Unparseable files emit a ``UserWarning`` and are skipped — silent
     skipping would let canaries pass vacuously on a botched merge.
