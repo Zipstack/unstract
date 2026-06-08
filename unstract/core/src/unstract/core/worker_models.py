@@ -239,7 +239,14 @@ class FinalOutputResult:
 
 @dataclass
 class FileExecutionResult:
-    """Structured result for file execution tasks."""
+    """Structured result for file execution tasks.
+
+    The API-deployment chord path historically returned dicts with
+    ``file_name`` / ``result_data`` / ``skipped`` rather than the
+    canonical ``file`` / ``result`` shape. The optional aliases below
+    let producers populate either vocabulary without the consumer
+    needing to know which path produced the result.
+    """
 
     file: str
     file_execution_id: str | None
@@ -249,6 +256,14 @@ class FileExecutionResult:
     metadata: dict[str, Any] | None = None
     processing_time: float = 0.0
     file_size: int = 0
+    # Optional API-path aliases for the legacy dict shape. Strictly
+    # additive — consumers reading the existing ``file`` / ``result``
+    # fields are unaffected; consumers reading ``file_name`` /
+    # ``result_data`` get the value the producer populated.
+    file_name: str | None = None
+    result_data: Any | None = None
+    # Marker for files skipped at the API path (e.g. "already_completed").
+    skipped: str | None = None
 
     def __post_init__(self) -> None:
         if self.error:
@@ -293,6 +308,9 @@ class FileExecutionResult:
             metadata=data.get("metadata"),
             processing_time=data.get("processing_time", 0.0),
             file_size=data.get("file_size", 0),
+            file_name=data.get("file_name"),
+            result_data=data.get("result_data"),
+            skipped=data.get("skipped"),
         )
 
     def is_successful(self) -> bool:
@@ -306,7 +324,13 @@ class FileExecutionResult:
 
 @dataclass
 class BatchExecutionResult:
-    """Structured result for batch execution tasks."""
+    """Structured result for batch execution tasks.
+
+    The general workflow chord path additionally tracks skipped-file
+    sub-counts and the org context on the wire. The optional fields
+    below capture that vocabulary without changing existing field
+    semantics — strictly additive.
+    """
 
     total_files: int
     successful_files: int
@@ -315,6 +339,12 @@ class BatchExecutionResult:
     file_results: list[FileExecutionResult] = field(default_factory=list)
     batch_id: str | None = None
     errors: list[str] = field(default_factory=list)
+    # Optional general-path fields. Producers populate; consumers that
+    # don't know about them are unaffected (existing reads use ``.get()``
+    # with defaults).
+    skipped_already_completed: int = 0
+    skipped_active_duplicate: int = 0
+    organization_id: str | None = None
 
     @property
     def success_rate(self) -> float:
@@ -343,6 +373,9 @@ class BatchExecutionResult:
             file_results=file_results,
             batch_id=data.get("batch_id"),
             errors=data.get("errors", []),
+            skipped_already_completed=data.get("skipped_already_completed", 0),
+            skipped_active_duplicate=data.get("skipped_active_duplicate", 0),
+            organization_id=data.get("organization_id"),
         )
 
     def add_file_result(self, file_result: FileExecutionResult):
