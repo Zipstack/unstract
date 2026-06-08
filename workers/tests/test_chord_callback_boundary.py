@@ -24,7 +24,6 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-
 from shared.processing.files.time_utils import aggregate_file_batch_results
 from unstract.core.worker_models import (
     ApiDeploymentResultStatus,
@@ -276,9 +275,206 @@ class TestProducerBinding:
         assert wire["skipped"] == SkipReason.ALREADY_COMPLETED.value
         assert wire["file_name"] == "doc.pdf"
         assert wire["file_execution_id"] == "fx-1"
+        # Cached result + metadata propagate so the API consumer can
+        # short-circuit on the historical extraction.
+        assert wire["result_data"] == {"cached": "value"}
+        assert wire["metadata"] == {"src": "history"}
         # Producer doesn't set ``error`` → __post_init__ keeps SUCCESS;
         # serializer strips the None.
         assert "error" not in wire
+
+    def test_process_single_file_api_success_branch(self, monkeypatch):
+        """Drives the happy-path producer. Catches reverts to the
+        legacy dict-spread that dropped ``storage_result`` at the
+        chord-callback boundary (silent data loss on the API path).
+        """
+        from file_processing import tasks as tasks_mod
+        from unstract.core.data_models import ExecutionStatus
+
+        api_client = MagicMock()
+        # Not already-completed → fall through to the runner branch.
+        api_client.get_workflow_file_execution.return_value = SimpleNamespace(
+            status=ExecutionStatus.PENDING.value
+        )
+        api_client.get_workflow_definition.return_value = {"id": "wf-1"}
+        api_client.get_file_content.return_value = b"hello world"
+        api_client.store_file_execution_result.return_value = {
+            "stored_at": "s3://bucket/key"
+        }
+        # Patch the runner-service call — its body shells out and isn't
+        # under test here.
+        monkeypatch.setattr(
+            tasks_mod,
+            "_call_runner_service",
+            lambda **kwargs: {"extracted": "value"},
+        )
+
+        wire = tasks_mod._process_single_file_api(
+            api_client=api_client,
+            file_data={"id": "fx-ok", "file_name": "ok.pdf"},
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            pipeline_id=None,
+            use_file_history=False,
+        )
+
+        # Canonical per-file vocabulary — not the legacy lowercase
+        # ``"completed"`` the pre-typing producer used to emit.
+        assert wire["status"] == "Success"
+        assert wire["file_name"] == "ok.pdf"
+        assert wire["file_execution_id"] == "fx-ok"
+        assert wire["result_data"] == {"extracted": "value"}
+        # The whole point of this test: ``storage_result`` must survive
+        # the typed dataclass round-trip (UN-3513 finding).
+        assert wire["storage_result"] == {"stored_at": "s3://bucket/key"}
+        # No error → success branch keeps SUCCESS; ``error`` stripped.
+        assert "error" not in wire
+        assert "skipped" not in wire
+
+    def test_process_single_file_api_failure_branch(self, monkeypatch):
+        """Drives the except-block producer. Catches reverts to the
+        legacy lowercase ``"failed"`` status string.
+        """
+        from file_processing import tasks as tasks_mod
+        from unstract.core.data_models import ExecutionStatus
+
+        api_client = MagicMock()
+        api_client.get_workflow_file_execution.return_value = SimpleNamespace(
+            status=ExecutionStatus.PENDING.value
+        )
+        api_client.get_workflow_definition.return_value = {"id": "wf-1"}
+        api_client.get_file_content.return_value = b"payload"
+        # Runner blows up → producer falls into the except branch.
+        monkeypatch.setattr(
+            tasks_mod,
+            "_call_runner_service",
+            MagicMock(side_effect=RuntimeError("runner crashed")),
+        )
+
+        wire = tasks_mod._process_single_file_api(
+            api_client=api_client,
+            file_data={"id": "fx-bad", "file_name": "bad.pdf"},
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            pipeline_id=None,
+            use_file_history=False,
+        )
+
+        assert wire["status"] == "Failed"
+        assert wire["file_name"] == "bad.pdf"
+        assert wire["file_execution_id"] == "fx-bad"
+        assert wire["error"] == "runner crashed"
+        # Failure branch carries no result/storage payload.
+        assert "result_data" not in wire
+        assert "storage_result" not in wire
+
+    def test_process_file_batch_api_batch_wrapper(self, monkeypatch):
+        """Drives the API-path batch wrapper. Catches reverts at the
+        ``BatchExecutionResult(...).to_dict()`` producer site
+        (file_processing/tasks.py around L1665).
+        """
+        from file_processing import tasks as tasks_mod
+        from file_processing.worker import app as celery_app
+
+        # Swap postgres result backend for in-memory so ``.apply()``
+        # doesn't try to persist the eager task result.
+        original = {
+            "task_always_eager": celery_app.conf.task_always_eager,
+            "task_eager_propagates": celery_app.conf.task_eager_propagates,
+            "result_backend": celery_app.conf.result_backend,
+        }
+        celery_app.conf.update(
+            task_always_eager=True,
+            task_eager_propagates=True,
+            result_backend="cache+memory://",
+        )
+
+        # Stub per-file producer with two typed file results — one
+        # already-completed skip, one fresh success.
+        skipped_wire = FileExecutionResult(
+            file="a.pdf",
+            file_execution_id="fx-a",
+            status=ApiDeploymentResultStatus.SUCCESS,
+            file_name="a.pdf",
+            result_data={"cached": True},
+            skipped=SkipReason.ALREADY_COMPLETED,
+        ).to_dict()
+        ok_wire = FileExecutionResult(
+            file="b.pdf",
+            file_execution_id="fx-b",
+            status=ApiDeploymentResultStatus.SUCCESS,
+            file_name="b.pdf",
+            result_data={"extracted": "value"},
+            storage_result={"stored": "s3://k"},
+        ).to_dict()
+        per_file_outputs = iter([skipped_wire, ok_wire])
+
+        monkeypatch.setattr(
+            tasks_mod,
+            "_process_single_file_api",
+            lambda **kwargs: next(per_file_outputs),
+        )
+        # Neutralise organisation-level side effects.
+        monkeypatch.setattr(
+            tasks_mod.StateStore, "set", lambda *a, **k: None
+        )
+        api_client_stub = MagicMock()
+        api_client_stub.get_workflow_execution.return_value = SimpleNamespace(
+            success=True, data={"execution": {"execution_log_id": None}}
+        )
+        monkeypatch.setattr(
+            tasks_mod, "create_api_client", lambda schema_name: api_client_stub
+        )
+        # ``WorkerWorkflowExecutionService`` is imported inline inside
+        # the batch task; patch the lazy import path.
+        cache_service = MagicMock()
+        cache_service.return_value.cache_api_result = MagicMock()
+        import shared.workflow.execution.service as service_mod
+
+        monkeypatch.setattr(
+            service_mod, "WorkerWorkflowExecutionService", cache_service
+        )
+
+        try:
+            wire = tasks_mod.process_file_batch_api.apply(
+                args=[
+                    "org-1",  # schema_name
+                    "wf-1",  # workflow_id
+                    "exec-1",  # execution_id
+                    "batch-1",  # batch_id
+                    [
+                        {"id": "fx-a", "file_name": "a.pdf"},
+                        {"id": "fx-b", "file_name": "b.pdf"},
+                    ],  # created_files
+                    None,  # pipeline_id
+                    None,  # execution_mode
+                    False,  # use_file_history
+                ]
+            ).get()
+        finally:
+            celery_app.conf.update(original)
+
+        # Producer must emit the typed BatchExecutionResult shape.
+        assert wire["total_files"] == 2
+        # Legacy API-path semantic: skipped files count as successful.
+        assert wire["successful_files"] == 2
+        assert wire["failed_files"] == 0
+        # Skip counter derived from SkipReason.ALREADY_COMPLETED.value
+        # — a typo here would silently zero the counter.
+        assert wire["skipped_already_completed"] == 1
+        assert wire["organization_id"] == "org-1"
+        # ``execution_time`` is a required positional on the dataclass;
+        # omitting it would crash the task at the producer site.
+        assert "execution_time" in wire
+        assert wire["execution_time"] >= 0.0
+        # file_results round-trips through FileExecutionResult, so
+        # ``storage_result`` survives to the batch boundary.
+        stored = [
+            fr
+            for fr in wire["file_results"]
+            if fr.get("file_execution_id") == "fx-b"
+        ]
+        assert stored and stored[0]["storage_result"] == {"stored": "s3://k"}
 
 
 class TestRealConsumerTolerance:

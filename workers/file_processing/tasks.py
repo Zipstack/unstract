@@ -1564,6 +1564,7 @@ def process_file_batch_api(
             f"Processing API file batch {batch_id} with {len(created_files)} files"
         )
 
+        batch_start_time = time.time()
         try:
             # Set organization context exactly like Django backend
             StateStore.set(Account.ORGANIZATION_ID, schema_name)
@@ -1666,6 +1667,7 @@ def process_file_batch_api(
                 total_files=len(file_results),
                 successful_files=successful_files,
                 failed_files=failed_files,
+                execution_time=time.time() - batch_start_time,
                 file_results=[FileExecutionResult.from_dict(r) for r in file_results],
                 skipped_already_completed=sum(
                     1
@@ -1810,20 +1812,15 @@ def _process_single_file_api(
 
         processing_time = time.time() - start_time
 
-        # ``storage_result`` isn't a field on FileExecutionResult yet
-        # (no consumer reads it today). Preserved via dict-spread so any
-        # external integration that does inspect it sees the same value.
-        result = {
-            **FileExecutionResult(
-                file=file_name,
-                file_execution_id=file_execution_id,
-                status=ApiDeploymentResultStatus.SUCCESS,
-                file_name=file_name,
-                processing_time=processing_time,
-                result_data=runner_result,
-            ).to_dict(),
-            "storage_result": storage_result,
-        }
+        result = FileExecutionResult(
+            file=file_name,
+            file_execution_id=file_execution_id,
+            status=ApiDeploymentResultStatus.SUCCESS,
+            file_name=file_name,
+            processing_time=processing_time,
+            result_data=runner_result,
+            storage_result=storage_result,
+        ).to_dict()
 
         logger.info(f"Successfully processed file: {file_name} in {processing_time:.2f}s")
         return result

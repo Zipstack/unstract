@@ -286,6 +286,13 @@ class FileExecutionResult:
     file_name: str | None = None
     result_data: Any | None = None
     skipped: SkipReason | None = None
+    # Storage backend's acknowledgement for a successfully-processed
+    # file. Forwarded verbatim from
+    # ``api_client.store_file_execution_result``. No in-tree consumer
+    # reads it today, but external integrations may inspect it on the
+    # wire — preserving it as a typed field rather than dict-spreading
+    # so it survives the BatchExecutionResult round-trip.
+    storage_result: Any | None = None
 
     def __post_init__(self) -> None:
         if self.error:
@@ -312,6 +319,25 @@ class FileExecutionResult:
         """Convert to JSON-serializable dict for backward compatibility."""
         return self.to_api_dict()
 
+    @staticmethod
+    def _parse_skipped(raw: Any) -> "SkipReason | None":
+        """Lenient ``SkipReason`` parser for the consumer side.
+
+        Producer call sites are typed (constructor takes the enum, typos
+        fail at construction). On the consumer side we accept an unknown
+        wire value gracefully — a newer-producer / older-consumer
+        rolling-deploy must not crash the entire batch task on a value
+        the consumer doesn't recognise. Standard "strict on emit,
+        lenient on receive" posture.
+        """
+        if not raw:
+            return None
+        try:
+            return SkipReason(raw)
+        except ValueError:
+            logger.warning("Unknown SkipReason on wire: %r; treating as None", raw)
+            return None
+
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "FileExecutionResult":
         """Create from dictionary (e.g., task result)."""
@@ -332,7 +358,8 @@ class FileExecutionResult:
             file_size=data.get("file_size", 0),
             file_name=data.get("file_name"),
             result_data=data.get("result_data"),
-            skipped=SkipReason(data["skipped"]) if data.get("skipped") else None,
+            skipped=cls._parse_skipped(data.get("skipped")),
+            storage_result=data.get("storage_result"),
         )
 
     def is_successful(self) -> bool:
