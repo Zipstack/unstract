@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import pathlib
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,13 +10,9 @@ from celery import Celery
 
 from queue_backend import FairnessKey
 from queue_backend.fairness import FAIRNESS_HEADER_NAME, WorkloadType
+from .canary_helpers import iter_production_trees
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
-
-_WORKERS_ROOT = pathlib.Path(__file__).parent.parent
-_SKIP_TOP_DIRS = frozenset(
-    {"tests", "__pycache__", "htmlcov", ".venv"}
-)
 
 
 def _make_context(**overrides: object) -> ExecutionContext:
@@ -107,7 +102,7 @@ class TestExecuteExtractionDispatchInventory:
     def test_no_raw_execute_extraction_dispatch_outside_dispatcher(self):
         offenders = [
             f"{rel}:{lineno}"
-            for rel, tree in _iter_production_trees()
+            for rel, tree in iter_production_trees()
             for lineno in _raw_execute_extraction_calls(tree)
         ]
         assert offenders == [], (
@@ -116,20 +111,6 @@ class TestExecuteExtractionDispatchInventory:
             "instead so fairness headers and queue routing stay consistent. "
             "Found:\n  " + "\n  ".join(offenders)
         )
-
-
-def _iter_production_trees() -> list[tuple[pathlib.Path, ast.AST]]:
-    out: list[tuple[pathlib.Path, ast.AST]] = []
-    for py in _WORKERS_ROOT.rglob("*.py"):
-        rel = py.relative_to(_WORKERS_ROOT)
-        if rel.parts and rel.parts[0] in _SKIP_TOP_DIRS:
-            continue
-        try:
-            tree = ast.parse(py.read_text(), filename=str(py))
-        except SyntaxError:
-            continue
-        out.append((rel, tree))
-    return out
 
 
 def _raw_execute_extraction_calls(tree: ast.AST) -> list[int]:
