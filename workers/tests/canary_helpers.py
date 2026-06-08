@@ -2,7 +2,11 @@
 
 Several test files audit the production code tree (forbid a raw
 dispatch, require a kwarg, etc.). The file-walking + parse-with-skip
-logic is identical across them; this module is the single home.
+logic is identical across them; this module is the intended single
+home. Two pre-existing characterisation tests still inline the same
+walk (``test_dispatch_sites_characterisation.py``,
+``test_chord_sites_characterisation.py``) — migrating those is
+tracked as a follow-up.
 """
 
 from __future__ import annotations

@@ -24,6 +24,13 @@ from .canary_helpers import (
     iter_production_trees,
 )
 
+# Promote ``UserWarning`` from ``iter_production_trees`` (emitted on
+# unparseable production files) to a test failure. An unparseable
+# file silently dropped from the audited tree would let every canary
+# below pass vacuously — exactly the failure mode the helper claims
+# to prevent.
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
+
 # Fairness-canary helpers also skip the seam module itself (it
 # legitimately defines and exports the fairness constants).
 _SKIP_TOP_DIRS = DEFAULT_SKIP_TOP_DIRS | frozenset({"queue_backend"})

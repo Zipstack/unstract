@@ -12,7 +12,7 @@ from typing import Any, Protocol
 
 from celery import current_app
 
-from .fairness import FAIRNESS_HEADER_NAME, FairnessKey
+from .fairness import FairnessKey
 
 
 class DispatchHandle(Protocol):
@@ -38,7 +38,7 @@ def dispatch(
     ``fairness`` is attached as the ``x-fairness-key`` header (not in
     kwargs). Pass ``None`` for non-workflow worker tasks.
     """
-    headers = {FAIRNESS_HEADER_NAME: fairness.to_dict()} if fairness is not None else None
+    headers = fairness.as_header() if fairness is not None else None
     return current_app.send_task(
         task_name,
         args=args,

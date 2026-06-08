@@ -120,7 +120,11 @@ class ExecutionDispatcher:
             "args": [context.to_dict()],
             "queue": queue,
         }
-        if headers is not None:
+        # Treat falsy (None, ``{}``) as drop. An empty header dict is
+        # never legitimate — ``FairnessKey.as_header()`` always returns
+        # a populated mapping — so silently forwarding ``{}`` would
+        # document a producer-side build bug rather than catch it.
+        if headers:
             out["headers"] = headers
         if link is not None:
             out["link"] = link
@@ -147,9 +151,11 @@ class ExecutionDispatcher:
                 out-of-band of the task body — see
                 ``queue_backend.fairness.FAIRNESS_HEADER_NAME``
                 (currently ``"x-fairness-key"``) for the canonical
-                constant). Caller is responsible for the header schema;
-                passing ``{}`` is forwarded as-is and likely indicates
-                a producer-side build bug.
+                constant). Caller is responsible for the header schema.
+                Falsy values (``None``, ``{}``) are dropped — the
+                downstream ``send_task`` call is invoked without
+                ``headers=`` so the on-wire shape matches the
+                no-headers baseline.
 
         Returns:
             ExecutionResult from the executor.
