@@ -55,7 +55,11 @@ def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
         # (_apply_failure_filter then drops notify_on_failures rows). A malformed
         # id raises ValueError/ValidationError and must keep propagating to the
         # handler's 500 — do not widen this except, or the two paths collapse.
-        logger.warning("WorkflowExecution %s not found", execution_id)
+        # Strip CR/LF from the query-param id before logging (log-forging guard).
+        logger.warning(
+            "WorkflowExecution %s not found",
+            execution_id.replace("\r", "").replace("\n", ""),
+        )
         return None
 
 
@@ -84,9 +88,11 @@ def _apply_failure_filter(
     """
     if execution is None:
         if execution_id:
+            # Strip CR/LF from the query-param id before logging (log-forging
+            # guard, SonarCloud S5145); it is UUID-validated upstream.
             logger.warning(
                 "metric=notification_failure_filter_fail_closed_total execution_id=%s",
-                execution_id,
+                execution_id.replace("\r", "").replace("\n", ""),
             )
             return notifications_qs.filter(notify_on_failures=False)
         return notifications_qs

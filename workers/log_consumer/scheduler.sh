@@ -20,12 +20,12 @@ BUFFER_FLUSH_CMD="${NOTIFICATION_BUFFER_TASK_COMMAND:-$DEFAULT_BUFFER_FLUSH_CMD}
 
 # Loop wakes at the finer of the two cadences (min, floored at 1s); each task
 # fires independently once its own interval has elapsed.
-if [ "${LOG_HISTORY_INTERVAL}" -lt "${NOTIFICATION_BUFFER_INTERVAL}" ]; then
+if [[ "${LOG_HISTORY_INTERVAL}" -lt "${NOTIFICATION_BUFFER_INTERVAL}" ]]; then
     BASE_INTERVAL="${LOG_HISTORY_INTERVAL}"
 else
     BASE_INTERVAL="${NOTIFICATION_BUFFER_INTERVAL}"
 fi
-[ "${BASE_INTERVAL}" -lt 1 ] && BASE_INTERVAL=1
+[[ "${BASE_INTERVAL}" -lt 1 ]] && BASE_INTERVAL=1
 
 echo "=========================================="
 echo "Log Consumer Scheduler Starting"
@@ -73,13 +73,13 @@ last_buffer_run=0
 while true; do
     now=$(date '+%s')
 
-    if [ $((now - last_log_run)) -ge "${LOG_HISTORY_INTERVAL}" ]; then
+    if [[ $((now - last_log_run)) -ge "${LOG_HISTORY_INTERVAL}" ]]; then
         run_count=$((run_count + 1))
         run_task "process_log_history" "${LOG_HISTORY_CMD}" "${run_count}"
         last_log_run="${now}"
     fi
 
-    if [ $((now - last_buffer_run)) -ge "${NOTIFICATION_BUFFER_INTERVAL}" ]; then
+    if [[ $((now - last_buffer_run)) -ge "${NOTIFICATION_BUFFER_INTERVAL}" ]]; then
         run_count=$((run_count + 1))
         run_task "process_notification_buffer" "${BUFFER_FLUSH_CMD}" "${run_count}"
         last_buffer_run="${now}"
