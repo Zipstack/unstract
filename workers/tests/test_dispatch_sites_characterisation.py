@@ -123,6 +123,14 @@ class TestNotificationDispatchSite:
         )
         api_client._make_request.assert_not_called()
 
+    def test_route_skips_missing_notification_type(self):
+        """A malformed notification with no notification_type key is skipped —
+        ``.get()`` returns None, which fails the WEBHOOK check (no KeyError)."""
+        api_client = MagicMock()
+        notification = {"id": "notif-001", "platform": "API"}  # no notification_type
+        _route_notification(api_client, notification, self._make_payload())
+        api_client._make_request.assert_not_called()
+
     def test_route_enqueues_webhook(self):
         """WEBHOOK notifications MUST reach the buffer endpoint."""
         api_client = MagicMock()

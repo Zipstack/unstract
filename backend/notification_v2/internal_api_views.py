@@ -51,6 +51,10 @@ def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
     try:
         return cast(WorkflowExecution, WorkflowExecution.objects.get(id=execution_id))
     except WorkflowExecution.DoesNotExist:
+        # Catch ONLY DoesNotExist: a missing row is the fail-closed case
+        # (_apply_failure_filter then drops notify_on_failures rows). A malformed
+        # id raises ValueError/ValidationError and must keep propagating to the
+        # handler's 500 — do not widen this except, or the two paths collapse.
         logger.warning("WorkflowExecution %s not found", execution_id)
         return None
 

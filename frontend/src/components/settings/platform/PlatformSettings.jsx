@@ -98,8 +98,8 @@ function PlatformSettings() {
     if (!sessionDetails?.orgId) {
       return;
     }
-    // Load org-scoped batch interval. Falls back silently to
-    // null on failure so the rest of the page still renders.
+    // Load org-scoped batch interval. Falls back to null on failure (logged
+    // in the catch below) so the rest of the page still renders.
     axiosPrivate({
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/notifications/settings/`,

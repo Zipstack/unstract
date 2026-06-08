@@ -9,6 +9,7 @@ here (pure functions — no DB / Django needed).
 import unittest
 
 from unstract.core.notification_clubbed_renderer import (
+    _MISSING,
     MAX_BATCH_SIZE,
     SLACK_MAX_DISPLAY_EVENTS,
     build_envelope,
@@ -85,6 +86,27 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertEqual(env["summary"]["total"], MAX_BATCH_SIZE)
         self.assertEqual(len(env["events"]), MAX_BATCH_SIZE)
 
+    def test_event_timestamp_is_humanized(self):
+        # _humanize_timestamp interpolates dt.day rather than the %-d directive
+        # (which raises on macOS/Windows) — pin the receiver-visible string.
+        env = build_envelope([_payload()])
+        self.assertEqual(env["events"][0]["timestamp"], "2026 May 11 11:38:31 AM")
+
+    def test_unparseable_timestamp_falls_back_without_raising(self):
+        env = build_envelope([_payload(timestamp="not-a-timestamp")])
+        self.assertEqual(env["events"][0]["timestamp"], _MISSING)
+
+    def test_error_message_absent_from_success_event(self):
+        # _event_from_payload sets error_message only when truthy.
+        env = build_envelope([_payload(status="COMPLETED", failed_files=0)])
+        self.assertNotIn("error_message", env["events"][0])
+
+    def test_empty_batch_is_envelope_only(self):
+        env = build_envelope([])
+        self.assertEqual(env["summary"], {"total": 0, "succeeded": 0, "failed": 0})
+        self.assertEqual(env["events"], [])
+        self.assertEqual(set(env), {"summary", "events"})
+
 
 class RenderSlackTextTests(unittest.TestCase):
     def test_single_event_header_is_singular(self):
@@ -101,6 +123,22 @@ class RenderSlackTextTests(unittest.TestCase):
         text = render_slack_text(build_envelope(payloads))
         # 26 events, 25 shown → exactly 1 collapsed under the footer.
         self.assertIn("and 1 more executions", text)
+
+    def test_empty_batch_header_renders(self):
+        text = render_slack_text(build_envelope([]))
+        self.assertIn("*0 executions*", text)
+
+    def test_file_count_column_omitted_when_no_totals(self):
+        # The "N/M files" column appears only when additional_data has totals;
+        # an empty additional_data collapses the line (5 fields, not 6).
+        with_counts = render_slack_text(
+            build_envelope([_payload(total_files=3, failed_files=1)])
+        )
+        self.assertIn("files", with_counts)
+        without_counts = render_slack_text(
+            build_envelope([_payload(additional_data={})])
+        )
+        self.assertNotIn("files", without_counts)
 
 
 if __name__ == "__main__":

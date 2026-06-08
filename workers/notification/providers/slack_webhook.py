@@ -1,7 +1,7 @@
 """Slack Webhook Notification Provider
 
-Renders single-event payloads (flat per-event dict) into the same single-line
-Slack body the backend produces via ``clubbed_renderer``. The decision is
+Renders single-event payloads (flat per-event dict) into the same Slack mrkdwn
+body the backend produces via ``clubbed_renderer``. The decision is
 purely shape-based: a payload already rendered to ``{"text": "<mrkdwn>"}``
 (e.g. a backend buffer-rendered batch) passes through unchanged; only a flat
 per-event dict is wrapped and rendered here.
@@ -57,7 +57,7 @@ class SlackWebhook(WebhookProvider):
           through ``clubbed_renderer``) — passed through.
         - Flat per-event dict from the generic internal webhook-send endpoints —
           wrapped in a single-event envelope and rendered to the canonical
-          single-line mrkdwn body.
+          Slack mrkdwn body.
         """
         if "text" in payload and "events" not in payload:
             return {"text": payload["text"]}

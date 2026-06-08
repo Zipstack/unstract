@@ -29,6 +29,10 @@ class IsFailureRunTests(unittest.TestCase):
     def test_failure_status_overrides_zero_failed_files(self):
         self.assertTrue(is_failure_run(ExecutionStatus.ERROR.value, None))
 
+    def test_both_predicates_true(self):
+        # STOPPED status AND failed files — both legs true (or short-circuits).
+        self.assertTrue(is_failure_run(ExecutionStatus.STOPPED.value, 3))
+
     def test_unknown_or_missing_status_is_not_a_failure(self):
         self.assertFalse(is_failure_run("NOT_A_STATUS", 0))
         self.assertFalse(is_failure_run(None, 0))
