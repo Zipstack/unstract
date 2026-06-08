@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import ast
 import json
-import pathlib
 from dataclasses import FrozenInstanceError
 from unittest.mock import patch
 
@@ -19,28 +18,26 @@ from queue_backend.fairness import (
     MIN_PRIORITY,
     WorkloadType,
 )
-
-# Helpers extracted so the audit tests below stay flat (SonarCloud
-# S3776 cognitive-complexity threshold).
-
-_WORKERS_ROOT = pathlib.Path(__file__).parent.parent
-_SKIP_TOP_DIRS = frozenset(
-    {"tests", "__pycache__", "htmlcov", ".venv", "queue_backend"}
+from .canary_helpers import (
+    DEFAULT_SKIP_TOP_DIRS,
+    WORKERS_ROOT,
+    iter_production_trees,
 )
 
+# Promote ``UserWarning`` from ``iter_production_trees`` (emitted on
+# unparseable production files) to a test failure. An unparseable
+# file silently dropped from the audited tree would let every canary
+# below pass vacuously — exactly the failure mode the helper claims
+# to prevent.
+pytestmark = pytest.mark.filterwarnings("error::UserWarning")
 
-def _iter_production_trees() -> list[tuple[pathlib.Path, ast.AST]]:
-    out: list[tuple[pathlib.Path, ast.AST]] = []
-    for py in _WORKERS_ROOT.rglob("*.py"):
-        rel = py.relative_to(_WORKERS_ROOT)
-        if rel.parts and rel.parts[0] in _SKIP_TOP_DIRS:
-            continue
-        try:
-            tree = ast.parse(py.read_text(), filename=str(py))
-        except SyntaxError:
-            continue
-        out.append((rel, tree))
-    return out
+# Fairness-canary helpers also skip the seam module itself (it
+# legitimately defines and exports the fairness constants).
+_SKIP_TOP_DIRS = DEFAULT_SKIP_TOP_DIRS | frozenset({"queue_backend"})
+
+
+def _trees():
+    return iter_production_trees(skip_top_dirs=_SKIP_TOP_DIRS)
 
 
 def _aliased_dispatch_imports(tree: ast.AST) -> list[tuple[int, str]]:
@@ -234,7 +231,7 @@ class TestDispatchCallSitesPassFairness:
         # Alias imports would defeat the bare-name canary below.
         aliased = [
             f"{rel}:{lineno} (as {alias})"
-            for rel, tree in _iter_production_trees()
+            for rel, tree in _trees()
             for lineno, alias in _aliased_dispatch_imports(tree)
         ]
         assert aliased == [], (
@@ -246,7 +243,7 @@ class TestDispatchCallSitesPassFairness:
     def test_every_production_dispatch_passes_fairness(self):
         offenders = [
             f"{rel}:{lineno}"
-            for rel, tree in _iter_production_trees()
+            for rel, tree in _trees()
             for lineno in _dispatch_calls_missing_fairness(tree)
         ]
         assert offenders == [], (
@@ -266,8 +263,8 @@ class TestNoConsumerYet:
         forbidden_tokens = ("x-fairness-key", "FAIRNESS_HEADER_NAME")
 
         readers: list[str] = []
-        for py in _WORKERS_ROOT.rglob("*.py"):
-            rel = py.relative_to(_WORKERS_ROOT)
+        for py in WORKERS_ROOT.rglob("*.py"):
+            rel = py.relative_to(WORKERS_ROOT)
             if rel.parts and rel.parts[0] in _SKIP_TOP_DIRS:
                 continue
             for line_no, line in enumerate(py.read_text().splitlines(), start=1):

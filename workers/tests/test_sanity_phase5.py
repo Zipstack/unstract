@@ -947,6 +947,18 @@ class TestStructureToolSingleDispatch:
         assert "answer_params" in ctx.executor_params
         assert "pipeline_options" in ctx.executor_params
 
+        # Fairness header lands on the dispatch call. A regression that
+        # drops ``headers=`` or flips ``NON_API``→``API`` here would
+        # otherwise stay green — keep this assertion paired with the
+        # ``_fairness_headers`` unit test in test_structure_tool_task.py.
+        assert dispatcher.dispatch.call_args.kwargs["headers"] == {
+            "x-fairness-key": {
+                "org_id": "org-1",
+                "workload_type": "non_api",
+                "pipeline_priority": 5,
+            }
+        }
+
 
 # ---------------------------------------------------------------------------
 # Operation enum completeness
