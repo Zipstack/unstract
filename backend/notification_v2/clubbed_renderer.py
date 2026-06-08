@@ -22,7 +22,9 @@ from unstract.core.notification_clubbed_renderer import (
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MAX_BATCH_SIZE", "build_envelope", "render_clubbed_message"]
+# build_envelope is imported for internal use below; it is intentionally not
+# re-exported — callers import it straight from unstract.core.
+__all__ = ["MAX_BATCH_SIZE", "render_clubbed_message"]
 
 
 def _render_for_slack(envelope: dict[str, Any]) -> dict[str, Any]:

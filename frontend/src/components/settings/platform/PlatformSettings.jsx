@@ -98,7 +98,7 @@ function PlatformSettings() {
     if (!sessionDetails?.orgId) {
       return;
     }
-    // Load org-scoped batch interval (UNS-611 v2). Falls back silently to
+    // Load org-scoped batch interval. Falls back silently to
     // null on failure so the rest of the page still renders.
     axiosPrivate({
       method: "GET",
@@ -110,8 +110,12 @@ function PlatformSettings() {
           setBatchIntervalMinutes(Math.round(seconds / 60));
         }
       })
-      .catch(() => {
-        // Non-fatal — admin just won't see a pre-filled value.
+      .catch((err) => {
+        // Non-fatal for page render, but log it: a failed load otherwise
+        // looks identical to "no override set" (the field stays blank), so
+        // the admin could edit from a wrong baseline and overwrite the real
+        // value on save.
+        console.warn("Failed to load notification batch interval", err);
       });
   }, [sessionDetails?.orgId]);
 

@@ -58,20 +58,33 @@ def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
 def _apply_failure_filter(
     notifications_qs: QuerySet[Notification],
     execution: WorkflowExecution | None,
+    execution_id: str | None = None,
 ) -> QuerySet[Notification]:
-    """Drop notify_on_failures=True rows on success runs.
+    """Drop notify_on_failures=True rows on success (or unconfirmable) runs.
 
     Uses the shared rule in notification_v2.helper.is_failure_run (status ∈
     {ERROR, STOPPED} OR any file errored), the same rule applied by
     backend/api_v2/notification.py. The pipeline backend path
     (backend/pipeline_v2/notification.py) ORs an additional last_run_status
-    backstop on top for the case where no WorkflowExecution exists; this
-    callback path always has the execution, so it does not need that term.
+    backstop on top for the case where no WorkflowExecution exists.
 
-    No execution → no filter, preserving legacy "return every active row"
-    behavior for callers that don't pass execution_id.
+    Three lookup outcomes:
+    - No execution_id requested → no filter, preserving legacy "return every
+      active row" behavior for callers that don't pass execution_id.
+    - execution_id requested but the row is missing (replication lag / a race
+      between the status write and this fetch) → fail CLOSED: drop
+      notify_on_failures rows so a run we cannot confirm as a failure never
+      sends a success alert to a failure-only subscriber. Emits a metric so the
+      rare miss is observable. notify_on_failures=False rows are unaffected.
+    - execution found → apply is_failure_run.
     """
     if execution is None:
+        if execution_id:
+            logger.warning(
+                "metric=notification_failure_filter_fail_closed_total execution_id=%s",
+                execution_id,
+            )
+            return notifications_qs.filter(notify_on_failures=False)
         return notifications_qs
     if not is_failure_run(execution.status, execution.failed_files):
         notifications_qs = notifications_qs.filter(notify_on_failures=False)
@@ -118,13 +131,14 @@ def get_pipeline_notifications(request: HttpRequest, pipeline_id: str) -> JsonRe
             pipeline_queryset, request, "organization"
         )
 
-        execution = _load_execution(request.GET.get("execution_id"))
+        execution_id = request.GET.get("execution_id")
+        execution = _load_execution(execution_id)
         counts = _execution_counts(execution)
 
         if pipeline_queryset.exists():
             pipeline = pipeline_queryset.first()
             notifications = Notification.objects.filter(pipeline=pipeline, is_active=True)
-            notifications = _apply_failure_filter(notifications, execution)
+            notifications = _apply_failure_filter(notifications, execution, execution_id)
             serialized = [_serialize_notification(n) for n in notifications]
             return JsonResponse(
                 {
@@ -145,7 +159,7 @@ def get_pipeline_notifications(request: HttpRequest, pipeline_id: str) -> JsonRe
         if api_queryset.exists():
             api = api_queryset.first()
             notifications = Notification.objects.filter(api=api, is_active=True)
-            notifications = _apply_failure_filter(notifications, execution)
+            notifications = _apply_failure_filter(notifications, execution, execution_id)
             serialized = [_serialize_notification(n) for n in notifications]
             return JsonResponse(
                 {
@@ -187,9 +201,10 @@ def get_api_notifications(request: HttpRequest, api_id: str) -> JsonResponse:
         )
         api = get_object_or_404(api_queryset)
 
-        execution = _load_execution(request.GET.get("execution_id"))
+        execution_id = request.GET.get("execution_id")
+        execution = _load_execution(execution_id)
         notifications = Notification.objects.filter(api=api, is_active=True)
-        notifications = _apply_failure_filter(notifications, execution)
+        notifications = _apply_failure_filter(notifications, execution, execution_id)
 
         return JsonResponse(
             {
@@ -306,8 +321,9 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
 
     Worker code is model-free: it forwards a notification_id + structured
     payload here and lets the backend write the NotificationBuffer row.
-    Rejects rows whose source notification is not BATCHED so a worker
-    routing bug cannot silently divert non-BATCHED traffic into the buffer.
+    Required fields are validated up front; an INPROGRESS event for a
+    failure-only notification is dropped here, since the GET-side filter
+    cannot see it (no WorkflowExecution exists yet at run start).
     """
     try:
         body = json.loads(request.body.decode("utf-8") or "{}")
@@ -499,8 +515,8 @@ def _dispatch_group(
     webhook_url: str,
     auth_sig: str,
     platform: str,
-) -> tuple[int, int]:
-    """Dispatch a single (org, url, auth_sig, platform) group; returns (rows, succeeded).
+) -> int:
+    """Dispatch a single (org, url, auth_sig, platform) group; returns the number of rows dispatched.
 
     Caller already filtered groups to MIN(flush_after) <= now. Locks rows
     with SKIP LOCKED so a sibling replica skips them rather than blocking.
@@ -525,7 +541,7 @@ def _dispatch_group(
             # Either another replica claimed the rows (SKIP LOCKED) or they
             # transitioned out of PENDING between the GROUP BY scan and the
             # row-level lock. Either way: nothing to do here.
-            return 0, 0
+            return 0
 
         # Bound the reaper reclaim loop: a row reclaimed past its dispatch budget
         # (e.g. a crash that recurs in the dispatch->callback window keeps
@@ -549,7 +565,7 @@ def _dispatch_group(
             )
             rows = [r for r in rows if r.dispatch_attempts < cap]
             if not rows:
-                return 0, 0
+                return 0
 
         # Live auth — read from the FIRST row's notification. If multiple
         # notifications collide on (url, auth_sig, platform) we have, by
@@ -588,7 +604,7 @@ def _dispatch_group(
                 org_id=org_id,
             )
         )
-        return len(rows), len(rows)
+        return len(rows)
 
 
 # Per-group cap, bound to the renderer's MAX_BATCH_SIZE so the rendered events
@@ -626,7 +642,7 @@ def process_notification_buffer(request: HttpRequest) -> JsonResponse:
     dispatched_rows = 0
     for group in groups:
         try:
-            rows, _succeeded = _dispatch_group(
+            rows = _dispatch_group(
                 org_id=group["organization_id"],
                 webhook_url=group["webhook_url"],
                 auth_sig=group["auth_sig"],

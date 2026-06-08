@@ -7,7 +7,7 @@ LOG_HISTORY_INTERVAL="${LOG_HISTORY_CONSUMER_INTERVAL:-5}"
 DEFAULT_LOG_HISTORY_CMD="/app/.venv/bin/python /app/log_consumer/process_log_history.py"
 LOG_HISTORY_CMD="${TASK_TRIGGER_COMMAND:-$DEFAULT_LOG_HISTORY_CMD}"
 
-# Task 2: notification buffer flush (UNS-611 clubbed dispatch).
+# Task 2: notification buffer flush (clubbed dispatch).
 # Polls on its OWN cadence (NOTIFICATION_BUFFER_POLL_INTERVAL), decoupled from
 # the log-history consumer so one env knob doesn't silently govern both tasks.
 # The endpoint short-circuits on an empty PENDING set, so frequent polling is

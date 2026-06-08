@@ -1,10 +1,10 @@
 """Celery tasks owned by notification_v2.
 
-Currently hosts ``mark_buffer_dead_letter`` — a thin task attached as a
-Celery ``link_error`` to the clubbed dispatch chain. When the underlying
-``send_webhook_notification`` task exhausts retries, this task converts
-the buffered rows from PENDING/DISPATCHED to terminal DEAD_LETTER so the
-flush job will not re-pick them.
+Hosts the terminal-state callbacks for the clubbed dispatch chain:
+``mark_buffer_dispatched`` (Celery ``link`` on success) and
+``mark_buffer_dead_letter`` (``link_error`` on retry exhaustion). Both only
+transition rows still in ``SENDING`` — on success to ``DISPATCHED``, on
+terminal failure to ``DEAD_LETTER`` — so the flush job will not re-pick them.
 """
 
 from __future__ import annotations

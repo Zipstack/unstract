@@ -2,9 +2,9 @@
 
 Wraps single-event payloads (flat per-event dict) in the canonical envelope so
 API webhook receivers always see the same ``{"summary": {...}, "events": [...]}``
-shape. Only the generic internal webhook-send endpoints reach this flat-wrap
-path; status-callback notifications go through the backend buffer and arrive
-already in envelope form, so they pass through.
+shape. The decision is purely shape-based: a payload already in envelope shape
+(it contains ``events`` — e.g. a backend buffer-rendered batch) passes through
+unchanged; only a flat per-event dict is wrapped here.
 """
 
 from typing import Any

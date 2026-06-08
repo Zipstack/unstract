@@ -163,9 +163,10 @@ class NotificationBuffer(BaseModel):
     )
     flush_after = models.DateTimeField(
         db_comment=(
-            "created_at + NOTIFICATION_CLUB_INTERVAL, precomputed at enqueue. "
-            "Read-at-enqueue contract: changing the env var only affects rows "
-            "enqueued after the restart."
+            "now() at enqueue + the org's effective club interval (per-org "
+            "Configuration override, else the NOTIFICATION_CLUB_INTERVAL "
+            "default), precomputed at enqueue. Read-at-enqueue contract: "
+            "changing the interval only affects rows enqueued afterward."
         ),
     )
     dispatched_at = models.DateTimeField(null=True, blank=True)

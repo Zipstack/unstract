@@ -1,157 +1,149 @@
-"""Behavioural tests for the two dispatch sites — now routed through the
-``queue_backend.dispatch()`` seam.
+"""Behavioural tests for the worker dispatch sites.
 
-Both sites used to call ``current_app.send_task(...)`` directly with a
-string task name. They now go through ``queue_backend.dispatch(...)``
-instead. The dispatch contract — task name, positional args, keyword
-args, and target queue — is unchanged by the migration; ``dispatch()``
-is a transparent pass-through to ``current_app.send_task`` today.
+Two independent contracts are pinned here so a future change that quietly
+drops a field, rewires a queue, or changes an endpoint fails loudly:
 
-This suite locks down the contract at each call site so a future change
-that quietly drops a kwarg or rewires a queue will fail loudly.
-
-Sites:
-1. ``shared/patterns/notification/helper.py:send_notification_to_worker``
-2. ``scheduler/tasks.py:_execute_scheduled_workflow``
+1. ``shared/patterns/notification/helper.py`` — status-callback notifications.
+   UN-3056 replaced the old ``send_notification_to_worker`` ->
+   ``queue_backend.dispatch`` path with a model-free HTTP enqueue:
+   ``_route_notification`` -> ``_enqueue_to_buffer`` POSTs each event to the
+   backend buffer endpoint, which owns batching + send. These tests
+   characterise that HTTP enqueue contract.
+2. ``scheduler/tasks.py:_execute_scheduled_workflow`` — still routed through
+   the ``queue_backend.dispatch()`` seam (unchanged).
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
+from shared.patterns.notification.helper import (
+    ENQUEUE_BUFFER_ENDPOINT,
+    _enqueue_to_buffer,
+    _route_notification,
+)
 
-# --- Site 1: shared/patterns/notification/helper.py ---
+from unstract.core.data_models import (
+    ExecutionStatus,
+    NotificationPayload,
+    NotificationSource,
+    WorkflowType,
+)
+
+# --- Site 1: shared/patterns/notification/helper.py (HTTP buffer enqueue) ---
 
 
 class TestNotificationDispatchSite:
-    """Pin ``send_notification_to_worker`` -> ``queue_backend.dispatch``."""
+    """Pin the worker notification path -> backend buffer-enqueue HTTP contract.
 
-    def _make_payload(self):
-        """Build a minimal NotificationPayload-shaped mock.
+    UN-3056 made the callback worker model-free: instead of dispatching a
+    Celery task, ``_route_notification`` -> ``_enqueue_to_buffer`` POSTs each
+    event to the backend, which owns the NotificationBuffer + clubbed send.
+    """
 
-        The function under test only invokes ``payload.to_webhook_payload()``
-        and reads ``payload.pipeline_id`` (for log output).  Anything else
-        about the payload object is irrelevant to dispatch behaviour.
-        """
-        payload = MagicMock()
-        payload.to_webhook_payload.return_value = {"event": "test_event", "id": 42}
-        payload.pipeline_id = "pipe-001"
-        return payload
-
-    def test_dispatch_task_name_and_queue(self):
-        from shared.patterns.notification.helper import send_notification_to_worker
-
-        with patch("shared.patterns.notification.helper.dispatch") as mock_dispatch:
-            send_notification_to_worker(
-                url="https://example.com/hook",
-                payload=self._make_payload(),
-                auth_type="NONE",
-                auth_key=None,
-                auth_header=None,
-            )
-
-        mock_dispatch.assert_called_once()
-        call = mock_dispatch.call_args
-        assert call.args[0] == "send_webhook_notification"
-        assert call.kwargs["queue"] == "notifications"
-
-    def test_dispatch_positional_args_layout(self):
-        """Positional args MUST be [url, payload_dict, headers, timeout]."""
-        from shared.patterns.notification.helper import send_notification_to_worker
-
-        with patch("shared.patterns.notification.helper.dispatch") as mock_dispatch:
-            send_notification_to_worker(
-                url="https://example.com/hook",
-                payload=self._make_payload(),
-                auth_type="BEARER",
-                auth_key="token-abc",
-                auth_header=None,
-            )
-
-        args = mock_dispatch.call_args.kwargs["args"]
-        assert len(args) == 4
-        assert args[0] == "https://example.com/hook"  # url
-        assert args[1] == {"event": "test_event", "id": 42}  # payload_dict
-        assert args[2]["Authorization"] == "Bearer token-abc"  # headers
-        assert args[3] == 10  # timeout (hard-coded)
-
-    def test_dispatch_kwargs_layout(self):
-        """Kwargs MUST contain max_retries, retry_delay, platform."""
-        from shared.patterns.notification.helper import send_notification_to_worker
-
-        with patch("shared.patterns.notification.helper.dispatch") as mock_dispatch:
-            send_notification_to_worker(
-                url="https://example.com/hook",
-                payload=self._make_payload(),
-                auth_type="NONE",
-                auth_key=None,
-                auth_header=None,
-                max_retries=5,
-                platform="SLACK",
-            )
-
-        kwargs = mock_dispatch.call_args.kwargs["kwargs"]
-        assert kwargs == {
-            "max_retries": 5,
-            "retry_delay": 10,
-            "platform": "SLACK",
+    def _make_notification(self, notification_type="WEBHOOK", platform="API"):
+        return {
+            "id": "notif-001",
+            "notification_type": notification_type,
+            "platform": platform,
         }
 
-    def test_dispatch_returns_true_on_success(self):
-        from shared.patterns.notification.helper import send_notification_to_worker
+    def _make_payload(self):
+        """A real NotificationPayload so enum -> value coercion is exercised."""
+        return NotificationPayload.from_execution_status(
+            pipeline_id="pipe-001",
+            pipeline_name="char-test-pipeline",
+            execution_status=ExecutionStatus.ERROR,
+            workflow_type=WorkflowType.API,
+            source=NotificationSource.CALLBACK_WORKER,
+            execution_id="exec-123",
+            error_message="boom",
+            total_files=3,
+            successful_files=1,
+            failed_files=2,
+        )
 
-        with patch("shared.patterns.notification.helper.dispatch"):
-            result = send_notification_to_worker(
-                url="https://example.com/hook",
-                payload=self._make_payload(),
-                auth_type="NONE",
-                auth_key=None,
-                auth_header=None,
+    def test_enqueue_posts_to_buffer_endpoint(self):
+        """``_enqueue_to_buffer`` MUST POST to the buffer endpoint, timeout=10."""
+        api_client = MagicMock()
+        _enqueue_to_buffer(api_client, self._make_notification(), self._make_payload())
+
+        api_client._make_request.assert_called_once()
+        call = api_client._make_request.call_args
+        assert call.kwargs["method"] == "POST"
+        assert call.kwargs["endpoint"] == ENQUEUE_BUFFER_ENDPOINT
+        assert call.kwargs["timeout"] == 10
+
+    def test_enqueue_payload_shape(self):
+        """The enqueued ``data`` MUST carry the full per-event contract the
+        backend buffer + clubbed renderer rely on."""
+        api_client = MagicMock()
+        _enqueue_to_buffer(api_client, self._make_notification(), self._make_payload())
+
+        data = api_client._make_request.call_args.kwargs["data"]
+        assert set(data) == {
+            "notification_id",
+            "type",
+            "execution_id",
+            "pipeline_id",
+            "pipeline_name",
+            "status",
+            "error_message",
+            "platform",
+            "timestamp",
+            "additional_data",
+        }
+        assert data["notification_id"] == "notif-001"
+        assert data["pipeline_id"] == "pipe-001"
+        assert data["pipeline_name"] == "char-test-pipeline"
+        assert data["execution_id"] == "exec-123"
+        assert data["platform"] == "API"
+        # Enums are coerced to their string values, not passed as objects.
+        assert data["type"] == WorkflowType.API.value
+        assert isinstance(data["status"], str)
+        assert isinstance(data["additional_data"], dict)
+
+    def test_enqueue_raises_on_request_failure(self):
+        """A transport failure MUST propagate out of ``_enqueue_to_buffer`` so
+        the router can count the drop (it is the only failure signal)."""
+        api_client = MagicMock()
+        api_client._make_request.side_effect = RuntimeError("backend down")
+
+        with pytest.raises(RuntimeError):
+            _enqueue_to_buffer(
+                api_client, self._make_notification(), self._make_payload()
             )
 
-        assert result is True
+    def test_route_skips_non_webhook(self):
+        """Non-WEBHOOK notifications MUST NOT be enqueued."""
+        api_client = MagicMock()
+        _route_notification(
+            api_client,
+            self._make_notification(notification_type="EMAIL"),
+            self._make_payload(),
+        )
+        api_client._make_request.assert_not_called()
 
-    def test_helper_swallows_dispatch_exception(self):
-        """The helper's try/except contract: any exception from ``dispatch``
-        is caught and surfaced as ``False``. Patches the helper-side seam,
-        so this is purely a Python-level error-handling assertion."""
-        from shared.patterns.notification.helper import send_notification_to_worker
+    def test_route_enqueues_webhook(self):
+        """WEBHOOK notifications MUST reach the buffer endpoint."""
+        api_client = MagicMock()
+        _route_notification(api_client, self._make_notification(), self._make_payload())
 
-        with patch("shared.patterns.notification.helper.dispatch") as mock_dispatch:
-            mock_dispatch.side_effect = RuntimeError("broker down")
-            result = send_notification_to_worker(
-                url="https://example.com/hook",
-                payload=self._make_payload(),
-                auth_type="NONE",
-                auth_key=None,
-                auth_header=None,
-            )
+        api_client._make_request.assert_called_once()
+        assert (
+            api_client._make_request.call_args.kwargs["endpoint"]
+            == ENQUEUE_BUFFER_ENDPOINT
+        )
 
-        assert result is False
+    def test_route_swallows_enqueue_failure(self):
+        """An enqueue failure MUST NOT abort the caller's loop — sibling
+        notifications still get their turn. ``_route_notification`` is the
+        path's final swallow point."""
+        api_client = MagicMock()
+        api_client._make_request.side_effect = RuntimeError("backend down")
 
-    def test_substrate_failure_surfaces_as_false(self):
-        """End-to-end seam → substrate failure path.
-
-        Leaves ``dispatch`` itself unpatched and patches the substrate
-        boundary (``queue_backend.dispatch.current_app``). Models a real
-        broker outage: ``send_task`` raises ``ConnectionError``,
-        ``dispatch`` propagates, the helper's ``except`` catches it,
-        return value is ``False``. Complements the helper-side test
-        above — together they exercise the full failure path without
-        either side being trivially mocked."""
-        from shared.patterns.notification.helper import send_notification_to_worker
-
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            mock_app.send_task.side_effect = ConnectionError("broker down")
-            result = send_notification_to_worker(
-                url="https://example.com/hook",
-                payload=self._make_payload(),
-                auth_type="NONE",
-                auth_key=None,
-                auth_header=None,
-            )
-
-        assert result is False
-        mock_app.send_task.assert_called_once()
+        # Must not raise.
+        _route_notification(api_client, self._make_notification(), self._make_payload())
+        api_client._make_request.assert_called_once()
 
 
 # --- Site 2: scheduler/tasks.py ---

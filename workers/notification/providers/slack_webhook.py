@@ -1,10 +1,10 @@
 """Slack Webhook Notification Provider
 
 Renders single-event payloads (flat per-event dict) into the same single-line
-Slack body the backend produces via ``clubbed_renderer``. Only the generic
-internal webhook-send endpoints reach this flat-wrap path; status-callback
-notifications go through the backend buffer and arrive already rendered
-(`{"text": "<mrkdwn>"}`), so they pass through unchanged.
+Slack body the backend produces via ``clubbed_renderer``. The decision is
+purely shape-based: a payload already rendered to ``{"text": "<mrkdwn>"}``
+(e.g. a backend buffer-rendered batch) passes through unchanged; only a flat
+per-event dict is wrapped and rendered here.
 """
 
 from typing import Any
