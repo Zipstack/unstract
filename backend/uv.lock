@@ -3745,7 +3745,7 @@ requires-dist = [
     { name = "celery", extras = ["amqp"], specifier = ">=5.3.4" },
     { name = "cron-descriptor", specifier = "==1.4.0" },
     { name = "croniter", specifier = ">=3.0.3" },
-    { name = "cryptography", specifier = ">=46.0.7" },
+    { name = "cryptography", specifier = ">=48.0.0" },
     { name = "django", specifier = "==4.2.1" },
     { name = "django-celery-beat", specifier = "==2.5.0" },
     { name = "django-cors-headers", specifier = "==4.3.1" },
