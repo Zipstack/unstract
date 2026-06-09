@@ -117,9 +117,13 @@ class SkipReason(str, Enum):
 
     Closed vocabulary so typos at producer call sites fail at
     construction time rather than silently producing an
-    unrecognisable value on the wire. StrEnum semantics — members
-    serialise to their string value and compare equal to the
-    underlying string.
+    unrecognisable value on the wire. Subclasses ``str`` so members
+    compare equal to their underlying string value; wire serialisation
+    extracts ``.value`` via ``serialize_dataclass_to_dict``'s
+    ``isinstance(value, Enum)`` branch (this is *not*
+    :class:`enum.StrEnum`, which would also change ``__str__`` to
+    return the value — that distinction matters if any caller ever
+    does ``str(SkipReason.X)`` rather than ``SkipReason.X.value``).
 
     Values mirror the batch-level skip counters on
     :class:`BatchExecutionResult` (``skipped_already_completed`` /
@@ -320,7 +324,9 @@ class FileExecutionResult:
         return self.to_api_dict()
 
     @staticmethod
-    def _parse_skipped(raw: Any) -> "SkipReason | None":
+    def _parse_skipped(
+        raw: Any, file_execution_id: str | None = None
+    ) -> "SkipReason | None":
         """Lenient ``SkipReason`` parser for the consumer side.
 
         Producer call sites are typed (constructor takes the enum, typos
@@ -329,13 +335,23 @@ class FileExecutionResult:
         rolling-deploy must not crash the entire batch task on a value
         the consumer doesn't recognise. Standard "strict on emit,
         lenient on receive" posture.
+
+        ``file_execution_id`` is optional but threaded through from
+        ``from_dict`` so the warning log carries file context — without
+        it, a debugger seeing the warning has no way to find which file
+        triggered the unknown value.
         """
         if not raw:
             return None
         try:
             return SkipReason(raw)
         except ValueError:
-            logger.warning("Unknown SkipReason on wire: %r; treating as None", raw)
+            logger.warning(
+                "Unknown SkipReason on wire: %r (file_execution_id=%s); "
+                "treating as None",
+                raw,
+                file_execution_id,
+            )
             return None
 
     @classmethod
@@ -347,9 +363,10 @@ class FileExecutionResult:
             if data.get("error")
             else ApiDeploymentResultStatus.SUCCESS
         )
+        file_execution_id = data.get("file_execution_id")
         return cls(
             file=data.get("file", ""),
-            file_execution_id=data.get("file_execution_id"),
+            file_execution_id=file_execution_id,
             status=status,
             error=data.get("error"),
             result=data.get("result"),
@@ -358,7 +375,9 @@ class FileExecutionResult:
             file_size=data.get("file_size", 0),
             file_name=data.get("file_name"),
             result_data=data.get("result_data"),
-            skipped=cls._parse_skipped(data.get("skipped")),
+            skipped=cls._parse_skipped(
+                data.get("skipped"), file_execution_id=file_execution_id
+            ),
             storage_result=data.get("storage_result"),
         )
 
@@ -440,6 +459,55 @@ class BatchExecutionResult:
             skipped_already_completed=data.get("skipped_already_completed", 0),
             skipped_active_duplicate=data.get("skipped_active_duplicate", 0),
             organization_id=data.get("organization_id"),
+        )
+
+    @classmethod
+    def from_file_results(
+        cls,
+        file_results: list[FileExecutionResult],
+        *,
+        execution_time: float,
+        organization_id: str | None = None,
+        batch_id: str | None = None,
+        errors: list[str] | None = None,
+    ) -> "BatchExecutionResult":
+        """Build a batch result by deriving counters from typed file results.
+
+        Counts ``successful_files`` / ``failed_files`` / ``skipped_*``
+        from the file results themselves rather than letting the caller
+        pass them as parameters — removes the class of bug where a
+        producer's hand-rolled counters drift from the underlying
+        ``file_results`` (e.g. a string-match on the wire that misses a
+        new ``SkipReason`` member). Existing call sites that need to
+        keep their own counter semantics can keep using the
+        constructor directly; this is purely additive.
+
+        Note that ``successful_files`` here matches
+        ``BatchExecutionResult.is_successful()`` semantics — a file with
+        ``skipped`` set is *also* considered successful (consistent with
+        the API-path producer's "skipped files count as successful"
+        rule). Callers that need a different split should compute it
+        themselves and use the constructor.
+        """
+        successful = sum(1 for fr in file_results if fr.is_successful())
+        failed = sum(1 for fr in file_results if not fr.is_successful())
+        skipped_already_completed = sum(
+            1 for fr in file_results if fr.skipped == SkipReason.ALREADY_COMPLETED
+        )
+        skipped_active_duplicate = sum(
+            1 for fr in file_results if fr.skipped == SkipReason.ACTIVE_DUPLICATE
+        )
+        return cls(
+            total_files=len(file_results),
+            successful_files=successful,
+            failed_files=failed,
+            execution_time=execution_time,
+            file_results=file_results,
+            batch_id=batch_id,
+            errors=errors or [],
+            skipped_already_completed=skipped_already_completed,
+            skipped_active_duplicate=skipped_active_duplicate,
+            organization_id=organization_id,
         )
 
     def add_file_result(self, file_result: FileExecutionResult):

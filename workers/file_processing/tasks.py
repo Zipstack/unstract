@@ -1663,16 +1663,24 @@ def process_file_batch_api(
             # semantic). Separating the skipped count from the successful
             # count is deferred — would change consumer-visible counters
             # and is tracked separately.
+            #
+            # Build typed file results once and derive the skip counter
+            # from the typed enum rather than re-string-matching against
+            # the wire — a serialisation/vocab drift in
+            # ``SkipReason.ALREADY_COMPLETED.value`` would otherwise
+            # silently zero the count. Equivalent to the previous
+            # string-compare for current data.
+            typed_file_results = [FileExecutionResult.from_dict(r) for r in file_results]
             batch_result = BatchExecutionResult(
-                total_files=len(file_results),
+                total_files=len(typed_file_results),
                 successful_files=successful_files,
                 failed_files=failed_files,
                 execution_time=time.time() - batch_start_time,
-                file_results=[FileExecutionResult.from_dict(r) for r in file_results],
+                file_results=typed_file_results,
                 skipped_already_completed=sum(
                     1
-                    for r in file_results
-                    if r.get("skipped") == SkipReason.ALREADY_COMPLETED.value
+                    for fr in typed_file_results
+                    if fr.skipped == SkipReason.ALREADY_COMPLETED
                 ),
                 organization_id=schema_name,
             ).to_dict()

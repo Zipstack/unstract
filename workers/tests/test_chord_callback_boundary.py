@@ -81,9 +81,101 @@ class TestBatchExecutionResultWireShape:
         )
         assert round_tripped.organization_id == original.organization_id
 
+    def test_round_trip_with_populated_file_results(self):
+        """The existing round-trip test uses ``file_results=[]``, so the
+        list-comprehension in ``BatchExecutionResult.from_dict`` that
+        rebuilds nested ``FileExecutionResult`` objects is never
+        exercised. A regression that stored raw dicts instead would
+        otherwise keep every test green.
+        """
+        fr_ok = FileExecutionResult(
+            file="a.pdf",
+            file_execution_id="fx-a",
+            status=ApiDeploymentResultStatus.SUCCESS,
+            file_name="a.pdf",
+            storage_result={"stored_at": "s3://k1"},
+        )
+        fr_failed = FileExecutionResult(
+            file="b.pdf",
+            file_execution_id="fx-b",
+            status=ApiDeploymentResultStatus.FAILED,
+            file_name="b.pdf",
+            error="boom",
+        )
+        original = BatchExecutionResult(
+            total_files=2,
+            successful_files=1,
+            failed_files=1,
+            execution_time=1.0,
+            file_results=[fr_ok, fr_failed],
+            organization_id="org-1",
+        )
+        round_tripped = BatchExecutionResult.from_dict(original.to_dict())
+
+        assert len(round_tripped.file_results) == 2
+        # Reconstruction must yield typed objects, not bare dicts.
+        for fr in round_tripped.file_results:
+            assert isinstance(fr, FileExecutionResult)
+        # And every cross-the-wire field survives.
+        rt_ok = next(
+            fr for fr in round_tripped.file_results if fr.file_execution_id == "fx-a"
+        )
+        rt_failed = next(
+            fr for fr in round_tripped.file_results if fr.file_execution_id == "fx-b"
+        )
+        assert rt_ok.storage_result == {"stored_at": "s3://k1"}
+        assert rt_ok.status == ApiDeploymentResultStatus.SUCCESS
+        assert rt_failed.error == "boom"
+        assert rt_failed.status == ApiDeploymentResultStatus.FAILED
+
     def test_wire_is_json_safe(self):
         wire = self._make().to_dict()
         assert json.loads(json.dumps(wire)) == wire
+
+    def test_from_file_results_derives_counters(self):
+        """``from_file_results`` derives counters from typed input so a
+        new ``SkipReason`` member can't silently zero a counter through
+        wire-vocab drift (the failure mode that the hand-rolled
+        ``string == SkipReason.X.value`` in ``tasks.py`` would have
+        and that the typed refactor in this PR eliminates).
+        """
+        results = [
+            FileExecutionResult(
+                file="a.pdf",
+                file_execution_id="fx-a",
+                status=ApiDeploymentResultStatus.SUCCESS,
+            ),
+            FileExecutionResult(
+                file="b.pdf",
+                file_execution_id="fx-b",
+                status=ApiDeploymentResultStatus.SUCCESS,
+                skipped=SkipReason.ALREADY_COMPLETED,
+            ),
+            FileExecutionResult(
+                file="c.pdf",
+                file_execution_id="fx-c",
+                status=ApiDeploymentResultStatus.SUCCESS,
+                skipped=SkipReason.ACTIVE_DUPLICATE,
+            ),
+            FileExecutionResult(
+                file="d.pdf",
+                file_execution_id="fx-d",
+                status=ApiDeploymentResultStatus.FAILED,
+                error="boom",
+            ),
+        ]
+        batch = BatchExecutionResult.from_file_results(
+            results, execution_time=2.0, organization_id="org-1"
+        )
+        assert batch.total_files == 4
+        # SUCCESS-status results are counted as successful regardless of
+        # ``skipped`` — matches the API-path "skipped counts as success"
+        # rule documented in ``process_file_batch_api``.
+        assert batch.successful_files == 3
+        assert batch.failed_files == 1
+        assert batch.skipped_already_completed == 1
+        assert batch.skipped_active_duplicate == 1
+        assert batch.organization_id == "org-1"
 
 
 class TestFileExecutionResultWireShape:
@@ -160,6 +252,37 @@ class TestFileExecutionResultWireShape:
         assert round_tripped.result_data == original.result_data
         assert round_tripped.skipped == original.skipped
         assert round_tripped.status == original.status
+
+    def test_from_dict_unknown_skipped_is_lenient(self, caplog):
+        """``_parse_skipped`` is the one documented crash-prevention
+        path for rolling deploys (newer producer emits a future
+        ``SkipReason``, older consumer receives it). Without this test
+        a regression to bare ``SkipReason(raw)`` would re-introduce the
+        crash and every other test would stay green.
+        """
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="unstract.core.worker_models"):
+            result = FileExecutionResult.from_dict(
+                {
+                    "file": "x.pdf",
+                    "file_execution_id": "fx-future",
+                    "skipped": "teleported_to_2030",
+                }
+            )
+
+        assert result.skipped is None, (
+            "unknown skipped value must downgrade to None, not crash"
+        )
+        # Log must include the unknown raw value and the file
+        # identifier — a context-free warning would be useless for
+        # debugging a real rolling-deploy incident.
+        assert any(
+            "Unknown SkipReason" in r.message
+            and "teleported_to_2030" in r.message
+            and "fx-future" in r.message
+            for r in caplog.records
+        )
 
     def test_active_duplicate_skip_reason_round_trips(self):
         # ``ACTIVE_DUPLICATE`` mirrors the batch-level
@@ -394,8 +517,10 @@ class TestProducerBinding:
 
     def test_process_file_batch_api_batch_wrapper(self, monkeypatch):
         """Drives the API-path batch wrapper. Catches reverts at the
-        ``BatchExecutionResult(...).to_dict()`` producer site
-        (file_processing/tasks.py around L1665).
+        ``BatchExecutionResult(...).to_dict()`` producer site in
+        ``process_file_batch_api`` (symbol ref rather than a line
+        number so this docstring doesn't rot the moment ``tasks.py``
+        is edited above the producer).
         """
         from file_processing import tasks as tasks_mod
         from file_processing.worker import app as celery_app
@@ -499,6 +624,102 @@ class TestProducerBinding:
             if fr.get("file_execution_id") == "fx-b"
         ]
         assert stored and stored[0]["storage_result"] == {"stored": "s3://k"}
+
+    def test_process_file_batch_api_batch_wrapper_failure_aggregation(
+        self, monkeypatch
+    ):
+        """Drive the failure-aggregation path of the batch wrapper —
+        the success-only variant above never exercises ``failed_files +=
+        1`` (``tasks.py`` ~L1657) or the canonical ``"Failed"`` vocab on
+        the nested per-file wire. A revert to the legacy lowercase
+        ``"failed"`` for the failure branch would otherwise stay green.
+        """
+        from file_processing import tasks as tasks_mod
+        from file_processing.worker import app as celery_app
+
+        original = {
+            "task_always_eager": celery_app.conf.task_always_eager,
+            "task_eager_propagates": celery_app.conf.task_eager_propagates,
+            "result_backend": celery_app.conf.result_backend,
+        }
+        celery_app.conf.update(
+            task_always_eager=True,
+            task_eager_propagates=True,
+            result_backend="cache+memory://",
+        )
+
+        # One success + one failure — the failed leg must arrive at the
+        # batch boundary as ``status="Failed"`` carrying ``error``.
+        ok_wire = FileExecutionResult(
+            file="ok.pdf",
+            file_execution_id="fx-ok",
+            status=ApiDeploymentResultStatus.SUCCESS,
+            file_name="ok.pdf",
+            result_data={"extracted": "value"},
+        ).to_dict()
+        bad_wire = FileExecutionResult(
+            file="bad.pdf",
+            file_execution_id="fx-bad",
+            status=ApiDeploymentResultStatus.FAILED,
+            file_name="bad.pdf",
+            error="boom",
+        ).to_dict()
+        per_file_outputs = iter([ok_wire, bad_wire])
+
+        monkeypatch.setattr(
+            tasks_mod,
+            "_process_single_file_api",
+            lambda **kwargs: next(per_file_outputs),
+        )
+        monkeypatch.setattr(tasks_mod.StateStore, "set", lambda *a, **k: None)
+        api_client_stub = MagicMock()
+        api_client_stub.get_workflow_execution.return_value = SimpleNamespace(
+            success=True, data={"execution": {"execution_log_id": None}}
+        )
+        monkeypatch.setattr(
+            tasks_mod, "create_api_client", lambda schema_name: api_client_stub
+        )
+        cache_service = MagicMock()
+        cache_service.return_value.cache_api_result = MagicMock()
+        import shared.workflow.execution.service as service_mod
+
+        monkeypatch.setattr(
+            service_mod, "WorkerWorkflowExecutionService", cache_service
+        )
+
+        try:
+            wire = tasks_mod.process_file_batch_api.apply(
+                args=[
+                    "org-1",
+                    "wf-1",
+                    "exec-1",
+                    "batch-1",
+                    [
+                        {"id": "fx-ok", "file_name": "ok.pdf"},
+                        {"id": "fx-bad", "file_name": "bad.pdf"},
+                    ],
+                    None,
+                    None,
+                    False,
+                ]
+            ).get()
+        finally:
+            celery_app.conf.update(original)
+
+        # Failure-aggregation counters at the batch level.
+        assert wire["total_files"] == 2
+        assert wire["successful_files"] == 1
+        assert wire["failed_files"] == 1
+        # The failed per-file result must survive the round-trip and
+        # arrive with the canonical capitalised vocab.
+        failed = [
+            fr
+            for fr in wire["file_results"]
+            if fr.get("file_execution_id") == "fx-bad"
+        ]
+        assert failed, "failed per-file result missing from batch wire"
+        assert failed[0]["status"] == "Failed"
+        assert failed[0]["error"] == "boom"
 
 
 class TestRealConsumerTolerance:
