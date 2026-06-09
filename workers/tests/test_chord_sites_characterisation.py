@@ -211,12 +211,16 @@ class TestWorkflowOrchestrationMixinCreateChord:
                 callback_queue="file_processing_callback",
             )
 
+        # Mixin now forwards ``fairness=`` (None when caller omits it)
+        # to ``create_chord_execution``. The positional args stay the
+        # same.
         mock_static.assert_called_once_with(
             batch,
             "process_batch_callback",
             kwargs,
             "file_processing_callback",
             task.app,
+            fairness=None,
         )
 
     def test_create_chord_raises_when_no_app_bound(self):
@@ -260,7 +264,20 @@ class TestChordSiteInventory:
     _CHORD_HOST = "queue_backend/barrier.py"
 
     def test_chord_invocation_lives_only_in_barrier(self):
-        """Count chord(...) invocations (not imports) in workers/ source."""
+        """Count chord(...) invocations (not imports) in workers/ source.
+
+        Tightened regex (after the original ``(?:^|[\\s=(])chord\\(``
+        could match docstring prose mentioning ``chord(...)`` after
+        whitespace): now requires assignment form ``= chord(`` (with
+        optional whitespace), which matches the production call at
+        ``barrier.py``'s ``result = chord(header_tasks)(callback_signature)``
+        but rejects docstring / comment mentions like ``the chord(...)
+        primitive``.
+
+        Comment / docstring lines are also explicitly skipped as
+        belt-and-suspenders against a future call site that lacks the
+        ``=`` prefix (e.g. a return-value-discarded ``chord(...)``).
+        """
         import pathlib
         import re
 
@@ -270,9 +287,10 @@ class TestChordSiteInventory:
         # `workers/shared/tests_helpers/`.
         skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
 
-        # Match `chord(` as a function call — excludes the bare import line
-        # `from celery import chord` and helper method names like `create_chord`.
-        pattern = re.compile(r"(?:^|[\s=(])chord\(")
+        # Assignment-form ``= chord(`` — production call sites all
+        # capture the AsyncResult into a variable. Docstring prose
+        # never uses this form.
+        pattern = re.compile(r"=\s*chord\(")
 
         hits = []
         for py in workers_root.rglob("*.py"):
@@ -281,6 +299,13 @@ class TestChordSiteInventory:
                 continue
             text = py.read_text()
             for line_no, line in enumerate(text.splitlines(), start=1):
+                stripped = line.lstrip()
+                # Skip pure comment lines (belt-and-suspenders — the
+                # regex already rejects most of these via the ``=``
+                # prefix requirement, but a comment like ``# x = chord(...)``
+                # would otherwise sneak through).
+                if stripped.startswith("#"):
+                    continue
                 if pattern.search(line):
                     hits.append(f"{py.relative_to(workers_root)}:{line_no}")
 

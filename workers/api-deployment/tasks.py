@@ -7,7 +7,7 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
-from queue_backend import FairnessKey, worker_task
+from queue_backend import FairnessKey, dispatch, worker_task
 from queue_backend.fairness import WorkloadType
 from shared.api import InternalAPIClient
 from shared.enums.status_enums import PipelineStatus
@@ -677,10 +677,6 @@ def _run_workflow_api(
         # The header tasks + callback now carry the fairness slot for
         # downstream PG Queue routing — closes the chord-fairness gap noted
         # in Phase 5.1.
-        from shared.workflow.execution.orchestration_utils import (
-            WorkflowOrchestrationUtils,
-        )
-
         result = WorkflowOrchestrationUtils.create_chord_execution(
             batch_tasks=batch_tasks,
             callback_task_name="process_batch_callback_api",
@@ -698,6 +694,63 @@ def _run_workflow_api(
         )
 
         if not result:
+            # Two reasons ``result`` can be falsy:
+            # 1. Zero ``batch_tasks`` — the barrier short-circuits and
+            #    returns ``None``. Pre-Barrier this would have called
+            #    ``chord(empty)(callback)`` which Celery handles by
+            #    firing the callback immediately with ``[]``. We
+            #    preserve that contract byte-for-byte by dispatching
+            #    the callback explicitly with an empty result list, so
+            #    workflow_execution_status, API result cache, and
+            #    pipeline notifications all run exactly as they would
+            #    have pre-Barrier. (Unreachable in practice — upstream
+            #    requires non-empty ``created_files`` — but the defence
+            #    closes the theoretical gap.)
+            # 2. ``batch_tasks`` is non-empty but the barrier returned
+            #    falsy for some other reason — a genuine queue failure.
+            if not batch_tasks:
+                logger.info(
+                    f"Execution {execution_id} orchestrated with zero "
+                    "batch tasks — firing callback directly with empty "
+                    "result list (preserves pre-Barrier zero-files contract)"
+                )
+                # Route through ``queue_backend.dispatch`` (not raw
+                # ``app.send_task``) so the canary in
+                # ``test_dispatch_sites_characterisation.py`` stays
+                # happy and the fairness slot rides on the wire same
+                # as the chord-path callback does. body=[] matches
+                # Celery's chord-with-empty-header semantic exactly.
+                callback_result = dispatch(
+                    "process_batch_callback_api",
+                    args=[[]],
+                    kwargs={
+                        "execution_id": str(execution_id),
+                        "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                        "organization_id": str(schema_name),
+                    },
+                    queue=file_processing_callback_queue,
+                    fairness=FairnessKey(
+                        org_id=str(schema_name),
+                        workload_type=WorkloadType.API,
+                    ),
+                )
+                return {
+                    "status": "orchestrated",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "task_id": task_id,
+                    "files_processed": total_files,
+                    "files_from_cache": len(cached_results),
+                    "batches_created": 0,
+                    "chord_id": callback_result.id,
+                    "cached_results": list(cached_results.keys())
+                    if cached_results
+                    else [],
+                    "message": (
+                        f"Zero batch tasks for execution {execution_id} — "
+                        "callback fired directly with empty result list"
+                    ),
+                }
             exception = f"Failed to queue execution task {execution_id}"
             logger.error(exception)
             raise Exception(exception)

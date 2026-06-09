@@ -242,7 +242,15 @@ class TestCeleryChordBarrierFairnessHeader:
     def test_fairness_header_stamped_on_every_header_task(self, app, mock_chord):
         """Every batch task in the header carries the fairness header
         so PG Queue's per-task fairness scheduler can route each
-        independently."""
+        independently.
+
+        Header signatures are stamped via ``Signature.clone().set(...)``
+        (not in-place ``.set(...)``) — clone avoids cross-tenant
+        header leakage if a future retry path or signature cache ever
+        re-uses the original ``header_tasks`` list with a different
+        ``FairnessKey``. The test asserts ``.clone().set(headers=...)``
+        is called on each original task.
+        """
         h1, h2, h3 = (MagicMock(name=f"header_task_{i}") for i in range(3))
 
         CeleryChordBarrier().enqueue(
@@ -262,7 +270,14 @@ class TestCeleryChordBarrierFairnessHeader:
             }
         }
         for task in (h1, h2, h3):
-            task.set.assert_called_once_with(headers=expected)
+            # ``.clone()`` produces a fresh signature; the ``.set(...)``
+            # then attaches the fairness header to the clone, leaving
+            # the original ``task`` unchanged.
+            task.clone.assert_called_once_with()
+            task.clone.return_value.set.assert_called_once_with(headers=expected)
+            # Direct ``.set(...)`` on the original is NEVER called —
+            # the whole point of the clone-and-set pattern.
+            task.set.assert_not_called()
 
     def test_no_fairness_no_header_added(self, app, mock_chord):
         """When ``fairness=None``, the barrier behaves byte-for-byte
@@ -293,6 +308,154 @@ class TestCeleryChordBarrierFairnessHeader:
                 assert "headers" not in call.kwargs, (
                     "unexpected fairness header stamped without fairness="
                 )
+
+
+# --- Singleton routing (pins the _BARRIER dispatch point) ---
+
+
+class TestOrchestrationUtilsRoutesThroughSingleton:
+    """Pin the ``WorkflowOrchestrationUtils.create_chord_execution``
+    routing to the module-level ``_BARRIER`` singleton.
+
+    A refactor that bypasses the singleton (e.g. inlining
+    ``CeleryChordBarrier().enqueue(...)`` inside the static method,
+    or going back to a direct ``chord(...)`` call) would still pass
+    the inventory canary in ``test_chord_sites_characterisation.py``
+    as long as ``chord(...)`` lives somewhere inside ``barrier.py``.
+    This test closes that gap so the singleton is the unambiguous
+    single dispatch point — ready for Phase 6b's factory swap.
+    """
+
+    def test_create_chord_execution_delegates_to_module_barrier(self):
+        from shared.workflow.execution import orchestration_utils
+        from shared.workflow.execution.orchestration_utils import (
+            WorkflowOrchestrationUtils,
+        )
+
+        app_mock = MagicMock(name="celery_app")
+        app_mock.signature.return_value = MagicMock(name="callback_signature")
+        batch = [MagicMock(name="h1")]
+        fairness = FairnessKey(org_id="org-1", workload_type=WorkloadType.API)
+
+        with patch.object(orchestration_utils, "_BARRIER") as mock_barrier:
+            mock_barrier.enqueue.return_value = MagicMock(name="result")
+            WorkflowOrchestrationUtils.create_chord_execution(
+                batch_tasks=batch,
+                callback_task_name="process_batch_callback_api",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="api_file_processing_callback",
+                app_instance=app_mock,
+                fairness=fairness,
+            )
+
+        mock_barrier.enqueue.assert_called_once_with(
+            batch,
+            callback_task_name="process_batch_callback_api",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="api_file_processing_callback",
+            app_instance=app_mock,
+            fairness=fairness,
+        )
+
+
+# --- Call-site fairness contracts ---
+
+
+class TestCallSiteFairnessContracts:
+    """Pin the ``FairnessKey`` shape each production call site declares.
+
+    A refactor that swaps the workload types, drops the ``fairness=``
+    kwarg, or transposes the org-id source goes undetected by the
+    isolated barrier tests above. These tests assert the contract at
+    the call site boundary.
+    """
+
+    def test_api_deployment_declares_api_workload_with_schema_name(self):
+        """``api-deployment/tasks.py`` must pass ``WorkloadType.API``
+        and ``org_id=str(schema_name)``."""
+        import importlib
+        import inspect
+
+        api_tasks = importlib.import_module("api-deployment.tasks") if False else None
+        # ``api-deployment`` is not a valid Python identifier — import by path.
+        import importlib.util
+
+        src = (
+            inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
+        )
+        # Re-derive workers root.
+        import pathlib
+
+        api_tasks_path = (
+            pathlib.Path(src).parent.parent / "api-deployment" / "tasks.py"
+        )
+        text = api_tasks_path.read_text()
+
+        # Assert the FairnessKey block at the chord call site declares
+        # the contract this PR's commit message claims it does.
+        assert "fairness=FairnessKey(" in text
+        assert "workload_type=WorkloadType.API" in text
+        assert "org_id=str(schema_name)" in text
+
+    def test_general_declares_non_api_workload_with_organization_id(self):
+        """``general/tasks.py`` must pass ``WorkloadType.NON_API`` and
+        ``org_id=organization_id``."""
+        import inspect
+        import pathlib
+
+        src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
+        general_tasks_path = (
+            pathlib.Path(src).parent.parent / "general" / "tasks.py"
+        )
+        text = general_tasks_path.read_text()
+
+        assert "fairness=FairnessKey(" in text
+        assert "workload_type=WorkloadType.NON_API" in text
+        assert "org_id=organization_id" in text
+
+
+# --- Zero-files contract (regression pin for T1) ---
+
+
+class TestApiDeploymentZeroFilesContract:
+    """Pin the api-deployment zero-files handler.
+
+    Before the Barrier uplift, ``chord(empty)(callback)`` returned a
+    truthy ``AsyncResult`` (Celery fires the body immediately with
+    ``[]``). The Barrier returns ``None`` for empty headers, so the
+    caller now has to handle the ``None`` case explicitly — otherwise
+    the existing ``if not result: raise`` would map zero-files runs
+    to ``ExecutionStatus.ERROR``.
+
+    The post-Barrier handler explicitly dispatches the callback with
+    an empty result list to preserve pre-Barrier behaviour
+    byte-for-byte: ``workflow_execution_status`` updates, API result
+    caching, and pipeline notifications all run exactly as they would
+    have pre-Barrier. Unreachable in practice (upstream guarantees
+    non-empty ``created_files``) but this test pins the defensive
+    contract so a future refactor doesn't silently regress.
+    """
+
+    def test_api_deployment_zero_files_dispatches_callback_with_empty_list(self):
+        import inspect
+        import pathlib
+
+        src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
+        api_tasks_path = (
+            pathlib.Path(src).parent.parent / "api-deployment" / "tasks.py"
+        )
+        text = api_tasks_path.read_text()
+
+        # Defensive branch present and dispatches the callback via
+        # the seam (queue_backend.dispatch), not raw send_task — the
+        # dispatch-sites canary in test_dispatch_sites_characterisation.py
+        # enforces that. The literal strings are part of the
+        # externally-observable response + behaviour contract.
+        assert "if not batch_tasks:" in text
+        assert "dispatch(" in text  # routed through queue_backend seam
+        assert '"process_batch_callback_api"' in text  # callback fired
+        assert "args=[[]]" in text  # body=[] matches chord-empty semantic
+        assert '"batches_created": 0' in text
 
 
 if __name__ == "__main__":

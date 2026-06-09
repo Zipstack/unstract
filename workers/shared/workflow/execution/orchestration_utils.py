@@ -319,16 +319,33 @@ class WorkflowOrchestrationMixin:
     """Mixin class to add orchestration utilities to worker tasks."""
 
     def create_chord(
-        self, batch_tasks, callback_task_name, callback_kwargs, callback_queue
+        self,
+        batch_tasks,
+        callback_task_name,
+        callback_kwargs,
+        callback_queue,
+        *,
+        fairness: FairnessKey | None = None,
     ):
-        """Create chord using standardized pattern."""
+        """Create chord using standardized pattern.
+
+        Forwards ``fairness`` to ``create_chord_execution`` so mixin
+        callers can opt into the chord-fairness plumbing that bare
+        ``dispatch()`` sites get via Phase 5.1. ``None`` keeps the
+        pre-Barrier wire shape exactly.
+        """
         # Get app instance from task context
         app_instance = getattr(self, "app", None)
         if not app_instance:
             raise RuntimeError("Celery app instance not available in task context")
 
         return WorkflowOrchestrationUtils.create_chord_execution(
-            batch_tasks, callback_task_name, callback_kwargs, callback_queue, app_instance
+            batch_tasks,
+            callback_task_name,
+            callback_kwargs,
+            callback_queue,
+            app_instance,
+            fairness=fairness,
         )
 
     def determine_manual_review_routing(self, files, manual_review_config=None):

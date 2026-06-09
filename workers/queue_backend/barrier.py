@@ -15,11 +15,16 @@ to land an alternative implementation (e.g. ``RedisDecrBarrier`` using
 the labs ``DECR remaining:{exec_id}`` pattern, or a ``PgBarrier`` using
 SKIP LOCKED) without touching the call sites a second time.
 
-**Phase 6a (this PR): wrapper only — zero behaviour change.**
+**Phase 6a (this PR): wrapper only — behaviour-preserving uplift.**
 ``CeleryChordBarrier.enqueue(...)`` produces byte-identical wire output
-to the direct ``chord(...)`` calls it replaces. Mixed-version rolling
-deploys are safe because both old and new workers run ``chord(...)``
-underneath.
+to the direct ``chord(...)`` calls it replaces *when ``fairness=None``*.
+When a ``FairnessKey`` is passed (which both production call sites
+now do), each header task and the callback additionally carry an
+``x-fairness-key`` AMQP header. That's an additive wire-level change —
+consumers ignore unknown headers — same posture as Phase 5.1's
+``dispatch()`` plumbing. Mixed-version rolling deploys are safe in
+both directions: old workers ignore the new header; new workers
+handle messages without the header identically to today.
 
 Phase 6b (separate PR) will add ``RedisDecrBarrier`` as a second
 implementation, gated by ``WORKER_BARRIER_BACKEND`` env flag (default
@@ -109,6 +114,20 @@ class CeleryChordBarrier:
         fairness: FairnessKey | None = None,
     ) -> BarrierHandle | None:
         """See :class:`Barrier.enqueue`."""
+        # Empty-header guard goes FIRST so a zero-task run skips
+        # signature construction / fairness serialisation entirely.
+        # Any failure in those paths is now constrained to the
+        # non-empty branch where the work is actually needed.
+        if not header_tasks:
+            execution_id = callback_kwargs.get("execution_id")
+            pipeline_id = callback_kwargs.get("pipeline_id")
+            logger.info(
+                f"[exec:{execution_id}] [pipeline:{pipeline_id}] "
+                "Zero header tasks detected — skipping barrier enqueue "
+                "(parent should handle pipeline status updates directly)"
+            )
+            return None
+
         try:
             fairness_headers = (
                 {FAIRNESS_HEADER_NAME: fairness.to_dict()} if fairness else None
@@ -124,31 +143,24 @@ class CeleryChordBarrier:
                 **({"headers": fairness_headers} if fairness_headers else {}),
             )
 
-            if not header_tasks:
-                execution_id = callback_kwargs.get("execution_id")
-                pipeline_id = callback_kwargs.get("pipeline_id")
-                logger.info(
-                    f"[exec:{execution_id}] [pipeline:{pipeline_id}] "
-                    "Zero header tasks detected — skipping barrier enqueue "
-                    "(parent should handle pipeline status updates directly)"
-                )
-                return None
-
-            # Stamp fairness onto each pre-built header signature too.
-            # The signatures are constructed by the caller (e.g.
-            # ``app.signature("process_file_batch", args=[...],
-            # queue=...)``); we mutate them in place via
-            # ``.set(headers=...)`` because that's celery's documented
-            # way to attach message-level headers post-construction.
+            # Stamp fairness onto each header signature via
+            # ``Signature.clone().set(headers=...)`` rather than
+            # in-place ``.set(...)`` on the caller's list. Cloning
+            # avoids cross-tenant header leakage if a future retry
+            # path or signature cache ever re-uses the original
+            # ``header_tasks`` list with a different ``FairnessKey``.
             if fairness_headers:
-                for task in header_tasks:
-                    task.set(headers=fairness_headers)
+                signed_header_tasks = [
+                    task.clone().set(headers=fairness_headers) for task in header_tasks
+                ]
+            else:
+                signed_header_tasks = header_tasks
 
-            result = chord(header_tasks)(callback_signature)
+            result = chord(signed_header_tasks)(callback_signature)
 
             logger.info(
                 f"Barrier enqueued via CeleryChordBarrier — "
-                f"header_tasks={len(header_tasks)}, "
+                f"header_tasks={len(signed_header_tasks)}, "
                 f"callback={callback_task_name}, "
                 f"queue={callback_queue}"
             )
