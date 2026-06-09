@@ -7,7 +7,8 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
-from queue_backend import worker_task
+from queue_backend import FairnessKey, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.api import InternalAPIClient
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
@@ -668,19 +669,32 @@ def _run_workflow_api(
         # Create callback queue using same logic as Django backend
         file_processing_callback_queue = _get_callback_queue_name_api()
 
-        # Execute chord exactly matching Django pattern
-        from celery import chord
+        # Route through ``WorkflowOrchestrationUtils.create_chord_execution``
+        # (which delegates to ``CeleryChordBarrier`` under the hood) instead of
+        # calling ``chord(...)`` directly. Same Celery semantics, but the
+        # ``Barrier`` abstraction lets a future Phase 6b swap to
+        # ``RedisDecrBarrier`` behind a flag without touching this call site.
+        # The header tasks + callback now carry the fairness slot for
+        # downstream PG Queue routing — closes the chord-fairness gap noted
+        # in Phase 5.1.
+        from shared.workflow.execution.orchestration_utils import (
+            WorkflowOrchestrationUtils,
+        )
 
-        result = chord(batch_tasks)(
-            app.signature(
-                "process_batch_callback_api",  # Use API-specific callback
-                kwargs={
-                    "execution_id": str(execution_id),
-                    "pipeline_id": str(pipeline_id) if pipeline_id else None,
-                    "organization_id": str(schema_name),
-                },  # Pass required parameters for API callback
-                queue=file_processing_callback_queue,
-            )
+        result = WorkflowOrchestrationUtils.create_chord_execution(
+            batch_tasks=batch_tasks,
+            callback_task_name="process_batch_callback_api",
+            callback_kwargs={
+                "execution_id": str(execution_id),
+                "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                "organization_id": str(schema_name),
+            },
+            callback_queue=file_processing_callback_queue,
+            app_instance=app,
+            fairness=FairnessKey(
+                org_id=str(schema_name),
+                workload_type=WorkloadType.API,
+            ),
         )
 
         if not result:
