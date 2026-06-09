@@ -50,7 +50,13 @@ from unstract.core.data_models import (
     PreCreatedFileData,
     WorkerFileData,
 )
-from unstract.core.worker_models import FileProcessingResult
+from unstract.core.worker_models import (
+    ApiDeploymentResultStatus,
+    BatchExecutionResult,
+    FileExecutionResult,
+    FileProcessingResult,
+    SkipReason,
+)
 
 logger = WorkerLogger.get_logger(__name__)
 
@@ -896,21 +902,19 @@ def _compile_batch_result(context: WorkflowContextData) -> dict[str, Any]:
     except Exception as cleanup_error:
         logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
-    # Return the final result matching Django backend format
-    # Note: Only active duplicates count as failures; already-completed do not
-    return {
-        "successful_files": result.successful_files,
-        "failed_files": result.failed_files,  # Includes active duplicates (user error)
-        "total_files": result.successful_files
-        + result.failed_files
-        + len(skipped_already_completed),  # Include all files in batch
-        "skipped_already_completed": len(skipped_already_completed),  # Not a failure
-        "skipped_active_duplicate": len(
-            skipped_active_duplicate
-        ),  # IS a failure (counted above)
-        "execution_time": result.execution_time,
-        "organization_id": context.organization_context.organization_id,
-    }
+    # Return the final result matching Django backend format.
+    # Note: only active duplicates count as failures; already-completed do not.
+    return BatchExecutionResult(
+        total_files=(
+            result.successful_files + result.failed_files + len(skipped_already_completed)
+        ),
+        successful_files=result.successful_files,
+        failed_files=result.failed_files,
+        execution_time=result.execution_time,
+        skipped_already_completed=len(skipped_already_completed),
+        skipped_active_duplicate=len(skipped_active_duplicate),
+        organization_id=context.organization_context.organization_id,
+    ).to_dict()
 
 
 # HELPER FUNCTIONS (originally part of the massive process_file_batch function)
@@ -1560,6 +1564,7 @@ def process_file_batch_api(
             f"Processing API file batch {batch_id} with {len(created_files)} files"
         )
 
+        batch_start_time = time.time()
         try:
             # Set organization context exactly like Django backend
             StateStore.set(Account.ORGANIZATION_ID, schema_name)
@@ -1652,11 +1657,33 @@ def process_file_batch_api(
                 else:
                     successful_files += 1
 
-            # Return result matching Django FileBatchResult structure
-            batch_result = {
-                "successful_files": successful_files,
-                "failed_files": failed_files,
-            }
+            # Return result matching Django FileBatchResult structure.
+            # Note: ``successful_files`` here counts every non-error file,
+            # INCLUDING skipped-already-completed ones (legacy API-path
+            # semantic). Separating the skipped count from the successful
+            # count is deferred — would change consumer-visible counters
+            # and is tracked separately.
+            #
+            # Build typed file results once and derive the skip counter
+            # from the typed enum rather than re-string-matching against
+            # the wire — a serialisation/vocab drift in
+            # ``SkipReason.ALREADY_COMPLETED.value`` would otherwise
+            # silently zero the count. Equivalent to the previous
+            # string-compare for current data.
+            typed_file_results = [FileExecutionResult.from_dict(r) for r in file_results]
+            batch_result = BatchExecutionResult(
+                total_files=len(typed_file_results),
+                successful_files=successful_files,
+                failed_files=failed_files,
+                execution_time=time.time() - batch_start_time,
+                file_results=typed_file_results,
+                skipped_already_completed=sum(
+                    1
+                    for fr in typed_file_results
+                    if fr.skipped == SkipReason.ALREADY_COMPLETED
+                ),
+                organization_id=schema_name,
+            ).to_dict()
 
             logger.info(f"Successfully processed API file batch {batch_id}")
             return batch_result
@@ -1703,15 +1730,16 @@ def _process_single_file_api(
                 f"Skipping processing for execution_id: {execution_id}, "
                 f"file_execution_id: {file_execution_id}"
             )
-            return {
-                "file_execution_id": file_execution_id,
-                "file_name": file_name,
-                "status": "completed",
-                "processing_time": 0.0,
-                "result_data": getattr(workflow_file_execution, "result", None),
-                "metadata": getattr(workflow_file_execution, "metadata", None) or {},
-                "skipped": "already_completed",
-            }
+            return FileExecutionResult(
+                file=file_name,
+                file_execution_id=file_execution_id,
+                status=ApiDeploymentResultStatus.SUCCESS,
+                file_name=file_name,
+                processing_time=0.0,
+                result_data=getattr(workflow_file_execution, "result", None),
+                metadata=getattr(workflow_file_execution, "metadata", None) or {},
+                skipped=SkipReason.ALREADY_COMPLETED,
+            ).to_dict()
     except Exception as e:
         logger.exception(
             f"API path: Failed to validate completion status for {file_execution_id}: {e}. "
@@ -1792,14 +1820,15 @@ def _process_single_file_api(
 
         processing_time = time.time() - start_time
 
-        result = {
-            "file_execution_id": file_execution_id,
-            "file_name": file_name,
-            "status": "completed",
-            "processing_time": processing_time,
-            "result_data": runner_result,
-            "storage_result": storage_result,
-        }
+        result = FileExecutionResult(
+            file=file_name,
+            file_execution_id=file_execution_id,
+            status=ApiDeploymentResultStatus.SUCCESS,
+            file_name=file_name,
+            processing_time=processing_time,
+            result_data=runner_result,
+            storage_result=storage_result,
+        ).to_dict()
 
         logger.info(f"Successfully processed file: {file_name} in {processing_time:.2f}s")
         return result
@@ -1820,13 +1849,14 @@ def _process_single_file_api(
         except Exception:
             logger.exception("Failed to update file execution status")
 
-        return {
-            "file_execution_id": file_execution_id,
-            "file_name": file_name,
-            "status": "failed",
-            "processing_time": processing_time,
-            "error": str(e),
-        }
+        return FileExecutionResult(
+            file=file_name,
+            file_execution_id=file_execution_id,
+            status=ApiDeploymentResultStatus.FAILED,
+            file_name=file_name,
+            processing_time=processing_time,
+            error=str(e),
+        ).to_dict()
 
 
 def _check_file_history(
