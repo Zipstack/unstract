@@ -372,20 +372,19 @@ class TestCallSiteFairnessContracts:
 
     def test_api_deployment_declares_api_workload_with_schema_name(self):
         """``api-deployment/tasks.py`` must pass ``WorkloadType.API``
-        and ``org_id=str(schema_name)``."""
-        import importlib
+        and ``org_id=str(schema_name)``.
+
+        ``api-deployment`` is not a valid Python identifier (the dash
+        prevents ``import api-deployment.tasks``), so the test reads
+        the source file by path instead of importing the module.
+        """
         import inspect
-
-        api_tasks = importlib.import_module("api-deployment.tasks") if False else None
-        # ``api-deployment`` is not a valid Python identifier — import by path.
-        import importlib.util
-
-        src = (
-            inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
-        )
-        # Re-derive workers root.
         import pathlib
 
+        # Derive workers root from a sibling importable module
+        # (``queue_backend.barrier``) so the path stays correct under
+        # any test runner working directory.
+        src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
         api_tasks_path = (
             pathlib.Path(src).parent.parent / "api-deployment" / "tasks.py"
         )
