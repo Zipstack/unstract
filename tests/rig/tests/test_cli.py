@@ -465,3 +465,68 @@ def test_cmd_report_re_aggregates_existing_junit(tmp_path: Path, monkeypatch) ->
     for artifact in ("summary.md", "summary.json", "combined-test-report.md"):
         assert (reports_dir / artifact).exists(), f"missing {artifact}"
     assert "unit-x" in (reports_dir / "summary.md").read_text()
+
+
+def test_timeout_zero_is_respected(tmp_path: Path, monkeypatch) -> None:
+    """``--timeout 0`` must be honored; a previous ``or``-based fallback
+    silently replaced 0 with the group's default timeout.
+    """
+    from tests.rig.reporting import GroupResult
+
+    test_dir = Path(__file__).parent
+    manifest_yaml = (
+        "version: 1\n"
+        "groups:\n"
+        "  unit-x:\n"
+        "    tier: unit\n"
+        f"    workdir: {test_dir}\n"
+        "    paths: [.]\n"
+    )
+    (tmp_path / "groups.yaml").write_text(manifest_yaml)
+    (tmp_path / "critical_paths.yaml").write_text("version: 1\npaths: []\n")
+
+    import tests.rig.cli as cli_mod
+    import tests.rig.critical_paths as cp_mod
+    import tests.rig.groups as groups_mod
+
+    monkeypatch.setattr(groups_mod, "DEFAULT_MANIFEST", tmp_path / "groups.yaml")
+    monkeypatch.setattr(cp_mod, "DEFAULT_REGISTRY", tmp_path / "critical_paths.yaml")
+
+    captured: dict[str, Any] = {}
+
+    def fake_execute_group(group, **kwargs):
+        captured["timeout"] = kwargs.get("timeout")
+        result = GroupResult(
+            name=group.name,
+            tier=group.tier,
+            exit_code=0,
+            passed=1,
+            failed=0,
+            errors=0,
+            skipped=0,
+            duration_seconds=0.01,
+        )
+        return result, 0
+
+    monkeypatch.setattr(cli_mod, "_execute_group", fake_execute_group)
+
+    args = cli_mod._build_parser().parse_args(
+        [
+            "run",
+            "unit-x",
+            "--timeout",
+            "0",
+            "--no-coverage",
+            "--no-parallel",
+            "--reports-dir",
+            str(tmp_path / "reports"),
+            "--baseline",
+            str(tmp_path / "reports" / "previous-summary.json"),
+        ]
+    )
+    exit_code = cli_mod.cmd_run(args)
+    assert exit_code == 0
+    assert captured["timeout"] == 0, (
+        "--timeout 0 must be passed through as 0, not replaced by the "
+        f"group default; got timeout={captured.get('timeout')!r}"
+    )

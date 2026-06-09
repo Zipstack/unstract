@@ -388,7 +388,7 @@ def cmd_run(args: argparse.Namespace) -> int:
                 coverage=args.coverage,
                 parallel=args.parallel and group.parallel,
                 workers=args.workers,
-                timeout=args.timeout or group.timeout_seconds,
+                timeout=group.timeout_seconds if args.timeout is None else args.timeout,
                 endpoints=endpoints,
             )
             if result is not None:
