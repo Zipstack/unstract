@@ -19,6 +19,7 @@ import {
   Tooltip,
   Typography,
 } from "antd";
+import PropTypes from "prop-types";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -36,6 +37,43 @@ import "./GlobalApiDeploymentKeys.css";
 const SAFE_TEXT_REGEX = /^[a-zA-Z0-9 \-_.,:()/]+$/;
 const SAFE_TEXT_MESSAGE =
   "Only alphanumeric characters, spaces, hyphens, underscores, periods, commas, colons, parentheses, and forward slashes are allowed.";
+
+function DeploymentScopeFields({ form, deployments }) {
+  const allowAll = Form.useWatch("allow_all_deployments", form);
+  return (
+    <>
+      <Form.Item
+        name="allow_all_deployments"
+        valuePropName="checked"
+        initialValue={true}
+      >
+        <Checkbox>Allow all API deployments</Checkbox>
+      </Form.Item>
+      <Form.Item name="api_deployments" label="Select API Deployments">
+        <Select
+          mode="multiple"
+          placeholder="Search and select deployments"
+          optionFilterProp="children"
+          className="gadk__deployment-select"
+          showSearch
+          disabled={allowAll !== false}
+        >
+          {deployments?.map((d) => (
+            <Select.Option key={d?.id} value={d?.id}>
+              {d?.display_name || d?.api_name}
+              {!d?.is_active && " (inactive)"}
+            </Select.Option>
+          ))}
+        </Select>
+      </Form.Item>
+    </>
+  );
+}
+
+DeploymentScopeFields.propTypes = {
+  form: PropTypes.object.isRequired,
+  deployments: PropTypes.array,
+};
 
 function GlobalApiDeploymentKeys() {
   const [keys, setKeys] = useState([]);
@@ -349,38 +387,6 @@ function GlobalApiDeploymentKeys() {
     },
   ];
 
-  const DeploymentScopeFields = ({ form }) => {
-    const allowAll = Form.useWatch("allow_all_deployments", form);
-    return (
-      <>
-        <Form.Item
-          name="allow_all_deployments"
-          valuePropName="checked"
-          initialValue={true}
-        >
-          <Checkbox>Allow all API deployments</Checkbox>
-        </Form.Item>
-        <Form.Item name="api_deployments" label="Select API Deployments">
-          <Select
-            mode="multiple"
-            placeholder="Search and select deployments"
-            optionFilterProp="children"
-            className="gadk__deployment-select"
-            showSearch
-            disabled={allowAll !== false}
-          >
-            {deployments?.map((d) => (
-              <Select.Option key={d?.id} value={d?.id}>
-                {d?.display_name || d?.api_name}
-                {!d?.is_active && " (inactive)"}
-              </Select.Option>
-            ))}
-          </Select>
-        </Form.Item>
-      </>
-    );
-  };
-
   return (
     <SettingsLayout>
       <div>
@@ -463,7 +469,7 @@ function GlobalApiDeploymentKeys() {
               maxLength={512}
             />
           </Form.Item>
-          <DeploymentScopeFields form={createForm} />
+          <DeploymentScopeFields form={createForm} deployments={deployments} />
         </Form>
       </Modal>
 
@@ -500,7 +506,7 @@ function GlobalApiDeploymentKeys() {
               maxLength={512}
             />
           </Form.Item>
-          <DeploymentScopeFields form={editForm} />
+          <DeploymentScopeFields form={editForm} deployments={deployments} />
         </Form>
       </Modal>
     </SettingsLayout>
