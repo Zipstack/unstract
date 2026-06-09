@@ -155,6 +155,9 @@ class CeleryChordBarrier:
 
             return result
 
-        except Exception as e:
-            logger.error(f"Failed to enqueue barrier: {e}")
+        except Exception:
+            # ``logger.exception`` auto-attaches the traceback — needed
+            # for debugging broker outages / serialisation failures
+            # at the chord entry point.
+            logger.exception("Failed to enqueue barrier")
             raise
