@@ -268,7 +268,18 @@ class RedisDecrBarrier:
           execution id (no ``AsyncResult`` since there's no Celery
           chord wrapping the group; the id is what the call site
           logs for chord-id traceability).
+
+        Note: ``app_instance`` is accepted for ``Barrier`` Protocol
+        parity with ``CeleryChordBarrier`` but unused by this
+        substrate. The callback signature is built inside the link
+        task via ``celery.current_app.signature(...)`` (so the link
+        runs against the *worker's* app, not the producer's). Keeping
+        the parameter in the signature lets call sites swap between
+        substrates without per-substrate adapter code.
         """
+        # Explicit ``del`` documents the Protocol-parity intent and
+        # satisfies static linters' unused-parameter check.
+        del app_instance
         if not header_tasks:
             execution_id = callback_kwargs.get("execution_id")
             pipeline_id = callback_kwargs.get("pipeline_id")
