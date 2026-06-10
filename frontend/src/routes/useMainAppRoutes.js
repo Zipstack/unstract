@@ -133,7 +133,7 @@ try {
 // "missing" and de-register the route for that session — same outcome
 // as a bare `catch`, but genuine errors in the present-plugin case at
 // least get logged. Centralized so any future hardening lands once.
-function isModuleMissing(err) {
+export function isModuleMissing(err) {
   const msg = err?.message || "";
   return (
     err?.code === "MODULE_NOT_FOUND" ||
