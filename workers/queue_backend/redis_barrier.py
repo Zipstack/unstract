@@ -237,6 +237,19 @@ def _results_key(execution_id: str) -> str:
     return f"barrier:results:{execution_id}"
 
 
+def _abort_lock_key(execution_id: str) -> str:
+    """Per-execution dedup lock for ``barrier_abort``.
+
+    Set via ``SET NX EX`` in ``barrier_abort`` to collapse N concurrent
+    header-task failures into a single Sentry/error event. MUST be
+    cleared at the start of a new barrier (in ``enqueue``) — otherwise
+    a retry that reuses an ``execution_id`` would hit a stale lock,
+    early-exit the abort path, and silently mask the failed retry as
+    successful.
+    """
+    return f"barrier:abort_lock:{execution_id}"
+
+
 class RedisDecrBarrier:
     """``Barrier`` implementation via Redis ``DECR remaining`` pattern.
 
@@ -346,7 +359,20 @@ class RedisDecrBarrier:
             # first to clear any stale results list, then ``SET`` the
             # counter with TTL.
             ttl_seconds = _key_ttl_seconds()
-            self.redis.delete(_results_key(execution_id))
+            # Clear any leftover state from a prior execution with this
+            # execution_id (including the dedup lock written by a
+            # previous run's ``barrier_abort``). Without DELing the
+            # abort_lock here, a retry that reuses execution_id would
+            # find the stale lock and route every ``barrier_abort``
+            # straight to the deduplicated branch — leaving B's
+            # ``remaining``/``results`` keys uncleaned. In-flight
+            # successful tasks from B would then hit ``remaining == 0``
+            # via DECR and fire the callback with partial results,
+            # silently masking the failed retry as successful.
+            self.redis.delete(
+                _results_key(execution_id),
+                _abort_lock_key(execution_id),
+            )
             self.redis.set(
                 _remaining_key(execution_id),
                 len(header_tasks),
@@ -611,10 +637,14 @@ def barrier_abort(
     missing key is a no-op), but the dedup collapses the alert noise.
     """
     redis_client = _get_redis_client()
-    abort_lock_key = f"barrier:abort_lock:{execution_id}"
     # ``SET NX EX`` — first-write-wins with auto-expiry. TTL matches
     # the barrier keys' TTL so the lock cleans up alongside them.
-    if not redis_client.set(abort_lock_key, "1", ex=_key_ttl_seconds(), nx=True):
+    # The lock is also explicitly DEL'd by ``enqueue`` at the start
+    # of any new execution with the same execution_id, to prevent a
+    # stale lock from masking a retry's failure as success.
+    if not redis_client.set(
+        _abort_lock_key(execution_id), "1", ex=_key_ttl_seconds(), nx=True
+    ):
         # Another barrier_abort for this execution already won the
         # SET NX race. Silently exit — no log, no Sentry, no
         # duplicate DEL.

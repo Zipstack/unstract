@@ -130,10 +130,17 @@ class TestRedisDecrBarrierEnqueue:
             3,
             ex=_KEY_TTL_DEFAULT_SECONDS,
         )
-        # ``results:{exec_id}`` is DEL'd to clear any stale prior-run
-        # leftovers. Its TTL is set inside the Lua script after the
-        # first RPUSH (EXPIRE on a non-existent key is a no-op).
-        redis_mock.delete.assert_called_once_with(_results_key("exec-42"))
+        # ``results:{exec_id}`` AND ``abort_lock:{exec_id}`` are DEL'd
+        # to clear any stale prior-run leftovers (e.g. from a retry
+        # reusing the same execution_id). Without DELing the abort
+        # lock here, a stale lock from a prior failed run would mask
+        # a retry's failure as success.
+        from queue_backend.redis_barrier import _abort_lock_key
+
+        redis_mock.delete.assert_called_once_with(
+            _results_key("exec-42"),
+            _abort_lock_key("exec-42"),
+        )
 
     def test_link_attached_to_each_header_task(self, barrier, redis_mock):
         """Every header task gets the ``barrier_decr_and_check`` link.
@@ -712,6 +719,47 @@ class TestBarrierAbortLinkError:
         assert call.args[0] == "barrier:abort_lock:exec-1"
         assert call.kwargs.get("nx") is True
         assert call.kwargs.get("ex") == _KEY_TTL_DEFAULT_SECONDS
+
+
+# --- Retry with reused execution_id: stale abort_lock cleanup ---
+
+
+class TestAbortLockRetryCleanup:
+    """A retry that reuses ``execution_id`` must not be poisoned by a
+    stale ``abort_lock`` left behind by the previous failed run.
+
+    Failure mode without the fix: execution A fails → ``barrier_abort``
+    writes ``abort_lock:foo`` (TTL 6h) → within 6h, execution B retries
+    with ``exec_id=foo`` → ``enqueue`` resets remaining/results but
+    abort_lock survives → if any header in B fails, its ``barrier_abort``
+    hits the stale lock and early-exits without DELing B's keys →
+    in-flight successful tasks DECR ``remaining`` to 0 → callback fires
+    with partial results → failed retry silently masked as successful.
+
+    Fix: ``enqueue`` DELs the abort_lock alongside the results list at
+    setup time, so a retry starts with a clean slate.
+    """
+
+    def test_enqueue_clears_stale_abort_lock(self, barrier, redis_mock):
+        """``enqueue`` must DEL the abort_lock key at setup so a
+        stale lock from a previous (failed) execution with the same
+        execution_id doesn't poison the retry's abort path."""
+        from queue_backend.redis_barrier import _abort_lock_key
+
+        barrier.enqueue(
+            [MagicMock(name="h1")],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-foo"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        # The setup DEL must include the abort_lock key (alongside
+        # results) — otherwise a stale lock from a prior run with the
+        # same execution_id survives into this enqueue.
+        redis_mock.delete.assert_called_once_with(
+            _results_key("exec-foo"),
+            _abort_lock_key("exec-foo"),
+        )
 
 
 # --- Process-local Redis client caching ---
