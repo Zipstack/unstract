@@ -1,0 +1,483 @@
+"""Characterisation tests for ``RedisDecrBarrier`` (PG Queue Phase 6b).
+
+The risky behaviour-change PR replacing Celery's chord aggregation
+primitive with the labs-design ``DECR remaining`` + ``RPUSH results``
+pattern (see ``queue_backend/redis_barrier.py``).
+
+Three layers:
+
+1. **Protocol shape** — ``RedisDecrBarrier`` satisfies the ``Barrier``
+   Protocol; the handle satisfies ``BarrierHandle``.
+2. **Wire model** — ``enqueue`` initialises the per-execution counter
+   + results list with TTL, stamps fairness on each header task,
+   attaches the ``barrier_decr_and_check`` link, and dispatches via
+   ``apply_async``.
+3. **Link aggregation** — the ``barrier_decr_and_check`` task runs the
+   atomic Lua script, fires the callback exactly when remaining reads
+   0, passes the aggregated results, and respects fairness on the
+   callback signature.
+
+Redis is mocked via ``MagicMock`` — the contract under test is the
+sequence of Redis ops + their args, not Redis's own correctness.
+A future integration test (against a real Redis) would belong in
+``test_redis_barrier_integration.py``.
+"""
+
+from __future__ import annotations
+
+import json
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from queue_backend import (
+    Barrier,
+    BarrierHandle,
+    RedisDecrBarrier,
+    barrier_decr_and_check,
+)
+from queue_backend.fairness import FAIRNESS_HEADER_NAME, FairnessKey, WorkloadType
+from queue_backend.redis_barrier import (
+    _KEY_TTL_DEFAULT_SECONDS,
+    _remaining_key,
+    _results_key,
+)
+
+
+# --- Protocol shape ---
+
+
+class TestRedisDecrBarrierProtocolShape:
+    def test_satisfies_barrier_protocol(self):
+        barrier: Barrier = RedisDecrBarrier()
+        assert callable(getattr(barrier, "enqueue", None))
+
+    def test_handle_satisfies_barrier_handle(self):
+        from queue_backend.redis_barrier import _RedisBarrierHandle
+
+        handle: BarrierHandle = _RedisBarrierHandle(id="exec-1")
+        assert handle.id == "exec-1"
+        assert isinstance(handle.id, str)
+
+
+# --- Enqueue: wire model ---
+
+
+@pytest.fixture
+def redis_mock():
+    """Mock the Redis client used by ``RedisDecrBarrier``."""
+    return MagicMock(name="redis_client")
+
+
+@pytest.fixture
+def barrier(redis_mock):
+    """``RedisDecrBarrier`` with an injected mock client.
+
+    Production builds its client from env via ``create_redis_client``;
+    tests inject so no Redis is required.
+    """
+    return RedisDecrBarrier(redis_client=redis_mock)
+
+
+class TestRedisDecrBarrierEnqueue:
+    def test_empty_header_returns_none_and_touches_no_redis(self, barrier, redis_mock):
+        """Mirrors the ``CeleryChordBarrier`` zero-header contract:
+        ``None`` is the *sole* signal of no-work-enqueued, and we
+        don't pay the Redis round-trip for it."""
+        result = barrier.enqueue(
+            [],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        assert result is None
+        # No SET / DELETE / EXPIRE on the empty path.
+        redis_mock.set.assert_not_called()
+        redis_mock.delete.assert_not_called()
+        redis_mock.expire.assert_not_called()
+
+    def test_missing_execution_id_raises(self, barrier):
+        """``RedisDecrBarrier`` uses ``execution_id`` as the key suffix
+        for ``remaining:{exec_id}`` / ``results:{exec_id}``. Without
+        it we can't isolate this execution's counter — fail loudly
+        instead of routing into a global namespace collision."""
+        header = [MagicMock(name="h1")]
+        with pytest.raises(ValueError, match=r"execution_id"):
+            barrier.enqueue(
+                header,
+                callback_task_name="cb",
+                # No execution_id.
+                callback_kwargs={"pipeline_id": "p-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+
+    def test_initialises_remaining_counter_with_ttl(self, barrier, redis_mock):
+        """``remaining:{exec_id}`` SET to ``len(header_tasks)`` with a
+        24h TTL — belt-and-suspenders cleanup if the callback never
+        fires (e.g. all tasks fail and link_error doesn't decrement)."""
+        header = [MagicMock(name="h1"), MagicMock(name="h2"), MagicMock(name="h3")]
+        barrier.enqueue(
+            header,
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-42"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        redis_mock.set.assert_called_once_with(
+            _remaining_key("exec-42"),
+            3,
+            ex=_KEY_TTL_DEFAULT_SECONDS,
+        )
+        # ``results:{exec_id}`` gets its own TTL after the DEL clears
+        # any stale prior-run leftovers.
+        redis_mock.delete.assert_called_once_with(_results_key("exec-42"))
+        redis_mock.expire.assert_called_once_with(
+            _results_key("exec-42"),
+            _KEY_TTL_DEFAULT_SECONDS,
+        )
+
+    def test_link_attached_to_each_header_task(self, barrier, redis_mock):
+        """Every header task gets the ``barrier_decr_and_check`` link.
+        Cloning (not mutating the caller's list) preserves the same
+        guarantee ``CeleryChordBarrier`` makes for cross-tenant
+        signature reuse."""
+        h1 = MagicMock(name="h1")
+        h2 = MagicMock(name="h2")
+        barrier.enqueue(
+            [h1, h2],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        # Each task cloned, .link(...) called once on the clone,
+        # apply_async called once on the clone.
+        h1.clone.assert_called_once_with()
+        h2.clone.assert_called_once_with()
+        h1.clone.return_value.link.assert_called_once()
+        h2.clone.return_value.link.assert_called_once()
+        h1.clone.return_value.apply_async.assert_called_once_with()
+        h2.clone.return_value.apply_async.assert_called_once_with()
+        # The caller's signatures were NOT mutated (no .link on the
+        # originals).
+        h1.link.assert_not_called()
+        h2.link.assert_not_called()
+
+    def test_fairness_header_stamped_on_each_header_task(self, barrier, redis_mock):
+        """``fairness.as_header()`` rides on every header signature as
+        an additive AMQP header — same wire shape as
+        ``CeleryChordBarrier``'s fairness plumbing."""
+        h1 = MagicMock(name="h1")
+        fairness = FairnessKey(org_id="org-x", workload_type=WorkloadType.API)
+        barrier.enqueue(
+            [h1],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+            fairness=fairness,
+        )
+        # ``as_header()`` returns ``{FAIRNESS_HEADER_NAME: <dict>}``
+        # (a nested dict, not a JSON string — see fairness.py:62).
+        h1.clone.return_value.set.assert_called_once_with(
+            headers=fairness.as_header()
+        )
+
+    def test_no_fairness_no_header_added(self, barrier, redis_mock):
+        """When ``fairness=None``, no ``headers=`` kwarg on the
+        signature — preserves wire equivalence for the
+        non-fairness call path."""
+        h1 = MagicMock(name="h1")
+        barrier.enqueue(
+            [h1],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        h1.clone.return_value.set.assert_not_called()
+
+    def test_returns_handle_with_execution_id(self, barrier, redis_mock):
+        """``BarrierHandle.id`` is the execution id — what call sites
+        log for chord-id tracing. (Under ``CeleryChordBarrier`` this
+        was the chord aggregator's AsyncResult id; under
+        ``RedisDecrBarrier`` we don't have such a task, so we expose
+        the execution id which is a stable per-execution identifier
+        that the existing log consumers don't depend on the
+        underlying type of.)"""
+        result = barrier.enqueue(
+            [MagicMock()],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-42"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        assert result is not None
+        assert result.id == "exec-42"
+        assert isinstance(result.id, str)
+
+    def test_setup_failure_raises(self, barrier, redis_mock):
+        """Any substrate failure (Redis down, network blip mid-setup)
+        propagates as an exception — matches the ``Barrier`` Protocol:
+        ``None`` is sole "no-op" signal, everything else raises."""
+        redis_mock.set.side_effect = ConnectionError("redis is down")
+        with pytest.raises(ConnectionError, match="redis is down"):
+            barrier.enqueue(
+                [MagicMock()],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+
+    def test_default_ttl_is_six_hours(self):
+        """Lock in the chosen default. Accidental shrinkage to a few
+        minutes would cause spurious callback fires on any execution
+        longer than the new value; accidental expansion to days would
+        leak orphaned keys. The default reflects the worst-case
+        ``FILE_PROCESSING_TASK_TIME_LIMIT`` (3h) × 2× margin."""
+        assert _KEY_TTL_DEFAULT_SECONDS == 6 * 60 * 60
+
+    def test_ttl_overridable_via_env(self, barrier, redis_mock, monkeypatch):
+        """Operators with substantially longer (or shorter) workflows
+        can override the cleanup TTL via ``WORKER_BARRIER_KEY_TTL_SECONDS``.
+
+        Set well above the default to confirm the env-driven path is
+        actually read (not the constant)."""
+        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", str(3 * 24 * 3600))
+        barrier.enqueue(
+            [MagicMock()],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        # ``ex=`` on the counter SET should be the overridden 3-day value.
+        assert redis_mock.set.call_args.kwargs.get("ex") == 3 * 24 * 3600
+
+    def test_ttl_invalid_value_falls_back_to_default(
+        self, barrier, redis_mock, monkeypatch
+    ):
+        """Garbage env (non-int, negative, zero) → default TTL applies
+        with a warning logged. TTL is a safety net, not a correctness
+        invariant, so a misconfigured value shouldn't break the
+        barrier — it just degrades the cleanup window."""
+        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "not-an-int")
+        barrier.enqueue(
+            [MagicMock()],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        assert redis_mock.set.call_args.kwargs.get("ex") == _KEY_TTL_DEFAULT_SECONDS
+
+        # Zero / negative: same fallback.
+        for bad in ("0", "-1"):
+            redis_mock.reset_mock()
+            monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", bad)
+            barrier.enqueue(
+                [MagicMock()],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-2"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+            assert (
+                redis_mock.set.call_args.kwargs.get("ex")
+                == _KEY_TTL_DEFAULT_SECONDS
+            ), f"TTL={bad!r} should have fallen back to default"
+
+
+# --- Link task: aggregation ---
+
+
+class TestBarrierDecrAndCheckLink:
+    """The ``barrier_decr_and_check`` worker task — the load-bearing
+    aggregator. Runs after each header task and either decrements +
+    aggregates (most calls) or fires the callback (the last call).
+    """
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_pending_path_decrement_only(self, get_redis):
+        """When the post-decrement counter reads >0, no callback
+        dispatch — just ``RPUSH + DECR`` and return a pending status."""
+        redis_client = MagicMock(name="redis")
+        # Lua script returns [remaining, results-empty-list-since-pending].
+        # ``register_script`` returns a callable that returns the script result.
+        script = MagicMock(name="script", return_value=[2, []])
+        redis_client.register_script.return_value = script
+        get_redis.return_value = redis_client
+
+        with patch("celery.current_app") as current_app:
+            # Invoke the underlying function directly (bypass
+            # Celery's @worker_task wrapper for unit testing).
+            result = barrier_decr_and_check.run(
+                {"batch_id": "b1", "status": "ok"},
+                execution_id="exec-1",
+                callback_descriptor={
+                    "task_name": "cb",
+                    "kwargs": {"execution_id": "exec-1"},
+                    "queue": "q",
+                    "fairness_headers": None,
+                },
+            )
+
+        # Lua script invoked with the right keys + the JSON-serialised result.
+        script.assert_called_once()
+        call_kwargs = script.call_args.kwargs
+        assert call_kwargs["keys"] == [
+            _remaining_key("exec-1"),
+            _results_key("exec-1"),
+        ]
+        assert json.loads(call_kwargs["args"][0]) == {"batch_id": "b1", "status": "ok"}
+
+        # No callback dispatch — remaining > 0.
+        current_app.signature.assert_not_called()
+        assert result == {"status": "pending", "remaining": 2}
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_complete_path_fires_callback_with_aggregated_results(self, get_redis):
+        """When the post-decrement counter reads 0, the link reads the
+        full results list (returned by the Lua script in the same
+        atomic step), constructs the callback signature with the
+        aggregated list as the first arg, and dispatches via
+        ``apply_async``."""
+        redis_client = MagicMock(name="redis")
+        # Lua returns [0, [serialised result_1, result_2, result_3]].
+        aggregated_raw = [
+            json.dumps({"batch_id": "b1", "status": "ok"}),
+            json.dumps({"batch_id": "b2", "status": "ok"}),
+            json.dumps({"batch_id": "b3", "status": "ok"}),
+        ]
+        script = MagicMock(name="script", return_value=[0, aggregated_raw])
+        redis_client.register_script.return_value = script
+        get_redis.return_value = redis_client
+
+        with patch("celery.current_app") as current_app:
+            cb_sig = MagicMock(name="callback_signature")
+            cb_sig.apply_async.return_value = MagicMock(id="callback-task-id-xyz")
+            current_app.signature.return_value = cb_sig
+
+            result = barrier_decr_and_check.run(
+                {"batch_id": "b3", "status": "ok"},
+                execution_id="exec-42",
+                callback_descriptor={
+                    "task_name": "process_batch_callback_api",
+                    "kwargs": {
+                        "execution_id": "exec-42",
+                        "pipeline_id": "pipe-7",
+                        "organization_id": "org-x",
+                    },
+                    "queue": "api_file_processing_callback",
+                    "fairness_headers": None,
+                },
+            )
+
+        # Callback signature constructed with aggregated results as
+        # first arg, callback kwargs forwarded, queue pinned.
+        current_app.signature.assert_called_once_with(
+            "process_batch_callback_api",
+            args=[
+                [
+                    {"batch_id": "b1", "status": "ok"},
+                    {"batch_id": "b2", "status": "ok"},
+                    {"batch_id": "b3", "status": "ok"},
+                ],
+            ],
+            kwargs={
+                "execution_id": "exec-42",
+                "pipeline_id": "pipe-7",
+                "organization_id": "org-x",
+            },
+            queue="api_file_processing_callback",
+        )
+        cb_sig.apply_async.assert_called_once_with()
+
+        assert result["status"] == "complete"
+        assert result["callback_task_id"] == "callback-task-id-xyz"
+        assert result["aggregated_count"] == 3
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_complete_path_passes_fairness_header_to_callback(self, get_redis):
+        """Fairness rides the callback signature too — same wire shape
+        as ``CeleryChordBarrier``'s callback fairness plumbing."""
+        redis_client = MagicMock(name="redis")
+        script = MagicMock(name="script", return_value=[0, [json.dumps({"x": 1})]])
+        redis_client.register_script.return_value = script
+        get_redis.return_value = redis_client
+
+        # Match the wire shape produced by ``FairnessKey.as_header()`` —
+        # a nested dict, not a JSON string (see fairness.py:62).
+        fairness_headers = {
+            FAIRNESS_HEADER_NAME: {
+                "org_id": "org-x",
+                "workload_type": "non_api",
+                "pipeline_priority": 5,
+            }
+        }
+        with patch("celery.current_app") as current_app:
+            current_app.signature.return_value = MagicMock(
+                apply_async=MagicMock(return_value=MagicMock(id="cb-id"))
+            )
+
+            barrier_decr_and_check.run(
+                {"x": 1},
+                execution_id="exec-1",
+                callback_descriptor={
+                    "task_name": "cb",
+                    "kwargs": {"execution_id": "exec-1"},
+                    "queue": "q",
+                    "fairness_headers": fairness_headers,
+                },
+            )
+
+        # ``headers=fairness_headers`` MUST be on the signature kwargs.
+        assert current_app.signature.call_args.kwargs.get("headers") == fairness_headers
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_unserialisable_result_raises_loudly(self, get_redis):
+        """A header task returning something json.dumps can't handle
+        is a typed-boundary regression (UN-3513). Raise loudly so the
+        execution surfaces an error rather than silently dropping the
+        result."""
+        redis_client = MagicMock(name="redis")
+        get_redis.return_value = redis_client
+
+        class Unserialisable:
+            """Has no __str__/__repr__/__dict__ structure json can encode."""
+
+            def __init__(self):
+                self.x = object()  # not JSON-safe even with default=str
+
+        # ``default=str`` covers most cases, so we use a directly
+        # ``TypeError``-raising object. ``set`` of incompatible
+        # types is json's classic unserialisable case.
+        with pytest.raises((TypeError, ValueError)):
+            barrier_decr_and_check.run(
+                {"bad": {1, 2, 3}},
+                execution_id="exec-1",
+                callback_descriptor={
+                    "task_name": "cb",
+                    "kwargs": {"execution_id": "exec-1"},
+                    "queue": "q",
+                    "fairness_headers": None,
+                },
+            )
+
+    def test_link_task_is_registered_with_celery_under_canonical_name(self):
+        """The link task must be importable + registered under
+        ``barrier_decr_and_check`` — any worker that processes the
+        link task's queue needs the name to resolve.
+
+        Mixed-version rolling deploys depend on this: a worker
+        running 6b-old code without the link task registered would
+        fail with ``KeyError`` on the link's task name, which is a
+        loud failure (no silent drop)."""
+        assert barrier_decr_and_check.name == "barrier_decr_and_check"
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

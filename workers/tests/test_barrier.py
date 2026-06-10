@@ -28,7 +28,6 @@ The single ``chord(...)`` call still lives in
 
 from __future__ import annotations
 
-import contextlib
 from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
@@ -105,12 +104,13 @@ class TestBarrierProtocolShape:
         #
         # ``required_attrs`` is hand-maintained: if a future refactor
         # adds a required attribute to ``TaskHandle`` /
-        # ``BarrierHandle``, add it here too. We do *not* introspect
-        # ``TaskHandle.__annotations__`` because runtime-checkable
-        # Protocols would force every substrate handle (including
-        # third-party ones we don't control) to be runtime-checkable
-        # too. Trade-off: the maintenance is manual but the contract
-        # is enforced.
+        # ``BarrierHandle``, add it here too. The hand-maintained form
+        # is grepable next to the comment that explains it, and
+        # ``TaskHandle`` is intentionally minimal (``id: str``) so the
+        # manual-update burden is one line every several phases.
+        # ``__annotations__`` introspection would also work (and
+        # doesn't require ``@runtime_checkable``), but the explicit
+        # tuple keeps the contract surface explicit.
         async_result_instance = AsyncResult("placeholder-task-id")
         required_attrs = ("id",)
         missing = [
@@ -557,10 +557,8 @@ def _setup_workflow_api_mocks(
 
     mock_create_chord = MagicMock(name="create_chord_execution")
     # Truthy handle on the success path; ``None`` on the two failure
-    # paths. Production's ``if not result:`` branch (today; a future
-    # phase-6b PR may tighten to ``if result is None:`` — see the
-    # TODO at the call site in ``api-deployment/tasks.py``) then
-    # distinguishes the two ``None`` cases via ``batch_tasks`` length.
+    # paths. Production's ``if result is None:`` branch then
+    # distinguishes the two cases via ``batch_tasks`` length.
     if chord_outcome == "success":
         mock_create_chord.return_value = MagicMock(id="chord-result-id")
     else:
@@ -720,12 +718,13 @@ class TestCallSiteFairnessContracts:
             mock_create_chord,
         )
 
-        # ``contextlib.suppress`` over a bare ``except Exception: pass``
-        # to declare intent explicitly: any post-``create_chord_execution``
-        # raise (e.g. the mocked api_client's status update path) is
-        # tolerated, because the next ``assert mock_create_chord.called``
-        # is what proves the chord call was actually reached.
-        with contextlib.suppress(Exception):
+        # Tolerate post-``create_chord_execution`` raises (e.g. the
+        # mocked api_client's status-update path), but re-raise if
+        # ``create_chord_execution`` was never invoked — a pre-chord
+        # regression would otherwise be silently swallowed and surface
+        # as a misleading ``assert mock_create_chord.called`` failure
+        # rather than the actual error.
+        try:
             general_tasks._orchestrate_file_processing_general(
                 api_client=api_client,
                 workflow_id="wf-1",
@@ -737,6 +736,9 @@ class TestCallSiteFairnessContracts:
                 use_file_history=False,
                 organization_id="org_test",
             )
+        except Exception:
+            if not mock_create_chord.called:
+                raise
 
         assert mock_create_chord.called, (
             "_orchestrate_file_processing_general did not call "
