@@ -34,19 +34,29 @@ class AuthenticationHelper:
 
     @staticmethod
     def get_or_create_user_by_email(user_id: str, email: str) -> User:
-        """Get or create a user with the given email.
+        """Get or create the canonical user for an Auth0 identity.
 
-        If a user with the given email already exists, return that user.
-        Otherwise, create a new user with the given email and return it.
+        Resolution order:
+        1. By ``user_id`` (the stable Auth0 subject). This reuses an existing
+           row even when it was created by a different login path — e.g. an
+           enterprise/SSO row with a populated ``auth_provider`` — and is the
+           key guard against duplicate accounts for one person who signs in via
+           more than one Auth0 connection (e.g. SAML + passwordless email).
+        2. By email — for a pre-provisioned row (e.g. an invited user) that has
+           no ``user_id`` yet; backfill the ``user_id`` onto it.
+        3. Otherwise create a new user.
 
         Parameters:
-            user_id (str): The ID of the user.
+            user_id (str): The Auth0 subject (``sub``) of the user.
             email (str): The email of the user.
 
         Returns:
-            User: The user with the given email.
+            User: The canonical user for this identity.
         """
         user_service = UserService()
+        user = user_service.get_user_by_user_id(user_id)
+        if user:
+            return user
         user = user_service.get_user_by_email(email)
         if user and not user.user_id:
             user = user_service.update_user(user, user_id)

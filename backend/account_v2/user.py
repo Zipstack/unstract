@@ -41,11 +41,14 @@ class UserService:
         return user
 
     def get_user_by_email(self, email: str) -> User | None:
-        try:
-            user: User = User.objects.get(email=email, auth_provider="")
-            return user
-        except User.DoesNotExist:
-            return None
+        # Resolve a single canonical row for an email, matched case-insensitively
+        # and across auth providers. The previous ``auth_provider=""`` filter
+        # only matched standard-login rows, so a person who also had an
+        # enterprise/SSO row (populated ``auth_provider``) was invisible here and
+        # a duplicate account got created. ``.first()`` (oldest row, ordered
+        # deterministically) also avoids ``MultipleObjectsReturned`` for emails
+        # that already have duplicate rows.
+        return User.objects.filter(email__iexact=email).order_by("created_at").first()
 
     def get_user_by_user_id(self, user_id: str) -> Any:
         try:
