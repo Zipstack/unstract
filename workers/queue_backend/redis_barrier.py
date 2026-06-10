@@ -279,6 +279,17 @@ class RedisDecrBarrier:
         module can be imported (and the worker task registered) in
         contexts where Redis isn't yet reachable (e.g. test collection,
         worker boot before networking up).
+
+        Production path: ``self._redis_client is None`` → falls back to
+        (and caches) the module-level ``_redis_client_singleton``, so
+        the instance and the standalone ``barrier_decr_and_check`` /
+        ``barrier_abort`` worker tasks all share the same
+        ``ConnectionPool``.
+
+        Test path: ``__init__(redis_client=...)`` bypasses this branch
+        entirely — fixtures inject a ``MagicMock`` / ``fakeredis``
+        without touching the module-level singleton (which would leak
+        across tests).
         """
         if self._redis_client is None:
             self._redis_client = _get_redis_client()
