@@ -29,6 +29,7 @@ The single ``chord(...)`` call still lives in
 from __future__ import annotations
 
 import contextlib
+from dataclasses import dataclass
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -428,44 +429,65 @@ def _load_api_deployment_tasks():
     return module
 
 
-def _run_workflow_api_with_mocks(
+@dataclass
+class _WorkflowApiMocks:
+    """Spy bundle from ``_setup_workflow_api_mocks``.
+
+    All attributes are bound *before* the production function runs,
+    so a test asserting on spies after a raising call (e.g. the
+    queue-failure branch) can still inspect them.
+    """
+
+    api_tasks: object
+    api_client: MagicMock
+    create_chord: MagicMock
+    dispatch: MagicMock
+    decisions_helper: MagicMock
+
+
+# Three production branches under test, one knob. Replacing
+# ``force_empty_batches`` + ``force_falsy_chord_with_batches`` (two
+# bools encoding three states with a runtime mutual-exclusivity
+# guard) — the illegal ``(True, True)`` combination is now
+# unrepresentable.
+_VALID_CHORD_OUTCOMES = ("success", "empty_batches", "queue_failure")
+
+
+def _setup_workflow_api_mocks(
     monkeypatch,
     *,
-    hash_values_of_files: dict | None = None,
-    force_empty_batches: bool = False,
-    force_falsy_chord_with_batches: bool = False,
+    chord_outcome: str = "success",
     manual_review_required: bool = False,
-    review_decisions_helper: MagicMock | None = None,
-):
-    """Drive ``_run_workflow_api`` end-to-end with the minimum mocks
-    needed to exercise the chord-dispatch + zero-batch + queue-failure
-    branches.
+    num_batches: int = 1,
+) -> _WorkflowApiMocks:
+    """Setup mocks; caller drives ``_run_workflow_api``.
 
-    Knobs:
+    Use this when the test needs to assert on spies *after* the
+    production function raises (e.g. the queue-failure branch).
+    Tests that don't need post-raise assertions can use the thin
+    convenience wrapper ``_run_workflow_api_with_mocks``.
 
-    - ``force_empty_batches`` — ``_get_file_batches`` returns ``[]``
-      and ``create_chord_execution`` returns ``None``. Exercises the
-      zero-batch defensive dispatch fallback.
-    - ``force_falsy_chord_with_batches`` — ``_get_file_batches``
-      returns a non-empty list but ``create_chord_execution`` returns
-      ``None`` anyway. Exercises the "genuine queue failure" branch
-      that raises and maps to ``ExecutionStatus.ERROR``. Mutually
-      exclusive with ``force_empty_batches``.
-    - ``manual_review_required`` — ``_create_file_data`` returns a
-      file_data whose ``manual_review_config["review_required"]`` is
-      ``True``, exercising the manual-review decision branch. The
-      caller can supply ``review_decisions_helper`` (a ``MagicMock``)
-      to track invocations of
-      ``_calculate_manual_review_decisions_for_batch_api``.
+    ``chord_outcome`` controls which production branch fires:
 
-    Returns ``(result, mock_create_chord, mock_dispatch)`` so callers
-    can assert on the response shape and on which dispatch path fired.
+    - ``"success"`` — non-empty batches, truthy chord handle. Normal
+      chord path completes.
+    - ``"empty_batches"`` — ``_get_file_batches`` yields ``[]``,
+      chord returns ``None``. Zero-batch defensive dispatch fires.
+    - ``"queue_failure"`` — ``_get_file_batches`` yields non-empty
+      batches, chord returns ``None`` anyway. Production raises so
+      the outer handler can map to ``ExecutionStatus.ERROR``.
+
+    ``num_batches`` controls how many batches ``_get_file_batches``
+    returns when ``chord_outcome != "empty_batches"`` — set >1 to
+    exercise per-batch multiplicity contracts (e.g. the manual-
+    review decision helper is invoked once per batch).
     """
-    if force_empty_batches and force_falsy_chord_with_batches:
+    if chord_outcome not in _VALID_CHORD_OUTCOMES:
         raise AssertionError(
-            "force_empty_batches and force_falsy_chord_with_batches are "
-            "mutually exclusive — pick the branch under test"
+            f"chord_outcome must be one of {_VALID_CHORD_OUTCOMES}, "
+            f"got {chord_outcome!r}"
         )
+
     api_tasks = _load_api_deployment_tasks()
     api_client = MagicMock(name="api_client")
     api_client.get_workflow_execution.return_value = MagicMock(
@@ -488,25 +510,27 @@ def _run_workflow_api_with_mocks(
         api_tasks, "_log_api_batch_creation_statistics", lambda **kwargs: None
     )
 
-    # Always patch ``_get_file_batches`` — the real implementation
+    # ``_get_file_batches`` always patched — the real implementation
     # filters non-``FileHashData``/``dict`` entries, which would drop
-    # our ``MagicMock`` values and silently land in the zero-batch
-    # branch even when ``force_empty_batches=False``. Patching here
-    # gives the caller deterministic control over the chord vs
-    # zero-batch path via the knobs.
+    # ``MagicMock`` values and silently route into the zero-batch
+    # branch. Patching here gives the caller deterministic control
+    # over both the branch under test and the batch count.
+    if chord_outcome == "empty_batches":
+        batches_to_return: list[list[str]] = []
+    else:
+        batches_to_return = [
+            [f"file_in_batch_{i}"] for i in range(num_batches)
+        ]
     monkeypatch.setattr(
-        api_tasks,
-        "_get_file_batches",
-        lambda **kwargs: [] if force_empty_batches else [["file_1_in_batch"]],
+        api_tasks, "_get_file_batches", lambda **kwargs: batches_to_return
     )
+
     # Neutralise the per-batch helpers so ``batch_tasks`` is non-empty
-    # in the chord-path case without us needing to construct real
-    # ``FileBatchData`` objects.
+    # without constructing real ``FileBatchData`` objects.
     mock_file_data = MagicMock(name="file_data")
-    # ``.manual_review_config.get("review_required", False)`` is a
-    # real dict so we can flip it via the ``manual_review_required``
-    # knob — MagicMocks would return truthy by default from .get(),
-    # which would force the manual-review branch.
+    # Real dict (not MagicMock) so ``.get("review_required", False)``
+    # returns the requested bool — MagicMocks would return truthy by
+    # default from ``.get()``, forcing the manual-review branch.
     mock_file_data.manual_review_config = {
         "review_required": manual_review_required,
     }
@@ -516,28 +540,31 @@ def _run_workflow_api_with_mocks(
     monkeypatch.setattr(
         api_tasks, "_create_batch_data", lambda **kwargs: {"batch": "data"}
     )
+    # Always create the decisions-helper spy and install it; tests
+    # that don't flip ``manual_review_required`` simply never see it
+    # invoked. Exposing it on the spy bundle removes the previous
+    # caller-supplied/fallback dead branch.
+    decisions_helper = MagicMock(
+        name="_calculate_manual_review_decisions_for_batch_api",
+        return_value=[False],
+    )
     if manual_review_required:
-        # When the caller flips the flag, install a spy on the
-        # manual-review decision helper so we can assert it was
-        # invoked. Default arg ensures shape compatibility with the
-        # real helper (one bool per file).
-        helper = review_decisions_helper or MagicMock(
-            name="_calculate_manual_review_decisions_for_batch_api",
-            return_value=[False],
-        )
         monkeypatch.setattr(
-            api_tasks, "_calculate_manual_review_decisions_for_batch_api", helper
+            api_tasks,
+            "_calculate_manual_review_decisions_for_batch_api",
+            decisions_helper,
         )
 
     mock_create_chord = MagicMock(name="create_chord_execution")
-    # When the chord path should fire normally, return a truthy
-    # handle. When forced empty OR forced falsy-with-batches, return
-    # ``None`` — the production code's ``if result is None:`` branch
-    # then distinguishes the two cases via ``batch_tasks`` length.
-    if force_empty_batches or force_falsy_chord_with_batches:
-        mock_create_chord.return_value = None
-    else:
+    # Truthy handle on the success path; ``None`` on the two failure
+    # paths. Production's ``if not result:`` branch (today; a future
+    # phase-6b PR may tighten to ``if result is None:`` — see the
+    # TODO at the call site in ``api-deployment/tasks.py``) then
+    # distinguishes the two ``None`` cases via ``batch_tasks`` length.
+    if chord_outcome == "success":
         mock_create_chord.return_value = MagicMock(id="chord-result-id")
+    else:
+        mock_create_chord.return_value = None
     monkeypatch.setattr(
         api_tasks.WorkflowOrchestrationUtils,
         "create_chord_execution",
@@ -549,11 +576,42 @@ def _run_workflow_api_with_mocks(
     mock_dispatch = MagicMock(name="dispatch", return_value=mock_dispatch_result)
     monkeypatch.setattr(api_tasks, "dispatch", mock_dispatch)
 
+    return _WorkflowApiMocks(
+        api_tasks=api_tasks,
+        api_client=api_client,
+        create_chord=mock_create_chord,
+        dispatch=mock_dispatch,
+        decisions_helper=decisions_helper,
+    )
+
+
+def _run_workflow_api_with_mocks(
+    monkeypatch,
+    *,
+    hash_values_of_files: dict | None = None,
+    chord_outcome: str = "success",
+    manual_review_required: bool = False,
+    num_batches: int = 1,
+):
+    """Convenience wrapper around ``_setup_workflow_api_mocks``.
+
+    Setup + run; returns ``(result, create_chord, dispatch)`` for
+    tests where ``_run_workflow_api`` doesn't raise. Tests that need
+    to assert on spies after a raising call should use
+    ``_setup_workflow_api_mocks`` directly so the spies are bound
+    before the raise.
+    """
+    mocks = _setup_workflow_api_mocks(
+        monkeypatch,
+        chord_outcome=chord_outcome,
+        manual_review_required=manual_review_required,
+        num_batches=num_batches,
+    )
     files = hash_values_of_files if hash_values_of_files is not None else {
         "f1": MagicMock(name="FileHashData_f1"),
     }
-    result = api_tasks._run_workflow_api(
-        api_client=api_client,
+    result = mocks.api_tasks._run_workflow_api(
+        api_client=mocks.api_client,
         schema_name="org_test",
         workflow_id="wf-1",
         execution_id="exec-1",
@@ -564,7 +622,7 @@ def _run_workflow_api_with_mocks(
         use_file_history=False,
         task_id="task-1",
     )
-    return result, mock_create_chord, mock_dispatch
+    return result, mocks.create_chord, mocks.dispatch
 
 
 class TestCallSiteFairnessContracts:
@@ -584,14 +642,14 @@ class TestCallSiteFairnessContracts:
         """The chord call site in ``_run_workflow_api`` must pass
         ``fairness=FairnessKey(org_id=str(schema_name),
         workload_type=WorkloadType.API)`` to ``create_chord_execution``."""
-        # ``_run_workflow_api_with_mocks(force_empty_batches=False)``
-        # patches ``_get_file_batches`` to return a non-empty list so
-        # the chord path actually fires (the helper's patches are
-        # documented in ``_run_workflow_api_with_mocks``).
+        # ``chord_outcome="success"`` patches ``_get_file_batches``
+        # to return a non-empty list and ``create_chord_execution``
+        # to return a truthy handle so the chord path actually fires
+        # (helper patches documented in ``_setup_workflow_api_mocks``).
         _result, mock_create_chord, mock_dispatch = _run_workflow_api_with_mocks(
             monkeypatch,
             hash_values_of_files={"f1": MagicMock(name="file_1")},
-            force_empty_batches=False,
+            chord_outcome="success",
         )
         # ``create_chord_execution`` MUST be called with the right
         # fairness — a refactor that drops ``fairness=`` or swaps the
@@ -728,7 +786,7 @@ class TestApiDeploymentZeroFilesContract:
         result, _create_chord, mock_dispatch = _run_workflow_api_with_mocks(
             monkeypatch,
             hash_values_of_files={"f1": MagicMock(name="file_1")},
-            force_empty_batches=True,
+            chord_outcome="empty_batches",
         )
 
         # Dispatch was called exactly once, with the chord-empty
@@ -780,11 +838,26 @@ class TestApiDeploymentQueueFailureContract:
         ``batch_tasks``, ``_run_workflow_api`` must raise — the outer
         task handler then maps this to ``ExecutionStatus.ERROR`` for
         the pipeline status update."""
-        with pytest.raises(Exception, match=r"(?i)queue|failed|chord"):
-            _run_workflow_api_with_mocks(
-                monkeypatch,
+        # Pin the exact production message rather than a loose
+        # ``queue|failed|chord`` regex — the loose form would also
+        # match a misconfigured-harness ``AssertionError`` or any
+        # setup error whose message contains "failed", masking a
+        # harness misconfiguration as a passing assertion.
+        mocks = _setup_workflow_api_mocks(
+            monkeypatch, chord_outcome="queue_failure"
+        )
+        with pytest.raises(Exception, match=r"Failed to queue execution task exec-1"):
+            mocks.api_tasks._run_workflow_api(
+                api_client=mocks.api_client,
+                schema_name="org_test",
+                workflow_id="wf-1",
+                execution_id="exec-1",
                 hash_values_of_files={"f1": MagicMock(name="file_1")},
-                force_falsy_chord_with_batches=True,
+                scheduled=False,
+                execution_mode=None,
+                pipeline_id="pipe-1",
+                use_file_history=False,
+                task_id="task-1",
             )
 
     def test_falsy_chord_with_non_empty_batches_does_not_dispatch_fallback(
@@ -794,19 +867,43 @@ class TestApiDeploymentQueueFailureContract:
         the genuine-queue-failure branch — that's reserved for the
         zero-batch defence. A future refactor that routed both
         falsy-result cases through the same fallback would silently
-        lose the ERROR signal."""
-        with contextlib.suppress(Exception):
-            _result, _create_chord, mock_dispatch = (
-                _run_workflow_api_with_mocks(
-                    monkeypatch,
-                    hash_values_of_files={"f1": MagicMock(name="file_1")},
-                    force_falsy_chord_with_batches=True,
-                )
+        lose the ERROR signal.
+
+        Previous revision had this assertion inside
+        ``contextlib.suppress(Exception)`` and bound ``mock_dispatch``
+        from the function's tuple return — which never executed because
+        the production code raised before the return. ``AssertionError``
+        is an ``Exception`` so the suppress would have swallowed any
+        failing assert too. Both defects fixed by:
+
+        1. Setting up mocks via ``_setup_workflow_api_mocks`` so spies
+           are bound *before* ``_run_workflow_api`` runs.
+        2. Asserting on ``mocks.dispatch.called`` *outside* the
+           ``pytest.raises`` block so an assertion failure surfaces.
+        """
+        mocks = _setup_workflow_api_mocks(
+            monkeypatch, chord_outcome="queue_failure"
+        )
+        with pytest.raises(Exception, match=r"Failed to queue execution task exec-1"):
+            mocks.api_tasks._run_workflow_api(
+                api_client=mocks.api_client,
+                schema_name="org_test",
+                workflow_id="wf-1",
+                execution_id="exec-1",
+                hash_values_of_files={"f1": MagicMock(name="file_1")},
+                scheduled=False,
+                execution_mode=None,
+                pipeline_id="pipe-1",
+                use_file_history=False,
+                task_id="task-1",
             )
-            assert not mock_dispatch.called, (
-                "Genuine queue failure must raise, not silently dispatch the "
-                "zero-batch fallback callback"
-            )
+        # The fallback dispatch was monkeypatched on the module and
+        # survives the raise; assert outside the ``pytest.raises``
+        # block so an assertion failure isn't swallowed.
+        assert not mocks.dispatch.called, (
+            "Genuine queue failure must raise, not silently dispatch the "
+            "zero-batch fallback callback"
+        )
 
 
 class TestApiDeploymentManualReviewContract:
@@ -827,30 +924,43 @@ class TestApiDeploymentManualReviewContract:
     ):
         """With ``review_required=True``, the decision helper is
         invoked exactly once per batch and the chord still fires
-        with the same fairness slot as the non-review path."""
-        decisions_helper = MagicMock(
-            name="_calculate_manual_review_decisions_for_batch_api",
-            return_value=[False],
+        with the same fairness slot as the non-review path.
+
+        Drives the helper with ``num_batches=3`` so the "once per
+        batch" contract is genuinely exercised — a regression
+        invoking the helper 0× or 2× per batch wouldn't be caught
+        with only one batch."""
+        num_batches = 3
+        mocks = _setup_workflow_api_mocks(
+            monkeypatch,
+            chord_outcome="success",
+            manual_review_required=True,
+            num_batches=num_batches,
         )
-        _result, mock_create_chord, mock_dispatch = (
-            _run_workflow_api_with_mocks(
-                monkeypatch,
-                hash_values_of_files={"f1": MagicMock(name="file_1")},
-                manual_review_required=True,
-                review_decisions_helper=decisions_helper,
-            )
+        mocks.api_tasks._run_workflow_api(
+            api_client=mocks.api_client,
+            schema_name="org_test",
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            hash_values_of_files={"f1": MagicMock(name="file_1")},
+            scheduled=False,
+            execution_mode=None,
+            pipeline_id="pipe-1",
+            use_file_history=False,
+            task_id="task-1",
         )
 
-        # One batch in the test helper → exactly one helper call.
-        assert decisions_helper.call_count == 1, (
-            "Manual-review decision helper must run once per batch — got "
-            f"{decisions_helper.call_count}"
+        # N batches → exactly N helper calls.
+        assert mocks.decisions_helper.call_count == num_batches, (
+            f"Manual-review decision helper must run once per batch — "
+            f"got {mocks.decisions_helper.call_count}, "
+            f"expected {num_batches}"
         )
         # Chord path still fires with API fairness — the manual-review
         # branch must not divert into the fallback dispatch.
-        assert mock_create_chord.called
-        assert not mock_dispatch.called
-        fairness_kwarg = mock_create_chord.call_args.kwargs.get("fairness")
+        assert mocks.create_chord.called
+        assert not mocks.dispatch.called
+        fairness_kwarg = mocks.create_chord.call_args.kwargs.get("fairness")
         assert fairness_kwarg == FairnessKey(
             org_id="org_test", workload_type=WorkloadType.API
         )
