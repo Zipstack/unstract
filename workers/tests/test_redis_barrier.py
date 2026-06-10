@@ -234,7 +234,7 @@ class TestRedisDecrBarrierEnqueue:
         minutes would cause spurious callback fires on any execution
         longer than the new value; accidental expansion to days would
         leak orphaned keys. The default reflects the worst-case
-        ``FILE_PROCESSING_TASK_TIME_LIMIT`` (3h) × 2× margin."""
+        ``FILE_PROCESSING_TASK_TIME_LIMIT`` (3h) x 2x margin."""
         assert _KEY_TTL_DEFAULT_SECONDS == 6 * 60 * 60
 
     def test_ttl_overridable_via_env(self, barrier, redis_mock, monkeypatch):
@@ -625,10 +625,14 @@ class TestBarrierAbortLinkError:
     @patch("queue_backend.redis_barrier._get_redis_client")
     def test_abort_deletes_both_barrier_keys(self, get_redis):
         """``barrier_abort`` cleans up the barrier state on header
-        failure — DELs both keys."""
+        failure — DELs both keys. The first call to ``barrier_abort``
+        for a given execution_id wins the SET NX race and proceeds
+        with cleanup + log."""
         from queue_backend import barrier_abort
 
         redis_client = MagicMock(name="redis")
+        # ``set(...nx=True)`` returns True on first SET — this abort wins.
+        redis_client.set.return_value = True
         get_redis.return_value = redis_client
 
         barrier_abort.run(
@@ -642,6 +646,109 @@ class TestBarrierAbortLinkError:
             _remaining_key("exec-42"),
             _results_key("exec-42"),
         )
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_concurrent_aborts_deduplicate(self, get_redis):
+        """N concurrent header-task failures attach the same
+        ``link_error`` → N ``barrier_abort`` executions for one
+        logical execution failure. Without dedup that would produce
+        N ``logger.error`` calls and N Sentry events. The SET NX
+        lock makes the first abort win; subsequent aborts early-exit
+        silently."""
+        from queue_backend import barrier_abort
+
+        redis_client = MagicMock(name="redis")
+        # First call: SET NX returns True (first abort wins).
+        # Second call: SET NX returns False (lock already exists).
+        redis_client.set.side_effect = [True, False]
+        get_redis.return_value = redis_client
+
+        result_1 = barrier_abort.run(
+            MagicMock(name="request"),
+            RuntimeError("header task 1 crashed"),
+            "traceback string",
+            execution_id="exec-42",
+        )
+        result_2 = barrier_abort.run(
+            MagicMock(name="request"),
+            RuntimeError("header task 2 crashed"),
+            "traceback string",
+            execution_id="exec-42",
+        )
+
+        # First abort completed cleanup; second deduplicated.
+        assert result_1["status"] == "aborted"
+        assert result_2["status"] == "deduplicated"
+
+        # DELETE called exactly ONCE — only the winning abort cleans
+        # up. The deduplicated path early-exits before DELETE.
+        redis_client.delete.assert_called_once_with(
+            _remaining_key("exec-42"),
+            _results_key("exec-42"),
+        )
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_abort_uses_setnx_with_ttl(self, get_redis):
+        """The SET NX lock has an EX (TTL) — the lock key auto-
+        cleans alongside the barrier keys instead of leaking
+        forever on a failed execution."""
+        from queue_backend import barrier_abort
+        from queue_backend.redis_barrier import _KEY_TTL_DEFAULT_SECONDS
+
+        redis_client = MagicMock(name="redis")
+        redis_client.set.return_value = True
+        get_redis.return_value = redis_client
+
+        barrier_abort.run(
+            MagicMock(name="request"),
+            RuntimeError("crash"),
+            "traceback",
+            execution_id="exec-1",
+        )
+
+        # SET called with nx=True + ex=<ttl>.
+        redis_client.set.assert_called_once()
+        call = redis_client.set.call_args
+        assert call.args[0] == "barrier:abort_lock:exec-1"
+        assert call.kwargs.get("nx") is True
+        assert call.kwargs.get("ex") == _KEY_TTL_DEFAULT_SECONDS
+
+
+# --- Process-local Redis client caching ---
+
+
+class TestRedisClientSingleton:
+    """``_get_redis_client()`` returns a process-cached client so the
+    high-frequency ``barrier_decr_and_check`` / ``barrier_abort``
+    invocations reuse the same ``ConnectionPool`` rather than spinning
+    up a fresh pool (and TCP handshakes) per task. At 1000-task
+    fan-out the difference is 1000 vs 1 pool initialisation.
+    """
+
+    def test_get_redis_client_returns_same_instance(self):
+        """Repeated calls within one process must return the same
+        ``Redis`` instance — guarantees connection-pool reuse."""
+        from queue_backend import redis_barrier
+
+        # Reset the cache so this test exercises the lazy-init path.
+        redis_barrier._redis_client_singleton = None
+        try:
+            with patch(
+                "queue_backend.redis_barrier.create_redis_client"
+            ) as factory:
+                factory.return_value = MagicMock(name="redis_client")
+                client_a = redis_barrier._get_redis_client()
+                client_b = redis_barrier._get_redis_client()
+                client_c = redis_barrier._get_redis_client()
+
+            # All three calls return the same object.
+            assert client_a is client_b is client_c
+            # ``create_redis_client`` factory called exactly ONCE —
+            # subsequent calls hit the cache.
+            assert factory.call_count == 1
+        finally:
+            # Reset for downstream tests.
+            redis_barrier._redis_client_singleton = None
 
 
 if __name__ == "__main__":

@@ -104,7 +104,7 @@ _BARRIER_REDIS_ENV_PREFIX = "WORKER_BARRIER_REDIS_"
 # executions ≈ max(per-batch time) since batches run in parallel
 # (worker concurrency is the limiter, not serial wait).
 #
-# 6h default gives 2–3× margin over the documented per-batch ceiling
+# 6h default gives 2-3x margin over the documented per-batch ceiling
 # while staying in the same order of magnitude as
 # ``FILE_EXECUTION_TRACKER_TTL_IN_SECOND=18000`` (5h). Operators with
 # longer workflows (e.g. multi-step pipelines with chained barriers)
@@ -188,20 +188,45 @@ return {remaining, {}}
 """
 
 
+# Process-local cached Redis client. Lazy-initialised on first call
+# within a worker process; reused across every ``barrier_decr_and_check``
+# / ``barrier_abort`` / ``RedisDecrBarrier`` invocation in that process.
+#
+# Why a singleton: ``create_redis_client`` builds a fresh
+# ``ConnectionPool`` each call. Without caching, a 1000-task fan-out
+# would spin up 1000 separate pools (1000 TCP handshakes torn down in
+# sequence) — exactly the scale this substrate exists to handle.
+#
+# Fork safety: Celery's prefork model re-imports this module in each
+# child process, so each worker process gets its own fresh
+# ``_redis_client_singleton`` — no socket sharing across fork
+# boundaries (which would corrupt state).
+#
+# Thread safety: redis-py's ``ConnectionPool`` is internally thread-safe,
+# so concurrent users of the cached client are fine. The lazy-init
+# itself is not locked — two threads racing on the first call could
+# briefly create two pools, with one being orphaned. The cost is one
+# short-lived pool (immediately GC'd), not a correctness issue.
+_redis_client_singleton: redis_lib.Redis | None = None
+
+
 def _get_redis_client() -> redis_lib.Redis:
-    """Build a Redis client from the barrier env prefix.
+    """Return a process-cached Redis client for the barrier.
 
     ``create_redis_client`` reads ``{prefix}HOST`` etc., falling back
     to the canonical ``REDIS_`` prefix when the barrier-specific vars
     aren't set. ``decode_responses=True`` so ``LRANGE`` returns
     ``list[str]`` (we JSON-decode each entry).
     """
-    return create_redis_client(
-        env_prefix=_BARRIER_REDIS_ENV_PREFIX,
-        decode_responses=True,
-        socket_timeout=5,
-        socket_connect_timeout=5,
-    )
+    global _redis_client_singleton
+    if _redis_client_singleton is None:
+        _redis_client_singleton = create_redis_client(
+            env_prefix=_BARRIER_REDIS_ENV_PREFIX,
+            decode_responses=True,
+            socket_timeout=5,
+            socket_connect_timeout=5,
+        )
+    return _redis_client_singleton
 
 
 def _remaining_key(execution_id: str) -> str:
@@ -574,8 +599,29 @@ def barrier_abort(
     (``_run_workflow_api`` / ``_orchestrate_file_processing_general``)
     is responsible for the workflow status update; this task only
     handles barrier-state cleanup.
+
+    **Concurrent-failure dedup.** Every header task attaches the same
+    ``link_error``, so N simultaneous failures would otherwise fire N
+    ``barrier_abort`` executions — each calling ``logger.error`` and
+    each producing its own Sentry event for what is a *single* logical
+    execution failure. A ``SET NX`` lock on
+    ``barrier:abort_lock:{execution_id}`` makes the first abort win;
+    subsequent aborts for the same execution see the lock present and
+    early-exit silently. The DELs are idempotent anyway (DEL on a
+    missing key is a no-op), but the dedup collapses the alert noise.
     """
     redis_client = _get_redis_client()
+    abort_lock_key = f"barrier:abort_lock:{execution_id}"
+    # ``SET NX EX`` — first-write-wins with auto-expiry. TTL matches
+    # the barrier keys' TTL so the lock cleans up alongside them.
+    if not redis_client.set(abort_lock_key, "1", ex=_key_ttl_seconds(), nx=True):
+        # Another barrier_abort for this execution already won the
+        # SET NX race. Silently exit — no log, no Sentry, no
+        # duplicate DEL.
+        return {
+            "status": "deduplicated",
+            "execution_id": execution_id,
+        }
     redis_client.delete(
         _remaining_key(execution_id),
         _results_key(execution_id),
