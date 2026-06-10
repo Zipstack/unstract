@@ -59,11 +59,12 @@ no cross-substrate aggregation within a single execution.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypedDict
 
 from celery.canvas import Signature
 
@@ -152,10 +153,15 @@ def _key_ttl_seconds() -> int:
 # Three branches the Python side reads off the returned counter:
 #
 #   remaining > 0  — pending, no results returned (still aggregating)
-#   remaining == 0 — complete, all results returned (we are the last)
+#   remaining == 0 — complete, all results returned (we are the last).
+#                    Keys are NOT DEL'd here — Python defers the DEL
+#                    until after ``apply_async()`` succeeds, so that
+#                    a callback-dispatch failure leaves the keys (and
+#                    their TTL) in place rather than stranding the
+#                    execution with no state + no recovery path.
 #   remaining < 0  — TTL-expired counter (or replay after cleanup);
-#                    keys DEL'd to prevent further spurious fires,
-#                    no callback dispatched
+#                    keys DEL'd inside the script to prevent further
+#                    spurious fires, no callback dispatched.
 #
 # Setting the ``results`` key TTL inside the script — ``EXPIRE`` on
 # the call AFTER ``RPUSH`` ensures the key exists when EXPIRE runs
@@ -171,16 +177,24 @@ redis.call("RPUSH", results_key, result_json)
 redis.call("EXPIRE", results_key, ttl_seconds)
 local remaining = redis.call("DECR", remaining_key)
 if remaining == 0 then
+    -- We're the last task. LRANGE the results for the Python side to
+    -- dispatch the callback. DO NOT DEL the keys here — Python defers
+    -- the DEL until after apply_async() succeeds so a dispatch failure
+    -- (broker outage, serialisation error) leaves the keys + TTL in
+    -- place. Without this deferral, an apply_async failure would
+    -- strand the execution with both keys gone, no TTL, no Celery
+    -- retry (max_retries=0), and no link_error fallback — strictly
+    -- worse than the chord baseline (where Celery's chord backend
+    -- owns + retries body invocation).
     local all_results = redis.call("LRANGE", results_key, 0, -1)
-    redis.call("DEL", remaining_key, results_key)
     return {remaining, all_results}
 end
 if remaining < 0 then
     -- Counter was TTL-expired (or already cleaned up) when this task
     -- ran. ``DECR`` on a missing key created it at ``-1``; subsequent
     -- tasks would land here too. DEL both keys so neither this task
-    -- nor any subsequent one fires a spurious callback; the outer
-    -- execution's status will be driven by its own error path.
+    -- nor any subsequent one fires a spurious callback; the abandoned
+    -- branch on the Python side surfaces an error-severity log.
     redis.call("DEL", remaining_key, results_key)
     return {remaining, {}}
 end
@@ -213,15 +227,35 @@ _redis_client_singleton: redis_lib.Redis | None = None
 def _get_redis_client() -> redis_lib.Redis:
     """Return a process-cached Redis client for the barrier.
 
-    ``create_redis_client`` reads ``{prefix}HOST`` etc., falling back
-    to the canonical ``REDIS_`` prefix when the barrier-specific vars
-    aren't set. ``decode_responses=True`` so ``LRANGE`` returns
-    ``list[str]`` (we JSON-decode each entry).
+    ``create_redis_client``'s nested-getenv fallback only covers
+    HOST/PORT/PASSWORD/USER/DB — it does NOT cross-fall-back
+    SENTINEL_MODE or SSL. In a deployment where the canonical Redis
+    is Sentinel-backed or TLS-secured, leaving ``WORKER_BARRIER_REDIS_*``
+    unset and relying on the documented HOST fallback would result in
+    the barrier inheriting the right host/port but connecting
+    standalone/plaintext — which fails (or worse, connects without
+    TLS) every execution the moment the flag flips.
+
+    To avoid that footgun: when no barrier-specific HOST is set, use
+    the canonical ``REDIS_`` prefix *directly* so we inherit the FULL
+    canonical config (including Sentinel + SSL). When an operator
+    has set ``WORKER_BARRIER_REDIS_HOST`` they've opted into a
+    dedicated barrier Redis and are responsible for the full config
+    (HOST + PORT + ... + SENTINEL_MODE + SSL).
+
+    ``decode_responses=True`` so ``LRANGE`` returns ``list[str]``
+    (we JSON-decode each entry).
     """
     global _redis_client_singleton
     if _redis_client_singleton is None:
+        # If no dedicated barrier-Redis host is configured, use the
+        # canonical REDIS_ prefix so Sentinel/SSL config inherits too.
+        if os.getenv(f"{_BARRIER_REDIS_ENV_PREFIX}HOST"):
+            env_prefix = _BARRIER_REDIS_ENV_PREFIX
+        else:
+            env_prefix = "REDIS_"
         _redis_client_singleton = create_redis_client(
-            env_prefix=_BARRIER_REDIS_ENV_PREFIX,
+            env_prefix=env_prefix,
             decode_responses=True,
             socket_timeout=5,
             socket_connect_timeout=5,
@@ -355,20 +389,22 @@ class RedisDecrBarrier:
             # - which execution's counter to decrement
             # - how to reconstruct + dispatch the callback when count hits 0
             # All Celery-serialisable so the link can run on any worker.
-            callback_descriptor = {
+            callback_descriptor: CallbackDescriptor = {
                 "task_name": callback_task_name,
                 "kwargs": callback_kwargs,
                 "queue": callback_queue,
                 "fairness_headers": fairness_headers,
             }
 
-            # Initialise the counter and an empty results list before
-            # any header task can fire. ``SET ... EX 24h`` and ``DEL +
-            # EXPIRE`` cover both "fresh start" and "stale leftover
-            # keys from a previous run with the same exec_id" (e.g.
-            # retry after partial fan-out failure). Ordered: ``DEL``
-            # first to clear any stale results list, then ``SET`` the
-            # counter with TTL.
+            # Initialise the counter before any header task can fire.
+            # ``SET remaining N EX <ttl>`` overwrites any stale counter
+            # left from a prior run with the same exec_id; the upfront
+            # ``DEL results, abort_lock`` (below) clears the rest of
+            # the prior-run state (the results list grows via RPUSH so
+            # we must clear it explicitly; the abort_lock would otherwise
+            # silently mask a retry's failure as success — see the
+            # comment block at the DELETE call). ``ttl`` is
+            # ``_key_ttl_seconds()`` (6h default).
             ttl_seconds = _key_ttl_seconds()
             # Clear any leftover state from a prior execution with this
             # execution_id (including the dedup lock written by a
@@ -432,7 +468,13 @@ class RedisDecrBarrier:
                         _remaining_key(execution_id),
                         _results_key(execution_id),
                     )
-                    logger.error(
+                    # ``logger.exception`` captures the underlying
+                    # apply_async failure cause (broker timeout vs
+                    # serialisation error vs routing error) alongside
+                    # the orphan-count context — without it, a reader
+                    # of this log can't tell why dispatch failed and
+                    # has to cross-reference the outer handler's log.
+                    logger.exception(
                         f"[exec:{execution_id}] apply_async failed at "
                         f"task {i}/{len(header_tasks)}; {i} orphan tasks "
                         f"already dispatched. Barrier keys DEL'd to "
@@ -467,6 +509,27 @@ class RedisDecrBarrier:
                 f"header_tasks={len(header_tasks)})"
             )
             raise
+
+
+class CallbackDescriptor(TypedDict):
+    """Shape of the dict baked into the link signature and re-read on
+    the worker that runs ``barrier_decr_and_check``.
+
+    This descriptor crosses a serialisation boundary (Celery
+    ``signature(...)`` → broker → consumer worker), so the four-key
+    contract is otherwise enforced only by string literals duplicated
+    across producer and consumer. Typing it as a ``TypedDict`` gives
+    the type checker a chance to catch typos / renames before they
+    surface as remote ``KeyError`` mid-aggregation.
+
+    ``fairness_headers`` is always present in the dict; ``None`` when
+    the producer passed no ``FairnessKey``.
+    """
+
+    task_name: str
+    kwargs: dict[str, Any]
+    queue: str
+    fairness_headers: dict[str, Any] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -507,7 +570,7 @@ def barrier_decr_and_check(
     result: Any,
     *,
     execution_id: str,
-    callback_descriptor: dict[str, Any],
+    callback_descriptor: CallbackDescriptor,
 ) -> dict[str, Any]:
     """Per-task link callback for ``RedisDecrBarrier``.
 
@@ -561,13 +624,21 @@ def barrier_decr_and_check(
     if remaining < 0:
         # TTL-expired counter (or replay after cleanup). The Lua
         # script already DEL'd both keys to prevent further spurious
-        # fires on subsequent task completions. No callback dispatch;
-        # the outer execution's status update path is responsible for
-        # marking the workflow's terminal status.
-        logger.warning(
-            f"[exec:{execution_id}] Barrier counter went negative "
-            f"(remaining={remaining}) — keys were TTL-expired or "
-            f"already cleaned up. Skipping callback dispatch."
+        # fires on subsequent task completions. No callback dispatch.
+        #
+        # Logged at ERROR (not WARNING) because reaching this branch
+        # means the barrier was torn down out from under in-flight
+        # tasks — by definition an abnormal terminal state where the
+        # execution almost certainly did not complete normally.
+        # Returning normally from a .link is indistinguishable from
+        # success to Celery; the ERROR log is the only execution-id-
+        # tagged signal an operator can correlate to the hung/
+        # incorrectly-statused execution.
+        logger.error(
+            f"[exec:{execution_id}] Barrier abandoned — counter went "
+            f"negative (remaining={remaining}); keys were TTL-expired "
+            f"or torn down. No callback dispatched; execution likely "
+            f"in an inconsistent terminal state and needs investigation."
         )
         return {"status": "abandoned", "remaining": remaining}
 
@@ -585,7 +656,28 @@ def barrier_decr_and_check(
         queue=callback_queue,
         **({"headers": fairness_headers} if fairness_headers else {}),
     )
+    # Dispatch FIRST; DEL the barrier keys only after dispatch succeeds.
+    #
+    # If apply_async raises (broker outage, serialisation error,
+    # routing failure), the exception propagates. The barrier keys
+    # are NOT yet DEL'd, so:
+    #   - Subsequent late-arriving link tasks (if any) hit the Lua
+    #     ``< 0`` branch (counter is still 0 — DECR-on-zero would
+    #     yield -1) and exit cleanly via the abandoned branch.
+    #   - The keys TTL-expire eventually — Redis cleans them up.
+    #   - The link task's failure surfaces via Celery's standard
+    #     task-failure channels.
+    #
+    # If we DEL'd before apply_async (the previous design), an
+    # apply_async failure would strand the execution with no keys,
+    # no TTL, no Celery retry (max_retries=0), and no link_error
+    # fallback — silent infinite hang. The deferred DEL is what
+    # restores parity-or-better with the chord baseline.
     callback_result = callback_signature.apply_async()
+    redis_client.delete(
+        _remaining_key(execution_id),
+        _results_key(execution_id),
+    )
 
     logger.info(
         f"[exec:{execution_id}] Barrier complete — "
@@ -609,17 +701,23 @@ def barrier_decr_and_check(
     max_retries=0,
 )
 def barrier_abort(
-    request: Any,
-    exc: Any,
-    traceback: Any,
+    request: Any = None,
+    exc: Any = None,
+    traceback: Any = None,
     *,
     execution_id: str,
 ) -> dict[str, Any]:
     """``link_error`` callback: header task failed → clean up barrier state.
 
-    Celery's ``link_error`` signature passes ``(request, exc, traceback)``
-    positional args before any task-specific kwargs (the ``execution_id``
-    we baked into the signature via ``.s(execution_id=...)``).
+    Celery 5.5 invokes new-style errbacks as
+    ``errback(request, exc, traceback)`` only for ``bind=False`` tasks
+    with arity > 1. If a worker hits the ``NotRegistered`` fallback
+    during a mixed-version rolling deploy (or if this task is ever
+    switched to ``bind=True``), Celery calls the errback old-style
+    with just ``(task_id,)``. The defaults on ``request`` / ``exc`` /
+    ``traceback`` mean the old-style path degrades to a clean
+    ``exc=None`` log line rather than a confusing
+    ``TypeError: missing required positional arguments``.
 
     Mirrors Celery chord's default error semantic: when any header
     task fails, the chord callback isn't invoked. Without explicit
@@ -632,10 +730,16 @@ def barrier_abort(
 
     We DEL the barrier keys here so the in-flight successful tasks'
     link DECR returns negative → Lua ``< 0`` branch fires →
-    aggregation cleanly abandoned. The outer task's error handler
+    aggregation cleanly abandoned. **Terminal status drivers**: this
+    task does NOT mark the workflow FAILED — the outer orchestrators
     (``_run_workflow_api`` / ``_orchestrate_file_processing_general``)
-    is responsible for the workflow status update; this task only
-    handles barrier-state cleanup.
+    wrap only the *synchronous* fan-out in try/except and have
+    already returned by the time ``barrier_abort`` runs. Workflow
+    terminal status on async header failure is driven by per-file
+    updates inside ``process_file_batch`` plus the eventual
+    aggregating callback (which won't fire because we DEL'd the
+    keys). A future Phase 6b' refinement may have ``barrier_abort``
+    itself drive the execution-level status update.
 
     **Concurrent-failure dedup.** Every header task attaches the same
     ``link_error``, so N simultaneous failures would otherwise fire N
@@ -646,6 +750,16 @@ def barrier_abort(
     subsequent aborts for the same execution see the lock present and
     early-exit silently. The DELs are idempotent anyway (DEL on a
     missing key is a no-op), but the dedup collapses the alert noise.
+
+    **Lock release on DELETE failure.** If SET NX succeeds (this
+    abort wins) but the subsequent DELETE then raises (mid-abort
+    Redis blip), the lock stays held while the barrier keys are NOT
+    deleted. Every sibling ``barrier_abort`` would then hit the
+    dedup early-exit and do nothing, leaving the counter alive for
+    in-flight successful tasks to DECR to 0 → callback fires with
+    partial results → silent success masking. To close this hole,
+    we explicitly release the abort_lock if the DELETE raises, so
+    a sibling abort can re-acquire it and complete the cleanup.
     """
     redis_client = _get_redis_client()
     # ``SET NX EX`` — first-write-wins with auto-expiry. TTL matches
@@ -663,10 +777,21 @@ def barrier_abort(
             "status": "deduplicated",
             "execution_id": execution_id,
         }
-    redis_client.delete(
-        _remaining_key(execution_id),
-        _results_key(execution_id),
-    )
+    try:
+        redis_client.delete(
+            _remaining_key(execution_id),
+            _results_key(execution_id),
+        )
+    except Exception:
+        # DELETE failed AFTER we won the SET NX. Release the lock so
+        # subsequent aborts aren't dedup-suppressed into no-ops while
+        # the barrier keys still exist. ``suppress`` because if the
+        # lock-release also fails, the original DELETE exception is
+        # the more useful one to propagate (Redis is clearly in
+        # trouble and the original error captures that).
+        with contextlib.suppress(Exception):
+            redis_client.delete(_abort_lock_key(execution_id))
+        raise
     logger.error(
         f"[exec:{execution_id}] Header task failed; barrier aborted. "
         f"Cleaned up remaining/results keys. exc={exc!r}"

@@ -372,6 +372,15 @@ class TestBarrierDecrAndCheckLink:
             queue="api_file_processing_callback",
         )
         cb_sig.apply_async.assert_called_once_with()
+        # DELETE is now called from Python AFTER apply_async succeeds
+        # (the Lua script no longer DELs in the ``== 0`` branch). This
+        # is the load-bearing deferred-cleanup invariant: a dispatch
+        # failure leaves the keys + TTL in place so the execution
+        # isn't stranded.
+        redis_client.delete.assert_called_once_with(
+            _remaining_key("exec-42"),
+            _results_key("exec-42"),
+        )
 
         assert result["status"] == "complete"
         assert result["callback_task_id"] == "callback-task-id-xyz"
@@ -494,6 +503,57 @@ class TestBarrierDecrAndCheckLink:
         current_app.signature.assert_not_called()
         assert result["status"] == "abandoned"
         assert result["remaining"] == -1
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_callback_dispatch_failure_preserves_keys_for_ttl(self, get_redis):
+        """If ``apply_async`` raises after the Lua ``== 0`` branch
+        returned, the barrier keys MUST remain in Redis (with their
+        TTL still active) so the execution isn't stranded with no
+        recovery path.
+
+        Without deferred DEL, the previous implementation DEL'd both
+        keys inside the Lua script before Python's ``apply_async``
+        ran. A dispatch failure (broker outage, serialisation error,
+        routing failure) then left the execution with: no keys, no
+        TTL, no Celery retry (``max_retries=0``), no link_error
+        fallback — strictly worse than the chord baseline.
+
+        The fix: Lua's ``== 0`` branch returns the LRANGE results
+        WITHOUT DELing. Python DELs both keys only after
+        ``apply_async`` succeeds. A failure raises and the TTL
+        eventually cleans up the keys."""
+        redis_client = MagicMock(name="redis")
+        # ``== 0`` branch — script returns one result; Lua no longer DELs.
+        script = MagicMock(name="script", return_value=[0, [json.dumps({"x": 1})]])
+        redis_client.register_script.return_value = script
+        get_redis.return_value = redis_client
+
+        with patch("celery.current_app") as current_app:
+            cb_sig = MagicMock(name="callback_signature")
+            # apply_async raises — broker outage, serialisation error, etc.
+            cb_sig.apply_async.side_effect = RuntimeError("broker is down")
+            current_app.signature.return_value = cb_sig
+
+            with pytest.raises(RuntimeError, match=r"broker is down"):
+                barrier_decr_and_check.run(
+                    {"x": 1},
+                    execution_id="exec-1",
+                    callback_descriptor={
+                        "task_name": "cb",
+                        "kwargs": {"execution_id": "exec-1"},
+                        "queue": "q",
+                        "fairness_headers": None,
+                    },
+                )
+
+        # DELETE MUST NOT have been called — the keys must remain in
+        # Redis (with their existing TTL) so:
+        #   - Late-arriving link tasks (if any) cleanly hit the Lua
+        #     ``< 0`` branch and exit via the abandoned path.
+        #   - TTL eventually cleans the keys.
+        #   - The failure is visible via Celery's standard task-failure
+        #     channels rather than a silent infinite hang.
+        redis_client.delete.assert_not_called()
 
 
 # --- TTL env validation ---
@@ -720,6 +780,53 @@ class TestBarrierAbortLinkError:
         assert call.kwargs.get("nx") is True
         assert call.kwargs.get("ex") == _KEY_TTL_DEFAULT_SECONDS
 
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_abort_delete_failure_releases_lock(self, get_redis):
+        """If SET NX succeeds (this abort wins) but the subsequent
+        DELETE then raises (mid-abort Redis blip), the lock MUST be
+        released — otherwise sibling aborts hit the dedup early-exit
+        while the barrier keys are still alive, in-flight successful
+        tasks DECR to 0, and the callback fires with partial results
+        (silent-success-on-mid-abort-failure).
+
+        Same correctness class as the stale-lock-on-retry bug,
+        reached via a different path: mid-abort failure instead of
+        cross-execution stale state.
+        """
+        from queue_backend import barrier_abort
+        from queue_backend.redis_barrier import _abort_lock_key
+
+        redis_client = MagicMock(name="redis")
+        # SET NX returns True (this abort wins), DELETE then raises.
+        redis_client.set.return_value = True
+        # Two delete calls expected: the barrier-keys DEL that raises,
+        # then the lock-release DEL.
+        redis_client.delete.side_effect = [
+            ConnectionError("redis blip mid-abort"),  # first DELETE raises
+            1,  # lock-release DEL succeeds (returns count of deleted keys)
+        ]
+        get_redis.return_value = redis_client
+
+        with pytest.raises(ConnectionError, match=r"redis blip mid-abort"):
+            barrier_abort.run(
+                MagicMock(name="request"),
+                RuntimeError("header task crashed"),
+                "traceback",
+                execution_id="exec-1",
+            )
+
+        # First DELETE was the barrier-keys cleanup; SECOND DELETE was
+        # the lock release (so siblings can re-acquire).
+        delete_calls = redis_client.delete.call_args_list
+        assert len(delete_calls) == 2, (
+            f"Expected 2 delete calls (barrier keys + lock release); "
+            f"got {len(delete_calls)}: {delete_calls}"
+        )
+        # The second call must target the abort_lock specifically.
+        assert delete_calls[1].args == (_abort_lock_key("exec-1"),), (
+            f"Expected lock-release DELETE; got args={delete_calls[1].args!r}"
+        )
+
 
 # --- Retry with reused execution_id: stale abort_lock cleanup ---
 
@@ -796,6 +903,68 @@ class TestRedisClientSingleton:
             assert factory.call_count == 1
         finally:
             # Reset for downstream tests.
+            redis_barrier._redis_client_singleton = None
+
+    def test_falls_back_to_canonical_redis_prefix_for_sentinel_ssl_inheritance(
+        self, monkeypatch
+    ):
+        """When no ``WORKER_BARRIER_REDIS_HOST`` is set, the barrier
+        MUST use the canonical ``REDIS_`` prefix directly so it
+        inherits the FULL config including ``REDIS_SENTINEL_MODE`` and
+        ``REDIS_SSL`` — not just HOST/PORT/PASSWORD/USER/DB.
+
+        Without this fix, a Sentinel-backed deployment that relies on
+        the documented fallback would connect standalone (Sentinel
+        mode is per-prefix in ``create_redis_client`` and doesn't
+        cross-fall-back), failing every execution at flag-flip time."""
+        from queue_backend import redis_barrier
+
+        # Ensure no barrier-specific HOST is set.
+        monkeypatch.delenv("WORKER_BARRIER_REDIS_HOST", raising=False)
+        redis_barrier._redis_client_singleton = None
+        try:
+            with patch(
+                "queue_backend.redis_barrier.create_redis_client"
+            ) as factory:
+                factory.return_value = MagicMock(name="redis_client")
+                redis_barrier._get_redis_client()
+
+            # The factory MUST be called with env_prefix="REDIS_" so
+            # SENTINEL_MODE/SSL inherit from the canonical instance.
+            factory.assert_called_once()
+            assert factory.call_args.kwargs.get("env_prefix") == "REDIS_", (
+                f"Expected env_prefix='REDIS_' when no barrier-specific "
+                f"HOST is set (so Sentinel/SSL inherit); got "
+                f"env_prefix={factory.call_args.kwargs.get('env_prefix')!r}"
+            )
+        finally:
+            redis_barrier._redis_client_singleton = None
+
+    def test_uses_barrier_prefix_when_dedicated_host_set(self, monkeypatch):
+        """When ``WORKER_BARRIER_REDIS_HOST`` IS set, the operator has
+        opted into a dedicated barrier Redis and is responsible for
+        the full barrier-prefix config (HOST + PORT + ... +
+        SENTINEL_MODE + SSL)."""
+        from queue_backend import redis_barrier
+
+        monkeypatch.setenv("WORKER_BARRIER_REDIS_HOST", "dedicated-redis")
+        redis_barrier._redis_client_singleton = None
+        try:
+            with patch(
+                "queue_backend.redis_barrier.create_redis_client"
+            ) as factory:
+                factory.return_value = MagicMock(name="redis_client")
+                redis_barrier._get_redis_client()
+
+            assert (
+                factory.call_args.kwargs.get("env_prefix")
+                == "WORKER_BARRIER_REDIS_"
+            ), (
+                f"Expected env_prefix='WORKER_BARRIER_REDIS_' when "
+                f"dedicated HOST is set; got "
+                f"env_prefix={factory.call_args.kwargs.get('env_prefix')!r}"
+            )
+        finally:
             redis_barrier._redis_client_singleton = None
 
 
