@@ -98,10 +98,12 @@ class CeleryChordBarrier:
     """Thin wrapper around ``celery.chord``.
 
     Behaviour-preserving: the ``chord(header_tasks)(callback_signature)``
-    call is byte-identical to the inline ``chord(...)`` it replaces.
-    The only additional behaviour is the optional ``fairness`` header
-    attachment, which is an additive wire-level change (consumers that
-    don't read the header are unaffected — same backward-compat
+    call shape is the same as the inline ``chord(...)`` it replaces.
+    Wire output is byte-identical to the pre-Barrier path when
+    ``fairness=None``; when a ``FairnessKey`` is passed the only
+    addition is the ``x-fairness-key`` AMQP header on each header
+    task and the callback (additive wire-level change — consumers
+    that don't read the header are unaffected, same backward-compat
     posture as Phase 5.1's ``dispatch()`` fairness plumbing).
 
     Future ``RedisDecrBarrier`` and ``PgBarrier`` implementations will

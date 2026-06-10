@@ -82,17 +82,35 @@ class TestBarrierProtocolShape:
         barrier: Barrier = CeleryChordBarrier()
         assert callable(getattr(barrier, "enqueue", None))
 
-    def test_barrier_handle_protocol_is_minimal(self):
-        """``BarrierHandle`` only requires ``id: str`` — celery's
-        ``AsyncResult`` satisfies this. Future substrate handles must
-        too so existing chord-id logging keeps working."""
-        # MagicMock with .id attribute is structurally a BarrierHandle.
-        handle = MagicMock()
-        handle.id = "task-1"
-        # Treating it as a BarrierHandle at runtime works (Python's
-        # Protocols are duck-typed; this test pins the contract).
-        h: BarrierHandle = handle
-        assert h.id == "task-1"
+    def test_barrier_handle_protocol_satisfied_by_celery_async_result(self):
+        """The real production substrate handle — Celery's
+        ``AsyncResult`` — must satisfy ``BarrierHandle``. Without
+        this, refactors of ``BarrierHandle`` (e.g. adding a
+        required attribute) would silently break chord-id logging
+        in ``api-deployment/tasks.py``'s response without any test
+        catching it. Tautological MagicMock-with-.id-attribute
+        tests pass identically even if ``BarrierHandle`` were
+        deleted; this one is load-bearing.
+        """
+        from celery.result import AsyncResult
+
+        # Structural-typing pin: every attribute the Protocol declares
+        # must exist on ``AsyncResult``. Currently just ``id``; this
+        # loop is future-proof for additional required attributes.
+        required_attrs = ("id",)
+        missing = [a for a in required_attrs if not hasattr(AsyncResult, a)]
+        assert missing == [], (
+            f"AsyncResult is missing required BarrierHandle attribute(s): "
+            f"{missing} — a refactor of BarrierHandle / TaskHandle has "
+            f"silently broken the Celery substrate."
+        )
+
+        # And ``DispatchHandle`` / ``BarrierHandle`` should both be
+        # the same shared ``TaskHandle`` Protocol (no drift risk).
+        from queue_backend.handle import DispatchHandle, TaskHandle
+
+        assert BarrierHandle is TaskHandle
+        assert DispatchHandle is TaskHandle
 
 
 # --- Wire equivalence with the pre-Barrier chord call ---
@@ -358,103 +376,259 @@ class TestOrchestrationUtilsRoutesThroughSingleton:
         )
 
 
-# --- Call-site fairness contracts ---
+# --- Executing tests for call-site fairness contracts ---
+
+
+def _load_api_deployment_tasks():
+    """Load ``api-deployment/tasks.py`` as a module.
+
+    The dash in ``api-deployment`` blocks normal ``import
+    api-deployment.tasks``. We load via ``importlib.util`` instead so
+    the test can drive the real ``_run_workflow_api`` function rather
+    than scraping its source.
+    """
+    import importlib.util
+    import inspect
+    import pathlib
+
+    src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
+    api_tasks_path = (
+        pathlib.Path(src).parent.parent / "api-deployment" / "tasks.py"
+    )
+    spec = importlib.util.spec_from_file_location(
+        "_api_deployment_tasks_for_test", api_tasks_path
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _run_workflow_api_with_mocks(
+    monkeypatch,
+    *,
+    hash_values_of_files: dict | None = None,
+    force_empty_batches: bool = False,
+):
+    """Drive ``_run_workflow_api`` end-to-end with the minimum mocks
+    needed to exercise the chord-dispatch + zero-batch branches.
+
+    Returns ``(result, mock_create_chord, mock_dispatch)`` so callers
+    can assert on the response shape and on which dispatch path fired.
+    """
+    api_tasks = _load_api_deployment_tasks()
+    api_client = MagicMock(name="api_client")
+    api_client.get_workflow_execution.return_value = MagicMock(
+        success=True, error=None, data={}
+    )
+    api_client.get_file_history_for_files.return_value = MagicMock(
+        success=True, data={"files": {}}
+    )
+    api_client.update_workflow_execution_status.return_value = MagicMock(success=True)
+    api_client.update_pipeline_status.return_value = MagicMock(success=True)
+
+    # Neutralise heavy upstream side effects.
+    monkeypatch.setattr(
+        api_tasks, "validate_workflow_tool_instances", lambda **kwargs: None
+    )
+    monkeypatch.setattr(
+        api_tasks, "_log_api_file_history_statistics", lambda **kwargs: None
+    )
+    monkeypatch.setattr(
+        api_tasks, "_log_api_batch_creation_statistics", lambda **kwargs: None
+    )
+    # Force ``_get_file_batches`` to return an empty list so we
+    # exercise the zero-batch branch even with non-empty
+    # ``hash_values_of_files`` (sidesteps the upstream early-return
+    # at L448).
+    if force_empty_batches:
+        monkeypatch.setattr(
+            api_tasks, "_get_file_batches", lambda **kwargs: []
+        )
+
+    mock_create_chord = MagicMock(name="create_chord_execution")
+    mock_create_chord.return_value = None  # barrier short-circuits on empty
+    monkeypatch.setattr(
+        api_tasks.WorkflowOrchestrationUtils,
+        "create_chord_execution",
+        mock_create_chord,
+    )
+
+    mock_dispatch_result = MagicMock(name="dispatch_result")
+    mock_dispatch_result.id = "callback-task-id"
+    mock_dispatch = MagicMock(name="dispatch", return_value=mock_dispatch_result)
+    monkeypatch.setattr(api_tasks, "dispatch", mock_dispatch)
+
+    files = hash_values_of_files if hash_values_of_files is not None else {
+        "f1": MagicMock(name="FileHashData_f1"),
+    }
+    result = api_tasks._run_workflow_api(
+        api_client=api_client,
+        schema_name="org_test",
+        workflow_id="wf-1",
+        execution_id="exec-1",
+        hash_values_of_files=files,
+        scheduled=False,
+        execution_mode=None,
+        pipeline_id="pipe-1",
+        use_file_history=False,
+        task_id="task-1",
+    )
+    return result, mock_create_chord, mock_dispatch
 
 
 class TestCallSiteFairnessContracts:
     """Pin the ``FairnessKey`` shape each production call site declares.
 
-    A refactor that swaps the workload types, drops the ``fairness=``
-    kwarg, or transposes the org-id source goes undetected by the
-    isolated barrier tests above. These tests assert the contract at
-    the call site boundary.
+    These were originally source-string-match tests — Vishnu correctly
+    pointed out that ``FairnessKey(...)`` appears at *both* the chord
+    call site and the zero-batch fallback in ``api-deployment/tasks.py``,
+    so a substring assertion would pass even if the primary chord call
+    dropped ``fairness=`` entirely. These executing tests patch the
+    helper and inspect the actual call args.
     """
 
-    def test_api_deployment_declares_api_workload_with_schema_name(self):
-        """``api-deployment/tasks.py`` must pass ``WorkloadType.API``
-        and ``org_id=str(schema_name)``.
+    def test_api_deployment_passes_api_fairness_to_create_chord(
+        self, monkeypatch
+    ):
+        """The chord call site in ``_run_workflow_api`` must pass
+        ``fairness=FairnessKey(org_id=str(schema_name),
+        workload_type=WorkloadType.API)`` to ``create_chord_execution``."""
+        # Use a non-empty batch so the chord path fires (not the
+        # zero-batch fallback).
+        _result, mock_create_chord, _dispatch = _run_workflow_api_with_mocks(
+            monkeypatch,
+            hash_values_of_files={"f1": MagicMock(name="file_1")},
+            force_empty_batches=False,
+        )
+        # ``create_chord_execution`` MUST be called with the right
+        # fairness — a refactor that drops ``fairness=`` or swaps the
+        # workload type fails here loudly.
+        assert mock_create_chord.called, (
+            "_run_workflow_api did not call create_chord_execution"
+        )
+        fairness_kwarg = mock_create_chord.call_args.kwargs.get("fairness")
+        assert fairness_kwarg is not None, "fairness= kwarg missing"
+        assert fairness_kwarg == FairnessKey(
+            org_id="org_test", workload_type=WorkloadType.API
+        )
 
-        ``api-deployment`` is not a valid Python identifier (the dash
-        prevents ``import api-deployment.tasks``), so the test reads
-        the source file by path instead of importing the module.
+    def test_general_passes_non_api_fairness_to_create_chord(self, monkeypatch):
+        """``general/tasks.py``'s ``_orchestrate_file_processing_general``
+        must pass ``fairness=FairnessKey(org_id=organization_id,
+        workload_type=WorkloadType.NON_API)`` to ``create_chord_execution``.
+
+        ``general/tasks.py`` is directly importable (no dash), so the
+        test patches the helper at the module level and drives the
+        function with a minimal fixture.
         """
-        import inspect
-        import pathlib
+        from general import tasks as general_tasks
 
-        # Derive workers root from a sibling importable module
-        # (``queue_backend.barrier``) so the path stays correct under
-        # any test runner working directory.
-        src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
-        api_tasks_path = (
-            pathlib.Path(src).parent.parent / "api-deployment" / "tasks.py"
+        api_client = MagicMock(name="api_client")
+        api_client.get_workflow_execution.return_value = MagicMock(
+            success=True, data={}
         )
-        text = api_tasks_path.read_text()
-
-        # Assert the FairnessKey block at the chord call site declares
-        # the contract this PR's commit message claims it does.
-        assert "fairness=FairnessKey(" in text
-        assert "workload_type=WorkloadType.API" in text
-        assert "org_id=str(schema_name)" in text
-
-    def test_general_declares_non_api_workload_with_organization_id(self):
-        """``general/tasks.py`` must pass ``WorkloadType.NON_API`` and
-        ``org_id=organization_id``."""
-        import inspect
-        import pathlib
-
-        src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
-        general_tasks_path = (
-            pathlib.Path(src).parent.parent / "general" / "tasks.py"
+        api_client.update_workflow_execution_status.return_value = MagicMock(
+            success=True
         )
-        text = general_tasks_path.read_text()
 
-        assert "fairness=FairnessKey(" in text
-        assert "workload_type=WorkloadType.NON_API" in text
-        assert "org_id=organization_id" in text
+        # Patch only what's needed to reach the chord call.
+        monkeypatch.setattr(
+            general_tasks,
+            "_get_file_batches_general",
+            lambda **kwargs: [MagicMock(name="batch_1")],
+        )
+        monkeypatch.setattr(
+            general_tasks, "_create_batch_data_general", lambda **kwargs: MagicMock()
+        )
 
+        mock_create_chord = MagicMock(name="create_chord_execution")
+        mock_create_chord.return_value = MagicMock(id="chord-id")
+        monkeypatch.setattr(
+            general_tasks.WorkflowOrchestrationUtils,
+            "create_chord_execution",
+            mock_create_chord,
+        )
 
-# --- Zero-files contract (regression pin for T1) ---
+        try:
+            general_tasks._orchestrate_file_processing_general(
+                api_client=api_client,
+                workflow_id="wf-1",
+                execution_id="exec-1",
+                source_files={"f1": MagicMock(name="file_1")},
+                pipeline_id="pipe-1",
+                scheduled=False,
+                execution_mode=None,
+                use_file_history=False,
+                organization_id="org_test",
+            )
+        except Exception:
+            # Function may raise downstream of the chord call (e.g.
+            # workflow-status update fails on the mocked api_client);
+            # we only care that the helper was invoked with the
+            # right fairness.
+            pass
+
+        assert mock_create_chord.called, (
+            "_orchestrate_file_processing_general did not call "
+            "create_chord_execution"
+        )
+        fairness_kwarg = mock_create_chord.call_args.kwargs.get("fairness")
+        assert fairness_kwarg is not None, "fairness= kwarg missing"
+        assert fairness_kwarg == FairnessKey(
+            org_id="org_test", workload_type=WorkloadType.NON_API
+        )
 
 
 class TestApiDeploymentZeroFilesContract:
-    """Pin the api-deployment zero-files handler.
+    """Executing pin for the api-deployment zero-batch handler.
 
-    Before the Barrier uplift, ``chord(empty)(callback)`` returned a
-    truthy ``AsyncResult`` (Celery fires the body immediately with
-    ``[]``). The Barrier returns ``None`` for empty headers, so the
-    caller now has to handle the ``None`` case explicitly — otherwise
-    the existing ``if not result: raise`` would map zero-files runs
-    to ``ExecutionStatus.ERROR``.
+    Originally a source-string-match test (Vishnu's V13: a Critical
+    finding — string-match would pass even if the real dispatch
+    branch were broken, because the matched substrings appear in
+    surrounding *comments*). This version drives the actual code
+    path via ``_run_workflow_api`` with mocked dependencies and
+    forced-empty batches, then asserts ``dispatch(...)`` is called
+    once with the chord-empty semantic (``args=[[]]``) and the same
+    fairness slot the chord path would have used.
 
-    The post-Barrier handler explicitly dispatches the callback with
-    an empty result list to preserve pre-Barrier behaviour
-    byte-for-byte: ``workflow_execution_status`` updates, API result
-    caching, and pipeline notifications all run exactly as they would
-    have pre-Barrier. Unreachable in practice (upstream guarantees
-    non-empty ``hash_values_of_files``) but this test pins the defensive
-    contract so a future refactor doesn't silently regress.
+    Unreachable in production (upstream ``if not hash_values_of_files:``
+    early return PLUS this defensive branch) but the executing test
+    locks the defensive contract so a future refactor that drops it
+    fails loudly.
     """
 
-    def test_api_deployment_zero_files_dispatches_callback_with_empty_list(self):
-        import inspect
-        import pathlib
-
-        src = inspect.getfile(__import__("queue_backend.barrier", fromlist=["a"]))
-        api_tasks_path = (
-            pathlib.Path(src).parent.parent / "api-deployment" / "tasks.py"
+    def test_zero_batch_branch_dispatches_callback_with_empty_list(
+        self, monkeypatch
+    ):
+        result, _create_chord, mock_dispatch = _run_workflow_api_with_mocks(
+            monkeypatch,
+            hash_values_of_files={"f1": MagicMock(name="file_1")},
+            force_empty_batches=True,
         )
-        text = api_tasks_path.read_text()
 
-        # Defensive branch present and dispatches the callback via
-        # the seam (queue_backend.dispatch), not raw send_task — the
-        # dispatch-sites canary in test_dispatch_sites_characterisation.py
-        # enforces that. The literal strings are part of the
-        # externally-observable response + behaviour contract.
-        assert "if not batch_tasks:" in text
-        assert "dispatch(" in text  # routed through queue_backend seam
-        assert '"process_batch_callback_api"' in text  # callback fired
-        assert "args=[[]]" in text  # body=[] matches chord-empty semantic
-        assert '"batches_created": 0' in text
+        # Dispatch was called exactly once, with the chord-empty
+        # semantic (args=[[]]) and the same fairness slot the chord
+        # path uses.
+        mock_dispatch.assert_called_once()
+        call = mock_dispatch.call_args
+        assert call.args[0] == "process_batch_callback_api"
+        assert call.kwargs.get("args") == [[]]
+        callback_kwargs = call.kwargs.get("kwargs")
+        assert callback_kwargs == {
+            "execution_id": "exec-1",
+            "pipeline_id": "pipe-1",
+            "organization_id": "org_test",
+        }
+        assert call.kwargs.get("fairness") == FairnessKey(
+            org_id="org_test", workload_type=WorkloadType.API
+        )
+
+        # Response shape: orchestrated with zero batches, callback
+        # task id surfaced as chord_id (semantically a task id, not a
+        # chord id — see the inline comment at the call site).
+        assert result["status"] == "orchestrated"
+        assert result["batches_created"] == 0
+        assert result["chord_id"] == "callback-task-id"
 
 
 if __name__ == "__main__":
