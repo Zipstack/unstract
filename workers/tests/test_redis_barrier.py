@@ -92,10 +92,10 @@ class TestRedisDecrBarrierEnqueue:
             app_instance=MagicMock(),
         )
         assert result is None
-        # No SET / DELETE / EXPIRE on the empty path.
+        # No SET / DELETE on the empty path — short-circuit before any
+        # Redis round-trip.
         redis_mock.set.assert_not_called()
         redis_mock.delete.assert_not_called()
-        redis_mock.expire.assert_not_called()
 
     def test_missing_execution_id_raises(self, barrier):
         """``RedisDecrBarrier`` uses ``execution_id`` as the key suffix
@@ -114,9 +114,9 @@ class TestRedisDecrBarrierEnqueue:
             )
 
     def test_initialises_remaining_counter_with_ttl(self, barrier, redis_mock):
-        """``remaining:{exec_id}`` SET to ``len(header_tasks)`` with a
-        24h TTL — belt-and-suspenders cleanup if the callback never
-        fires (e.g. all tasks fail and link_error doesn't decrement)."""
+        """``remaining:{exec_id}`` SET to ``len(header_tasks)`` with
+        TTL — belt-and-suspenders cleanup if a link never fires for
+        a task (e.g. worker crash mid-execution)."""
         header = [MagicMock(name="h1"), MagicMock(name="h2"), MagicMock(name="h3")]
         barrier.enqueue(
             header,
@@ -130,13 +130,10 @@ class TestRedisDecrBarrierEnqueue:
             3,
             ex=_KEY_TTL_DEFAULT_SECONDS,
         )
-        # ``results:{exec_id}`` gets its own TTL after the DEL clears
-        # any stale prior-run leftovers.
+        # ``results:{exec_id}`` is DEL'd to clear any stale prior-run
+        # leftovers. Its TTL is set inside the Lua script after the
+        # first RPUSH (EXPIRE on a non-existent key is a no-op).
         redis_mock.delete.assert_called_once_with(_results_key("exec-42"))
-        redis_mock.expire.assert_called_once_with(
-            _results_key("exec-42"),
-            _KEY_TTL_DEFAULT_SECONDS,
-        )
 
     def test_link_attached_to_each_header_task(self, barrier, redis_mock):
         """Every header task gets the ``barrier_decr_and_check`` link.
@@ -257,38 +254,9 @@ class TestRedisDecrBarrierEnqueue:
         # ``ex=`` on the counter SET should be the overridden 3-day value.
         assert redis_mock.set.call_args.kwargs.get("ex") == 3 * 24 * 3600
 
-    def test_ttl_invalid_value_falls_back_to_default(
-        self, barrier, redis_mock, monkeypatch
-    ):
-        """Garbage env (non-int, negative, zero) → default TTL applies
-        with a warning logged. TTL is a safety net, not a correctness
-        invariant, so a misconfigured value shouldn't break the
-        barrier — it just degrades the cleanup window."""
-        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "not-an-int")
-        barrier.enqueue(
-            [MagicMock()],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-1"},
-            callback_queue="q",
-            app_instance=MagicMock(),
-        )
-        assert redis_mock.set.call_args.kwargs.get("ex") == _KEY_TTL_DEFAULT_SECONDS
-
-        # Zero / negative: same fallback.
-        for bad in ("0", "-1"):
-            redis_mock.reset_mock()
-            monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", bad)
-            barrier.enqueue(
-                [MagicMock()],
-                callback_task_name="cb",
-                callback_kwargs={"execution_id": "exec-2"},
-                callback_queue="q",
-                app_instance=MagicMock(),
-            )
-            assert (
-                redis_mock.set.call_args.kwargs.get("ex")
-                == _KEY_TTL_DEFAULT_SECONDS
-            ), f"TTL={bad!r} should have fallen back to default"
+    # Invalid-value handling tests live in ``TestTtlEnvValidation``
+    # below — they now assert ``raises`` (matching ``get_barrier()``'s
+    # loud-on-misconfig posture) rather than silent fallback.
 
 
 # --- Link task: aggregation ---
@@ -325,7 +293,8 @@ class TestBarrierDecrAndCheckLink:
                 },
             )
 
-        # Lua script invoked with the right keys + the JSON-serialised result.
+        # Lua script invoked with the right keys + JSON-serialised
+        # result + TTL seconds for the EXPIRE inside the script.
         script.assert_called_once()
         call_kwargs = script.call_args.kwargs
         assert call_kwargs["keys"] == [
@@ -333,6 +302,7 @@ class TestBarrierDecrAndCheckLink:
             _results_key("exec-1"),
         ]
         assert json.loads(call_kwargs["args"][0]) == {"batch_id": "b1", "status": "ok"}
+        assert call_kwargs["args"][1] == _KEY_TTL_DEFAULT_SECONDS
 
         # No callback dispatch — remaining > 0.
         current_app.signature.assert_not_called()
@@ -440,24 +410,22 @@ class TestBarrierDecrAndCheckLink:
     @patch("queue_backend.redis_barrier._get_redis_client")
     def test_unserialisable_result_raises_loudly(self, get_redis):
         """A header task returning something json.dumps can't handle
-        is a typed-boundary regression (UN-3513). Raise loudly so the
+        is a typed-boundary regression. Raise loudly so the
         execution surfaces an error rather than silently dropping the
         result."""
         redis_client = MagicMock(name="redis")
         get_redis.return_value = redis_client
 
-        class Unserialisable:
-            """Has no __str__/__repr__/__dict__ structure json can encode."""
-
-            def __init__(self):
-                self.x = object()  # not JSON-safe even with default=str
-
-        # ``default=str`` covers most cases, so we use a directly
-        # ``TypeError``-raising object. ``set`` of incompatible
-        # types is json's classic unserialisable case.
+        # ``complex`` is a classic JSON-unserialisable leaf — no
+        # ``__json__`` / ``__str__``-with-meaning, and ``default=str``
+        # isn't applied (we dropped it). A regressed
+        # ``BatchExecutionResult.to_dict()`` producing such a leaf
+        # would land here. The test pins that the loud-failure
+        # ``try/except`` actually surfaces the regression rather than
+        # being a no-op.
         with pytest.raises((TypeError, ValueError)):
             barrier_decr_and_check.run(
-                {"bad": {1, 2, 3}},
+                {"bad": complex(1, 2)},
                 execution_id="exec-1",
                 callback_descriptor={
                     "task_name": "cb",
@@ -477,6 +445,203 @@ class TestBarrierDecrAndCheckLink:
         fail with ``KeyError`` on the link's task name, which is a
         loud failure (no silent drop)."""
         assert barrier_decr_and_check.name == "barrier_decr_and_check"
+
+    def test_link_max_retries_zero_prevents_double_decrement(self):
+        """The link task MUST have ``max_retries=0``. The Lua script
+        is atomic at the Redis level but the link itself is not
+        idempotent: a Celery retry would replay the script and
+        double-RPUSH + double-DECR, corrupting the aggregation
+        (counter hits 0 prematurely; results list has duplicates).
+        TTL-driven cleanup is the safety net for transient failures
+        rather than Celery autoretry."""
+        # Celery exposes ``max_retries`` on the task class.
+        assert barrier_decr_and_check.max_retries == 0
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_negative_remaining_does_not_fire_callback(self, get_redis):
+        """The Lua script returns ``remaining < 0`` when the counter
+        was TTL-expired or already cleaned up. The Python side must
+        NOT fire the callback in that branch — otherwise every
+        subsequent task completion after a TTL expiry would dispatch
+        a spurious callback."""
+        redis_client = MagicMock(name="redis")
+        # Lua returns ``[-1, []]`` — the ``< 0`` branch where keys
+        # were already DEL'd (or never existed).
+        script = MagicMock(name="script", return_value=[-1, []])
+        redis_client.register_script.return_value = script
+        get_redis.return_value = redis_client
+
+        with patch("celery.current_app") as current_app:
+            result = barrier_decr_and_check.run(
+                {"x": 1},
+                execution_id="exec-1",
+                callback_descriptor={
+                    "task_name": "cb",
+                    "kwargs": {"execution_id": "exec-1"},
+                    "queue": "q",
+                    "fairness_headers": None,
+                },
+            )
+
+        # No callback dispatch — the abandoned branch fires.
+        current_app.signature.assert_not_called()
+        assert result["status"] == "abandoned"
+        assert result["remaining"] == -1
+
+
+# --- TTL env validation ---
+
+
+class TestTtlEnvValidation:
+    """Misconfigured ``WORKER_BARRIER_KEY_TTL_SECONDS`` must raise.
+
+    Matches the posture of ``get_barrier()`` on a typo'd
+    ``WORKER_BARRIER_BACKEND``: a misconfigured TTL shorter than
+    execution wall-clock is a correctness issue (spurious callback
+    fires per the Lua ``< 0`` branch), so operators get a loud
+    on-startup signal rather than silent degradation.
+    """
+
+    def test_non_integer_raises(self, barrier, redis_mock, monkeypatch):
+        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "not-an-int")
+        with pytest.raises(ValueError, match=r"not an integer"):
+            barrier.enqueue(
+                [MagicMock()],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+
+    def test_zero_raises(self, barrier, redis_mock, monkeypatch):
+        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "0")
+        with pytest.raises(ValueError, match=r"positive integer"):
+            barrier.enqueue(
+                [MagicMock()],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+
+    def test_negative_raises(self, barrier, redis_mock, monkeypatch):
+        monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "-1")
+        with pytest.raises(ValueError, match=r"positive integer"):
+            barrier.enqueue(
+                [MagicMock()],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+
+
+# --- Mid-loop dispatch failure ---
+
+
+class TestDispatchFailureCleanup:
+    """If ``apply_async`` raises mid-fan-out, partially-dispatched
+    tasks' links would otherwise corrupt the counter and the orphan
+    state would leak. The barrier must DEL its keys before re-raising
+    so the in-flight links' DECR returns negative → Lua ``< 0``
+    branch cleanly abandons the execution.
+    """
+
+    def test_mid_loop_dispatch_failure_cleans_up_keys(
+        self, barrier, redis_mock
+    ):
+        """Task K of N raises during ``apply_async`` — barrier must
+        DEL both keys before propagating the exception."""
+        h1 = MagicMock(name="h1")
+        h2 = MagicMock(name="h2")
+        h3_failing = MagicMock(name="h3_failing")
+        h3_failing.clone.return_value.apply_async.side_effect = (
+            RuntimeError("broker outage")
+        )
+
+        with pytest.raises(RuntimeError, match=r"broker outage"):
+            barrier.enqueue(
+                [h1, h2, h3_failing],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+            )
+
+        # Initial SET + EXPIRE happened, then DEL on cleanup.
+        # The DEL call should reference BOTH barrier keys.
+        delete_calls = redis_mock.delete.call_args_list
+        # At least one of the DEL calls must include both barrier keys
+        # (the cleanup call), distinguishable from the initial
+        # ``delete(_results_key(...))`` stale-list clear.
+        cleanup_args = [
+            set(call.args) for call in delete_calls
+            if len(call.args) == 2
+        ]
+        assert any(
+            {_remaining_key("exec-1"), _results_key("exec-1")} == args
+            for args in cleanup_args
+        ), (
+            f"Expected DEL(remaining, results) in cleanup; saw "
+            f"delete calls: {[call.args for call in delete_calls]}"
+        )
+
+
+# --- link_error: barrier_abort ---
+
+
+class TestBarrierAbortLinkError:
+    """``link_error`` propagates header-task failures.
+
+    Without this, a failed header task would leave the counter stuck
+    above 0 and the execution would hang until TTL. ``barrier_abort``
+    DELs the barrier keys + logs the error; the outer task's error
+    handler is responsible for the workflow status update.
+    """
+
+    def test_abort_registered_under_canonical_name(self):
+        """Mixed-version rolling deploys require the link_error task
+        to be importable by name on every worker that processes it."""
+        from queue_backend import barrier_abort
+
+        assert barrier_abort.name == "barrier_abort"
+
+    def test_link_error_attached_to_each_header_task(self, barrier, redis_mock):
+        """Every header task must get ``barrier_abort.s(...)`` as a
+        ``.link_error``. Without this, header failures don't
+        propagate and the execution hangs."""
+        h1 = MagicMock(name="h1")
+        h2 = MagicMock(name="h2")
+        barrier.enqueue(
+            [h1, h2],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-1"},
+            callback_queue="q",
+            app_instance=MagicMock(),
+        )
+        h1.clone.return_value.link_error.assert_called_once()
+        h2.clone.return_value.link_error.assert_called_once()
+
+    @patch("queue_backend.redis_barrier._get_redis_client")
+    def test_abort_deletes_both_barrier_keys(self, get_redis):
+        """``barrier_abort`` cleans up the barrier state on header
+        failure — DELs both keys."""
+        from queue_backend import barrier_abort
+
+        redis_client = MagicMock(name="redis")
+        get_redis.return_value = redis_client
+
+        barrier_abort.run(
+            MagicMock(name="request"),
+            RuntimeError("header task crashed"),
+            "traceback string",
+            execution_id="exec-42",
+        )
+
+        redis_client.delete.assert_called_once_with(
+            _remaining_key("exec-42"),
+            _results_key("exec-42"),
+        )
 
 
 if __name__ == "__main__":

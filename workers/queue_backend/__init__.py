@@ -32,7 +32,11 @@ from .barrier import Barrier, BarrierHandle, CeleryChordBarrier
 from .decorator import worker_task
 from .dispatch import dispatch
 from .fairness import FairnessKey
-from .redis_barrier import RedisDecrBarrier, barrier_decr_and_check
+from .redis_barrier import (
+    RedisDecrBarrier,
+    barrier_abort,
+    barrier_decr_and_check,
+)
 
 __all__ = [
     "Barrier",
@@ -41,6 +45,7 @@ __all__ = [
     "CeleryChordBarrier",
     "FairnessKey",
     "RedisDecrBarrier",
+    "barrier_abort",
     "barrier_decr_and_check",
     "dispatch",
     "get_barrier",

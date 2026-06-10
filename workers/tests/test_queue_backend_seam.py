@@ -287,6 +287,7 @@ class TestPublicSurface:
             "CeleryChordBarrier",
             "FairnessKey",
             "RedisDecrBarrier",
+            "barrier_abort",
             "barrier_decr_and_check",
             "dispatch",
             "get_barrier",
