@@ -38,10 +38,10 @@ class WorkflowOrchestrationUtils:
         """Standardized fan-out + callback pattern (Phase 6 ``Barrier``).
 
         Routes through ``CeleryChordBarrier`` — a thin wrapper around
-        ``celery.chord(header)(body)`` that lets PG Queue's Phase 8 work
-        swap the substrate (e.g. to ``RedisDecrBarrier`` or ``PgBarrier``)
-        without touching this call site a second time. Behaviour is
-        identical to the previous direct ``chord(...)`` call.
+        ``celery.chord(header)(body)`` that lets Phase 6b swap the
+        substrate (e.g. to ``RedisDecrBarrier``) without touching this
+        call site a second time. Behaviour is identical to the
+        previous direct ``chord(...)`` call.
 
         Args:
             batch_tasks: List of batch task signatures

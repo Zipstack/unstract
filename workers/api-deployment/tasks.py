@@ -704,7 +704,8 @@ def _run_workflow_api(
             #    workflow_execution_status, API result cache, and
             #    pipeline notifications all run exactly as they would
             #    have pre-Barrier. (Unreachable in practice — upstream
-            #    requires non-empty ``created_files`` — but the defence
+            #    requires non-empty ``hash_values_of_files`` — but
+            #    the defence
             #    closes the theoretical gap.)
             # 2. ``batch_tasks`` is non-empty but the barrier returned
             #    falsy for some other reason — a genuine queue failure.

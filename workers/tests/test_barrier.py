@@ -431,7 +431,7 @@ class TestApiDeploymentZeroFilesContract:
     byte-for-byte: ``workflow_execution_status`` updates, API result
     caching, and pipeline notifications all run exactly as they would
     have pre-Barrier. Unreachable in practice (upstream guarantees
-    non-empty ``created_files``) but this test pins the defensive
+    non-empty ``hash_values_of_files``) but this test pins the defensive
     contract so a future refactor doesn't silently regress.
     """
 

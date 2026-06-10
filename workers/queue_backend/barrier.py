@@ -10,10 +10,11 @@ documented in the PG Queue decision journey.
 
 This module provides the ``Barrier`` protocol and a ``CeleryChordBarrier``
 implementation that wraps the existing ``chord(...)`` call 1:1. Lifting
-both call sites to ``Barrier`` gives PG Queue's Phase 8 work somewhere
-to land an alternative implementation (e.g. ``RedisDecrBarrier`` using
-the labs ``DECR remaining:{exec_id}`` pattern, or a ``PgBarrier`` using
-SKIP LOCKED) without touching the call sites a second time.
+both call sites to ``Barrier`` gives Phase 6b a place to land an
+alternative implementation (e.g. ``RedisDecrBarrier`` using the labs
+``DECR remaining:{exec_id}`` pattern, or — later in Phase 8 — a
+``PgBarrier`` using SKIP LOCKED) without touching the call sites a
+second time.
 
 **Phase 6a (this PR): wrapper only — behaviour-preserving uplift.**
 ``CeleryChordBarrier.enqueue(...)`` produces byte-identical wire output
@@ -34,24 +35,17 @@ implementation, gated by ``WORKER_BARRIER_BACKEND`` env flag (default
 from __future__ import annotations
 
 import logging
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from celery import chord
 
-from .fairness import FAIRNESS_HEADER_NAME, FairnessKey
+from .fairness import FairnessKey
+from .handle import BarrierHandle
+
+if TYPE_CHECKING:
+    from celery.canvas import Signature
 
 logger = logging.getLogger(__name__)
-
-
-class BarrierHandle(Protocol):
-    """Return value contract for a successful ``Barrier.enqueue(...)``.
-
-    Celery's ``AsyncResult`` satisfies this via ``.id``. A future
-    non-Celery substrate handle must expose the same attribute so
-    call sites that log ``chord_id`` keep working.
-    """
-
-    id: str
 
 
 class Barrier(Protocol):
@@ -65,7 +59,7 @@ class Barrier(Protocol):
 
     def enqueue(
         self,
-        header_tasks: list[Any],
+        header_tasks: list[Signature],
         *,
         callback_task_name: str,
         callback_kwargs: dict[str, Any],
@@ -75,15 +69,27 @@ class Barrier(Protocol):
     ) -> BarrierHandle | None:
         """Enqueue ``header_tasks`` and a single callback to fire on completion.
 
-        Returns ``None`` when ``header_tasks`` is empty — matches the
-        legacy ``create_chord_execution`` contract that lets parents
-        handle pipeline status updates directly for zero-file runs.
-        Returns the handle (with ``.id``) otherwise.
+        ``None`` is the **sole signal** that no work was enqueued — it
+        is returned exclusively when ``header_tasks`` is empty. Any
+        substrate-level failure (broker outage, serialisation error,
+        etc.) raises rather than returning ``None``, so callers may
+        treat ``None`` as "no-op, nothing wrong" and a raised
+        exception as a genuine failure. The caller is responsible for
+        guarding ``header_tasks`` (e.g. an early-return when files==0)
+        if a returned ``None`` is semantically distinct from a normal
+        completion in their domain.
 
         ``fairness``, when provided, is attached as the
         ``x-fairness-key`` header on every enqueued task and the
         callback — same wire shape as ``dispatch()`` uses for bare
         sites. Pass ``None`` for non-workflow-execution callers.
+
+        ``app_instance`` is a Celery app today (the Protocol leaks
+        this concrete dependency for the same reason the
+        ``CeleryChordBarrier`` does — Phase 6b's RedisDecrBarrier will
+        narrow this to a smaller Protocol). The argument is the
+        ``app`` from the producer's task context and must expose
+        ``.signature(name, kwargs=..., queue=..., headers=...)``.
         """
         ...
 
@@ -105,7 +111,7 @@ class CeleryChordBarrier:
 
     def enqueue(
         self,
-        header_tasks: list[Any],
+        header_tasks: list[Signature],
         *,
         callback_task_name: str,
         callback_kwargs: dict[str, Any],
@@ -129,18 +135,24 @@ class CeleryChordBarrier:
             return None
 
         try:
-            fairness_headers = (
-                {FAIRNESS_HEADER_NAME: fairness.to_dict()} if fairness else None
-            )
+            # Use ``fairness.as_header()`` — the single wire-shape
+            # encoder, also used by ``dispatch.py``. Constructing the
+            # header dict inline here would risk silent divergence
+            # from the bare-dispatch path.
+            fairness_headers = fairness.as_header() if fairness else None
 
-            # Callback signature carries fairness so the chord body
-            # consumer (``process_batch_callback`` / ``..._api``) sees
-            # the same routing slot the headers carried.
+            # Build the callback-signature kwargs explicitly. When
+            # ``fairness=None`` the resulting call shape is
+            # byte-identical to the pre-Barrier ``app.signature(name,
+            # kwargs=..., queue=...)`` (no spurious ``headers=None``).
+            signature_kwargs: dict[str, Any] = {
+                "kwargs": callback_kwargs,
+                "queue": callback_queue,
+            }
+            if fairness_headers:
+                signature_kwargs["headers"] = fairness_headers
             callback_signature = app_instance.signature(
-                callback_task_name,
-                kwargs=callback_kwargs,
-                queue=callback_queue,
-                **({"headers": fairness_headers} if fairness_headers else {}),
+                callback_task_name, **signature_kwargs
             )
 
             # Stamp fairness onto each header signature via
@@ -170,6 +182,15 @@ class CeleryChordBarrier:
         except Exception:
             # ``logger.exception`` auto-attaches the traceback — needed
             # for debugging broker outages / serialisation failures
-            # at the chord entry point.
-            logger.exception("Failed to enqueue barrier")
+            # at the chord entry point. Add the readily-available
+            # context so a Sentry/log triage gets execution/pipeline/
+            # callback/queue identifiers alongside the stack.
+            execution_id = callback_kwargs.get("execution_id")
+            pipeline_id = callback_kwargs.get("pipeline_id")
+            logger.exception(
+                f"[exec:{execution_id}] [pipeline:{pipeline_id}] "
+                f"Failed to enqueue barrier "
+                f"(callback={callback_task_name}, queue={callback_queue}, "
+                f"header_tasks={len(header_tasks)})"
+            )
             raise
