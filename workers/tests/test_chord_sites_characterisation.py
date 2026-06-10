@@ -276,12 +276,18 @@ class TestChordSiteInventory:
 
         **Known blind spot**: a return-value-discarded ``chord(batch)(cb)``
         at column 0 (no assignment) would slip past this regex AND the
-        comment-line filter. That case is bounded by the separate
-        ``test_chord_import_only_in_barrier`` canary — any stray call
-        site still needs a ``from celery import chord`` somewhere, and
-        the import canary catches exactly one allowed location. If a
-        future PR ships a no-assignment chord call outside ``barrier.py``
-        without also importing chord, both canaries need broadening.
+        comment-line filter. The companion ``test_chord_import_only_in_barrier``
+        canary catches the common ``from celery import chord`` import
+        form — so a stray call site reachable via that import would
+        still trip it. However, aliased imports (``from celery import
+        chord as c``) or module-attribute access (``import celery`` +
+        ``celery.chord(...)``) would evade *both* canaries. We accept
+        this gap because (a) those import shapes are non-idiomatic and
+        not used anywhere in workers/, and (b) ``barrier.py`` is the
+        sole sanctioned chord call site in the codebase, so any stray
+        call would surface in code review long before runtime. If a
+        future PR ships either of those import shapes outside
+        ``barrier.py``, the canaries need broadening.
         """
         import pathlib
         import re

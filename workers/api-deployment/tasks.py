@@ -697,6 +697,18 @@ def _run_workflow_api(
         )
 
         if not result:
+            # TODO(phase-6b): tighten to ``if result is None:``
+            # when ``RedisDecrBarrier`` lands. The ``Barrier`` Protocol
+            # declares ``None`` as the *sole* "no work enqueued" signal,
+            # so identity-against-None is the principled check. Safe to
+            # defer today because Celery's ``AsyncResult`` has no custom
+            # ``__bool__`` (always truthy), making the truthiness and
+            # identity checks behaviourally equivalent. A future
+            # substrate handle with a falsy-but-not-None ``__bool__``
+            # would be misrouted into the zero-files path under the
+            # current truthiness check — that's the regression this TODO
+            # forecloses, alongside the substrate that motivates it.
+            #
             # Two reasons ``result`` can be falsy:
             # 1. Zero ``batch_tasks`` — the barrier short-circuits and
             #    returns ``None``. Pre-Barrier this would have called
@@ -710,11 +722,15 @@ def _run_workflow_api(
             #    identical (this is a plain ``send_task`` with an
             #    additive fairness header rather than the chord-
             #    aggregation primitive), but the observable end-state
-            #    is equivalent. Unreachable in practice — upstream
-            #    requires non-empty ``hash_values_of_files`` — but
-            #    the defence closes the theoretical gap.
+            #    is equivalent. Effectively unreachable — the upstream
+            #    ``if not hash_values_of_files:`` early return plus
+            #    valid ``FileHashData`` inputs mean ``_get_file_batches``
+            #    always yields >=1 batch — but the defence closes the
+            #    theoretical gap (e.g. all entries dropped because none
+            #    are ``FileHashData`` / ``dict``, which would still
+            #    bypass the upstream guard).
             # 2. ``batch_tasks`` is non-empty but the barrier returned
-            #    falsy for some other reason — a genuine queue failure.
+            #    ``None`` for some other reason — a genuine queue failure.
             if not batch_tasks:
                 logger.info(
                     f"Execution {execution_id} orchestrated with zero "
