@@ -275,7 +275,17 @@ class TestPublicSurface:
     def test_all_exports(self):
         import queue_backend
 
-        assert set(queue_backend.__all__) == {"FairnessKey", "dispatch", "worker_task"}
+        # Phase 6a added Barrier / BarrierHandle / CeleryChordBarrier.
+        # Phase 6b will add a ``get_barrier`` factory when the
+        # ``WORKER_BARRIER_BACKEND`` flag wiring lands.
+        assert set(queue_backend.__all__) == {
+            "Barrier",
+            "BarrierHandle",
+            "CeleryChordBarrier",
+            "FairnessKey",
+            "dispatch",
+            "worker_task",
+        }
 
 
 if __name__ == "__main__":

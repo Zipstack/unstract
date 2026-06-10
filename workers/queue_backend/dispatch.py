@@ -8,21 +8,12 @@ call sites.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Protocol
+from typing import Any
 
 from celery import current_app
 
 from .fairness import FairnessKey
-
-
-class DispatchHandle(Protocol):
-    """Minimum contract every dispatch substrate must satisfy.
-
-    Celery's ``AsyncResult`` satisfies this via ``.id``; any future
-    substrate handle must expose the same attribute.
-    """
-
-    id: str
+from .handle import DispatchHandle
 
 
 def dispatch(
