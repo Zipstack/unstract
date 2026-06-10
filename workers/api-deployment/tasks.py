@@ -677,6 +677,12 @@ def _run_workflow_api(
         # The header tasks + callback now carry the fairness slot for
         # downstream PG Queue routing — closes the chord-fairness gap noted
         # in Phase 5.1.
+        # Hoist FairnessKey to a local so the chord path and the
+        # zero-batch fallback can't drift apart on the slot's shape.
+        api_fairness = FairnessKey(
+            org_id=str(schema_name),
+            workload_type=WorkloadType.API,
+        )
         result = WorkflowOrchestrationUtils.create_chord_execution(
             batch_tasks=batch_tasks,
             callback_task_name="process_batch_callback_api",
@@ -687,28 +693,44 @@ def _run_workflow_api(
             },
             callback_queue=file_processing_callback_queue,
             app_instance=app,
-            fairness=FairnessKey(
-                org_id=str(schema_name),
-                workload_type=WorkloadType.API,
-            ),
+            fairness=api_fairness,
         )
 
         if not result:
+            # TODO(phase-6b): tighten to ``if result is None:``
+            # when ``RedisDecrBarrier`` lands. The ``Barrier`` Protocol
+            # declares ``None`` as the *sole* "no work enqueued" signal,
+            # so identity-against-None is the principled check. Safe to
+            # defer today because Celery's ``AsyncResult`` has no custom
+            # ``__bool__`` (always truthy), making the truthiness and
+            # identity checks behaviourally equivalent. A future
+            # substrate handle with a falsy-but-not-None ``__bool__``
+            # would be misrouted into the zero-files path under the
+            # current truthiness check — that's the regression this TODO
+            # forecloses, alongside the substrate that motivates it.
+            #
             # Two reasons ``result`` can be falsy:
             # 1. Zero ``batch_tasks`` — the barrier short-circuits and
             #    returns ``None``. Pre-Barrier this would have called
             #    ``chord(empty)(callback)`` which Celery handles by
             #    firing the callback immediately with ``[]``. We
-            #    preserve that contract byte-for-byte by dispatching
-            #    the callback explicitly with an empty result list, so
+            #    preserve that observable end-state by dispatching the
+            #    callback explicitly with an empty result list, so
             #    workflow_execution_status, API result cache, and
             #    pipeline notifications all run exactly as they would
-            #    have pre-Barrier. (Unreachable in practice — upstream
-            #    requires non-empty ``hash_values_of_files`` — but
-            #    the defence
-            #    closes the theoretical gap.)
+            #    have pre-Barrier. The new wire isn't literally byte-
+            #    identical (this is a plain ``send_task`` with an
+            #    additive fairness header rather than the chord-
+            #    aggregation primitive), but the observable end-state
+            #    is equivalent. Effectively unreachable — the upstream
+            #    ``if not hash_values_of_files:`` early return plus
+            #    valid ``FileHashData`` inputs mean ``_get_file_batches``
+            #    always yields >=1 batch — but the defence closes the
+            #    theoretical gap (e.g. all entries dropped because none
+            #    are ``FileHashData`` / ``dict``, which would still
+            #    bypass the upstream guard).
             # 2. ``batch_tasks`` is non-empty but the barrier returned
-            #    falsy for some other reason — a genuine queue failure.
+            #    ``None`` for some other reason — a genuine queue failure.
             if not batch_tasks:
                 logger.info(
                     f"Execution {execution_id} orchestrated with zero "
@@ -730,10 +752,7 @@ def _run_workflow_api(
                         "organization_id": str(schema_name),
                     },
                     queue=file_processing_callback_queue,
-                    fairness=FairnessKey(
-                        org_id=str(schema_name),
-                        workload_type=WorkloadType.API,
-                    ),
+                    fairness=api_fairness,
                 )
                 return {
                     "status": "orchestrated",
@@ -743,6 +762,13 @@ def _run_workflow_api(
                     "files_processed": total_files,
                     "files_from_cache": len(cached_results),
                     "batches_created": 0,
+                    # ``chord_id`` here is the standalone callback
+                    # task id (no chord; the dispatch above is a
+                    # direct ``send_task``). Same response-shape key
+                    # as the normal path; semantically a task id
+                    # rather than a chord id. Log/metrics consumers
+                    # treating ``chord_id`` as "chord identifier"
+                    # should branch on ``batches_created == 0``.
                     "chord_id": callback_result.id,
                     "cached_results": list(cached_results.keys())
                     if cached_results
