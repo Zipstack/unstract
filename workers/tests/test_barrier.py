@@ -95,10 +95,18 @@ class TestBarrierProtocolShape:
         from celery.result import AsyncResult
 
         # Structural-typing pin: every attribute the Protocol declares
-        # must exist on ``AsyncResult``. Currently just ``id``; this
-        # loop is future-proof for additional required attributes.
+        # must exist on a real ``AsyncResult`` *instance*. Checking on
+        # the class would only see ``@property`` descriptors and skip
+        # attributes assigned inside ``__init__`` (e.g. ``self.id =
+        # task_id`` with no class-level descriptor) — so a future
+        # ``BarrierHandle`` extension with an instance-only field
+        # could slip through. Currently just ``id``; the loop is
+        # future-proof for additional required attributes.
+        async_result_instance = AsyncResult("placeholder-task-id")
         required_attrs = ("id",)
-        missing = [a for a in required_attrs if not hasattr(AsyncResult, a)]
+        missing = [
+            a for a in required_attrs if not hasattr(async_result_instance, a)
+        ]
         assert missing == [], (
             f"AsyncResult is missing required BarrierHandle attribute(s): "
             f"{missing} — a refactor of BarrierHandle / TaskHandle has "
@@ -436,17 +444,42 @@ def _run_workflow_api_with_mocks(
     monkeypatch.setattr(
         api_tasks, "_log_api_batch_creation_statistics", lambda **kwargs: None
     )
-    # Force ``_get_file_batches`` to return an empty list so we
-    # exercise the zero-batch branch even with non-empty
-    # ``hash_values_of_files`` (sidesteps the upstream early-return
-    # at L448).
-    if force_empty_batches:
-        monkeypatch.setattr(
-            api_tasks, "_get_file_batches", lambda **kwargs: []
-        )
+
+    # Always patch ``_get_file_batches`` — the real implementation
+    # filters non-``FileHashData``/``dict`` entries, which would drop
+    # our ``MagicMock`` values and silently land in the zero-batch
+    # branch even when ``force_empty_batches=False``. Patching here
+    # gives the caller deterministic control over the chord vs
+    # zero-batch path via the ``force_empty_batches`` flag.
+    monkeypatch.setattr(
+        api_tasks,
+        "_get_file_batches",
+        lambda **kwargs: [] if force_empty_batches else [["file_1_in_batch"]],
+    )
+    # Neutralise the per-batch helpers so ``batch_tasks`` is non-empty
+    # in the chord-path case without us needing to construct real
+    # ``FileBatchData`` objects.
+    mock_file_data = MagicMock(name="file_data")
+    # ``.manual_review_config.get("review_required", False)`` must
+    # return a falsy value or the loop dives into the manual-review
+    # branch and tries to call ``_calculate_manual_review_decisions_for_batch_api``.
+    mock_file_data.manual_review_config = {"review_required": False}
+    monkeypatch.setattr(
+        api_tasks, "_create_file_data", lambda **kwargs: mock_file_data
+    )
+    monkeypatch.setattr(
+        api_tasks, "_create_batch_data", lambda **kwargs: {"batch": "data"}
+    )
 
     mock_create_chord = MagicMock(name="create_chord_execution")
-    mock_create_chord.return_value = None  # barrier short-circuits on empty
+    # When ``force_empty_batches=False``, return a truthy handle so
+    # the chord path completes normally (no fall-through into the
+    # zero-batch ``dispatch`` branch). When forced empty, return
+    # ``None`` to mimic the barrier's empty-header short-circuit and
+    # exercise the fallback dispatch.
+    mock_create_chord.return_value = (
+        None if force_empty_batches else MagicMock(id="chord-result-id")
+    )
     monkeypatch.setattr(
         api_tasks.WorkflowOrchestrationUtils,
         "create_chord_execution",
@@ -493,9 +526,11 @@ class TestCallSiteFairnessContracts:
         """The chord call site in ``_run_workflow_api`` must pass
         ``fairness=FairnessKey(org_id=str(schema_name),
         workload_type=WorkloadType.API)`` to ``create_chord_execution``."""
-        # Use a non-empty batch so the chord path fires (not the
-        # zero-batch fallback).
-        _result, mock_create_chord, _dispatch = _run_workflow_api_with_mocks(
+        # ``_run_workflow_api_with_mocks(force_empty_batches=False)``
+        # patches ``_get_file_batches`` to return a non-empty list so
+        # the chord path actually fires (the helper's patches are
+        # documented in ``_run_workflow_api_with_mocks``).
+        _result, mock_create_chord, mock_dispatch = _run_workflow_api_with_mocks(
             monkeypatch,
             hash_values_of_files={"f1": MagicMock(name="file_1")},
             force_empty_batches=False,
@@ -510,6 +545,26 @@ class TestCallSiteFairnessContracts:
         assert fairness_kwarg is not None, "fairness= kwarg missing"
         assert fairness_kwarg == FairnessKey(
             org_id="org_test", workload_type=WorkloadType.API
+        )
+        # And the zero-batch fallback ``dispatch(...)`` MUST NOT have
+        # fired — otherwise this test would silently pass via the
+        # fallback's own ``fairness=`` argument even if the primary
+        # ``create_chord_execution`` call dropped its ``fairness=``.
+        # Greptile flagged this gap in the original revision.
+        assert not mock_dispatch.called, (
+            "Zero-batch fallback dispatch fired during the chord-path "
+            "test — _get_file_batches mock returned empty unexpectedly, "
+            "or create_chord_execution returned falsy. The chord-path "
+            "fairness assertion above would otherwise be exercising the "
+            "fallback's own fairness arg, not the chord call's."
+        )
+        # Header-task batch_tasks must be non-empty (else create_chord
+        # would have been a no-op pass-through to the empty-header
+        # guard inside the barrier).
+        batch_tasks = mock_create_chord.call_args.kwargs.get("batch_tasks")
+        assert batch_tasks, (
+            "batch_tasks passed to create_chord_execution was empty — "
+            "the chord path was not actually exercised"
         )
 
     def test_general_passes_non_api_fairness_to_create_chord(self, monkeypatch):
@@ -619,6 +674,11 @@ class TestApiDeploymentZeroFilesContract:
             "pipeline_id": "pipe-1",
             "organization_id": "org_test",
         }
+        # Pin the callback queue too — without this a refactor that
+        # routes the zero-batch callback to the wrong queue (or drops
+        # the ``queue=`` kwarg entirely) would pass undetected.
+        # Greptile flagged this gap in the original revision.
+        assert call.kwargs.get("queue") == "api_file_processing_callback"
         assert call.kwargs.get("fairness") == FairnessKey(
             org_id="org_test", workload_type=WorkloadType.API
         )
