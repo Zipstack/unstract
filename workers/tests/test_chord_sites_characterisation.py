@@ -1,21 +1,27 @@
-"""Characterisation tests for the two ``celery.chord`` call sites.
+"""Characterisation tests for the chord-callback boundary, now lifted
+behind the ``Barrier`` abstraction (PG Queue Phase 6a).
 
-These are the two places in ``workers/`` source that invoke ``chord(...)``
-directly. PR #13 will replace both with a transport-agnostic ``Barrier``
-abstraction matching the labs target architecture's ``DECR remaining:{exec_id}``
-pattern.
+Originally written to lock down the inline ``celery.chord(...)`` calls
+at two call sites before they were lifted. Post-uplift the inline
+calls are gone — both call sites delegate to
+``WorkflowOrchestrationUtils.create_chord_execution`` which in turn
+delegates to ``CeleryChordBarrier.enqueue(...)``. The single remaining
+``chord(...)`` call lives inside ``workers/queue_backend/barrier.py``.
 
-This test suite locks down the **current** chord invocation contract so the
-migration can be proved equivalent. Chord is the highest-risk Celery construct
-called out in the PG Queue decision doc (silent task drops at ~130K-task scale)
-— characterising it before refactor is critical.
+Sites covered (assertions unchanged from the original pre-uplift
+suite — they characterise the **same** ``chord(header)(body)``
+contract, now reached one indirection later):
+1. ``shared/workflow/execution/orchestration_utils.py`` —
+   ``WorkflowOrchestrationUtils.create_chord_execution`` (centralised helper).
+2. ``api-deployment/tasks.py`` — same helper, called inline inside
+   ``_run_workflow_api`` (post-uplift it no longer calls ``chord(...)``
+   directly; covered by the inventory test below).
 
-Sites:
-1. ``shared/workflow/execution/orchestration_utils.py`` — ``WorkflowOrchestrationUtils.create_chord_execution`` (the centralised helper).
-2. ``api-deployment/tasks.py`` — inline chord inside ``_run_workflow_api``.
-   Site 2 is exercised only via the inventory test (full characterisation
-   requires heavy mocking of the enclosing 273-line function — out of scope
-   for a smoke/characterisation pass).
+Chord is the highest-risk Celery construct called out in the PG Queue
+decision doc (silent task drops at ~130K-task scale). A future
+Phase 6b will introduce ``RedisDecrBarrier`` as a second implementation
+behind a flag; these tests stay green through that transition because
+they characterise the **Celery chord** code path specifically.
 """
 
 from unittest.mock import MagicMock, patch
@@ -49,9 +55,7 @@ class TestCreateChordExecution:
 
         app = self._make_app_instance()
 
-        with patch(
-            "shared.workflow.execution.orchestration_utils.chord"
-        ) as mock_chord:
+        with patch("queue_backend.barrier.chord") as mock_chord:
             result = WorkflowOrchestrationUtils.create_chord_execution(
                 batch_tasks=[],
                 callback_task_name="process_batch_callback",
@@ -72,9 +76,7 @@ class TestCreateChordExecution:
         app = self._make_app_instance()
         batch_tasks = [MagicMock(name="batch_task_1"), MagicMock(name="batch_task_2")]
 
-        with patch(
-            "shared.workflow.execution.orchestration_utils.chord"
-        ) as mock_chord:
+        with patch("queue_backend.barrier.chord") as mock_chord:
             # chord(batch_tasks) returns a chord object; calling it with the
             # callback signature returns the chord result.  Both calls must
             # happen for this characterisation.
@@ -109,9 +111,7 @@ class TestCreateChordExecution:
             "organization_id": "org-x",
         }
 
-        with patch(
-            "shared.workflow.execution.orchestration_utils.chord"
-        ) as mock_chord:
+        with patch("queue_backend.barrier.chord") as mock_chord:
             mock_chord.return_value = MagicMock()
             WorkflowOrchestrationUtils.create_chord_execution(
                 batch_tasks=batch_tasks,
@@ -136,9 +136,7 @@ class TestCreateChordExecution:
 
         app = self._make_app_instance()
 
-        with patch(
-            "shared.workflow.execution.orchestration_utils.chord"
-        ) as mock_chord:
+        with patch("queue_backend.barrier.chord") as mock_chord:
             chord_obj = MagicMock()
             chord_result = MagicMock(name="chord_result_object")
             chord_obj.return_value = chord_result
@@ -162,9 +160,7 @@ class TestCreateChordExecution:
 
         app = self._make_app_instance()
 
-        with patch(
-            "shared.workflow.execution.orchestration_utils.chord"
-        ) as mock_chord:
+        with patch("queue_backend.barrier.chord") as mock_chord:
             mock_chord.side_effect = RuntimeError("broker exploded")
 
             with pytest.raises(RuntimeError, match="broker exploded"):
@@ -215,12 +211,16 @@ class TestWorkflowOrchestrationMixinCreateChord:
                 callback_queue="file_processing_callback",
             )
 
+        # Mixin now forwards ``fairness=`` (None when caller omits it)
+        # to ``create_chord_execution``. The positional args stay the
+        # same.
         mock_static.assert_called_once_with(
             batch,
             "process_batch_callback",
             kwargs,
             "file_processing_callback",
             task.app,
+            fairness=None,
         )
 
     def test_create_chord_raises_when_no_app_bound(self):
@@ -247,14 +247,37 @@ class TestWorkflowOrchestrationMixinCreateChord:
 
 
 class TestChordSiteInventory:
-    """Exactly two chord call sites must exist in workers/ source.
+    """Post-Barrier-uplift invariant: exactly ONE ``chord(...)`` call
+    site, inside ``queue_backend/barrier.py``.
 
-    If a third appears, this test fails so PR #13's migration can't silently
-    miss it.
+    Before the uplift there were two inline ``chord(...)`` calls (in
+    ``orchestration_utils.py`` and ``api-deployment/tasks.py``). The
+    refactor lifted both behind ``CeleryChordBarrier`` so the chord
+    primitive has a single home — a future ``RedisDecrBarrier`` swap
+    can target one location instead of chasing call sites.
+
+    If a third ``chord(...)`` call appears anywhere outside
+    ``barrier.py``, this test fails — preventing a silent regression
+    where a future PR bypasses the abstraction.
     """
 
-    def test_only_two_known_chord_call_sites_in_workers(self):
-        """Count chord(...) invocations (not imports) in workers/ source."""
+    _CHORD_HOST = "queue_backend/barrier.py"
+
+    def test_chord_invocation_lives_only_in_barrier(self):
+        """Count chord(...) invocations (not imports) in workers/ source.
+
+        Tightened regex (after the original ``(?:^|[\\s=(])chord\\(``
+        could match docstring prose mentioning ``chord(...)`` after
+        whitespace): now requires assignment form ``= chord(`` (with
+        optional whitespace), which matches the production call at
+        ``barrier.py``'s ``result = chord(header_tasks)(callback_signature)``
+        but rejects docstring / comment mentions like ``the chord(...)
+        primitive``.
+
+        Comment / docstring lines are also explicitly skipped as
+        belt-and-suspenders against a future call site that lacks the
+        ``=`` prefix (e.g. a return-value-discarded ``chord(...)``).
+        """
         import pathlib
         import re
 
@@ -264,12 +287,10 @@ class TestChordSiteInventory:
         # `workers/shared/tests_helpers/`.
         skip_top_dirs = {"tests", "__pycache__", "htmlcov", ".venv"}
 
-        # Match `chord(` as a function call — excludes the bare import line
-        # `from celery import chord` and helper method names like `create_chord`.
-        # The regex requires `chord` to be preceded by start-of-line / whitespace
-        # / `=` / `(` (i.e., a true call expression), not as part of a longer
-        # identifier such as `create_chord`.
-        pattern = re.compile(r"(?:^|[\s=(])chord\(")
+        # Assignment-form ``= chord(`` — production call sites all
+        # capture the AsyncResult into a variable. Docstring prose
+        # never uses this form.
+        pattern = re.compile(r"=\s*chord\(")
 
         hits = []
         for py in workers_root.rglob("*.py"):
@@ -278,21 +299,31 @@ class TestChordSiteInventory:
                 continue
             text = py.read_text()
             for line_no, line in enumerate(text.splitlines(), start=1):
+                stripped = line.lstrip()
+                # Skip pure comment lines (belt-and-suspenders — the
+                # regex already rejects most of these via the ``=``
+                # prefix requirement, but a comment like ``# x = chord(...)``
+                # would otherwise sneak through).
+                if stripped.startswith("#"):
+                    continue
                 if pattern.search(line):
                     hits.append(f"{py.relative_to(workers_root)}:{line_no}")
 
-        # Expected exactly two — in orchestration_utils.py and api-deployment/tasks.py.
-        assert len(hits) == 2, (
-            f"Expected exactly 2 chord(...) call sites in workers/, found "
-            f"{len(hits)}:\n  " + "\n  ".join(hits)
+        assert len(hits) == 1, (
+            "Expected exactly 1 chord(...) call site in workers/ (inside "
+            f"{self._CHORD_HOST}), found {len(hits)}:\n  "
+            + "\n  ".join(hits)
+            + "\nPhase 6a lifted both call sites behind CeleryChordBarrier — "
+            "a new direct chord(...) call bypasses the Barrier abstraction "
+            "and breaks the future Phase 6b RedisDecrBarrier swap point."
         )
-        joined = " ".join(hits)
-        assert "shared/workflow/execution/orchestration_utils.py" in joined
-        assert "api-deployment/tasks.py" in joined
+        assert self._CHORD_HOST in hits[0], (
+            f"chord(...) call must live in {self._CHORD_HOST}, found at {hits[0]}"
+        )
 
-    def test_chord_import_only_in_two_files(self):
-        """`from celery import chord` should appear in exactly the two files
-        that actually invoke chord — no other imports lurking."""
+    def test_chord_import_only_in_barrier(self):
+        """`from celery import chord` should appear in exactly one file —
+        ``queue_backend/barrier.py`` — post-Barrier uplift."""
         import pathlib
         import re
 
@@ -311,16 +342,13 @@ class TestChordSiteInventory:
                 if pattern.search(line):
                     hits.append(f"{py.relative_to(workers_root)}:{line_no}")
 
-        assert len(hits) == 2, (
-            f"Expected `from celery import chord` in exactly 2 files, found "
+        assert len(hits) == 1, (
+            f"Expected `from celery import chord` in exactly 1 file, found "
             f"{len(hits)}:\n  " + "\n  ".join(hits)
         )
-        # Sanity: same files as the call-site canary above.  If the imports
-        # ever migrate to different files while count stays at 2, this catches
-        # it — preventing a silent miss during the Barrier migration.
-        joined = " ".join(hits)
-        assert "shared/workflow/execution/orchestration_utils.py" in joined
-        assert "api-deployment/tasks.py" in joined
+        assert self._CHORD_HOST in hits[0], (
+            f"chord import must live in {self._CHORD_HOST}, found at {hits[0]}"
+        )
 
 
 if __name__ == "__main__":
