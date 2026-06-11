@@ -1,6 +1,7 @@
-from django.db.models import OuterRef, Subquery
+from django.db.models import FloatField, OuterRef, Subquery, Sum
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
+from usage_v2.models import Usage
 from utils.pagination import CustomPagination
 
 from workflow_manager.file_execution.filter import FileExecutionFilter
@@ -31,6 +32,16 @@ class FileCentricExecutionViewSet(viewsets.ReadOnlyModelViewSet):
             .values("data")[:1]
         )
 
+        # Usage rows store the file execution ID as run_id; aggregate the
+        # LLM/embedding cost per file without N+1 queries
+        cost_subquery = (
+            Usage.objects.filter(run_id=OuterRef("pk"))
+            .values("run_id")
+            .annotate(total_cost=Sum("cost_in_dollars"))
+            .values("total_cost")[:1]
+        )
+
         return FileExecution.objects.filter(workflow_execution_id=execution_id).annotate(
-            latest_log_data=Subquery(latest_log_subquery)
+            latest_log_data=Subquery(latest_log_subquery),
+            cost=Subquery(cost_subquery, output_field=FloatField()),
         )
