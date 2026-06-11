@@ -88,6 +88,12 @@ class APIBase(ABC):
     def get_form_data_items(self) -> list[FormDataItem]:
         pass
 
+    def get_collection_variables(self) -> list["VariableItem"]:
+        """Collection-level variables; only needed when a request
+        references them.
+        """
+        return []
+
     @abstractmethod
     def get_api_endpoint(self) -> str:
         pass
@@ -166,6 +172,14 @@ class APIDeploymentDto(APIBase):
         status_url = urljoin(abs_api_endpoint, "?" + status_query_str)
         return RequestItem(method=HTTPMethod.GET, header=header_list, url=status_url)
 
+    def get_collection_variables(self) -> list[VariableItem]:
+        return [
+            VariableItem(
+                key=CollectionKey.EXEC_ID_VARIABLE_NAME,
+                value=CollectionKey.STATUS_EXEC_ID_DEFAULT,
+            )
+        ]
+
     def _get_execute_capture_event(self) -> EventItem:
         """Post-response script that stores the execution_id from the execute
         response into a collection variable, so the status request can use it
@@ -175,7 +189,12 @@ class APIDeploymentDto(APIBase):
             listen="test",
             script=ScriptItem(
                 exec=[
-                    "const response = pm.response.json();",
+                    "let response = null;",
+                    "try {",
+                    "    response = pm.response.json();",
+                    "} catch (error) {",
+                    "    // Non-JSON response (e.g. gateway error); nothing to capture",
+                    "}",
                     "if (response && response.message && response.message.execution_id) {",  # noqa: E501
                     f'    pm.collectionVariables.set("{CollectionKey.EXEC_ID_VARIABLE_NAME}", response.message.execution_id);',  # noqa: E501
                     "}",
@@ -267,13 +286,11 @@ class PostmanCollection:
             )
         postman_info: PostmanInfo = data_object.get_postman_info()
         postman_item_list = data_object.get_postman_items()
-        variables = [
-            VariableItem(
-                key=CollectionKey.EXEC_ID_VARIABLE_NAME,
-                value=CollectionKey.STATUS_EXEC_ID_DEFAULT,
-            )
-        ]
-        return cls(info=postman_info, item=postman_item_list, variable=variables)
+        return cls(
+            info=postman_info,
+            item=postman_item_list,
+            variable=data_object.get_collection_variables(),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Convert PostmanCollection instance to a dict.
