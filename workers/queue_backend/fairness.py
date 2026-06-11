@@ -9,7 +9,19 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Final, TypedDict
+
+
+class FairnessPayload(TypedDict):
+    """Serialised :class:`FairnessKey` (``to_dict()`` / wire shape).
+
+    Shared so producers and the PG ``TaskPayload`` wire contract agree on
+    the exact sub-shape instead of a loose ``dict[str, Any]``.
+    """
+
+    org_id: str | None
+    workload_type: str
+    pipeline_priority: int
 
 
 class WorkloadType(StrEnum):
@@ -47,12 +59,12 @@ class FairnessKey:
                 f"[{MIN_PRIORITY}, {MAX_PRIORITY}]: {self.pipeline_priority}"
             )
 
-    def to_dict(self) -> dict[str, str | int | None]:
-        return {
-            "org_id": self.org_id,
-            "workload_type": self.workload_type.value,
-            "pipeline_priority": self.pipeline_priority,
-        }
+    def to_dict(self) -> FairnessPayload:
+        return FairnessPayload(
+            org_id=self.org_id,
+            workload_type=self.workload_type.value,
+            pipeline_priority=self.pipeline_priority,
+        )
 
     def as_header(self) -> dict[str, dict[str, str | int | None]]:
         """Celery ``send_task(headers=...)`` payload.

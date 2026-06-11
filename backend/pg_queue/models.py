@@ -15,6 +15,9 @@ class PgQueueMessage(models.Model):
 
     msg_id = models.BigAutoField(primary_key=True)
     queue_name = models.TextField()
+    # Opaque JSONB payload. For task dispatches the workers write a task
+    # payload here (``queue_backend.pg_queue.TaskPayload``: task_name / args
+    # / kwargs / queue / fairness); the queue itself stays payload-agnostic.
     message = models.JSONField()
     # "" = no org (leaf tasks); the fair-admission query (a later phase)
     # uses it for the coupled pipeline. Empty string rather than NULL —
