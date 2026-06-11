@@ -4,22 +4,29 @@ This module provides standardized workflow orchestration patterns,
 chord execution, batch processing, and task coordination utilities.
 """
 
-import os
-from typing import Any
+from __future__ import annotations
 
-from queue_backend import CeleryChordBarrier, FairnessKey
+import os
+from typing import TYPE_CHECKING, Any
+
+from queue_backend import BarrierHandle, FairnessKey, get_barrier
 
 from ...enums import FileDestinationType, PipelineType
 from ...enums.worker_enums import QueueName
 from ...infrastructure.logging import WorkerLogger
 
+if TYPE_CHECKING:
+    from celery.canvas import Signature
+
 logger = WorkerLogger.get_logger(__name__)
 
 # Single ``Barrier`` instance reused across all
-# ``WorkflowOrchestrationUtils.create_chord_execution`` calls. A future
-# Phase 6b will replace this with a factory call (``get_barrier()``)
-# that picks the impl from ``WORKER_BARRIER_BACKEND``.
-_BARRIER = CeleryChordBarrier()
+# ``WorkflowOrchestrationUtils.create_chord_execution`` calls. The
+# substrate is selected at module-import (worker startup) time by the
+# ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips
+# require a pod restart — same posture as every other ``WORKER_*``
+# env in the codebase.
+_BARRIER = get_barrier()
 
 
 class WorkflowOrchestrationUtils:
@@ -27,14 +34,14 @@ class WorkflowOrchestrationUtils:
 
     @staticmethod
     def create_chord_execution(
-        batch_tasks: list[Any],
+        batch_tasks: list[Signature],
         callback_task_name: str,
         callback_kwargs: dict[str, Any],
         callback_queue: str,
         app_instance: Any,
         *,
         fairness: FairnessKey | None = None,
-    ) -> Any:
+    ) -> BarrierHandle | None:
         """Standardized fan-out + callback pattern (Phase 6 ``Barrier``).
 
         Routes through ``CeleryChordBarrier`` — a thin wrapper around

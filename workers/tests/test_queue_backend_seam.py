@@ -276,14 +276,21 @@ class TestPublicSurface:
         import queue_backend
 
         # Phase 6a added Barrier / BarrierHandle / CeleryChordBarrier.
-        # Phase 6b will add a ``get_barrier`` factory when the
-        # ``WORKER_BARRIER_BACKEND`` flag wiring lands.
+        # Phase 6b adds RedisDecrBarrier + barrier_decr_and_check
+        # (registered as a Celery task on import) + the BarrierBackend
+        # enum + the get_barrier factory that the WORKER_BARRIER_BACKEND
+        # env flag drives.
         assert set(queue_backend.__all__) == {
             "Barrier",
+            "BarrierBackend",
             "BarrierHandle",
             "CeleryChordBarrier",
             "FairnessKey",
+            "RedisDecrBarrier",
+            "barrier_abort",
+            "barrier_decr_and_check",
             "dispatch",
+            "get_barrier",
             "worker_task",
         }
 

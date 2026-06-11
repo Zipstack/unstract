@@ -696,20 +696,11 @@ def _run_workflow_api(
             fairness=api_fairness,
         )
 
-        if not result:
-            # TODO(phase-6b): tighten to ``if result is None:``
-            # when ``RedisDecrBarrier`` lands. The ``Barrier`` Protocol
-            # declares ``None`` as the *sole* "no work enqueued" signal,
-            # so identity-against-None is the principled check. Safe to
-            # defer today because Celery's ``AsyncResult`` has no custom
-            # ``__bool__`` (always truthy), making the truthiness and
-            # identity checks behaviourally equivalent. A future
-            # substrate handle with a falsy-but-not-None ``__bool__``
-            # would be misrouted into the zero-files path under the
-            # current truthiness check — that's the regression this TODO
-            # forecloses, alongside the substrate that motivates it.
-            #
-            # Two reasons ``result`` can be falsy:
+        if result is None:
+            # Identity-against-``None`` mirrors the ``Barrier`` Protocol
+            # contract verbatim: ``None`` is the *sole* signal of "no
+            # work enqueued" (substrate-level failures raise instead).
+            # Two reasons ``result`` can be ``None``:
             # 1. Zero ``batch_tasks`` — the barrier short-circuits and
             #    returns ``None``. Pre-Barrier this would have called
             #    ``chord(empty)(callback)`` which Celery handles by
