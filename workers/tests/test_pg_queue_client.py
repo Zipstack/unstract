@@ -17,8 +17,10 @@ import os
 import time
 from unittest.mock import MagicMock
 
+import psycopg2
 import pytest
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
+from queue_backend.pg_queue.connection import create_pg_connection
 
 # --- Unit: SQL shape against a mocked connection ---
 
@@ -88,32 +90,97 @@ class TestPgQueueClientUnit:
         conn, _ = _mock_conn(rowcount=0)
         assert PgQueueClient(conn=conn).delete(999) is False
 
+    def test_read_rejects_non_positive_vt(self):
+        conn, _ = _mock_conn()
+        with pytest.raises(ValueError, match="vt_seconds"):
+            PgQueueClient(conn=conn).read("q1", vt_seconds=0)
+
+    def test_read_rejects_non_positive_qty(self):
+        conn, _ = _mock_conn()
+        with pytest.raises(ValueError, match="qty"):
+            PgQueueClient(conn=conn).read("q1", qty=0)
+
+    def test_error_rolls_back_and_reraises(self):
+        conn, cur = _mock_conn()
+        cur.execute.side_effect = RuntimeError("boom")
+        with pytest.raises(RuntimeError):
+            PgQueueClient(conn=conn).send("q1", {"a": 1})
+        conn.rollback.assert_called_once()
+        conn.commit.assert_not_called()
+
+
+class TestCreatePgConnection:
+    """Unit coverage for the connection factory (no real DB)."""
+
+    def test_reads_env_prefix_and_sets_search_path(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.connection.psycopg2.connect",
+            lambda **kw: captured.update(kw) or object(),
+        )
+        for k, v in {
+            "HOST": "h",
+            "PORT": "6432",
+            "NAME": "n",
+            "USER": "u",
+            "PASSWORD": "p",
+            "SCHEMA": "s",
+        }.items():
+            monkeypatch.setenv(f"DB_{k}", v)
+        create_pg_connection()
+        assert captured["host"] == "h"
+        assert captured["port"] == "6432"
+        assert captured["dbname"] == "n"
+        assert captured["user"] == "u"
+        assert captured["password"] == "p"
+        assert captured["options"] == "-c search_path=s"
+
+    def test_env_prefix_override(self, monkeypatch):
+        captured = {}
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.connection.psycopg2.connect",
+            lambda **kw: captured.update(kw) or object(),
+        )
+        monkeypatch.setenv("TEST_DB_HOST", "test-host")
+        create_pg_connection(env_prefix="TEST_DB_")
+        assert captured["host"] == "test-host"
+
+    def test_connect_failure_is_logged_and_reraised(self, monkeypatch, caplog):
+        import logging
+
+        def boom(**_):
+            raise psycopg2.OperationalError("nope")
+
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.connection.psycopg2.connect", boom
+        )
+        with (
+            caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.connection"),
+            pytest.raises(psycopg2.OperationalError),
+        ):
+            create_pg_connection()
+        assert "failed to connect" in caplog.text
+
 
 # --- Integration: real Postgres ---
 
 
 def _integration_conn():
-    # Target the dev DB via dedicated TEST_DB_* env (dev defaults). We
-    # deliberately do NOT read the generic DB_* vars: the test suite's
-    # conftest sets DB_USER=test etc. for unit isolation, which would
-    # point this real-DB connection at nonexistent credentials.
-    import psycopg2
-
-    return psycopg2.connect(
-        host=os.getenv("TEST_DB_HOST", "127.0.0.1"),
-        port=os.getenv("TEST_DB_PORT", "5432"),
-        dbname=os.getenv("TEST_DB_NAME", "unstract_db"),
-        user=os.getenv("TEST_DB_USER", "unstract_dev"),
-        password=os.getenv("TEST_DB_PASSWORD", "unstract_pass"),
-        options=f"-c search_path={os.getenv('TEST_DB_SCHEMA', 'unstract')}",
-    )
+    # Reuse create_pg_connection (single source of connection logic) via the
+    # dedicated TEST_DB_* prefix — NOT the generic DB_*, which the suite's
+    # conftest sets to DB_USER=test for unit isolation (wrong real-DB creds).
+    # Default the host to the dev-compose published port on localhost.
+    os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
+    return create_pg_connection(env_prefix="TEST_DB_")
 
 
 @pytest.fixture
 def pg_conn():
     try:
         conn = _integration_conn()
-    except Exception as exc:  # noqa: BLE001 — any connect failure → skip
+    except psycopg2.OperationalError as exc:
+        # Only an unreachable/unauthenticated DB skips — ImportError, bugs,
+        # and schema/permission errors surface as real failures.
         pytest.skip(f"Postgres not reachable: {exc}")
     with conn.cursor() as cur:
         cur.execute("SELECT to_regclass('pg_queue_message')")
@@ -131,6 +198,9 @@ def queue_name(pg_conn):
     # Unique per test for isolation; clean up rows afterwards.
     name = f"test_q_{os.getpid()}_{int(time.time() * 1000)}"
     yield name
+    # A failed test body can leave the connection in an aborted transaction;
+    # roll back first so this cleanup doesn't raise InFailedSqlTransaction.
+    pg_conn.rollback()
     with pg_conn.cursor() as cur:
         cur.execute("DELETE FROM pg_queue_message WHERE queue_name = %s", (name,))
     pg_conn.commit()

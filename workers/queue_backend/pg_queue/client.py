@@ -15,18 +15,30 @@ delivery, no double-delivery (SKIP LOCKED guarantees a row is claimed by
 at most one reader). The whole queue contract lives here, in one place;
 the schema (``pg_queue_message`` table + dequeue index) is a plain
 Django migration with no DB-side function.
+
+The cached connection is kept usable across calls: every operation rolls
+back on error, and a connection that goes bad (dropped socket / PgBouncer
+recycle) is discarded so the next call reconnects — so one blip can't
+permanently wedge the 9c consumer.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
+
+import psycopg2
 
 from .connection import create_pg_connection
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
+
+logger = logging.getLogger(__name__)
 
 # Atomic claim. Takes up to %(qty)s ready messages no other transaction
 # holds, makes them invisible for %(vt)s seconds, returns them. SKIP LOCKED
@@ -51,9 +63,15 @@ RETURNING msg_id, message
 """
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class QueueMessage:
-    """A claimed queue message."""
+    """A claimed queue message.
+
+    ``message`` is the already-decoded JSONB payload (psycopg2 parses
+    ``jsonb`` to a Python ``dict``). ``frozen`` freezes the binding only —
+    the ``dict`` itself is mutable, so treat the payload as read-only by
+    convention.
+    """
 
     msg_id: int
     message: dict[str, Any]
@@ -63,17 +81,46 @@ class PgQueueClient:
     """``send`` / ``read`` / ``delete`` over ``pg_queue_message``.
 
     A connection may be injected (tests); otherwise one is created lazily
-    from the backend ``DB_*`` env on first use.
+    from the backend ``DB_*`` env on first use and owned by this client
+    (closed by :meth:`close`, recovered automatically after a connection
+    error). Usable as a context manager.
     """
 
     def __init__(self, conn: PgConnection | None = None) -> None:
         self._conn = conn
+        # Injected connections belong to the caller — never close/recycle them.
+        self._owns_conn = conn is None
 
     @property
     def conn(self) -> PgConnection:
         if self._conn is None:
             self._conn = create_pg_connection()
         return self._conn
+
+    @contextlib.contextmanager
+    def _cursor(self) -> Iterator[Any]:
+        """Yield a cursor; commit on success, roll back + recover on error.
+
+        Keeps the cached connection usable: a failed statement leaves the
+        connection in an aborted transaction, so we always roll back; a
+        dead connection can't be reused, so (when we own it) we drop the
+        cached handle and the next call reconnects.
+        """
+        conn = self.conn
+        try:
+            with conn.cursor() as cur:
+                yield cur
+            conn.commit()
+        except Exception as exc:
+            with contextlib.suppress(Exception):
+                conn.rollback()
+            if self._owns_conn and isinstance(
+                exc, (psycopg2.OperationalError, psycopg2.InterfaceError)
+            ):
+                with contextlib.suppress(Exception):
+                    conn.close()
+                self._conn = None
+            raise
 
     def send(
         self, queue_name: str, message: dict[str, Any], *, org_id: str | None = None
@@ -84,7 +131,7 @@ class PgQueueClient:
         timestamp/counter columns are supplied here rather than via DB
         defaults so the schema stays a plain Django migration.
         """
-        with self.conn.cursor() as cur:
+        with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO pg_queue_message "
                 "(queue_name, message, org_id, enqueued_at, vt, read_ct) "
@@ -94,7 +141,6 @@ class PgQueueClient:
                 (queue_name, json.dumps(message), org_id if org_id is not None else ""),
             )
             msg_id = cur.fetchone()[0]
-        self.conn.commit()
         return int(msg_id)
 
     def read(
@@ -105,17 +151,48 @@ class PgQueueClient:
         Commits immediately so the row lock is released and the ``vt``
         bump persists — claimed messages are then invisible to other
         readers until ``vt`` expires or :meth:`delete` removes them.
+
+        Raises ``ValueError`` for non-positive ``vt_seconds`` (which would
+        make a claimed message immediately re-visible — a double-delivery
+        window) or ``qty`` (a pointless / erroring ``LIMIT``).
         """
-        with self.conn.cursor() as cur:
+        if vt_seconds <= 0:
+            raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")
+        if qty <= 0:
+            raise ValueError(f"qty must be positive, got {qty}")
+        with self._cursor() as cur:
             cur.execute(_DEQUEUE_SQL, (vt_seconds, queue_name, qty))
             rows = cur.fetchall()
-        self.conn.commit()
         return [QueueMessage(msg_id=int(r[0]), message=r[1]) for r in rows]
 
     def delete(self, msg_id: int) -> bool:
-        """Ack a processed message. Returns ``True`` if a row was removed."""
-        with self.conn.cursor() as cur:
+        """Ack a processed message. Returns ``True`` if a row was removed.
+
+        ``False`` means the row was already gone — typically its visibility
+        timeout expired during processing and another worker (re)claimed it,
+        i.e. the work may be processed twice. Logged at WARNING so this
+        at-least-once condition is visible rather than silently swallowed.
+        """
+        with self._cursor() as cur:
             cur.execute("DELETE FROM pg_queue_message WHERE msg_id = %s", (msg_id,))
             deleted = cur.rowcount
-        self.conn.commit()
+        if deleted == 0:
+            logger.warning(
+                "PG-queue: delete(msg_id=%s) removed no row — message was already "
+                "gone (vt likely expired during processing; possible re-delivery).",
+                msg_id,
+            )
         return deleted == 1
+
+    def close(self) -> None:
+        """Close the connection if this client owns it (no-op if injected)."""
+        if self._owns_conn and self._conn is not None:
+            with contextlib.suppress(Exception):
+                self._conn.close()
+            self._conn = None
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        self.close()
