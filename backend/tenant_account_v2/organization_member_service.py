@@ -60,7 +60,10 @@ class OrganizationMemberService:
 
     @staticmethod
     def get_members() -> list[OrganizationMember]:
-        return OrganizationMember.objects.filter(user__is_service_account=False)
+        # select_related: serializers read user.email/id per member row.
+        return OrganizationMember.objects.select_related("user").filter(
+            user__is_service_account=False
+        )
 
     @staticmethod
     def get_members_by_role(role: str) -> list[OrganizationMember]:

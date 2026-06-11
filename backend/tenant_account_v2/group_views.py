@@ -48,8 +48,23 @@ def _is_org_admin(request: Request) -> bool:
     return is_org_admin(request.user)
 
 
+def _is_admin_or_service_account(request: Request) -> bool:
+    """Write gate for group management.
+
+    Service accounts bypass authorization — they already bypass other access
+    controls (see ShareAuthorizationService) and platform-key automation needs
+    to manage groups and memberships.
+    """
+    if getattr(request.user, "is_service_account", False):
+        return True
+    return _is_org_admin(request)
+
+
 class IsOrgAdminForWrite(BasePermission):
-    """Read for any authenticated org member; write for org admins only."""
+    """Read for any authenticated org member; write for org admins only.
+
+    Service accounts (platform-key auth) are also allowed to write.
+    """
 
     message = "Only organization admins can manage groups."
 
@@ -58,7 +73,7 @@ class IsOrgAdminForWrite(BasePermission):
             return False
         if request.method in ("GET", "HEAD", "OPTIONS"):
             return True
-        return _is_org_admin(request)
+        return _is_admin_or_service_account(request)
 
 
 class OrganizationGroupViewSet(viewsets.ModelViewSet):
@@ -86,7 +101,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
     def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         organization = _current_organization()
         member_filter = request.query_params.get("member")
-        is_admin = _is_org_admin(request)
+        is_admin = _is_admin_or_service_account(request)
 
         if member_filter == "me":
             qs = list_groups_with_member_counts(
@@ -128,7 +143,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
             return Response(data)
 
         # POST → bulk add
-        if not _is_org_admin(request):
+        if not _is_admin_or_service_account(request):
             raise PermissionDenied(IsOrgAdminForWrite.message)
         serializer = GroupMemberAddSerializer(data=request.data, context={"group": group})
         serializer.is_valid(raise_exception=True)
@@ -150,7 +165,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
     def remove_member(
         self, request: Request, pk: str | None = None, user_id: str | None = None
     ) -> Response:
-        if not _is_org_admin(request):
+        if not _is_admin_or_service_account(request):
             raise PermissionDenied(IsOrgAdminForWrite.message)
         try:
             user_id_int = int(user_id)  # type: ignore[arg-type]
@@ -169,7 +184,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
         # Admin-only: this is the delete blast-radius view. Leaving it open to
         # any org member would leak names/UUIDs of resources shared with groups
         # they are not in (org admin has no implicit resource access).
-        if not _is_org_admin(request):
+        if not _is_admin_or_service_account(request):
             raise PermissionDenied(IsOrgAdminForWrite.message)
         group = self._get_group_or_404(pk)
         payload = _collect_resources_shared_with_group(group)
