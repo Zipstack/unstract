@@ -7,6 +7,7 @@ call sites.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -14,6 +15,14 @@ from celery import current_app
 
 from .fairness import FairnessKey
 from .handle import DispatchHandle
+from .routing import QueueBackend, select_backend
+
+logger = logging.getLogger(__name__)
+
+# Task names already logged as PG-routed in this process. Bounds the
+# routing log to once per task name (per prefork child) so an opted-in
+# high-throughput task doesn't log on every dispatch.
+_pg_routing_logged: set[str] = set()
 
 
 def dispatch(
@@ -28,7 +37,29 @@ def dispatch(
 
     ``fairness`` is attached as the ``x-fairness-key`` header (not in
     kwargs). Pass ``None`` for non-workflow worker tasks.
+
+    The transport is chosen by :func:`select_backend` from the PG-queue
+    routing table (``WORKER_PG_QUEUE_ENABLED_TASKS``). In this phase the
+    table is a scaffold: PG-selected tasks are *logged* but still
+    dispatched via Celery, because no PG consumer exists yet. The
+    ``QueueBackend.PG`` branch below is the seam where the real PG
+    enqueue lands in a later phase — keeping the ``send_task`` call
+    outside it guarantees today's wire is byte-identical regardless of
+    the routing decision.
     """
+    if (
+        select_backend(task_name) is QueueBackend.PG
+        and task_name not in _pg_routing_logged
+    ):
+        # INFO (not DEBUG) so the cutover is visible under a default log
+        # config; log-once per task name keeps the volume bounded.
+        _pg_routing_logged.add(task_name)
+        logger.info(
+            "PG-queue routing selected for task=%r; dispatching via "
+            "Celery (scaffold — no PG consumer yet)",
+            task_name,
+        )
+
     headers = fairness.as_header() if fairness is not None else None
     return current_app.send_task(
         task_name,
