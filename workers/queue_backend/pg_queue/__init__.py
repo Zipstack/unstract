@@ -28,9 +28,12 @@ so they're tracked on the ticket / PR rather than baked in here.
 
 from .client import PgQueueClient, QueueMessage
 from .connection import create_pg_connection
+from .task_payload import TaskPayload, to_payload
 
 __all__ = [
     "PgQueueClient",
     "QueueMessage",
+    "TaskPayload",
     "create_pg_connection",
+    "to_payload",
 ]

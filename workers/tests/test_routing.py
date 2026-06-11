@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import importlib
 import logging
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from queue_backend import QueueBackend, dispatch, select_backend
@@ -44,6 +44,7 @@ def _reset_routing_state(monkeypatch):
     monkeypatch.delenv(ENABLED_TASKS_ENV, raising=False)
     routing_mod._allow_list_logged = False
     dispatch_mod._pg_routing_logged.clear()
+    dispatch_mod._pg_client = None  # drop the process-singleton PG client
 
 
 # --- select_backend() resolution ---
@@ -119,79 +120,81 @@ class TestObservability:
             select_backend("x")
         assert "PG-queue routing enabled" not in caplog.text
 
-    def test_pg_selection_emits_routing_log(self, monkeypatch, caplog):
-        """Pins the dispatch() routing branch: deleting it must fail here."""
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
-        with (
-            patch("queue_backend.dispatch.current_app"),
-            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
-        ):
-            dispatch("t1")
-        assert "PG-queue routing selected" in caplog.text
 
-    def test_celery_selection_emits_no_routing_log(self, caplog):
-        """Negative case — guards against the gate being made unconditional."""
-        with (
-            patch("queue_backend.dispatch.current_app"),
-            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
-        ):
-            dispatch("t1")  # empty allow-list → CELERY
-        assert "PG-queue routing selected" not in caplog.text
+# --- dispatch() routing behaviour (9b: PG-selected enqueues to Postgres) ---
 
-    def test_routing_log_bounded_to_once_per_task(self, monkeypatch, caplog):
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+
+def _mock_pg_client(monkeypatch, *, msg_id=99):
+    client = MagicMock()
+    client.send.return_value = msg_id
+    # Patch on the module object (string target would navigate the shadowing
+    # ``dispatch`` *function*, not the submodule).
+    monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: client)
+    return client
+
+
+class TestDispatchRouting:
+    """Celery path unchanged; a PG-selected task enqueues to Postgres, not Celery."""
+
+    def test_celery_path_sends_to_celery_and_never_touches_pg(self):
         with (
-            patch("queue_backend.dispatch.current_app"),
-            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
+            patch("queue_backend.dispatch.current_app") as mock_app,
+            patch("queue_backend.dispatch._get_pg_client") as mock_get,
         ):
+            dispatch("t1", args=["a"], kwargs={"k": "v"}, queue="general")
+        mock_app.send_task.assert_called_once()
+        mock_get.assert_not_called()
+
+    def test_pg_selected_enqueues_to_pg_not_celery(self, monkeypatch):
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+        client = _mock_pg_client(monkeypatch, msg_id=99)
+        fairness = FairnessKey(org_id="org-1", workload_type=WorkloadType.API)
+        with patch("queue_backend.dispatch.current_app") as mock_app:
+            handle = dispatch(
+                "t1", args=["a", 1], kwargs={"k": "v"}, queue="general", fairness=fairness
+            )
+        mock_app.send_task.assert_not_called()
+        client.send.assert_called_once()
+        queue_name, message = client.send.call_args.args
+        assert queue_name == "general"
+        assert message["task_name"] == "t1"
+        assert message["args"] == ["a", 1]
+        assert message["kwargs"] == {"k": "v"}
+        assert message["queue"] == "general"
+        assert message["fairness"]["org_id"] == "org-1"
+        assert client.send.call_args.kwargs["org_id"] == "org-1"
+        # Handle satisfies TaskHandle (.id) and carries the msg_id.
+        assert handle.id == "99"
+
+    def test_pg_default_queue_name_when_unset(self, monkeypatch):
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+        client = _mock_pg_client(monkeypatch)
+        dispatch("t1")
+        assert client.send.call_args.args[0] == "default"
+        # No fairness → org_id None (client coerces to "").
+        assert client.send.call_args.kwargs["org_id"] is None
+
+
+class TestCutoverLog:
+    """The PG cutover log: visible (INFO), once per task name."""
+
+    def test_pg_enqueue_logs_once_per_task(self, monkeypatch, caplog):
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+        _mock_pg_client(monkeypatch)
+        with caplog.at_level(logging.INFO, logger="queue_backend.dispatch"):
             dispatch("t1")
             dispatch("t1")
             dispatch("t1")
-        hits = [r for r in caplog.records if "PG-queue routing selected" in r.getMessage()]
+        hits = [r for r in caplog.records if "enqueued to Postgres" in r.getMessage()]
         assert len(hits) == 1
 
-
-# --- dispatch() is inert under routing (the scaffold invariant) ---
-
-
-class TestDispatchByteIdenticalRegardlessOfRouting:
-    """``dispatch()`` produces the same send_task call whether routed PG or Celery."""
-
-    def _capture_send_task(self, task_name, fairness):
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch(
-                task_name,
-                args=["a", 1],
-                kwargs={"k": "v"},
-                queue="general",
-                fairness=fairness,
-            )
-        return mock_app.send_task.call_args
-
-    def test_pg_selection_does_not_change_the_wire(self, monkeypatch):
-        fairness = FairnessKey(org_id="org-1", workload_type=WorkloadType.API)
-
-        # Celery path (empty table).
-        celery_call = self._capture_send_task("t1", fairness)
-
-        # PG path (task opted in) — same inputs.
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
-        pg_call = self._capture_send_task("t1", fairness)
-
-        assert celery_call == pg_call
-        assert pg_call.args[0] == "t1"
-        assert pg_call.kwargs["args"] == ["a", 1]
-        assert pg_call.kwargs["kwargs"] == {"k": "v"}
-        assert pg_call.kwargs["queue"] == "general"
-
-    def test_dispatch_without_fairness_still_routes_by_task(self, monkeypatch):
-        """Routing keys on task name only; fairness is irrelevant to the decision."""
-        monkeypatch.setenv(ENABLED_TASKS_ENV, "bare_task")
-        with patch("queue_backend.dispatch.current_app") as mock_app:
-            dispatch("bare_task")
-        # Still dispatched (via Celery), header is None (no fairness).
-        assert mock_app.send_task.call_args.args[0] == "bare_task"
-        assert mock_app.send_task.call_args.kwargs["headers"] is None
+    def test_celery_path_emits_no_pg_log(self, caplog):
+        with (
+            patch("queue_backend.dispatch.current_app"),
+            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
+        ):
+            dispatch("t1")  # empty allow-list → Celery
+        assert "enqueued to Postgres" not in caplog.text
 
 
 if __name__ == "__main__":
