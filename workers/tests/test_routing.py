@@ -44,7 +44,7 @@ def _reset_routing_state(monkeypatch):
     monkeypatch.delenv(ENABLED_TASKS_ENV, raising=False)
     routing_mod._allow_list_logged = False
     dispatch_mod._pg_routing_logged.clear()
-    dispatch_mod._pg_client = None  # drop the process-singleton PG client
+    dispatch_mod._pg_local.client = None  # drop the per-thread PG client
 
 
 # --- select_backend() resolution ---
@@ -174,6 +174,32 @@ class TestDispatchRouting:
         # No fairness → org_id None (client coerces to "").
         assert client.send.call_args.kwargs["org_id"] is None
 
+    def test_pg_enqueue_failure_propagates_and_does_not_fall_back(self, monkeypatch):
+        """A PG enqueue failure raises — no silent Celery fallback."""
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+        client = MagicMock()
+        client.send.side_effect = RuntimeError("db down")
+        monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: client)
+        with (
+            patch("queue_backend.dispatch.current_app") as mock_app,
+            pytest.raises(RuntimeError),
+        ):
+            dispatch("t1")
+        mock_app.send_task.assert_not_called()  # never falls back to Celery
+        # The routing decision is logged BEFORE the send, so even a failing
+        # first dispatch announced it (pins the log-ordering property).
+        assert "t1" in dispatch_mod._pg_routing_logged
+
+    def test_get_pg_client_lazily_inits_and_reuses(self, monkeypatch):
+        """The per-thread client is constructed once and reused (connection reuse)."""
+        dispatch_mod._pg_local.client = None
+        sentinel = object()
+        ctor = MagicMock(return_value=sentinel)
+        monkeypatch.setattr(dispatch_mod, "PgQueueClient", ctor)
+        assert dispatch_mod._get_pg_client() is sentinel
+        assert dispatch_mod._get_pg_client() is sentinel
+        ctor.assert_called_once()
+
 
 class TestCutoverLog:
     """The PG cutover log: visible (INFO), once per task name."""
@@ -185,7 +211,9 @@ class TestCutoverLog:
             dispatch("t1")
             dispatch("t1")
             dispatch("t1")
-        hits = [r for r in caplog.records if "enqueued to Postgres" in r.getMessage()]
+        hits = [
+            r for r in caplog.records if "routing task=" in r.getMessage()
+        ]
         assert len(hits) == 1
 
     def test_celery_path_emits_no_pg_log(self, caplog):
@@ -194,7 +222,7 @@ class TestCutoverLog:
             caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
         ):
             dispatch("t1")  # empty allow-list → Celery
-        assert "enqueued to Postgres" not in caplog.text
+        assert "routing task=" not in caplog.text
 
 
 if __name__ == "__main__":

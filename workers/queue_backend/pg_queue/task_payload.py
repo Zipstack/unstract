@@ -13,6 +13,8 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any, TypedDict
 
+from ..fairness import FairnessPayload
+
 if TYPE_CHECKING:
     from ..fairness import FairnessKey
 
@@ -20,16 +22,17 @@ if TYPE_CHECKING:
 class TaskPayload(TypedDict):
     """Everything the 9c consumer needs to run a PG-routed task.
 
-    ``fairness`` is the serialised :class:`FairnessKey` (``to_dict()``) or
-    ``None`` — the consumer rebuilds the ``x-fairness-key`` header from it,
-    mirroring the Celery dispatch path.
+    ``fairness`` is the serialised :class:`FairnessKey`
+    (:class:`~queue_backend.fairness.FairnessPayload`) or ``None`` — the
+    consumer rebuilds the ``x-fairness-key`` header from it, mirroring the
+    Celery dispatch path.
     """
 
     task_name: str
     args: list[Any]
     kwargs: dict[str, Any]
     queue: str | None
-    fairness: dict[str, Any] | None
+    fairness: FairnessPayload | None
 
 
 def to_payload(

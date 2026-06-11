@@ -20,6 +20,7 @@ unchanged unless an operator explicitly opts a task in.
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -40,16 +41,22 @@ _DEFAULT_PG_QUEUE = "default"
 # log to once per task name (per prefork child).
 _pg_routing_logged: set[str] = set()
 
-# Process-level client, reused across dispatches (it self-recovers a dead
-# connection). One per prefork child.
-_pg_client: PgQueueClient | None = None
+# Per-thread client, reused across dispatches (it self-recovers a dead
+# connection). The worker pool is prefork (each child a single thread), so
+# this is effectively one client per child; ``threading.local`` keeps it
+# correct under a ``-P threads`` pool too, since a libpq connection is not
+# safe for concurrent use across threads. (A gevent pool shares one thread
+# across greenlets and would need a connection pool — out of scope while
+# prefork is the deployment.)
+_pg_local = threading.local()
 
 
 def _get_pg_client() -> PgQueueClient:
-    global _pg_client
-    if _pg_client is None:
-        _pg_client = PgQueueClient()
-    return _pg_client
+    client = getattr(_pg_local, "client", None)
+    if client is None:
+        client = PgQueueClient()
+        _pg_local.client = client
+    return client
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,22 +109,34 @@ def _enqueue_pg(
     A PG enqueue failure raises (no silent Celery fallback — that would
     hide the failure or risk double-dispatch).
     """
+    pg_queue = queue or _DEFAULT_PG_QUEUE
+    if task_name not in _pg_routing_logged:
+        # Log the routing *decision* once per task, BEFORE the send — it's
+        # true regardless of send outcome, so a first-dispatch failure
+        # (DB down / unmigrated) must not suppress the one announcement.
+        # INFO so it survives a default log config; once-per-task bounds it.
+        _pg_routing_logged.add(task_name)
+        logger.info(
+            "PG-queue: routing task=%r to Postgres (queue=%r). Requires the "
+            "PG consumer to be running, or it will not execute.",
+            task_name,
+            pg_queue,
+        )
     payload = to_payload(
         task_name, args=args, kwargs=kwargs, queue=queue, fairness=fairness
     )
-    msg_id = _get_pg_client().send(
-        queue or _DEFAULT_PG_QUEUE,
-        payload,
-        org_id=fairness.org_id if fairness is not None else None,
-    )
-    if task_name not in _pg_routing_logged:
-        # INFO + once-per-task: visible under a default log config, bounded.
-        _pg_routing_logged.add(task_name)
-        logger.info(
-            "PG-queue: task=%r enqueued to Postgres (queue=%r, msg_id=%s). "
-            "Requires the PG consumer to be running, or it will not execute.",
-            task_name,
-            queue or _DEFAULT_PG_QUEUE,
-            msg_id,
+    try:
+        msg_id = _get_pg_client().send(
+            pg_queue,
+            payload,
+            org_id=fairness.org_id if fairness is not None else None,
         )
+    except Exception:
+        # Re-raise with a breadcrumb (raw psycopg2.Error / a json.dumps
+        # TypeError on a non-serialisable arg would otherwise propagate with
+        # no "this was a PG-routed dispatch" context). No Celery fallback.
+        logger.exception(
+            "PG-queue: failed to enqueue task=%r to queue=%r", task_name, pg_queue
+        )
+        raise
     return PgDispatchHandle(id=str(msg_id))

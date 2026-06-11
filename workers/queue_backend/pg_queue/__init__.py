@@ -14,12 +14,15 @@ A subpackage (rather than a single module like the barriers) because the
 real implementation will likely span several modules (config, consumer
 poll loop, orchestrator) — exact layout TBD.
 
-Phase 9a adds the storage + dequeue primitive (:class:`PgQueueClient`
-over the ``pg_queue_message`` table; the ``SKIP LOCKED`` dequeue lives in
-the client). It is still **inert**: routing decisions are made by
-:func:`queue_backend.routing.select_backend`, and until the enqueue
-wiring (9b) and consumer (9c) land, PG-selected dispatches still ride
-Celery (see ``queue_backend.dispatch``).
+9a added the storage + dequeue primitive (:class:`PgQueueClient` over the
+``pg_queue_message`` table; the ``SKIP LOCKED`` dequeue lives in the
+client). 9b wires :func:`queue_backend.dispatch.dispatch` to enqueue
+PG-selected tasks here as a :class:`TaskPayload` instead of sending to
+Celery. The consumer poll loop that drains + runs them is 9c — until it
+lands, an opted-in task is durably enqueued but not executed.
+
+Default-empty ``WORKER_PG_QUEUE_ENABLED_TASKS`` → everything still routes
+to Celery, so this is inert unless a task is explicitly opted in.
 
 Design reference: the PG Queue implementation guide in the labs repo
 (``workflow-execution-architecture``). Branch and section pointers move,

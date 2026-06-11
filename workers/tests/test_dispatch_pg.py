@@ -31,7 +31,7 @@ dispatch_mod = importlib.import_module("queue_backend.dispatch")
 def _reset(monkeypatch):
     monkeypatch.delenv(ENABLED_TASKS_ENV, raising=False)
     dispatch_mod._pg_routing_logged.clear()
-    dispatch_mod._pg_client = None
+    dispatch_mod._pg_local.client = None
 
 
 # --- to_payload wire shape ---
