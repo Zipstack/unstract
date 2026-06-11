@@ -107,6 +107,21 @@ def test_extract_provider_ids_handles_none_and_empty() -> None:
     assert llm_module.extract_provider_ids({}) == (None, None)
 
 
+def test_extract_provider_ids_falls_back_to_id_attribute() -> None:
+    llm_module = _load_llm_module()
+
+    class _AttrOnlyResponse:
+        id = "chatcmpl-attr"
+
+        def get(self, key: str) -> None:
+            return None
+
+    assert llm_module.extract_provider_ids(_AttrOnlyResponse()) == (
+        "chatcmpl-attr",
+        None,
+    )
+
+
 def _build_llm_for_record_usage(llm_cls: type) -> object:
     llm = llm_cls.__new__(llm_cls)
     llm._platform_api_key = "platform-key"
@@ -161,5 +176,6 @@ def test_record_usage_logs_without_response(caplog: pytest.LogCaptureFixture) ->
 
     usage_logs = [r.message for r in caplog.records if "Usage:" in r.message]
     assert len(usage_logs) == 1
-    assert "response_id=None" in usage_logs[0]
-    assert "request_id=None" in usage_logs[0]
+    # Absent ids are omitted to keep the line compact.
+    assert "response_id" not in usage_logs[0]
+    assert "request_id" not in usage_logs[0]

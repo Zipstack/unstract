@@ -64,6 +64,8 @@ def extract_provider_ids(response: object) -> tuple[str | None, str | None]:
     try:
         response_id = response.get("id")
     except (AttributeError, TypeError):
+        response_id = None
+    if response_id is None:
         response_id = getattr(response, "id", None)
 
     hidden_params = getattr(response, "_hidden_params", None) or {}
@@ -748,17 +750,21 @@ class LLM:
 
         # Provider ids ride on the existing per-call usage line to aid
         # troubleshooting (shareable with the provider) without extra log noise.
+        # Absent ids are omitted so providers without them don't add clutter.
         response_id, request_id = extract_provider_ids(response)
+        id_suffix = ""
+        if response_id is not None:
+            id_suffix += f" response_id={response_id}"
+        if request_id is not None:
+            id_suffix += f" request_id={request_id}"
         logger.info(
-            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d "
-            "response_id=%s request_id=%s",
+            "[sdk1][LLM][%s][%s] Usage: prompt=%d completion=%d total=%d%s",
             model,
             llm_api,
             prompt_tokens,
             completion_tokens,
             total_tokens,
-            response_id,
-            request_id,
+            id_suffix,
         )
 
         try:
