@@ -1,0 +1,51 @@
+{
+  "title": "NVIDIA Build Embedding",
+  "type": "object",
+  "required": [
+    "adapter_name",
+    "api_key",
+    "model"
+  ],
+  "properties": {
+    "adapter_name": {
+      "type": "string",
+      "title": "Name",
+      "default": "",
+      "description": "Provide a unique name for this adapter instance. Example: nvidia-build-emb-1"
+    },
+    "model": {
+      "type": "string",
+      "title": "Model",
+      "description": "The embedding model name as listed on [build.nvidia.com/models](https://build.nvidia.com/models). Examples: nvidia/nv-embedqa-e5-v5, nvidia/llama-3.2-nv-embedqa-1b-v2"
+    },
+    "api_key": {
+      "type": "string",
+      "title": "API Key",
+      "format": "password",
+      "description": "Your NVIDIA API key from [build.nvidia.com](https://build.nvidia.com)."
+    },
+    "api_base": {
+      "type": "string",
+      "format": "uri",
+      "title": "API Base",
+      "default": "https://integrate.api.nvidia.com/v1",
+      "description": "NVIDIA Build endpoint. Pre-filled with the default; change only if NVIDIA moves the base URL."
+    },
+    "max_retries": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Max Retries",
+      "default": 3,
+      "description": "The maximum number of times to retry a request if it fails."
+    },
+    "timeout": {
+      "type": "number",
+      "minimum": 0,
+      "multipleOf": 1,
+      "title": "Timeout",
+      "default": 240,
+      "description": "Timeout in seconds"
+    }
+  }
+}

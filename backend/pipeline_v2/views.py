@@ -10,6 +10,7 @@ from django.db import IntegrityError
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -42,7 +43,7 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class PipelineViewSet(viewsets.ModelViewSet):
+class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     versioning_class = URLPathVersioning
     queryset = Pipeline.objects.all()
     pagination_class = CustomPagination
@@ -148,50 +149,56 @@ class PipelineViewSet(viewsets.ModelViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        before = self.snapshot_share_axes(instance)
 
         response = super().partial_update(request, *args, **kwargs)
-
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and notification_plugin
-        ):
-            try:
-                instance.refresh_from_db()
-                new_shared_users = set(instance.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
-
-                if ResourceType.ETL.value == instance.pipeline_type:
-                    resource_type = ResourceType.ETL.value
-                elif ResourceType.TASK.value == instance.pipeline_type:
-                    resource_type = ResourceType.TASK.value
-
-                if newly_shared_users:
-                    # Get notification service from plugin and send notification
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    notification_service.send_sharing_notification(
-                        resource_type=resource_type,
-                        resource_name=instance.pipeline_name,
-                        resource_id=str(instance.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=instance,
-                    )
-
-                    logger.info(
-                        f"Sent sharing notifications for {instance.pipeline_type} "
-                        f"to {len(newly_shared_users)} users"
-                    )
-
-            except Exception as e:
-                # Log error but don't fail the update operation
-                logger.exception(
-                    f"Failed to send sharing notification, continuing update though: {str(e)}"
-                )
-
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        instance: Pipeline,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort).
+
+        Only ETL/TASK pipelines map to a notification ``ResourceType``;
+        DEFAULT/APP pipelines have no analogue and skip the fan-out.
+        """
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+        if instance.pipeline_type not in (
+            ResourceType.ETL.value,
+            ResourceType.TASK.value,
+        ):
+            return
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=instance.pipeline_type,
+                resource_name=instance.pipeline_name,
+                resource_id=str(instance.id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=instance,
+            )
+            logger.info(
+                "Sent sharing notifications for %s to %d users",
+                instance.pipeline_type,
+                len(users_diff.added),
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification, continuing update though: %s",
+                str(e),
+            )
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(

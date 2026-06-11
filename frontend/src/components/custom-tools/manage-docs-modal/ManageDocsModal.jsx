@@ -766,22 +766,27 @@ function ManageDocsModal({
               >
                 <Tooltip
                   title={
-                    !defaultLlmProfile &&
-                    "Set the default LLM profile before uploading a document"
+                    !defaultLlmProfile
+                      ? llmProfiles?.length
+                        ? "Set the default LLM profile before uploading a document"
+                        : "Add an LLM profile before uploading a document"
+                      : ""
                   }
                 >
-                  <Button
-                    type="text"
-                    loading={isUploading}
-                    disabled={
-                      !defaultLlmProfile ||
-                      isMultiPassExtractLoading ||
-                      isSinglePassExtractLoading ||
-                      isPublicSource
-                    }
-                  >
-                    Click or drag file to this area to upload
-                  </Button>
+                  <span className="manage-docs-upload-tooltip-wrap">
+                    <Button
+                      type="text"
+                      loading={isUploading}
+                      disabled={
+                        !defaultLlmProfile ||
+                        isMultiPassExtractLoading ||
+                        isSinglePassExtractLoading ||
+                        isPublicSource
+                      }
+                    >
+                      Click or drag file to this area to upload
+                    </Button>
+                  </span>
                 </Tooltip>
               </Upload.Dragger>
             </div>

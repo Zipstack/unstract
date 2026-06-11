@@ -6,9 +6,11 @@ from unstract.sdk1.adapters.llm1.anthropic import AnthropicLLMAdapter
 from unstract.sdk1.adapters.llm1.anyscale import AnyscaleLLMAdapter
 from unstract.sdk1.adapters.llm1.azure_openai import AzureOpenAILLMAdapter
 from unstract.sdk1.adapters.llm1.bedrock import AWSBedrockLLMAdapter
+from unstract.sdk1.adapters.llm1.nvidia_build import NvidiaBuildLLMAdapter
 from unstract.sdk1.adapters.llm1.ollama import OllamaLLMAdapter
 from unstract.sdk1.adapters.llm1.openai import OpenAILLMAdapter
 from unstract.sdk1.adapters.llm1.openai_compatible import OpenAICompatibleLLMAdapter
+from unstract.sdk1.adapters.llm1.openrouter import OpenRouterLLMAdapter
 from unstract.sdk1.adapters.llm1.vertexai import VertexAILLMAdapter
 
 adapters: dict[str, dict[str, Any]] = {}
@@ -21,8 +23,10 @@ __all__ = [
     "AnyscaleLLMAdapter",
     "AWSBedrockLLMAdapter",
     "AzureOpenAILLMAdapter",
+    "NvidiaBuildLLMAdapter",
     "OllamaLLMAdapter",
     "OpenAILLMAdapter",
     "OpenAICompatibleLLMAdapter",
+    "OpenRouterLLMAdapter",
     "VertexAILLMAdapter",
 ]

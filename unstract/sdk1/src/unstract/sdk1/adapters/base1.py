@@ -353,6 +353,9 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 _OPENAI_PROVIDER_PREFIX = "openai/"
 _CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
 _OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+# Keyless gateways still need a non-empty key; the OpenAI SDK rejects a
+# null/blank one before any request reaches the endpoint.
+_NO_AUTH_API_KEY = "no-auth"
 
 
 def _is_openai_reasoning_model(model: str) -> bool:
@@ -492,6 +495,86 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
         if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
             return model
         return f"{_CUSTOM_OPENAI_PROVIDER_PREFIX}{model}"
+
+
+# Shared validation for branded adapters that reuse the OpenAI-compatible wire
+# protocol with a fixed default endpoint.
+def _validate_branded_openai_compatible(
+    adapter_metadata: dict[str, "Any"], default_api_base: str
+) -> dict[str, "Any"]:
+    # Endpoint stays overridable so a provider URL change needs no release.
+    api_base = adapter_metadata.get("api_base")
+    if not (isinstance(api_base, str) and api_base.strip()):
+        api_base = default_api_base
+    adapter_metadata = {**adapter_metadata, "api_base": api_base}
+    return OpenAICompatibleLLMParameters.validate(adapter_metadata)
+
+
+_NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
+_OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_OPENROUTER_PROVIDER_PREFIX = "openrouter/"
+
+
+class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for NVIDIA's hosted models (build.nvidia.com)."""
+
+    # Required str so a directly-constructed instance stays valid.
+    api_base: str = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(
+            adapter_metadata, _NVIDIA_BUILD_API_BASE
+        )
+
+
+class OpenRouterLLMParameters(BaseChatCompletionParameters):
+    """Adapter for OpenRouter (openrouter.ai).
+
+    Routed through LiteLLM's native `openrouter/` provider so per-token costs
+    resolve and reasoning params map without provider-specific workarounds.
+    """
+
+    api_key: str
+    api_base: str = _OPENROUTER_API_BASE
+    reasoning_effort: str | None = None
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _OPENROUTER_API_BASE
+        adapter_metadata["model"] = OpenRouterLLMParameters.validate_model(
+            adapter_metadata
+        )
+        # Reasoning models reject a non-default temperature; drop it and send
+        # reasoning_effort only when reasoning is enabled. On a re-validation
+        # pass `enable_reasoning` is absent (it isn't serialized), so recover the
+        # state from a surviving reasoning_effort to keep reload idempotent —
+        # unless the user explicitly opted out with `enable_reasoning: false`.
+        enable_reasoning = adapter_metadata.get("enable_reasoning", False)
+        if (
+            not enable_reasoning
+            and "enable_reasoning" not in adapter_metadata
+            and adapter_metadata.get("reasoning_effort") is not None
+        ):
+            enable_reasoning = True
+        adapter_metadata.pop("enable_reasoning", None)
+        if enable_reasoning:
+            adapter_metadata["temperature"] = None
+        else:
+            adapter_metadata.pop("reasoning_effort", None)
+        return OpenRouterLLMParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the OpenRouter adapter.")
+        if model.startswith(_OPENROUTER_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENROUTER_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
@@ -852,6 +935,35 @@ def _resolve_bedrock_aws_credentials(
     return validated
 
 
+def _pack_bedrock_guardrail_config(metadata: dict[str, "Any"]) -> None:
+    """Translate snake_case guardrail_* fields into LiteLLM's guardrailConfig."""
+    identifier = _clean_str(metadata.get("guardrail_identifier"))
+    if not identifier:
+        return
+    version = _clean_str(metadata.get("guardrail_version"))
+    # Fail fast — Bedrock rejects identifier without version with an opaque error.
+    if not version:
+        raise ValueError(
+            "guardrail_version is required when guardrail_identifier is set."
+        )
+    cfg: dict[str, str] = {
+        "guardrailIdentifier": identifier,
+        "guardrailVersion": version,
+    }
+    trace = _clean_str(metadata.get("guardrail_trace"))
+    if trace:
+        cfg["trace"] = trace
+    metadata["guardrailConfig"] = cfg
+
+
+def _clean_str(value: str | None) -> str | None:
+    """Strip surrounding whitespace; return None if the result is empty."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
 class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     """See https://docs.litellm.ai/docs/providers/bedrock."""
 
@@ -866,6 +978,9 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
     aws_profile_name: str | None = None  # For AWS SSO authentication
     model_id: str | None = None  # For Application Inference Profile (cost tracking)
     max_retries: int | None = None
+    # Declared so it survives Pydantic re-validation of kwargs.
+    # Matches LiteLLM's Bedrock kwarg name, hence the mixed case.
+    guardrailConfig: dict | None = None  # noqa: N815
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -908,15 +1023,30 @@ class AWSBedrockLLMParameters(BaseChatCompletionParameters):
                 result_metadata["thinking"] = thinking_config
                 result_metadata["temperature"] = 1
 
+        _pack_bedrock_guardrail_config(result_metadata)
+
         # Create validation metadata excluding control fields. `auth_type` is
         # a UI-only selector that drives form rendering; LiteLLM never sees it.
         validation_metadata = {
             k: v
             for k, v in result_metadata.items()
-            if k not in ("enable_thinking", "budget_tokens", "thinking", "auth_type")
+            if k
+            not in (
+                "enable_thinking",
+                "budget_tokens",
+                "thinking",
+                "auth_type",
+                "guardrail_identifier",
+                "guardrail_version",
+                "guardrail_trace",
+            )
         }
 
         validated = AWSBedrockLLMParameters(**validation_metadata).model_dump()
+
+        # Drop unset value so it isn't forwarded as `None`.
+        if not validated.get("guardrailConfig"):
+            validated.pop("guardrailConfig", None)
 
         # Add thinking config to final result if enabled
         if enable_thinking and "thinking" in result_metadata:
@@ -1249,6 +1379,8 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     api_base: str | None = None
     embed_batch_size: int | None = 10
     dimensions: int | None = None  # For text-embedding-3-* models
+    # Strict endpoints reject the null LiteLLM sends when this is unset.
+    encoding_format: str | None = None
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
@@ -1262,6 +1394,77 @@ class OpenAIEmbeddingParameters(BaseEmbeddingParameters):
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
         model = adapter_metadata.get("model", "")
         return model
+
+
+# custom_openai has no embedding support, so these route through LiteLLM's
+# native nvidia_nim provider; its default api_base is pinned for the schema.
+_NVIDIA_NIM_PROVIDER_PREFIX = "nvidia_nim/"
+
+
+class NvidiaBuildEmbeddingParameters(OpenAIEmbeddingParameters):
+    """OpenAI-compatible embeddings via NVIDIA's hosted endpoint (build.nvidia.com)."""
+
+    # Overridable default endpoint.
+    api_base: str = _NVIDIA_BUILD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        # Endpoint stays overridable so a provider URL change needs no release.
+        api_base = adapter_metadata.get("api_base")
+        if not (isinstance(api_base, str) and api_base.strip()):
+            adapter_metadata["api_base"] = _NVIDIA_BUILD_API_BASE
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
+        adapter_metadata.setdefault("encoding_format", "float")
+        adapter_metadata["model"] = NvidiaBuildEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAIEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError("model is required for the NVIDIA Build embedding adapter.")
+        if model.startswith(_NVIDIA_NIM_PROVIDER_PREFIX):
+            return model
+        return f"{_NVIDIA_NIM_PROVIDER_PREFIX}{model}"
+
+
+class OpenAICompatibleEmbeddingParameters(OpenAIEmbeddingParameters):
+    """Embeddings for any OpenAI-compatible server (vLLM, self-hosted, etc.).
+
+    Routes through the `openai/` provider with a user-supplied `api_base`;
+    cost stays unresolved since the endpoint is arbitrary.
+    """
+
+    # Some gateways are keyless; the endpoint is always required.
+    api_key: str | None = None
+    api_base: str
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        adapter_metadata = dict(adapter_metadata)
+        api_key = adapter_metadata.get("api_key")
+        if not (isinstance(api_key, str) and api_key.strip()):
+            adapter_metadata["api_key"] = _NO_AUTH_API_KEY
+        # Strict endpoints reject the null LiteLLM sends; pin a real value.
+        adapter_metadata.setdefault("encoding_format", "float")
+        adapter_metadata["model"] = OpenAICompatibleEmbeddingParameters.validate_model(
+            adapter_metadata
+        )
+        return OpenAICompatibleEmbeddingParameters(**adapter_metadata).model_dump()
+
+    @staticmethod
+    def validate_model(adapter_metadata: dict[str, "Any"]) -> str:
+        model = str(adapter_metadata.get("model", "")).strip()
+        if not model:
+            raise ValueError(
+                "model is required for the OpenAI Compatible embedding adapter."
+            )
+        if model.startswith(_OPENAI_PROVIDER_PREFIX):
+            return model
+        return f"{_OPENAI_PROVIDER_PREFIX}{model}"
 
 
 class AzureOpenAIEmbeddingParameters(BaseEmbeddingParameters):
