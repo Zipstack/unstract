@@ -13,19 +13,16 @@ import {
 } from "../../helpers/localStorage";
 import { isModuleMissing } from "../../helpers/pluginLoader.js";
 
-// Marketplace pending-purchase banner (cloud plugin). Shows "your
-// marketplace purchase is being confirmed" between the buyer's claim and
-// the provisioning webhook, and clears itself once the subscription
-// activates. Absent in OSS builds — the import fails and the banner
-// stays unmounted.
+// Optional status banner contributed by the marketplace plugin, when
+// present. The plugin is absent in OSS builds — the import fails and
+// nothing is mounted. The banner self-manages its visibility.
 let MarketplacePendingBanner;
 try {
   const marketplaceMod = await import("../../plugins/marketplace");
   MarketplacePendingBanner = marketplaceMod.MarketplacePendingBanner;
 } catch (err) {
-  // Expected in OSS builds where the cloud plugin is absent; anything
-  // else (a broken plugin) must surface rather than silently removing
-  // the pending-purchase UX in cloud builds.
+  // Missing plugin is the expected case; surface anything else so a
+  // broken plugin doesn't silently unmount its UI.
   if (!isModuleMissing(err)) {
     // eslint-disable-next-line no-console
     console.error(
