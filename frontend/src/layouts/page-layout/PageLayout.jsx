@@ -12,6 +12,19 @@ import {
   setLocalStorageValue,
 } from "../../helpers/localStorage";
 
+// Marketplace pending-purchase banner (cloud plugin). Shows "your
+// marketplace purchase is being confirmed" between the buyer's claim and
+// the provisioning webhook, and clears itself once the subscription
+// activates. Absent in OSS builds — the import fails and the banner
+// stays unmounted.
+let MarketplacePendingBanner;
+try {
+  const marketplaceMod = await import("../../plugins/marketplace");
+  MarketplacePendingBanner = marketplaceMod.MarketplacePendingBanner;
+} catch {
+  // Ignore if plugin not available
+}
+
 function PageLayout({
   sideBarOptions,
   topNavBarOptions,
@@ -36,6 +49,7 @@ function PageLayout({
           />
         )}
         <Layout>
+          {MarketplacePendingBanner && <MarketplacePendingBanner />}
           <Outlet />
           {!hideSidebar && <div className="height-40" />}
           {showLogsAndNotifications && <DisplayLogsAndNotifications />}
