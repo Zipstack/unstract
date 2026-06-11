@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import {
@@ -5,6 +6,7 @@ import {
   onboardCompleted,
   publicRoutes,
 } from "../../../helpers/GetStaticData";
+import { getLlmWhispererPage } from "../../../helpers/llmWhispererPage";
 import { useSessionStore } from "../../../store/session-store";
 
 let selectedProductStore;
@@ -39,10 +41,33 @@ const RequireGuest = () => {
   } catch (_error) {
     // Do nothing
   }
+  let llmWhispererPage;
+  let resetSelectedProductPage;
+  try {
+    llmWhispererPage = selectedProductStore.useSelectedProductStore(
+      (state) => state?.selectedProductPage,
+    );
+    resetSelectedProductPage = selectedProductStore.useSelectedProductStore(
+      (state) => state?.resetSelectedProductPage,
+    );
+  } catch (_error) {
+    // Do nothing
+  }
+
+  // The persisted page is one-shot: clear it once the user is logged in and
+  // the redirect below has consumed it.
+  useEffect(() => {
+    if (sessionDetails?.isLoggedIn && llmWhispererPage) {
+      resetSelectedProductPage?.();
+    }
+  }, [sessionDetails?.isLoggedIn, llmWhispererPage]);
 
   let navigateTo = `/${orgName}/onboard`;
   if (isLlmWhisperer) {
-    navigateTo = `/llm-whisperer/${orgName}/playground`;
+    navigateTo = `/llm-whisperer/${orgName}/${getLlmWhispererPage(
+      location.search,
+      llmWhispererPage,
+    )}`;
   } else if (isVerticals) {
     navigateTo = `/verticals/`;
   } else if (onboardCompleted(adapters)) {
