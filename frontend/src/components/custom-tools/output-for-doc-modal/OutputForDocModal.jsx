@@ -3,7 +3,7 @@ import {
   CloseCircleFilled,
   InfoCircleFilled,
 } from "@ant-design/icons";
-import { Button, Modal, Table, Tabs, Typography } from "antd";
+import { Button, Modal, Table, Tabs, Tooltip, Typography } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
@@ -340,7 +340,11 @@ function OutputForDocModal({
             <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
             {adapterData?.map((adapter, index) => (
               <TabPane
-                tab={<span>{adapter?.llm_model || adapter?.profile_name}</span>}
+                tab={
+                  <Tooltip title={adapter?.llm_model}>
+                    <span>{adapter?.profile_name || adapter?.llm_model}</span>
+                  </Tooltip>
+                }
                 key={(index + 1)?.toString()}
               ></TabPane>
             ))}

@@ -1,4 +1,4 @@
-import { Tabs } from "antd";
+import { Tabs, Tooltip } from "antd";
 import TabPane from "antd/es/tabs/TabPane";
 import Prism from "prismjs";
 import PropTypes from "prop-types";
@@ -70,7 +70,11 @@ function JsonView({
           )}
           {adapterData.map((adapter) => (
             <TabPane
-              tab={<span>{adapter?.llm_model || adapter?.profile_name}</span>}
+              tab={
+                <Tooltip title={adapter?.llm_model}>
+                  <span>{adapter?.profile_name || adapter?.llm_model}</span>
+                </Tooltip>
+              }
               key={adapter?.profile_id}
             />
           ))}
