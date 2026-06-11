@@ -23,6 +23,15 @@ is dormant until an operator explicitly flips the flag.
 Unknown values raise — operators get a loud error at module import
 time rather than silently falling back, which would mask a typo'd
 flag in a production env.
+
+**Queue-transport routing (separate axis).** ``dispatch()`` consults
+:func:`~queue_backend.routing.select_backend`, which reads the
+PG-queue routing table (``WORKER_PG_QUEUE_ENABLED_TASKS``) to decide
+Celery-vs-PG per task. This is orthogonal to the barrier choice above:
+the barrier is *how a batch's fan-in fires the callback*; the transport
+is *how messages travel*. Both default to Celery. The routing table is
+a scaffold today — PG-selected tasks still ride Celery (no PG consumer
+yet) — so it is observable but inert.
 """
 
 import os
@@ -37,6 +46,7 @@ from .redis_barrier import (
     barrier_abort,
     barrier_decr_and_check,
 )
+from .routing import QueueBackend, select_backend
 
 __all__ = [
     "Barrier",
@@ -44,11 +54,13 @@ __all__ = [
     "BarrierHandle",
     "CeleryChordBarrier",
     "FairnessKey",
+    "QueueBackend",
     "RedisDecrBarrier",
     "barrier_abort",
     "barrier_decr_and_check",
     "dispatch",
     "get_barrier",
+    "select_backend",
     "worker_task",
 ]
 

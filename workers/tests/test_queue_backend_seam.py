@@ -193,9 +193,9 @@ class TestWorkerTaskEquivalence:
     def test_worker_task_matches_shared_task_registration(self):
         """A function decorated with @worker_task is the same kind of object as
         one decorated with @shared_task — same registration semantics, same
-        invocation interface."""
+        invocation interface.
+        """
         from celery import shared_task
-
         from queue_backend import worker_task
 
         @worker_task(name="queue_backend_test.via_seam")
@@ -280,17 +280,22 @@ class TestPublicSurface:
         # (registered as a Celery task on import) + the BarrierBackend
         # enum + the get_barrier factory that the WORKER_BARRIER_BACKEND
         # env flag drives.
+        # Phase 8a adds QueueBackend + select_backend — the queue-transport
+        # routing gate that the WORKER_PG_QUEUE_ENABLED_TASKS / _ORGS
+        # allow-lists drive.
         assert set(queue_backend.__all__) == {
             "Barrier",
             "BarrierBackend",
             "BarrierHandle",
             "CeleryChordBarrier",
             "FairnessKey",
+            "QueueBackend",
             "RedisDecrBarrier",
             "barrier_abort",
             "barrier_decr_and_check",
             "dispatch",
             "get_barrier",
+            "select_backend",
             "worker_task",
         }
 
