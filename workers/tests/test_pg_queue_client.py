@@ -58,6 +58,13 @@ class TestPgQueueClientUnit:
         assert '"a": 1' in params[1]  # message JSON-serialised
         conn.commit.assert_called_once()
 
+    def test_send_coerces_missing_org_to_empty_string(self):
+        # org_id column is non-null (Django S6553) — None must become "".
+        conn, cur = _mock_conn(fetchone=(1,))
+        PgQueueClient(conn=conn).send("q1", {"a": 1})
+        _, params = cur.execute.call_args.args
+        assert params[2] == ""
+
     def test_read_runs_skip_locked_dequeue(self):
         conn, cur = _mock_conn(fetchall=[(7, {"k": "v"})])
         msgs = PgQueueClient(conn=conn).read("q1", vt_seconds=15, qty=3)

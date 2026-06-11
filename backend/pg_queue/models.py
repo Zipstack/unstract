@@ -17,9 +17,10 @@ class PgQueueMessage(models.Model):
     msg_id = models.BigAutoField(primary_key=True)
     queue_name = models.TextField()
     message = models.JSONField()
-    # Nullable: leaf tasks may carry no org; the fair-admission query
-    # (a later phase) uses it for the coupled pipeline.
-    org_id = models.TextField(null=True, blank=True)
+    # "" = no org (leaf tasks); the fair-admission query (a later phase)
+    # uses it for the coupled pipeline. Empty string rather than NULL —
+    # a string field shouldn't have two "no data" values (Django S6553).
+    org_id = models.TextField(blank=True, default="")
     # Python-level defaults so ORM ``.create()`` works without these; the
     # raw-SQL client relies on the DB-level defaults added in migration 0002.
     enqueued_at = models.DateTimeField(default=timezone.now)

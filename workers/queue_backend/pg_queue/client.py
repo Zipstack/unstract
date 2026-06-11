@@ -89,7 +89,9 @@ class PgQueueClient:
                 "INSERT INTO pg_queue_message "
                 "(queue_name, message, org_id, enqueued_at, vt, read_ct) "
                 "VALUES (%s, %s::jsonb, %s, now(), now(), 0) RETURNING msg_id",
-                (queue_name, json.dumps(message), org_id),
+                # "" rather than NULL for "no org" — the column is non-null
+                # (string fields shouldn't have two empty values; Django S6553).
+                (queue_name, json.dumps(message), org_id if org_id is not None else ""),
             )
             msg_id = cur.fetchone()[0]
         self.conn.commit()
