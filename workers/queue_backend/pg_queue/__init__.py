@@ -14,12 +14,23 @@ A subpackage (rather than a single module like the barriers) because the
 real implementation will likely span several modules (config, consumer
 poll loop, orchestrator) — exact layout TBD.
 
-Empty by design in this phase. Routing decisions are made by
-:func:`queue_backend.routing.select_backend`; until a consumer exists
-here, PG-selected dispatches still ride Celery (see
-``queue_backend.dispatch``).
+Phase 9a adds the storage + dequeue primitive (:class:`PgQueueClient`
+over the ``pg_queue_message`` table; the ``SKIP LOCKED`` dequeue lives in
+the client). It is still **inert**: routing decisions are made by
+:func:`queue_backend.routing.select_backend`, and until the enqueue
+wiring (9b) and consumer (9c) land, PG-selected dispatches still ride
+Celery (see ``queue_backend.dispatch``).
 
 Design reference: the PG Queue implementation guide in the labs repo
 (``workflow-execution-architecture``). Branch and section pointers move,
-so they're tracked on UN-3534 / the PR rather than baked in here.
+so they're tracked on the ticket / PR rather than baked in here.
 """
+
+from .client import PgQueueClient, QueueMessage
+from .connection import create_pg_connection
+
+__all__ = [
+    "PgQueueClient",
+    "QueueMessage",
+    "create_pg_connection",
+]

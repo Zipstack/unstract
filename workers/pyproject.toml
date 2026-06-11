@@ -34,6 +34,9 @@ dependencies = [
     "unstract-filesystem",
     # Caching
     "redis>=4.5.0,<6.0.0", # Redis client for worker cache access
+    # PG Queue — direct Postgres access for the bespoke SKIP LOCKED queue
+    # (reuses the backend's DB_* connection: PgBouncer in cloud, direct in OSS)
+    "psycopg2-binary==2.9.9", # matches backend; first direct-DB worker capability
     # Streaming utilities for bulk downloads (pluggable worker)
     "zipstream-ng>=1.7.0", # Streaming zip creation for memory-efficient bulk downloads
     # Note: Using dataclasses instead of pydantic for lightweight typing

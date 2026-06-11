@@ -306,6 +306,8 @@ SHARED_APPS = (
     # For the organization model
     "account_v2",
     "account_usage",
+    # PG Queue — extension-free bespoke queue (cross-org infra, shared schema)
+    "pg_queue",
     # Django apps should go below this line
     "django.contrib.admin",
     "django.contrib.auth",
