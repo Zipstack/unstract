@@ -9,7 +9,8 @@ cat > /usr/share/nginx/html/config/runtime-config.js << EOF
 // This file is auto-generated at runtime. Do not modify manually.
 window.RUNTIME_CONFIG = {
   faviconPath: "${VITE_FAVICON_PATH:-${REACT_APP_FAVICON_PATH}}",
-  logoUrl: "${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL}}"
+  logoUrl: "${VITE_CUSTOM_LOGO_URL:-${REACT_APP_CUSTOM_LOGO_URL}}",
+  version: "${UNSTRACT_APPS_VERSION:-}"
 };
 EOF
 

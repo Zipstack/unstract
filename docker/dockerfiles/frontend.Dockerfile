@@ -72,6 +72,10 @@ RUN sed -i 's|</head>|    <script src="/config/runtime-config.js"></script>\n  <
 COPY frontend/generate-runtime-config.sh /docker-entrypoint.d/40-env.sh
 RUN chmod +x /docker-entrypoint.d/40-env.sh
 
+# Capture build version at the very end so it doesn't affect layer caching
+ARG VERSION=dev
+ENV UNSTRACT_APPS_VERSION=${VERSION}
+
 EXPOSE 80
 
 USER nginx
