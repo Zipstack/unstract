@@ -118,7 +118,7 @@ services:
 
   qdrant:
     # Vector DB for doc indexer
-    image: "qdrant/qdrant:v1.8.3"
+    image: "qdrant/qdrant:v1.16.1"
     container_name: unstract-vector-db
     restart: unless-stopped
     ports:
