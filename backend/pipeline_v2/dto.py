@@ -13,6 +13,7 @@ class PipelineStatusPayload:
         total_files: int | None = None,
         successful_files: int | None = None,
         failed_files: int | None = None,
+        is_failure: bool | None = None,
     ):
         self.type = type
         self.pipeline_id = pipeline_id
@@ -23,6 +24,12 @@ class PipelineStatusPayload:
         self.total_files = total_files
         self.successful_files = successful_files
         self.failed_files = failed_files
+        # Authoritative failure verdict computed at dispatch (see
+        # is_failure_run + the pipeline last_run_status backstop). Lets the
+        # clubbed renderer classify the run without re-deriving it from the
+        # `status` string, whose vocabulary differs per dispatch path
+        # (PipelineStatus on the pipeline path vs ExecutionStatus elsewhere).
+        self.is_failure = is_failure
 
     def to_dict(self) -> dict[str, Any]:
         """Convert the payload DTO to a dictionary.
@@ -45,4 +52,8 @@ class PipelineStatusPayload:
             payload["execution_id"] = str(self.execution_id)
         if self.error_message:
             payload["error_message"] = self.error_message
+        # Only emit when explicitly set so worker/legacy payloads (which never
+        # carry it) stay byte-identical and the renderer falls back to status.
+        if self.is_failure is not None:
+            payload["is_failure"] = self.is_failure
         return payload

@@ -400,6 +400,70 @@ def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
     )
 
 
+def _mark_buffer_rows(
+    request: HttpRequest, *, target_status: str, metric_result: str
+) -> JsonResponse:
+    """Flip a clubbed dispatch's buffer rows to a terminal state.
+
+    Replaces the old Celery ``link``/``link_error`` callbacks: the notification
+    worker POSTs here on delivery success / retry exhaustion instead of relying
+    on a backend Celery task being registered on the ``celery`` queue (the
+    unified ``-A worker`` that also drains that queue does not register those
+    tasks, so half the callbacks were silently dropped). Only rows still in
+    SENDING and owned by ``organization_id`` are transitioned — a reaper-
+    reclaimed/re-dispatched row or a cross-tenant id must never be clobbered.
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"status": "error", "message": "Invalid JSON body"}, status=400
+        )
+
+    ids = body.get("buffer_row_ids") or []
+    org_id = body.get("organization_id")
+    if not ids or not org_id:
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "buffer_row_ids and organization_id are required",
+            },
+            status=400,
+        )
+
+    updated: int = NotificationBuffer.objects.filter(
+        id__in=ids,
+        organization_id=org_id,
+        status=BufferStatus.SENDING.value,
+    ).update(status=target_status)
+    logger.info(
+        "metric=notification_batch_dispatched_total result=%s rows=%d",
+        metric_result,
+        updated,
+    )
+    return JsonResponse({"status": "success", "updated": int(updated)})
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
+@require_http_methods(["POST"])
+def mark_buffer_dispatched(request: HttpRequest) -> JsonResponse:
+    """Worker reports a clubbed webhook delivered: SENDING -> DISPATCHED."""
+    return _mark_buffer_rows(
+        request, target_status=BufferStatus.DISPATCHED.value, metric_result="delivered"
+    )
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
+@require_http_methods(["POST"])
+def mark_buffer_dead_letter(request: HttpRequest) -> JsonResponse:
+    """Worker reports a clubbed webhook exhausted retries: SENDING -> DEAD_LETTER."""
+    return _mark_buffer_rows(
+        request,
+        target_status=BufferStatus.DEAD_LETTER.value,
+        metric_result="dead_letter",
+    )
+
+
 def _gc_terminal_rows() -> int:
     """Delete buffer rows past the retention window.
 
@@ -466,6 +530,14 @@ def _send_clubbed(
     then update — risked duplicate delivery if the UPDATE failed). On broker
     failure we revert rows back to PENDING in a separate transaction so the
     next flush tick retries cleanly.
+
+    The buffer rows' terminal transition is reported back by the notification
+    worker over the internal API (``buffer/mark/dispatched`` /
+    ``buffer/mark/dead-letter``), not via Celery ``link``/``link_error``: those
+    callbacks routed to the ``celery`` queue, which the unified ``-A worker``
+    also drains without the backend tasks registered, so ~half were dropped as
+    "unregistered task" and the rows stuck in SENDING. We therefore pass
+    ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
     """
     try:
         celery_app.send_task(
@@ -475,20 +547,16 @@ def _send_clubbed(
                 "max_retries": max_retries,
                 "retry_delay": 10,
                 "platform": platform,
-                # Re-raise on retry exhaustion so the task ends in FAILURE and the
-                # link_error below runs — otherwise the worker returns None (SUCCESS)
-                # and the buffer rows would never reach DEAD_LETTER.
+                # Re-raise on retry exhaustion so the task ends in FAILURE for
+                # monitoring; the worker marks the rows DEAD_LETTER over the
+                # internal API before raising (see send_webhook_notification).
                 "raise_on_final_failure": True,
+                # Worker marks these rows DISPATCHED/DEAD_LETTER via the internal
+                # mark endpoints (replaces Celery link/link_error).
+                "buffer_row_ids": buffer_ids,
+                "organization_id": org_id,
             },
             queue="notifications",
-            link=celery_app.signature(
-                "notification_v2.mark_buffer_dispatched",
-                kwargs={"buffer_row_ids": buffer_ids},
-            ),
-            link_error=celery_app.signature(
-                "notification_v2.mark_buffer_dead_letter",
-                kwargs={"buffer_row_ids": buffer_ids},
-            ),
         )
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "

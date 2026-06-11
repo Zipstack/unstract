@@ -107,6 +107,32 @@ class BuildEnvelopeTests(unittest.TestCase):
         self.assertEqual(env["events"], [])
         self.assertEqual(set(env), {"summary", "events"})
 
+    def test_explicit_is_failure_overrides_unclassifiable_status(self):
+        # The regression: the backend pipeline path sends PipelineStatus vocab
+        # ("FAILURE") that is_failure_run can't classify, with failed_files=0
+        # (deploy/setup error before any file ran). The explicit verdict the
+        # dispatch site carries must still count it as a failure.
+        env = build_envelope(
+            [_payload(status="FAILURE", failed_files=0, total_files=0, is_failure=True)]
+        )
+        self.assertEqual(env["summary"], {"total": 1, "succeeded": 0, "failed": 1})
+        self.assertIs(env["events"][0]["is_failure"], True)
+
+    def test_explicit_is_failure_false_is_authoritative(self):
+        # A False verdict wins even when the status string looks like a failure.
+        env = build_envelope(
+            [_payload(status="ERROR", failed_files=0, is_failure=False)]
+        )
+        self.assertEqual(env["summary"], {"total": 1, "succeeded": 1, "failed": 0})
+
+    def test_absent_flag_falls_back_to_predicate_and_omits_key(self):
+        # Worker / legacy payloads carry no flag: classification falls back to
+        # is_failure_run(status, failed_files) and the event dict stays free of
+        # the key (byte-identical to pre-change output).
+        env = build_envelope([_payload(status="ERROR", failed_files=0)])
+        self.assertEqual(env["summary"]["failed"], 1)
+        self.assertNotIn("is_failure", env["events"][0])
+
 
 class RenderSlackTextTests(unittest.TestCase):
     def test_single_event_header_is_singular(self):
@@ -115,6 +141,25 @@ class RenderSlackTextTests(unittest.TestCase):
         )
         self.assertIn("*1 execution*", text)
         self.assertIn("1 failed", text)
+
+    def test_explicit_failure_flag_drives_header_and_event_emoji(self):
+        # End-to-end of the regression on the Slack side: a FAILURE-vocab run
+        # with 0 failed files renders as failed (header + per-event glyph),
+        # not the success ✅ it showed before the explicit verdict was carried.
+        text = render_slack_text(
+            build_envelope(
+                [
+                    _payload(
+                        status="FAILURE",
+                        failed_files=0,
+                        total_files=0,
+                        is_failure=True,
+                    )
+                ]
+            )
+        )
+        self.assertIn("1 failed", text)
+        self.assertIn(":x: 0/0 files", text)
 
     def test_overflow_footer_collapses_extra_events(self):
         payloads = [

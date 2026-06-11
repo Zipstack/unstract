@@ -14,6 +14,8 @@ Envelope shape:
                 "type": "ETL" | "TASK" | "API",
                 "pipeline_name": "...",
                 "status": "ERROR" | "SUCCESS" | ...,
+                "is_failure": bool,   # optional; authoritative verdict the
+                                      # renderer prefers over status+counts
                 "execution_id": "...",
                 "timestamp": "2026 May 5 5:03:34 PM",
                 "additional_data": {
@@ -72,14 +74,23 @@ _EMOJI_SUCCESS = ":white_check_mark:"
 _EMOJI_FAILURE = ":x:"
 
 
-def _is_effective_failure(status: str | None, counts: dict[str, Any]) -> bool:
-    """Did this event fail? Single-sourced via core ``is_failure_run``.
+def _is_effective_failure(event: dict[str, Any]) -> bool:
+    """Did this event fail? Single-sourced with the dispatch filter.
 
-    Summary counts and the per-event emoji are derived from the same rule the
-    dispatch filter uses (ERROR/STOPPED or any failed file), so the rendered
+    Prefers the authoritative ``is_failure`` verdict the dispatch site computed
+    and carried on the payload, so classification does not depend on the
+    ``status`` string — whose vocabulary differs per dispatch path
+    (``PipelineStatus`` on the backend pipeline path vs ``ExecutionStatus``
+    elsewhere) and which core ``is_failure_run`` only understands as
+    ``ExecutionStatus``. Falls back to ``is_failure_run(status, failed_files)``
+    when the flag is absent (worker / legacy flat payloads), so the rendered
     outcome can never disagree with the reason the alert fired.
     """
-    return is_failure_run(status, counts.get("failed_files"))
+    explicit = event.get("is_failure")
+    if explicit is not None:
+        return bool(explicit)
+    counts = event.get("additional_data") or {}
+    return is_failure_run(event.get("status"), counts.get("failed_files"))
 
 
 def _humanize_timestamp(iso: str | None) -> str:
@@ -110,7 +121,7 @@ def _format_file_count(event: dict[str, Any]) -> str:
     total = counts.get("total_files")
     if total is None:
         return ""
-    if _is_effective_failure(event.get("status"), counts):
+    if _is_effective_failure(event):
         failed = counts.get("failed_files", 0)
         return f"{_EMOJI_FAILURE} {failed}/{total} files"
     successful = counts.get("successful_files", 0)
@@ -155,6 +166,12 @@ def _event_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     error_message = payload.get("error_message")
     if error_message:
         event["error_message"] = error_message
+    # Authoritative failure verdict from the dispatch site; carried only when
+    # set so worker / legacy event dicts (which fall back to status+counts)
+    # stay byte-identical.
+    is_failure = payload.get("is_failure")
+    if is_failure is not None:
+        event["is_failure"] = is_failure
     return event
 
 
@@ -174,11 +191,7 @@ def build_envelope(payloads: list[dict[str, Any]]) -> dict[str, Any]:
     them). Removable once all receivers have migrated to `events`.
     """
     capped = payloads[:MAX_BATCH_SIZE]
-    failed = sum(
-        1
-        for p in capped
-        if _is_effective_failure(p.get("status"), p.get("additional_data") or {})
-    )
+    failed = sum(1 for p in capped if _is_effective_failure(p))
     envelope: dict[str, Any] = {
         "summary": {
             "total": len(capped),

@@ -367,5 +367,108 @@ class TestDispatchSiteInventory:
         assert seam.exists(), f"Canonical dispatch seam missing: {seam}"
 
 
+# --- Site 1b: early-failure dispatch (notify_execution_failure) ---
+
+
+class TestEarlyFailureNotification:
+    """Pin the early-failure notification path (UN-3056).
+
+    Runs that fail before file processing (missing-tool / tool-validation /
+    source-setup errors) never reach the callback's
+    ``handle_status_notifications``, so the general worker calls
+    ``notify_execution_failure`` on its failure branch. It must resolve the
+    pipeline name/type from the backend and dispatch a terminal ERROR status;
+    if pipeline data can't be fetched it must skip rather than raise.
+    """
+
+    def _api_client(self, *, success=True, data="default"):
+        api_client = MagicMock()
+        resp = MagicMock()
+        resp.success = success
+        resp.data = (
+            {"pipeline": {"pipeline_name": "etl-early-fail", "pipeline_type": "ETL"}}
+            if data == "default"
+            else data
+        )
+        api_client.get_pipeline_data.return_value = resp
+        return api_client
+
+    def test_dispatches_terminal_error_with_resolved_identity(self):
+        from shared.patterns.notification import helper as notif_helper
+
+        api_client = self._api_client()
+        with patch.object(notif_helper, "handle_status_notifications") as mock_dispatch:
+            notif_helper.notify_execution_failure(
+                api_client=api_client,
+                pipeline_id="pipe-1",
+                execution_id="exec-1",
+                organization_id="org-1",
+                error_message="Tool does not exist in registry: text_extractor",
+            )
+
+        api_client.get_pipeline_data.assert_called_once_with(
+            pipeline_id="pipe-1", check_active=False
+        )
+        mock_dispatch.assert_called_once()
+        kwargs = mock_dispatch.call_args.kwargs
+        assert kwargs["pipeline_id"] == "pipe-1"
+        assert kwargs["status"] == ExecutionStatus.ERROR.value
+        assert kwargs["pipeline_name"] == "etl-early-fail"
+        assert kwargs["pipeline_type"] == "ETL"
+        assert kwargs["execution_id"] == "exec-1"
+        assert kwargs["organization_id"] == "org-1"
+        assert "text_extractor" in kwargs["error_message"]
+
+    def test_skips_when_pipeline_data_unavailable(self):
+        from shared.patterns.notification import helper as notif_helper
+
+        api_client = self._api_client(success=False, data=None)
+        with patch.object(notif_helper, "handle_status_notifications") as mock_dispatch:
+            notif_helper.notify_execution_failure(
+                api_client=api_client,
+                pipeline_id="pipe-1",
+                execution_id="exec-1",
+                organization_id="org-1",
+            )
+
+        mock_dispatch.assert_not_called()
+
+    def test_resolves_flat_pipeline_shape(self):
+        # Older backend builds return the record flat (no "pipeline" envelope).
+        from shared.patterns.notification import helper as notif_helper
+
+        api_client = self._api_client(
+            data={"pipeline_name": "flat-etl", "pipeline_type": "TASK"}
+        )
+        with patch.object(notif_helper, "handle_status_notifications") as mock_dispatch:
+            notif_helper.notify_execution_failure(
+                api_client=api_client,
+                pipeline_id="pipe-1",
+                execution_id="exec-1",
+                organization_id="org-1",
+            )
+
+        kwargs = mock_dispatch.call_args.kwargs
+        assert kwargs["pipeline_name"] == "flat-etl"
+        assert kwargs["pipeline_type"] == "TASK"
+
+    def test_does_not_raise_when_resolution_errors(self):
+        # A backend hiccup while resolving identity must not bubble out of the
+        # worker's failure handler (it is best-effort, post-status-update).
+        from shared.patterns.notification import helper as notif_helper
+
+        api_client = MagicMock()
+        api_client.get_pipeline_data.side_effect = RuntimeError("backend down")
+        with patch.object(notif_helper, "handle_status_notifications") as mock_dispatch:
+            notif_helper.notify_execution_failure(
+                api_client=api_client,
+                pipeline_id="pipe-1",
+                execution_id="exec-1",
+                organization_id="org-1",
+            )
+
+        mock_dispatch.assert_not_called()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

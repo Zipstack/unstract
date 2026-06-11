@@ -8,6 +8,7 @@ while maintaining backward compatibility.
 import os
 from typing import Any
 
+import httpx
 from notification.enums import PlatformType
 from notification.providers.base_provider import (
     DeliveryError,
@@ -164,6 +165,60 @@ def process_notification(
         }
 
 
+def _mark_buffer_outcome(
+    buffer_row_ids: list[str] | None,
+    organization_id: Any,
+    *,
+    dispatched: bool,
+) -> None:
+    """Report a clubbed dispatch's buffer rows as DISPATCHED / DEAD_LETTER.
+
+    Replaces the old Celery ``link``/``link_error`` callbacks with an internal
+    HTTP POST, so marking no longer depends on a backend task being registered
+    on whichever worker happens to drain the ``celery`` queue. Bearer-authed
+    with org scoping carried in the body (matches the ``buffer/process`` flush
+    call style — ``organization_id`` is the numeric org pk, not a header).
+    Best-effort: if this POST fails the rows stay SENDING and the backend reaper
+    reclaims them after the lease — the same safety net as before.
+    """
+    if not buffer_row_ids or organization_id is None:
+        return
+    base_url = os.getenv("INTERNAL_API_BASE_URL")
+    api_key = os.getenv("INTERNAL_SERVICE_API_KEY")
+    if not base_url or not api_key:
+        logger.warning(
+            "Cannot mark buffer rows: INTERNAL_API_BASE_URL / "
+            "INTERNAL_SERVICE_API_KEY not set"
+        )
+        return
+    suffix = "dispatched" if dispatched else "dead-letter"
+    url = f"{base_url.rstrip('/')}/v1/webhook/buffer/mark/{suffix}/"
+    try:
+        with httpx.Client(transport=httpx.HTTPTransport(retries=2)) as client:
+            response = client.post(
+                url,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json={
+                    "buffer_row_ids": buffer_row_ids,
+                    "organization_id": organization_id,
+                },
+                timeout=10.0,
+            )
+        if response.status_code != 200:
+            logger.warning(
+                "Buffer mark %s returned HTTP %s: %s; reaper will reclaim",
+                suffix,
+                response.status_code,
+                response.text[:200],
+            )
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            f"Failed to mark {len(buffer_row_ids)} buffer row(s) as "
+            f"{'DISPATCHED' if dispatched else 'DEAD_LETTER'}: {e}; "
+            f"reaper will reclaim"
+        )
+
+
 @worker_task(bind=True, name="send_webhook_notification")
 def send_webhook_notification(
     self,
@@ -175,6 +230,8 @@ def send_webhook_notification(
     retry_delay: int = 10,
     platform: str | None = None,
     raise_on_final_failure: bool = False,
+    buffer_row_ids: list[str] | None = None,
+    organization_id: str | None = None,
 ) -> None:
     """Backward compatible webhook notification task.
 
@@ -241,6 +298,7 @@ def send_webhook_notification(
                 f"Webhook delivered successfully to {url} "
                 f"(status: {result.get('details', {}).get('status_code', 'unknown')})"
             )
+            _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=True)
             return None  # Success - matches original behavior
         else:
             # Failed delivery - raise exception for retry handling
@@ -262,11 +320,13 @@ def send_webhook_notification(
                     f"Failed to send webhook to {url} after {max_retries} attempts. "
                     f"Error: {e}"
                 )
+                _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
                 if raise_on_final_failure:
                     raise
                 return None  # Final failure - matches original behavior
         else:
             logger.error(f"Webhook request to {url} failed with error: {e}")
+            _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
             if raise_on_final_failure:
                 raise
             return None  # No retries configured - matches original behavior
@@ -285,11 +345,13 @@ def send_webhook_notification(
                     f"Failed to send webhook to {url} after {max_retries} attempts. "
                     f"Error: {e}"
                 )
+                _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
                 if raise_on_final_failure:
                     raise
                 return None
         else:
             logger.error(f"Webhook request to {url} failed with error: {e}")
+            _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
             if raise_on_final_failure:
                 raise
             return None

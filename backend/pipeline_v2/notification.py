@@ -88,6 +88,10 @@ class PipelineNotification:
             total_files=total_files,
             successful_files=successful_files,
             failed_files=failed_files,
+            # Carry the verdict the routing filter used so the rendered outcome
+            # can't disagree with it — last_run_status is PipelineStatus vocab
+            # (SUCCESS/FAILURE) the renderer's is_failure_run can't classify.
+            is_failure=is_failure,
         )
         dispatch_notifications(
             list(self.notifications),

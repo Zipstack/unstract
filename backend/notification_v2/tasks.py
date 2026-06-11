@@ -1,10 +1,18 @@
 """Celery tasks owned by notification_v2.
 
-Hosts the terminal-state callbacks for the clubbed dispatch chain:
-``mark_buffer_dispatched`` (Celery ``link`` on success) and
-``mark_buffer_dead_letter`` (``link_error`` on retry exhaustion). Both only
-transition rows still in ``SENDING`` — on success to ``DISPATCHED``, on
-terminal failure to ``DEAD_LETTER`` — so the flush job will not re-pick them.
+DEPRECATED — retained only to drain any in-flight Celery messages during
+rollout. The clubbed dispatch no longer wires these as ``link``/``link_error``:
+they routed to the ``celery`` queue, which the unified ``-A worker`` also drains
+without these backend tasks registered, so ~half the callbacks were silently
+dropped ("Received unregistered task") and the buffer rows stuck in SENDING.
+The notification worker now reports the terminal state over the internal API
+(``buffer/mark/dispatched`` / ``buffer/mark/dead-letter`` →
+``notification_v2.internal_api_views``) instead. Safe to remove once no
+pre-upgrade messages remain in the broker.
+
+Both tasks only transition rows still in ``SENDING`` — on success to
+``DISPATCHED``, on terminal failure to ``DEAD_LETTER`` — so the flush job will
+not re-pick them.
 """
 
 from __future__ import annotations

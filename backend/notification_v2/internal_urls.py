@@ -32,6 +32,18 @@ urlpatterns = [
         internal_api_views.process_notification_buffer,
         name="process_notification_buffer",
     ),
+    # Terminal-state marks posted by the notification worker after delivery
+    # (replaces the old Celery link/link_error callbacks).
+    path(
+        "buffer/mark/dispatched/",
+        internal_api_views.mark_buffer_dispatched,
+        name="mark_buffer_dispatched",
+    ),
+    path(
+        "buffer/mark/dead-letter/",
+        internal_api_views.mark_buffer_dead_letter,
+        name="mark_buffer_dead_letter",
+    ),
     # Notification data endpoints for workers
     path(
         "pipeline/<str:pipeline_id>/notifications/",

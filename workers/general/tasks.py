@@ -33,6 +33,7 @@ from shared.models.execution_models import (
     WorkflowContextData,
     create_organization_context,
 )
+from shared.patterns.notification.helper import notify_execution_failure
 from shared.patterns.retry.utils import circuit_breaker
 from shared.processing.files import FileProcessingUtils
 from shared.processing.types import FileDataValidator, TypeConverter
@@ -337,6 +338,29 @@ def async_execute_bin_general(
                             logger.error(
                                 f"[exec:{execution_id}] [pipeline:{pipeline_id}] Failed to update pipeline status to FAILED: {pipeline_error}"
                             )
+
+                        # Notify failure subscribers for runs that died before the
+                        # file-processing callback (missing tool / tool-validation /
+                        # source-setup errors). That callback is the only other ETL
+                        # dispatch point and never runs for these, so without this
+                        # the failure is silent. Fire only once retries are
+                        # exhausted so autoretry_for doesn't enqueue a duplicate per
+                        # attempt; mutually exclusive with the callback (a run that
+                        # reaches file processing returns normally above).
+                        if self.request.retries >= self.max_retries:
+                            try:
+                                notify_execution_failure(
+                                    api_client=api_client,
+                                    pipeline_id=pipeline_id,
+                                    execution_id=execution_id,
+                                    organization_id=schema_name,
+                                    error_message=str(e),
+                                )
+                            except Exception as notify_error:
+                                logger.warning(
+                                    f"[exec:{execution_id}] [pipeline:{pipeline_id}] "
+                                    f"Early-failure notification dispatch failed: {notify_error}"
+                                )
 
             except Exception as update_error:
                 logger.error(f"Failed to update execution status: {update_error}")

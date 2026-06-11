@@ -51,6 +51,10 @@ class APINotification:
             total_files=self.workflow_execution.total_files,
             successful_files=self.workflow_execution.successful_files,
             failed_files=failed_files,
+            # status is already ExecutionStatus vocab here, so the renderer would
+            # classify correctly anyway; carry the explicit verdict so both
+            # backend dispatch paths are uniform and vocab-independent.
+            is_failure=is_failure,
         )
 
         dispatch_notifications(

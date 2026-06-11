@@ -433,3 +433,63 @@ def handle_status_notifications(
         import traceback
 
         traceback.print_exc()
+
+
+def notify_execution_failure(
+    api_client: Any,
+    pipeline_id: str,
+    execution_id: str,
+    organization_id: str,
+    error_message: str | None = None,
+) -> None:
+    """Dispatch a failure notification for a run that errored *before* the
+    file-processing callback ran.
+
+    ETL/Task notifications normally fire from the callback worker's
+    ``handle_status_notifications`` once files finish processing. Build/setup
+    failures — missing-tool / tool-registry errors, tool validation, source
+    connector errors — halt the run before any file is processed, so that
+    callback never runs and a "notify on failures" subscriber hears nothing.
+    This resolves the pipeline's name/type from the backend and reuses the
+    standard dispatch with a terminal ERROR status, so the failure-filter and
+    the clubbed payload are identical to the normal path.
+
+    Mutually exclusive with the callback: a run that reaches file processing
+    returns normally from the worker and is notified by the callback instead.
+    API deployments are intentionally not handled here — they already dispatch
+    early failures through the backend ``update_pipeline_status`` path.
+    """
+    try:
+        api_client.set_organization_context(organization_id)
+        response = api_client.get_pipeline_data(
+            pipeline_id=pipeline_id, check_active=False
+        )
+        if not (getattr(response, "success", False) and response.data):
+            logger.warning(
+                "Skipping early-failure notification for %s: pipeline data unavailable",
+                pipeline_id,
+            )
+            return
+        # Unified endpoint nests the record under "pipeline"; fall back to the
+        # flat shape for older builds.
+        pdata = response.data.get("pipeline", response.data)
+        pipeline_name = pdata.get("pipeline_name") or pdata.get("api_name")
+        pipeline_type = pdata.get("pipeline_type", WorkflowType.ETL.value)
+    except Exception as e:  # noqa: BLE001
+        logger.warning(
+            "Could not resolve pipeline %s for early-failure notification: %s",
+            pipeline_id,
+            e,
+        )
+        return
+
+    handle_status_notifications(
+        api_client=api_client,
+        pipeline_id=pipeline_id,
+        status=ExecutionStatus.ERROR.value,
+        execution_id=execution_id,
+        error_message=error_message,
+        pipeline_name=pipeline_name,
+        pipeline_type=pipeline_type,
+        organization_id=organization_id,
+    )
