@@ -1,33 +1,49 @@
 """Tests for the PG-queue routing gate (``queue_backend.routing``).
 
-Two layers:
+Three layers:
 
 1. **select_backend()** resolves the per-task allow-list correctly,
    defaults to ``CELERY`` when unset, and never raises on malformed
    input.
 
-2. **dispatch() is inert under routing** — the ``current_app.send_task``
+2. **Observability** — the configured allow-list is logged once, and a
+   PG cutover emits a log. These are the gate's only observable effect,
+   so they're asserted explicitly (a future "the gate is inert, delete
+   it" refactor must fail a test, not pass silently).
+
+3. **dispatch() is inert under routing** — the ``current_app.send_task``
    call is byte-identical whether the routing table selects ``CELERY``
-   or ``PG``. This pins the scaffold invariant: the seam is observable
-   (a log line) but changes nothing on the wire until a real PG
-   consumer lands.
+   or ``PG``.
 """
 
 from __future__ import annotations
 
+import importlib
+import logging
 from unittest.mock import patch
 
 import pytest
-from queue_backend import QueueBackend, select_backend
+from queue_backend import QueueBackend, dispatch, select_backend
+from queue_backend import routing as routing_mod
 from queue_backend.fairness import FairnessKey, WorkloadType
+from queue_backend.routing import _ENABLED_TASKS_ENV_VAR as ENABLED_TASKS_ENV
 
-ENABLED_TASKS_ENV = "WORKER_PG_QUEUE_ENABLED_TASKS"
+# ``queue_backend.__init__`` binds ``dispatch`` to the *function*, shadowing
+# the submodule attribute — import the module explicitly to reach its globals.
+dispatch_mod = importlib.import_module("queue_backend.dispatch")
 
 
 @pytest.fixture(autouse=True)
-def _clear_routing_env(monkeypatch):
-    """Each test starts from an empty routing table (all-Celery default)."""
+def _reset_routing_state(monkeypatch):
+    """Empty allow-list + cleared log-once guards before each test.
+
+    The allow-list-logged flag and the per-task routing-logged set are
+    process-global one-shot guards; reset them so caplog assertions are
+    deterministic regardless of test order.
+    """
     monkeypatch.delenv(ENABLED_TASKS_ENV, raising=False)
+    routing_mod._allow_list_logged = False
+    dispatch_mod._pg_routing_logged.clear()
 
 
 # --- select_backend() resolution ---
@@ -84,6 +100,57 @@ class TestQueueBackendEnum:
         assert {b.value for b in QueueBackend} == {"celery", "pg"}
 
 
+# --- Observability (the gate's only observable effect) ---
+
+
+class TestObservability:
+    def test_allow_list_logged_once_when_configured(self, monkeypatch, caplog):
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "async_execute_bin")
+        with caplog.at_level(logging.INFO, logger="queue_backend.routing"):
+            select_backend("x")
+            select_backend("y")  # second call must NOT re-log
+        hits = [r for r in caplog.records if "PG-queue routing enabled" in r.getMessage()]
+        assert len(hits) == 1
+        assert "async_execute_bin" in hits[0].getMessage()
+
+    def test_empty_allow_list_logs_nothing(self, caplog):
+        """Default (feature off) stays silent — truly inert."""
+        with caplog.at_level(logging.INFO, logger="queue_backend.routing"):
+            select_backend("x")
+        assert "PG-queue routing enabled" not in caplog.text
+
+    def test_pg_selection_emits_routing_log(self, monkeypatch, caplog):
+        """Pins the dispatch() routing branch: deleting it must fail here."""
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+        with (
+            patch("queue_backend.dispatch.current_app"),
+            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
+        ):
+            dispatch("t1")
+        assert "PG-queue routing selected" in caplog.text
+
+    def test_celery_selection_emits_no_routing_log(self, caplog):
+        """Negative case — guards against the gate being made unconditional."""
+        with (
+            patch("queue_backend.dispatch.current_app"),
+            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
+        ):
+            dispatch("t1")  # empty allow-list → CELERY
+        assert "PG-queue routing selected" not in caplog.text
+
+    def test_routing_log_bounded_to_once_per_task(self, monkeypatch, caplog):
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "t1")
+        with (
+            patch("queue_backend.dispatch.current_app"),
+            caplog.at_level(logging.INFO, logger="queue_backend.dispatch"),
+        ):
+            dispatch("t1")
+            dispatch("t1")
+            dispatch("t1")
+        hits = [r for r in caplog.records if "PG-queue routing selected" in r.getMessage()]
+        assert len(hits) == 1
+
+
 # --- dispatch() is inert under routing (the scaffold invariant) ---
 
 
@@ -91,8 +158,6 @@ class TestDispatchByteIdenticalRegardlessOfRouting:
     """``dispatch()`` produces the same send_task call whether routed PG or Celery."""
 
     def _capture_send_task(self, task_name, fairness):
-        from queue_backend import dispatch
-
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch(
                 task_name,
@@ -121,8 +186,6 @@ class TestDispatchByteIdenticalRegardlessOfRouting:
 
     def test_dispatch_without_fairness_still_routes_by_task(self, monkeypatch):
         """Routing keys on task name only; fairness is irrelevant to the decision."""
-        from queue_backend import dispatch
-
         monkeypatch.setenv(ENABLED_TASKS_ENV, "bare_task")
         with patch("queue_backend.dispatch.current_app") as mock_app:
             dispatch("bare_task")

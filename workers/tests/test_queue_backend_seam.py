@@ -281,8 +281,8 @@ class TestPublicSurface:
         # enum + the get_barrier factory that the WORKER_BARRIER_BACKEND
         # env flag drives.
         # Phase 8a adds QueueBackend + select_backend — the queue-transport
-        # routing gate that the WORKER_PG_QUEUE_ENABLED_TASKS / _ORGS
-        # allow-lists drive.
+        # routing gate that the WORKER_PG_QUEUE_ENABLED_TASKS allow-list
+        # drives.
         assert set(queue_backend.__all__) == {
             "Barrier",
             "BarrierBackend",

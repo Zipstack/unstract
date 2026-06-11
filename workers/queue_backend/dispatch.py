@@ -19,6 +19,11 @@ from .routing import QueueBackend, select_backend
 
 logger = logging.getLogger(__name__)
 
+# Task names already logged as PG-routed in this process. Bounds the
+# routing log to once per task name (per prefork child) so an opted-in
+# high-throughput task doesn't log on every dispatch.
+_pg_routing_logged: set[str] = set()
+
 
 def dispatch(
     task_name: str,
@@ -42,8 +47,14 @@ def dispatch(
     outside it guarantees today's wire is byte-identical regardless of
     the routing decision.
     """
-    if select_backend(task_name) is QueueBackend.PG:
-        logger.debug(
+    if (
+        select_backend(task_name) is QueueBackend.PG
+        and task_name not in _pg_routing_logged
+    ):
+        # INFO (not DEBUG) so the cutover is visible under a default log
+        # config; log-once per task name keeps the volume bounded.
+        _pg_routing_logged.add(task_name)
+        logger.info(
             "PG-queue routing selected for task=%r; dispatching via "
             "Celery (scaffold — no PG consumer yet)",
             task_name,

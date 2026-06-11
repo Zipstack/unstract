@@ -5,20 +5,20 @@ Reserved home for the PostgreSQL-backed queue substrate (PGMQ +
 migration. PGMQ is a *core* worker transport — the intended primary
 backend — so it lives inside the queue-backend seam next to its sibling
 substrates (``dispatch``, ``routing``, ``barrier``, ``redis_barrier``),
-**not** under ``workers/plugins/`` (that directory is the git-ignored
-overlay for cloud/enterprise plugins copied in at build time).
+**not** under ``workers/plugins/``, whose plugin *implementation
+subdirectories* are the git-ignored overlay copied in at build time (the
+directory itself — ``__init__.py``, ``plugin_manager.py`` — is tracked).
 
-A subpackage (rather than a single module like the barriers) because
-the real implementation spans several files — ``config.py`` (per-task
-timeouts/retries), ``consumer.py`` (poll loop + graceful shutdown), and
-the single-orchestrator (admit / reap / route, fair-admission query).
+A subpackage (rather than a single module like the barriers) because the
+real implementation will likely span several modules (config, consumer
+poll loop, orchestrator) — exact layout TBD.
 
 Empty by design in this phase. Routing decisions are made by
 :func:`queue_backend.routing.select_backend`; until a consumer exists
 here, PG-selected dispatches still ride Celery (see
 ``queue_backend.dispatch``).
 
-Labs reference: ``Zipstack/labs:labs-ali/workflow-execution-architecture``
-— ``docs/pg-queue-implementation-guide.md`` (§3 Worker Lifecycle,
-§6 Orchestrator).
+Design reference: the PG Queue implementation guide in the labs repo
+(``workflow-execution-architecture``). Branch and section pointers move,
+so they're tracked on UN-3534 / the PR rather than baked in here.
 """
