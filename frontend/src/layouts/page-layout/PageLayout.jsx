@@ -11,7 +11,7 @@ import {
   getLocalStorageValue,
   setLocalStorageValue,
 } from "../../helpers/localStorage";
-import { isModuleMissing } from "../../routes/useMainAppRoutes.js";
+import { isModuleMissing } from "../../helpers/pluginLoader.js";
 
 // Marketplace pending-purchase banner (cloud plugin). Shows "your
 // marketplace purchase is being confirmed" between the buyer's claim and

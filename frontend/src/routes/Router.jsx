@@ -6,11 +6,12 @@ import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
+import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
-import { isModuleMissing, useMainAppRoutes } from "./useMainAppRoutes.js";
+import { useMainAppRoutes } from "./useMainAppRoutes.js";
 
 // Marketplace buyer pages must be reachable at TOP-LEVEL paths: Tackle's
 // post-purchase redirect is one static URL per environment
