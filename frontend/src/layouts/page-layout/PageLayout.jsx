@@ -11,6 +11,7 @@ import {
   getLocalStorageValue,
   setLocalStorageValue,
 } from "../../helpers/localStorage";
+import { isModuleMissing } from "../../routes/useMainAppRoutes.js";
 
 // Marketplace pending-purchase banner (cloud plugin). Shows "your
 // marketplace purchase is being confirmed" between the buyer's claim and
@@ -21,8 +22,17 @@ let MarketplacePendingBanner;
 try {
   const marketplaceMod = await import("../../plugins/marketplace");
   MarketplacePendingBanner = marketplaceMod.MarketplacePendingBanner;
-} catch {
-  // Ignore if plugin not available
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent; anything
+  // else (a broken plugin) must surface rather than silently removing
+  // the pending-purchase UX in cloud builds.
+  if (!isModuleMissing(err)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[marketplace] MarketplacePendingBanner import failed unexpectedly",
+      err,
+    );
+  }
 }
 
 function PageLayout({
