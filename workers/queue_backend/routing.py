@@ -1,7 +1,7 @@
 """Queue-transport routing gate (Strangler-Fig).
 
 Decides whether a given dispatch should ride the **Celery** transport
-(today's only real path) or the future **PG Queue** (PGMQ) transport,
+(today's only real path) or the future **PG Queue** transport,
 based on a per-task-type opt-in allow-list read from env:
 
 - ``WORKER_PG_QUEUE_ENABLED_TASKS`` — comma-separated task names routed

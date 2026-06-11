@@ -1,9 +1,10 @@
-"""PG Queue (PGMQ) transport substrate — scaffold.
+"""PG Queue transport substrate — scaffold.
 
-Reserved home for the PostgreSQL-backed queue substrate (PGMQ +
-``SKIP LOCKED``) that will run alongside Celery during the Strangler-Fig
-migration. PGMQ is a *core* worker transport — the intended primary
-backend — so it lives inside the queue-backend seam next to its sibling
+Reserved home for the PostgreSQL-backed queue substrate (a bespoke
+``SKIP LOCKED`` queue, no extension) that will run alongside Celery during
+the Strangler-Fig migration. PG Queue is a *core* worker transport — the
+intended primary backend — so it lives inside the queue-backend seam next
+to its sibling
 substrates (``dispatch``, ``routing``, ``barrier``, ``redis_barrier``),
 **not** under ``workers/plugins/``, whose plugin *implementation
 subdirectories* are the git-ignored overlay copied in at build time (the
