@@ -17,6 +17,22 @@ allow-list lets an operator migrate one task type at a time
 canarying is needed it slots in behind :func:`select_backend` as a small
 additive change — no call site touches the routing decision directly.)
 
+**Migration coherence — what the allow-list may and may not split.**
+Per-task routing is the right granularity for *independent / leaf* tasks
+(e.g. ``process_log_history``, ``send_webhook_notification``): no chain,
+no barrier, so one can ride PG while the rest stay on Celery — these are
+the safe first migration candidates. It is **not** valid to split the
+*coupled execution pipeline* (``async_execute_bin`` → file processing →
+callback, with the barrier fan-in) across substrates: a chain hands off
+stage→stage and the barrier coordinates a batch, so a single execution
+must run **entirely on one transport**. The migration unit for the
+pipeline is therefore the *execution*, not the task — the next phase will
+resolve the transport once at kickoff and carry it in ``ExecutionContext``
+(like the fairness key), and downstream dispatches will honour that
+carried choice over the per-task env. ``select_backend`` then becomes:
+"if the dispatch carries an execution-transport marker, use it; otherwise
+consult this allow-list." Until then, only enable *leaf* tasks here.
+
 **Scaffold posture.** This module only makes the routing *decision*.
 In the current phase there is no PG consumer, so ``dispatch()`` still
 sends PG-selected tasks via Celery (the decision is observable in logs
