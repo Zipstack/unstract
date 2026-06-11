@@ -10,9 +10,11 @@ runs a single atomic ``UPDATE … WHERE msg_id IN (SELECT … FOR UPDATE
 SKIP LOCKED …) RETURNING …`` (committed immediately), the caller
 processes the message *outside* the transaction, then
 :meth:`PgQueueClient.delete` acks on success. A crash before delete
-leaves the row to reappear once its ``vt`` expires — at-least-once
-delivery, no double-delivery (SKIP LOCKED guarantees a row is claimed by
-at most one reader). The whole queue contract lives here, in one place;
+leaves the row to reappear once its ``vt`` expires — **at-least-once**
+delivery: SKIP LOCKED stops two *concurrent* readers from claiming the
+same visible row, but a message can still be delivered more than once if
+a reader crashes before ``delete()`` and the row's ``vt`` expires, so the
+consumer must be idempotent. The whole queue contract lives here, in one place;
 the schema (``pg_queue_message`` table + dequeue index) is a plain
 Django migration with no DB-side function.
 
@@ -42,10 +44,17 @@ logger = logging.getLogger(__name__)
 
 # Atomic claim. Takes up to %(qty)s ready messages no other transaction
 # holds, makes them invisible for %(vt)s seconds, returns them. SKIP LOCKED
-# => concurrent readers never claim the same row (no double-delivery). The
-# caller commits immediately, processes OUTSIDE the txn, DELETEs on success;
-# a crash leaves the row to reappear when vt expires (at-least-once). No lock
-# held during processing -> VACUUM-safe and PgBouncer txn-pooling compatible.
+# => concurrent readers never claim the same visible row (no concurrent
+# double-claim). The caller commits immediately, processes OUTSIDE the txn,
+# DELETEs on success; a crash leaves the row to reappear when vt expires
+# (at-least-once — a message CAN be processed more than once). No lock held
+# during processing -> VACUUM-safe and PgBouncer txn-pooling compatible.
+#
+# ORDER BY (vt, msg_id) — not just msg_id — so the (queue_name, vt, msg_id)
+# index drives an indexed top-N: for a fixed queue the index is ordered by
+# (vt, msg_id), so the vt<=now() range scan emits rows already sorted and PG
+# applies LIMIT without sorting the whole visible backlog. Still effectively
+# FIFO (vt is set to now() at enqueue; msg_id is the deterministic tiebreak).
 _DEQUEUE_SQL = """
 UPDATE pg_queue_message
    SET vt = now() + make_interval(secs => %s),
@@ -55,7 +64,7 @@ UPDATE pg_queue_message
        FROM pg_queue_message
       WHERE queue_name = %s
         AND vt <= now()
-      ORDER BY msg_id
+      ORDER BY vt, msg_id
         FOR UPDATE SKIP LOCKED
       LIMIT %s
  )
@@ -112,11 +121,19 @@ class PgQueueClient:
                 yield cur
             conn.commit()
         except Exception as exc:
-            with contextlib.suppress(Exception):
-                conn.rollback()
-            if self._owns_conn and isinstance(
+            # A failed rollback proves the connection is unusable, regardless
+            # of which psycopg2 error subclass was raised (a server-side
+            # termination mid-statement can surface as a bare DatabaseError).
+            conn_dead = isinstance(
                 exc, (psycopg2.OperationalError, psycopg2.InterfaceError)
-            ):
+            )
+            try:
+                conn.rollback()
+            except Exception:
+                conn_dead = True
+            # Discard an unusable connection so the next call reconnects —
+            # only when we own it (an injected connection is the caller's).
+            if self._owns_conn and (conn_dead or conn.closed):
                 with contextlib.suppress(Exception):
                     conn.close()
                 self._conn = None

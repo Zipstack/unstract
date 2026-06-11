@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from unittest.mock import MagicMock
 
 import psycopg2
@@ -109,6 +110,71 @@ class TestPgQueueClientUnit:
         conn.commit.assert_not_called()
 
 
+class TestConnectionLifecycle:
+    """Recovery + ownership branches of ``_cursor()`` / ``close()``."""
+
+    @staticmethod
+    def _owned_client(monkeypatch, *, execute_raises=None):
+        cur = MagicMock()
+        if execute_raises is not None:
+            cur.execute.side_effect = execute_raises
+        conn = MagicMock()
+        conn.closed = 0
+        conn.cursor.return_value = _CursorCtx(cur)
+        factory = MagicMock(return_value=conn)
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.client.create_pg_connection", factory
+        )
+        return PgQueueClient(), conn, factory
+
+    def test_owned_conn_recovered_on_operational_error(self, monkeypatch):
+        client, conn, factory = self._owned_client(
+            monkeypatch, execute_raises=psycopg2.OperationalError("dead")
+        )
+        with pytest.raises(psycopg2.OperationalError):
+            client.send("q", {"a": 1})
+        conn.rollback.assert_called_once()
+        conn.close.assert_called_once()
+        assert client._conn is None  # cached handle dropped
+        _ = client.conn  # next op reconnects
+        assert factory.call_count == 2
+
+    def test_owned_conn_recovered_when_rollback_fails(self, monkeypatch):
+        # A non-Operational error whose rollback fails → still treated as dead.
+        client, conn, _ = self._owned_client(
+            monkeypatch, execute_raises=RuntimeError("boom")
+        )
+        conn.rollback.side_effect = psycopg2.DatabaseError("socket gone")
+        with pytest.raises(RuntimeError):
+            client.send("q", {"a": 1})
+        conn.close.assert_called_once()
+        assert client._conn is None
+
+    def test_injected_conn_never_closed_on_error(self):
+        cur = MagicMock()
+        cur.execute.side_effect = psycopg2.OperationalError("dead")
+        conn = MagicMock()
+        conn.closed = 0
+        conn.cursor.return_value = _CursorCtx(cur)
+        client = PgQueueClient(conn=conn)
+        with pytest.raises(psycopg2.OperationalError):
+            client.send("q", {"a": 1})
+        conn.rollback.assert_called_once()
+        conn.close.assert_not_called()
+        assert client._conn is conn  # caller's connection untouched
+
+    def test_close_closes_owned_not_injected(self, monkeypatch):
+        client, conn, _ = self._owned_client(monkeypatch)
+        _ = client.conn  # lazily create
+        client.close()
+        conn.close.assert_called_once()
+        assert client._conn is None
+
+        injected = MagicMock()
+        PgQueueClient(conn=injected).close()
+        injected.close.assert_not_called()
+
+
 class TestCreatePgConnection:
     """Unit coverage for the connection factory (no real DB)."""
 
@@ -118,12 +184,15 @@ class TestCreatePgConnection:
             "queue_backend.pg_queue.connection.psycopg2.connect",
             lambda **kw: captured.update(kw) or object(),
         )
+        # Password is a runtime token (not a hard-coded literal) so it isn't
+        # mistaken for a credential, while still proving the env is read.
+        secret = uuid.uuid4().hex
         for k, v in {
             "HOST": "h",
             "PORT": "6432",
             "NAME": "n",
             "USER": "u",
-            "PASSWORD": "p",
+            "PASSWORD": secret,
             "SCHEMA": "s",
         }.items():
             monkeypatch.setenv(f"DB_{k}", v)
@@ -132,7 +201,7 @@ class TestCreatePgConnection:
         assert captured["port"] == "6432"
         assert captured["dbname"] == "n"
         assert captured["user"] == "u"
-        assert captured["password"] == "p"
+        assert captured["password"] == secret
         assert captured["options"] == "-c search_path=s"
 
     def test_env_prefix_override(self, monkeypatch):
