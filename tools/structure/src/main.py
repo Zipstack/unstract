@@ -318,6 +318,7 @@ class StructureTool(BaseTool):
         )
 
         extracted_text = ""
+        extraction_metrics = {}
         usage_kwargs: dict[Any, Any] = dict()
         if skip_extraction_and_indexing:
             self.stream_log(
@@ -328,6 +329,7 @@ class StructureTool(BaseTool):
             usage_kwargs[UsageKwargs.RUN_ID] = self.file_execution_id
             usage_kwargs[UsageKwargs.FILE_NAME] = self.source_file_name
             usage_kwargs[UsageKwargs.EXECUTION_ID] = self.execution_id
+            extraction_start_time = datetime.datetime.now()
             extracted_text = STHelper.dynamic_extraction(
                 file_path=input_file,
                 enable_highlight=is_highlight_enabled,
@@ -338,6 +340,13 @@ class StructureTool(BaseTool):
                 tool=self,
                 execution_run_data_folder=str(execution_run_data_folder),
             )
+            extraction_metrics = {
+                SettingsKeys.EXTRACTION: {
+                    "time_taken(s)": STHelper.elapsed_time(
+                        start_time=extraction_start_time
+                    )
+                }
+            }
 
         index_metrics = {}
         if is_summarization_enabled:
@@ -458,7 +467,10 @@ class StructureTool(BaseTool):
                 "No text is extracted from the document to add to the metadata"
             )
         if merged_metrics := self._merge_metrics(
-            structured_output.get(SettingsKeys.METRICS, {}), index_metrics
+            self._merge_metrics(
+                structured_output.get(SettingsKeys.METRICS, {}), index_metrics
+            ),
+            extraction_metrics,
         ):
             structured_output[SettingsKeys.METRICS] = merged_metrics
         # Update GUI
