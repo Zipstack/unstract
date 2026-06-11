@@ -348,6 +348,8 @@ const ManageKeys = ({
           open={openDeleteModal}
           setOpen={setOpenDeleteModal}
           deleteRecord={deleteApiKey}
+          entityType="API key"
+          entityName={selectedKeyRow?.description}
         />
       )}
     </>

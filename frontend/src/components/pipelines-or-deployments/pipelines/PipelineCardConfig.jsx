@@ -341,7 +341,7 @@ function createPipelineCardConfig({
                 onEdit={onEdit}
                 onShare={onShare}
                 onDelete={onDelete}
-                deleteTitle="Delete pipeline?"
+                deleteTitle={`Delete the pipeline '${pipeline.pipeline_name}'?`}
                 kebabMenuItems={kebabMenuItems}
               />
             </Space>

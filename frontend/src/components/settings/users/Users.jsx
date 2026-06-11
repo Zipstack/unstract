@@ -242,7 +242,7 @@ function Users() {
         centered
         className="delete-user-modal"
       >
-        <Typography>Are you sure you want to delete user id</Typography>
+        <Typography>Are you sure you want to delete the user</Typography>
         <Text strong>{selectedUserEmail?.email}</Text>
       </Modal>
     </>

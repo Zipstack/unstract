@@ -54,7 +54,7 @@ function ListOfItems({
                         label: (
                           <ConfirmModal
                             handleConfirm={() => handleDelete(item?.id)}
-                            content="Want to delete this profile"
+                            content={`Are you sure you want to delete the profile '${item?.adapter_name}'?`}
                           >
                             Delete
                           </ConfirmModal>

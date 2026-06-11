@@ -159,7 +159,7 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
                     <div>
                       <ConfirmModal
                         handleConfirm={() => deleteStep()}
-                        content="Want to delete this step"
+                        content={`Are you sure you want to delete the step '${step?.name}'?`}
                       >
                         <CloseOutlined />
                       </ConfirmModal>

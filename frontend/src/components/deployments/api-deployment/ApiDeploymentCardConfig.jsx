@@ -113,7 +113,7 @@ function createApiDeploymentCardConfig({
                 onEdit={onEdit}
                 onShare={onShare}
                 onDelete={onDelete}
-                deleteTitle="Delete API deployment?"
+                deleteTitle={`Delete the API deployment '${deployment.display_name}'?`}
                 kebabMenuItems={kebabMenuItems}
               />
             </Space>

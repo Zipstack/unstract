@@ -57,7 +57,7 @@ function DisplayNotifications({
             <Tooltip title="delete" className="cursorPointer">
               <ConfirmModal
                 handleConfirm={() => handleDelete(record?.id, record?.name)}
-                content="Are you sure you want to delete?"
+                content={`Are you sure you want to delete the notification '${record?.name}'?`}
               >
                 <Button type="text" size="small" icon={<DeleteOutlined />} />
               </ConfirmModal>
