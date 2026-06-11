@@ -619,10 +619,12 @@ class LegacyExecutor(BaseExecutor):
         )
         step = 1
 
+        extraction_metrics: dict = {}
         try:
             # ---- Step 1: Extract ----
             if not skip_extraction:
                 step += 1
+                extraction_start = time.monotonic()
                 extract_ctx = ExecutionContext(
                     executor_name=context.executor_name,
                     operation=Operation.EXTRACT.value,
@@ -640,6 +642,9 @@ class LegacyExecutor(BaseExecutor):
                     return _failure(extract_result)
                 _absorb(extract_result)
                 extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+                extraction_metrics = {
+                    "extraction": {"time_taken(s)": time.monotonic() - extraction_start}
+                }
 
             # ---- Step 2: Summarize (if enabled) ----
             if is_summarization:
@@ -700,6 +705,7 @@ class LegacyExecutor(BaseExecutor):
             source_file_name=source_file_name,
             extracted_text=extracted_text,
             index_metrics=index_metrics,
+            extraction_metrics=extraction_metrics,
         )
 
         output_map = structured_output.get(PSKeys.OUTPUT, {}) or {}
@@ -787,6 +793,7 @@ class LegacyExecutor(BaseExecutor):
         source_file_name: str,
         extracted_text: str,
         index_metrics: dict,
+        extraction_metrics: dict | None = None,
     ) -> None:
         """Populate metadata/metrics in structured_output after pipeline completion."""
         if "metadata" not in structured_output:
@@ -794,10 +801,13 @@ class LegacyExecutor(BaseExecutor):
         structured_output["metadata"]["file_name"] = source_file_name
         if extracted_text:
             structured_output["metadata"]["extracted_text"] = extracted_text
-        if index_metrics:
+        new_metrics = self._merge_pipeline_metrics(
+            index_metrics or {}, extraction_metrics or {}
+        )
+        if new_metrics:
             existing_metrics = structured_output.get("metrics", {})
             structured_output["metrics"] = self._merge_pipeline_metrics(
-                existing_metrics, index_metrics
+                existing_metrics, new_metrics
             )
 
     def _run_pipeline_summarize(
