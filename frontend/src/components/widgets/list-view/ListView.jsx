@@ -142,7 +142,7 @@ function ListView({
           <Popconfirm
             key={`${item.id}-delete`}
             title={`Delete the ${type}`}
-            description={`Are you sure to delete ${item[titleProp]}`}
+            description={`Are you sure you want to delete '${item[titleProp]}'?`}
             okText="Yes"
             cancelText="No"
             icon={<QuestionCircleOutlined />}

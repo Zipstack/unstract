@@ -1,10 +1,19 @@
 import { Modal } from "antd";
 import PropTypes from "prop-types";
 
-const DeleteModal = ({ open, setOpen, deleteRecord }) => {
+const DeleteModal = ({
+  open,
+  setOpen,
+  deleteRecord,
+  entityType,
+  entityName,
+}) => {
+  const title = entityName
+    ? `Are you sure you want to delete the ${entityType || "item"} '${entityName}'?`
+    : "Are you sure you want to delete this?";
   return (
     <Modal
-      title="Are you sure you want to delete this?"
+      title={title}
       centered
       open={open}
       onOk={deleteRecord}
@@ -19,6 +28,8 @@ DeleteModal.propTypes = {
   open: PropTypes.bool.isRequired,
   setOpen: PropTypes.func.isRequired,
   deleteRecord: PropTypes.func.isRequired,
+  entityType: PropTypes.string,
+  entityName: PropTypes.string,
 };
 
 export { DeleteModal };

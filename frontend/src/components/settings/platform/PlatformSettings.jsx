@@ -312,7 +312,7 @@ function PlatformSettings() {
                             <Col>
                               <ConfirmModal
                                 handleConfirm={() => handleDelete(keyIndex)}
-                                content="Want to delete this platform key? This action cannot be undone."
+                                content={`Are you sure you want to delete the platform key '${keyDetails?.keyName}'? This action cannot be undone.`}
                                 okText="Delete"
                               >
                                 <Button

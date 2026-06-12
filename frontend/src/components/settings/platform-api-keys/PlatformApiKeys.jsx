@@ -336,7 +336,7 @@ function PlatformApiKeys() {
           <ConfirmModal
             handleConfirm={() => handleDelete(record)}
             title="Delete API Key"
-            content="Are you sure you want to delete this API key? This action cannot be undone."
+            content={`Are you sure you want to delete the API key '${record?.name}'? This action cannot be undone.`}
             okText="Delete"
           >
             <Tooltip title="Delete">
