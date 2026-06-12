@@ -280,6 +280,21 @@ class TestPollHeartbeat:
         consumer.poll_once()
         assert consumer.seconds_since_last_poll() < 1.0
 
+    def test_heartbeat_stamped_before_read(self):
+        # Pins the headline design: the stamp lands at the TOP of poll_once
+        # (before read), so a task running longer than the threshold still trips
+        # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
+        # but fail here.
+        consumer = PgQueueConsumer("q", client=(client := MagicMock()))
+        before = consumer._last_poll_monotonic
+        seen: dict[str, float] = {}
+        client.read.side_effect = lambda *a, **k: (
+            seen.setdefault("during", consumer._last_poll_monotonic),
+            [],
+        )[1]
+        consumer.poll_once()
+        assert seen["during"] > before  # refreshed BEFORE read ran, not after
+
     def test_is_poll_stale_threshold(self):
         consumer = PgQueueConsumer("q", client=MagicMock())
         consumer._last_poll_monotonic -= 120  # last poll 120s ago
@@ -302,6 +317,7 @@ class TestPollHeartbeat:
         # Real endpoint: 200 while the poll loop is fresh, 503 once it goes
         # stale. Bind port 0 so the OS picks a free port (no fixed-port clash).
         import json
+        import urllib.error
         import urllib.request
 
         from queue_backend.pg_queue.consumer import LivenessServer
@@ -316,14 +332,49 @@ class TestPollHeartbeat:
                 assert json.loads(resp.read())["status"] == "healthy"
 
             consumer._last_poll_monotonic -= 120  # force the loop stale
-            try:
+            with pytest.raises(urllib.error.HTTPError) as ei:
                 urllib.request.urlopen(url, timeout=5)
-                raise AssertionError("expected HTTP 503")
-            except urllib.error.HTTPError as exc:
-                assert exc.code == 503
-                assert json.loads(exc.read())["status"] == "unhealthy"
+            assert ei.value.code == 503
+            assert json.loads(ei.value.read())["status"] == "unhealthy"
         finally:
             server.stop()
+
+    def test_liveness_aliases_and_unknown_path(self):
+        # All three probe aliases answer 200 (different orchestrators probe
+        # different paths); an unknown path is 404 (guards against a regression
+        # that makes every path pass).
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.consumer import LivenessServer
+
+        consumer = PgQueueConsumer("q", client=MagicMock())
+        server = LivenessServer(consumer, port=0, stale_after=60)
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            for path in ("/health", "/healthz", "/livez"):
+                with urllib.request.urlopen(f"{base}{path}", timeout=5) as resp:
+                    assert resp.status == 200, path
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(f"{base}/nope", timeout=5)
+            assert ei.value.code == 404
+        finally:
+            server.stop()
+
+    def test_double_start_is_rejected(self):
+        from queue_backend.pg_queue.consumer import LivenessServer
+
+        server = LivenessServer(PgQueueConsumer("q", client=MagicMock()), port=0, stale_after=60)
+        server.start()
+        try:
+            with pytest.raises(RuntimeError, match="already started"):
+                server.start()
+        finally:
+            server.stop()
+        # stop() returns it to the inert state → can start again.
+        server.start()
+        server.stop()
 
 
 # --- Integration: full enqueue → poll → execute → ack against real PG ---

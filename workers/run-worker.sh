@@ -84,9 +84,11 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
-    # pg_queue_consumer: 8090 — outside the 8080-8089 core range, so no
-    # collision. The consumer binds it only when WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT
-    # is exported (below); a bare `python -m pg_queue_consumer` binds nothing.
+    # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
+    # range and just below where pluggable-worker discovery starts allocating
+    # (8091+, see below), so it collides with neither. The consumer binds it
+    # only when WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT is exported (below); a bare
+    # `python -m pg_queue_consumer` binds nothing.
     ["$PG_QUEUE_CONSUMER_TYPE"]="8090"
 )
 
@@ -274,9 +276,11 @@ discover_pluggable_workers() {
                 WORKER_QUEUES["$worker_name"]="$worker_name"
             fi
 
-            # Assign health port dynamically (starting from 8090)
+            # Assign health port dynamically (starting from 8091; 8090 is
+            # reserved for pg_queue_consumer, so the first pluggable worker
+            # doesn't collide with it).
             if [[ -z "${WORKER_HEALTH_PORTS[$worker_name]:-}" ]]; then
-                WORKER_HEALTH_PORTS["$worker_name"]=$((8090 + discovered_count))
+                WORKER_HEALTH_PORTS["$worker_name"]=$((8091 + discovered_count))
             fi
 
             print_status $GREEN "Discovered pluggable worker: $worker_name"
@@ -717,7 +721,8 @@ run_worker() {
     print_status $BLUE "Directory: $worker_dir"
     print_status $BLUE "Worker Name: $worker_instance_name"
     print_status $BLUE "Queues: $queues"
-    print_status $BLUE "Health Port: ${WORKER_HEALTH_PORTS[$worker_type]:-n/a}"
+    # Show the effective port: a -p/--health-port override wins over the map.
+    print_status $BLUE "Health Port: ${health_port:-${WORKER_HEALTH_PORTS[$worker_type]:-n/a}}"
     print_status $BLUE "Command: ${cmd_args[*]}"
 
     # Change to appropriate directory
