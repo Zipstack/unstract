@@ -6,6 +6,7 @@ from typing import Any
 from django.db.models import F, OuterRef, QuerySet, Subquery
 from django.http import HttpResponse
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -81,6 +82,9 @@ class DeploymentExecution(views.APIView):
         timeout = serializer.validated_data.get(ApiExecution.TIMEOUT_FORM_DATA)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+        include_extracted_text = serializer.validated_data.get(
+            ApiExecution.INCLUDE_EXTRACTED_TEXT
+        )
         use_file_history = serializer.validated_data.get(ApiExecution.USE_FILE_HISTORY)
         tag_names = serializer.validated_data.get(ApiExecution.TAGS)
         llm_profile_id = serializer.validated_data.get(ApiExecution.LLM_PROFILE_ID)
@@ -117,6 +121,7 @@ class DeploymentExecution(views.APIView):
                 timeout=timeout,
                 include_metadata=include_metadata,
                 include_metrics=include_metrics,
+                include_extracted_text=include_extracted_text,
                 use_file_history=use_file_history,
                 tag_names=tag_names,
                 llm_profile_id=llm_profile_id,
@@ -171,6 +176,9 @@ class DeploymentExecution(views.APIView):
         execution_id = serializer.validated_data.get(ApiExecution.EXECUTION_ID)
         include_metadata = serializer.validated_data.get(ApiExecution.INCLUDE_METADATA)
         include_metrics = serializer.validated_data.get(ApiExecution.INCLUDE_METRICS)
+        include_extracted_text = serializer.validated_data.get(
+            ApiExecution.INCLUDE_EXTRACTED_TEXT
+        )
 
         # Fetch execution status
         response: ExecutionResponse = DeploymentHelper.get_execution_status(execution_id)
@@ -218,6 +226,7 @@ class DeploymentExecution(views.APIView):
                 deployment_execution_dto=deployment_execution_dto,
                 include_metadata=include_metadata,
                 include_metrics=include_metrics,
+                include_extracted_text=include_extracted_text,
             )
         return Response(
             data={
@@ -228,7 +237,7 @@ class DeploymentExecution(views.APIView):
         )
 
 
-class APIDeploymentViewSet(viewsets.ModelViewSet):
+class APIDeploymentViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
     pagination_class = CustomPagination
 
     def get_permissions(self) -> list[Any]:
@@ -259,6 +268,11 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
         search = self.request.query_params.get("search", None)
         if search:
             queryset = queryset.filter(display_name__icontains=search)
+
+        # Exact-match api_name filter for migration SDK's get-or-create flow.
+        api_name = self.request.query_params.get("api_name")
+        if api_name:
+            queryset = queryset.filter(api_name=api_name)
 
         return queryset
 
@@ -371,37 +385,37 @@ class APIDeploymentViewSet(viewsets.ModelViewSet):
 
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override partial_update to handle sharing notifications."""
-        # Get current instance and shared users
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        before = self.snapshot_share_axes(instance)
 
-        # Perform the update
         response = super().partial_update(request, *args, **kwargs)
-
-        # If successful and shared_users changed, send notifications
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and notification_plugin
-        ):
-            try:
-                instance.refresh_from_db()
-                new_shared_users = set(instance.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    # Get notification service from plugin
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    notification_service.send_sharing_notification(
-                        resource_type=ResourceType.API_DEPLOYMENT.value,
-                        resource_name=instance.display_name,
-                        resource_id=str(instance.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=instance,
-                    )
-            except Exception as e:
-                logger.exception(f"Failed to send sharing notification: {e}")
-
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        instance: APIDeployment,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=ResourceType.API_DEPLOYMENT.value,
+                resource_name=instance.display_name,
+                resource_id=str(instance.id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=instance,
+            )
+        except Exception as e:
+            logger.exception("Failed to send sharing notification: %s", e)

@@ -38,7 +38,7 @@
       "multipleOf": 1,
       "title": "Maximum Output Tokens",
       "default": 4096,
-      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default."
+      "description": "Maximum number of output tokens to limit LLM replies. Leave it empty to use the provider default. Sent as `max_completion_tokens` when Enable Reasoning is on."
     },
     "max_retries": {
       "type": "number",
@@ -55,6 +55,59 @@
       "title": "Timeout",
       "default": 900,
       "description": "Timeout in seconds."
+    },
+    "enable_reasoning": {
+      "type": "boolean",
+      "title": "Enable Reasoning",
+      "default": false,
+      "description": "Auto-detected for OpenAI reasoning families (gpt-5, o1, o3, o4). Toggle on for gateway aliases that hide the underlying reasoning model behind a custom name. Drops `temperature` and sends `max_completion_tokens` and `reasoning_effort` via `extra_body` so the upstream API accepts them."
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": true
+          }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
+      },
+      "then": {
+        "properties": {
+          "reasoning_effort": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "default": "medium",
+            "title": "Reasoning Effort",
+            "description": "Sets the reasoning strength when Enable Reasoning is on."
+          }
+        },
+        "required": [
+          "reasoning_effort"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "enable_reasoning": {
+            "const": false
+          }
+        },
+        "required": [
+          "enable_reasoning"
+        ]
+      },
+      "then": {
+        "properties": {}
+      }
+    }
+  ]
 }

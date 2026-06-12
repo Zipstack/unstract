@@ -7,6 +7,8 @@ Uses the same patterns as workflow_helper.py and file_execution_tasks.py
 import time
 from typing import Any
 
+from queue_backend import FairnessKey, dispatch, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.api import InternalAPIClient
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.task_enums import TaskName
@@ -289,7 +291,7 @@ def _unified_api_execution(
             logger.warning(f"Failed to cleanup StateStore context: {cleanup_error}")
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN_API,
     autoretry_for=(Exception,),
@@ -348,7 +350,7 @@ def async_execute_bin_api(
     )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN,
     autoretry_for=(Exception,),
@@ -667,22 +669,106 @@ def _run_workflow_api(
         # Create callback queue using same logic as Django backend
         file_processing_callback_queue = _get_callback_queue_name_api()
 
-        # Execute chord exactly matching Django pattern
-        from celery import chord
-
-        result = chord(batch_tasks)(
-            app.signature(
-                "process_batch_callback_api",  # Use API-specific callback
-                kwargs={
-                    "execution_id": str(execution_id),
-                    "pipeline_id": str(pipeline_id) if pipeline_id else None,
-                    "organization_id": str(schema_name),
-                },  # Pass required parameters for API callback
-                queue=file_processing_callback_queue,
-            )
+        # Route through ``WorkflowOrchestrationUtils.create_chord_execution``
+        # (which delegates to ``CeleryChordBarrier`` under the hood) instead of
+        # calling ``chord(...)`` directly. Same Celery semantics, but the
+        # ``Barrier`` abstraction lets a future Phase 6b swap to
+        # ``RedisDecrBarrier`` behind a flag without touching this call site.
+        # The header tasks + callback now carry the fairness slot for
+        # downstream PG Queue routing — closes the chord-fairness gap noted
+        # in Phase 5.1.
+        # Hoist FairnessKey to a local so the chord path and the
+        # zero-batch fallback can't drift apart on the slot's shape.
+        api_fairness = FairnessKey(
+            org_id=str(schema_name),
+            workload_type=WorkloadType.API,
+        )
+        result = WorkflowOrchestrationUtils.create_chord_execution(
+            batch_tasks=batch_tasks,
+            callback_task_name="process_batch_callback_api",
+            callback_kwargs={
+                "execution_id": str(execution_id),
+                "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                "organization_id": str(schema_name),
+            },
+            callback_queue=file_processing_callback_queue,
+            app_instance=app,
+            fairness=api_fairness,
         )
 
-        if not result:
+        if result is None:
+            # Identity-against-``None`` mirrors the ``Barrier`` Protocol
+            # contract verbatim: ``None`` is the *sole* signal of "no
+            # work enqueued" (substrate-level failures raise instead).
+            # Two reasons ``result`` can be ``None``:
+            # 1. Zero ``batch_tasks`` — the barrier short-circuits and
+            #    returns ``None``. Pre-Barrier this would have called
+            #    ``chord(empty)(callback)`` which Celery handles by
+            #    firing the callback immediately with ``[]``. We
+            #    preserve that observable end-state by dispatching the
+            #    callback explicitly with an empty result list, so
+            #    workflow_execution_status, API result cache, and
+            #    pipeline notifications all run exactly as they would
+            #    have pre-Barrier. The new wire isn't literally byte-
+            #    identical (this is a plain ``send_task`` with an
+            #    additive fairness header rather than the chord-
+            #    aggregation primitive), but the observable end-state
+            #    is equivalent. Effectively unreachable — the upstream
+            #    ``if not hash_values_of_files:`` early return plus
+            #    valid ``FileHashData`` inputs mean ``_get_file_batches``
+            #    always yields >=1 batch — but the defence closes the
+            #    theoretical gap (e.g. all entries dropped because none
+            #    are ``FileHashData`` / ``dict``, which would still
+            #    bypass the upstream guard).
+            # 2. ``batch_tasks`` is non-empty but the barrier returned
+            #    ``None`` for some other reason — a genuine queue failure.
+            if not batch_tasks:
+                logger.info(
+                    f"Execution {execution_id} orchestrated with zero "
+                    "batch tasks — firing callback directly with empty "
+                    "result list (preserves pre-Barrier zero-files contract)"
+                )
+                # Route through ``queue_backend.dispatch`` (not raw
+                # ``app.send_task``) so the canary in
+                # ``test_dispatch_sites_characterisation.py`` stays
+                # happy and the fairness slot rides on the wire same
+                # as the chord-path callback does. body=[] matches
+                # Celery's chord-with-empty-header semantic exactly.
+                callback_result = dispatch(
+                    "process_batch_callback_api",
+                    args=[[]],
+                    kwargs={
+                        "execution_id": str(execution_id),
+                        "pipeline_id": str(pipeline_id) if pipeline_id else None,
+                        "organization_id": str(schema_name),
+                    },
+                    queue=file_processing_callback_queue,
+                    fairness=api_fairness,
+                )
+                return {
+                    "status": "orchestrated",
+                    "execution_id": execution_id,
+                    "workflow_id": workflow_id,
+                    "task_id": task_id,
+                    "files_processed": total_files,
+                    "files_from_cache": len(cached_results),
+                    "batches_created": 0,
+                    # ``chord_id`` here is the standalone callback
+                    # task id (no chord; the dispatch above is a
+                    # direct ``send_task``). Same response-shape key
+                    # as the normal path; semantically a task id
+                    # rather than a chord id. Log/metrics consumers
+                    # treating ``chord_id`` as "chord identifier"
+                    # should branch on ``batches_created == 0``.
+                    "chord_id": callback_result.id,
+                    "cached_results": list(cached_results.keys())
+                    if cached_results
+                    else [],
+                    "message": (
+                        f"Zero batch tasks for execution {execution_id} — "
+                        "callback fired directly with empty result list"
+                    ),
+                }
             exception = f"Failed to queue execution task {execution_id}"
             logger.error(exception)
             raise Exception(exception)
@@ -993,7 +1079,7 @@ def _calculate_manual_review_decisions_for_batch_api(
         return [False] * len(batch)
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 @monitor_performance
 @retry(max_attempts=3, base_delay=2.0)
 @with_execution_context
@@ -1064,7 +1150,7 @@ def api_deployment_status_check(
         raise
 
 
-@app.task(bind=True)
+@worker_task(bind=True)
 @monitor_performance
 @with_execution_context
 def api_deployment_cleanup(

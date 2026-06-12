@@ -33,6 +33,8 @@ list_shared_users = APIDeploymentViewSet.as_view(
         "get": APIDeploymentViewSet.list_of_shared_users.__name__,
     }
 )
+deployment_share = APIDeploymentViewSet.as_view({"post": "share"})
+deployment_effective_members = APIDeploymentViewSet.as_view({"get": "effective_members"})
 
 execute = DeploymentExecution.as_view()
 
@@ -62,6 +64,16 @@ urlpatterns = format_suffix_patterns(
             "deployment/<uuid:pk>/users/",
             list_shared_users,
             name="api_deployment_list_shared_users",
+        ),
+        path(
+            "deployment/<uuid:pk>/share/",
+            deployment_share,
+            name="api_deployment_share",
+        ),
+        path(
+            "deployment/<uuid:pk>/effective-members/",
+            deployment_effective_members,
+            name="api_deployment_effective_members",
         ),
         path(
             "deployment/by-prompt-studio-tool/",

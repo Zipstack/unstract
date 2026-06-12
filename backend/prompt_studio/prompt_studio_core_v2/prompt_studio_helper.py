@@ -8,14 +8,14 @@ from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
-from adapter_processor_v2.constants import AdapterKeys
-from adapter_processor_v2.models import AdapterInstance
+from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
-from django.db.models.manager import BaseManager
+from permissions.permission import has_group_access
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
@@ -95,57 +95,67 @@ class PromptStudioHelper:
     def create_default_profile_manager(user: User, tool_id: uuid) -> None:
         """Create a default profile manager for a given user and tool.
 
-        Args:
-            user (User): The user for whom the default profile manager is
-            created.
-            tool_id (uuid): The ID of the tool for which the default profile
-            manager is created.
-
-        Raises:
-            AdapterInstance.DoesNotExist: If no suitable adapter instance is
-            found for creating the default profile manager.
+        Builds the profile from the creator's default-set adapters
+        (UserDefaultAdapter). In cloud these are the frictionless adapters
+        seeded at onboarding; in OSS/on-prem they are auto-set as the user
+        adds the first adapter of each type. Skips silently when a usable
+        default is missing for any of the four types, so a project can still
+        be created before adapters are configured.
 
         Returns:
             None
         """
+        organization_member = OrganizationMemberService.get_user_by_id(id=user.id)
+        if not organization_member:
+            logger.info(
+                "Skipping default profile creation: user has no organization membership"
+            )
+            return
+
+        default_adapter = UserDefaultAdapter.objects.filter(
+            organization_member=organization_member
+        ).first()
+        if not default_adapter:
+            logger.info("Skipping default profile creation: no default adapters set")
+            return
+
+        adapters = {
+            "llm": default_adapter.default_llm_adapter,
+            "embedding_model": default_adapter.default_embedding_adapter,
+            "vector_store": default_adapter.default_vector_db_adapter,
+            "x2text": default_adapter.default_x2text_adapter,
+        }
+        # A valid profile needs a usable default for every adapter type
+        if not all(adapter and adapter.is_usable for adapter in adapters.values()):
+            logger.info(
+                "Skipping default profile creation: "
+                "incomplete or unusable default adapters"
+            )
+            return
+
+        # Best-effort: a profile creation hiccup must never break project creation.
+        # The savepoint keeps a DB error from poisoning the request's outer
+        # transaction when ATOMIC_REQUESTS is enabled.
         try:
-            AdapterInstance.objects.get(
-                is_friction_less=True,
-                is_usable=True,
-                adapter_type=AdapterKeys.LLM,
+            with transaction.atomic():
+                ProfileManager.objects.create(
+                    prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
+                    is_default=True,
+                    created_by=user,
+                    modified_by=user,
+                    profile_name=DefaultValues.DEFAULT_PROFILE_NAME,
+                    chunk_size=0,
+                    chunk_overlap=0,
+                    section="Default",
+                    retrieval_strategy="simple",
+                    similarity_top_k=3,
+                    **adapters,
+                )
+        except Exception:
+            logger.warning(
+                "Skipping default profile creation: failed to create profile",
+                exc_info=True,
             )
-
-            default_adapters: BaseManager[AdapterInstance] = (
-                AdapterInstance.objects.filter(is_friction_less=True)
-            )
-
-            profile_manager = ProfileManager(
-                prompt_studio_tool=CustomTool.objects.get(pk=tool_id),
-                is_default=True,
-                created_by=user,
-                modified_by=user,
-                chunk_size=0,
-                profile_name="sample profile",
-                chunk_overlap=0,
-                section="Default",
-                retrieval_strategy="simple",
-                similarity_top_k=3,
-            )
-
-            for adapter in default_adapters:
-                if adapter.adapter_type == AdapterKeys.LLM:
-                    profile_manager.llm = adapter
-                elif adapter.adapter_type == AdapterKeys.VECTOR_DB:
-                    profile_manager.vector_store = adapter
-                elif adapter.adapter_type == AdapterKeys.X2TEXT:
-                    profile_manager.x2text = adapter
-                elif adapter.adapter_type == AdapterKeys.EMBEDDING:
-                    profile_manager.embedding_model = adapter
-
-            profile_manager.save()
-
-        except AdapterInstance.DoesNotExist:
-            logger.info("skipping default profile creation")
 
     @staticmethod
     def validate_adapter_status(
@@ -189,7 +199,9 @@ class PromptStudioHelper:
         """
         profile_manager_owner = profile_manager.created_by
         if profile_manager_owner is None:
-            # No owner on this profile manager — skip ownership validation
+            return
+
+        if OrganizationMemberService.is_user_organization_admin(profile_manager_owner):
             return
 
         is_llm_owned = (
@@ -198,6 +210,7 @@ class PromptStudioHelper:
             or profile_manager.llm.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.llm)
         )
         is_vector_store_owned = (
             profile_manager.vector_store.shared_to_org
@@ -205,6 +218,7 @@ class PromptStudioHelper:
             or profile_manager.vector_store.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.vector_store)
         )
         is_embedding_model_owned = (
             profile_manager.embedding_model.shared_to_org
@@ -212,6 +226,7 @@ class PromptStudioHelper:
             or profile_manager.embedding_model.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.embedding_model)
         )
         is_x2text_owned = (
             profile_manager.x2text.shared_to_org
@@ -219,6 +234,7 @@ class PromptStudioHelper:
             or profile_manager.x2text.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.x2text)
         )
 
         if not (
@@ -2725,30 +2741,6 @@ class PromptStudioHelper:
             modified_by=user,
             organization=organization,
         )
-
-        # When a service account creates a tool, add the API key owner
-        # as a shared user so they can see it in the UI.
-        if getattr(user, "is_service_account", False):
-            from platform_api.models import PlatformApiKey
-
-            try:
-                key = PlatformApiKey.objects.get(api_user=user)
-                if key.created_by:
-                    tool.shared_users.add(key.created_by)
-                else:
-                    logger.warning(
-                        "PlatformApiKey for service account %s has no "
-                        "created_by while creating tool %s",
-                        user.id,
-                        tool.tool_id,
-                    )
-            except PlatformApiKey.DoesNotExist:
-                logger.warning(
-                    "No PlatformApiKey found for service account %s "
-                    "while creating tool %s",
-                    user.id,
-                    tool.tool_id,
-                )
 
         return tool
 

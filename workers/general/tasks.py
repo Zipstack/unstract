@@ -7,7 +7,8 @@ and general workflow executions using internal APIs.
 import time
 from typing import Any
 
-from celery import shared_task
+from queue_backend import FairnessKey, worker_task
+from queue_backend.fairness import WorkloadType
 from scheduler.tasks import execute_pipeline_task_v2
 
 # Import shared worker infrastructure using new structure
@@ -133,7 +134,7 @@ def _log_batch_creation_statistics(
         )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name=TaskName.ASYNC_EXECUTE_BIN_GENERAL,
     autoretry_for=(Exception,),
@@ -937,13 +938,20 @@ def _orchestrate_file_processing_general(
         # Import to ensure we have the right app context
         from worker import app as celery_app
 
-        # Use shared orchestration utility for chord execution
+        # Route through the ``Barrier``-backed helper. The general path
+        # is ETL / non-API workflow execution — ``NON_API`` workload type
+        # so any future PG Queue fairness scheduler can split API traffic
+        # from background workflow processing.
         result = WorkflowOrchestrationUtils.create_chord_execution(
             batch_tasks=batch_tasks,
             callback_task_name=TaskName.PROCESS_BATCH_CALLBACK.value,
             callback_kwargs=callback_kwargs,
             callback_queue=file_processing_callback_queue,
             app_instance=celery_app,
+            fairness=FairnessKey(
+                org_id=organization_id,
+                workload_type=WorkloadType.NON_API,
+            ),
         )
 
         if not result:
@@ -1440,7 +1448,7 @@ def _validate_batch_data_integrity_dataclass(
         )
 
 
-@app.task(
+@worker_task(
     bind=True,
     name="async_execute_bin",
     autoretry_for=(Exception,),
@@ -1536,7 +1544,7 @@ def async_execute_bin(
 logger.info("✅ Registered scheduler tasks in general worker for backward compatibility")
 
 
-@shared_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
+@worker_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
 def execute_pipeline_task(
     self,
     workflow_id: Any,

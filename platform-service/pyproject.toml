@@ -8,13 +8,13 @@ readme = "README.md"
 license = { text = "MIT" }
 
 dependencies = [
-    "flask~=3.1.0",
+    "flask~=3.1.3",
     "peewee~=3.16",
     "psycopg2-binary~=2.9",
-    "python-dotenv~=1.0.1",
+    "python-dotenv~=1.2.2",
     "redis~=5.2.1",
-    "cryptography>=41.0.7",
-    "requests>=2.31.0",
+    "cryptography>=48.0.0",
+    "requests>=2.33.0",
     "unstract-flags",
     "unstract-core[flask]",
     "unstract-sdk1[gcs, azure, aws]"
@@ -26,7 +26,7 @@ unstract-core = { path = "../unstract/core", editable = true }
 unstract-sdk1 = { path = "../unstract/sdk1", editable = true }
 
 [dependency-groups]
-test = ["pytest>=8.0.1"]
+test = ["pytest>=9.0.3"]
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling

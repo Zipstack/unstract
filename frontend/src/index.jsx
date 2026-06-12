@@ -5,9 +5,9 @@ import ReactDOM from "react-dom/client";
 
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
+import config from "./config.js";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
-import config from "./config.js";
 
 const enablePosthog = import.meta.env.VITE_ENABLE_POSTHOG;
 if (enablePosthog !== "false") {

@@ -111,14 +111,15 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
-    updateSharing: (id, sharedUsers, shareWithEveryone) => {
+    updateSharing: (id, sharedUsers, shareWithEveryone, sharedGroups = []) => {
       options = {
-        method: "PATCH",
-        url: `${path}/api/deployment/${id}/`,
+        method: "POST",
+        url: `${path}/api/deployment/${id}/share/`,
         headers: requestHeaders,
         data: {
           shared_users: sharedUsers,
           shared_to_org: shareWithEveryone,
+          shared_groups: sharedGroups,
         },
       };
       return axiosPrivate(options);

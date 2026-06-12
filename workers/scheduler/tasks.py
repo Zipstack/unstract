@@ -7,7 +7,8 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
-from celery import shared_task
+from queue_backend import FairnessKey, dispatch, worker_task
+from queue_backend.fairness import WorkloadType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -145,29 +146,29 @@ def _execute_scheduled_workflow(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Triggering async execution for workflow {context.workflow_id}"
         )
 
-        # Use Celery to dispatch async execution task directly (like backend scheduler does)
-        from celery import current_app
-
         logger.info(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Dispatching async_execute_bin task for scheduled execution"
         )
 
         try:
-            # Dispatch the Celery task directly to the general queue
-            async_result = current_app.send_task(
+            async_result = dispatch(
                 "async_execute_bin",
                 args=[
-                    context.organization_id,  # schema_name (organization_id)
-                    context.workflow_id,  # workflow_id
-                    execution_id,  # execution_id
-                    {},  # hash_values_of_files (empty for scheduled)
-                    True,  # scheduled (THIS IS A SCHEDULED EXECUTION)
+                    context.organization_id,
+                    context.workflow_id,
+                    execution_id,
+                    {},
+                    True,  # scheduled
                 ],
                 kwargs={
-                    "use_file_history": context.use_file_history,  # Pass as kwarg
-                    "pipeline_id": context.pipeline_id,  # CRITICAL FIX: Pass pipeline_id for direct status updates
+                    "use_file_history": context.use_file_history,
+                    "pipeline_id": context.pipeline_id,
                 },
-                queue=QueueName.GENERAL,  # Route to General queue for proper separation
+                queue=QueueName.GENERAL,
+                fairness=FairnessKey(
+                    org_id=context.organization_id,
+                    workload_type=WorkloadType.NON_API,
+                ),
             )
 
             task_id = async_result.id
@@ -211,7 +212,7 @@ def _execute_scheduled_workflow(
         )
 
 
-@shared_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
+@worker_task(name="scheduler.tasks.execute_pipeline_task", bind=True)
 def execute_pipeline_task(
     self,
     workflow_id: Any,
@@ -234,7 +235,7 @@ def execute_pipeline_task(
     )
 
 
-@shared_task(name="execute_pipeline_task_v2", bind=True)
+@worker_task(name="execute_pipeline_task_v2", bind=True)
 def execute_pipeline_task_v2(
     self,
     organization_id: Any,
@@ -415,7 +416,7 @@ def execute_pipeline_task_v2(
 
 
 # Health check task for monitoring
-@shared_task(name="scheduler_health_check")
+@worker_task(name="scheduler_health_check")
 def health_check() -> dict[str, Any]:
     """Health check task for scheduler worker.
 
