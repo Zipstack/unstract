@@ -82,6 +82,14 @@ class TestPgQueueClientUnit:
         _, params = cur.execute.call_args.args
         assert params[3] == 9
 
+    @pytest.mark.parametrize("bad", [0, -1, 11, 99])
+    def test_send_rejects_out_of_range_priority(self, bad):
+        # An out-of-range priority would silently jump/sink the row in the
+        # priority DESC claim order — reject at the write boundary.
+        conn, _ = _mock_conn(fetchone=(1,))
+        with pytest.raises(ValueError, match="priority out of range"):
+            PgQueueClient(conn=conn).send("q1", {"a": 1}, priority=bad)
+
     def test_read_runs_skip_locked_dequeue(self):
         conn, cur = _mock_conn(fetchall=[(7, {"k": "v"}, 1)])
         msgs = PgQueueClient(conn=conn).read("q1", vt_seconds=15, qty=3)
@@ -306,6 +314,71 @@ class TestPgQueueClientIntegration:
         client.send(queue_name, {"n": "c"}, priority=5)
         msgs = client.read(queue_name, vt_seconds=30, qty=10)
         assert [m.message["n"] for m in msgs] == ["b", "c", "a"]
+
+    def test_batch_fifo_within_priority_band(self, pg_conn, queue_name):
+        # Two rows per band, interleaved enqueue → strict (band DESC, msg_id ASC).
+        client = PgQueueClient(conn=pg_conn)
+        for label, prio in [("9a", 9), ("1a", 1), ("9b", 9), ("1b", 1)]:
+            client.send(queue_name, {"n": label}, priority=prio)
+        msgs = client.read(queue_name, vt_seconds=30, qty=10)
+        assert [m.message["n"] for m in msgs] == ["9a", "9b", "1a", "1b"]
+
+    def test_visible_low_priority_beats_invisible_high(self, pg_conn, queue_name):
+        # A claimed-but-unacked high-priority row (future vt) must not block a
+        # visible lower-priority row — exercises vt × priority interaction.
+        client = PgQueueClient(conn=pg_conn)
+        high_id = client.send(queue_name, {"n": "high"}, priority=9)
+        # Claim the high row → its vt jumps 30s ahead (now invisible).
+        assert [m.msg_id for m in client.read(queue_name, vt_seconds=30, qty=1)] == [
+            high_id
+        ]
+        client.send(queue_name, {"n": "low"}, priority=1)
+        msgs = client.read(queue_name, vt_seconds=30, qty=1)
+        assert [m.message["n"] for m in msgs] == ["low"]
+
+    def test_concurrent_claims_never_exceed_qty(self, pg_conn, queue_name):
+        # The CTE FROM-join claims exactly qty even under concurrent writers;
+        # the old IN(SELECT ... LIMIT) form could over-claim via EvalPlanQual.
+        # Two readers drain a backlog in parallel; no batch may exceed qty.
+        import threading
+
+        client_a = PgQueueClient(conn=pg_conn)
+        for i in range(50):
+            client_a.send(queue_name, {"i": i})
+        conn_b = create_pg_connection(env_prefix="TEST_DB_")
+        violations: list[int] = []
+
+        def drain(client):
+            while True:
+                msgs = client.read(queue_name, vt_seconds=30, qty=1)
+                if not msgs:
+                    return
+                if len(msgs) > 1:  # over-claim → the bug this rewrite fixes
+                    violations.append(len(msgs))
+                for m in msgs:
+                    client.delete(m.msg_id)
+
+        try:
+            worker = threading.Thread(target=drain, args=(PgQueueClient(conn=conn_b),))
+            worker.start()
+            drain(client_a)
+            worker.join(timeout=15)
+        finally:
+            conn_b.close()
+        assert violations == []
+
+    def test_db_check_constraint_rejects_bad_priority(self, pg_conn, queue_name):
+        # The DB CheckConstraint is the backstop for a raw/ORM writer that
+        # bypasses send()'s guard — a bad priority fails loudly at insert.
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            with pg_conn.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO pg_queue_message "
+                    "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
+                    "VALUES (%s, '{}'::jsonb, '', 42, now(), now(), 0)",
+                    (queue_name,),
+                )
+        pg_conn.rollback()
 
     def test_vt_expiry_redelivers(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)

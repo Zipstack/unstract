@@ -31,21 +31,30 @@ class PgQueueMessage(models.Model):
     vt = models.DateTimeField(default=timezone.now)  # visibility timeout
     read_ct = models.IntegerField(default=0)
     # fairness L3: higher value is claimed sooner (1..10, default 5 =
-    # FairnessKey.DEFAULT_PRIORITY). The dispatch writes it from
+    # fairness.DEFAULT_PRIORITY). The dispatch writes it from
     # fairness.pipeline_priority; leaf tasks with no fairness get the neutral
     # default. L1 (org tier) / L2 (workload) ordering + burst_max admission are
-    # deferred to the fair-admission orchestrator (a later phase).
+    # deferred to the fair-admission orchestrator (a later phase). The
+    # CheckConstraint is the one backstop no writer (ORM or raw SQL) can bypass.
     priority = models.SmallIntegerField(default=5)
 
     class Meta:
         db_table = "pg_queue_message"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(priority__gte=1) & models.Q(priority__lte=10),
+                name="pg_queue_message_priority_range",
+            ),
+        ]
         indexes = [
-            # Dequeue scans one queue in (priority DESC, msg_id ASC) order and
-            # filters vt <= now() as it goes, stopping at LIMIT — so the
-            # priority-ordered claim stays an indexed top-N, no full-backlog
-            # sort. priority is DESC (claim high first); msg_id ASC is the FIFO
-            # tiebreak within a priority (msg_id is monotonic and, unlike vt,
-            # never moves when a row is re-claimed).
+            # The dequeue walks one queue in (priority DESC, msg_id ASC) order
+            # and applies vt <= now() as a per-row filter during the walk —
+            # claim high-priority first, FIFO (msg_id, monotonic and stable
+            # across re-claims) within a band. Note this is NOT a guaranteed
+            # top-N: vt is intentionally not in the index, so claimed-but-unacked
+            # rows (future vt) sit at the front of their band and are scanned
+            # past on each claim. Fine at low in-flight depth; the orchestrator's
+            # staging→task admission is the answer if that backlog grows large.
             models.Index(
                 F("queue_name"),
                 F("priority").desc(),

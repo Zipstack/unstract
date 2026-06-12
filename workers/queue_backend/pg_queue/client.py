@@ -1,13 +1,13 @@
 """Thin client over the bespoke PG queue (extension-free, ``SKIP LOCKED``).
 
-**Inert in this phase** — nothing in ``dispatch()`` calls this yet (the
-routing gate's PG branch still routes to Celery). This is the storage +
-dequeue primitive that the enqueue wiring (9b) and the consumer poll
-loop (9c) build on.
+This is the storage + dequeue primitive the enqueue wiring (9b) and the
+consumer poll loop (9c) build on; ``dispatch()`` routes PG-opted tasks here.
 
 Dequeue uses the visibility-timeout pattern: :meth:`PgQueueClient.read`
-runs a single atomic ``UPDATE … WHERE msg_id IN (SELECT … FOR UPDATE
-SKIP LOCKED …) RETURNING …`` (committed immediately), the caller
+runs a single atomic statement — candidate rows are locked in a CTE
+(``SELECT … FOR UPDATE SKIP LOCKED LIMIT n``) and that CTE is joined into
+the ``UPDATE … FROM locked`` (the EvalPlanQual-safe shape; see
+``_DEQUEUE_SQL``) — committed immediately, the caller
 processes the message *outside* the transaction, then
 :meth:`PgQueueClient.delete` acks on success. A crash before delete
 leaves the row to reappear once its ``vt`` expires — **at-least-once**
@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any, Self
 
 import psycopg2
 
-from ..fairness import DEFAULT_PRIORITY
+from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import create_pg_connection
 
 if TYPE_CHECKING:
@@ -73,7 +73,11 @@ logger = logging.getLogger(__name__)
 # touched, so a single claim can return more than ``n`` rows. The FROM-join form
 # locks exactly ``n`` rows once and updates precisely those. The trailing SELECT
 # re-applies the order because UPDATE ... RETURNING is otherwise unordered.
-# Param order follows the %s positions: queue_name, qty, vt_seconds.
+#
+# Ordering is an index walk over (queue_name, priority DESC, msg_id) with
+# ``vt <= now()`` applied as a per-row filter — not a guaranteed top-N: vt is
+# not in the index, so claimed-but-unacked rows (future vt) at the front of a
+# priority band are scanned past on each claim. Cheap at low in-flight depth.
 _DEQUEUE_SQL = """
 WITH locked AS (
     SELECT msg_id
@@ -184,8 +188,15 @@ class PgQueueClient:
 
         ``priority`` (fairness L3) controls dequeue order — higher is claimed
         sooner. Defaults to the neutral ``DEFAULT_PRIORITY`` for tasks dispatched
-        without a fairness key (leaf tasks).
+        without a fairness key (leaf tasks). Must be in ``[MIN_PRIORITY,
+        MAX_PRIORITY]`` — out of range raises (it would silently jump/sink the
+        row in the ``priority DESC`` claim order), mirroring ``read()``'s guards.
+        The DB ``CheckConstraint`` is the backstop for any ORM/raw writer.
         """
+        if not MIN_PRIORITY <= priority <= MAX_PRIORITY:
+            raise ValueError(
+                f"priority out of range [{MIN_PRIORITY}, {MAX_PRIORITY}]: {priority!r}"
+            )
         with self._cursor() as cur:
             cur.execute(
                 "INSERT INTO pg_queue_message "
