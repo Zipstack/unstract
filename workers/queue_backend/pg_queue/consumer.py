@@ -178,8 +178,27 @@ class PgQueueConsumer:
                 message.msg_id,
             )
 
-    def run(self, *, install_signals: bool = True) -> None:
-        """Poll loop with empty-queue backoff and graceful shutdown."""
+    def _registered_task_count(self) -> int:
+        """Count application tasks (excluding Celery's built-ins)."""
+        return sum(1 for name in self._app.tasks if not name.startswith("celery."))
+
+    def run(self, *, install_signals: bool = True, require_tasks: bool = True) -> None:
+        """Poll loop with empty-queue backoff and graceful shutdown.
+
+        Refuses to start if no application tasks are registered — a strong
+        signal the worker app wasn't bootstrapped, in which case *every*
+        message would be dropped as "unknown task". This makes a
+        misconfigured launch fail loudly instead of silently destroying data.
+        """
+        if require_tasks and self._registered_task_count() == 0:
+            raise RuntimeError(
+                "PG-queue consumer: no application tasks are registered — the "
+                "worker app was not bootstrapped. Launch via "
+                "`python -m pg_queue_consumer` (or ./run-worker.sh "
+                "pg-queue-consumer), not bare "
+                "`python -m queue_backend.pg_queue.consumer`. Refusing to start "
+                "to avoid dropping every message as an unknown task."
+            )
         self._running = True
         if install_signals:
             self._install_signal_handlers()

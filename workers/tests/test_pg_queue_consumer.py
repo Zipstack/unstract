@@ -208,6 +208,16 @@ class TestRunLoop:
         consumer.run(install_signals=False)  # must not raise
         assert client.read.call_count == 2  # kept polling after the error
 
+    def test_run_refuses_to_start_with_empty_registry(self):
+        # A non-bootstrapped consumer would drop every message as "unknown" —
+        # fail loudly instead.
+        from celery import Celery
+
+        empty_app = Celery("empty-no-tasks")  # only celery.* built-ins
+        consumer = PgQueueConsumer("q", client=MagicMock(), app=empty_app)
+        with pytest.raises(RuntimeError, match="no application tasks"):
+            consumer.run(install_signals=False)
+
 
 # --- Integration: full enqueue → poll → execute → ack against real PG ---
 # Uses the shared ``pg_client`` fixture from conftest.py.

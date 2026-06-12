@@ -44,6 +44,10 @@ declare -A WORKERS=(
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["ide-callback"]="${IDE_CALLBACK_WORKER_TYPE}"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
+    # PG Queue consumer — polls Postgres (SKIP LOCKED), not RabbitMQ via Celery
+    ["pg-queue-consumer"]="pg_queue_consumer"
+    ["pg_queue_consumer"]="pg_queue_consumer"
+    ["pg-consumer"]="pg_queue_consumer"
     ["all"]="all"
 )
 
@@ -61,6 +65,9 @@ declare -A WORKER_QUEUES=(
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
+    # The PG queue (in pg_queue_message) this consumer polls — exported as
+    # WORKER_PG_QUEUE_CONSUMER_QUEUE, not a Celery --queues value.
+    ["pg_queue_consumer"]="notifications"
 )
 
 # Worker health ports
@@ -74,6 +81,17 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
+    # pg_queue_consumer: no entry — it runs no health server, so it binds no
+    # port (avoids a hard-coded port that could collide). A liveness endpoint,
+    # if added later, should read WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT.
+)
+
+# Opt-in workers: experimental and NOT part of the default "all" fleet, so
+# they're started only on explicit request. Status shows them only when they
+# are actually running, so a deliberate non-start isn't reported as a STOPPED
+# failure (they'd otherwise show STOPPED after every `all`).
+declare -A OPTIN_WORKERS=(
+    ["pg_queue_consumer"]=1
 )
 
 # Function to display usage
@@ -301,6 +319,14 @@ validate_env() {
 #   --hostname=callback-worker-${id}@%h   (when WORKER_INSTANCE_ID is set)
 get_worker_pids() {
     local worker_type=$1
+    # The PG-queue consumer runs as `python -m pg_queue_consumer`, not a Celery
+    # `<type>-worker@host` process, so it has no `-worker` token to anchor on.
+    # Match its module invocation instead (covers both the `uv run python`
+    # parent and the `python -m` child). Keeps --status / -k / -r working for it.
+    if [[ "$worker_type" == "pg_queue_consumer" ]]; then
+        pgrep -f -- "-m[[:space:]]+${worker_type}([[:space:]]|\$)" || true
+        return
+    fi
     pgrep -f -- "[^[:alnum:]_]${worker_type}-worker(@|-)" || true
 }
 
@@ -475,6 +501,12 @@ show_status() {
         local pids
         pids=$(get_worker_pids_oneline "$worker")
 
+        # Opt-in workers aren't part of `all`; only surface them when running
+        # so an intentional non-start doesn't read as a STOPPED failure.
+        if [[ -z "$pids" && -n "${OPTIN_WORKERS[$worker]:-}" ]]; then
+            continue
+        fi
+
         printf '  %-22s ' "$worker:"
 
         if [[ -n "$pids" ]]; then
@@ -647,25 +679,43 @@ run_worker() {
         esac
     fi
 
+    # PG queue consumer is a plain Python poll-loop (polls Postgres via
+    # SKIP LOCKED, not a Celery/RabbitMQ worker) — override the celery command
+    # with the bootstrapping launcher and route the queue via env.
+    if [[ "$worker_type" == "pg_queue_consumer" ]]; then
+        export WORKER_PG_QUEUE_CONSUMER_QUEUE="$queues"
+        # The consumer registers ONE source worker's tasks (the launcher sets
+        # WORKER_TYPE from this before `import worker`). Default: notification —
+        # the first migrated leaf task; override to drain another worker's queue.
+        export WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE="${WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE:-notification}"
+        cmd_args=("uv" "run" "python" "-m" "pg_queue_consumer")
+    fi
+
     print_status $GREEN "Starting $worker_type worker..."
     print_status $BLUE "Directory: $worker_dir"
     print_status $BLUE "Worker Name: $worker_instance_name"
     print_status $BLUE "Queues: $queues"
-    print_status $BLUE "Health Port: ${WORKER_HEALTH_PORTS[$worker_type]}"
+    print_status $BLUE "Health Port: ${WORKER_HEALTH_PORTS[$worker_type]:-n/a}"
     print_status $BLUE "Command: ${cmd_args[*]}"
 
     # Change to appropriate directory
     # For pluggable workers, stay at workers root to allow module imports
     # For core workers, change to worker directory
-    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" || "$worker_type" == "pg_queue_consumer" ]]; then
+        # Run from the workers root so `python -m pg_queue_consumer` (and the
+        # `worker` app it bootstraps) resolve.
         cd "$WORKERS_DIR"
     else
         cd "$worker_dir"
     fi
 
     if [[ "$detach" == "true" ]]; then
-        # Run in background
-        nohup "${cmd_args[@]}" > "$worker_type.log" 2>&1 &
+        # Run in background. Write to an ABSOLUTE log path ($worker_dir is
+        # absolute) so the file lands where resolve_log_file() / -L / -C look,
+        # regardless of cwd. Workers that run from the workers root (pluggable
+        # workers, pg_queue_consumer) would otherwise drop a relative
+        # "$worker_type.log" at the root, where -L/-C can't find it.
+        nohup "${cmd_args[@]}" > "$worker_dir/$worker_type.log" 2>&1 &
         local pid=$!
         print_status $GREEN "$worker_type worker started in background (PID: $pid)"
         print_status $BLUE "Logs: $worker_dir/$worker_type.log"
