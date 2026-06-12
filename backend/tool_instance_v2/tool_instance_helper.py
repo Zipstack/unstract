@@ -534,29 +534,27 @@ class ToolInstanceHelper:
         Raises:
             PermissionDenied: If user doesn't have access to the tool
         """
-        is_admin = OrganizationMemberService.is_user_organization_admin(user)
-
         # Try to find the tool in PromptStudioRegistry first
         try:
-            PromptStudioRegistry.objects.get(pk=tool_uid)
-            # Delegate to list_tools so access follows the linked Prompt
-            # Studio project's current share state instead of the share
-            # snapshot taken at export time.
-            if (
-                is_admin
-                or PromptStudioRegistry.objects.list_tools(user)
-                .filter(pk=tool_uid)
-                .exists()
-            ):
-                return
-            raise PermissionDenied("You don't have permission to perform this action.")
-        except PromptStudioRegistry.DoesNotExist:
-            # Not a prompt studio tool, try agentic studio if available
-            pass
+            if PromptStudioRegistry.objects.filter(pk=tool_uid).exists():
+                # Access derives from the linked project's live share state
+                # (admins resolved inside list_tools), not the export-time
+                # snapshot.
+                if (
+                    PromptStudioRegistry.objects.list_tools(user)
+                    .filter(pk=tool_uid)
+                    .exists()
+                ):
+                    return
+                raise PermissionDenied(
+                    "You don't have permission to perform this action."
+                )
         except DjangoValidationError:
             # Invalid UUID format, might be a static tool
             logger.info(f"Not validating tool access for tool: {tool_uid}")
             return
+
+        is_admin = OrganizationMemberService.is_user_organization_admin(user)
 
         # Try to find the tool in AgenticStudioRegistry if available
         if IS_AGENTIC_REGISTRY_AVAILABLE:

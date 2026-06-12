@@ -5,6 +5,7 @@ from typing import Any
 from account_v2.models import User
 from django.db import models
 from django.db.models import QuerySet
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.models.base_model import BaseModel, BaseModelManager
 from utils.models.organization_mixin import (
     DefaultOrganizationManagerMixin,
@@ -26,10 +27,16 @@ class PromptStudioRegistryModelManager(DefaultOrganizationManagerMixin, BaseMode
         return super().get_queryset()
 
     def list_tools(self, user: User) -> QuerySet[Any]:
-        # Access is derived from the linked CustomTool so that sharing a
-        # Prompt Studio project applies to its exported tool without a
-        # re-export. The registry's own share fields are consulted only for
-        # legacy rows that lack a custom_tool link.
+        # Mirror CustomTool.objects.for_user so admins and service accounts
+        # see legacy (unlinked) rows too.
+        if getattr(
+            user, "is_service_account", False
+        ) or OrganizationMemberService.is_user_organization_admin(user):
+            return self.get_queryset().distinct("prompt_registry_id")
+
+        # Access follows the linked project's live share state so sharing
+        # applies without re-export; unlinked legacy rows keep their own
+        # share-field checks.
         visible_tools = CustomTool.objects.for_user(user).values("tool_id")
         return (
             self.get_queryset()

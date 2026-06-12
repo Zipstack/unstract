@@ -62,8 +62,7 @@ class RegistryShareDerivationTestBase(TestCase):
             created_by=self.owner,
             organization=self.org,
         )
-        # Owner-only export snapshot: mirrors what update_or_create_psr_tool
-        # writes when the project is unshared at export time.
+        # Owner-only snapshot, as written by an unshared export.
         self.registry = PromptStudioRegistry.objects.create(
             name=self.tool.tool_name,
             custom_tool=self.tool,
@@ -126,6 +125,17 @@ class ListToolsDerivationTests(RegistryShareDerivationTestBase):
         self.assertIn(legacy.prompt_registry_id, self._visible_ids(self.owner))
         self.assertNotIn(legacy.prompt_registry_id, self._visible_ids(self.other))
 
+    def test_admin_sees_unshared_and_legacy_rows(self) -> None:
+        legacy = PromptStudioRegistry.objects.create(
+            name="legacy-tool",
+            custom_tool=None,
+            created_by=self.owner,
+            organization=self.org,
+        )
+        visible = self._visible_ids(self.admin)
+        self.assertIn(self.registry.prompt_registry_id, visible)
+        self.assertIn(legacy.prompt_registry_id, visible)
+
 
 class ValidateToolAccessTests(RegistryShareDerivationTestBase):
     def test_owner_allowed(self) -> None:
@@ -154,8 +164,7 @@ class ValidateToolAccessTests(RegistryShareDerivationTestBase):
         self._validate(self.admin)
 
     def test_registry_share_snapshot_alone_does_not_grant_access(self) -> None:
-        # Snapshot says shared, project says not: the project wins, so
-        # revoking project access revokes exported-tool access too.
+        # The project's share state wins over the registry snapshot.
         self.registry.shared_users.add(self.other)
         with self.assertRaises(PermissionDenied):
             self._validate(self.other)
