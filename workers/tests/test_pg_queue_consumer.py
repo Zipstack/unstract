@@ -208,6 +208,63 @@ class TestRunLoop:
         consumer.run(install_signals=False)  # must not raise
         assert client.read.call_count == 2  # kept polling after the error
 
+    def test_run_refuses_to_start_with_empty_registry(self):
+        # A non-bootstrapped consumer would drop every message as "unknown" —
+        # fail loudly instead.
+        from celery import Celery
+
+        empty_app = Celery("empty-no-tasks")  # only celery.* built-ins
+        consumer = PgQueueConsumer("q", client=MagicMock(), app=empty_app)
+        with pytest.raises(RuntimeError, match="no application tasks"):
+            consumer.run(install_signals=False)
+
+    def test_run_starts_with_registered_tasks(self, monkeypatch):
+        # Positive arm: a non-empty registry starts and polls. current_app has
+        # the module's @shared_task tasks registered, so the guard passes.
+        client = MagicMock()
+        client.read.return_value = []  # empty → loop sleeps → we stop it
+        consumer = PgQueueConsumer("q", client=client)
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.consumer.time.sleep", lambda _s: consumer.stop()
+        )
+        consumer.run(install_signals=False)  # must not raise
+        assert client.read.called
+
+    def test_run_bypasses_guard_when_require_tasks_false(self, monkeypatch):
+        # require_tasks=False skips the guard even on an empty registry (lets a
+        # caller opt out, e.g. a deliberately task-less smoke run).
+        from celery import Celery
+
+        empty_app = Celery("empty-no-tasks")
+        client = MagicMock()
+        client.read.return_value = []
+        consumer = PgQueueConsumer("q", client=client, app=empty_app)
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.consumer.time.sleep", lambda _s: consumer.stop()
+        )
+        consumer.run(install_signals=False, require_tasks=False)  # must not raise
+        assert client.read.called
+
+    def test_registered_task_count_excludes_celery_builtins(self):
+        # The guard counts application tasks only — celery.* built-ins (present
+        # in every app) must not mask an un-bootstrapped registry.
+        from celery import Celery
+
+        empty_app = Celery("empty-no-tasks")
+        assert (
+            PgQueueConsumer("q", client=MagicMock(), app=empty_app)._registered_task_count()
+            == 0
+        )
+
+        @empty_app.task(name="test_pg_consumer.demo")
+        def _demo():
+            return 1
+
+        assert (
+            PgQueueConsumer("q", client=MagicMock(), app=empty_app)._registered_task_count()
+            == 1
+        )
+
 
 # --- Integration: full enqueue → poll → execute → ack against real PG ---
 # Uses the shared ``pg_client`` fixture from conftest.py.

@@ -24,7 +24,8 @@ import logging
 import os
 import signal
 import time
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypeVar
 
 from celery import current_app
 
@@ -37,6 +38,8 @@ if TYPE_CHECKING:
     from .client import QueueMessage
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 _DEFAULT_QUEUE = "default"
 # Default 1: the whole batch shares one vt window (set atomically at claim),
@@ -178,16 +181,46 @@ class PgQueueConsumer:
                 message.msg_id,
             )
 
-    def run(self, *, install_signals: bool = True) -> None:
-        """Poll loop with empty-queue backoff and graceful shutdown."""
+    def _registered_task_count(self) -> int:
+        """Count application tasks (excluding Celery's built-ins)."""
+        return sum(1 for name in self._app.tasks if not name.startswith("celery."))
+
+    def run(self, *, install_signals: bool = True, require_tasks: bool = True) -> None:
+        """Poll loop with empty-queue backoff and graceful shutdown.
+
+        Refuses to start if no application tasks are registered — a strong
+        signal the worker app wasn't bootstrapped, in which case *every*
+        message would be dropped as "unknown task". This makes a
+        misconfigured launch fail loudly instead of silently destroying data.
+        """
+        if require_tasks and self._registered_task_count() == 0:
+            raise RuntimeError(
+                "PG-queue consumer: no application tasks are registered — the "
+                "worker app was not bootstrapped. Launch via "
+                "`python -m pg_queue_consumer` (or ./run-worker.sh "
+                "pg-queue-consumer), not bare "
+                "`python -m queue_backend.pg_queue.consumer`. Refusing to start "
+                "to avoid dropping every message as an unknown task."
+            )
         self._running = True
         if install_signals:
             self._install_signal_handlers()
+        # Log the registered application tasks at startup. The guard above only
+        # catches an *empty* registry; a *wrong* one (e.g. the launcher selected
+        # the wrong source worker type) is non-empty but missing the target
+        # task, so each message would be dropped as "unknown task". Surfacing
+        # the registry here makes a wrong-type boot diagnosable from one line.
+        app_tasks = sorted(
+            name for name in self._app.tasks if not name.startswith("celery.")
+        )
         logger.info(
-            "PG-queue consumer started (queue=%r, batch=%s, vt=%ss)",
+            "PG-queue consumer started (queue=%r, batch=%s, vt=%ss) — "
+            "%d application task(s) registered: %s",
             self.queue_name,
             self.batch_size,
             self.vt_seconds,
+            len(app_tasks),
+            ", ".join(app_tasks) or "(none)",
         )
         backoff = self.poll_interval
         while self._running:
@@ -226,8 +259,18 @@ class PgQueueConsumer:
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 
-    def _env(suffix: str, default: object, cast: type) -> object:
-        return cast(os.getenv(f"WORKER_PG_QUEUE_CONSUMER_{suffix}", default))
+    def _env(suffix: str, default: _T, cast: Callable[[str], _T]) -> _T:
+        # Preserve the default's type through to PgQueueConsumer's typed
+        # __init__ (a bare `type` would erase it). On a bad value, fail with the
+        # offending var name instead of a context-free `int('abc')` ValueError.
+        var = f"WORKER_PG_QUEUE_CONSUMER_{suffix}"
+        raw = os.getenv(var)
+        if raw is None:
+            return default
+        try:
+            return cast(raw)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid {var}={raw!r}: {exc}") from exc
 
     PgQueueConsumer(
         queue_name=_env("QUEUE", _DEFAULT_QUEUE, str),
