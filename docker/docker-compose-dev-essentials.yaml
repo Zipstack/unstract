@@ -118,7 +118,7 @@ services:
 
   qdrant:
     # Vector DB for doc indexer.
-    # Server major must track qdrant-client pin in unstract/sdk1/pyproject.toml;
+    # Server minor version must track qdrant-client pin in unstract/sdk1/pyproject.toml;
     # the 1.16 client calls endpoints the 1.8 server lacks and returns 404 with empty body.
     image: "qdrant/qdrant:v1.16.1"
     container_name: unstract-vector-db
