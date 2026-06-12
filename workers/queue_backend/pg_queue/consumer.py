@@ -57,8 +57,13 @@ _DEFAULT_BACKOFF_MAX = 2.0
 # rather than redeliver forever.
 _DEFAULT_MAX_ATTEMPTS = 5
 # Liveness: a poll loop that hasn't cycled in this many seconds is reported
-# unhealthy. Well above _DEFAULT_BACKOFF_MAX (idle backoff) and any sane task
-# duration, so only a genuinely wedged loop trips it.
+# unhealthy. The heartbeat is stamped at the top of each poll_once and frozen
+# during task execution, so this threshold doubles as an UPPER BOUND on a single
+# task's wall-clock: a task running longer than it trips the probe → pod restart
+# → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
+# current sub-second leaf (send_webhook_notification); for longer-running tasks,
+# raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
+# max(batch_size x worst_case_task_seconds, backoff_max).
 _DEFAULT_HEALTH_STALE_SECONDS = 60.0
 
 
@@ -400,6 +405,7 @@ class LivenessServer:
         import json
         import threading
         from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import urlsplit
 
         if self._httpd is not None:
             raise RuntimeError("LivenessServer already started")
@@ -410,7 +416,9 @@ class LivenessServer:
 
         class _Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
-                if self.path not in paths:
+                # Strip any query string — self.path includes it, so a probe
+                # like /health?foo=bar must still match.
+                if urlsplit(self.path).path not in paths:
                     self.send_response(404)
                     self.end_headers()
                     return

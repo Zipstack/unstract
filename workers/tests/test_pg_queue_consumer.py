@@ -354,7 +354,8 @@ class TestPollHeartbeat:
         server.start()
         try:
             base = f"http://127.0.0.1:{server.bound_port}"
-            for path in ("/health", "/healthz", "/livez"):
+            # Aliases, plus a query string (self.path includes it) must match.
+            for path in ("/health", "/healthz", "/livez", "/health?probe=k8s"):
                 with urllib.request.urlopen(f"{base}{path}", timeout=5) as resp:
                     assert resp.status == 200, path
             with pytest.raises(urllib.error.HTTPError) as ei:
