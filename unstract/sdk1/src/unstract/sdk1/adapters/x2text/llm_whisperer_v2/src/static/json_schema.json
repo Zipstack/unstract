@@ -18,13 +18,13 @@
       "title": "URL",
       "format": "uri",
       "default": "https://llmwhisperer-api.us-central.unstract.com",
-      "description": "Provide the base URL of the LLMWhisperer service based on your region, can be obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer)."
+      "description": "Provide the base URL of the LLMWhisperer service based on your region, can be obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer&selectedProductPage=api-keys)."
     },
     "unstract_key": {
       "type": "string",
       "title": "LLMWhisperer Key",
       "format": "password",
-      "description": "API key obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer)"
+      "description": "API key obtained from the [Unstract developer portal](https://us-central.unstract.com/landing?selectedProduct=llm-whisperer&selectedProductPage=api-keys)"
     },
     "mode": {
       "type": "string",

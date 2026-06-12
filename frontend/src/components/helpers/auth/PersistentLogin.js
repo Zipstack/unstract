@@ -10,15 +10,20 @@ import { SocketMessages } from "../socket-messages/SocketMessages";
 let selectedProductStore;
 let selectedProduct;
 let setSelectedProduct;
+let setSelectedProductPage;
 let SELECTED_PRODUCT;
+let SELECTED_PRODUCT_PAGE;
 let PRODUCT_NAMES = {};
+let LLM_WHISPERER_PAGES = [];
 try {
   selectedProductStore = await import(
     "../../../plugins/store/select-product-store.js"
   );
   const commonMod = await import("../../../plugins/helpers/common");
   SELECTED_PRODUCT = commonMod.SELECTED_PRODUCT;
+  SELECTED_PRODUCT_PAGE = commonMod.SELECTED_PRODUCT_PAGE;
   PRODUCT_NAMES = commonMod.PRODUCT_NAMES ?? {};
+  LLM_WHISPERER_PAGES = commonMod.LLM_WHISPERER_PAGES ?? [];
 } catch {
   // Ignore if hook not available
 }
@@ -30,6 +35,7 @@ function PersistentLogin() {
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const selectedProductQueryParam = queryParams.get(SELECTED_PRODUCT);
+  const selectedProductPageQueryParam = queryParams.get(SELECTED_PRODUCT_PAGE);
 
   try {
     if (selectedProductStore?.useSelectedProductStore) {
@@ -38,6 +44,9 @@ function PersistentLogin() {
       );
       setSelectedProduct = selectedProductStore.useSelectedProductStore(
         (state) => state?.setSelectedProduct,
+      );
+      setSelectedProductPage = selectedProductStore.useSelectedProductStore(
+        (state) => state?.setSelectedProductPage,
       );
     }
   } catch {
@@ -73,6 +82,16 @@ function PersistentLogin() {
       setSelectedProduct(selectedProductQueryParam);
     }
   }, [selectedProductQueryParam]);
+
+  useEffect(() => {
+    if (
+      selectedProductPageQueryParam &&
+      LLM_WHISPERER_PAGES.includes(selectedProductPageQueryParam) &&
+      setSelectedProductPage
+    ) {
+      setSelectedProductPage(selectedProductPageQueryParam);
+    }
+  }, [selectedProductPageQueryParam]);
 
   if (isLoading) {
     return <GenericLoader />;

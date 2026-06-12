@@ -6,6 +6,7 @@ import {
   homePagePath,
   onboardCompleted,
 } from "../../../helpers/GetStaticData";
+import { getLlmWhispererPage } from "../../../helpers/llmWhispererPage";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useSessionStore } from "../../../store/session-store";
 
@@ -53,6 +54,18 @@ const RequireAuth = () => {
   } catch (_error) {
     // Do nothing
   }
+  let llmWhispererPage;
+  let resetSelectedProductPage;
+  try {
+    llmWhispererPage = selectedProductStore.useSelectedProductStore(
+      (state) => state?.selectedProductPage,
+    );
+    resetSelectedProductPage = selectedProductStore.useSelectedProductStore(
+      (state) => state?.resetSelectedProductPage,
+    );
+  } catch (_error) {
+    // Do nothing
+  }
 
   const currOrgName = getOrgNameFromPathname(
     pathname,
@@ -66,9 +79,20 @@ const RequireAuth = () => {
     setPostHogIdentity();
   }, [sessionDetails]);
 
+  // The persisted page is one-shot: clear it once the user is logged in and
+  // any redirect below has had a chance to consume it.
+  useEffect(() => {
+    if (isLoggedIn && llmWhispererPage) {
+      resetSelectedProductPage?.();
+    }
+  }, [isLoggedIn, llmWhispererPage]);
+
   let navigateTo = `/${orgName}/onboard`;
   if (isLlmWhisperer) {
-    navigateTo = `/llm-whisperer/${orgName}/playground`;
+    navigateTo = `/llm-whisperer/${orgName}/${getLlmWhispererPage(
+      location?.search,
+      llmWhispererPage,
+    )}`;
   } else if (isVerticals) {
     navigateTo = `/verticals/`;
   } else if (onboardCompleted(adapters)) {
