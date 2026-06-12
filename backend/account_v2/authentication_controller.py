@@ -41,6 +41,7 @@ from account_v2.dto import (
     UserInviteResponse,
     UserRoleData,
 )
+from account_v2.enums import UserRole
 from account_v2.exceptions import OrganizationNotExist
 from account_v2.models import Organization, User
 from account_v2.organization import OrganizationService
@@ -417,9 +418,22 @@ class AuthenticationController:
 
         return is_removed
 
+    def _ensure_not_last_admin_demotion(self, email: str, new_role: str) -> None:
+        # Org must always retain at least one admin.
+        if new_role == UserRole.ADMIN.value:
+            return
+        target = OrganizationMemberService.get_user_by_email(email=email)
+        if target and target.role == UserRole.ADMIN.value:
+            admin_count = len(
+                OrganizationMemberService.get_members_by_role(UserRole.ADMIN.value)
+            )
+            if admin_count <= 1:
+                raise Forbidden("Cannot demote the only admin of the organization")
+
     def add_user_role(
         self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
+        self._ensure_not_last_admin_demotion(email=email, new_role=role)
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         user = OrganizationMemberService.get_user_by_email(email=email)
@@ -438,6 +452,10 @@ class AuthenticationController:
     def remove_user_role(
         self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
+        if role == UserRole.ADMIN.value:
+            self._ensure_not_last_admin_demotion(
+                email=email, new_role=UserRole.USER.value
+            )
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         organization_member = OrganizationMemberService.get_user_by_email(email=email)
