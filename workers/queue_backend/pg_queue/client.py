@@ -68,7 +68,7 @@ UPDATE pg_queue_message
         FOR UPDATE SKIP LOCKED
       LIMIT %s
  )
-RETURNING msg_id, message
+RETURNING msg_id, message, read_ct
 """
 
 
@@ -79,11 +79,15 @@ class QueueMessage:
     ``message`` is the already-decoded JSONB payload (psycopg2 parses
     ``jsonb`` to a Python ``dict``). ``frozen`` freezes the binding only —
     the ``dict`` itself is mutable, so treat the payload as read-only by
-    convention.
+    convention. ``read_ct`` is the post-claim delivery count — always ``>= 1``
+    from the dequeue (``read_ct = read_ct + 1 RETURNING``), so consumers can
+    cap redelivery of a poison message. No default: a ``0`` ("never claimed")
+    can't come from the dequeue and would silently bypass the poison guard.
     """
 
     msg_id: int
     message: dict[str, Any]
+    read_ct: int
 
 
 class PgQueueClient:
@@ -180,23 +184,26 @@ class PgQueueClient:
         with self._cursor() as cur:
             cur.execute(_DEQUEUE_SQL, (vt_seconds, queue_name, qty))
             rows = cur.fetchall()
-        return [QueueMessage(msg_id=int(r[0]), message=r[1]) for r in rows]
+        return [
+            QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
+        ]
 
     def delete(self, msg_id: int) -> bool:
         """Ack a processed message. Returns ``True`` if a row was removed.
 
         ``False`` means the row was already gone — typically its visibility
         timeout expired during processing and another worker (re)claimed it,
-        i.e. the work may be processed twice. Logged at WARNING so this
-        at-least-once condition is visible rather than silently swallowed.
+        i.e. the work may be processed twice. Logged at DEBUG here; the
+        consumer emits the contextual WARNING (it names the task), so this
+        avoids a duplicate warning per double-run.
         """
         with self._cursor() as cur:
             cur.execute("DELETE FROM pg_queue_message WHERE msg_id = %s", (msg_id,))
             deleted = cur.rowcount
         if deleted == 0:
-            logger.warning(
-                "PG-queue: delete(msg_id=%s) removed no row — message was already "
-                "gone (vt likely expired during processing; possible re-delivery).",
+            logger.debug(
+                "PG-queue: delete(msg_id=%s) removed no row — already gone "
+                "(vt likely expired; consumer logs the contextual warning).",
                 msg_id,
             )
         return deleted == 1

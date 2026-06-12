@@ -69,14 +69,14 @@ class TestPgQueueClientUnit:
         assert params[2] == ""
 
     def test_read_runs_skip_locked_dequeue(self):
-        conn, cur = _mock_conn(fetchall=[(7, {"k": "v"})])
+        conn, cur = _mock_conn(fetchall=[(7, {"k": "v"}, 1)])
         msgs = PgQueueClient(conn=conn).read("q1", vt_seconds=15, qty=3)
         sql, params = cur.execute.call_args.args
         assert "FOR UPDATE SKIP LOCKED" in sql
         assert "UPDATE pg_queue_message" in sql
         # Param order follows the %s positions: vt_seconds, queue_name, qty.
         assert params == (15, "q1", 3)
-        assert msgs == [QueueMessage(msg_id=7, message={"k": "v"})]
+        assert msgs == [QueueMessage(msg_id=7, message={"k": "v"}, read_ct=1)]
         conn.commit.assert_called_once()
 
     def test_delete_returns_true_when_row_removed(self):
@@ -231,35 +231,7 @@ class TestCreatePgConnection:
         assert "failed to connect" in caplog.text
 
 
-# --- Integration: real Postgres ---
-
-
-def _integration_conn():
-    # Reuse create_pg_connection (single source of connection logic) via the
-    # dedicated TEST_DB_* prefix — NOT the generic DB_*, which the suite's
-    # conftest sets to DB_USER=test for unit isolation (wrong real-DB creds).
-    # Default the host to the dev-compose published port on localhost.
-    os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
-    return create_pg_connection(env_prefix="TEST_DB_")
-
-
-@pytest.fixture
-def pg_conn():
-    try:
-        conn = _integration_conn()
-    except psycopg2.OperationalError as exc:
-        # Only an unreachable/unauthenticated DB skips — ImportError, bugs,
-        # and schema/permission errors surface as real failures.
-        pytest.skip(f"Postgres not reachable: {exc}")
-    with conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('pg_queue_message')")
-        (table,) = cur.fetchone()
-    if table is None:
-        conn.close()
-        pytest.skip("pg_queue migration not applied (run backend migrate)")
-    yield conn
-    conn.rollback()
-    conn.close()
+# --- Integration: real Postgres (pg_conn fixture from conftest.py) ---
 
 
 @pytest.fixture
@@ -306,7 +278,8 @@ class TestPgQueueClientIntegration:
         client_a = PgQueueClient(conn=pg_conn)
         for i in range(5):
             client_a.send(queue_name, {"i": i})
-        conn_b = _integration_conn()
+        # Second connection (TEST_DB_HOST already set by the pg_conn fixture).
+        conn_b = create_pg_connection(env_prefix="TEST_DB_")
         try:
             client_b = PgQueueClient(conn=conn_b)
             ids_a = {m.msg_id for m in client_a.read(queue_name, vt_seconds=30, qty=3)}
