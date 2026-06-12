@@ -498,14 +498,19 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
             status_enum = ExecutionStatus(validated_data["status"])
             logger.info(f"Updating status for execution {id} to {status_enum}")
-            execution.update_execution(
-                status=status_enum,
-                error=error_message,
-                increment_attempt=increment_attempt,
-            )
+            # Status and file-count aggregates must commit together. Otherwise a
+            # failure between the two writes can leave the row at a terminal status
+            # with failed_files=None, which is_failure_run() reads as a success and
+            # silently bypasses notify_on_failures subscribers.
+            with transaction.atomic():
+                execution.update_execution(
+                    status=status_enum,
+                    error=error_message,
+                    increment_attempt=increment_attempt,
+                )
 
-            # File aggregates are not handled by update_execution; persist separately.
-            self._update_file_aggregates(execution, validated_data)
+                # File aggregates are not handled by update_execution; persist separately.
+                self._update_file_aggregates(execution, validated_data)
 
             logger.info(
                 f"Updated workflow execution {id} status to {validated_data['status']}"
