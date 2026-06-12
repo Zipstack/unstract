@@ -57,27 +57,40 @@ const usePostHogEvents = () => {
   };
 
   const setPostHogIdentity = () => {
-    const distinctId = `${sessionDetails?.orgId}:${sessionDetails?.orgName}`;
+    const orgId = sessionDetails?.orgId;
     const orgName = sessionDetails?.orgName;
     const isOpenSource = orgName === "mock_org";
-
-    const name = `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`;
-    const optionalParams = {
-      name,
-      org: orgName,
-      software: isOpenSource ? "OSS" : "SAAS",
-    };
-
+    const software = isOpenSource ? "OSS" : "SAAS";
     const email = sessionDetails?.email;
     const userId = sessionDetails?.id;
 
+    // Email as distinct_id: bare user ids collide across regions/self-hosts
+    // since every deployment reports to the same PostHog project
+    const distinctId = email || `${orgId}:${userId}`;
+
+    const name = `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`;
+    const personProperties = {
+      name,
+      org: orgName,
+      software,
+    };
+
     if (email) {
-      optionalParams["email"] = email;
-    } else {
-      optionalParams["userId"] = userId;
+      personProperties["email"] = email;
+    }
+    if (userId) {
+      personProperties["userId"] = userId;
     }
 
-    posthog.identify(distinctId, optionalParams);
+    posthog.identify(distinctId, personProperties);
+
+    // Super-properties ride on every captured event, enabling org-level
+    // breakdowns without the group analytics add-on
+    posthog.register({
+      org_id: orgId,
+      org_name: orgName,
+      software,
+    });
   };
 
   const setPostHogCustomEvent = (eventName, properties) => {
