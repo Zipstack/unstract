@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import F
 from django.utils import timezone
 
 
@@ -29,12 +30,39 @@ class PgQueueMessage(models.Model):
     enqueued_at = models.DateTimeField(default=timezone.now)
     vt = models.DateTimeField(default=timezone.now)  # visibility timeout
     read_ct = models.IntegerField(default=0)
+    # fairness L3: higher value is claimed sooner. The canonical range lives in
+    # workers/queue_backend/fairness.py (MIN_PRIORITY=1, MAX_PRIORITY=10,
+    # DEFAULT_PRIORITY=5); these literals mirror it because backend and workers
+    # are separate codebases that can't import each other. Keep them in sync — a
+    # workers integration test (test_db_check_constraint_matches_fairness_bounds)
+    # asserts this DB constraint matches the fairness bounds, so a divergence
+    # fails loudly. The dispatch writes priority from fairness.pipeline_priority;
+    # leaf tasks with no fairness get the neutral default. L1 (org tier) / L2
+    # (workload) ordering + burst_max admission are deferred to the fair-admission
+    # orchestrator. The CheckConstraint is the one backstop no writer can bypass.
+    priority = models.SmallIntegerField(default=5)
 
     class Meta:
         db_table = "pg_queue_message"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(priority__gte=1) & models.Q(priority__lte=10),
+                name="pg_queue_message_priority_range",
+            ),
+        ]
         indexes = [
+            # The dequeue walks one queue in (priority DESC, msg_id ASC) order
+            # and applies vt <= now() as a per-row filter during the walk —
+            # claim high-priority first, FIFO (msg_id, monotonic and stable
+            # across re-claims) within a band. Note this is NOT a guaranteed
+            # top-N: vt is intentionally not in the index, so claimed-but-unacked
+            # rows (future vt) sit at the front of their band and are scanned
+            # past on each claim. Fine at low in-flight depth; the orchestrator's
+            # staging→task admission is the answer if that backlog grows large.
             models.Index(
-                fields=["queue_name", "vt", "msg_id"],
+                F("queue_name"),
+                F("priority").desc(),
+                F("msg_id"),
                 name="pg_queue_message_dequeue_idx",
             )
         ]
