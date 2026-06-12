@@ -1,5 +1,6 @@
 import { usePostHog } from "posthog-js/react";
 
+import { isSaasProdDeployment } from "../helpers/PostHogDeployment";
 import { useSessionStore } from "../store/session-store";
 
 const usePostHogEvents = () => {
@@ -57,40 +58,50 @@ const usePostHogEvents = () => {
   };
 
   const setPostHogIdentity = () => {
-    const orgId = sessionDetails?.orgId;
-    const orgName = sessionDetails?.orgName;
-    const isOpenSource = orgName === "mock_org";
-    const software = isOpenSource ? "OSS" : "SAAS";
-    const email = sessionDetails?.email;
-    const userId = sessionDetails?.id;
+    try {
+      const orgId = sessionDetails?.orgId;
+      const orgName = sessionDetails?.orgName;
+      const isOpenSource = orgName === "mock_org";
+      const software = isOpenSource ? "OSS" : "SAAS";
+      const email = sessionDetails?.email;
+      const userId = sessionDetails?.id;
 
-    // Email as distinct_id: bare user ids collide across regions/self-hosts
-    // since every deployment reports to the same PostHog project
-    const distinctId = email || `${orgId}:${userId}`;
+      // PII (email, name) may only leave Unstract-managed SaaS; self-hosted
+      // and OSS installs identify with an anonymous org-scoped id instead.
+      // Email as distinct_id since bare user ids collide across
+      // regions/self-hosts — every deployment reports to one PostHog project
+      const canSendPii = isSaasProdDeployment() && !isOpenSource;
+      const fallbackId = orgId ? `${orgId}:${userId}` : userId?.toString();
+      const distinctId = canSendPii && email ? email : fallbackId;
 
-    const name = `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`;
-    const personProperties = {
-      name,
-      org: orgName,
-      software,
-    };
+      const personProperties = {
+        org: orgName,
+        software,
+      };
 
-    if (email) {
-      personProperties["email"] = email;
+      if (canSendPii) {
+        personProperties.name =
+          `${sessionDetails?.name} ${sessionDetails?.family_name || ""}`.trim();
+        if (email) {
+          personProperties.email = email;
+        }
+      }
+      if (userId) {
+        personProperties.userId = userId;
+      }
+
+      posthog.identify(distinctId, personProperties);
+
+      // Super-properties ride on every captured event, enabling org-level
+      // breakdowns without the group analytics add-on
+      posthog.register({
+        org_id: orgId,
+        org_name: orgName,
+        software,
+      });
+    } catch (error) {
+      console.error("PostHog identify failed:", error);
     }
-    if (userId) {
-      personProperties["userId"] = userId;
-    }
-
-    posthog.identify(distinctId, personProperties);
-
-    // Super-properties ride on every captured event, enabling org-level
-    // breakdowns without the group analytics add-on
-    posthog.register({
-      org_id: orgId,
-      org_name: orgName,
-      software,
-    });
   };
 
   const setPostHogCustomEvent = (eventName, properties) => {
