@@ -39,7 +39,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _DEFAULT_QUEUE = "default"
-_DEFAULT_BATCH = 10
+# Default 1: the whole batch shares one vt window (set atomically at claim),
+# but messages run sequentially — so with batch_size > 1 the tail can exceed
+# its vt and be re-claimed mid-run (double-run). Batching is opt-in; if you
+# raise it, keep vt_seconds > batch_size x worst-case task duration.
+_DEFAULT_BATCH = 1
 _DEFAULT_VT_SECONDS = 30
 _DEFAULT_POLL_INTERVAL = 0.1
 _DEFAULT_BACKOFF_MAX = 2.0
@@ -74,6 +78,13 @@ class PgQueueConsumer:
         ):
             if value <= 0:
                 raise ValueError(f"{name} must be positive, got {value!r}")
+        if backoff_max < poll_interval:
+            # Otherwise min(poll_interval*2, backoff_max) shrinks the backoff
+            # below poll_interval — it would decrease instead of grow.
+            raise ValueError(
+                f"backoff_max ({backoff_max}) must be >= poll_interval "
+                f"({poll_interval})"
+            )
         self.queue_name = queue_name
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app

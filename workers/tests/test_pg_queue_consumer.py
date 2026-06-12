@@ -153,6 +153,13 @@ class TestConstruction:
             with pytest.raises(ValueError):
                 PgQueueConsumer("q", client=MagicMock(), **kw)
 
+    def test_rejects_backoff_max_below_poll_interval(self):
+        # Otherwise backoff would shrink below poll_interval instead of growing.
+        with pytest.raises(ValueError, match="backoff_max"):
+            PgQueueConsumer(
+                "q", client=MagicMock(), poll_interval=0.5, backoff_max=0.1
+            )
+
 
 class TestRunLoop:
     def test_run_stops_gracefully(self, monkeypatch):
