@@ -351,12 +351,11 @@ def _maybe_start_health_server(
     server = LivenessServer(consumer, port=port, stale_after=stale_after)
     try:
         server.start()
-    except OSError as exc:
-        logger.error(
-            "PG-queue consumer: liveness server could not bind :%s (%s) — "
+    except OSError:
+        logger.exception(
+            "PG-queue consumer: liveness server could not bind :%s — "
             "continuing WITHOUT a probe",
             port,
-            exc,
         )
         return None
     logger.info(

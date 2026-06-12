@@ -285,7 +285,8 @@ class TestPollHeartbeat:
         # (before read), so a task running longer than the threshold still trips
         # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
         # but fail here.
-        consumer = PgQueueConsumer("q", client=(client := MagicMock()))
+        client = MagicMock()
+        consumer = PgQueueConsumer("q", client=client)
         before = consumer._last_poll_monotonic
         seen: dict[str, float] = {}
         client.read.side_effect = lambda *a, **k: (
