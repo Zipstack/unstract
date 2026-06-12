@@ -1,9 +1,10 @@
 # Unstract DB Setup Script
 
-[The db_setup.sh](/docker/scripts/db-setup/db_setup.sh) script helps setup the postgres database by making use of environment variables defined in the `.essentials.env` (user copy of the [sample.essentials.env](/docker/sample.essentials.env))
+[The db_setup.sh](/docker/scripts/db-setup/db_setup.sh) script helps set up the postgres database by making use of environment variables derived from the `.env` (user copy of [sample.env](/docker/sample.env)). The Postgres container receives these via docker-compose environment mappings:
 
-- POSTGRES_USER
-- POSTGRES_DB
-- POSTGRES_SCHEMA
+- POSTGRES_USER (mapped from DB_USER)
+- POSTGRES_PASSWORD (mapped from DB_PASSWORD)
+- POSTGRES_DB (mapped from DB_NAME)
+- POSTGRES_SCHEMA (mapped from DB_SCHEMA)
 
-This script helps setup the DB user and creates a new schema as well.
+This script helps set up the DB user and creates a new schema as well.
