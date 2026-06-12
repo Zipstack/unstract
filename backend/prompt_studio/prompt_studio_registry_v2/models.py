@@ -26,12 +26,23 @@ class PromptStudioRegistryModelManager(DefaultOrganizationManagerMixin, BaseMode
         return super().get_queryset()
 
     def list_tools(self, user: User) -> QuerySet[Any]:
+        # Access is derived from the linked CustomTool so that sharing a
+        # Prompt Studio project applies to its exported tool without a
+        # re-export. The registry's own share fields are consulted only for
+        # legacy rows that lack a custom_tool link.
+        visible_tools = CustomTool.objects.for_user(user).values("tool_id")
         return (
             self.get_queryset()
             .filter(
-                models.Q(created_by=user)
-                | models.Q(shared_users=user)
-                | models.Q(shared_to_org=True)
+                models.Q(custom_tool_id__in=visible_tools)
+                | (
+                    models.Q(custom_tool__isnull=True)
+                    & (
+                        models.Q(created_by=user)
+                        | models.Q(shared_users=user)
+                        | models.Q(shared_to_org=True)
+                    )
+                )
             )
             .distinct("prompt_registry_id")
         )

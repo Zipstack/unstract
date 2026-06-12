@@ -538,12 +538,15 @@ class ToolInstanceHelper:
 
         # Try to find the tool in PromptStudioRegistry first
         try:
-            prompt_registry_tool = PromptStudioRegistry.objects.get(pk=tool_uid)
+            PromptStudioRegistry.objects.get(pk=tool_uid)
+            # Delegate to list_tools so access follows the linked Prompt
+            # Studio project's current share state instead of the share
+            # snapshot taken at export time.
             if (
                 is_admin
-                or prompt_registry_tool.created_by == user
-                or prompt_registry_tool.shared_to_org
-                or prompt_registry_tool.shared_users.filter(pk=user.pk).exists()
+                or PromptStudioRegistry.objects.list_tools(user)
+                .filter(pk=tool_uid)
+                .exists()
             ):
                 return
             raise PermissionDenied("You don't have permission to perform this action.")
