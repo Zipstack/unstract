@@ -9,6 +9,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # `check=` is correct for the pinned Django (4.2). It's deprecated in
+        # 5.1 in favour of `condition=` and removed in 6.0 — but fresh installs
+        # always replay this under the Django we ship, so leave it as-is.
+        # When the pin is bumped to >= 6.0, squash these migrations (or do the
+        # behaviour-preserving `check=` -> `condition=` edit) as part of that
+        # upgrade so a from-scratch migrate still runs.
         migrations.AddConstraint(
             model_name="pgqueuemessage",
             constraint=models.CheckConstraint(
