@@ -84,9 +84,10 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
-    # pg_queue_consumer: no entry — it runs no health server, so it binds no
-    # port (avoids a hard-coded port that could collide). A liveness endpoint,
-    # if added later, should read WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT.
+    # pg_queue_consumer: 8090 — outside the 8080-8089 core range, so no
+    # collision. The consumer binds it only when WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT
+    # is exported (below); a bare `python -m pg_queue_consumer` binds nothing.
+    ["$PG_QUEUE_CONSUMER_TYPE"]="8090"
 )
 
 # Opt-in workers: experimental and NOT part of the default "all" fleet, so
@@ -119,7 +120,8 @@ WORKER_TYPE:
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
 Note: pg-queue-consumer overrides: WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE (source worker whose
-      tasks to load, default notification) and WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll).
+      tasks to load, default notification), WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll),
+      and WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT (liveness server port, default 8090).
 
 OPTIONS:
     -e, --env-file FILE   Use specific environment file (default: .env)
@@ -705,6 +707,9 @@ run_worker() {
         # the worker that owns the first migrated leaf task,
         # send_webhook_notification; override to drain another worker's queue.
         export WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE="${WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE:-notification}"
+        # Liveness HTTP server port (-p override wins, else the map default).
+        # Exported so the launcher's main() opts into the health server.
+        export WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT="${health_port:-${WORKER_HEALTH_PORTS[$worker_type]}}"
         cmd_args=("uv" "run" "python" "-m" "$PG_QUEUE_CONSUMER_TYPE")
     fi
 
