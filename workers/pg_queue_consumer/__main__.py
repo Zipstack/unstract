@@ -22,15 +22,25 @@ Launch via ``python -m pg_queue_consumer`` or ``./run-worker.sh pg-queue-consume
 
 import os
 
-# Select the source worker whose tasks back this consumer's queue. Must run
-# BEFORE `import worker`, which reads WORKER_TYPE at import time. We overwrite
-# (not setdefault) because the launcher's own WORKER_TYPE owns no tasks.
-os.environ["WORKER_TYPE"] = os.environ.get(
-    "WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE", "notification"
-)
 
-import worker  # noqa: E402,F401 — side-effect: registers the source worker's tasks
-from queue_backend.pg_queue.consumer import main  # noqa: E402
+def _bootstrap_and_run() -> None:
+    # Select the source worker whose tasks back this consumer's queue. Must run
+    # BEFORE `import worker`, which reads WORKER_TYPE at import time. We overwrite
+    # (not setdefault) because the launcher's own WORKER_TYPE owns no tasks.
+    #
+    # Kept inside this guarded function (not at module scope) so the env mutation
+    # and the heavy `import worker` bootstrap only happen on the `python -m`
+    # entry — never as a side-effect if this module is imported by a test, IDE,
+    # or type-checker walking `__main__` files.
+    os.environ["WORKER_TYPE"] = os.environ.get(
+        "WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE", "notification"
+    )
+
+    import worker  # noqa: F401 — side-effect: registers the source worker's tasks
+    from queue_backend.pg_queue.consumer import main
+
+    main()
+
 
 if __name__ == "__main__":
-    main()
+    _bootstrap_and_run()

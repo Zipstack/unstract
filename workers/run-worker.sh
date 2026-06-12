@@ -114,9 +114,12 @@ WORKER_TYPE:
     scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
     executor              Run executor worker (extraction execution tasks)
     ide-callback          Run IDE callback worker (Prompt Studio post-execution callbacks)
+    pg-queue-consumer     Run PG-queue poll-loop consumer (opt-in; not part of 'all')
     all                   Run all workers (in separate processes, includes auto-discovered pluggable workers)
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
+Note: pg-queue-consumer overrides: WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE (source worker whose
+      tasks to load, default notification) and WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll).
 
 OPTIONS:
     -e, --env-file FILE   Use specific environment file (default: .env)
@@ -736,7 +739,14 @@ run_worker() {
         # startup (e.g. the consumer's require_tasks RuntimeError, an
         # `import worker` failure, a bad env cast) would still be reported as
         # "started" — and for pg_queue_consumer, which has no health port, a
-        # dead process then just reads as absent in --status. Verify liveness.
+        # dead process then just reads as absent in --status. Catch an
+        # *immediate* exit. This is a best-effort fast-fail for crash-on-import
+        # / bad-config faults (sub-second), NOT a connectivity check: a worker
+        # that dies slowly (e.g. a broker connect timing out after >1s) still
+        # passes here and surfaces later via its health port / --status. Run all
+        # detached workers share it — an immediate crash can hit any worker type;
+        # in `all` the subshells are backgrounded, so this 1s overlaps the
+        # inter-launch sleep rather than serializing.
         sleep 1
         if ! kill -0 "$pid" 2>/dev/null; then
             print_status $RED "$worker_type worker failed to start (PID $pid exited) — last log lines:"
