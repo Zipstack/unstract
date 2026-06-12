@@ -30,12 +30,16 @@ class PgQueueMessage(models.Model):
     enqueued_at = models.DateTimeField(default=timezone.now)
     vt = models.DateTimeField(default=timezone.now)  # visibility timeout
     read_ct = models.IntegerField(default=0)
-    # fairness L3: higher value is claimed sooner (1..10, default 5 =
-    # fairness.DEFAULT_PRIORITY). The dispatch writes it from
-    # fairness.pipeline_priority; leaf tasks with no fairness get the neutral
-    # default. L1 (org tier) / L2 (workload) ordering + burst_max admission are
-    # deferred to the fair-admission orchestrator (a later phase). The
-    # CheckConstraint is the one backstop no writer (ORM or raw SQL) can bypass.
+    # fairness L3: higher value is claimed sooner. The canonical range lives in
+    # workers/queue_backend/fairness.py (MIN_PRIORITY=1, MAX_PRIORITY=10,
+    # DEFAULT_PRIORITY=5); these literals mirror it because backend and workers
+    # are separate codebases that can't import each other. Keep them in sync — a
+    # workers integration test (test_db_check_constraint_matches_fairness_bounds)
+    # asserts this DB constraint matches the fairness bounds, so a divergence
+    # fails loudly. The dispatch writes priority from fairness.pipeline_priority;
+    # leaf tasks with no fairness get the neutral default. L1 (org tier) / L2
+    # (workload) ordering + burst_max admission are deferred to the fair-admission
+    # orchestrator. The CheckConstraint is the one backstop no writer can bypass.
     priority = models.SmallIntegerField(default=5)
 
     class Meta:

@@ -20,7 +20,7 @@ from unittest.mock import MagicMock
 
 import psycopg2
 import pytest
-from queue_backend.fairness import DEFAULT_PRIORITY
+from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
 from queue_backend.pg_queue.connection import create_pg_connection
 
@@ -363,22 +363,35 @@ class TestPgQueueClientIntegration:
             worker.start()
             drain(client_a)
             worker.join(timeout=15)
+            # Assert termination: a hung drain must fail the test, not pass
+            # silently while conn_b.close() races its in-flight queries.
+            assert not worker.is_alive(), "drain worker did not finish within 15s"
         finally:
             conn_b.close()
         assert violations == []
 
-    def test_db_check_constraint_rejects_bad_priority(self, pg_conn, queue_name):
-        # The DB CheckConstraint is the backstop for a raw/ORM writer that
-        # bypasses send()'s guard — a bad priority fails loudly at insert.
-        with pytest.raises(psycopg2.errors.CheckViolation):
+    def test_db_check_constraint_matches_fairness_bounds(self, pg_conn, queue_name):
+        # The DB CheckConstraint is the backstop for any raw/ORM writer that
+        # bypasses send()'s guard. It also pins the constraint to the app's
+        # fairness range: models.py and fairness.py live in separate codebases
+        # that can't import each other, so this boundary check is the guard
+        # against silent drift — in-range accepted, just outside rejected.
+        def _raw_insert(prio):
             with pg_conn.cursor() as cur:
                 cur.execute(
                     "INSERT INTO pg_queue_message "
                     "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
-                    "VALUES (%s, '{}'::jsonb, '', 42, now(), now(), 0)",
-                    (queue_name,),
+                    "VALUES (%s, '{}'::jsonb, '', %s, now(), now(), 0)",
+                    (queue_name, prio),
                 )
-        pg_conn.rollback()
+
+        for prio in (MIN_PRIORITY, MAX_PRIORITY):  # in-range boundaries accepted
+            _raw_insert(prio)
+        pg_conn.commit()
+        for prio in (MIN_PRIORITY - 1, MAX_PRIORITY + 1):  # out-of-range rejected
+            with pytest.raises(psycopg2.errors.CheckViolation):
+                _raw_insert(prio)
+            pg_conn.rollback()
 
     def test_vt_expiry_redelivers(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)
