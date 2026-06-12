@@ -84,9 +84,12 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
-    # pg_queue_consumer: no entry — it runs no health server, so it binds no
-    # port (avoids a hard-coded port that could collide). A liveness endpoint,
-    # if added later, should read WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT.
+    # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
+    # range and just below where pluggable-worker discovery starts allocating
+    # (8091+, see below), so it collides with neither. The consumer binds it
+    # only when WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT is exported (below); a bare
+    # `python -m pg_queue_consumer` binds nothing.
+    ["$PG_QUEUE_CONSUMER_TYPE"]="8090"
 )
 
 # Opt-in workers: experimental and NOT part of the default "all" fleet, so
@@ -119,7 +122,8 @@ WORKER_TYPE:
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
 Note: pg-queue-consumer overrides: WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE (source worker whose
-      tasks to load, default notification) and WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll).
+      tasks to load, default notification), WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll),
+      and WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT (liveness server port, default 8090).
 
 OPTIONS:
     -e, --env-file FILE   Use specific environment file (default: .env)
@@ -272,9 +276,11 @@ discover_pluggable_workers() {
                 WORKER_QUEUES["$worker_name"]="$worker_name"
             fi
 
-            # Assign health port dynamically (starting from 8090)
+            # Assign health port dynamically (starting from 8091; 8090 is
+            # reserved for pg_queue_consumer, so the first pluggable worker
+            # doesn't collide with it).
             if [[ -z "${WORKER_HEALTH_PORTS[$worker_name]:-}" ]]; then
-                WORKER_HEALTH_PORTS["$worker_name"]=$((8090 + discovered_count))
+                WORKER_HEALTH_PORTS["$worker_name"]=$((8091 + discovered_count))
             fi
 
             print_status $GREEN "Discovered pluggable worker: $worker_name"
@@ -705,6 +711,9 @@ run_worker() {
         # the worker that owns the first migrated leaf task,
         # send_webhook_notification; override to drain another worker's queue.
         export WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE="${WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE:-notification}"
+        # Liveness HTTP server port (-p override wins, else the map default).
+        # Exported so the launcher's main() opts into the health server.
+        export WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT="${health_port:-${WORKER_HEALTH_PORTS[$worker_type]}}"
         cmd_args=("uv" "run" "python" "-m" "$PG_QUEUE_CONSUMER_TYPE")
     fi
 
@@ -712,7 +721,8 @@ run_worker() {
     print_status $BLUE "Directory: $worker_dir"
     print_status $BLUE "Worker Name: $worker_instance_name"
     print_status $BLUE "Queues: $queues"
-    print_status $BLUE "Health Port: ${WORKER_HEALTH_PORTS[$worker_type]:-n/a}"
+    # Show the effective port: a -p/--health-port override wins over the map.
+    print_status $BLUE "Health Port: ${health_port:-${WORKER_HEALTH_PORTS[$worker_type]:-n/a}}"
     print_status $BLUE "Command: ${cmd_args[*]}"
 
     # Change to appropriate directory

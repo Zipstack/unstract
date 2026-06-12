@@ -33,6 +33,9 @@ from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
 
 if TYPE_CHECKING:
+    from http.server import HTTPServer
+    from threading import Thread
+
     from celery import Celery
 
     from .client import QueueMessage
@@ -53,6 +56,15 @@ _DEFAULT_BACKOFF_MAX = 2.0
 # A task claimed more than this many times keeps failing — drop it (poison)
 # rather than redeliver forever.
 _DEFAULT_MAX_ATTEMPTS = 5
+# Liveness: a poll loop that hasn't cycled in this many seconds is reported
+# unhealthy. The heartbeat is stamped at the top of each poll_once and frozen
+# during task execution, so this threshold doubles as an UPPER BOUND on a single
+# task's wall-clock: a task running longer than it trips the probe → pod restart
+# → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
+# current sub-second leaf (send_webhook_notification); for longer-running tasks,
+# raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
+# max(batch_size x worst_case_task_seconds, backoff_max).
+_DEFAULT_HEALTH_STALE_SECONDS = 60.0
 
 
 class PgQueueConsumer:
@@ -97,9 +109,16 @@ class PgQueueConsumer:
         self.backoff_max = backoff_max
         self.max_attempts = max_attempts
         self._running = False
+        # Heartbeat for the liveness probe: monotonic timestamp of the most
+        # recent poll attempt. Seeded at construction so a just-started consumer
+        # reads healthy. Updated at the TOP of poll_once, so a loop wedged on a
+        # long-running task (poll_once not returning) goes stale and is caught —
+        # something pgrep-based --status and the launch-time check cannot see.
+        self._last_poll_monotonic = time.monotonic()
 
     def poll_once(self) -> int:
         """Claim + process one batch; returns the number of messages claimed."""
+        self._last_poll_monotonic = time.monotonic()
         messages = self._client.read(
             self.queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
         )
@@ -185,6 +204,30 @@ class PgQueueConsumer:
         """Count application tasks (excluding Celery's built-ins)."""
         return sum(1 for name in self._app.tasks if not name.startswith("celery."))
 
+    def seconds_since_last_poll(self) -> float:
+        """Seconds since the last poll attempt (for the liveness heartbeat)."""
+        return time.monotonic() - self._last_poll_monotonic
+
+    def is_poll_stale(self, stale_after_seconds: float) -> bool:
+        """True if the poll loop hasn't cycled within ``stale_after_seconds``.
+
+        Drives the health endpoint: a stale loop means the consumer is wedged
+        (deadlock, or a single task running longer than the threshold), so the
+        liveness probe should report unhealthy and let the orchestrator restart
+        it. Pick a threshold comfortably above ``backoff_max`` and the longest
+        expected task so normal idle/backoff never trips it.
+
+        Note the heartbeat is stamped at the *top* of ``poll_once`` (before the
+        DB read), so a loop that fails fast every cycle — e.g. ``read()`` raising
+        on an unreachable DB, caught and backed off by ``run()`` — keeps stamping
+        and stays *healthy*. That is deliberate: a liveness probe must not couple
+        to backend reachability (a restart can't fix a DB outage, and coupling
+        would crash-loop every consumer during one). Surfacing a permanent
+        config fault (bad creds, missing schema) is a readiness/alerting concern,
+        not liveness.
+        """
+        return self.seconds_since_last_poll() > stale_after_seconds
+
     def run(self, *, install_signals: bool = True, require_tasks: bool = True) -> None:
         """Poll loop with empty-queue backoff and graceful shutdown.
 
@@ -265,21 +308,187 @@ def main() -> None:
         # offending var name instead of a context-free `int('abc')` ValueError.
         var = f"WORKER_PG_QUEUE_CONSUMER_{suffix}"
         raw = os.getenv(var)
-        if raw is None:
+        # Treat empty-string as unset: an empty HEALTH_PORT (e.g. a run-worker.sh
+        # fallback resolving empty) must hit the clean opt-out, not int("") crash.
+        if raw is None or raw == "":
             return default
         try:
             return cast(raw)
         except (ValueError, TypeError) as exc:
             raise ValueError(f"Invalid {var}={raw!r}: {exc}") from exc
 
-    PgQueueConsumer(
+    consumer = PgQueueConsumer(
         queue_name=_env("QUEUE", _DEFAULT_QUEUE, str),
         batch_size=_env("BATCH", _DEFAULT_BATCH, int),
         vt_seconds=_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
         poll_interval=_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),
         backoff_max=_env("BACKOFF_MAX", _DEFAULT_BACKOFF_MAX, float),
         max_attempts=_env("MAX_ATTEMPTS", _DEFAULT_MAX_ATTEMPTS, int),
-    ).run()
+    )
+    health_server = _maybe_start_health_server(
+        consumer,
+        port=_env("HEALTH_PORT", None, int),
+        stale_after=_env("HEALTH_STALE_SECONDS", _DEFAULT_HEALTH_STALE_SECONDS, float),
+    )
+    try:
+        consumer.run()
+    finally:
+        if health_server is not None:
+            health_server.stop()
+
+
+def _maybe_start_health_server(
+    consumer: PgQueueConsumer, *, port: int | None, stale_after: float
+) -> LivenessServer | None:
+    """Start the liveness server when ``port`` is not None; else ``None``.
+
+    ``main()`` wires ``port`` from ``WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT`` (unset
+    → ``None`` → no server, no stray port). A bind failure degrades gracefully:
+    the probe is auxiliary, so it must never stop the consumer from draining the
+    queue — we log and continue probe-less rather than abort startup.
+    """
+    if port is None:
+        logger.info(
+            "PG-queue consumer: WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT unset — "
+            "liveness server disabled"
+        )
+        return None
+    server = LivenessServer(consumer, port=port, stale_after=stale_after)
+    try:
+        server.start()
+    except OSError:
+        logger.exception(
+            "PG-queue consumer: liveness server could not bind :%s — "
+            "continuing WITHOUT a probe",
+            port,
+        )
+        return None
+    logger.info(
+        "PG-queue consumer: liveness server on :%s/health (stale after %ss)",
+        server.bound_port,
+        stale_after,
+    )
+    return server
+
+
+class LivenessServer:
+    """Tiny HTTP liveness probe: 200 while the poll loop is fresh, else 503.
+
+    Deliberately lean. A *liveness* probe must answer one question — "is this
+    process still making progress?" — and nothing else. It must NOT depend on
+    broker/API reachability or resource pressure: a transient backend blip or a
+    busy moment would otherwise make the orchestrator crash-loop an
+    otherwise-healthy consumer. So this intentionally does *not* reuse the
+    shared ``HealthChecker`` (which bundles api-connectivity / system-resource
+    checks meant for richer health reporting, not liveness) — it reports solely
+    on the poll-loop heartbeat (:meth:`PgQueueConsumer.is_poll_stale`).
+
+    Serves ``/health`` (also ``/healthz``, ``/livez``) on ``0.0.0.0`` (all
+    interfaces — a container/k8s probe reaches it from outside the process) in a
+    daemon thread. Bind ``port=0`` to let the OS pick a free port (read back via
+    :attr:`bound_port`) — used in tests. Start once; :meth:`stop` returns it to
+    the inert state.
+    """
+
+    _PATHS = frozenset({"/health", "/healthz", "/livez"})
+
+    def __init__(
+        self, consumer: PgQueueConsumer, *, port: int, stale_after: float
+    ) -> None:
+        self._consumer = consumer
+        self._port = port
+        self._stale_after = stale_after
+        self._httpd: HTTPServer | None = None
+        self._thread: Thread | None = None
+
+    def start(self) -> None:
+        import json
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import urlsplit
+
+        if self._httpd is not None:
+            raise RuntimeError("LivenessServer already started")
+
+        consumer = self._consumer
+        stale_after = self._stale_after
+        paths = self._PATHS
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                # Strip any query string — self.path includes it, so a probe
+                # like /health?foo=bar must still match.
+                if urlsplit(self.path).path not in paths:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                # One clock read so age and the healthy/stale verdict are
+                # derived from the same instant.
+                age = consumer.seconds_since_last_poll()
+                stale = age > stale_after
+                body = json.dumps(
+                    {
+                        "status": "unhealthy" if stale else "healthy",
+                        "check": "pg_queue_poll",
+                        "seconds_since_last_poll": round(age, 3),
+                        "stale_after_seconds": stale_after,
+                    }
+                ).encode()
+                self.send_response(503 if stale else 200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # client (probe) hung up mid-response — not our problem
+
+            def log_message(self, *_: object) -> None:
+                pass  # silence per-request access logging
+
+            def log_error(self, fmt: str, *args: object) -> None:
+                # BaseHTTPRequestHandler routes errors through log_message too;
+                # don't let the pass above swallow them — surface to our logger.
+                logger.warning("pg-queue liveness handler: " + fmt, *args)
+
+        def _serve(httpd: HTTPServer) -> None:
+            try:
+                httpd.serve_forever()
+            except Exception:
+                # A daemon thread dying silently would make /health stop
+                # answering (connection refused) with no breadcrumb.
+                logger.exception("pg-queue liveness server thread crashed")
+
+        httpd = HTTPServer(("0.0.0.0", self._port), _Handler)
+        self._httpd = httpd
+        self._thread = threading.Thread(
+            target=_serve, args=(httpd,), daemon=True, name="pg-consumer-liveness"
+        )
+        self._thread.start()
+
+    @property
+    def bound_port(self) -> int:
+        """Actual listening port (resolves ``port=0``); the requested port if not started."""
+        if self._httpd is not None:
+            return self._httpd.server_address[1]
+        return self._port
+
+    def stop(self) -> None:
+        """Shut the server down. Defensive: never raises (called from a finally)."""
+        try:
+            if self._httpd is not None:
+                self._httpd.shutdown()
+                self._httpd.server_close()
+            if self._thread is not None:
+                self._thread.join(timeout=5)
+                if self._thread.is_alive():
+                    logger.warning(
+                        "PG-queue consumer: liveness thread did not stop within 5s"
+                    )
+        except Exception:
+            logger.exception("PG-queue consumer: error stopping liveness server")
+        finally:
+            self._httpd = None
+            self._thread = None
 
 
 if __name__ == "__main__":
