@@ -9,31 +9,26 @@ import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
 import config from "./config.js";
 
-const enablePosthog = import.meta.env.VITE_ENABLE_POSTHOG;
+// Runtime config (containerized deployments) takes priority over build-time
+// env so PostHog can be disabled per environment without a rebuild
+const runtimeConfig =
+  typeof window !== "undefined" ? window.RUNTIME_CONFIG || {} : {};
+const enablePosthog =
+  runtimeConfig.enablePosthog || import.meta.env.VITE_ENABLE_POSTHOG;
 if (enablePosthog !== "false") {
   // Define the PostHog API key and host URL
   const API_KEY = "phc_PTafesyRuRB5hceRILaNPeyu2IDuzPshyjIPYGvgoBd"; // gitleaks:allow
   const API_HOST = "https://eu.i.posthog.com/";
 
   // All deployments report to a single PostHog project; tag events with
-  // their origin so they can be segmented
+  // their origin so they can be segmented. Non-prod envs are expected to
+  // disable PostHog via VITE_ENABLE_POSTHOG instead of being mapped here.
   const DEPLOYMENT_BY_HOST = {
     "us-central.unstract.com": "us-prod",
     "eu-west.unstract.com": "eu-prod",
   };
-  const getDeployment = () => {
-    const hostname = window.location.hostname;
-    if (DEPLOYMENT_BY_HOST[hostname]) {
-      return DEPLOYMENT_BY_HOST[hostname];
-    }
-    if (hostname.endsWith("globe.unstract.com")) {
-      return "saas-staging";
-    }
-    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      return "dev";
-    }
-    return "self-hosted";
-  };
+  const getDeployment = () =>
+    DEPLOYMENT_BY_HOST[window.location.hostname] || "self-hosted";
 
   // Initialize PostHog with the specified API key and host
   posthog.init(API_KEY, {
