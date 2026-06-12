@@ -173,6 +173,50 @@ class RenderSlackTextTests(unittest.TestCase):
         text = render_slack_text(build_envelope([]))
         self.assertIn("*0 executions*", text)
 
+    def test_failure_error_message_is_surfaced(self):
+        # A failures-only Slack subscriber (the UN-3056 audience) must see the
+        # failure reason, not just the status + file-count. error_message is
+        # carried on the per-event dict; the line renderer surfaces it.
+        text = render_slack_text(
+            build_envelope(
+                [
+                    _payload(
+                        status="ERROR",
+                        failed_files=1,
+                        total_files=2,
+                        error_message="Connector auth failed",
+                    )
+                ]
+            )
+        )
+        self.assertIn("Connector auth failed", text)
+
+    def test_multiline_error_message_collapses_to_single_line(self):
+        # A traceback must not break the one-line-per-event contract.
+        text = render_slack_text(
+            build_envelope(
+                [
+                    _payload(
+                        status="ERROR",
+                        failed_files=1,
+                        total_files=2,
+                        error_message="line1\nline2\n  line3",
+                    )
+                ]
+            )
+        )
+        event_line = text.split("\n")[-1]
+        self.assertIn("line1 line2 line3", event_line)
+
+    def test_success_event_line_omits_error_segment(self):
+        # success payloads carry error_message=None → no trailing field appended
+        # (line stays 6 fields: timestamp · *exec* · type · pipeline · status · files).
+        text = render_slack_text(
+            build_envelope([_payload(status="COMPLETED", failed_files=0, total_files=3)])
+        )
+        event_line = text.split("\n")[-1]
+        self.assertEqual(len(event_line.split(" · ")), 6)
+
     def test_file_count_column_omitted_when_no_totals(self):
         # The "N/M files" column appears only when additional_data has totals;
         # an empty additional_data collapses the line (5 fields, not 6).

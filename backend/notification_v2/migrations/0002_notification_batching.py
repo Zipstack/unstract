@@ -47,7 +47,7 @@ class Migration(migrations.Migration):
                 (
                     "payload",
                     models.JSONField(
-                        db_comment="Pre-structured execution data (execution_id, status, error_message, pipeline_name, pipeline_type) — NOT a final rendered message. The renderer formats this at dispatch time."
+                        db_comment="Pre-structured execution data (type, pipeline_id, pipeline_name, status, additional_data; optional execution_id, error_message, is_failure, timestamp) — NOT a final rendered message. The renderer formats this at dispatch time."
                     ),
                 ),
                 (

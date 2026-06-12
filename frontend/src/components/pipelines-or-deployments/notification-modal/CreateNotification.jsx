@@ -227,11 +227,7 @@ function CreateNotification({
         valuePropName="checked"
         extra="Notification interval can be configured in Platform settings."
       >
-        <Checkbox>
-          <span style={{ fontSize: 14, color: "rgba(0, 0, 0, 0.88)" }}>
-            Notify on failures only
-          </span>
-        </Checkbox>
+        <Checkbox>Notify on failures only</Checkbox>
       </Form.Item>
       <Form.Item className="display-flex-right">
         <Space>

@@ -49,9 +49,11 @@ SLACK_MAX_DISPLAY_EVENTS = 25
 # Legacy single-run webhook keys (pre-clubbing flat shape). Spread onto a
 # single-event envelope for backward compatibility — see build_envelope.
 # Covers both pre-clubbing wire shapes: the backend dispatch DTO
-# (pipeline_v2.dto.PipelineStatusPayload.to_dict — the first six keys) and the
-# worker callback path (core.data_models.NotificationPayload.to_webhook_payload),
-# which additionally emitted top-level ``timestamp`` and ``additional_data``.
+# (pipeline_v2.dto.PipelineStatusPayload.to_dict) and the worker callback path
+# (core.data_models.NotificationPayload.to_webhook_payload). Both always emit
+# ``additional_data``; only the worker path additionally emits a top-level
+# ``timestamp``. The spread covers the union — keys absent on a given row are
+# skipped.
 _LEGACY_FLAT_KEYS = (
     "type",
     "pipeline_id",
@@ -132,7 +134,10 @@ def _format_event_line(event: dict[str, Any]) -> str:
     """Format one event as a single Slack mrkdwn line.
 
     Fields are middle-dot separated; the file-count column is omitted when
-    `additional_data` is empty so the line collapses to 5 fields, not 6.
+    `additional_data` is empty so the line collapses to 5 fields, not 6. A
+    trailing italic ``error_message`` field is appended when present so the
+    failures-only audience sees *why* the run failed — the pre-clubbing Slack
+    body surfaced it and the clubbed renderer must not regress that.
     """
     parts = [
         event.get("timestamp") or _MISSING,
@@ -144,6 +149,11 @@ def _format_event_line(event: dict[str, Any]) -> str:
     file_count = _format_file_count(event)
     if file_count:
         parts.append(file_count)
+    error_message = event.get("error_message")
+    if error_message:
+        # Collapse whitespace so a multi-line traceback stays on one line; the
+        # raw-API channel still carries the full untruncated text.
+        parts.append(f"_{' '.join(str(error_message).split())}_")
     return _SEPARATOR.join(parts)
 
 

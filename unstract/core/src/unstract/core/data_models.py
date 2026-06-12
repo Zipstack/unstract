@@ -638,8 +638,9 @@ class NotificationPayload:
                 f"Cannot create notification for non-final status: {execution_status}"
             )
 
-        # File counts are bundled inside additional_data so receivers see
-        # them grouped (e.g. Slack renders one "Additional Data" section).
+        # File counts are bundled inside additional_data so receivers see them
+        # grouped; the clubbed renderer surfaces them as an inline "N/M files"
+        # field on each Slack event line.
         # Caller-supplied additional_data takes precedence on key conflict.
         merged_additional = {
             "total_files": total_files,

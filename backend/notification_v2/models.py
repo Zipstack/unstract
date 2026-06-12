@@ -113,10 +113,11 @@ class NotificationBuffer(BaseModel):
     """Per-execution event buffered for clubbed (batched) dispatch.
 
     One row is written per workflow completion. The flush job groups rows by
-    (organization, webhook_url, auth_sig), renders one clubbed message per
-    group, and dispatches via the existing send_webhook_notification Celery
+    (organization, webhook_url, auth_sig, platform), renders one clubbed message
+    per group, and dispatches via the existing send_webhook_notification Celery
     task. Group key includes auth_sig because two notifications may share the
-    same URL but use different credentials — they must dispatch separately.
+    same URL but use different credentials — they must dispatch separately; it
+    includes platform so SLACK and API rows never share a rendered batch.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -144,9 +145,10 @@ class NotificationBuffer(BaseModel):
     )
     payload = models.JSONField(
         db_comment=(
-            "Pre-structured execution data (execution_id, status, error_message, "
-            "pipeline_name, pipeline_type) — NOT a final rendered message. The "
-            "renderer formats this at dispatch time."
+            "Pre-structured execution data (type, pipeline_id, pipeline_name, "
+            "status, additional_data; optional execution_id, error_message, "
+            "is_failure, timestamp) — NOT a final rendered message. The renderer "
+            "formats this at dispatch time."
         ),
     )
     platform = models.CharField(

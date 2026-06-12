@@ -206,16 +206,20 @@ def _mark_buffer_outcome(
             )
         if response.status_code != 200:
             logger.warning(
-                "Buffer mark %s returned HTTP %s: %s; reaper will reclaim",
+                "metric=notification_buffer_mark_failed_total result=%s "
+                "reason=http_%s rows=%d body=%s; reaper will reclaim",
                 suffix,
                 response.status_code,
+                len(buffer_row_ids),
                 response.text[:200],
             )
     except Exception as e:  # noqa: BLE001
         logger.warning(
-            f"Failed to mark {len(buffer_row_ids)} buffer row(s) as "
-            f"{'DISPATCHED' if dispatched else 'DEAD_LETTER'}: {e}; "
-            f"reaper will reclaim"
+            "metric=notification_buffer_mark_failed_total result=%s "
+            "reason=exception rows=%d exc=%r; reaper will reclaim",
+            suffix,
+            len(buffer_row_ids),
+            e,
         )
 
 
