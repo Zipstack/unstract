@@ -121,6 +121,27 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+// Best-effort classification of a dynamic-import rejection as "plugin
+// not shipped" (expected in OSS builds) vs. a real load failure.
+//
+// LIMITATION: in a browser/Vite bundle this isn't fully sound — a
+// genuinely-absent plugin and a present-but-failed-to-load chunk
+// (transient CDN/origin 5xx, a stale hashed asset) both surface as
+// "Failed to fetch dynamically imported module", and `MODULE_NOT_FOUND`
+// is a Node/CJS code that only appears under jsdom/vitest, not the
+// shipped bundle. So a transient chunk-load failure can be misread as
+// "missing" and de-register the route for that session — same outcome
+// as a bare `catch`, but genuine errors in the present-plugin case at
+// least get logged. Centralized so any future hardening lands once.
+export function isModuleMissing(err) {
+  const msg = err?.message || "";
+  return (
+    err?.code === "MODULE_NOT_FOUND" ||
+    msg.includes("Failed to fetch dynamically imported module") ||
+    msg.includes("Cannot find module")
+  );
+}
+
 try {
   const mod = await import(
     "../plugins/prompt-change-indicator/ReadOnlyReviewPage.jsx"
@@ -130,12 +151,7 @@ try {
   // Expected in OSS builds where the cloud plugin is absent. Surface
   // anything that isn't a missing-module error so syntax/runtime
   // failures inside the plugin don't silently disable the route.
-  const msg = err?.message || "";
-  const isModuleMissing =
-    err?.code === "MODULE_NOT_FOUND" ||
-    msg.includes("Failed to fetch dynamically imported module") ||
-    msg.includes("Cannot find module");
-  if (!isModuleMissing) {
+  if (!isModuleMissing(err)) {
     // eslint-disable-next-line no-console
     console.error(
       "[prompt-change-indicator] ReadOnlyReviewPage import failed unexpectedly",
@@ -168,11 +184,44 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let MarketplaceLandingPage;
+let MarketplaceStripeConflictPage;
+try {
+  const mod = await import("../plugins/marketplace");
+  MarketplaceLandingPage = mod.MarketplaceLandingPage;
+  MarketplaceStripeConflictPage = mod.MarketplaceStripeConflictPage;
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent. Surface
+  // anything that isn't a missing-module error so syntax/runtime
+  // failures inside the plugin don't silently de-register the routes.
+  // (See isModuleMissing for the browser-classification limitation.)
+  if (!isModuleMissing(err)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[marketplace] Plugin import failed unexpectedly; marketplace " +
+        "routes disabled",
+      err,
+    );
+  }
+}
+
 function useMainAppRoutes() {
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
         <Route path="onboard" element={<OnBoardPage />} />
+        {MarketplaceLandingPage && (
+          <Route
+            path="marketplace-landing"
+            element={<MarketplaceLandingPage />}
+          />
+        )}
+        {MarketplaceStripeConflictPage && (
+          <Route
+            path="marketplace-stripe-conflict"
+            element={<MarketplaceStripeConflictPage />}
+          />
+        )}
       </Route>
       {ChatAppLayout && ChatAppPage && (
         <Route path=":orgName" element={<ChatAppLayout />}>
