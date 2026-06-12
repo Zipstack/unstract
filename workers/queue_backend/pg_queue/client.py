@@ -68,7 +68,7 @@ UPDATE pg_queue_message
         FOR UPDATE SKIP LOCKED
       LIMIT %s
  )
-RETURNING msg_id, message
+RETURNING msg_id, message, read_ct
 """
 
 
@@ -79,11 +79,13 @@ class QueueMessage:
     ``message`` is the already-decoded JSONB payload (psycopg2 parses
     ``jsonb`` to a Python ``dict``). ``frozen`` freezes the binding only —
     the ``dict`` itself is mutable, so treat the payload as read-only by
-    convention.
+    convention. ``read_ct`` is the post-claim delivery count (1 on the
+    first claim), so consumers can cap redelivery of a poison message.
     """
 
     msg_id: int
     message: dict[str, Any]
+    read_ct: int = 0
 
 
 class PgQueueClient:
@@ -180,7 +182,9 @@ class PgQueueClient:
         with self._cursor() as cur:
             cur.execute(_DEQUEUE_SQL, (vt_seconds, queue_name, qty))
             rows = cur.fetchall()
-        return [QueueMessage(msg_id=int(r[0]), message=r[1]) for r in rows]
+        return [
+            QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
+        ]
 
     def delete(self, msg_id: int) -> bool:
         """Ack a processed message. Returns ``True`` if a row was removed.

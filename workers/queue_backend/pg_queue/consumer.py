@@ -6,9 +6,12 @@ when a task is routed to PG. This is the other half: it polls the queue with
 claimed task **in-process** (no Celery broker), and acks by deleting the row.
 
 A task that fails — or a crash before ack — is redelivered once its ``vt``
-expires (at-least-once; tasks must be idempotent). A task name not in the
-registry can never run, so it is dropped (with a loud log) rather than left to
-redeliver forever as a poison message.
+expires (at-least-once; tasks must be idempotent), bounded by ``max_attempts``
+(``read_ct``): a task that keeps failing past the cap is dropped as a poison
+message (logged with its payload) rather than redelivered forever. A message
+with no ``task_name`` (malformed/foreign) or a name not in the registry can
+never run, so it is likewise dropped with a loud log. The fairness header is
+rebuilt from the payload so a PG-routed run mirrors the Celery dispatch path.
 
 Run as ``python -m queue_backend.pg_queue.consumer`` (config via env). The
 worker bootstrap must have imported/registered the Celery tasks so they
@@ -25,6 +28,7 @@ from typing import TYPE_CHECKING
 
 from celery import current_app
 
+from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
 
 if TYPE_CHECKING:
@@ -39,6 +43,9 @@ _DEFAULT_BATCH = 10
 _DEFAULT_VT_SECONDS = 30
 _DEFAULT_POLL_INTERVAL = 0.1
 _DEFAULT_BACKOFF_MAX = 2.0
+# A task claimed more than this many times keeps failing — drop it (poison)
+# rather than redeliver forever.
+_DEFAULT_MAX_ATTEMPTS = 5
 
 
 class PgQueueConsumer:
@@ -54,7 +61,19 @@ class PgQueueConsumer:
         vt_seconds: int = _DEFAULT_VT_SECONDS,
         poll_interval: float = _DEFAULT_POLL_INTERVAL,
         backoff_max: float = _DEFAULT_BACKOFF_MAX,
+        max_attempts: int = _DEFAULT_MAX_ATTEMPTS,
     ) -> None:
+        # Validate at construction so a misconfigured consumer fails here
+        # rather than batch-after-batch once the loop starts.
+        for name, value in (
+            ("batch_size", batch_size),
+            ("vt_seconds", vt_seconds),
+            ("poll_interval", poll_interval),
+            ("backoff_max", backoff_max),
+            ("max_attempts", max_attempts),
+        ):
+            if value <= 0:
+                raise ValueError(f"{name} must be positive, got {value!r}")
         self.queue_name = queue_name
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app
@@ -62,6 +81,7 @@ class PgQueueConsumer:
         self.vt_seconds = vt_seconds
         self.poll_interval = poll_interval
         self.backoff_max = backoff_max
+        self.max_attempts = max_attempts
         self._running = False
 
     def poll_once(self) -> int:
@@ -76,9 +96,38 @@ class PgQueueConsumer:
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
         task_name = payload.get("task_name")
+
+        # Malformed / foreign payload: no task name → can't run; drop with a
+        # log that points at the payload, not at task registration.
+        if not task_name:
+            logger.error(
+                "PG-queue consumer: payload missing task_name (msg_id=%s) — "
+                "dropping malformed message: %r",
+                message.msg_id,
+                payload,
+            )
+            self._client.delete(message.msg_id)
+            return
+
+        # Poison message: a task re-claimed past the cap keeps failing. Drop
+        # it (with the payload, so it's recoverable from logs) instead of
+        # redelivering on every vt expiry forever.
+        if message.read_ct > self.max_attempts:
+            logger.error(
+                "PG-queue consumer: task %r (msg_id=%s) exceeded max_attempts=%s "
+                "(read_ct=%s) — dropping poison message: %r",
+                task_name,
+                message.msg_id,
+                self.max_attempts,
+                message.read_ct,
+                payload,
+            )
+            self._client.delete(message.msg_id)
+            return
+
         task = self._app.tasks.get(task_name)
         if task is None:
-            # Can never run → drop (and shout) rather than redeliver forever.
+            # A named-but-unregistered task can never run → drop and shout.
             logger.error(
                 "PG-queue consumer: unknown task %r (msg_id=%s) — dropping",
                 task_name,
@@ -86,23 +135,37 @@ class PgQueueConsumer:
             )
             self._client.delete(message.msg_id)
             return
+
         try:
-            # Run the task body in-process (eager), propagating failures.
+            # Run the task body in-process (eager), carrying the fairness
+            # header so a PG-routed run mirrors the Celery dispatch path.
+            fairness = payload.get("fairness")
+            headers = {FAIRNESS_HEADER_NAME: fairness} if fairness else None
             task.apply(
                 args=payload.get("args") or [],
                 kwargs=payload.get("kwargs") or {},
+                headers=headers,
                 throw=True,
             )
         except Exception:
-            # Leave the row: its vt expires and it is redelivered.
+            # Leave the row: its vt expires and it is redelivered (bounded by
+            # max_attempts above).
             logger.exception(
-                "PG-queue consumer: task %r (msg_id=%s) failed — leaving for "
-                "vt-expiry redelivery",
+                "PG-queue consumer: task %r (msg_id=%s, read_ct=%s) failed — "
+                "leaving for vt-expiry redelivery",
+                task_name,
+                message.msg_id,
+                message.read_ct,
+            )
+            return
+
+        if not self._client.delete(message.msg_id):  # ack
+            logger.warning(
+                "PG-queue consumer: ack found no row for task %r (msg_id=%s) — "
+                "it likely exceeded vt and was re-claimed (possible double-run)",
                 task_name,
                 message.msg_id,
             )
-            return
-        self._client.delete(message.msg_id)  # ack
 
     def run(self, *, install_signals: bool = True) -> None:
         """Poll loop with empty-queue backoff and graceful shutdown."""
@@ -117,7 +180,16 @@ class PgQueueConsumer:
         )
         backoff = self.poll_interval
         while self._running:
-            if self.poll_once():
+            try:
+                claimed = self.poll_once()
+            except Exception:
+                # A transient read/DB blip must not tear down the loop — the
+                # client self-recovers its connection, so log and back off.
+                logger.exception(
+                    "PG-queue consumer: poll cycle failed; backing off and continuing"
+                )
+                claimed = 0
+            if claimed:
                 backoff = self.poll_interval
             else:
                 time.sleep(backoff)
@@ -134,22 +206,25 @@ class PgQueueConsumer:
             signal.signal(signal.SIGTERM, self.stop)
             signal.signal(signal.SIGINT, self.stop)
         except ValueError:
-            logger.debug(
-                "PG-queue consumer: signal handlers not installed (non-main thread)"
+            logger.warning(
+                "PG-queue consumer: signal handlers not installed (non-main "
+                "thread) — SIGTERM/SIGINT will not trigger graceful shutdown"
             )
 
 
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+    def _env(suffix: str, default: object, cast: type) -> object:
+        return cast(os.getenv(f"WORKER_PG_QUEUE_CONSUMER_{suffix}", default))
+
     PgQueueConsumer(
-        queue_name=os.getenv("WORKER_PG_QUEUE_CONSUMER_QUEUE", _DEFAULT_QUEUE),
-        batch_size=int(os.getenv("WORKER_PG_QUEUE_CONSUMER_BATCH", _DEFAULT_BATCH)),
-        vt_seconds=int(
-            os.getenv("WORKER_PG_QUEUE_CONSUMER_VT_SECONDS", _DEFAULT_VT_SECONDS)
-        ),
-        poll_interval=float(
-            os.getenv("WORKER_PG_QUEUE_CONSUMER_POLL_INTERVAL", _DEFAULT_POLL_INTERVAL)
-        ),
+        queue_name=_env("QUEUE", _DEFAULT_QUEUE, str),
+        batch_size=_env("BATCH", _DEFAULT_BATCH, int),
+        vt_seconds=_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
+        poll_interval=_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),
+        backoff_max=_env("BACKOFF_MAX", _DEFAULT_BACKOFF_MAX, float),
+        max_attempts=_env("MAX_ATTEMPTS", _DEFAULT_MAX_ATTEMPTS, int),
     ).run()
 
 

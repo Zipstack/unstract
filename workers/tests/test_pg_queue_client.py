@@ -69,14 +69,14 @@ class TestPgQueueClientUnit:
         assert params[2] == ""
 
     def test_read_runs_skip_locked_dequeue(self):
-        conn, cur = _mock_conn(fetchall=[(7, {"k": "v"})])
+        conn, cur = _mock_conn(fetchall=[(7, {"k": "v"}, 1)])
         msgs = PgQueueClient(conn=conn).read("q1", vt_seconds=15, qty=3)
         sql, params = cur.execute.call_args.args
         assert "FOR UPDATE SKIP LOCKED" in sql
         assert "UPDATE pg_queue_message" in sql
         # Param order follows the %s positions: vt_seconds, queue_name, qty.
         assert params == (15, "q1", 3)
-        assert msgs == [QueueMessage(msg_id=7, message={"k": "v"})]
+        assert msgs == [QueueMessage(msg_id=7, message={"k": "v"}, read_ct=1)]
         conn.commit.assert_called_once()
 
     def test_delete_returns_true_when_row_removed(self):
