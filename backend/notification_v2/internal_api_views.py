@@ -575,13 +575,14 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
-        # Revert outside the committed transaction so a transient broker
-        # outage degrades to "retried next tick" rather than "stuck DISPATCHED".
-        # Refund the dispatch_attempts increment from the SENDING claim: a broker
-        # publish failure means no task was queued and no webhook was sent, so
-        # this claim must not consume the redelivery budget — otherwise N
-        # consecutive broker outages would dead-letter a never-delivered row.
-        NotificationBuffer.objects.filter(id__in=buffer_ids).update(
+        # Revert to PENDING (outside the committed txn) so a transient broker
+        # outage retries next tick; refund the SENDING-claim attempt since nothing
+        # was queued or sent. Guard on SENDING so a row the worker already marked
+        # terminal (broker raised post-delivery) isn't resurrected into a duplicate.
+        NotificationBuffer.objects.filter(
+            id__in=buffer_ids,
+            status=BufferStatus.SENDING.value,
+        ).update(
             status=BufferStatus.PENDING.value,
             dispatched_at=None,
             dispatch_attempts=F("dispatch_attempts") - 1,
