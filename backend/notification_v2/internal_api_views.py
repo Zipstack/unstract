@@ -589,6 +589,25 @@ def _send_clubbed(
         )
 
 
+def _penalize_render_failure(buffer_ids: list[str], org_id: Any, platform: str) -> None:
+    """Charge a dispatch attempt to a group whose payloads failed to render.
+
+    The SENDING-claim increment never runs on a render failure, so count it here
+    to let the cap dead-letter an un-renderable group instead of re-rendering it
+    every flush tick (which also blocks every event clubbed with it).
+    """
+    NotificationBuffer.objects.filter(id__in=buffer_ids).update(
+        dispatch_attempts=F("dispatch_attempts") + 1,
+    )
+    # logger.exception keeps the render traceback the caller used to log.
+    logger.exception(
+        "metric=notification_buffer_render_failed_total rows=%d org_id=%s platform=%s",
+        len(buffer_ids),
+        org_id,
+        platform,
+    )
+
+
 def _dispatch_group(
     org_id: Any,
     webhook_url: str,
@@ -604,7 +623,10 @@ def _dispatch_group(
     """
     with transaction.atomic():
         rows = list(
-            NotificationBuffer.objects.select_for_update(skip_locked=True)
+            # of=("self",): lock only the buffer rows, not the joined Notification
+            # row — else SKIP LOCKED skips the group when an unrelated txn (e.g. an
+            # admin edit) holds the Notification.
+            NotificationBuffer.objects.select_for_update(skip_locked=True, of=("self",))
             .select_related("notification")
             .filter(
                 status=BufferStatus.PENDING.value,
@@ -625,9 +647,9 @@ def _dispatch_group(
         # Bound the reaper reclaim loop: a row reclaimed past its dispatch budget
         # (e.g. a crash that recurs in the dispatch->callback window keeps
         # returning it to PENDING) is dead-lettered here rather than re-dispatched
-        # forever. The increment happens at the SENDING claim below; a clean
-        # broker-publish failure refunds it (see _send_clubbed), so only attempts
-        # that actually reached the broker — or were lost after it — count here.
+        # forever. Attempts are charged at the SENDING claim below (refunded on a
+        # clean broker-publish failure) and on a render failure
+        # (_penalize_render_failure).
         cap = settings.NOTIFICATION_MAX_DISPATCH_ATTEMPTS
         exhausted_ids = [str(r.id) for r in rows if r.dispatch_attempts >= cap]
         if exhausted_ids:
@@ -654,10 +676,16 @@ def _dispatch_group(
         # row's value would silently truncate everyone else's retry budget.
         first_notification = rows[0].notification
         payloads = [r.payload for r in rows]
-        body = render_clubbed_message(payloads, platform)
-        headers = build_webhook_headers(first_notification)
         buffer_ids = [str(r.id) for r in rows]
-        max_retries = max(r.notification.max_retries for r in rows)
+        try:
+            body = render_clubbed_message(payloads, platform)
+            headers = build_webhook_headers(first_notification)
+            max_retries = max(r.notification.max_retries for r in rows)
+        except Exception:
+            # Poison payload: charge an attempt so the cap dead-letters the group
+            # instead of re-rendering it forever (the caller swallows this error).
+            _penalize_render_failure(buffer_ids, org_id, platform)
+            return 0
 
         # Claim the rows as SENDING (the lease starts at dispatched_at) inside
         # the transaction; the on_commit hook then publishes the broker task. If
