@@ -3,6 +3,7 @@ import {
   ClockCircleOutlined,
   CloseCircleFilled,
   CopyOutlined,
+  DollarOutlined,
   EyeOutlined,
   FileTextOutlined,
   HourglassOutlined,
@@ -38,6 +39,10 @@ import useRequestUrl from "../../../hooks/useRequestUrl";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
 import { LogModal } from "../log-modal/LogModal";
 import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
+
+// Formats a usage cost in dollars; cost is absent until usage data lands
+const formatCost = (cost) =>
+  cost === null || cost === undefined ? "—" : `$${Number(cost).toFixed(4)}`;
 
 // Component for status message with conditional tooltip (only when truncated)
 const StatusMessageCell = ({ text }) => {
@@ -142,6 +147,11 @@ const DetailedLogs = () => {
         successfulFiles: item?.successful_files,
         failedFiles: item?.failed_files,
         totalFiles: item?.total_files,
+        totalCost: item?.aggregated_usage_cost,
+        averageCostPerFile:
+          item?.aggregated_usage_cost != null && processed > 0
+            ? item.aggregated_usage_cost / processed
+            : null,
       };
 
       setExecutionDetails(formattedData);
@@ -167,6 +177,7 @@ const DetailedLogs = () => {
           executionId: item?.id,
           executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
           filePath: item?.file_path,
+          cost: item?.cost,
         };
       });
 
@@ -318,6 +329,17 @@ const DetailedLogs = () => {
       key: "executionTime",
       width: 90,
       sorter: true,
+    },
+    {
+      title: "Cost",
+      dataIndex: "cost",
+      key: "cost",
+      width: 90,
+      render: (cost) => (
+        <Tooltip title="Cost of LLM and embedding usage for this file">
+          {formatCost(cost)}
+        </Tooltip>
+      ),
     },
     {
       title: "Action",
@@ -541,6 +563,25 @@ const DetailedLogs = () => {
                     )}
                   </Tooltip>
                 </span>
+              </div>
+            </Flex>
+          </Card>
+          <Card className="logs-details-card">
+            <Flex justify="flex-start" align="center">
+              <DollarOutlined className="logging-card-icons" />
+              <div>
+                <Typography className="logging-card-title">
+                  Cost (LLM usage)
+                </Typography>
+                <Tooltip title="Total cost of LLM and embedding usage across processed files">
+                  <Typography>
+                    {formatCost(executionDetails?.totalCost)}
+                    {executionDetails?.averageCostPerFile != null &&
+                      ` (avg ${formatCost(
+                        executionDetails?.averageCostPerFile,
+                      )}/file)`}
+                  </Typography>
+                </Tooltip>
               </div>
             </Flex>
           </Card>

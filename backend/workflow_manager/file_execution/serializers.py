@@ -24,6 +24,8 @@ class FileCentricExecutionSerializer(serializers.ModelSerializer):
     status_msg = serializers.SerializerMethodField()
     file_size = serializers.ReadOnlyField(source="pretty_file_size")
     execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
+    # Annotated in FileCentricExecutionViewSet.get_queryset from usage data
+    cost = serializers.FloatField(read_only=True, default=None)
 
     class Meta:
         model = FileExecution

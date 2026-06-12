@@ -11,6 +11,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     successful_files = serializers.SerializerMethodField()
     failed_files = serializers.SerializerMethodField()
     aggregated_total_pages_processed = serializers.SerializerMethodField()
+    aggregated_usage_cost = serializers.SerializerMethodField()
     execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
 
     class Meta:
@@ -36,3 +37,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     def get_aggregated_total_pages_processed(self, obj: WorkflowExecution) -> int | None:
         """Return the total pages processed across all file executions."""
         return obj.aggregated_total_pages_processed
+
+    def get_aggregated_usage_cost(self, obj: WorkflowExecution) -> float | None:
+        """Return the total LLM/embedding usage cost for this execution."""
+        return obj.aggregated_usage_cost
