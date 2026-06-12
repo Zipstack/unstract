@@ -111,5 +111,40 @@ class TestDispatchEnqueueIntegration:
         mock_get.assert_not_called()
 
 
+class TestDispatchPriorityWiring:
+    """dispatch() carries fairness.pipeline_priority onto the PG row (mocked)."""
+
+    @staticmethod
+    def _capture_send(monkeypatch):
+        captured: dict = {}
+
+        class _Client:
+            def send(self, queue_name, payload, **kwargs):
+                captured.update(queue=queue_name, **kwargs)
+                return 7
+
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "leaf_task")
+        monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
+        return captured
+
+    def test_priority_from_fairness(self, monkeypatch):
+        captured = self._capture_send(monkeypatch)
+        fairness = FairnessKey(
+            org_id="o", workload_type=WorkloadType.API, pipeline_priority=8
+        )
+        dispatch("leaf_task", fairness=fairness)
+        assert captured["priority"] == 8
+        assert captured["org_id"] == "o"
+
+    def test_no_fairness_uses_neutral_defaults(self, monkeypatch):
+        # Bare dispatch → org_id None (client coerces to "") + DEFAULT_PRIORITY.
+        from queue_backend.fairness import DEFAULT_PRIORITY
+
+        captured = self._capture_send(monkeypatch)
+        dispatch("leaf_task")
+        assert captured["priority"] == DEFAULT_PRIORITY
+        assert captured["org_id"] is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

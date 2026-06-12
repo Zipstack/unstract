@@ -27,7 +27,7 @@ from typing import Any
 
 from celery import current_app
 
-from .fairness import FairnessKey
+from .fairness import DEFAULT_PRIORITY, FairnessKey
 from .handle import DispatchHandle
 from .pg_queue import PgQueueClient, to_payload
 from .routing import QueueBackend, select_backend
@@ -126,10 +126,16 @@ def _enqueue_pg(
         task_name, args=args, kwargs=kwargs, queue=queue, fairness=fairness
     )
     try:
+        # Carry org_id + L3 priority onto the row so the dequeue can order by
+        # priority. A bare dispatch (fairness=None) writes the neutral defaults
+        # (org_id None → "" / DEFAULT_PRIORITY).
         msg_id = _get_pg_client().send(
             pg_queue,
             payload,
             org_id=fairness.org_id if fairness is not None else None,
+            priority=(
+                fairness.pipeline_priority if fairness is not None else DEFAULT_PRIORITY
+            ),
         )
     except Exception:
         # Re-raise with a breadcrumb (raw psycopg2.Error / a json.dumps

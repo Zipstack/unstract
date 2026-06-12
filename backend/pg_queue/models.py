@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import F
 from django.utils import timezone
 
 
@@ -29,12 +30,26 @@ class PgQueueMessage(models.Model):
     enqueued_at = models.DateTimeField(default=timezone.now)
     vt = models.DateTimeField(default=timezone.now)  # visibility timeout
     read_ct = models.IntegerField(default=0)
+    # fairness L3: higher value is claimed sooner (1..10, default 5 =
+    # FairnessKey.DEFAULT_PRIORITY). The dispatch writes it from
+    # fairness.pipeline_priority; leaf tasks with no fairness get the neutral
+    # default. L1 (org tier) / L2 (workload) ordering + burst_max admission are
+    # deferred to the fair-admission orchestrator (a later phase).
+    priority = models.SmallIntegerField(default=5)
 
     class Meta:
         db_table = "pg_queue_message"
         indexes = [
+            # Dequeue scans one queue in (priority DESC, msg_id ASC) order and
+            # filters vt <= now() as it goes, stopping at LIMIT — so the
+            # priority-ordered claim stays an indexed top-N, no full-backlog
+            # sort. priority is DESC (claim high first); msg_id ASC is the FIFO
+            # tiebreak within a priority (msg_id is monotonic and, unlike vt,
+            # never moves when a row is re-claimed).
             models.Index(
-                fields=["queue_name", "vt", "msg_id"],
+                F("queue_name"),
+                F("priority").desc(),
+                F("msg_id"),
                 name="pg_queue_message_dequeue_idx",
             )
         ]

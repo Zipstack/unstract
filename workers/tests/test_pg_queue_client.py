@@ -20,6 +20,7 @@ from unittest.mock import MagicMock
 
 import psycopg2
 import pytest
+from queue_backend.fairness import DEFAULT_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
 from queue_backend.pg_queue.connection import create_pg_connection
 
@@ -68,14 +69,28 @@ class TestPgQueueClientUnit:
         _, params = cur.execute.call_args.args
         assert params[2] == ""
 
+    def test_send_writes_priority(self):
+        # Default is the neutral DEFAULT_PRIORITY; an explicit value passes through.
+        conn, cur = _mock_conn(fetchone=(1,))
+        PgQueueClient(conn=conn).send("q1", {"a": 1})
+        sql, params = cur.execute.call_args.args
+        assert "priority" in sql
+        assert params[3] == DEFAULT_PRIORITY
+
+        conn, cur = _mock_conn(fetchone=(2,))
+        PgQueueClient(conn=conn).send("q1", {"a": 1}, priority=9)
+        _, params = cur.execute.call_args.args
+        assert params[3] == 9
+
     def test_read_runs_skip_locked_dequeue(self):
         conn, cur = _mock_conn(fetchall=[(7, {"k": "v"}, 1)])
         msgs = PgQueueClient(conn=conn).read("q1", vt_seconds=15, qty=3)
         sql, params = cur.execute.call_args.args
         assert "FOR UPDATE SKIP LOCKED" in sql
         assert "UPDATE pg_queue_message" in sql
-        # Param order follows the %s positions: vt_seconds, queue_name, qty.
-        assert params == (15, "q1", 3)
+        assert "ORDER BY priority DESC" in sql  # fairness L3 claim order
+        # Param order follows the %s positions: queue_name, qty, vt_seconds.
+        assert params == ("q1", 3, 15)
         assert msgs == [QueueMessage(msg_id=7, message={"k": "v"}, read_ct=1)]
         conn.commit.assert_called_once()
 
@@ -236,8 +251,9 @@ class TestCreatePgConnection:
 
 @pytest.fixture
 def queue_name(pg_conn):
-    # Unique per test for isolation; clean up rows afterwards.
-    name = f"test_q_{os.getpid()}_{int(time.time() * 1000)}"
+    # Unique per test for isolation (uuid — a ms timestamp collides when
+    # fast tests run within the same millisecond); clean up rows afterwards.
+    name = f"test_q_{os.getpid()}_{uuid.uuid4().hex}"
     yield name
     # A failed test body can leave the connection in an aborted transaction;
     # roll back first so this cleanup doesn't raise InFailedSqlTransaction.
@@ -263,6 +279,33 @@ class TestPgQueueClientIntegration:
         assert len(client.read(queue_name, vt_seconds=30, qty=10)) == 1
         # Second read within vt sees nothing.
         assert client.read(queue_name, vt_seconds=30, qty=10) == []
+
+    def test_priority_orders_dequeue(self, pg_conn, queue_name):
+        # Higher priority is claimed first; FIFO (msg_id) within a priority —
+        # regardless of enqueue order. Read one at a time (the default
+        # batch_size=1 path), so each claim selects the current top-priority row.
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_name, {"n": "low1"}, priority=1)
+        client.send(queue_name, {"n": "high"}, priority=9)
+        client.send(queue_name, {"n": "low2"}, priority=1)
+        client.send(queue_name, {"n": "mid"}, priority=5)
+        claimed = []
+        for _ in range(4):
+            msgs = client.read(queue_name, vt_seconds=30, qty=1)
+            assert len(msgs) == 1
+            claimed.append(msgs[0].message["n"])
+            client.delete(msgs[0].msg_id)
+        assert claimed == ["high", "mid", "low1", "low2"]
+
+    def test_priority_orders_batch_claim(self, pg_conn, queue_name):
+        # A batched claim (qty > 1) returns the batch in priority order too —
+        # the CTE re-sorts RETURNING, which is otherwise unspecified.
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_name, {"n": "a"}, priority=1)
+        client.send(queue_name, {"n": "b"}, priority=9)
+        client.send(queue_name, {"n": "c"}, priority=5)
+        msgs = client.read(queue_name, vt_seconds=30, qty=10)
+        assert [m.message["n"] for m in msgs] == ["b", "c", "a"]
 
     def test_vt_expiry_redelivers(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)
