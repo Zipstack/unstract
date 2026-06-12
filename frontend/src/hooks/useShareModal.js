@@ -76,6 +76,9 @@ function useShareModal({
         ...item,
         shared_users: Array.isArray(sharedUsersList) ? sharedUsersList : [],
         shared_groups: Array.isArray(sharedGroupsList) ? sharedGroupsList : [],
+        // List rows may omit this flag; without it the org-share toggle
+        // resets and a later apply silently revokes the org share.
+        shared_to_org: sharedUsersResponse.data?.shared_to_org || false,
       });
       setAllUsers(userList);
       const groupItems = Array.isArray(groupsResponse?.data)
