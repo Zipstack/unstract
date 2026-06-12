@@ -14,12 +14,10 @@ import json
 import os
 from unittest.mock import patch
 
-import psycopg2
 import pytest
 from queue_backend import dispatch
 from queue_backend.fairness import FairnessKey, WorkloadType
-from queue_backend.pg_queue import PgQueueClient, to_payload
-from queue_backend.pg_queue.connection import create_pg_connection
+from queue_backend.pg_queue import to_payload
 from queue_backend.routing import _ENABLED_TASKS_ENV_VAR as ENABLED_TASKS_ENV
 
 # ``queue_backend.dispatch`` the attribute is the function (shadows the
@@ -69,27 +67,7 @@ class TestToPayload:
 
 
 # --- Integration: dispatch() lands a decodable row in pg_queue_message ---
-
-
-def _test_conn():
-    os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
-    return create_pg_connection(env_prefix="TEST_DB_")
-
-
-@pytest.fixture
-def pg_client():
-    try:
-        conn = _test_conn()
-    except psycopg2.OperationalError as exc:
-        pytest.skip(f"Postgres not reachable: {exc}")
-    with conn.cursor() as cur:
-        cur.execute("SELECT to_regclass('pg_queue_message')")
-        if cur.fetchone()[0] is None:
-            conn.close()
-            pytest.skip("pg_queue migration not applied (run backend migrate)")
-    yield PgQueueClient(conn=conn)
-    conn.rollback()
-    conn.close()
+# Uses the shared ``pg_client`` fixture from conftest.py.
 
 
 class TestDispatchEnqueueIntegration:
