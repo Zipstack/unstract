@@ -420,12 +420,18 @@ class AuthenticationController:
 
     def _ensure_not_last_admin_demotion(self, email: str, new_role: str) -> None:
         # Org must always retain at least one admin.
-        if new_role == UserRole.ADMIN.value:
+        # Uses is_admin_by_role() so custom auth plugins with non-standard role
+        # strings are handled correctly.
+        # Note: no DB lock — two concurrent demotions of different admins could
+        # both pass this check. Accepted as low risk given actors are trusted admins.
+        if self.is_admin_by_role(new_role):
             return
         target = OrganizationMemberService.get_user_by_email(email=email)
-        if target and target.role == UserRole.ADMIN.value:
-            admin_count = len(
-                OrganizationMemberService.get_members_by_role(UserRole.ADMIN.value)
+        if target and self.is_admin_by_role(target.role):
+            admin_count = sum(
+                1
+                for m in OrganizationMemberService.get_members()
+                if self.is_admin_by_role(m.role)
             )
             if admin_count <= 1:
                 raise Forbidden("Cannot demote the only admin of the organization")
@@ -452,7 +458,7 @@ class AuthenticationController:
     def remove_user_role(
         self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
-        if role == UserRole.ADMIN.value:
+        if self.is_admin_by_role(role):
             self._ensure_not_last_admin_demotion(
                 email=email, new_role=UserRole.USER.value
             )
