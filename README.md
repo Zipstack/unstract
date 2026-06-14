@@ -78,6 +78,9 @@ Built for teams in **finance**, **insurance**, **healthcare**, **KYC/compliance*
 
 ```bash
 # Clone and start
+
+[![Listed on TakoAPI](https://img.shields.io/badge/Listed%20on-TakoAPI-7c3aed)](https://takoapi.com/agents/zipstack-unstract)
+
 git clone https://github.com/Zipstack/unstract.git
 cd unstract
 ./run-platform.sh
