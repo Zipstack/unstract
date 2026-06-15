@@ -68,6 +68,52 @@ class PgQueueMessage(models.Model):
         ]
 
 
+class PgOrchestratorLock(models.Model):
+    """Single-row leader-election lease for the orchestrator/reaper singleton.
+
+    The orchestrator (admit) and reaper (stuck-task recovery, barrier-orphan
+    sweep) must run as **exactly one** active instance — multiple would contend
+    on ``SKIP LOCKED`` and double-act on recovery. HA is leader-elected: one or
+    more candidate processes race to hold this single row; the holder renews its
+    lease each cycle, and if it dies a standby takes over once the lease goes
+    stale.
+
+    **Lease, not advisory lock.** Leadership is a TTL'd ``UPDATE`` (acquire if
+    ``leader`` is free or ``acquired_at`` is older than the lease window), *not*
+    ``pg_advisory_lock``. Session-scoped advisory locks do not survive
+    **transaction-pooled PgBouncer** (the queue's connection path — UN-3533),
+    since the pooler hands a candidate a different backend per transaction. A
+    plain ``UPDATE`` is one transaction → pooling-safe. All time comparisons use
+    the **DB clock** (``now()``), so candidate clock skew can't split leadership.
+
+    **Free = empty ``leader``** (not NULL), following the ``PgQueueMessage.org_id``
+    convention — a string field shouldn't carry two "no holder" states (S6553).
+    ``acquired_at`` is only meaningful while ``leader`` is non-empty.
+
+    Single row enforced by ``CheckConstraint(id = 1)``; the row is seeded by the
+    migration. Managed=True / generated migration, extension-free, same posture
+    as the sibling models.
+    """
+
+    id = models.IntegerField(primary_key=True, default=1)
+    # Current leader's worker id; "" means the lease is free (no holder).
+    leader = models.TextField(blank=True, default="")
+    # When the current leader last acquired/renewed. Only read while leader != "";
+    # a free row's value is immaterial. now() default for ORM .create(); the raw
+    # leader-election SQL always sets it explicitly.
+    acquired_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pg_orchestrator_lock"
+        constraints = [
+            # The whole point: at most one lock row. Any second row is a bug.
+            models.CheckConstraint(
+                check=models.Q(id=1),
+                name="pg_orchestrator_lock_single_row",
+            ),
+        ]
+
+
 class PgBarrierState(models.Model):
     """Per-execution fan-in barrier state for ``PgBarrier`` (the Postgres
     ``WORKER_BARRIER_BACKEND``).
