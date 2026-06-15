@@ -30,10 +30,13 @@ class OrganizationMemberSerializer(serializers.ModelSerializer):
     email = serializers.CharField(source="user.email", read_only=True)
     id = serializers.CharField(source="user.id", read_only=True)
     is_admin = serializers.SerializerMethodField()
+    is_service_account = serializers.BooleanField(
+        source="user.is_service_account", read_only=True
+    )
 
     class Meta:
         model = OrganizationMember
-        fields = ("id", "email", "role", "is_admin")
+        fields = ("id", "email", "role", "is_admin", "is_service_account")
 
     def get_is_admin(self, obj: OrganizationMember) -> bool:
         # Admin determination is auth-plugin specific (OSS "admin" vs Auth0
