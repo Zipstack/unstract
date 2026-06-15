@@ -1,0 +1,217 @@
+"""Leader-election lease for the orchestrator/reaper singleton.
+
+The orchestrator (admit) and reaper (stuck-task recovery, barrier-orphan sweep)
+must run as **exactly one** active instance — several would contend on
+``SKIP LOCKED`` and double-act on recovery. This module is the HA primitive that
+makes that safe: candidate processes race to hold the single
+``pg_orchestrator_lock`` row; the holder renews each cycle, and a standby takes
+over once the lease goes stale.
+
+**Lease, not advisory lock.** Leadership is a TTL'd ``UPDATE`` (take it if the
+``leader`` is free or its ``acquired_at`` is older than the lease window), *not*
+``pg_advisory_lock``. Session-scoped advisory locks do not survive the
+transaction-pooled PgBouncer the queue connects through (UN-3533) — the pooler
+hands out a different backend per transaction, so a session-held lock would be
+silently dropped. A plain ``UPDATE`` is one transaction → pooling-safe. Every
+time comparison is server-side (``now()``), so candidate clock skew can't split
+leadership.
+
+**This module ships dark.** It is the primitive only — nothing acquires
+leadership yet. The reaper process that drives ``try_acquire`` → ``renew`` loop →
+``release`` is a separate slice. Merging this changes no runtime behaviour.
+
+Usage (next slice):
+
+    lease = LeaderLease(default_worker_id())
+    if lease.try_acquire():
+        try:
+            while running:
+                do_one_cycle()
+                if not lease.renew():     # lost it (we stalled past the TTL)
+                    break                 # stop acting immediately
+                sleep(cycle)
+        finally:
+            lease.release()
+"""
+
+from __future__ import annotations
+
+import contextlib
+import logging
+import os
+import socket
+import uuid
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Any
+
+import psycopg2
+
+from .connection import create_pg_connection
+
+if TYPE_CHECKING:
+    from psycopg2.extensions import connection as PgConnection
+
+logger = logging.getLogger(__name__)
+
+# Lease window: a leader that hasn't renewed within this many seconds is
+# considered dead and a standby may take over. The holder must renew well
+# inside this window (the reaper loop renews every cycle). Mirrors the labs
+# orchestrator's 10s lease.
+_DEFAULT_LEASE_SECONDS = 10
+
+
+def lease_seconds_from_env() -> int:
+    """Lease window from ``WORKER_PG_ORCHESTRATOR_LEASE_SECONDS`` (default 10s).
+
+    Read at call time so tests can flip it. Invalid / non-positive values raise,
+    matching the barrier-TTL posture — a non-positive lease would let every
+    candidate believe leadership is always stale and act simultaneously, which is
+    exactly the split-brain this primitive exists to prevent.
+    """
+    raw = os.getenv("WORKER_PG_ORCHESTRATOR_LEASE_SECONDS")
+    if raw is None:
+        return _DEFAULT_LEASE_SECONDS
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"WORKER_PG_ORCHESTRATOR_LEASE_SECONDS={raw!r} is not an integer. "
+            f"Unset it to default to {_DEFAULT_LEASE_SECONDS}s."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"WORKER_PG_ORCHESTRATOR_LEASE_SECONDS={value} must be a positive "
+            f"integer. Unset it to default to {_DEFAULT_LEASE_SECONDS}s."
+        )
+    return value
+
+
+def default_worker_id() -> str:
+    """A stable-per-process candidate id (``host:pid:rand``).
+
+    Stable for the process lifetime so ``renew``/``release`` match the row this
+    process wrote; unique across processes (the random suffix disambiguates two
+    candidates that share a host+pid across container restarts).
+    """
+    return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
+
+
+class LeaderLease:
+    """A single candidate's handle on the ``pg_orchestrator_lock`` lease.
+
+    One instance owns one Postgres connection (lazily opened, self-recovering on
+    a dropped socket / PgBouncer recycle — same posture as ``PgBarrier`` /
+    ``PgQueueClient``). Construct one per candidate process; in tests, inject a
+    connection to race two instances.
+    """
+
+    def __init__(
+        self,
+        worker_id: str,
+        *,
+        lease_seconds: int | None = None,
+        conn: PgConnection | None = None,
+    ) -> None:
+        if not worker_id or not worker_id.strip():
+            # "" is the free sentinel — a candidate must never identify as "".
+            raise ValueError("LeaderLease worker_id must be a non-empty string")
+        self._worker_id = worker_id
+        self._lease_seconds = (
+            lease_seconds if lease_seconds is not None else lease_seconds_from_env()
+        )
+        if self._lease_seconds <= 0:
+            raise ValueError("lease_seconds must be a positive integer")
+        self._conn = conn
+
+    @property
+    def worker_id(self) -> str:
+        return self._worker_id
+
+    def _get_conn(self) -> PgConnection:
+        conn = self._conn
+        if conn is None or conn.closed:
+            conn = create_pg_connection(env_prefix="DB_")
+            self._conn = conn
+        return conn
+
+    @contextlib.contextmanager
+    def _cursor(self) -> Iterator[Any]:
+        """Yield a cursor; commit on success, roll back + recover on error."""
+        conn = self._get_conn()
+        try:
+            with conn.cursor() as cur:
+                yield cur
+            conn.commit()
+        except Exception as exc:
+            conn_dead = isinstance(
+                exc, (psycopg2.OperationalError, psycopg2.InterfaceError)
+            )
+            try:
+                conn.rollback()
+            except Exception:
+                conn_dead = True
+            if conn_dead or conn.closed:
+                with contextlib.suppress(Exception):
+                    conn.close()
+                self._conn = None
+            raise
+
+    def try_acquire(self) -> bool:
+        """Take leadership if the lease is free or stale. Returns whether we won.
+
+        Wins iff ``leader`` is empty (free) OR ``acquired_at`` is older than the
+        lease window (previous holder died). The current holder re-affirming
+        leadership uses :meth:`renew`, not this — a fresh, held lease returns
+        ``False`` here by design.
+        """
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE pg_orchestrator_lock "
+                "   SET leader = %s, acquired_at = now() "
+                " WHERE id = 1 "
+                "   AND (leader = '' "
+                "        OR acquired_at < now() - make_interval(secs => %s)) "
+                "RETURNING id",
+                (self._worker_id, self._lease_seconds),
+            )
+            won = cur.fetchone() is not None
+        if won:
+            logger.info("LeaderLease: %s acquired leadership", self._worker_id)
+        return won
+
+    def renew(self) -> bool:
+        """Extend our lease. Returns ``False`` if we are no longer the leader.
+
+        A ``False`` is the critical safety signal: it means a standby took over
+        while we stalled past the lease window. The caller **must stop acting**
+        immediately — continuing would double-drive recovery against the new
+        leader.
+        """
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE pg_orchestrator_lock SET acquired_at = now() "
+                "WHERE id = 1 AND leader = %s RETURNING id",
+                (self._worker_id,),
+            )
+            still_leader = cur.fetchone() is not None
+        if not still_leader:
+            logger.warning(
+                "LeaderLease: %s renew failed — leadership lost (took over by "
+                "another candidate after a stale lease)",
+                self._worker_id,
+            )
+        return still_leader
+
+    def release(self) -> None:
+        """Free the lease on graceful shutdown so a standby takes over at once.
+
+        Only frees it if we still hold it (``leader = us``); if we already lost
+        leadership this is a no-op, so a late release can't wipe the new holder.
+        """
+        with self._cursor() as cur:
+            cur.execute(
+                "UPDATE pg_orchestrator_lock SET leader = '', acquired_at = now() "
+                "WHERE id = 1 AND leader = %s",
+                (self._worker_id,),
+            )
+        logger.info("LeaderLease: %s released leadership", self._worker_id)
