@@ -30,8 +30,6 @@ class OrganizationMemberSerializer(serializers.ModelSerializer):
     email = serializers.CharField(source="user.email", read_only=True)
     id = serializers.CharField(source="user.id", read_only=True)
     is_admin = serializers.SerializerMethodField()
-    # Lets API clients distinguish platform-key identities from humans
-    # without relying on the email suffix convention.
     is_service_account = serializers.BooleanField(
         source="user.is_service_account", read_only=True
     )

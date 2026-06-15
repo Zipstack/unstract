@@ -86,8 +86,6 @@ class GroupMemberSerializer(serializers.ModelSerializer):
     user_id = serializers.IntegerField(source="user.id", read_only=True)
     email = serializers.CharField(source="user.email", read_only=True)
     display_name = serializers.SerializerMethodField()
-    # Lets API clients distinguish platform-key identities from humans
-    # without relying on the email suffix convention.
     is_service_account = serializers.BooleanField(
         source="user.is_service_account", read_only=True
     )
