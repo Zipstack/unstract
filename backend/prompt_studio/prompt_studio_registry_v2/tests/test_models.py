@@ -2,7 +2,7 @@
 not the export-time snapshot; unlinked (legacy) rows fall back to their own
 share fields.
 
-Covers ``PromptStudioRegistry.list_tools`` and
+Covers ``PromptStudioRegistry.list_tools`` and its enforcement through
 ``ToolInstanceHelper.validate_tool_access``. Admin resolution is patched to a
 deterministic predicate so the tests exercise share derivation, not the
 active auth plugin's role handling.
