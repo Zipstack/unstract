@@ -17,9 +17,9 @@ for the fan-in. The transport for the header tasks themselves is unchanged
 **Wire model.**
 
 1. ``enqueue``: UPSERT one ``pg_barrier_state`` row (``remaining = N``,
-   ``results = []``, ``aborted = false``, ``expires_at = now() + ttl``) — the
-   UPSERT clears any stale state from a prior run reusing the same
-   ``execution_id``. Each header task is dispatched with
+   ``results = []``, ``expires_at = now() + ttl``) — the UPSERT clears any stale
+   state from a prior run reusing the same ``execution_id``. Each header task is
+   dispatched with
    ``.link(barrier_pg_decr_and_check)`` (success) and
    ``.link_error(barrier_pg_abort)`` (failure).
 2. Per-task success: ``barrier_pg_decr_and_check`` runs ONE atomic statement —
