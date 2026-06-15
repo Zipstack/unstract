@@ -7,16 +7,20 @@ from django.db import migrations, models
 def seed_single_row(apps, schema_editor):
     """Seed the one lock row (free: leader='').
 
-    Leader-election does a row ``UPDATE`` — the row must exist for any candidate
-    to ever win. ``get_or_create`` keeps re-runs / squashes idempotent.
+    Leader-election is a pure ``UPDATE ... WHERE id = 1`` — the row must exist
+    for any candidate to ever win; if it's ever absent, every ``try_acquire``
+    silently returns ``False`` forever (permanent leaderlessness, no error). So
+    the future reaper-bootstrap slice should also self-heal with an idempotent
+    ``INSERT ... ON CONFLICT (id) DO NOTHING`` on startup. ``get_or_create``
+    keeps re-runs / squashes idempotent here.
     """
-    PgOrchestratorLock = apps.get_model("pg_queue", "PgOrchestratorLock")
-    PgOrchestratorLock.objects.get_or_create(id=1, defaults={"leader": ""})
+    lock_model = apps.get_model("pg_queue", "PgOrchestratorLock")
+    lock_model.objects.get_or_create(id=1, defaults={"leader": ""})
 
 
 def unseed_single_row(apps, schema_editor):
-    PgOrchestratorLock = apps.get_model("pg_queue", "PgOrchestratorLock")
-    PgOrchestratorLock.objects.filter(id=1).delete()
+    lock_model = apps.get_model("pg_queue", "PgOrchestratorLock")
+    lock_model.objects.filter(id=1).delete()
 
 
 class Migration(migrations.Migration):

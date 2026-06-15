@@ -20,6 +20,7 @@ import contextlib
 import os
 import threading
 from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import psycopg2
 import pytest
@@ -65,6 +66,70 @@ class TestConstruction:
         assert len(wid.split(":")) == 3
         # Two calls differ (random suffix disambiguates same host+pid).
         assert default_worker_id() != default_worker_id()
+
+
+# --- Layer 1b: connection recovery / ownership (mocked, no DB) ---
+
+
+def _mock_conn(*, execute_exc=None, rollback_exc=None, fetch=(1,)):
+    cur = MagicMock()
+    if execute_exc is not None:
+        cur.execute.side_effect = execute_exc
+    cur.fetchone.return_value = fetch
+    cur.rowcount = 1
+    conn = MagicMock()
+    conn.closed = 0
+    conn.cursor.return_value.__enter__.return_value = cur
+    conn.cursor.return_value.__exit__.return_value = False
+    if rollback_exc is not None:
+        conn.rollback.side_effect = rollback_exc
+    return conn
+
+
+_FACTORY_PATH = "queue_backend.pg_queue.leader_election.create_pg_connection"
+
+
+class TestConnectionRecovery:
+    """Owned vs injected recovery branches of ``_cursor`` — the load-bearing
+    self-recovery the docstrings advertise (mirrors PgQueueClient's suite)."""
+
+    def test_owned_conn_recovered_on_operational_error(self, monkeypatch):
+        bad = _mock_conn(execute_exc=psycopg2.OperationalError("dead"))
+        good = _mock_conn(fetch=(1,))
+        factory = MagicMock(side_effect=[bad, good])
+        monkeypatch.setattr(_FACTORY_PATH, factory)
+        lease = LeaderLease("w")  # owns its connection (conn=None)
+        with pytest.raises(psycopg2.OperationalError):
+            lease.try_acquire()
+        bad.rollback.assert_called_once()
+        bad.close.assert_called_once()
+        assert lease._conn is None  # dead owned handle dropped
+        assert lease.try_acquire() is True  # next call reconnects to good
+        assert factory.call_count == 2
+
+    def test_owned_conn_recovered_when_rollback_fails(self, monkeypatch):
+        # Non-Operational error whose rollback also fails → still treated dead.
+        bad = _mock_conn(
+            execute_exc=RuntimeError("boom"),
+            rollback_exc=psycopg2.DatabaseError("socket gone"),
+        )
+        monkeypatch.setattr(_FACTORY_PATH, MagicMock(side_effect=[bad]))
+        lease = LeaderLease("w")
+        with pytest.raises(RuntimeError):
+            lease.try_acquire()
+        bad.close.assert_called_once()
+        assert lease._conn is None
+
+    def test_injected_conn_never_swapped_on_error(self):
+        # The High finding: an injected (caller-owned) connection must NOT be
+        # closed + silently replaced with a DB_-env one on a transient error.
+        bad = _mock_conn(execute_exc=psycopg2.OperationalError("dead"))
+        lease = LeaderLease("w", conn=bad)
+        with pytest.raises(psycopg2.OperationalError):
+            lease.try_acquire()
+        bad.rollback.assert_called_once()
+        bad.close.assert_not_called()
+        assert lease._conn is bad  # caller's connection untouched
 
 
 # --- Layer 2: lease semantics (real Postgres) ---
@@ -159,6 +224,15 @@ class TestLeaderLease:
         assert b.try_acquire() is True
         assert _leader(lock_db.conn) == "b"
 
+    def test_same_holder_reacquire_while_fresh_returns_false(self, lock_db):
+        # The current holder can't re-acquire a fresh lease (the WHERE rejects
+        # even the holder until it goes stale) — renew is the holder's path.
+        a = lock_db.make_lease("a")
+        assert a.try_acquire() is True
+        assert a.try_acquire() is False
+        assert a.renew() is True  # ...but renew keeps it
+        assert _leader(lock_db.conn) == "a"
+
     def test_renew_keeps_leadership(self, lock_db):
         a = lock_db.make_lease("a")
         b = lock_db.make_lease("b")
@@ -197,6 +271,17 @@ class TestLeaderLease:
         b.release()  # b doesn't hold it
         assert _leader(lock_db.conn) == "a"  # a still leader
         assert a.renew() is True
+
+    def test_release_after_takeover_is_noop(self, lock_db):
+        # A stalled leader's late release must not wipe the standby that took
+        # over ("a late release can't wipe the new holder").
+        a = lock_db.make_lease("a", lease_seconds=10)
+        b = lock_db.make_lease("b", lease_seconds=10)
+        assert a.try_acquire() is True
+        _age_lease(lock_db.conn, 30)
+        assert b.try_acquire() is True  # standby took over
+        a.release()  # late release from the deposed leader
+        assert _leader(lock_db.conn) == "b"  # new holder intact
 
     def test_concurrent_acquire_exactly_one_wins(self, lock_db):
         # N candidates, each its own connection, race try_acquire on a free lock.
