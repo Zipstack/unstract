@@ -35,7 +35,8 @@ implementation, gated by ``WORKER_BARRIER_BACKEND`` env flag (default
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Protocol
+import os
+from typing import TYPE_CHECKING, Any, Protocol, TypedDict
 
 from celery import chord
 
@@ -46,6 +47,51 @@ if TYPE_CHECKING:
     from celery.canvas import Signature
 
 logger = logging.getLogger(__name__)
+
+# Shared barrier-key TTL — both the Redis and PG backends bound an orphaned
+# barrier (header tasks that never complete) by the same env var, since only one
+# backend is active per deployment. One definition here prevents drift.
+_DEFAULT_BARRIER_TTL_SECONDS = 6 * 60 * 60  # 6h
+
+
+def barrier_ttl_seconds() -> int:
+    """Barrier TTL from ``WORKER_BARRIER_KEY_TTL_SECONDS`` (default 6h).
+
+    Read at call time so tests can flip it. Invalid / non-positive values raise,
+    matching ``get_barrier()``'s loud-on-misconfig posture — a TTL shorter than
+    execution wall-clock would tear barriers down early (spurious behaviour).
+    """
+    raw = os.getenv("WORKER_BARRIER_KEY_TTL_SECONDS")
+    if raw is None:
+        return _DEFAULT_BARRIER_TTL_SECONDS
+    try:
+        value = int(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"WORKER_BARRIER_KEY_TTL_SECONDS={raw!r} is not an integer. Unset it "
+            f"to default to {_DEFAULT_BARRIER_TTL_SECONDS}s (6h)."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"WORKER_BARRIER_KEY_TTL_SECONDS={value} must be a positive integer. "
+            f"Unset it to default to {_DEFAULT_BARRIER_TTL_SECONDS}s (6h)."
+        )
+    return value
+
+
+class CallbackDescriptor(TypedDict):
+    """Serialisable aggregating-callback spec baked into a barrier link signature.
+
+    Crosses a Celery serialisation boundary (producer → broker → worker), so the
+    four-key contract is typed to catch a typo/rename before it surfaces as a
+    remote ``KeyError`` mid-aggregation. Shared by both the Redis and PG
+    backends. ``fairness_headers`` is ``None`` when the producer passed no key.
+    """
+
+    task_name: str
+    kwargs: dict[str, Any]
+    queue: str
+    fairness_headers: dict[str, Any] | None
 
 
 class Barrier(Protocol):

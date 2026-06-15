@@ -41,6 +41,11 @@ from .barrier import Barrier, BarrierHandle, CeleryChordBarrier
 from .decorator import worker_task
 from .dispatch import dispatch
 from .fairness import FairnessKey
+from .pg_barrier import (
+    PgBarrier,
+    barrier_pg_abort,
+    barrier_pg_decr_and_check,
+)
 from .redis_barrier import (
     RedisDecrBarrier,
     barrier_abort,
@@ -54,10 +59,13 @@ __all__ = [
     "BarrierHandle",
     "CeleryChordBarrier",
     "FairnessKey",
+    "PgBarrier",
     "QueueBackend",
     "RedisDecrBarrier",
     "barrier_abort",
     "barrier_decr_and_check",
+    "barrier_pg_abort",
+    "barrier_pg_decr_and_check",
     "dispatch",
     "get_barrier",
     "select_backend",
@@ -77,6 +85,7 @@ class BarrierBackend(StrEnum):
 
     CHORD = "chord"
     REDIS = "redis"
+    PG = "pg"
 
 
 def get_barrier() -> Barrier:
@@ -110,6 +119,8 @@ def get_barrier() -> Barrier:
         return CeleryChordBarrier()
     if backend is BarrierBackend.REDIS:
         return RedisDecrBarrier()
+    if backend is BarrierBackend.PG:
+        return PgBarrier()
     # Unreachable — StrEnum constructor would have raised above for
     # anything not in the enum. Defensive raise so the type checker
     # sees an exhaustive match.
