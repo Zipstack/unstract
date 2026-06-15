@@ -60,12 +60,15 @@ class TestConstruction:
         with pytest.raises(ValueError):
             LeaderLease("w1", lease_seconds=0, conn=object())
 
-    def test_default_worker_id_shape_and_uniqueness(self):
+    def test_default_worker_id_shape_and_idempotent(self):
+        default_worker_id.cache_clear()
         wid = default_worker_id()
         # host:pid:rand shape, three colon-separated parts.
         assert len(wid.split(":")) == 3
-        # Two calls differ (random suffix disambiguates same host+pid).
-        assert default_worker_id() != default_worker_id()
+        # Idempotent within a process (lru_cache) — repeated calls match, so a
+        # caller can pass it inline without drifting the worker id.
+        assert default_worker_id() == wid
+        default_worker_id.cache_clear()
 
 
 # --- Layer 1b: connection recovery / ownership (mocked, no DB) ---

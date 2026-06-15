@@ -44,6 +44,7 @@ Usage:
 from __future__ import annotations
 
 import contextlib
+import functools
 import logging
 import os
 import socket
@@ -93,12 +94,16 @@ def lease_seconds_from_env() -> int:
     return value
 
 
+@functools.cache
 def default_worker_id() -> str:
-    """A stable-per-process candidate id (``host:pid:rand``).
+    """The process's candidate id (``host:pid:rand``), fixed on first call.
 
-    Stable for the process lifetime so ``renew``/``release`` match the row this
-    process wrote; unique across processes (the random suffix disambiguates two
-    candidates that share a host+pid across container restarts).
+    ``functools.cache`` makes this idempotent: every call within a process returns the
+    same id, so ``renew``/``release`` match the row this process wrote even if a
+    caller passes ``default_worker_id()`` inline in a retry/restart loop rather
+    than capturing it once. The random suffix disambiguates two candidates that
+    share a host+pid across container restarts. Lazy (computed on first call, not
+    at import) so it's fixed after any fork rather than shared across children.
     """
     return f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
 
@@ -224,9 +229,11 @@ class LeaderLease:
             )
             still_leader = cur.fetchone() is not None
         if not still_leader:
+            # Fires both when a held lease was taken over (stale → standby won)
+            # and when a non-holder calls renew — phrase it for both.
             logger.warning(
-                "LeaderLease: %s renew failed — leadership lost (took over by "
-                "another candidate after a stale lease)",
+                "LeaderLease: %s renew failed — not the current leader "
+                "(taken over by another candidate, or the lease was never held)",
                 self._worker_id,
             )
         return still_leader
