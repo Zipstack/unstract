@@ -537,9 +537,8 @@ class ToolInstanceHelper:
         # Try to find the tool in PromptStudioRegistry first
         try:
             if PromptStudioRegistry.objects.filter(pk=tool_uid).exists():
-                # Access derives from the linked project's live share state
-                # (admins resolved inside list_tools), not the export-time
-                # snapshot.
+                # Access derives from the linked project's current share
+                # state, not the export-time snapshot.
                 if (
                     PromptStudioRegistry.objects.list_tools(user)
                     .filter(pk=tool_uid)

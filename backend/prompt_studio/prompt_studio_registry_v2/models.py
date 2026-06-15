@@ -27,16 +27,16 @@ class PromptStudioRegistryModelManager(DefaultOrganizationManagerMixin, BaseMode
         return super().get_queryset()
 
     def list_tools(self, user: User) -> QuerySet[Any]:
-        # Mirror CustomTool.objects.for_user so admins and service accounts
-        # see legacy (unlinked) rows too.
+        # Admins and service accounts see every row, including unlinked
+        # legacy ones — mirrors CustomTool.objects.for_user.
         if getattr(
             user, "is_service_account", False
         ) or OrganizationMemberService.is_user_organization_admin(user):
             return self.get_queryset().distinct("prompt_registry_id")
 
-        # Access follows the linked project's live share state so sharing
-        # applies without re-export; unlinked legacy rows keep their own
-        # share-field checks.
+        # Access derives from the linked project's current share state, so
+        # sharing applies without re-export. Unlinked legacy rows fall back
+        # to their own share fields.
         visible_tools = CustomTool.objects.for_user(user).values("tool_id")
         return (
             self.get_queryset()

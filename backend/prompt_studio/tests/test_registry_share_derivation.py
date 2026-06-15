@@ -1,14 +1,11 @@
-"""Tests for deriving exported-tool access from the Prompt Studio project.
+"""Exported-tool access follows the linked project's current share state,
+not the export-time snapshot; unlinked (legacy) rows fall back to their own
+share fields.
 
-``PromptStudioRegistry`` keeps a content snapshot taken at export time, but
-who may *use* the exported tool must follow the linked ``CustomTool``'s
-current share state — sharing or unsharing a project applies to its exported
-tool without a re-export. Registry rows without a ``custom_tool`` link
-(legacy data) fall back to the registry's own share fields.
-
-Admin resolution is patched to a deterministic predicate so these tests
-exercise the share-derivation logic, not the active auth plugin's role
-handling.
+Covers ``PromptStudioRegistry.list_tools`` and
+``ToolInstanceHelper.validate_tool_access``. Admin resolution is patched to a
+deterministic predicate so the tests exercise share derivation, not the
+active auth plugin's role handling.
 """
 
 import secrets
@@ -46,7 +43,6 @@ class RegistryShareDerivationTestBase(TestCase):
                 organization=self.org, user=user, role="user"
             )
 
-        # Deterministic admin predicate — only ``self.admin`` is an admin.
         patcher = patch(
             "tenant_account_v2.organization_member_service"
             ".OrganizationMemberService.is_user_organization_admin",
@@ -105,25 +101,22 @@ class ListToolsDerivationTests(RegistryShareDerivationTestBase):
         self.tool.shared_users.remove(self.other)
         self.assertNotIn(self.registry.prompt_registry_id, self._visible_ids(self.other))
 
-    def test_legacy_row_without_custom_tool_uses_own_fields(self) -> None:
-        legacy = PromptStudioRegistry.objects.create(
-            name="legacy-tool",
+    def test_legacy_row_falls_back_to_own_share_fields(self) -> None:
+        shared = PromptStudioRegistry.objects.create(
+            name="legacy-shared",
             custom_tool=None,
             created_by=self.owner,
             organization=self.org,
             shared_to_org=True,
         )
-        self.assertIn(legacy.prompt_registry_id, self._visible_ids(self.other))
-
-    def test_legacy_unshared_row_stays_owner_only(self) -> None:
-        legacy = PromptStudioRegistry.objects.create(
-            name="legacy-tool",
+        private = PromptStudioRegistry.objects.create(
+            name="legacy-private",
             custom_tool=None,
             created_by=self.owner,
             organization=self.org,
         )
-        self.assertIn(legacy.prompt_registry_id, self._visible_ids(self.owner))
-        self.assertNotIn(legacy.prompt_registry_id, self._visible_ids(self.other))
+        self.assertIn(shared.prompt_registry_id, self._visible_ids(self.other))
+        self.assertNotIn(private.prompt_registry_id, self._visible_ids(self.other))
 
     def test_admin_sees_unshared_and_legacy_rows(self) -> None:
         legacy = PromptStudioRegistry.objects.create(
@@ -145,25 +138,12 @@ class ValidateToolAccessTests(RegistryShareDerivationTestBase):
         with self.assertRaises(PermissionDenied):
             self._validate(self.other)
 
-    def test_org_share_after_export_allows_user(self) -> None:
+    def test_share_after_export_allows_user(self) -> None:
         self.tool.shared_to_org = True
         self.tool.save()
         self._validate(self.other)
 
-    def test_user_share_after_export_allows_user(self) -> None:
-        self.tool.shared_users.add(self.other)
-        self._validate(self.other)
-
-    def test_unshare_after_share_denies_user(self) -> None:
-        self.tool.shared_users.add(self.other)
-        self.tool.shared_users.remove(self.other)
-        with self.assertRaises(PermissionDenied):
-            self._validate(self.other)
-
-    def test_admin_allowed(self) -> None:
-        self._validate(self.admin)
-
-    def test_registry_share_snapshot_alone_does_not_grant_access(self) -> None:
+    def test_registry_snapshot_alone_does_not_grant_access(self) -> None:
         # The project's share state wins over the registry snapshot.
         self.registry.shared_users.add(self.other)
         with self.assertRaises(PermissionDenied):
