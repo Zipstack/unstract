@@ -223,6 +223,33 @@ CELERY_RESULT_CHORD_RETRY_INTERVAL = float(
 
 INDEXING_FLAG_TTL = int(get_required_setting("INDEXING_FLAG_TTL"))
 NOTIFICATION_TIMEOUT = int(get_required_setting("NOTIFICATION_TIMEOUT", "5"))
+# Default batching window (seconds) for clubbing BATCHED notifications — also the
+# flush cadence. Default 300 (5 min). This is only the fallback default; each org
+# can override it from Platform Settings (Configuration key
+# NOTIFICATION_CLUB_INTERVAL), read per-org at enqueue time. Buffer rows
+# precompute flush_after at enqueue, so changes only affect rows enqueued after.
+NOTIFICATION_CLUB_INTERVAL = int(os.environ.get("NOTIFICATION_CLUB_INTERVAL", "300"))
+# Retention for terminal NotificationBuffer rows (DISPATCHED / DEAD_LETTER).
+# PENDING rows are never GC'd regardless of age.
+NOTIFICATION_BUFFER_RETENTION_DAYS = int(
+    os.environ.get("NOTIFICATION_BUFFER_RETENTION_DAYS", "7")
+)
+# Lease (seconds) for a buffer row claimed for dispatch (status=SENDING). If a row
+# stays SENDING longer than this — e.g. the backend crashed between committing the
+# claim and publishing the Celery task — the flush reaper returns it to PENDING for
+# re-dispatch. Must exceed the worst-case retry duration (max_retries * retry_delay)
+# so in-flight dispatches are never reclaimed mid-flight. Default 900 (15 min).
+NOTIFICATION_DISPATCH_LEASE_SECONDS = int(
+    os.environ.get("NOTIFICATION_DISPATCH_LEASE_SECONDS", "900")
+)
+# Hard ceiling on how many times a buffer row may be claimed for dispatch. Each
+# SENDING claim increments NotificationBuffer.dispatch_attempts; once it reaches
+# this cap the row is dead-lettered instead of re-dispatched. Bounds the reaper
+# reclaim loop so a row whose terminal callback never fires (e.g. a crash that
+# recurs in the dispatch->callback window) cannot be redelivered forever.
+NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
+    os.environ.get("NOTIFICATION_MAX_DISPATCH_ATTEMPTS", "5")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
