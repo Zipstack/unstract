@@ -48,6 +48,11 @@ def _is_org_admin(request: Request) -> bool:
     return is_org_admin(request.user)
 
 
+def _is_service_account(request: Request) -> bool:
+    """Whether the request user is a platform-key service account."""
+    return getattr(request.user, "is_service_account", False)
+
+
 def _is_admin_or_service_account(request: Request) -> bool:
     """Write gate for group management.
 
@@ -55,9 +60,7 @@ def _is_admin_or_service_account(request: Request) -> bool:
     controls (see ShareAuthorizationService) and platform-key automation needs
     to manage groups and memberships.
     """
-    if getattr(request.user, "is_service_account", False):
-        return True
-    return _is_org_admin(request)
+    return _is_service_account(request) or _is_org_admin(request)
 
 
 class IsOrgAdminForWrite(BasePermission):
