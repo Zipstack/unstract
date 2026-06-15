@@ -70,7 +70,7 @@ def get_organization(request: Request) -> Response:
         )
 
     except Exception as error:
-        logger.error(f"Error while get User : {error}")
+        logger.error("Error while get User : %s", error)
         return Response(
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             data={"message": "Internal Error"},

@@ -29,7 +29,10 @@ logger = logging.getLogger(__name__)
 # Only apply the patch on the exact litellm version it was written for.
 # Any other version (newer or older) skips the patch with a visible
 # warning so engineers know to verify compatibility.
-_PATCHED_LITELLM_VERSION = "1.83.10"
+# Verified against litellm 1.85.1: async_embedding() at
+# litellm/llms/cohere/embed/handler.py still does not forward `timeout`
+# to client.post() when a pre-constructed client is passed in (the bug).
+_PATCHED_LITELLM_VERSION = "1.85.1"
 _litellm_version = importlib.metadata.version("litellm")
 _SKIP_PATCH = Version(_litellm_version) != Version(_PATCHED_LITELLM_VERSION)
 if _SKIP_PATCH:

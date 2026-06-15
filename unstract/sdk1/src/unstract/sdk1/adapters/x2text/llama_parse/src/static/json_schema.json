@@ -18,10 +18,10 @@
             "default": "",
             "description": "Provide the token (API Key) of the Llama Parse server"
         },
-      "url": {
+      "base_url": {
         "type": "string",
-        "title": "URL",
-        "format": "url",
+        "title": "Base URL",
+        "format": "uri",
         "default": "https://api.cloud.llamaindex.ai",
         "description": "Provide the Base URL of llama Parse server."
       },

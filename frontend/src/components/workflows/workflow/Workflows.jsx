@@ -24,6 +24,7 @@ import {
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
+import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { workflowService } from "./workflow-service";
 
@@ -33,6 +34,7 @@ function Workflows() {
   const navigate = useNavigate();
   const location = useLocation();
   const projectApiService = workflowService();
+  const groupsApi = groupsService();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { count, isLoading, fetchCount } = usePromptStudioStore();
@@ -54,6 +56,7 @@ function Workflows() {
   const [sharePermissionEdit, setSharePermissionEdit] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
 
   const { setAlertDetails } = useAlertStore();
   const sessionDetails = useSessionStore((state) => state?.sessionDetails);
@@ -230,10 +233,12 @@ function Workflows() {
     setShareLoading(true);
 
     try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        projectApiService.getAllUsers(),
-        projectApiService.getSharedUsers(workflow.id),
-      ]);
+      const [usersResponse, sharedUsersResponse, groupsResponse] =
+        await Promise.all([
+          projectApiService.getAllUsers(),
+          projectApiService.getSharedUsers(workflow.id),
+          groupsApi.listGroups(),
+        ]);
 
       const userList =
         usersResponse?.data?.members?.map((member) => ({
@@ -243,6 +248,14 @@ function Workflows() {
 
       // Pass the complete user list - SharePermission component will handle filtering
       setAllUsers(userList);
+      setAllGroups(
+        Array.isArray(groupsResponse?.data)
+          ? groupsResponse.data.map((g) => ({
+              id: g.id,
+              name: g.name,
+            }))
+          : [],
+      );
       setSelectedWorkflow(sharedUsersResponse.data);
       setShareOpen(true);
     } catch (err) {
@@ -254,20 +267,28 @@ function Workflows() {
     }
   };
 
-  const onShare = async (selectedUsers, workflow, shareWithEveryone) => {
+  const onShare = async (
+    selectedUsers,
+    workflow,
+    shareWithEveryone,
+    selectedGroups = [],
+  ) => {
     setShareLoading(true);
     try {
       await projectApiService.updateSharing(
         workflow.id,
         selectedUsers,
         shareWithEveryone,
+        selectedGroups,
       );
-      setShareOpen(false);
       setAlertDetails({
         type: "success",
         content: "Workflow sharing updated successfully",
       });
-      getProjectList(); // Refresh the list
+      getProjectList();
+      // Close only on success; keep the modal open on failure so the user
+      // can see the rejected entries and retry.
+      setShareOpen(false);
     } catch (error) {
       setAlertDetails(
         handleException(error, "Unable to update workflow sharing"),
@@ -376,6 +397,7 @@ function Workflows() {
               permissionEdit={sharePermissionEdit}
               loading={shareLoading}
               allUsers={allUsers}
+              allGroups={allGroups}
               onApply={onShare}
               isSharableToOrg={true}
             />

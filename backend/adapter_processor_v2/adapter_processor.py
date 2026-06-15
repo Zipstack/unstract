@@ -256,7 +256,7 @@ class AdapterProcessor:
     @staticmethod
     def get_adapter_by_name_and_type(
         adapter_type: AdapterTypes,
-        adapter_name: str | None = None,
+        adapter_name: str,
     ) -> AdapterInstance:
         """Get the adapter instance by its name and type.
 
@@ -270,20 +270,19 @@ class AdapterProcessor:
         Raises:
         - AdapterNotFound: If the adapter is not found.
         """
+        if not adapter_name:
+            raise AdapterNotFound(
+                f"adapter_name is required to look up an adapter of type "
+                f"'{adapter_type.value}'"
+            )
         try:
-            if adapter_name:
-                adapter: AdapterInstance = AdapterInstance.objects.get(
-                    adapter_name=adapter_name, adapter_type=adapter_type.value
-                )
-            else:
-                adapter = AdapterInstance.objects.get(
-                    adapter_type=adapter_type.value, is_default=True
-                )
+            adapter: AdapterInstance = AdapterInstance.objects.get(
+                adapter_name=adapter_name, adapter_type=adapter_type.value
+            )
         except AdapterInstance.DoesNotExist:
             error_msg = (
-                f"Couldn't find adapter with name '{adapter_name}' and type '{adapter_type.value}'"
-                if adapter_name
-                else f"Couldn't find default adapter with type '{adapter_type.value}'"
+                f"Couldn't find adapter with name '{adapter_name}' "
+                f"and type '{adapter_type.value}'"
             )
             logger.error(error_msg)
             raise AdapterNotFound(error_msg)

@@ -5,10 +5,10 @@ import ReactDOM from "react-dom/client";
 
 import { GenericLoader } from "./components/generic-loader/GenericLoader";
 import { LazyLoader } from "./components/widgets/lazy-loader/LazyLoader.jsx";
+import config from "./config.js";
 import { getDeployment } from "./helpers/PostHogDeployment.js";
 import { SocketProvider } from "./helpers/SocketContext.js";
 import "./index.css";
-import config from "./config.js";
 
 // Runtime config (containerized deployments) wins when it carries a
 // non-empty value; the entrypoint emits "" for unset env vars, which
