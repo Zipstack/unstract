@@ -419,11 +419,8 @@ class AuthenticationController:
         return is_removed
 
     def _ensure_not_last_admin_demotion(self, email: str, new_role: str) -> None:
-        # Org must always retain at least one admin.
-        # Uses is_admin_by_role() so custom auth plugins with non-standard role
-        # strings are handled correctly.
-        # Note: no DB lock — two concurrent demotions of different admins could
-        # both pass this check. Accepted as low risk given actors are trusted admins.
+        # Block demoting the only admin so the org never loses all admins.
+        # is_admin_by_role() defers to the active auth plugin's role semantics.
         if self.is_admin_by_role(new_role):
             return
         target = OrganizationMemberService.get_user_by_email(email=email)
