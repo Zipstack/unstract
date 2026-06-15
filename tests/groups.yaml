@@ -88,7 +88,7 @@ groups:
       - dashboard_metrics/tests
       - file_management/tests
       - project/tests
-      - prompt_studio/tests
+      - prompt_studio/prompt_studio_registry_v2/tests
       - tenant_account_v2/tests
       - usage_v2/tests
       - utils/tests
