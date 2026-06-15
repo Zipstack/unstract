@@ -24,28 +24,34 @@ for the fan-in. The transport for the header tasks themselves is unchanged
    ``.link_error(barrier_pg_abort)`` (failure).
 2. Per-task success: ``barrier_pg_decr_and_check`` runs ONE atomic statement —
    ``UPDATE … SET remaining = remaining - 1, results = results ||
-   jsonb_build_array(result) … RETURNING remaining, results, aborted``. The row
-   lock serialises concurrent decrements, so exactly one task observes
-   ``remaining = 0``; that task dispatches the callback with the aggregated
-   results, then deletes the row. (No Lua — a single ``UPDATE … RETURNING`` is
-   atomic in Postgres.)
-3. Per-task failure: ``barrier_pg_abort`` runs as a ``link_error``. It claims
-   the abort exactly once (``UPDATE … SET aborted WHERE NOT aborted RETURNING``)
-   to collapse N concurrent failures into one cleanup, then deletes the row.
-   Mirrors chord's default error semantic (callback not invoked on header
-   failure).
+   jsonb_build_array(result) … RETURNING remaining, results``. The row lock
+   serialises concurrent decrements, so exactly one task observes ``remaining =
+   0``; that task dispatches the callback with the aggregated results, then
+   deletes the row. (No Lua — a single ``UPDATE … RETURNING`` is atomic in
+   Postgres. The guarantee relies on each decrement committing in its own
+   transaction — do NOT batch decrements into a shared transaction, or the row
+   lock would hold and the serialisation that makes exactly one see 0 breaks.)
+3. Per-task failure: ``barrier_pg_abort`` runs as a ``link_error``. It tears the
+   barrier down with ONE atomic statement (``DELETE … RETURNING`` in a single
+   transaction): the row's existence is the dedup token, so N concurrent
+   failures collapse to a single cleanup, and a crash mid-abort rolls back
+   (leaving the row for a sibling to retry) — there is no claimed-but-not-deleted
+   window. Mirrors chord's default error semantic (callback not invoked on
+   header failure).
 4. Orphan bound: like the Redis backend's key TTL, ``expires_at`` bounds a
-   barrier whose header tasks never complete. New ``enqueue`` calls sweep
-   past-expiry rows opportunistically; a periodic sweep is the proper backstop.
+   barrier whose header tasks never complete. **No expiry reclaim ships in this
+   phase** — a periodic sweep job (keyed on ``pg_barrier_expires_idx``) is the
+   intended backstop and is future work.
 
-**Failure-masking guards.** The decrement reads ``aborted`` in the same
-statement and refuses to fire if the barrier was aborted (closes the hole where
-an abort that set the flag but failed to delete could let in-flight successes
-DECR to 0 and fire with partial results). A decrement that finds no row (already
-torn down) or drives ``remaining`` negative (expiry/replay) cleans up without
-firing. The callback is dispatched BEFORE the row is deleted, so a callback
-``apply_async`` failure leaves the row (and its expiry) in place rather than
-stranding the execution.
+**Failure-masking guards.** The callback can only fire when ``remaining`` hits
+exactly 0, which requires ALL N header tasks to have decremented — i.e. all
+succeeded. A failed task runs the abort (which deletes the row) instead of a
+decrement, so the count never reaches 0 and a late in-flight decrement finds no
+row → abandons. A decrement that drives ``remaining`` negative (expiry/replay)
+also cleans up without firing. The callback is dispatched BEFORE the row is
+deleted, so a callback ``apply_async`` failure leaves the row (and its expiry)
+in place rather than stranding the execution; the post-dispatch delete is
+best-effort (logged, not raised) since the callback has already fired.
 """
 
 from __future__ import annotations
@@ -53,14 +59,14 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import os
 import threading
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
 import psycopg2
 
+from .barrier import CallbackDescriptor, barrier_ttl_seconds
 from .decorator import worker_task
 from .fairness import FairnessKey
 from .handle import BarrierHandle
@@ -71,34 +77,6 @@ if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
 
 logger = logging.getLogger(__name__)
-
-_DEFAULT_TTL_SECONDS = 6 * 60 * 60  # 6h — mirrors RedisDecrBarrier's key TTL
-
-
-def _ttl_seconds() -> int:
-    """Barrier-row TTL from ``WORKER_BARRIER_KEY_TTL_SECONDS`` (default 6h).
-
-    Shares the env var with the Redis backend (only one backend is active per
-    deployment). Read at call time so tests can flip it. Invalid/non-positive
-    values raise, matching the loud-on-misconfig posture of ``get_barrier()`` —
-    a TTL shorter than execution wall-clock would tear barriers down early.
-    """
-    raw = os.getenv("WORKER_BARRIER_KEY_TTL_SECONDS")
-    if raw is None:
-        return _DEFAULT_TTL_SECONDS
-    try:
-        value = int(raw)
-    except ValueError as exc:
-        raise ValueError(
-            f"WORKER_BARRIER_KEY_TTL_SECONDS={raw!r} is not an integer. Unset "
-            f"it to default to {_DEFAULT_TTL_SECONDS}s (6h)."
-        ) from exc
-    if value <= 0:
-        raise ValueError(
-            f"WORKER_BARRIER_KEY_TTL_SECONDS={value} must be positive. Unset it "
-            f"to default to {_DEFAULT_TTL_SECONDS}s (6h)."
-        )
-    return value
 
 
 # Thread-local owned connection (prefork → one per child; thread-local keeps it
@@ -142,18 +120,6 @@ def _delete_barrier(execution_id: str) -> None:
         cur.execute(
             "DELETE FROM pg_barrier_state WHERE execution_id = %s", (execution_id,)
         )
-
-
-class CallbackDescriptor(TypedDict):
-    """Serialisable callback spec baked into the link signature (mirrors the
-    Redis backend's). Crosses a Celery serialisation boundary, so the contract
-    is typed to catch typos before they surface as a remote ``KeyError``.
-    """
-
-    task_name: str
-    kwargs: dict[str, Any]
-    queue: str
-    fairness_headers: dict[str, Any] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,23 +182,22 @@ class PgBarrier:
                 "queue": callback_queue,
                 "fairness_headers": fairness_headers,
             }
-            ttl_seconds = _ttl_seconds()
+            ttl_seconds = barrier_ttl_seconds()
 
             with _cursor() as cur:
-                # Opportunistic orphan sweep (cheap; the periodic sweep is the
-                # real backstop). Runs before the UPSERT so a stale row for THIS
-                # execution_id is overwritten by the UPSERT, not the sweep.
-                cur.execute("DELETE FROM pg_barrier_state WHERE expires_at < now()")
                 # UPSERT clears any leftover state from a prior run with this id.
+                # No inline expiry sweep here — an unbounded global DELETE on the
+                # enqueue hot path risks lock contention / deadlocks between
+                # concurrent enqueues; orphan reclaim is a separate (future)
+                # periodic sweep keyed on pg_barrier_expires_idx.
                 cur.execute(
                     "INSERT INTO pg_barrier_state "
-                    "(execution_id, remaining, results, aborted, created_at, expires_at) "
-                    "VALUES (%s, %s, '[]'::jsonb, false, now(), "
+                    "(execution_id, remaining, results, created_at, expires_at) "
+                    "VALUES (%s, %s, '[]'::jsonb, now(), "
                     "        now() + make_interval(secs => %s)) "
                     "ON CONFLICT (execution_id) DO UPDATE SET "
                     "  remaining = EXCLUDED.remaining, results = '[]'::jsonb, "
-                    "  aborted = false, created_at = now(), "
-                    "  expires_at = EXCLUDED.expires_at",
+                    "  created_at = now(), expires_at = EXCLUDED.expires_at",
                     (execution_id, len(header_tasks), ttl_seconds),
                 )
 
@@ -311,37 +276,42 @@ def barrier_pg_decr_and_check(
 
     # jsonb_build_array(...) appends exactly one element regardless of the
     # result's shape (``||`` would concatenate if the result were itself a list).
-    with _cursor() as cur:
-        cur.execute(
-            "UPDATE pg_barrier_state "
-            "   SET remaining = remaining - 1, "
-            "       results = results || jsonb_build_array(%s::jsonb) "
-            " WHERE execution_id = %s "
-            "RETURNING remaining, results, aborted",
-            (result_json, execution_id),
+    try:
+        with _cursor() as cur:
+            cur.execute(
+                "UPDATE pg_barrier_state "
+                "   SET remaining = remaining - 1, "
+                "       results = results || jsonb_build_array(%s::jsonb) "
+                " WHERE execution_id = %s "
+                "RETURNING remaining, results",
+                (result_json, execution_id),
+            )
+            row = cur.fetchone()
+    except psycopg2.DataError:
+        # json.dumps accepts a few bytes jsonb rejects — notably a NUL (0x00)
+        # in a string. The cast above then raises, the decrement never lands, and
+        # the barrier would hang to expires_at (~6h). Tear it down so the
+        # execution fails fast and visibly instead.
+        logger.exception(
+            f"[exec:{execution_id}] Header result rejected by jsonb (e.g. a NUL "
+            f"byte) — tearing down the barrier so the execution fails fast "
+            f"rather than hanging until expiry."
         )
-        row = cur.fetchone()
+        with contextlib.suppress(Exception):
+            _delete_barrier(execution_id)
+        raise
 
     if row is None:
-        # Barrier already torn down (aborted+deleted, or expiry-swept).
+        # Barrier already torn down (a header failed → abort deleted the row, or
+        # an expiry sweep removed it). No callback.
         logger.error(
             f"[exec:{execution_id}] PgBarrier decrement found no row — barrier "
             f"already torn down. No callback dispatched."
         )
         return {"status": "abandoned", "remaining": None}
 
-    remaining, all_results, aborted = int(row[0]), row[1], bool(row[2])
+    remaining, all_results = int(row[0]), row[1]
     logger.info(f"[exec:{execution_id}] PgBarrier decrement → remaining={remaining}")
-
-    if aborted:
-        # A header task already failed; never fire with partial results even if
-        # the abort's DELETE had not yet run. Clean up.
-        _delete_barrier(execution_id)
-        logger.error(
-            f"[exec:{execution_id}] PgBarrier was aborted — not firing callback; "
-            f"cleaning up barrier state."
-        )
-        return {"status": "aborted", "remaining": remaining}
 
     if remaining > 0:
         return {"status": "pending", "remaining": remaining}
@@ -357,23 +327,37 @@ def barrier_pg_decr_and_check(
         return {"status": "abandoned", "remaining": remaining}
 
     # remaining == 0: we are the last task. psycopg2 decodes the jsonb array to
-    # a Python list already — no per-element json.loads needed.
+    # a Python list already — no per-element json.loads needed. Build the kwargs
+    # explicitly (headers only when truthy) — clearer than an inline ** spread,
+    # matching CeleryChordBarrier's idiom.
+    signature_kwargs: dict[str, Any] = {
+        "args": [all_results],
+        "kwargs": callback_descriptor["kwargs"],
+        "queue": callback_descriptor["queue"],
+    }
+    if callback_descriptor.get("fairness_headers"):
+        signature_kwargs["headers"] = callback_descriptor["fairness_headers"]
     callback_signature = current_app.signature(
-        callback_descriptor["task_name"],
-        args=[all_results],
-        kwargs=callback_descriptor["kwargs"],
-        queue=callback_descriptor["queue"],
-        **(
-            {"headers": callback_descriptor["fairness_headers"]}
-            if callback_descriptor.get("fairness_headers")
-            else {}
-        ),
+        callback_descriptor["task_name"], **signature_kwargs
     )
     # Dispatch FIRST; delete the row only after dispatch succeeds, so a callback
     # apply_async failure leaves the row (and its expiry) in place rather than
     # stranding the execution with no state and no recovery path.
     callback_result = callback_signature.apply_async()
-    _delete_barrier(execution_id)
+    # The post-dispatch delete must not mask the successful dispatch: the callback
+    # already fired, so a delete error here is logged (not raised) — the row
+    # lingers until expiry rather than re-running the callback. No double-fire is
+    # possible: this is the last decrement (remaining hit 0) and max_retries=0, so
+    # the link task is never replayed.
+    try:
+        _delete_barrier(execution_id)
+    except Exception:
+        logger.exception(
+            f"[exec:{execution_id}] Barrier callback dispatched "
+            f"(callback_task_id={callback_result.id}) but the post-dispatch row "
+            f"delete failed — row will be reclaimed at expiry. Callback NOT "
+            f"re-run (max_retries=0)."
+        )
 
     logger.info(
         f"[exec:{execution_id}] Barrier complete — fired callback "
@@ -399,11 +383,14 @@ def barrier_pg_abort(
     """``link_error`` callback: a header task failed → tear down barrier state.
 
     Mirrors chord's default error semantic (callback not invoked on header
-    failure). Claims the abort exactly once via ``UPDATE … SET aborted WHERE NOT
-    aborted RETURNING`` so N concurrent header-task failures collapse to a single
-    cleanup + error log, then deletes the row. The ``aborted`` flag is also read
-    by the decrement path, so even if this DELETE fails the in-flight successful
-    tasks won't fire the callback with partial results.
+    failure). The claim and the teardown are a SINGLE atomic statement — a
+    ``DELETE … RETURNING`` in one transaction. The row's existence is the dedup
+    token: the first abort deletes it (and so "wins"); every concurrent sibling
+    finds nothing to delete and short-circuits. Because it's one transaction, a
+    crash/failure mid-abort rolls the whole thing back (the row survives) so a
+    sibling can retry — there is no "claimed-but-not-deleted" window. A late
+    in-flight successful decrement then finds no row and abandons (no partial
+    fire).
 
     The ``request``/``exc``/``traceback`` defaults keep the old-style
     ``errback(task_id)`` invocation (mixed-version deploy / ``bind=True``) from
@@ -413,9 +400,10 @@ def barrier_pg_abort(
     del request, exc, traceback  # logged by the outer task; unused here
     with _cursor() as cur:
         cur.execute(
-            "UPDATE pg_barrier_state SET aborted = true "
-            " WHERE execution_id = %s AND NOT aborted "
-            "RETURNING execution_id",
+            "WITH claimed AS ("
+            "    DELETE FROM pg_barrier_state WHERE execution_id = %s "
+            "    RETURNING execution_id"
+            ") SELECT execution_id FROM claimed",
             (execution_id,),
         )
         claimed = cur.fetchone() is not None
@@ -424,7 +412,6 @@ def barrier_pg_abort(
         # Another failure already aborted this execution (or it's already gone).
         return {"status": "already_aborted", "execution_id": execution_id}
 
-    _delete_barrier(execution_id)
     logger.error(
         f"[exec:{execution_id}] PgBarrier aborted — a header task failed; "
         f"barrier state cleaned up (aggregating callback will not fire)."

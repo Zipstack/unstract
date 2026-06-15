@@ -59,19 +59,20 @@ class TestPgBarrierProtocolShape:
 
 
 class TestTtlEnv:
+    # PgBarrier shares barrier.barrier_ttl_seconds() with the Redis backend.
     def test_default_is_six_hours(self, monkeypatch):
         monkeypatch.delenv("WORKER_BARRIER_KEY_TTL_SECONDS", raising=False)
-        assert pg_barrier._ttl_seconds() == 6 * 60 * 60
+        assert barrier_mod.barrier_ttl_seconds() == 6 * 60 * 60
 
     def test_overridable(self, monkeypatch):
         monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "120")
-        assert pg_barrier._ttl_seconds() == 120
+        assert barrier_mod.barrier_ttl_seconds() == 120
 
     @pytest.mark.parametrize("bad", ["abc", "0", "-5"])
     def test_invalid_raises(self, monkeypatch, bad):
         monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", bad)
         with pytest.raises(ValueError, match="WORKER_BARRIER_KEY_TTL_SECONDS"):
-            pg_barrier._ttl_seconds()
+            barrier_mod.barrier_ttl_seconds()
 
 
 class TestEnqueueShortCircuits:
@@ -133,8 +134,7 @@ def barrier_db():
 def _row(conn, execution_id):
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT remaining, results, aborted FROM pg_barrier_state "
-            "WHERE execution_id = %s",
+            "SELECT remaining, results FROM pg_barrier_state WHERE execution_id = %s",
             (execution_id,),
         )
         return cur.fetchone()
@@ -151,8 +151,7 @@ class TestPgBarrierEnqueue:
             app_instance=None,
         )
         assert handle.id == "exec-A"
-        remaining, results, aborted = _row(barrier_db, "exec-A")
-        assert (remaining, results, aborted) == (3, [], False)
+        assert _row(barrier_db, "exec-A") == (3, [])
         for _, cloned in tasks:
             cloned.link.assert_called_once()
             cloned.link_error.assert_called_once()
@@ -172,12 +171,13 @@ class TestPgBarrierEnqueue:
         assert FAIRNESS_HEADER_NAME in headers
 
     def test_upsert_overwrites_stale_state(self, barrier_db):
-        # A prior run left a row at remaining=1, aborted; the new enqueue resets.
+        # A prior run left a row at remaining=1 with results; the new enqueue
+        # resets it.
         with barrier_db.cursor() as cur:
             cur.execute(
                 "INSERT INTO pg_barrier_state "
-                "(execution_id, remaining, results, aborted, created_at, expires_at) "
-                "VALUES ('exec-R', 1, '[1,2]'::jsonb, true, now(), now() + interval '1h')"
+                "(execution_id, remaining, results, created_at, expires_at) "
+                "VALUES ('exec-R', 1, '[1,2]'::jsonb, now(), now() + interval '1h')"
             )
         task, _ = _mock_header_task()
         PgBarrier().enqueue(
@@ -187,23 +187,7 @@ class TestPgBarrierEnqueue:
             callback_queue="general",
             app_instance=None,
         )
-        assert _row(barrier_db, "exec-R") == (2, [], False)
-
-    def test_opportunistic_expiry_sweep(self, barrier_db):
-        with barrier_db.cursor() as cur:
-            cur.execute(
-                "INSERT INTO pg_barrier_state "
-                "(execution_id, remaining, results, aborted, created_at, expires_at) "
-                "VALUES ('exec-old', 5, '[]'::jsonb, false, now(), now() - interval '1s')"
-            )
-        PgBarrier().enqueue(
-            [_mock_header_task()[0]],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-new"},
-            callback_queue="general",
-            app_instance=None,
-        )
-        assert _row(barrier_db, "exec-old") is None  # swept
+        assert _row(barrier_db, "exec-R") == (2, [])
 
     def test_mid_loop_dispatch_failure_deletes_row(self, barrier_db):
         good, _ = _mock_header_task()
@@ -220,13 +204,13 @@ class TestPgBarrierEnqueue:
         assert _row(barrier_db, "exec-D") is None  # cleaned up
 
 
-def _seed(conn, execution_id, remaining, *, aborted=False, results="[]"):
+def _seed(conn, execution_id, remaining, *, results="[]"):
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO pg_barrier_state "
-            "(execution_id, remaining, results, aborted, created_at, expires_at) "
-            "VALUES (%s, %s, %s::jsonb, %s, now(), now() + interval '1h')",
-            (execution_id, remaining, results, aborted),
+            "(execution_id, remaining, results, created_at, expires_at) "
+            "VALUES (%s, %s, %s::jsonb, now(), now() + interval '1h')",
+            (execution_id, remaining, results),
         )
 
 
@@ -237,7 +221,7 @@ class TestDecrAndCheck:
             {"f": 1}, execution_id="exec-P", callback_descriptor=_CALLBACK
         )
         assert out["status"] == "pending"
-        remaining, results, _ = _row(barrier_db, "exec-P")
+        remaining, results = _row(barrier_db, "exec-P")
         assert remaining == 2
         assert results == [{"f": 1}]
 
@@ -253,15 +237,64 @@ class TestDecrAndCheck:
         assert sig.call_args.kwargs["args"] == [[{"f": "a"}, {"f": "b"}]]
         assert _row(barrier_db, "exec-C") is None  # row deleted after dispatch
 
-    def test_aborted_does_not_fire(self, barrier_db):
-        _seed(barrier_db, "exec-AB", 1, aborted=True)
+    def test_complete_path_passes_fairness_header(self, barrier_db):
+        _seed(barrier_db, "exec-FH", 1)
+        descriptor = {**_CALLBACK, "fairness_headers": {FAIRNESS_HEADER_NAME: {"o": 1}}}
+        with patch("celery.current_app.signature") as sig:
+            sig.return_value.apply_async.return_value = MagicMock(id="cb")
+            barrier_pg_decr_and_check(
+                {"f": 1}, execution_id="exec-FH", callback_descriptor=descriptor
+            )
+        assert sig.call_args.kwargs["headers"] == {FAIRNESS_HEADER_NAME: {"o": 1}}
+
+    def test_callback_dispatch_failure_preserves_row(self, barrier_db):
+        # The central failure-masking invariant: dispatch happens BEFORE the row
+        # is deleted, so an apply_async failure leaves the row in place (reclaimed
+        # by expiry) — guards against a delete-before-dispatch reorder.
+        _seed(barrier_db, "exec-CF", 1)
+        with patch("celery.current_app.signature") as sig:
+            sig.return_value.apply_async.side_effect = RuntimeError("broker down")
+            with pytest.raises(RuntimeError):
+                barrier_pg_decr_and_check(
+                    {"f": 1}, execution_id="exec-CF", callback_descriptor=_CALLBACK
+                )
+        assert _row(barrier_db, "exec-CF") is not None  # row survives for TTL reclaim
+
+    def test_list_result_appended_as_single_element(self, barrier_db):
+        # jsonb_build_array() must append a list-shaped result as ONE element
+        # (plain `||` would concatenate it). Guards that choice.
+        _seed(barrier_db, "exec-L", 2)
+        barrier_pg_decr_and_check(
+            [1, 2], execution_id="exec-L", callback_descriptor=_CALLBACK
+        )
+        remaining, results = _row(barrier_db, "exec-L")
+        assert remaining == 1
+        assert results == [[1, 2]]  # one element that is the list, not [1, 2]
+
+    def test_nul_byte_result_tears_down_barrier(self, barrier_db):
+        # A NUL byte survives json.dumps but jsonb rejects it. The barrier must
+        # be torn down (fail fast) rather than hang to expiry.
+        _seed(barrier_db, "exec-NB", 1)
+        with pytest.raises(psycopg2.DataError):
+            barrier_pg_decr_and_check(
+                {"f": "bad\x00value"},
+                execution_id="exec-NB",
+                callback_descriptor=_CALLBACK,
+            )
+        assert _row(barrier_db, "exec-NB") is None  # torn down, not left hanging
+
+    def test_decrement_after_abort_does_not_fire(self, barrier_db):
+        # The new failure-masking model: an aborted barrier is GONE (abort
+        # deletes the row), so a late in-flight decrement finds no row and never
+        # fires — even when it would otherwise have hit remaining == 0.
+        _seed(barrier_db, "exec-DA", 1)
+        barrier_pg_abort(execution_id="exec-DA")  # header failed → row deleted
         with patch("celery.current_app.signature") as sig:
             out = barrier_pg_decr_and_check(
-                {"f": 1}, execution_id="exec-AB", callback_descriptor=_CALLBACK
+                {"f": 1}, execution_id="exec-DA", callback_descriptor=_CALLBACK
             )
-        assert out["status"] == "aborted"
+        assert out["status"] == "abandoned"
         sig.assert_not_called()
-        assert _row(barrier_db, "exec-AB") is None
 
     def test_negative_remaining_does_not_fire(self, barrier_db):
         _seed(barrier_db, "exec-N", 0)  # decrement → -1
@@ -310,30 +343,64 @@ class TestAbort:
         assert barrier_pg_abort.name == "barrier_pg_abort"
 
 
-# --- Layer 3: atomicity (two connections race the decrement SQL) ---
+    def test_max_retries_zero(self):
+        # A Celery retry would replay the decrement and corrupt the count.
+        assert barrier_pg_decr_and_check.max_retries == 0
+        assert barrier_pg_abort.max_retries == 0
 
 
-class TestDecrementAtomicity:
-    def test_exactly_one_reader_sees_zero(self, barrier_db):
-        # Two header tasks both decrement a remaining=2 barrier concurrently;
-        # the row lock serialises them so exactly one observes remaining == 0.
+# --- Layer 3: atomicity through the real task + DB constraint ---
+
+
+class TestDecrementAtomicityThroughTask:
+    def test_exactly_one_task_fires_the_callback(self, barrier_db):
+        # Two header-task links decrement a remaining=2 barrier concurrently,
+        # each through barrier_pg_decr_and_check itself (not raw SQL). The row
+        # lock serialises them so exactly one returns "complete" and the callback
+        # is dispatched exactly once — the real single-fire guarantee.
+        import threading
+
         _seed(barrier_db, "exec-Z", 2)
-        conn_b = create_pg_connection(env_prefix="TEST_DB_")
-        conn_b.autocommit = True
-        sql = (
-            "UPDATE pg_barrier_state "
-            "SET remaining = remaining - 1 WHERE execution_id = %s "
-            "RETURNING remaining"
-        )
-        try:
-            with barrier_db.cursor() as cur_a, conn_b.cursor() as cur_b:
-                cur_a.execute(sql, ("exec-Z",))
-                a = cur_a.fetchone()[0]
-                cur_b.execute(sql, ("exec-Z",))
-                b = cur_b.fetchone()[0]
-        finally:
-            conn_b.close()
-        assert sorted([a, b]) == [0, 1]  # exactly one zero, no double-zero
+        statuses: dict[str, str] = {}
+        conns = []
+
+        def run(label):
+            conn = create_pg_connection(env_prefix="TEST_DB_")
+            conn.autocommit = True
+            conns.append(conn)
+            pg_barrier._local.conn = conn  # this thread's own connection
+            try:
+                out = barrier_pg_decr_and_check(
+                    {"t": label}, execution_id="exec-Z", callback_descriptor=_CALLBACK
+                )
+                statuses[label] = out["status"]
+            finally:
+                pg_barrier._local.conn = None
+
+        with patch("celery.current_app.signature") as sig:
+            sig.return_value.apply_async.return_value = MagicMock(id="cb")
+            threads = [threading.Thread(target=run, args=(x,)) for x in ("a", "b")]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=10)
+            assert all(not t.is_alive() for t in threads)
+            assert sorted(statuses.values()) == ["complete", "pending"]
+            assert sig.return_value.apply_async.call_count == 1  # single fire
+        for c in conns:
+            c.close()
+
+
+class TestDbConstraint:
+    def test_expires_at_must_exceed_created_at(self, barrier_db):
+        # The one writer-proof invariant (workers SQL can't import the model).
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            with barrier_db.cursor() as cur:
+                cur.execute(
+                    "INSERT INTO pg_barrier_state "
+                    "(execution_id, remaining, results, created_at, expires_at) "
+                    "VALUES ('bad', 1, '[]'::jsonb, now(), now())"  # expires == created
+                )
 
 
 if __name__ == "__main__":

@@ -76,11 +76,11 @@ class PgBarrierState(models.Model):
     ``barrier_pg_decr_and_check`` link task atomically decrements ``remaining``
     and appends to ``results`` in a single ``UPDATE … RETURNING``; the task that
     drives ``remaining`` to 0 dispatches the aggregating callback and deletes the
-    row. ``aborted`` is claimed once (``UPDATE … WHERE NOT aborted RETURNING``)
-    so N concurrent header-task failures collapse to a single cleanup. Like the
-    Redis backend's TTL, ``expires_at`` bounds an orphaned barrier (header tasks
-    that never complete); the tasks delete past-expiry rows opportunistically and
-    a periodic sweep is the backstop.
+    row. A header-task failure aborts the barrier by deleting the row outright
+    (``DELETE … RETURNING`` — atomic claim+teardown), so the callback can never
+    fire with partial results. ``expires_at`` bounds an orphaned barrier (header
+    tasks that never complete); a periodic sweep job (not yet implemented) is the
+    intended reclaim backstop.
 
     Managed=True / generated migration — no DB-side function, extension-free
     (UN-3533), same posture as ``PgQueueMessage``.
@@ -93,8 +93,6 @@ class PgBarrierState(models.Model):
     remaining = models.IntegerField()
     # Aggregated header-task results, appended in completion order (JSONB array).
     results = models.JSONField(default=list)
-    # Set once on the first header-task failure so the abort cleanup runs once.
-    aborted = models.BooleanField(default=False)
     created_at = models.DateTimeField(default=timezone.now)
     # Orphan bound (Redis-TTL equivalent): a barrier whose header tasks never
     # complete is reclaimable past this. Must exceed the longest execution
@@ -103,7 +101,17 @@ class PgBarrierState(models.Model):
 
     class Meta:
         db_table = "pg_barrier_state"
+        constraints = [
+            # The one writer-proof invariant (the worker SQL can't import this
+            # model). Deliberately NO `remaining >= 0` check — the teardown path
+            # relies on `remaining` going negative as a "barrier already gone"
+            # signal, so a non-negative constraint would break it.
+            models.CheckConstraint(
+                check=models.Q(expires_at__gt=models.F("created_at")),
+                name="pg_barrier_expires_after_created",
+            ),
+        ]
         indexes = [
-            # Drives the opportunistic/periodic expiry sweep.
+            # Drives the (future) periodic expiry-sweep job.
             models.Index(fields=["expires_at"], name="pg_barrier_expires_idx"),
         ]
