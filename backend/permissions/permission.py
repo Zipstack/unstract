@@ -85,14 +85,17 @@ class IsOwner(permissions.BasePermission):
 def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     """Whether the request user may mutate ``workflow`` or its sub-resources.
 
-    Admits the workflow's owner, an org admin, or a service account. Shared
-    access (direct/group/org) grants read only, never mutate. Shared by the
-    object-level gate (``IsParentWorkflowOwner``) and the collection-level
-    ``reorder`` action, which can't use an object-permission class.
+    Admits the workflow's owner, its co-owners, an org admin, or a service
+    account. Shared access (direct/group/org) grants read only, never mutate.
+    Shared by the object-level gate (``IsParentWorkflowOwner``) and the
+    collection-level ``reorder`` action, which can't use an object-permission
+    class.
     """
     if _is_service_account(request):
         return True
     if workflow.created_by == request.user:
+        return True
+    if workflow.co_owners.filter(pk=request.user.pk).exists():
         return True
     return _is_organization_admin(request)
 
