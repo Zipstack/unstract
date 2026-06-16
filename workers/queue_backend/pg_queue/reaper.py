@@ -337,6 +337,7 @@ class ReaperLivenessServer(_BaseLivenessServer):
             age_key="seconds_since_last_tick",
             extra_status_fn=lambda: {"is_leader": reaper.is_leader},
             thread_name="pg-reaper-liveness",
+            log_label="pg-queue reaper",
         )
 
 

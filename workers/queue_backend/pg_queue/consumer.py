@@ -385,6 +385,7 @@ class LivenessServer(_BaseLivenessServer):
             check_name="pg_queue_poll",
             age_key="seconds_since_last_poll",
             thread_name="pg-consumer-liveness",
+            log_label="pg-queue consumer",
         )
 
 

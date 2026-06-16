@@ -53,6 +53,7 @@ class LivenessServer:
         age_key: str,
         extra_status_fn: Callable[[], dict[str, Any]] | None = None,
         thread_name: str = "pg-queue-liveness",
+        log_label: str = "pg-queue",
     ) -> None:
         # Re-validate here (not only at the env boundary): a direct caller could
         # otherwise build an always-503 probe that crash-loops the pod. Mirrors
@@ -66,6 +67,10 @@ class LivenessServer:
         self._age_key = age_key
         self._extra_status_fn = extra_status_fn
         self._thread_name = thread_name
+        # Prefixes the (now-shared) log messages so they stay attributable to the
+        # source process after the consumer/reaper extraction (e.g. "pg-queue
+        # consumer" / "pg-queue reaper") — they all log via this module's logger.
+        self._log_label = log_label
         self._httpd: HTTPServer | None = None
         self._thread: Thread | None = None
 
@@ -84,6 +89,7 @@ class LivenessServer:
         check_name = self._check_name
         age_key = self._age_key
         extra_status_fn = self._extra_status_fn
+        log_label = self._log_label
 
         class _Handler(BaseHTTPRequestHandler):
             def do_GET(self) -> None:
@@ -97,14 +103,20 @@ class LivenessServer:
                 # fields are informational and never flip it.
                 age = freshness_fn()
                 stale = age > stale_after
-                payload: dict[str, Any] = {
-                    "status": "unhealthy" if stale else "healthy",
-                    "check": check_name,
-                    age_key: round(age, 3),
-                    "stale_after_seconds": stale_after,
-                }
+                # Extra fields first, then overlay the core fields — so a caller's
+                # extra_status_fn can NEVER clobber status/check/age_key/
+                # stale_after_seconds (which a monitor reads): core always wins.
+                payload: dict[str, Any] = {}
                 if extra_status_fn is not None:
                     payload.update(extra_status_fn())
+                payload.update(
+                    {
+                        "status": "unhealthy" if stale else "healthy",
+                        "check": check_name,
+                        age_key: round(age, 3),
+                        "stale_after_seconds": stale_after,
+                    }
+                )
                 body = json.dumps(payload).encode()
                 self.send_response(503 if stale else 200)
                 self.send_header("Content-Type", "application/json")
@@ -120,7 +132,7 @@ class LivenessServer:
             def log_error(self, fmt: str, *args: object) -> None:
                 # BaseHTTPRequestHandler routes errors through log_message too;
                 # don't let the pass above swallow them — surface to our logger.
-                logger.warning("pg-queue liveness handler: " + fmt, *args)
+                logger.warning(f"{log_label} liveness handler: " + fmt, *args)
 
         def _serve(httpd: HTTPServer) -> None:
             try:
@@ -128,7 +140,7 @@ class LivenessServer:
             except Exception:
                 # A daemon thread dying silently would make /health stop
                 # answering (connection refused) with no breadcrumb.
-                logger.exception("pg-queue liveness server thread crashed")
+                logger.exception("%s liveness server thread crashed", log_label)
 
         httpd = HTTPServer(("0.0.0.0", self._port), _Handler)
         self._httpd = httpd
@@ -156,9 +168,11 @@ class LivenessServer:
             if self._thread is not None:
                 self._thread.join(timeout=5)
                 if self._thread.is_alive():
-                    logger.warning("pg-queue liveness thread did not stop within 5s")
+                    logger.warning(
+                        "%s liveness thread did not stop within 5s", self._log_label
+                    )
         except Exception:
-            logger.exception("pg-queue: error stopping liveness server")
+            logger.exception("%s: error stopping liveness server", self._log_label)
         finally:
             self._httpd = None
             self._thread = None

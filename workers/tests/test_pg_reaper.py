@@ -405,6 +405,29 @@ class TestLivenessServer:
             server.stop()
         assert body["is_leader"] is True
 
+    def test_extra_status_cannot_clobber_core_fields(self):
+        # A future extra_status_fn returning a reserved key must not corrupt the
+        # core payload a monitor reads — core fields always win.
+        from queue_backend.pg_queue.liveness import LivenessServer
+
+        server = LivenessServer(
+            freshness_fn=lambda: 0.0,
+            stale_after=30,
+            port=0,
+            check_name="x",
+            age_key="age",
+            extra_status_fn=lambda: {"status": "HACKED", "check": "HACKED", "extra": 1},
+        )
+        server.start()
+        try:
+            status, body = _http_get(server)
+        finally:
+            server.stop()
+        assert status == 200
+        assert body["status"] == "healthy"  # core not clobbered
+        assert body["check"] == "x"  # core not clobbered
+        assert body["extra"] == 1  # non-reserved extra preserved
+
     def test_unknown_path_404(self):
         reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
         server = self._server(reaper)
