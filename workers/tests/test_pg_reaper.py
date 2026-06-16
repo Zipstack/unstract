@@ -36,11 +36,11 @@ from queue_backend.pg_queue.reaper import (
 class TestIntervalEnv:
     def test_default_is_five_seconds(self, monkeypatch):
         monkeypatch.delenv("WORKER_PG_REAPER_INTERVAL_SECONDS", raising=False)
-        assert reaper_interval_from_env() == 5.0
+        assert reaper_interval_from_env() == pytest.approx(5.0)
 
     def test_overridable(self, monkeypatch):
         monkeypatch.setenv("WORKER_PG_REAPER_INTERVAL_SECONDS", "2.5")
-        assert reaper_interval_from_env() == 2.5
+        assert reaper_interval_from_env() == pytest.approx(2.5)
 
     @pytest.mark.parametrize("bad", ["0", "-1", "abc"])
     def test_invalid_raises(self, monkeypatch, bad):
