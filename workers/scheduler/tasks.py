@@ -23,7 +23,11 @@ from shared.models.scheduler_models import (
 from shared.patterns.notification.helper import trigger_notification
 from shared.utils.api_client_singleton import get_singleton_api_client
 
-from unstract.core.data_models import NotificationPayload, NotificationSource
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    NotificationPayload,
+    NotificationSource,
+)
 
 # Import the exact backend logic to ensure consistency
 
@@ -129,6 +133,10 @@ def _execute_scheduled_workflow(
             execution_request.to_dict()
         )
         execution_id = workflow_execution.get("execution_id")
+        # Transport this execution rides (9e), decided by the backend at creation
+        # and carried in the dispatched task's payload. Defaults to celery if the
+        # backend doesn't return it (older backend / no-op until PR 3).
+        transport = workflow_execution.get("transport", DEFAULT_WORKFLOW_TRANSPORT)
 
         if not execution_id:
             return SchedulerExecutionResult.error(
@@ -163,6 +171,7 @@ def _execute_scheduled_workflow(
                 kwargs={
                     "use_file_history": context.use_file_history,
                     "pipeline_id": context.pipeline_id,
+                    "transport": transport,
                 },
                 queue=QueueName.GENERAL,
                 fairness=FairnessKey(

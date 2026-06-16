@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 # Import shared domain models from core
 from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
     ExecutionStatus,
     PreCreatedFileData,
     serialize_dataclass_to_dict,
@@ -385,6 +386,10 @@ class WorkflowContextData:
     settings: dict[str, Any] | None = None
     metadata: dict[str, Any] | None = None
     is_scheduled: bool = False
+    # Transport this execution rides end-to-end (9e). Carried in the task
+    # payload from the creation chokepoint; read at the fan-out to keep the
+    # whole pipeline on one transport. Defaults to legacy Celery.
+    transport: str = DEFAULT_WORKFLOW_TRANSPORT
     pre_created_file_executions: dict[str, PreCreatedFileData] = field(
         default_factory=dict
     )

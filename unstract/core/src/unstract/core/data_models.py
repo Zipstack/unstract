@@ -200,6 +200,25 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
+class WorkflowTransport(str, Enum):
+    """Transport a single workflow execution rides end-to-end.
+
+    The migration unit is the *execution*, not the task: every stage of a
+    coupled pipeline (async_execute → file-batch fan-out → callback) must run
+    on one transport, decided once at execution creation and carried in the
+    task payload (see ``9e-design.md``). ``CELERY`` is the legacy default;
+    ``PG_QUEUE`` is the bespoke Postgres queue.
+    """
+
+    CELERY = "celery"
+    PG_QUEUE = "pg_queue"
+
+
+# Default transport when none is resolved/carried — keeps every pre-existing
+# payload and caller on the legacy path until a transport is explicitly chosen.
+DEFAULT_WORKFLOW_TRANSPORT = WorkflowTransport.CELERY.value
+
+
 class FileListingResult:
     """Result of listing files from a source."""
 

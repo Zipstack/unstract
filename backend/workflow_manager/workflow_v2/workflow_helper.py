@@ -57,6 +57,7 @@ from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelpe
 from workflow_manager.workflow_v2.file_history_helper import FileHistoryHelper
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
+from workflow_manager.workflow_v2.transport import resolve_transport
 
 logger = logging.getLogger(__name__)
 
@@ -503,6 +504,14 @@ class WorkflowHelper:
             }
             org_schema = UserContext.get_organization_identifier()
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
+            # Resolve the transport this execution rides (9e) and carry it in the
+            # task payload — the pipeline reads it to stay on one transport
+            # end-to-end. PR 1 always resolves "celery" (no behaviour change).
+            transport = resolve_transport(
+                workflow_id=workflow_id,
+                pipeline_id=pipeline_id,
+                organization_id=org_schema,
+            )
             async_execution: AsyncResult = celery_app.send_task(
                 "async_execute_bin",
                 args=[
@@ -521,6 +530,7 @@ class WorkflowHelper:
                     "hitl_queue_name": hitl_queue_name,
                     "hitl_packet_id": hitl_packet_id,
                     "custom_data": custom_data,
+                    "transport": transport,
                 },
                 queue=queue,
             )
