@@ -446,6 +446,88 @@ class TestHealthEnv:
             is None
         )
 
+    def test_health_server_bind_failure_degrades_to_none(self, monkeypatch):
+        # The documented graceful-degrade path: a bind failure must NOT stop the
+        # reaper — log and run probe-less.
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        monkeypatch.setattr(
+            reaper_mod.ReaperLivenessServer,
+            "start",
+            MagicMock(side_effect=OSError("address already in use")),
+        )
+        with patch.object(reaper_mod.logger, "exception") as logexc:
+            result = reaper_mod._maybe_start_health_server(
+                reaper, port=12345, stale_after=30
+            )
+        assert result is None
+        logexc.assert_called_once()
+
+    def test_stale_after_non_positive_rejected(self):
+        # Constructor re-validates (not only the env reader) — an always-503 probe
+        # would crash-loop the pod.
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        with pytest.raises(ValueError, match="stale_after"):
+            reaper_mod.ReaperLivenessServer(reaper, port=0, stale_after=0)
+
+
+class TestHealthPortEnv:
+    def test_unset_is_none(self, monkeypatch):
+        monkeypatch.delenv("WORKER_PG_REAPER_HEALTH_PORT", raising=False)
+        assert reaper_mod._reaper_health_port_from_env() is None
+
+    def test_empty_is_none(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "")
+        assert reaper_mod._reaper_health_port_from_env() is None
+
+    def test_valid_port(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "8086")
+        assert reaper_mod._reaper_health_port_from_env() == 8086
+
+    def test_non_int_raises_named(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "abc")
+        with pytest.raises(ValueError, match="WORKER_PG_REAPER_HEALTH_PORT"):
+            reaper_mod._reaper_health_port_from_env()
+
+    def test_out_of_range_raises(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "99999")
+        with pytest.raises(ValueError, match="out of range"):
+            reaper_mod._reaper_health_port_from_env()
+
+
+class TestMainWiring:
+    def _patch_main(self, monkeypatch):
+        # Don't open a DB connection or run the loop.
+        monkeypatch.setattr(reaper_mod, "LeaderLease", lambda _wid: _FakeLease())
+        monkeypatch.setattr(reaper_mod.PgReaper, "run", lambda self, **_kw: None)
+
+    def test_wires_health_port_and_stops_on_exit(self, monkeypatch):
+        self._patch_main(monkeypatch)
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "0")
+        fake_health = MagicMock()
+        captured: dict = {}
+
+        def fake_start(_reaper, *, port, stale_after):
+            captured["port"] = port
+            return fake_health
+
+        monkeypatch.setattr(reaper_mod, "_maybe_start_health_server", fake_start)
+        reaper_mod.main()
+        assert captured["port"] == 0  # parsed int reached the wiring
+        fake_health.stop.assert_called_once()  # stopped in the finally
+
+    def test_no_health_when_port_unset(self, monkeypatch):
+        self._patch_main(monkeypatch)
+        monkeypatch.delenv("WORKER_PG_REAPER_HEALTH_PORT", raising=False)
+        captured: dict = {}
+
+        def fake_start(_reaper, *, port, stale_after):
+            captured["port"] = port
+            return None
+
+        monkeypatch.setattr(reaper_mod, "_maybe_start_health_server", fake_start)
+        reaper_mod.main()  # must not raise even though health is None
+        assert captured["port"] is None
+
 
 # --- Entry point (the `python -m pg_queue_reaper` launch path) ---
 

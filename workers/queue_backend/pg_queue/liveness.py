@@ -23,7 +23,11 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from http.server import HTTPServer
+    from threading import Thread
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +54,11 @@ class LivenessServer:
         extra_status_fn: Callable[[], dict[str, Any]] | None = None,
         thread_name: str = "pg-queue-liveness",
     ) -> None:
+        # Re-validate here (not only at the env boundary): a direct caller could
+        # otherwise build an always-503 probe that crash-loops the pod. Mirrors
+        # the codebase's load-bearing re-validation convention (PgReaper.__init__).
+        if stale_after <= 0:
+            raise ValueError(f"stale_after must be positive, got {stale_after!r}")
         self._freshness_fn = freshness_fn
         self._stale_after = stale_after
         self._port = port
@@ -57,8 +66,8 @@ class LivenessServer:
         self._age_key = age_key
         self._extra_status_fn = extra_status_fn
         self._thread_name = thread_name
-        self._httpd: Any = None
-        self._thread: Any = None
+        self._httpd: HTTPServer | None = None
+        self._thread: Thread | None = None
 
     def start(self) -> None:
         import json
@@ -113,7 +122,7 @@ class LivenessServer:
                 # don't let the pass above swallow them — surface to our logger.
                 logger.warning("pg-queue liveness handler: " + fmt, *args)
 
-        def _serve(httpd: Any) -> None:
+        def _serve(httpd: HTTPServer) -> None:
             try:
                 httpd.serve_forever()
             except Exception:
@@ -130,7 +139,10 @@ class LivenessServer:
 
     @property
     def bound_port(self) -> int:
-        """Actual listening port (resolves ``port=0``); the requested port if not started."""
+        """Actual listening port once started (resolves ``port=0`` to the
+        OS-chosen port). Before :meth:`start` / after :meth:`stop`, returns the
+        configured port value (which is ``0`` when the OS is asked to choose).
+        """
         if self._httpd is not None:
             return self._httpd.server_address[1]
         return self._port

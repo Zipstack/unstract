@@ -313,10 +313,10 @@ class PgReaper:
             )
 
 
-# Default staleness window for the liveness probe. Comfortably above the
-# default 5s tick interval so a single slow cycle (a long sweep / DB blip)
-# doesn't flap the probe; an operator tightening the interval should tighten
-# this too.
+# Default staleness window for the liveness probe. Comfortably above the default
+# tick interval (_DEFAULT_REAPER_INTERVAL_SECONDS) so a single slow cycle (a long
+# sweep / DB blip) doesn't flap the probe; the durable rationale is the headroom
+# ratio — an operator tightening the interval should tighten this too.
 _DEFAULT_HEALTH_STALE_SECONDS = 30.0
 
 
@@ -357,6 +357,26 @@ def _reaper_health_stale_from_env() -> float:
     return value
 
 
+def _reaper_health_port_from_env() -> int | None:
+    """Liveness port from ``WORKER_PG_REAPER_HEALTH_PORT`` (unset/empty → None,
+    i.e. no server). Validates + names the var here so a garbled value (a common
+    run-worker.sh shell-fallback mistake) fails with a clear message rather than a
+    context-free ``int('abc')`` crash — and so an out-of-range value is rejected
+    at parse time rather than escaping the bind catch as ``OverflowError`` inside
+    ``start()``.
+    """
+    raw = os.getenv("WORKER_PG_REAPER_HEALTH_PORT")
+    if raw is None or raw == "":
+        return None
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid WORKER_PG_REAPER_HEALTH_PORT={raw!r}: {exc}") from exc
+    if not (0 <= port <= 65535):
+        raise ValueError(f"WORKER_PG_REAPER_HEALTH_PORT={port} out of range 0-65535")
+    return port
+
+
 def _maybe_start_health_server(
     reaper: PgReaper, *, port: int | None, stale_after: float
 ) -> ReaperLivenessServer | None:
@@ -391,12 +411,12 @@ def _maybe_start_health_server(
 
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-    raw_port = os.getenv("WORKER_PG_REAPER_HEALTH_PORT")
-    port = int(raw_port) if raw_port not in (None, "") else None
     lease = LeaderLease(default_worker_id())
     reaper = PgReaper(lease)
     health = _maybe_start_health_server(
-        reaper, port=port, stale_after=_reaper_health_stale_from_env()
+        reaper,
+        port=_reaper_health_port_from_env(),
+        stale_after=_reaper_health_stale_from_env(),
     )
     try:
         reaper.run()
