@@ -32,6 +32,7 @@ so they're tracked on the ticket / PR rather than baked in here.
 from .client import PgQueueClient, QueueMessage
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id, lease_seconds_from_env
+from .liveness import LivenessServer
 from .reaper import (
     LeaderLeaseLike,
     PgReaper,
@@ -45,6 +46,7 @@ from .task_payload import TaskPayload, to_payload
 __all__ = [
     "LeaderLease",
     "LeaderLeaseLike",
+    "LivenessServer",
     "PgQueueClient",
     "PgReaper",
     "QueueMessage",
