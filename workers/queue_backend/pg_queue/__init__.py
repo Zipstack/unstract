@@ -32,15 +32,19 @@ so they're tracked on the ticket / PR rather than baked in here.
 from .client import PgQueueClient, QueueMessage
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id, lease_seconds_from_env
+from .reaper import PgReaper, reaper_interval_from_env, sweep_expired_barriers
 from .task_payload import TaskPayload, to_payload
 
 __all__ = [
     "LeaderLease",
     "PgQueueClient",
+    "PgReaper",
     "QueueMessage",
     "TaskPayload",
     "create_pg_connection",
     "default_worker_id",
     "lease_seconds_from_env",
+    "reaper_interval_from_env",
+    "sweep_expired_barriers",
     "to_payload",
 ]
