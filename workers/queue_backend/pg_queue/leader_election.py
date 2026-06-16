@@ -146,6 +146,10 @@ class LeaderLease:
     def worker_id(self) -> str:
         return self._worker_id
 
+    @property
+    def lease_seconds(self) -> int:
+        return self._lease_seconds
+
     def _get_conn(self) -> PgConnection:
         # Recreate only an OWNED connection that's missing/closed. An injected
         # (caller-owned) connection is never swapped — if it's dead, the next
