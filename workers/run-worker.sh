@@ -748,7 +748,7 @@ run_worker() {
     print_status $GREEN "Starting $worker_type worker..."
     print_status $BLUE "Directory: $worker_dir"
     print_status $BLUE "Worker Name: $worker_instance_name"
-    print_status $BLUE "Queues: $queues"
+    print_status $BLUE "Queues: ${queues:-n/a}"
     # Show the effective port: a -p/--health-port override wins over the map.
     print_status $BLUE "Health Port: ${health_port:-${WORKER_HEALTH_PORTS[$worker_type]:-n/a}}"
     print_status $BLUE "Command: ${cmd_args[*]}"
@@ -855,23 +855,36 @@ run_all_workers() {
 }
 
 # Function to run the PG-queue worker set (consumer + reaper) together.
-# A set is multiple processes, so — like 'all' — it always runs detached. This
-# is the PG-queue counterpart to 'all' (the Celery set): run both for a
-# dual-transport (strangler-fig) setup. The reaper is a leader-elected singleton,
-# so running it on several hosts is safe (only one wins the lease).
+# A set is multiple processes, so — like 'all' — it ALWAYS runs detached
+# (it ignores -d/--detach; there's no foreground form). The PG-queue counterpart
+# to 'all' (the Celery set): run both for a dual-transport (strangler-fig) setup.
+# The reaper is a leader-elected singleton, so running it on several hosts is
+# safe (only one wins the lease). Returns non-zero if any member dies on start —
+# the reaper has no health port yet, so this launch check is the only
+# programmatic startup signal a caller (systemd/CI) gets.
 run_pg_queue_set() {
     local log_level=$1
     local concurrency=$2
     local pool_type=$3
 
     print_status $GREEN "Starting PG-queue set (consumer + reaper)..."
+    local failed=0
     for worker in "$PG_QUEUE_CONSUMER_TYPE" "$PG_QUEUE_REAPER_TYPE"; do
         print_status $BLUE "Starting $worker in background..."
-        (
-            run_worker "$worker" "true" "$log_level" "$concurrency" "" "" "$pool_type" ""
-        ) &
-        sleep 2
+        # A FOREGROUND subshell: run_worker (detach=true) nohup-backgrounds the
+        # actual worker and returns 1 on an immediate crash-on-start — so the
+        # subshell's exit status IS that signal. The subshell isolates run_worker's
+        # `cd` from this loop; the nohup'd worker survives the subshell exiting.
+        # (A background `( … ) &` would lose the status — its `$!` is the launcher
+        # subshell, which exits the instant it backgrounds the worker.)
+        ( run_worker "$worker" "true" "$log_level" "$concurrency" "" "" "$pool_type" "" ) \
+            || failed=1
     done
+    if [[ $failed -ne 0 ]]; then
+        print_status $RED "PG-queue set: a member failed to start (see logs above)"
+        show_status
+        return 1
+    fi
     print_status $GREEN "PG-queue set started in background"
     show_status
 }
@@ -993,9 +1006,17 @@ if [[ "$RESTART_MODE" == "true" ]]; then
     if [[ "${WORKERS[$WORKER_TYPE]:-}" == "$PG_QUEUE_SET" ]]; then
         # Restart the PG-queue set: kill both members, then fall through to the
         # launch path (which runs run_pg_queue_set since WORKER_TYPE is the set).
+        # Aggregate kill failures (kill_one_worker returns 1 if a process survives
+        # SIGKILL) and abort rather than relaunch over a survivor — a second
+        # consumer would double-poll Postgres. Mirrors kill_workers' discipline.
         print_status $BLUE "Restarting PG-queue set..."
-        kill_one_worker "$PG_QUEUE_CONSUMER_TYPE"
-        kill_one_worker "$PG_QUEUE_REAPER_TYPE"
+        restart_failed=0
+        kill_one_worker "$PG_QUEUE_CONSUMER_TYPE" || restart_failed=1
+        kill_one_worker "$PG_QUEUE_REAPER_TYPE" || restart_failed=1
+        if [[ $restart_failed -ne 0 ]]; then
+            print_status $RED "Cannot restart PG-queue set: a member survived SIGKILL; aborting to avoid duplicate processes"
+            exit 1
+        fi
     elif [[ -n "$WORKER_TYPE" && "$WORKER_TYPE" != "all" ]]; then
         restart_target_dir="${WORKERS[$WORKER_TYPE]:-${PLUGGABLE_WORKERS[$WORKER_TYPE]:-}}"
         if [[ -z "$restart_target_dir" ]]; then
@@ -1052,7 +1073,9 @@ if [[ "$WORKER_TYPE" == "all" ]]; then
     run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
 elif [[ "${WORKERS[$WORKER_TYPE]:-}" == "$PG_QUEUE_SET" ]]; then
     # The PG-queue set (consumer + reaper). Always backgrounded (multiple procs).
-    run_pg_queue_set "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
+    # Propagate a member start-failure to the script exit code — the reaper has
+    # no health port, so this is the only programmatic startup signal.
+    run_pg_queue_set "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE" || exit 1
 else
     # Resolve worker directory name from either WORKERS or PLUGGABLE_WORKERS
     WORKER_DIR_NAME="${WORKERS[$WORKER_TYPE]}"
