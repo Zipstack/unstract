@@ -239,9 +239,11 @@ class TestSweepConnection:
 
 def _new_conn():
     os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
-    conn = create_pg_connection(env_prefix="TEST_DB_")
-    conn.autocommit = True
-    return conn
+    # Manual-commit — exactly as the production reaper opens it
+    # (create_pg_connection default). NOT autocommit: that would make
+    # sweep_expired_barriers' own commit() a no-op and its rollback unreachable,
+    # so Layer 4 would test a different mode than the real reaper runs in.
+    return create_pg_connection(env_prefix="TEST_DB_")
 
 
 @pytest.fixture
@@ -256,15 +258,19 @@ def barrier_conn():
             conn.close()
             pytest.skip("pg_barrier_state migration not applied (run backend migrate)")
         cur.execute("DELETE FROM pg_barrier_state")
+    conn.commit()
     yield conn
     with conn.cursor() as cur:
         cur.execute("DELETE FROM pg_barrier_state")
+    conn.commit()
     conn.close()
 
 
 def _seed(conn, execution_id, *, expired):
     # created_at must precede expires_at (CheckConstraint
-    # pg_barrier_expires_after_created).
+    # pg_barrier_expires_after_created). Commit so the seed is durable like a
+    # real barrier row (written by PgBarrier in another transaction) — and so the
+    # manual-commit sweep's own commit() is what persists the DELETE.
     with conn.cursor() as cur:
         if expired:
             cur.execute(
@@ -281,12 +287,15 @@ def _seed(conn, execution_id, *, expired):
                 "VALUES (%s, 1, '[]'::jsonb, now(), now() + interval '6 hours')",
                 (execution_id,),
             )
+    conn.commit()
 
 
 def _ids(conn):
     with conn.cursor() as cur:
         cur.execute("SELECT execution_id FROM pg_barrier_state ORDER BY execution_id")
-        return [r[0] for r in cur.fetchall()]
+        rows = [r[0] for r in cur.fetchall()]
+    conn.commit()  # end the read transaction (manual-commit conn)
+    return rows
 
 
 class TestSweepExpiredBarriers:

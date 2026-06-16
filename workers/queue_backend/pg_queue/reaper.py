@@ -269,6 +269,13 @@ class PgReaper:
                         self._lease.lease_seconds,
                         exc_info=True,
                     )
+            # Close our owned sweep connection (an injected one is the caller's).
+            # Harmless for the main() process — the OS reclaims it — but keeps the
+            # class clean if it's ever embedded / driven from a test.
+            if self._owns_sweep_conn and self._sweep_conn is not None:
+                with contextlib.suppress(Exception):
+                    self._sweep_conn.close()
+                self._sweep_conn = None
             logger.info("Reaper stopped")
 
     def stop(self, *_: object) -> None:
