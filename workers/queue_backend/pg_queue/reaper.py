@@ -20,10 +20,10 @@ defined against the coupled pipeline running on PG, which doesn't exist yet — 
 it lands with 9e, against a real PG pipeline it can be tested on.
 
 **Lease maintenance.** Each cycle the leader renews; if ``renew()`` returns
-``False`` it lost the lease (stalled past the window) and steps down to standby.
-A standby tries to acquire each cycle. The cycle interval MUST be shorter than
-the lease window, or the leader would lose the lease between renews — enforced in
-:meth:`PgReaper.__init__`.
+``False`` (or raises) it lost / can't confirm the lease and steps down to
+standby. A standby tries to acquire each cycle. The cycle interval MUST be
+shorter than the lease window, or the leader would lose the lease between
+renews — enforced in :meth:`PgReaper.__init__`.
 
 **Ships dark.** Launched explicitly (``python -m queue_backend.pg_queue.reaper``
 or, later, ``run-worker.sh``); never part of the default worker set. With
@@ -37,8 +37,9 @@ import contextlib
 import logging
 import os
 import signal
+import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
@@ -48,10 +49,41 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Cycle cadence: how often the leader renews + runs recovery. Must be shorter
-# than the lease window (PgReaper enforces it). The sweep is a cheap indexed
-# DELETE, so running it every cycle is fine.
+# Cadence: how often the leader renews + runs recovery. Enforced shorter than
+# the lease window in PgReaper.__init__.
 _DEFAULT_REAPER_INTERVAL_SECONDS = 5.0
+
+
+class LeaderLeaseLike(Protocol):
+    """Structural contract :class:`PgReaper` needs from a lease.
+
+    The dependency is structural (the tests substitute a duck-typed fake), so the
+    param is typed against this Protocol — :class:`LeaderLease` satisfies it, and
+    a fake conforms without inheritance. Same convention as the ``Barrier``
+    Protocol elsewhere in the package.
+    """
+
+    @property
+    def lease_seconds(self) -> int: ...
+
+    @property
+    def worker_id(self) -> str: ...
+
+    def try_acquire(self) -> bool: ...
+
+    def renew(self) -> bool: ...
+
+    def release(self) -> None: ...
+
+
+class TickOutcome(NamedTuple):
+    """Result of one :meth:`PgReaper.tick` — keeps "was I leader" and "how much
+    work" on separate channels (an ``int`` sentinel like ``-1`` is truthy and
+    conflates the two).
+    """
+
+    was_leader: bool
+    reclaimed: int  # 0 when standby
 
 
 def reaper_interval_from_env() -> float:
@@ -81,17 +113,29 @@ def reaper_interval_from_env() -> float:
 def sweep_expired_barriers(conn: PgConnection) -> list[str]:
     """Reclaim ``pg_barrier_state`` rows past ``expires_at``. Returns their ids.
 
-    A single ``DELETE … RETURNING`` — atomic, and safe to race (the orchestrator
-    is a singleton anyway). Each reclaimed barrier is logged at WARNING: an
-    orphaned barrier means an execution's header tasks never all completed, which
-    is worth surfacing even though deleting the row is the correct backstop.
+    A single atomic ``DELETE … RETURNING``: concurrent sweepers would each
+    reclaim a disjoint subset (``RETURNING`` reports only the rows *this*
+    statement deleted), so it stays correct even if leadership gating ever fails —
+    in practice only the leader calls it. Each reclaimed barrier is logged at
+    WARNING: an orphaned barrier means an execution's header tasks never all
+    completed, worth surfacing even though deleting the row is the right backstop.
+
+    ``conn`` runs in manual-commit mode, so on any error we roll back before
+    re-raising — otherwise the connection is left in an aborted-transaction state
+    and every later statement on it fails with ``InFailedSqlTransaction``.
     """
-    with conn.cursor() as cur:
-        cur.execute(
-            "DELETE FROM pg_barrier_state WHERE expires_at < now() RETURNING execution_id"
-        )
-        reclaimed = [row[0] for row in cur.fetchall()]
-    conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM pg_barrier_state WHERE expires_at < now() "
+                "RETURNING execution_id"
+            )
+            reclaimed = [row[0] for row in cur.fetchall()]
+        conn.commit()
+    except Exception:
+        with contextlib.suppress(Exception):
+            conn.rollback()
+        raise
     for execution_id in reclaimed:
         logger.warning(
             "Reaper: reclaimed orphaned barrier for execution %s — header tasks "
@@ -107,7 +151,7 @@ class PgReaper:
 
     def __init__(
         self,
-        lease: LeaderLease,
+        lease: LeaderLeaseLike,
         *,
         interval_seconds: float | None = None,
         sweep_conn: PgConnection | None = None,
@@ -118,6 +162,8 @@ class PgReaper:
             if interval_seconds is not None
             else reaper_interval_from_env()
         )
+        # Load-bearing even though reaper_interval_from_env validates: an
+        # explicitly-injected interval_seconds<=0 reaches here unvalidated.
         if self._interval <= 0:
             raise ValueError("interval_seconds must be positive")
         if self._interval >= lease.lease_seconds:
@@ -133,32 +179,60 @@ class PgReaper:
         self._running = False
         self._is_leader = False
 
+    @property
+    def is_leader(self) -> bool:
+        """Whether this process currently holds leadership (last tick's view)."""
+        return self._is_leader
+
     def _get_sweep_conn(self) -> PgConnection:
-        # Owned sweep connection self-recovers; an injected one is the caller's.
+        # Recreate only an OWNED missing/closed connection; an injected one is the
+        # caller's and is never swapped (mirrors LeaderLease / PgQueueClient).
         if self._sweep_conn is None or (
             self._owns_sweep_conn and self._sweep_conn.closed
         ):
             self._sweep_conn = create_pg_connection(env_prefix="DB_")
         return self._sweep_conn
 
-    def tick(self) -> int:
-        """One cycle: maintain leadership, then sweep iff leader.
-
-        Returns the number of barriers reclaimed, or ``-1`` if this process is a
-        standby (not the leader) this cycle.
-        """
-        if self._is_leader and not self._lease.renew():
+    def _discard_owned_sweep_conn(self) -> None:
+        # After a sweep error, drop an owned connection so the next tick
+        # reconnects — covers a poisoned (aborted-txn) or dead-socket handle that
+        # `.closed` alone wouldn't catch.
+        if self._owns_sweep_conn and self._sweep_conn is not None:
+            with contextlib.suppress(Exception):
+                self._sweep_conn.close()
+            self._sweep_conn = None
             logger.warning(
-                "Reaper: lost leadership (lease taken over) — stepping down to "
-                "standby; will retry acquire next cycle"
+                "Reaper: discarded sweep connection after a failed sweep; "
+                "reconnecting next cycle"
             )
-            self._is_leader = False
+
+    def tick(self) -> TickOutcome:
+        """One cycle: maintain leadership, then sweep iff leader."""
+        if self._is_leader:
+            try:
+                still_leader = self._lease.renew()
+            except Exception:
+                # A raised renew == "leadership unknown": stop acting (honour the
+                # lease's documented contract) before letting it propagate.
+                self._is_leader = False
+                raise
+            if not still_leader:
+                logger.warning(
+                    "Reaper: lost leadership (lease taken over) — stepping down "
+                    "to standby"
+                )
+                self._is_leader = False
         if not self._is_leader and self._lease.try_acquire():
             self._is_leader = True
             logger.info("Reaper: acquired leadership")
         if not self._is_leader:
-            return -1
-        return len(sweep_expired_barriers(self._get_sweep_conn()))
+            return TickOutcome(was_leader=False, reclaimed=0)
+        try:
+            reclaimed = len(sweep_expired_barriers(self._get_sweep_conn()))
+        except Exception:
+            self._discard_owned_sweep_conn()
+            raise
+        return TickOutcome(was_leader=True, reclaimed=reclaimed)
 
     def run(self, *, install_signals: bool = True) -> None:
         """Lease-maintenance + recovery loop until stopped; releases on exit."""
@@ -176,16 +250,25 @@ class PgReaper:
                 try:
                     self.tick()
                 except Exception:
-                    # A transient DB blip must not tear the loop down — the
-                    # connections self-recover, so log and keep cycling.
+                    # A transient DB blip must not tear the loop down — the lease
+                    # connection rolls back + discards a dead handle, and a failed
+                    # sweep discards its owned connection, so log and keep cycling.
                     logger.exception("Reaper: cycle failed; continuing")
                 time.sleep(self._interval)
         finally:
             # Hand the lease over promptly so a standby takes leadership without
             # waiting out the full lease window.
             if self._is_leader:
-                with contextlib.suppress(Exception):
+                try:
                     self._lease.release()
+                except Exception:
+                    logger.warning(
+                        "Reaper: failed to release lease on shutdown; a standby "
+                        "will take over after the lease window (~%ss) instead of "
+                        "immediately",
+                        self._lease.lease_seconds,
+                        exc_info=True,
+                    )
             logger.info("Reaper stopped")
 
     def stop(self, *_: object) -> None:
@@ -193,11 +276,14 @@ class PgReaper:
         self._running = False
 
     def _install_signal_handlers(self) -> None:
-        # signal.signal only works in the main thread.
         try:
             signal.signal(signal.SIGTERM, self.stop)
             signal.signal(signal.SIGINT, self.stop)
         except ValueError:
+            # signal.signal raises ValueError off the main thread — assert that
+            # cause rather than mislabelling an unrelated ValueError.
+            if threading.current_thread() is threading.main_thread():
+                raise
             logger.warning(
                 "Reaper: signal handlers not installed (non-main thread) — "
                 "SIGTERM/SIGINT will not trigger graceful shutdown"

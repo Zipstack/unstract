@@ -1,13 +1,15 @@
 """Tests for the PG-queue reaper (:mod:`queue_backend.pg_queue.reaper`).
 
-Three layers:
+Layers:
 
 1. **Env / construction** — no DB (``reaper_interval_from_env``, the
    interval-shorter-than-lease guard).
 2. **Leadership gating** — a fake lease + a patched sweep, no DB: recovery runs
-   only while leader; a lost lease steps the reaper down; the lease is released
-   on shutdown.
-3. **Barrier-orphan sweep** — real Postgres: only rows past ``expires_at`` are
+   only while leader; a lost lease steps the reaper down; it re-acquires a later
+   cycle; the lease is released on shutdown; ``run`` swallows a tick error.
+3. **Connection handling** — mocked: a failed sweep rolls back + discards the
+   owned connection; an injected connection is never swapped; the SQL contract.
+4. **Barrier-orphan sweep** — real Postgres: only rows past ``expires_at`` are
    reclaimed; fresh barriers are left intact.
 """
 
@@ -16,7 +18,7 @@ from __future__ import annotations
 import os
 import threading
 import time
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import psycopg2
 import pytest
@@ -48,7 +50,9 @@ class TestIntervalEnv:
 
 
 class _FakeLease:
-    """Stand-in for LeaderLease with scriptable acquire/renew outcomes."""
+    """Duck-typed LeaderLease. ``acquires``/``renews`` accept a bool (constant)
+    or a list (one outcome popped per call, then ``False``).
+    """
 
     def __init__(self, *, acquires=True, renews=True, lease_seconds=10):
         self._acquires = acquires
@@ -59,13 +63,19 @@ class _FakeLease:
         self.acquire_calls = 0
         self.renew_calls = 0
 
+    @staticmethod
+    def _next(val):
+        if isinstance(val, list):
+            return val.pop(0) if val else False
+        return val
+
     def try_acquire(self):
         self.acquire_calls += 1
-        return self._acquires
+        return self._next(self._acquires)
 
     def renew(self):
         self.renew_calls += 1
-        return self._renews
+        return self._next(self._renews)
 
     def release(self):
         self.released = True
@@ -92,31 +102,51 @@ class TestLeadershipGating:
         return PgReaper(lease, interval_seconds=0.01, sweep_conn=object())
 
     def test_sweeps_when_leader(self):
-        lease = _FakeLease(acquires=True, renews=True)
-        reaper = self._reaper(lease)
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
         with patch.object(
             reaper_mod, "sweep_expired_barriers", return_value=["x"]
         ) as sweep:
-            assert reaper.tick() == 1  # acquired leadership → swept
+            outcome = reaper.tick()  # acquires leadership → sweeps
+        assert outcome.was_leader is True
+        assert outcome.reclaimed == 1
+        assert reaper.is_leader is True
         sweep.assert_called_once()
 
     def test_standby_does_not_sweep(self):
-        lease = _FakeLease(acquires=False)  # can't get the lease
-        reaper = self._reaper(lease)
+        reaper = self._reaper(_FakeLease(acquires=False))  # can't get the lease
         with patch.object(reaper_mod, "sweep_expired_barriers") as sweep:
-            assert reaper.tick() == -1
+            outcome = reaper.tick()
+        assert outcome == (False, 0)
+        assert reaper.is_leader is False
         sweep.assert_not_called()
 
     def test_steps_down_when_renew_fails(self):
-        # Already leader, but the lease was taken over → renew False → step down
-        # and (acquires=False) stay standby; no sweep this cycle.
-        lease = _FakeLease(acquires=False, renews=False)
+        # tick 1 acquires; tick 2 renew fails → step down, acquire also fails →
+        # standby. Driven through ticks, no private-flag poking.
+        reaper = self._reaper(_FakeLease(acquires=[True, False], renews=[False]))
+        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+            assert reaper.tick().was_leader is True
+            assert reaper.tick().was_leader is False
+        assert reaper.is_leader is False
+
+    def test_steps_down_then_reacquires(self):
+        # leader → lose the lease one cycle → re-acquire the next and resume.
+        reaper = self._reaper(_FakeLease(acquires=[True, False, True], renews=[False]))
+        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+            assert reaper.tick().was_leader is True  # acquired
+            assert reaper.tick().was_leader is False  # renew failed → standby
+            assert reaper.tick().was_leader is True  # re-acquired
+        assert reaper.is_leader is True
+
+    def test_renew_raising_steps_down(self):
+        lease = _FakeLease(acquires=True, renews=True)
         reaper = self._reaper(lease)
-        reaper._is_leader = True
-        with patch.object(reaper_mod, "sweep_expired_barriers") as sweep:
-            assert reaper.tick() == -1
-        assert reaper._is_leader is False
-        sweep.assert_not_called()
+        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+            reaper.tick()  # becomes leader
+        lease.renew = MagicMock(side_effect=psycopg2.OperationalError("boom"))
+        with pytest.raises(psycopg2.OperationalError):
+            reaper.tick()
+        assert reaper.is_leader is False  # raised renew == stop acting
 
     def test_release_on_stop_when_leader(self):
         lease = _FakeLease(acquires=True, renews=True)
@@ -124,14 +154,87 @@ class TestLeadershipGating:
         with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
             t = threading.Thread(target=reaper.run, kwargs={"install_signals": False})
             t.start()
-            time.sleep(0.05)  # let it acquire + tick a few times
+            time.sleep(0.05)
             reaper.stop()
             t.join(timeout=5)
         assert not t.is_alive()
         assert lease.released is True
 
+    def test_run_swallows_tick_exception(self):
+        reaper = PgReaper(_FakeLease(), interval_seconds=0.01, sweep_conn=object())
+        calls = {"n": 0}
 
-# --- Layer 3: barrier-orphan sweep (real Postgres) ---
+        def boom():
+            calls["n"] += 1
+            reaper.stop()  # one cycle only
+            raise RuntimeError("transient blip")
+
+        with patch.object(reaper, "tick", side_effect=boom):
+            with patch.object(reaper_mod.logger, "exception") as logexc:
+                reaper.run(install_signals=False)  # must not propagate
+        assert calls["n"] == 1
+        logexc.assert_called_once()
+
+
+# --- Layer 3: connection handling (mocked, no DB) ---
+
+
+class TestSweepConnection:
+    def test_sql_contract(self):
+        cur = MagicMock()
+        cur.fetchall.return_value = [("e1",), ("e2",)]
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cur
+        assert sweep_expired_barriers(conn) == ["e1", "e2"]
+        sql = cur.execute.call_args[0][0]
+        assert "DELETE FROM pg_barrier_state" in sql
+        assert "expires_at < now()" in sql
+        assert "RETURNING execution_id" in sql
+        conn.commit.assert_called_once()
+
+    def test_rolls_back_on_error(self):
+        cur = MagicMock()
+        cur.execute.side_effect = psycopg2.OperationalError("dead")
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cur
+        with pytest.raises(psycopg2.OperationalError):
+            sweep_expired_barriers(conn)
+        conn.rollback.assert_called_once()
+        conn.commit.assert_not_called()
+
+    def test_owned_conn_recreated_when_closed(self, monkeypatch):
+        dead = MagicMock(closed=True)
+        fresh = MagicMock(closed=False)
+        factory = MagicMock(side_effect=[dead, fresh])
+        monkeypatch.setattr(reaper_mod, "create_pg_connection", factory)
+        reaper = PgReaper(_FakeLease(), interval_seconds=1)  # owns its conn
+        assert reaper._get_sweep_conn() is dead
+        assert reaper._get_sweep_conn() is fresh  # dead.closed → recreate
+        assert factory.call_count == 2
+
+    def test_injected_conn_never_swapped(self):
+        injected = MagicMock(closed=True)  # even closed, it's the caller's
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=injected)
+        assert reaper._get_sweep_conn() is injected
+
+    def test_failed_sweep_discards_owned_conn(self, monkeypatch):
+        conn = MagicMock(closed=False)
+        monkeypatch.setattr(
+            reaper_mod, "create_pg_connection", MagicMock(return_value=conn)
+        )
+        reaper = PgReaper(_FakeLease(acquires=True, renews=True), interval_seconds=1)
+        with patch.object(
+            reaper_mod,
+            "sweep_expired_barriers",
+            side_effect=psycopg2.OperationalError("x"),
+        ):
+            with pytest.raises(psycopg2.OperationalError):
+                reaper.tick()
+        conn.close.assert_called_once()
+        assert reaper._sweep_conn is None  # next tick reconnects
+
+
+# --- Layer 4: barrier-orphan sweep (real Postgres) ---
 
 
 def _new_conn():
@@ -160,8 +263,8 @@ def barrier_conn():
 
 
 def _seed(conn, execution_id, *, expired):
-    # expired → expires_at in the past; created_at must precede expires_at
-    # (CheckConstraint pg_barrier_expires_after_created).
+    # created_at must precede expires_at (CheckConstraint
+    # pg_barrier_expires_after_created).
     with conn.cursor() as cur:
         if expired:
             cur.execute(
@@ -207,7 +310,9 @@ class TestSweepExpiredBarriers:
             interval_seconds=1,
             sweep_conn=barrier_conn,
         )
-        assert reaper.tick() == 1  # became leader and reclaimed the orphan
+        outcome = reaper.tick()  # became leader and reclaimed the orphan
+        assert outcome.was_leader is True
+        assert outcome.reclaimed == 1
         assert _ids(barrier_conn) == []
 
 
