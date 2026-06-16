@@ -35,6 +35,7 @@ from .leader_election import LeaderLease, default_worker_id, lease_seconds_from_
 from .reaper import (
     LeaderLeaseLike,
     PgReaper,
+    ReaperLivenessServer,
     TickOutcome,
     reaper_interval_from_env,
     sweep_expired_barriers,
@@ -47,6 +48,7 @@ __all__ = [
     "PgQueueClient",
     "PgReaper",
     "QueueMessage",
+    "ReaperLivenessServer",
     "TaskPayload",
     "TickOutcome",
     "create_pg_connection",

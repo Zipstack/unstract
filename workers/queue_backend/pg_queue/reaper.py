@@ -39,7 +39,7 @@ import os
 import signal
 import threading
 import time
-from typing import TYPE_CHECKING, NamedTuple, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
@@ -178,11 +178,23 @@ class PgReaper:
         self._owns_sweep_conn = sweep_conn is None
         self._running = False
         self._is_leader = False
+        # Liveness heartbeat: monotonic timestamp of the last tick start. A
+        # standby tick counts as progress too (the loop is alive), so this tracks
+        # loop liveness, not leadership.
+        self._last_tick_monotonic = time.monotonic()
 
     @property
     def is_leader(self) -> bool:
         """Whether this process currently holds leadership (last tick's view)."""
         return self._is_leader
+
+    def seconds_since_last_tick(self) -> float:
+        """Seconds since the last tick started — the liveness heartbeat age."""
+        return time.monotonic() - self._last_tick_monotonic
+
+    def is_tick_stale(self, stale_after_seconds: float) -> bool:
+        """Whether the loop has gone quiet past ``stale_after_seconds``."""
+        return self.seconds_since_last_tick() > stale_after_seconds
 
     def _get_sweep_conn(self) -> PgConnection:
         # Recreate only an OWNED missing/closed connection; an injected one is the
@@ -208,6 +220,9 @@ class PgReaper:
 
     def tick(self) -> TickOutcome:
         """One cycle: maintain leadership, then sweep iff leader."""
+        # Heartbeat at the START of the cycle: a tick that begins but then errors
+        # still proves the loop is running (the error path is caught by run()).
+        self._last_tick_monotonic = time.monotonic()
         if self._is_leader:
             try:
                 still_leader = self._lease.renew()
@@ -297,10 +312,180 @@ class PgReaper:
             )
 
 
+# Default staleness window for the liveness probe. Comfortably above the
+# default 5s tick interval so a single slow cycle (a long sweep / DB blip)
+# doesn't flap the probe; an operator tightening the interval should tighten
+# this too.
+_DEFAULT_HEALTH_STALE_SECONDS = 30.0
+
+
+class ReaperLivenessServer:
+    """Tiny HTTP liveness probe for the reaper: 200 while the tick loop is fresh,
+    else 503. Also surfaces ``is_leader`` (which pod holds the lease).
+
+    Deliberately lean, mirroring the consumer's ``LivenessServer``: a *liveness*
+    probe answers one question — "is this loop still making progress?" — and must
+    NOT depend on DB reachability or leadership (a standby is healthy), or a
+    transient blip would crash-loop a fine process. The 200/503 verdict is purely
+    the tick heartbeat; ``is_leader`` is informational. Serves ``/health`` (also
+    ``/healthz``, ``/livez``) on ``0.0.0.0`` in a daemon thread; ``port=0`` lets
+    the OS pick a free port (read back via :attr:`bound_port`) — used in tests.
+    """
+
+    _PATHS = frozenset({"/health", "/healthz", "/livez"})
+
+    def __init__(self, reaper: PgReaper, *, port: int, stale_after: float) -> None:
+        self._reaper = reaper
+        self._port = port
+        self._stale_after = stale_after
+        self._httpd: Any = None
+        self._thread: Any = None
+
+    def start(self) -> None:
+        import json
+        import threading as _threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        from urllib.parse import urlsplit
+
+        if self._httpd is not None:
+            raise RuntimeError("ReaperLivenessServer already started")
+
+        reaper = self._reaper
+        stale_after = self._stale_after
+        paths = self._PATHS
+
+        class _Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                if urlsplit(self.path).path not in paths:
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                # One clock read so age and the verdict share an instant.
+                age = reaper.seconds_since_last_tick()
+                stale = age > stale_after
+                body = json.dumps(
+                    {
+                        "status": "unhealthy" if stale else "healthy",
+                        "check": "pg_reaper_tick",
+                        "seconds_since_last_tick": round(age, 3),
+                        "stale_after_seconds": stale_after,
+                        "is_leader": reaper.is_leader,
+                    }
+                ).encode()
+                self.send_response(503 if stale else 200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                try:
+                    self.wfile.write(body)
+                except (BrokenPipeError, ConnectionResetError):
+                    pass  # probe hung up mid-response — not our problem
+
+            def log_message(self, *_: object) -> None:
+                pass  # silence per-request access logging
+
+            def log_error(self, fmt: str, *args: object) -> None:
+                logger.warning("pg-reaper liveness handler: " + fmt, *args)
+
+        def _serve(httpd: Any) -> None:
+            try:
+                httpd.serve_forever()
+            except Exception:
+                logger.exception("pg-reaper liveness server thread crashed")
+
+        httpd = HTTPServer(("0.0.0.0", self._port), _Handler)
+        self._httpd = httpd
+        self._thread = _threading.Thread(
+            target=_serve, args=(httpd,), daemon=True, name="pg-reaper-liveness"
+        )
+        self._thread.start()
+
+    @property
+    def bound_port(self) -> int:
+        """Actual listening port (resolves ``port=0``); the requested port if not started."""
+        if self._httpd is not None:
+            return self._httpd.server_address[1]
+        return self._port
+
+    def stop(self) -> None:
+        """Shut the server down. Defensive: never raises (called from a finally)."""
+        try:
+            if self._httpd is not None:
+                self._httpd.shutdown()
+                self._httpd.server_close()
+            if self._thread is not None:
+                self._thread.join(timeout=5)
+                if self._thread.is_alive():
+                    logger.warning("pg-reaper liveness thread did not stop within 5s")
+        except Exception:
+            logger.exception("pg-reaper: error stopping liveness server")
+        finally:
+            self._httpd = None
+            self._thread = None
+
+
+def _reaper_health_stale_from_env() -> float:
+    raw = os.getenv("WORKER_PG_REAPER_HEALTH_STALE_SECONDS")
+    if raw is None or raw == "":
+        return _DEFAULT_HEALTH_STALE_SECONDS
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"WORKER_PG_REAPER_HEALTH_STALE_SECONDS={raw!r} is not a number."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"WORKER_PG_REAPER_HEALTH_STALE_SECONDS={value} must be positive."
+        )
+    return value
+
+
+def _maybe_start_health_server(
+    reaper: PgReaper, *, port: int | None, stale_after: float
+) -> ReaperLivenessServer | None:
+    """Start the liveness server when ``port`` is not None; else ``None``.
+
+    A bind failure degrades gracefully — the probe is auxiliary and must never
+    stop the reaper from running; we log and continue probe-less.
+    """
+    if port is None:
+        logger.info(
+            "PG-queue reaper: WORKER_PG_REAPER_HEALTH_PORT unset — liveness "
+            "server disabled"
+        )
+        return None
+    server = ReaperLivenessServer(reaper, port=port, stale_after=stale_after)
+    try:
+        server.start()
+    except OSError:
+        logger.exception(
+            "PG-queue reaper: liveness server could not bind :%s — continuing "
+            "WITHOUT a probe",
+            port,
+        )
+        return None
+    logger.info(
+        "PG-queue reaper: liveness server on :%s/health (stale after %ss)",
+        server.bound_port,
+        stale_after,
+    )
+    return server
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+    raw_port = os.getenv("WORKER_PG_REAPER_HEALTH_PORT")
+    port = int(raw_port) if raw_port not in (None, "") else None
     lease = LeaderLease(default_worker_id())
-    PgReaper(lease).run()
+    reaper = PgReaper(lease)
+    health = _maybe_start_health_server(
+        reaper, port=port, stale_after=_reaper_health_stale_from_env()
+    )
+    try:
+        reaper.run()
+    finally:
+        if health is not None:
+            health.stop()
 
 
 if __name__ == "__main__":
