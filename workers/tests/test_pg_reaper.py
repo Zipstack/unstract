@@ -325,5 +325,21 @@ class TestSweepExpiredBarriers:
         assert _ids(barrier_conn) == []
 
 
+# --- Entry point (the `python -m pg_queue_reaper` launch path) ---
+
+
+class TestEntryPoint:
+    def test_main_module_reexports_real_main(self):
+        # The single point where `run-worker.sh reaper` / `python -m
+        # pg_queue_reaper` either works or dies on ImportError. Pin that the
+        # launcher module re-exports the real reaper main.
+        import importlib
+
+        from queue_backend.pg_queue.reaper import main as real_main
+
+        module = importlib.import_module("pg_queue_reaper.__main__")
+        assert module.main is real_main
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
