@@ -27,6 +27,10 @@ readonly IDE_CALLBACK_WORKER_TYPE="ide_callback"
 # Canonical name of the PG-queue consumer worker (referenced in several maps
 # and special-cases below; a constant keeps them in sync).
 readonly PG_QUEUE_CONSUMER_TYPE="pg_queue_consumer"
+# Canonical name of the PG-queue reaper (leader-elected recovery process).
+readonly PG_QUEUE_REAPER_TYPE="pg_queue_reaper"
+# Set alias that launches the whole PG-queue group (consumer + reaper) together.
+readonly PG_QUEUE_SET="pg-queue"
 
 # Available workers
 declare -A WORKERS=(
@@ -51,6 +55,13 @@ declare -A WORKERS=(
     ["pg-queue-consumer"]="$PG_QUEUE_CONSUMER_TYPE"
     ["$PG_QUEUE_CONSUMER_TYPE"]="$PG_QUEUE_CONSUMER_TYPE"
     ["pg-consumer"]="$PG_QUEUE_CONSUMER_TYPE"
+    # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
+    ["reaper"]="$PG_QUEUE_REAPER_TYPE"
+    ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"
+    ["$PG_QUEUE_REAPER_TYPE"]="$PG_QUEUE_REAPER_TYPE"
+    # Set: launch the whole PG-queue group (consumer + reaper) in one shot
+    ["$PG_QUEUE_SET"]="$PG_QUEUE_SET"
+    ["pg"]="$PG_QUEUE_SET"
     ["all"]="all"
 )
 
@@ -98,6 +109,7 @@ declare -A WORKER_HEALTH_PORTS=(
 # failure (they'd otherwise show STOPPED after every `all`).
 declare -A OPTIN_WORKERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
+    ["$PG_QUEUE_REAPER_TYPE"]=1
 )
 
 # Function to display usage
@@ -118,12 +130,18 @@ WORKER_TYPE:
     executor              Run executor worker (extraction execution tasks)
     ide-callback          Run IDE callback worker (Prompt Studio post-execution callbacks)
     pg-queue-consumer     Run PG-queue poll-loop consumer (opt-in; not part of 'all')
+    reaper, pg-queue-reaper Run PG-queue reaper (leader-elected recovery; opt-in)
+    pg, pg-queue          Run the PG-queue set (consumer + reaper) together
     all                   Run all workers (in separate processes, includes auto-discovered pluggable workers)
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
+Note: 'all' is the Celery worker set; 'pg-queue' is the PG-queue set. They are independent —
+      run both in parallel for a dual-transport (strangler-fig) setup.
 Note: pg-queue-consumer overrides: WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE (source worker whose
       tasks to load, default notification), WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll),
       and WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT (liveness server port, default 8090).
+Note: reaper overrides: WORKER_PG_ORCHESTRATOR_LEASE_SECONDS (lease window, default 10),
+      WORKER_PG_REAPER_INTERVAL_SECONDS (cycle interval, default 5).
 
 OPTIONS:
     -e, --env-file FILE   Use specific environment file (default: .env)
@@ -331,11 +349,11 @@ validate_env() {
 #   --hostname=callback-worker-${id}@%h   (when WORKER_INSTANCE_ID is set)
 get_worker_pids() {
     local worker_type=$1 pattern out rc
-    # The PG-queue consumer runs as `python -m pg_queue_consumer`, not a Celery
-    # `<type>-worker@host` process, so it has no `-worker` token to anchor on.
-    # Match its module invocation instead (covers both the `uv run python`
-    # parent and the `python -m` child). Keeps --status / -k / -r working for it.
-    if [[ "$worker_type" == "$PG_QUEUE_CONSUMER_TYPE" ]]; then
+    # The PG-queue consumer and reaper run as `python -m <pkg>`, not a Celery
+    # `<type>-worker@host` process, so they have no `-worker` token to anchor on.
+    # Match the module invocation instead (covers both the `uv run python` parent
+    # and the `python -m` child). Keeps --status / -k / -r working for them.
+    if [[ "$worker_type" == "$PG_QUEUE_CONSUMER_TYPE" || "$worker_type" == "$PG_QUEUE_REAPER_TYPE" ]]; then
         pattern="-m[[:space:]]+${worker_type}([[:space:]]|\$)"
     else
         pattern="[^[:alnum:]_]${worker_type}-worker(@|-)"
@@ -366,7 +384,9 @@ list_core_worker_dirs() {
     local seen=""
     for key in "${!WORKERS[@]}"; do
         local value="${WORKERS[$key]}"
-        if [[ "$value" == "all" ]]; then
+        # Skip set aliases ("all", "pg-queue") — they're groups, not real worker
+        # dirs/processes, so status must not list them as phantom STOPPED workers.
+        if [[ "$value" == "all" || "$value" == "$PG_QUEUE_SET" ]]; then
             continue
         fi
         if [[ "$seen" == *" $value "* ]]; then
@@ -717,6 +737,14 @@ run_worker() {
         cmd_args=("uv" "run" "python" "-m" "$PG_QUEUE_CONSUMER_TYPE")
     fi
 
+    # PG queue reaper — a leader-elected SQL recovery loop (no Celery, no task
+    # bootstrap). Override the celery command with the plain `python -m` entry.
+    # Tunables (lease window, cycle interval) come from env; no liveness port is
+    # wired yet (that's a follow-on slice), so it binds nothing.
+    if [[ "$worker_type" == "$PG_QUEUE_REAPER_TYPE" ]]; then
+        cmd_args=("uv" "run" "python" "-m" "$PG_QUEUE_REAPER_TYPE")
+    fi
+
     print_status $GREEN "Starting $worker_type worker..."
     print_status $BLUE "Directory: $worker_dir"
     print_status $BLUE "Worker Name: $worker_instance_name"
@@ -728,9 +756,9 @@ run_worker() {
     # Change to appropriate directory
     # For pluggable workers, stay at workers root to allow module imports
     # For core workers, change to worker directory
-    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" || "$worker_type" == "$PG_QUEUE_CONSUMER_TYPE" ]]; then
-        # Run from the workers root so `python -m pg_queue_consumer` (and the
-        # `worker` app it bootstraps) resolve.
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" || "$worker_type" == "$PG_QUEUE_CONSUMER_TYPE" || "$worker_type" == "$PG_QUEUE_REAPER_TYPE" ]]; then
+        # Run from the workers root so `python -m pg_queue_consumer` /
+        # `python -m pg_queue_reaper` (and what they import) resolve.
         cd "$WORKERS_DIR"
     else
         cd "$worker_dir"
@@ -824,6 +852,28 @@ run_all_workers() {
         print_status $GREEN "All workers started in background"
         show_status
     fi
+}
+
+# Function to run the PG-queue worker set (consumer + reaper) together.
+# A set is multiple processes, so — like 'all' — it always runs detached. This
+# is the PG-queue counterpart to 'all' (the Celery set): run both for a
+# dual-transport (strangler-fig) setup. The reaper is a leader-elected singleton,
+# so running it on several hosts is safe (only one wins the lease).
+run_pg_queue_set() {
+    local log_level=$1
+    local concurrency=$2
+    local pool_type=$3
+
+    print_status $GREEN "Starting PG-queue set (consumer + reaper)..."
+    for worker in "$PG_QUEUE_CONSUMER_TYPE" "$PG_QUEUE_REAPER_TYPE"; do
+        print_status $BLUE "Starting $worker in background..."
+        (
+            run_worker "$worker" "true" "$log_level" "$concurrency" "" "" "$pool_type" ""
+        ) &
+        sleep 2
+    done
+    print_status $GREEN "PG-queue set started in background"
+    show_status
 }
 
 # Parse command line arguments
@@ -940,7 +990,13 @@ fi
 #   WORKER_TYPE as "all" once we set it below.
 if [[ "$RESTART_MODE" == "true" ]]; then
     discover_pluggable_workers
-    if [[ -n "$WORKER_TYPE" && "$WORKER_TYPE" != "all" ]]; then
+    if [[ "${WORKERS[$WORKER_TYPE]:-}" == "$PG_QUEUE_SET" ]]; then
+        # Restart the PG-queue set: kill both members, then fall through to the
+        # launch path (which runs run_pg_queue_set since WORKER_TYPE is the set).
+        print_status $BLUE "Restarting PG-queue set..."
+        kill_one_worker "$PG_QUEUE_CONSUMER_TYPE"
+        kill_one_worker "$PG_QUEUE_REAPER_TYPE"
+    elif [[ -n "$WORKER_TYPE" && "$WORKER_TYPE" != "all" ]]; then
         restart_target_dir="${WORKERS[$WORKER_TYPE]:-${PLUGGABLE_WORKERS[$WORKER_TYPE]:-}}"
         if [[ -z "$restart_target_dir" ]]; then
             print_status $RED "Error: Unknown worker type for restart: $WORKER_TYPE"
@@ -994,6 +1050,9 @@ export PYTHONPATH="$WORKERS_DIR:${PYTHONPATH:-}"
 # Run the requested worker(s)
 if [[ "$WORKER_TYPE" == "all" ]]; then
     run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
+elif [[ "${WORKERS[$WORKER_TYPE]:-}" == "$PG_QUEUE_SET" ]]; then
+    # The PG-queue set (consumer + reaper). Always backgrounded (multiple procs).
+    run_pg_queue_set "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
 else
     # Resolve worker directory name from either WORKERS or PLUGGABLE_WORKERS
     WORKER_DIR_NAME="${WORKERS[$WORKER_TYPE]}"
