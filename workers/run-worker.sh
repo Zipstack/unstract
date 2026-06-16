@@ -439,13 +439,22 @@ tail_logs() {
             print_status $BLUE "Tip: omit the worker type to tail all logs"
             exit 1
         fi
-        local f
-        f=$(resolve_log_file "$canonical")
-        if [[ -z "$f" ]]; then
-            print_status $YELLOW "No log file found for $canonical. Did you start it with -d?"
-            exit 0
+        if [[ "$canonical" == "$PG_QUEUE_SET" ]]; then
+            # The set alias maps to no single dir — tail both member logs.
+            for d in "$PG_QUEUE_CONSUMER_TYPE" "$PG_QUEUE_REAPER_TYPE"; do
+                local member_log
+                member_log=$(resolve_log_file "$d")
+                [[ -n "$member_log" ]] && log_files+=("$member_log")
+            done
+        else
+            local f
+            f=$(resolve_log_file "$canonical")
+            if [[ -z "$f" ]]; then
+                print_status $YELLOW "No log file found for $canonical. Did you start it with -d?"
+                exit 0
+            fi
+            log_files+=("$f")
         fi
-        log_files+=("$f")
     fi
 
     if [[ ${#log_files[@]} -eq 0 ]]; then
@@ -881,7 +890,13 @@ run_pg_queue_set() {
             || failed=1
     done
     if [[ $failed -ne 0 ]]; then
-        print_status $RED "PG-queue set: a member failed to start (see logs above)"
+        print_status $RED "PG-queue set: a member failed to start — tearing down the set (see logs above)"
+        # Don't leave a survivor: a restart-on-failure relaunch would spawn a
+        # second instance on top of it (the consumer would double-poll Postgres).
+        # Kill both members (the crashed one is already gone → no-op). Same
+        # all-or-nothing discipline as the restart path.
+        kill_one_worker "$PG_QUEUE_CONSUMER_TYPE"
+        kill_one_worker "$PG_QUEUE_REAPER_TYPE"
         show_status
         return 1
     fi
