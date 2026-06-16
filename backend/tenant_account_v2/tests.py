@@ -18,9 +18,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import FieldDoesNotExist
 from django.test import TestCase
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from tenant_account_v2.group_views import OrganizationGroupViewSet
 from tenant_account_v2.models import (
     GroupMembership,
     OrganizationGroup,
@@ -33,6 +35,7 @@ from tenant_account_v2.sharing_helpers import (
     get_resource_share_groups,
     set_resource_share_groups,
 )
+from tenant_account_v2.users_view import OrganizationUserViewSet
 
 
 def _make_user(email: str, **kwargs) -> User:
@@ -248,6 +251,144 @@ class SignalCleanupTests(GroupSharingTestBase):
                 content_type=content_type, object_id=workflow_pk
             ).exists()
         )
+
+
+class GroupViewSetServiceAccountTests(GroupSharingTestBase):
+    """Service accounts (platform-key auth) may manage groups; plain members may not.
+
+    Admin resolution is patched to always-False so any write that succeeds
+    does so via the service-account allowance, not an accidental admin role.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.svc = _make_user("svc@example.com", is_service_account=True)
+        self.factory = APIRequestFactory()
+        patcher = patch(
+            "tenant_account_v2.sharing_helpers.is_org_admin", return_value=False
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _call(self, actions, method, user, data=None, **url_kwargs):
+        view = OrganizationGroupViewSet.as_view(actions)
+        request = getattr(self.factory, method)("/groups/", data, format="json")
+        force_authenticate(request, user=user)
+        return view(request, **url_kwargs)
+
+    def test_service_account_can_create_group(self) -> None:
+        response = self._call(
+            {"post": "create"}, "post", self.svc, data={"name": "Cloned"}
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            OrganizationGroup.objects.filter(
+                organization=self.org, name="Cloned"
+            ).exists()
+        )
+
+    def test_service_account_can_add_members(self) -> None:
+        response = self._call(
+            {"post": "members"},
+            "post",
+            self.svc,
+            data={"user_ids": [self.outsider.id]},
+            pk=str(self.group.pk),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(
+            GroupMembership.objects.filter(group=self.group, user=self.outsider).exists()
+        )
+
+    def test_service_account_can_remove_member(self) -> None:
+        response = self._call(
+            {"delete": "remove_member"},
+            "delete",
+            self.svc,
+            pk=str(self.group.pk),
+            user_id=str(self.member.id),
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(
+            GroupMembership.objects.filter(group=self.group, user=self.member).exists()
+        )
+
+    def test_service_account_can_list_group_resources(self) -> None:
+        set_resource_share_groups(self.workflow, [self.group.id])
+        response = self._call(
+            {"get": "resources"}, "get", self.svc, pk=str(self.group.pk)
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(
+            str(self.workflow.id), [item["resource_id"] for item in response.data]
+        )
+
+    def test_non_admin_member_still_403_on_writes(self) -> None:
+        cases = [
+            ({"post": "create"}, "post", {"name": "Nope"}, {}),
+            (
+                {"post": "members"},
+                "post",
+                {"user_ids": [self.outsider.id]},
+                {"pk": str(self.group.pk)},
+            ),
+            (
+                {"delete": "remove_member"},
+                "delete",
+                None,
+                {"pk": str(self.group.pk), "user_id": str(self.member.id)},
+            ),
+            ({"get": "resources"}, "get", None, {"pk": str(self.group.pk)}),
+        ]
+        for actions, method, data, url_kwargs in cases:
+            with self.subTest(action=next(iter(actions.values()))):
+                response = self._call(
+                    actions, method, self.member, data=data, **url_kwargs
+                )
+                self.assertEqual(response.status_code, 403)
+
+    def test_members_listing_flags_service_accounts(self) -> None:
+        GroupMembership.objects.create(group=self.group, user=self.svc)
+        response = self._call({"get": "members"}, "get", self.svc, pk=str(self.group.pk))
+        self.assertEqual(response.status_code, 200)
+        flags = {row["email"]: row["is_service_account"] for row in response.data}
+        self.assertTrue(flags[self.svc.email])
+        self.assertFalse(flags[self.member.email])
+
+    def test_non_admin_member_cannot_delete_group(self) -> None:
+        response = self._call(
+            {"delete": "destroy"}, "delete", self.member, pk=str(self.group.pk)
+        )
+        self.assertEqual(response.status_code, 403)
+        response = self._call(
+            {"delete": "destroy"}, "delete", self.svc, pk=str(self.group.pk)
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(OrganizationGroup.objects.filter(pk=self.group.pk).exists())
+
+
+class OrganizationMembersListingTests(GroupSharingTestBase):
+    """GET /users/ excludes service accounts; human rows carry the flag."""
+
+    def test_users_listing_excludes_service_accounts(self) -> None:
+        svc = _make_user("svc@example.com", is_service_account=True)
+        OrganizationMember.objects.create(organization=self.org, user=svc, role="user")
+
+        request = APIRequestFactory().get("/users/")
+        force_authenticate(request, user=self.admin)
+        view = OrganizationUserViewSet.as_view({"get": "get_organization_members"})
+        with patch(
+            "tenant_account_v2.users_view.UserSessionUtils.get_organization_id",
+            return_value=self.org.organization_id,
+        ):
+            response = view(request)
+
+        self.assertEqual(response.status_code, 200)
+        flags = {
+            row["email"]: row["is_service_account"] for row in response.data["members"]
+        }
+        self.assertNotIn(svc.email, flags)
+        self.assertFalse(flags[self.member.email])
 
 
 class ShareableResourceRegistryTests(TestCase):
