@@ -47,9 +47,8 @@ dev = [
     "pytest-asyncio>=0.24.0",
     "pytest-mock>=3.11.0",
     "pytest-cov>=4.1.0",
-    "black>=26.3.1",
-    "isort>=5.12.0",
-    "flake8>=6.0.0",
+    # Formatting/linting/import-sorting handled repo-wide by ruff (see root
+    # pyproject.toml + .pre-commit-config.yaml); black/isort/flake8 dropped.
     "mypy>=1.5.0",
     "debugpy>=1.8.14",
 ]
@@ -83,42 +82,6 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["shared"]
-
-[tool.black]
-line-length = 88
-target-version = ['py312']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
-
-[tool.isort]
-profile = "black"
-multi_line_output = 3
-line_length = 88
-known_first_party = [
-    "shared",
-    "api_deployment",
-    "general",
-    "file_processing",
-    "callback",
-    "executor",
-    "pluggable_worker",
-    "notification",
-    "scheduler",
-    "log_consumer",
-    "ide_callback",
-    "queue_backend"
-]
 
 [tool.mypy]
 python_version = "3.12"
