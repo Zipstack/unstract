@@ -10,7 +10,7 @@ def backfill_creator_to_co_owners(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("workflow_v2", "0020_workflow_co_owners"),
+        ("workflow_v2", "0021_workflow_co_owners"),
     ]
 
     operations = [

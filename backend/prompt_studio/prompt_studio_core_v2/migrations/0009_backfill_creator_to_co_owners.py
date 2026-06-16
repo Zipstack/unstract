@@ -10,7 +10,7 @@ def backfill_creator_to_co_owners(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("prompt_studio_core_v2", "0007_customtool_co_owners"),
+        ("prompt_studio_core_v2", "0008_customtool_co_owners"),
     ]
 
     operations = [
