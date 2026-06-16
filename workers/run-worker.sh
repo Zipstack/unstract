@@ -101,6 +101,11 @@ declare -A WORKER_HEALTH_PORTS=(
     # only when WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT is exported (below); a bare
     # `python -m pg_queue_consumer` binds nothing.
     ["$PG_QUEUE_CONSUMER_TYPE"]="8090"
+    # pg_queue_reaper: 8086 — the one free slot in the 8080-8090 band (8086 sits
+    # between callback's 8085 and scheduler's 8087). Bound only when
+    # WORKER_PG_REAPER_HEALTH_PORT is exported (below); a bare
+    # `python -m pg_queue_reaper` binds nothing.
+    ["$PG_QUEUE_REAPER_TYPE"]="8086"
 )
 
 # Opt-in workers: experimental and NOT part of the default "all" fleet, so
@@ -141,7 +146,9 @@ Note: pg-queue-consumer overrides: WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE (source 
       tasks to load, default notification), WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll),
       and WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT (liveness server port, default 8090).
 Note: reaper overrides: WORKER_PG_ORCHESTRATOR_LEASE_SECONDS (lease window, default 10),
-      WORKER_PG_REAPER_INTERVAL_SECONDS (cycle interval, default 5).
+      WORKER_PG_REAPER_INTERVAL_SECONDS (cycle interval, default 5),
+      WORKER_PG_REAPER_HEALTH_PORT (liveness server port, default 8086),
+      WORKER_PG_REAPER_HEALTH_STALE_SECONDS (liveness staleness window, default 30).
 
 OPTIONS:
     -e, --env-file FILE   Use specific environment file (default: .env)
@@ -748,9 +755,11 @@ run_worker() {
 
     # PG queue reaper — a leader-elected SQL recovery loop (no Celery, no task
     # bootstrap). Override the celery command with the plain `python -m` entry.
-    # Tunables (lease window, cycle interval) come from env; no liveness port is
-    # wired yet (that's a follow-on slice), so it binds nothing.
+    # Tunables (lease window, cycle interval) come from env. The liveness server
+    # binds when WORKER_PG_REAPER_HEALTH_PORT is set (-p override wins, else the
+    # map default) — exported so the reaper's main() opts in.
     if [[ "$worker_type" == "$PG_QUEUE_REAPER_TYPE" ]]; then
+        export WORKER_PG_REAPER_HEALTH_PORT="${health_port:-${WORKER_HEALTH_PORTS[$worker_type]}}"
         cmd_args=("uv" "run" "python" "-m" "$PG_QUEUE_REAPER_TYPE")
     fi
 

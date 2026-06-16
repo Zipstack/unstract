@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, NamedTuple, Protocol
 
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
+from .liveness import LivenessServer as _BaseLivenessServer
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -178,11 +179,23 @@ class PgReaper:
         self._owns_sweep_conn = sweep_conn is None
         self._running = False
         self._is_leader = False
+        # Liveness heartbeat: monotonic timestamp of the last tick start. A
+        # standby tick counts as progress too (the loop is alive), so this tracks
+        # loop liveness, not leadership.
+        self._last_tick_monotonic = time.monotonic()
 
     @property
     def is_leader(self) -> bool:
         """Whether this process currently holds leadership (last tick's view)."""
         return self._is_leader
+
+    def seconds_since_last_tick(self) -> float:
+        """Seconds since the last tick started — the liveness heartbeat age."""
+        return time.monotonic() - self._last_tick_monotonic
+
+    def is_tick_stale(self, stale_after_seconds: float) -> bool:
+        """Whether the loop has gone quiet past ``stale_after_seconds``."""
+        return self.seconds_since_last_tick() > stale_after_seconds
 
     def _get_sweep_conn(self) -> PgConnection:
         # Recreate only an OWNED missing/closed connection; an injected one is the
@@ -208,6 +221,9 @@ class PgReaper:
 
     def tick(self) -> TickOutcome:
         """One cycle: maintain leadership, then sweep iff leader."""
+        # Heartbeat at the START of the cycle: a tick that begins but then errors
+        # still proves the loop is running (the error path is caught by run()).
+        self._last_tick_monotonic = time.monotonic()
         if self._is_leader:
             try:
                 still_leader = self._lease.renew()
@@ -297,10 +313,117 @@ class PgReaper:
             )
 
 
+# Default staleness window for the liveness probe. Comfortably above the default
+# tick interval (_DEFAULT_REAPER_INTERVAL_SECONDS) so a single slow cycle (a long
+# sweep / DB blip) doesn't flap the probe; the durable rationale is the headroom
+# ratio — an operator tightening the interval should tighten this too.
+_DEFAULT_HEALTH_STALE_SECONDS = 30.0
+
+
+class ReaperLivenessServer(_BaseLivenessServer):
+    """Reaper tick-loop liveness — a thin wrapper over the shared
+    :class:`queue_backend.pg_queue.liveness.LivenessServer`, bound to the reaper's
+    heartbeat (``seconds_since_last_tick``) and surfacing ``is_leader`` (which pod
+    holds the lease — informational; the 200/503 verdict is purely the heartbeat,
+    so a standby is healthy).
+    """
+
+    def __init__(self, reaper: PgReaper, *, port: int, stale_after: float) -> None:
+        super().__init__(
+            freshness_fn=reaper.seconds_since_last_tick,
+            stale_after=stale_after,
+            port=port,
+            check_name="pg_reaper_tick",
+            age_key="seconds_since_last_tick",
+            extra_status_fn=lambda: {"is_leader": reaper.is_leader},
+            thread_name="pg-reaper-liveness",
+            log_label="pg-queue reaper",
+        )
+
+
+def _reaper_health_stale_from_env() -> float:
+    raw = os.getenv("WORKER_PG_REAPER_HEALTH_STALE_SECONDS")
+    if raw is None or raw == "":
+        return _DEFAULT_HEALTH_STALE_SECONDS
+    try:
+        value = float(raw)
+    except ValueError as exc:
+        raise ValueError(
+            f"WORKER_PG_REAPER_HEALTH_STALE_SECONDS={raw!r} is not a number."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"WORKER_PG_REAPER_HEALTH_STALE_SECONDS={value} must be positive."
+        )
+    return value
+
+
+def _reaper_health_port_from_env() -> int | None:
+    """Liveness port from ``WORKER_PG_REAPER_HEALTH_PORT`` (unset/empty → None,
+    i.e. no server). Validates + names the var here so a garbled value (a common
+    run-worker.sh shell-fallback mistake) fails with a clear message rather than a
+    context-free ``int('abc')`` crash — and so an out-of-range value is rejected
+    at parse time rather than escaping the bind catch as ``OverflowError`` inside
+    ``start()``.
+    """
+    raw = os.getenv("WORKER_PG_REAPER_HEALTH_PORT")
+    if raw is None or raw == "":
+        return None
+    try:
+        port = int(raw)
+    except ValueError as exc:
+        raise ValueError(f"Invalid WORKER_PG_REAPER_HEALTH_PORT={raw!r}: {exc}") from exc
+    if not (0 <= port <= 65535):
+        raise ValueError(f"WORKER_PG_REAPER_HEALTH_PORT={port} out of range 0-65535")
+    return port
+
+
+def _maybe_start_health_server(
+    reaper: PgReaper, *, port: int | None, stale_after: float
+) -> ReaperLivenessServer | None:
+    """Start the liveness server when ``port`` is not None; else ``None``.
+
+    A bind failure degrades gracefully — the probe is auxiliary and must never
+    stop the reaper from running; we log and continue probe-less.
+    """
+    if port is None:
+        logger.info(
+            "PG-queue reaper: WORKER_PG_REAPER_HEALTH_PORT unset — liveness "
+            "server disabled"
+        )
+        return None
+    server = ReaperLivenessServer(reaper, port=port, stale_after=stale_after)
+    try:
+        server.start()
+    except OSError:
+        logger.exception(
+            "PG-queue reaper: liveness server could not bind :%s — continuing "
+            "WITHOUT a probe",
+            port,
+        )
+        return None
+    logger.info(
+        "PG-queue reaper: liveness server on :%s/health (stale after %ss)",
+        server.bound_port,
+        stale_after,
+    )
+    return server
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     lease = LeaderLease(default_worker_id())
-    PgReaper(lease).run()
+    reaper = PgReaper(lease)
+    health = _maybe_start_health_server(
+        reaper,
+        port=_reaper_health_port_from_env(),
+        stale_after=_reaper_health_stale_from_env(),
+    )
+    try:
+        reaper.run()
+    finally:
+        if health is not None:
+            health.stop()
 
 
 if __name__ == "__main__":

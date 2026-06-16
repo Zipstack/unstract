@@ -325,6 +325,233 @@ class TestSweepExpiredBarriers:
         assert _ids(barrier_conn) == []
 
 
+# --- Heartbeat + liveness probe ---
+
+
+class TestHeartbeat:
+    def test_fresh_after_init(self):
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        assert reaper.seconds_since_last_tick() < 5
+        assert reaper.is_tick_stale(1) is False
+
+    def test_tick_refreshes_heartbeat(self):
+        # Even a standby tick (no sweep) counts as loop progress.
+        reaper = PgReaper(
+            _FakeLease(acquires=False), interval_seconds=0.01, sweep_conn=object()
+        )
+        reaper._last_tick_monotonic = time.monotonic() - 100  # force stale
+        assert reaper.is_tick_stale(1) is True
+        reaper.tick()
+        assert reaper.is_tick_stale(1) is False
+
+
+def _http_get(server, path="/health"):
+    import http.client
+    import json as _json
+
+    conn = http.client.HTTPConnection("127.0.0.1", server.bound_port, timeout=3)
+    try:
+        conn.request("GET", path)
+        resp = conn.getresponse()
+        raw = resp.read()
+        return resp.status, (_json.loads(raw) if raw else None)
+    finally:
+        conn.close()
+
+
+class TestLivenessServer:
+    def _server(self, reaper, *, stale_after=30.0):
+        server = reaper_mod.ReaperLivenessServer(reaper, port=0, stale_after=stale_after)
+        server.start()
+        return server
+
+    def test_fresh_returns_200(self):
+        reaper = PgReaper(
+            _FakeLease(acquires=False), interval_seconds=0.01, sweep_conn=object()
+        )
+        server = self._server(reaper)
+        try:
+            status, body = _http_get(server)
+        finally:
+            server.stop()
+        assert status == 200
+        assert body["status"] == "healthy"
+        assert body["check"] == "pg_reaper_tick"
+        assert body["is_leader"] is False
+
+    def test_stale_returns_503(self):
+        reaper = PgReaper(_FakeLease(), interval_seconds=0.01, sweep_conn=object())
+        reaper._last_tick_monotonic = time.monotonic() - 100
+        server = self._server(reaper, stale_after=1.0)
+        try:
+            status, body = _http_get(server)
+        finally:
+            server.stop()
+        assert status == 503
+        assert body["status"] == "unhealthy"
+
+    def test_is_leader_reflected(self):
+        reaper = PgReaper(
+            _FakeLease(acquires=True, renews=True),
+            interval_seconds=0.01,
+            sweep_conn=object(),
+        )
+        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+            reaper.tick()  # becomes leader
+        server = self._server(reaper)
+        try:
+            _, body = _http_get(server)
+        finally:
+            server.stop()
+        assert body["is_leader"] is True
+
+    def test_extra_status_cannot_clobber_core_fields(self):
+        # A future extra_status_fn returning a reserved key must not corrupt the
+        # core payload a monitor reads — core fields always win.
+        from queue_backend.pg_queue.liveness import LivenessServer
+
+        server = LivenessServer(
+            freshness_fn=lambda: 0.0,
+            stale_after=30,
+            port=0,
+            check_name="x",
+            age_key="age",
+            extra_status_fn=lambda: {"status": "HACKED", "check": "HACKED", "extra": 1},
+        )
+        server.start()
+        try:
+            status, body = _http_get(server)
+        finally:
+            server.stop()
+        assert status == 200
+        assert body["status"] == "healthy"  # core not clobbered
+        assert body["check"] == "x"  # core not clobbered
+        assert body["extra"] == 1  # non-reserved extra preserved
+
+    def test_unknown_path_404(self):
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        server = self._server(reaper)
+        try:
+            status, _ = _http_get(server, "/nope")
+        finally:
+            server.stop()
+        assert status == 404
+
+    def test_double_start_raises(self):
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        server = self._server(reaper)
+        try:
+            with pytest.raises(RuntimeError):
+                server.start()
+        finally:
+            server.stop()
+
+
+class TestHealthEnv:
+    def test_stale_default_is_thirty(self, monkeypatch):
+        monkeypatch.delenv("WORKER_PG_REAPER_HEALTH_STALE_SECONDS", raising=False)
+        assert reaper_mod._reaper_health_stale_from_env() == pytest.approx(30.0)
+
+    def test_stale_overridable(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_STALE_SECONDS", "10")
+        assert reaper_mod._reaper_health_stale_from_env() == pytest.approx(10.0)
+
+    @pytest.mark.parametrize("bad", ["0", "-1", "x"])
+    def test_stale_invalid_raises(self, monkeypatch, bad):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_STALE_SECONDS", bad)
+        with pytest.raises(ValueError):
+            reaper_mod._reaper_health_stale_from_env()
+
+    def test_health_server_disabled_when_no_port(self):
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        assert (
+            reaper_mod._maybe_start_health_server(reaper, port=None, stale_after=30)
+            is None
+        )
+
+    def test_health_server_bind_failure_degrades_to_none(self, monkeypatch):
+        # The documented graceful-degrade path: a bind failure must NOT stop the
+        # reaper — log and run probe-less.
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        monkeypatch.setattr(
+            reaper_mod.ReaperLivenessServer,
+            "start",
+            MagicMock(side_effect=OSError("address already in use")),
+        )
+        with patch.object(reaper_mod.logger, "exception") as logexc:
+            result = reaper_mod._maybe_start_health_server(
+                reaper, port=12345, stale_after=30
+            )
+        assert result is None
+        logexc.assert_called_once()
+
+    def test_stale_after_non_positive_rejected(self):
+        # Constructor re-validates (not only the env reader) — an always-503 probe
+        # would crash-loop the pod.
+        reaper = PgReaper(_FakeLease(), interval_seconds=1, sweep_conn=object())
+        with pytest.raises(ValueError, match="stale_after"):
+            reaper_mod.ReaperLivenessServer(reaper, port=0, stale_after=0)
+
+
+class TestHealthPortEnv:
+    def test_unset_is_none(self, monkeypatch):
+        monkeypatch.delenv("WORKER_PG_REAPER_HEALTH_PORT", raising=False)
+        assert reaper_mod._reaper_health_port_from_env() is None
+
+    def test_empty_is_none(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "")
+        assert reaper_mod._reaper_health_port_from_env() is None
+
+    def test_valid_port(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "8086")
+        assert reaper_mod._reaper_health_port_from_env() == 8086
+
+    def test_non_int_raises_named(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "abc")
+        with pytest.raises(ValueError, match="WORKER_PG_REAPER_HEALTH_PORT"):
+            reaper_mod._reaper_health_port_from_env()
+
+    def test_out_of_range_raises(self, monkeypatch):
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "99999")
+        with pytest.raises(ValueError, match="out of range"):
+            reaper_mod._reaper_health_port_from_env()
+
+
+class TestMainWiring:
+    def _patch_main(self, monkeypatch):
+        # Don't open a DB connection or run the loop.
+        monkeypatch.setattr(reaper_mod, "LeaderLease", lambda _wid: _FakeLease())
+        monkeypatch.setattr(reaper_mod.PgReaper, "run", lambda self, **_kw: None)
+
+    def test_wires_health_port_and_stops_on_exit(self, monkeypatch):
+        self._patch_main(monkeypatch)
+        monkeypatch.setenv("WORKER_PG_REAPER_HEALTH_PORT", "0")
+        fake_health = MagicMock()
+        captured: dict = {}
+
+        def fake_start(_reaper, *, port, stale_after):
+            captured["port"] = port
+            return fake_health
+
+        monkeypatch.setattr(reaper_mod, "_maybe_start_health_server", fake_start)
+        reaper_mod.main()
+        assert captured["port"] == 0  # parsed int reached the wiring
+        fake_health.stop.assert_called_once()  # stopped in the finally
+
+    def test_no_health_when_port_unset(self, monkeypatch):
+        self._patch_main(monkeypatch)
+        monkeypatch.delenv("WORKER_PG_REAPER_HEALTH_PORT", raising=False)
+        captured: dict = {}
+
+        def fake_start(_reaper, *, port, stale_after):
+            captured["port"] = port
+            return None
+
+        monkeypatch.setattr(reaper_mod, "_maybe_start_health_server", fake_start)
+        reaper_mod.main()  # must not raise even though health is None
+        assert captured["port"] is None
+
+
 # --- Entry point (the `python -m pg_queue_reaper` launch path) ---
 
 
