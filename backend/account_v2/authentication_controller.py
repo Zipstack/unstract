@@ -41,6 +41,7 @@ from account_v2.dto import (
     UserInviteResponse,
     UserRoleData,
 )
+from account_v2.enums import UserRole
 from account_v2.exceptions import OrganizationNotExist
 from account_v2.models import Organization, User
 from account_v2.organization import OrganizationService
@@ -417,9 +418,25 @@ class AuthenticationController:
 
         return is_removed
 
+    def _ensure_not_last_admin_demotion(self, email: str, new_role: str) -> None:
+        # Block demoting the only admin so the org never loses all admins.
+        # is_admin_by_role() defers to the active auth plugin's role semantics.
+        if self.is_admin_by_role(new_role):
+            return
+        target = OrganizationMemberService.get_user_by_email(email=email)
+        if target and self.is_admin_by_role(target.role):
+            admin_count = sum(
+                1
+                for m in OrganizationMemberService.get_members()
+                if self.is_admin_by_role(m.role)
+            )
+            if admin_count <= 1:
+                raise Forbidden("Cannot demote the only admin of the organization")
+
     def add_user_role(
         self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
+        self._ensure_not_last_admin_demotion(email=email, new_role=role)
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         user = OrganizationMemberService.get_user_by_email(email=email)
@@ -438,6 +455,10 @@ class AuthenticationController:
     def remove_user_role(
         self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
+        if self.is_admin_by_role(role):
+            self._ensure_not_last_admin_demotion(
+                email=email, new_role=UserRole.USER.value
+            )
         admin: User = request.user
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         organization_member = OrganizationMemberService.get_user_by_email(email=email)
