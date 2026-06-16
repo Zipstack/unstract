@@ -36,7 +36,7 @@ dependencies = [
     "Office365-REST-Python-Client~=2.6.0",  # For SharePoint/OneDrive
     # Database connectors
     "psycopg2-binary==2.9.9",                     # For Postgres, Redshift
-    "snowflake-connector-python[pandas]~=3.14.0", # For Snowflake
+    "snowflake-connector-python[pandas]~=4.6.0", # For Snowflake
     "google-cloud-bigquery==3.11.4",              # For Bigquery
     "pymssql==2.3.4",                             # For MSSQL
     "PyMySQL==1.1.0",                             # For MySQL
@@ -53,8 +53,8 @@ dependencies = [
 
 [dependency-groups]
 test = [
-    "pytest>=8.0.1",
-    "python-dotenv~=1.0.0",
+    "pytest>=9.0.3",
+    "python-dotenv~=1.2.2",
     "unstract-filesystem",
 ]
 

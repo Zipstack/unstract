@@ -29,10 +29,24 @@ class UserInviteResponseSerializer(serializers.Serializer):
 class OrganizationMemberSerializer(serializers.ModelSerializer):
     email = serializers.CharField(source="user.email", read_only=True)
     id = serializers.CharField(source="user.id", read_only=True)
+    is_admin = serializers.SerializerMethodField()
+    is_service_account = serializers.BooleanField(
+        source="user.is_service_account", read_only=True
+    )
 
     class Meta:
         model = OrganizationMember
-        fields = ("id", "email", "role")
+        fields = ("id", "email", "role", "is_admin", "is_service_account")
+
+    def get_is_admin(self, obj: OrganizationMember) -> bool:
+        # Admin determination is auth-plugin specific (OSS "admin" vs Auth0
+        # "unstract_admin"); defer to the same check used for access control.
+        auth_controller = self.context.get("auth_controller")
+        if auth_controller is None:
+            from account_v2.authentication_controller import AuthenticationController
+
+            auth_controller = AuthenticationController()
+        return auth_controller.is_admin_by_role(obj.role)
 
 
 class LimitedUserEmailListSerializer(serializers.ListSerializer):

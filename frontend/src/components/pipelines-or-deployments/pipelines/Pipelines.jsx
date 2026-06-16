@@ -26,6 +26,7 @@ import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { Layout } from "../../deployments/layout/Layout.jsx";
 import { ManageKeys } from "../../deployments/manage-keys/ManageKeys.jsx";
+import { groupsService } from "../../groups/groups-service.js";
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement";
 import { SharePermission } from "../../widgets/share-permission/SharePermission";
 import { EtlTaskDeploy } from "../etl-task-deploy/EtlTaskDeploy.jsx";
@@ -110,15 +111,18 @@ function Pipelines({ type }) {
     setAlertDetails,
   });
 
+  const groupsApi = groupsService();
   const {
     openShareModal,
     setOpenShareModal,
     allUsers,
+    allGroups,
     isLoadingShare,
     handleShare,
     onShare,
   } = useShareModal({
     apiService: pipelineApiService,
+    groupsApi,
     setSelectedItem: setSelectedPorD,
     setAlertDetails,
     handleException,
@@ -456,6 +460,7 @@ function Pipelines({ type }) {
           permissionEdit={true}
           loading={isLoadingShare}
           allUsers={Array.isArray(allUsers) ? allUsers : []}
+          allGroups={Array.isArray(allGroups) ? allGroups : []}
           onApply={onShare}
           isSharableToOrg={true}
         />

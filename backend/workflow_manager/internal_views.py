@@ -478,59 +478,51 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             execution = self.get_object()
             serializer = WorkflowExecutionStatusUpdateSerializer(data=request.data)
 
-            if serializer.is_valid():
-                validated_data = serializer.validated_data
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-                # FIXED: Use update_execution() method for proper wall-clock time calculation
-                # This replaces manual field setting which bypassed execution time logic
+            validated_data = serializer.validated_data
 
-                # Handle error message truncation before calling update_execution
-                error_message = None
-                if validated_data.get("error_message"):
-                    error_msg = validated_data["error_message"]
-                    if len(error_msg) > 256:
-                        error_message = error_msg[:253] + "..."
-                        logger.warning(
-                            f"Error message truncated for execution {id} (original length: {len(error_msg)})"
-                        )
-                    else:
-                        error_message = error_msg
+            # Use update_execution() for proper wall-clock time calculation rather
+            # than manual field setting, which bypassed the execution time logic.
+            error_message = self._truncate_error_message(
+                validated_data.get("error_message"), id
+            )
 
-                # Handle attempts increment
-                increment_attempt = (
-                    validated_data.get("attempts") is not None
-                    and validated_data.get("attempts") > execution.attempts
-                )
+            increment_attempt = (
+                validated_data.get("attempts") is not None
+                and validated_data.get("attempts") > execution.attempts
+            )
 
-                # Use the model's update_execution method for proper wall-clock calculation
-                from workflow_manager.workflow_v2.enums import ExecutionStatus
+            from workflow_manager.workflow_v2.enums import ExecutionStatus
 
-                status_enum = ExecutionStatus(validated_data["status"])
-                logger.info(f"Updating status for execution {id} to {status_enum}")
+            status_enum = ExecutionStatus(validated_data["status"])
+            logger.info(f"Updating status for execution {id} to {status_enum}")
+            # Status and file-count aggregates must commit together. Otherwise a
+            # failure between the two writes can leave the row at a terminal status
+            # with failed_files=None, which is_failure_run() reads as a success and
+            # silently bypasses notify_on_failures subscribers.
+            with transaction.atomic():
                 execution.update_execution(
                     status=status_enum,
                     error=error_message,
                     increment_attempt=increment_attempt,
                 )
 
-                # Update total_files separately (not handled by update_execution)
-                if validated_data.get("total_files") is not None:
-                    execution.total_files = validated_data["total_files"]
-                    execution.save()
+                # File aggregates are not handled by update_execution; persist separately.
+                self._update_file_aggregates(execution, validated_data)
 
-                logger.info(
-                    f"Updated workflow execution {id} status to {validated_data['status']}"
-                )
+            logger.info(
+                f"Updated workflow execution {id} status to {validated_data['status']}"
+            )
 
-                return Response(
-                    {
-                        "status": "updated",
-                        "execution_id": str(execution.id),
-                        "new_status": execution.status,
-                    }
-                )
-
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {
+                    "status": "updated",
+                    "execution_id": str(execution.id),
+                    "new_status": execution.status,
+                }
+            )
 
         except Exception as e:
             logger.error(f"Failed to update workflow execution status {id}: {str(e)}")
@@ -538,6 +530,30 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 {"error": "Failed to update workflow execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    @staticmethod
+    def _truncate_error_message(error_msg: str | None, execution_id) -> str | None:
+        """Truncate an error message to the 256-char column limit (with ellipsis)."""
+        if not error_msg:
+            return None
+        if len(error_msg) > 256:
+            logger.warning(
+                f"Error message truncated for execution {execution_id} "
+                f"(original length: {len(error_msg)})"
+            )
+            return error_msg[:253] + "..."
+        return error_msg
+
+    @staticmethod
+    def _update_file_aggregates(execution, validated_data) -> None:
+        """Persist total / successful / failed file counts when present."""
+        update_fields: list[str] = []
+        for field in ("total_files", "successful_files", "failed_files"):
+            if validated_data.get(field) is not None:
+                setattr(execution, field, validated_data[field])
+                update_fields.append(field)
+        if update_fields:
+            execution.save(update_fields=update_fields)
 
 
 class FileBatchCreateAPIView(APIView):

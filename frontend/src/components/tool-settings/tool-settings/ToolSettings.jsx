@@ -11,6 +11,7 @@ import { IslandLayout } from "../../../layouts/island-layout/IslandLayout";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools";
+import { groupsService } from "../../groups/groups-service.js";
 import { AddSourceModal } from "../../input-output/add-source-modal/AddSourceModal";
 import "../../input-output/data-source-card/DataSourceCard.css";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar";
@@ -40,6 +41,8 @@ function ToolSettings({ type }) {
   const [isShareLoading, setIsShareLoading] = useState(false);
   const [adapterDetails, setAdapterDetails] = useState(null);
   const [userList, setUserList] = useState([]);
+  const [groupList, setGroupList] = useState([]);
+  const groupsApi = groupsService();
   const [openAddSourcesModal, setOpenAddSourcesModal] = useState(false);
   const [openSharePermissionModal, setOpenSharePermissionModal] =
     useState(false);
@@ -195,6 +198,13 @@ function ToolSettings({ type }) {
     };
     setIsShareLoading(true);
     getAllUsers();
+    groupsApi
+      .listGroups()
+      .then((res) => {
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setGroupList(items.map((g) => ({ id: g.id, name: g.name })));
+      })
+      .catch(() => setGroupList([]));
     axiosPrivate(requestOptions)
       .then((res) => {
         setOpenSharePermissionModal(true);
@@ -223,6 +233,7 @@ function ToolSettings({ type }) {
           users.map((user) => ({
             id: user?.id,
             email: user?.email,
+            is_admin: user?.is_admin,
           })),
         );
       })
@@ -234,20 +245,21 @@ function ToolSettings({ type }) {
       });
   };
 
-  const onShare = (userIds, adapter, shareWithEveryone) => {
+  const onShare = (userIds, adapter, shareWithEveryone, groupIds = []) => {
     const requestOptions = {
-      method: "PATCH",
-      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
+      method: "POST",
+      url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/share/`,
       headers: {
         "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,
+        shared_groups: groupIds,
       },
     };
     axiosPrivate(requestOptions)
-      .then((response) => {
+      .then(() => {
         setOpenSharePermissionModal(false);
       })
       .catch((err) => {
@@ -347,6 +359,7 @@ function ToolSettings({ type }) {
         permissionEdit={isPermissonEdit}
         loading={isShareLoading}
         allUsers={userList}
+        allGroups={groupList}
         onApply={onShare}
         isSharableToOrg={true}
       />

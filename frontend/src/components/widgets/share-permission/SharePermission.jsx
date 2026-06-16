@@ -1,6 +1,7 @@
 import {
   DeleteOutlined,
   QuestionCircleOutlined,
+  TeamOutlined,
   UserOutlined,
 } from "@ant-design/icons";
 import {
@@ -16,43 +17,64 @@ import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import "./SharePermission.css";
 
+import { useSessionStore } from "../../../store/session-store";
 import { SpinnerLoader } from "../spinner-loader/SpinnerLoader";
 
 function SharePermission({
   open,
   setOpen,
+  adapter,
   sharedItem,
   permissionEdit,
   loading,
   allUsers,
+  allGroups = [],
   onApply,
   isSharableToOrg = false,
 }) {
+  const { sessionDetails } = useSessionStore();
+  const currentUserId = sessionDetails?.id?.toString();
   const [selectedUsers, setSelectedUsers] = useState([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState([]);
   const [filteredUsers, setFilteredUsers] = useState([]);
   const [shareWithEveryone, setShareWithEveryone] = useState(false);
 
   useEffect(() => {
-    if (permissionEdit && sharedItem && sharedItem?.shared_users) {
-      // If permissionEdit is true, and sharedItem is available,
-      // set the selectedUsers to the IDs of shared users
+    if (permissionEdit && adapter && adapter?.shared_users) {
+      const creatorId = (
+        adapter?.created_by?.id ?? adapter?.created_by
+      )?.toString();
       const users = allUsers.filter((user) => {
-        if (sharedItem?.created_by?.id !== undefined) {
-          return isSharableToOrg
-            ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== sharedItem?.created_by?.id?.toString() &&
-                !selectedUsers.includes(user?.id?.toString());
-        } else {
-          return isSharableToOrg
-            ? !selectedUsers.includes(user?.id?.toString())
-            : user?.id !== sharedItem?.created_by?.toString() &&
-                !selectedUsers.includes(user?.id?.toString());
+        const userId = user?.id?.toString();
+        // Already-selected users shouldn't reappear as options
+        if (selectedUsers.includes(userId)) {
+          return false;
         }
+        // Can't share a resource with yourself
+        if (userId === currentUserId) {
+          return false;
+        }
+        // Admins already have access to everything — sharing is a no-op
+        if (user?.is_admin) {
+          return false;
+        }
+        // The creator already owns it, unless we're sharing org-wide
+        if (!isSharableToOrg && userId === creatorId) {
+          return false;
+        }
+        return true;
       });
       setFilteredUsers(users);
       setShareWithEveryone(sharedItem?.shared_to_org || false);
     }
-  }, [permissionEdit, sharedItem, allUsers, selectedUsers]);
+  }, [
+    permissionEdit,
+    adapter,
+    allUsers,
+    selectedUsers,
+    currentUserId,
+    isSharableToOrg,
+  ]);
 
   useEffect(() => {
     if (sharedItem?.shared_users) {
@@ -66,15 +88,25 @@ function SharePermission({
         }),
       );
     }
-  }, [sharedItem, allUsers]);
+    if (adapter?.shared_groups) {
+      setSelectedGroupIds(
+        adapter.shared_groups.map((g) => (g?.id === undefined ? g : g.id)),
+      );
+    } else {
+      setSelectedGroupIds([]);
+    }
+  }, [adapter, allUsers]);
 
   const handleDeleteUser = (userId) => {
-    const updatedUsers = selectedUsers.filter(
-      (user) => user.toString() !== userId.toString(),
+    setSelectedUsers((prev) =>
+      prev.filter((user) => String(user) !== String(userId)),
     );
-    setSelectedUsers(updatedUsers);
-    onApply(updatedUsers, sharedItem, shareWithEveryone);
   };
+
+  const handleDeleteGroup = (groupId) => {
+    setSelectedGroupIds((prev) => prev.filter((id) => id !== groupId));
+  };
+
   const filterOption = (input, option) =>
     (option?.label ?? "").toLowerCase().includes(input.toLowerCase());
 
@@ -82,44 +114,68 @@ function SharePermission({
     setShareWithEveryone(checked);
   };
 
+  const groupCandidateOptions = allGroups
+    .filter((g) => !selectedGroupIds.includes(g.id))
+    .map((g) => ({ label: g.name, value: g.id }));
+
+  // Admins have org-wide access, so they aren't listed as explicit shares.
+  // This also hides legacy admin rows created before the auto-share removal.
+  const userItems = selectedUsers
+    .map((userId) => {
+      const user = allUsers.find((u) =>
+        u?.id !== undefined
+          ? u?.id.toString() === userId.toString()
+          : u?.toString() === userId.toString(),
+      );
+      return {
+        kind: "user",
+        id: user?.id,
+        email: user?.email,
+        is_admin: user?.is_admin,
+      };
+    })
+    .filter((user) => !user.is_admin);
+
+  const groupItems = selectedGroupIds.map((groupId) => {
+    const group = allGroups.find((g) => g.id === groupId);
+    return {
+      kind: "group",
+      id: groupId,
+      name: group?.name || `Group #${groupId}`,
+    };
+  });
+
   let sharedWithContent;
   if (shareWithEveryone) {
     sharedWithContent = <Typography.Text>Shared with everyone</Typography.Text>;
-  } else if (selectedUsers.length > 0) {
+  } else if (userItems.length > 0 || groupItems.length > 0) {
     sharedWithContent = (
       <List
-        dataSource={selectedUsers.map((userId) => {
-          const user = allUsers.find((u) => {
-            if (u?.id !== undefined) {
-              return u?.id.toString() === userId.toString();
-            } else {
-              return u?.toString() === userId.toString();
-            }
-          });
-          return {
-            id: user?.id,
-            email: user?.email,
-          };
-        })}
+        dataSource={[...userItems, ...groupItems]}
         renderItem={(item) => (
           <List.Item
             extra={
               permissionEdit && (
-                <div onClick={(event) => event.stopPropagation()} role="none">
-                  <Popconfirm
-                    key={`${item.id}-delete`}
-                    title="Revoke Access"
-                    description={`Are you sure you want to revoke access to '${item?.email}'?`}
-                    okText="Yes"
-                    cancelText="No"
-                    icon={<QuestionCircleOutlined />}
-                    onConfirm={(event) => handleDeleteUser(item?.id)}
-                  >
-                    <Typography.Text>
-                      <DeleteOutlined className="action-icon-buttons" />
-                    </Typography.Text>
-                  </Popconfirm>
-                </div>
+                <Popconfirm
+                  title="Revoke Access"
+                  description={`Are you sure you want to revoke access to '${
+                    item.kind === "user" ? item.email : item.name
+                  }'?`}
+                  okText="Yes"
+                  cancelText="No"
+                  icon={<QuestionCircleOutlined style={{ color: "#faad14" }} />}
+                  onConfirm={() => {
+                    if (item.kind === "user") {
+                      handleDeleteUser(item.id);
+                    } else {
+                      handleDeleteGroup(item.id);
+                    }
+                  }}
+                >
+                  <Typography.Text>
+                    <DeleteOutlined className="action-icon-buttons" />
+                  </Typography.Text>
+                </Popconfirm>
               )
             }
           >
@@ -128,10 +184,12 @@ function SharePermission({
                 <>
                   <Avatar
                     className="shared-user-avatar"
-                    icon={<UserOutlined />}
+                    icon={
+                      item.kind === "user" ? <UserOutlined /> : <TeamOutlined />
+                    }
                   />
                   <Typography.Text className="shared-username">
-                    {item.email}
+                    {item.kind === "user" ? item.email : item.name}
                   </Typography.Text>
                 </>
               }
@@ -147,14 +205,16 @@ function SharePermission({
   return (
     sharedItem && (
       <Modal
-        title={"Share Users"}
+        title="Share access"
         open={open}
         onCancel={() => setOpen(false)}
         maskClosable={false}
         centered
         closable={true}
         okText={"Apply"}
-        onOk={() => onApply(selectedUsers, sharedItem, shareWithEveryone)}
+        onOk={() =>
+          onApply(selectedUsers, adapter, shareWithEveryone, selectedGroupIds)
+        }
         cancelButtonProps={!permissionEdit && { style: { display: "none" } }}
         okButtonProps={!permissionEdit && { style: { display: "none" } }}
         className="share-permission-modal"
@@ -174,36 +234,54 @@ function SharePermission({
               </Checkbox>
             )}
             {permissionEdit && !shareWithEveryone && (
-              <Select
-                filterOption={filterOption}
-                showSearch
-                size={"middle"}
-                placeholder="Search"
-                value={null}
-                className="share-permission-search"
-                onChange={(selectedValue) => {
-                  const isValueSelected = selectedUsers.includes(selectedValue);
-                  if (!isValueSelected) {
-                    // Update the state only if the selected value is not already present
-                    setSelectedUsers([...selectedUsers, selectedValue]);
-                  }
-                }}
-                options={filteredUsers.map((user) => ({
-                  label: user.email,
-                  value: user.id,
-                }))}
-              >
-                {filteredUsers.map((user) => {
-                  return (
-                    <Select.Option key={user?.id} value={user?.id}>
-                      {user?.email}
-                    </Select.Option>
-                  );
-                })}
-              </Select>
+              <>
+                <div className="share-permission-section">
+                  <Typography.Text strong>Add users</Typography.Text>
+                  <Select
+                    filterOption={filterOption}
+                    showSearch
+                    size={"middle"}
+                    placeholder="Find a user by email"
+                    value={null}
+                    className="share-permission-search"
+                    onChange={(selectedValue) => {
+                      const isValueSelected =
+                        selectedUsers.includes(selectedValue);
+                      if (!isValueSelected) {
+                        setSelectedUsers([...selectedUsers, selectedValue]);
+                      }
+                    }}
+                    options={filteredUsers.map((user) => ({
+                      label: user.email,
+                      value: user.id,
+                    }))}
+                  />
+                </div>
+                {allGroups.length > 0 && (
+                  <div className="share-permission-section">
+                    <Typography.Text strong>Add groups</Typography.Text>
+                    <Select
+                      filterOption={filterOption}
+                      showSearch
+                      size={"middle"}
+                      placeholder="Find a group by name"
+                      value={null}
+                      className="share-permission-search"
+                      onChange={(groupId) => {
+                        if (!selectedGroupIds.includes(groupId)) {
+                          setSelectedGroupIds([...selectedGroupIds, groupId]);
+                        }
+                      }}
+                      options={groupCandidateOptions}
+                    />
+                  </div>
+                )}
+              </>
             )}
-            <Typography.Title level={5}>Shared with</Typography.Title>
-            {sharedWithContent}
+            <div className="share-permission-section">
+              <Typography.Text strong>Currently shared with</Typography.Text>
+              {sharedWithContent}
+            </div>
           </>
         )}
       </Modal>
@@ -218,6 +296,7 @@ SharePermission.propTypes = {
   permissionEdit: PropTypes.bool,
   loading: PropTypes.bool,
   allUsers: PropTypes.array,
+  allGroups: PropTypes.array,
   onApply: PropTypes.func,
   isSharableToOrg: PropTypes.bool,
 };

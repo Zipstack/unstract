@@ -44,6 +44,8 @@ function RjsfFormLayout({
     const rest = { ...schema };
     delete rest.title;
     delete rest.description;
+    // ui:order is a uiSchema directive, not a JSON Schema keyword.
+    delete rest["ui:order"];
     return rest;
   }, [schema]);
 
@@ -78,12 +80,14 @@ function RjsfFormLayout({
     [],
   );
 
-  const uiSchema = useMemo(
-    () => ({
-      "ui:classNames": "my-rjsf-form",
-    }),
-    [formData],
-  );
+  const uiSchema = useMemo(() => {
+    const base = { "ui:classNames": "my-rjsf-form" };
+    // Let a schema control field order, including dependency-injected fields.
+    if (Array.isArray(schema?.["ui:order"])) {
+      base["ui:order"] = schema["ui:order"];
+    }
+    return base;
+  }, [schema]);
 
   const removeBlankDefault = useCallback((schema) => {
     if (schema?.properties && schema?.required) {

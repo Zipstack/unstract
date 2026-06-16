@@ -19,6 +19,7 @@ from file_management.constants import FileInformationKey as FileKey
 from file_management.exceptions import FileNotFound
 from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from rest_framework import status, viewsets
@@ -120,7 +121,9 @@ def _multi_var_lookup_block_response(custom_tool, prompt_ids=None):
     )
 
 
-class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
+class PromptStudioCoreView(
+    CoOwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     """Viewset to handle all Custom tool related operations."""
 
     versioning_class = URLPathVersioning
@@ -305,48 +308,50 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
     def partial_update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
-        # Store current shared users before update for email notifications
         custom_tool = self.get_object()
-        current_shared_users = set(custom_tool.shared_users.all())
+        before = self.snapshot_share_axes(custom_tool)
 
-        # Perform the update
         response = super().partial_update(request, *args, **kwargs)
-
-        # Send email notifications to newly shared users
-        if response.status_code == 200 and "shared_users" in request.data:
-            from plugins import get_plugin
-
-            notification_plugin = get_plugin("notification")
-            if notification_plugin:
-                from plugins.notification.constants import ResourceType
-
-                # Refresh the object to get updated shared_users
-                custom_tool.refresh_from_db()
-                updated_shared_users = set(custom_tool.shared_users.all())
-
-                # Find newly added users (not previously shared)
-                newly_shared_users = updated_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    try:
-                        notification_service.send_sharing_notification(
-                            resource_type=ResourceType.TEXT_EXTRACTOR.value,
-                            resource_name=custom_tool.tool_name,
-                            resource_id=str(custom_tool.tool_id),
-                            shared_by=request.user,
-                            shared_to=list(newly_shared_users),
-                            resource_instance=custom_tool,
-                        )
-                    except Exception as e:
-                        # Log error but don't fail the request
-                        logger.exception(
-                            f"Failed to send sharing notification for "
-                            f"custom tool {custom_tool.tool_id}: {str(e)}"
-                        )
-
+        if response.status_code == 200:
+            self._notify_shared_users(custom_tool, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        custom_tool: CustomTool,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        notification_plugin = get_plugin("notification")
+        if not notification_plugin:
+            return
+        users_diff = self.diff_share_axes(custom_tool, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+
+        from plugins.notification.constants import ResourceType
+
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=ResourceType.TEXT_EXTRACTOR.value,
+                resource_name=custom_tool.tool_name,
+                resource_id=str(custom_tool.tool_id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=custom_tool,
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification for custom tool %s: %s",
+                custom_tool.tool_id,
+                str(e),
+            )
 
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
@@ -1058,8 +1063,10 @@ class PromptStudioCoreView(CoOwnerManagementMixin, viewsets.ModelViewSet):
                     file_data = uploaded_file
                 # else: CSV/TXT/Excel — file_data stays as original, no conversion
 
-            logger.info("Uploading file: %s", file_name) if file_name else logger.info(
-                "Uploading file"
+            (
+                logger.info("Uploading file: %s", file_name)
+                if file_name
+                else logger.info("Uploading file")
             )
 
             # Store original file in main dir (always the original)

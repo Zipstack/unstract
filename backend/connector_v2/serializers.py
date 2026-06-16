@@ -27,16 +27,20 @@ class ConnectorInstanceSerializer(CoOwnerRepresentationMixin, AuditSerializer):
     connector_metadata = EncryptedBinaryFieldSerializer(required=False, allow_null=True)
     icon = SerializerMethodField()
     created_by_email = CharField(source="created_by.email", read_only=True)
+    # ``shared_groups`` is no longer an M2M on ConnectorInstance — declare it
+    # explicitly so ``fields = "__all__"`` continues to expose it. Share
+    # mutations go through ``POST /connector/{id}/share/`` (UN-2977 plan §B).
+    shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
 
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
-        # connector_mode is overridden in to_representation from the catalog,
-        # so any client-supplied value is silently discarded — mark it read_only
-        # to make that explicit (and to keep DRF OPTIONS schema honest).
         extra_kwargs = {
             "connector_name": {"required": False},
+            # connector_mode is derived from the catalog in to_representation.
             "connector_mode": {"read_only": True},
+            "shared_users": {"read_only": True},
+            "shared_to_org": {"read_only": True},
         }
 
     def validate_connector_name(self, value: str) -> str:

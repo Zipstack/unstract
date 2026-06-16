@@ -15,11 +15,19 @@ connector_detail = CIViewSet.as_view(
 connector_users = CIViewSet.as_view({"get": "list_of_shared_users"})
 connector_add_owner = CIViewSet.as_view({"post": "add_co_owner"})
 connector_remove_owner = CIViewSet.as_view({"delete": "remove_co_owner"})
+connector_share = CIViewSet.as_view({"post": "share"})
+connector_effective_members = CIViewSet.as_view({"get": "effective_members"})
 
 urlpatterns = format_suffix_patterns(
     [
         path("connector/", connector_list, name="connector-list"),
         path("connector/<uuid:pk>/", connector_detail, name="connector-detail"),
+        path("connector/<uuid:pk>/share/", connector_share, name="connector-share"),
+        path(
+            "connector/<uuid:pk>/effective-members/",
+            connector_effective_members,
+            name="connector-effective-members",
+        ),
         path(
             "connector/users/<uuid:pk>/",
             connector_users,
@@ -34,6 +42,11 @@ urlpatterns = format_suffix_patterns(
             "connector/<uuid:pk>/owners/<int:user_id>/",
             connector_remove_owner,
             name="connector-remove-owner",
+        ),
+        path(
+            "connector/<uuid:pk>/share/",
+            connector_share,
+            name="connector-share",
         ),
     ]
 )

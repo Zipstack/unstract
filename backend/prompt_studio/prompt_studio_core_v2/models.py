@@ -30,12 +30,18 @@ class CustomToolModelManager(DefaultOrganizationManagerMixin, BaseModelManager):
         if OrganizationMemberService.is_user_organization_admin(user):
             return self.all()
 
+        from tenant_account_v2.sharing_helpers import resources_visible_via_groups
+
+        user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+        group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
+
         return (
             self.get_queryset()
             .filter(
                 models.Q(co_owners=user)
                 | models.Q(shared_users=user)
                 | models.Q(shared_to_org=True)
+                | models.Q(pk__in=group_shared_ids)
             )
             .distinct("tool_id")
         )
@@ -170,6 +176,15 @@ class CustomTool(DefaultOrganizationMixin, BaseModel):
         default=False,
         db_comment="Flag to share this custom tool with all users in the organization",
     )
+    # ``shared_groups`` is stored polymorphically in
+    # ``tenant_account_v2.ResourceGroupShare``; the property below preserves
+    # the ergonomic read surface for DRF / existing callers.
+
+    @property
+    def shared_groups(self):
+        from tenant_account_v2.sharing_helpers import get_resource_share_groups
+
+        return get_resource_share_groups(self)
 
     # NULL on pre-feature tools; populated on first successful export.
     # Drives staleness checks (e.g. lookup-change banner) without requiring

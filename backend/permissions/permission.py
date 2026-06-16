@@ -24,6 +24,26 @@ def _is_service_account(request: Request) -> bool:
     return getattr(request.user, "is_service_account", False)
 
 
+def has_group_access(user: Any, obj: Any) -> bool:
+    """Check if a user has access to a resource via group membership.
+
+    Reads from the polymorphic ``ResourceGroupShare`` table rather than a
+    per-resource ``shared_groups`` M2M (see UN-2977). Callers can OR this
+    in safely for any resource — non-shareable objects yield no rows.
+    """
+    # Lazy import — ``permissions`` is imported by `account_v2`/`api_v2`
+    # before `tenant_account_v2` finishes loading.
+    from django.contrib.contenttypes.models import ContentType
+    from tenant_account_v2.models import ResourceGroupShare
+
+    user_group_ids = user.group_memberships.values_list("group_id", flat=True)
+    return ResourceGroupShare.objects.filter(
+        content_type=ContentType.objects.get_for_model(type(obj)),
+        object_id=str(obj.pk),
+        group_id__in=user_group_ids,
+    ).exists()
+
+
 def _is_organization_admin(request: Request) -> bool:
     """Return True if the requesting user has the org-admin role.
 
@@ -62,6 +82,34 @@ class IsOwner(permissions.BasePermission):
         return False
 
 
+def is_workflow_mutator(request: Request, workflow: Any) -> bool:
+    """Whether the request user may mutate ``workflow`` or its sub-resources.
+
+    Admits the workflow's owner, an org admin, or a service account. Shared
+    access (direct/group/org) grants read only, never mutate. Shared by the
+    object-level gate (``IsParentWorkflowOwner``) and the collection-level
+    ``reorder`` action, which can't use an object-permission class.
+    """
+    if _is_service_account(request):
+        return True
+    if workflow.created_by == request.user:
+        return True
+    return _is_organization_admin(request)
+
+
+class IsParentWorkflowOwner(permissions.BasePermission):
+    """Mutation gate for nested workflow sub-resources.
+
+    Admits only the parent workflow's owner, org admin, or service account.
+    Pairs with a parent-aware queryset that admits shared-workflow rows so
+    this class can return 403 -- otherwise DRF raises 404 first when the
+    queryset filters the row out before object permissions run.
+    """
+
+    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
+        return is_workflow_mutator(request, obj.workflow)
+
+
 class IsOrganizationMember(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         user_organization = UserContext.get_organization()
@@ -76,18 +124,16 @@ class IsOwnerOrSharedUser(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        if obj.created_by == request.user:
-            return True
-        if obj.shared_users.filter(pk=request.user.pk).exists():
-            return True
-        if _is_organization_admin(request):
-            return True
-        if (
-            hasattr(obj, "co_owners")
-            and obj.co_owners.filter(pk=request.user.pk).exists()
-        ):
-            return True
-        return False
+        return (
+            obj.created_by == request.user
+            or obj.shared_users.filter(pk=request.user.pk).exists()
+            or has_group_access(request.user, obj)
+            or _is_organization_admin(request)
+            or (
+                hasattr(obj, "co_owners")
+                and obj.co_owners.filter(pk=request.user.pk).exists()
+            )
+        )
 
 
 class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
@@ -96,20 +142,17 @@ class IsOwnerOrSharedUserOrSharedToOrg(permissions.BasePermission):
     def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
         if _is_service_account(request):
             return True
-        if obj.created_by == request.user:
-            return True
-        if obj.shared_users.filter(pk=request.user.pk).exists():
-            return True
-        if obj.shared_to_org:
-            return True
-        if _is_organization_admin(request):
-            return True
-        if (
-            hasattr(obj, "co_owners")
-            and obj.co_owners.filter(pk=request.user.pk).exists()
-        ):
-            return True
-        return False
+        return (
+            obj.created_by == request.user
+            or obj.shared_users.filter(pk=request.user.pk).exists()
+            or obj.shared_to_org
+            or has_group_access(request.user, obj)
+            or _is_organization_admin(request)
+            or (
+                hasattr(obj, "co_owners")
+                and obj.co_owners.filter(pk=request.user.pk).exists()
+            )
+        )
 
 
 class IsFrictionLessAdapter(permissions.BasePermission):

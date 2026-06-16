@@ -4,16 +4,29 @@ This module provides standardized workflow orchestration patterns,
 chord execution, batch processing, and task coordination utilities.
 """
 
-import os
-from typing import Any
+from __future__ import annotations
 
-from celery import chord
+import os
+from typing import TYPE_CHECKING, Any
+
+from queue_backend import BarrierHandle, FairnessKey, get_barrier
 
 from ...enums import FileDestinationType, PipelineType
 from ...enums.worker_enums import QueueName
 from ...infrastructure.logging import WorkerLogger
 
+if TYPE_CHECKING:
+    from celery.canvas import Signature
+
 logger = WorkerLogger.get_logger(__name__)
+
+# Single ``Barrier`` instance reused across all
+# ``WorkflowOrchestrationUtils.create_chord_execution`` calls. The
+# substrate is selected at module-import (worker startup) time by the
+# ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips
+# require a pod restart — same posture as every other ``WORKER_*``
+# env in the codebase.
+_BARRIER = get_barrier()
 
 
 class WorkflowOrchestrationUtils:
@@ -21,13 +34,21 @@ class WorkflowOrchestrationUtils:
 
     @staticmethod
     def create_chord_execution(
-        batch_tasks: list[Any],
+        batch_tasks: list[Signature],
         callback_task_name: str,
         callback_kwargs: dict[str, Any],
         callback_queue: str,
         app_instance: Any,
-    ) -> Any:
-        """Standardized chord creation and execution pattern.
+        *,
+        fairness: FairnessKey | None = None,
+    ) -> BarrierHandle | None:
+        """Standardized fan-out + callback pattern (Phase 6 ``Barrier``).
+
+        Routes through ``CeleryChordBarrier`` — a thin wrapper around
+        ``celery.chord(header)(body)`` that lets Phase 6b swap the
+        substrate (e.g. to ``RedisDecrBarrier``) without touching this
+        call site a second time. Behaviour is identical to the
+        previous direct ``chord(...)`` call.
 
         Args:
             batch_tasks: List of batch task signatures
@@ -35,49 +56,29 @@ class WorkflowOrchestrationUtils:
             callback_kwargs: Keyword arguments for callback
             callback_queue: Queue name for callback task
             app_instance: Celery app instance
+            fairness: Optional ``FairnessKey`` attached as a message
+                header on every header task and the callback — closes
+                the chord-fairness gap that Phase 5.1 (``dispatch()``)
+                deliberately scoped out. See ``queue_backend.fairness``
+                for the slot name constant.
 
         Returns:
-            Chord result object or None if no batch tasks
+            Barrier handle (Celery ``AsyncResult``-shaped — ``.id``
+            exposed for chord-id logging) or None if no batch tasks.
 
         Note:
-            This consolidates the identical chord creation pattern found in
-            api-deployment and general workers.
-
-            CRITICAL: Returns None for zero batch tasks, signaling to parent
-            that direct pipeline status updates should be handled instead.
+            CRITICAL: Returns None for zero batch tasks, signaling to
+            parent that direct pipeline status updates should be
+            handled instead.
         """
-        try:
-            callback_signature = app_instance.signature(
-                callback_task_name,
-                kwargs=callback_kwargs,
-                queue=callback_queue,
-            )
-            # For zero files, skip chord entirely - parent should handle status updates directly
-            if not batch_tasks:
-                # Extract execution_id from callback kwargs for logging
-                execution_id = callback_kwargs.get("execution_id")
-                pipeline_id = callback_kwargs.get("pipeline_id")
-                logger.info(
-                    f"[exec:{execution_id}] [pipeline:{pipeline_id}] Zero batch tasks detected - skipping chord execution "
-                    f"(parent should handle pipeline status updates directly)"
-                )
-                return None  # Signal to parent that no chord was created
-
-            # Normal chord execution for non-empty batch tasks
-            result = chord(batch_tasks)(callback_signature)
-
-            logger.info(
-                f"Chord execution started - "
-                f"batch_tasks={len(batch_tasks)}, "
-                f"callback={callback_task_name}, "
-                f"queue={callback_queue}"
-            )
-
-            return result
-
-        except Exception as e:
-            logger.error(f"Failed to create chord execution: {e}")
-            raise
+        return _BARRIER.enqueue(
+            batch_tasks,
+            callback_task_name=callback_task_name,
+            callback_kwargs=callback_kwargs,
+            callback_queue=callback_queue,
+            app_instance=app_instance,
+            fairness=fairness,
+        )
 
     @staticmethod
     def determine_manual_review_routing(
@@ -325,16 +326,33 @@ class WorkflowOrchestrationMixin:
     """Mixin class to add orchestration utilities to worker tasks."""
 
     def create_chord(
-        self, batch_tasks, callback_task_name, callback_kwargs, callback_queue
+        self,
+        batch_tasks,
+        callback_task_name,
+        callback_kwargs,
+        callback_queue,
+        *,
+        fairness: FairnessKey | None = None,
     ):
-        """Create chord using standardized pattern."""
+        """Create chord using standardized pattern.
+
+        Forwards ``fairness`` to ``create_chord_execution`` so mixin
+        callers can opt into the chord-fairness plumbing that bare
+        ``dispatch()`` sites get via Phase 5.1. ``None`` keeps the
+        pre-Barrier wire shape exactly.
+        """
         # Get app instance from task context
         app_instance = getattr(self, "app", None)
         if not app_instance:
             raise RuntimeError("Celery app instance not available in task context")
 
         return WorkflowOrchestrationUtils.create_chord_execution(
-            batch_tasks, callback_task_name, callback_kwargs, callback_queue, app_instance
+            batch_tasks,
+            callback_task_name,
+            callback_kwargs,
+            callback_queue,
+            app_instance,
+            fairness=fairness,
         )
 
     def determine_manual_review_routing(self, files, manual_review_config=None):

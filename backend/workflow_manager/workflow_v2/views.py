@@ -9,6 +9,7 @@ from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from plugins import get_plugin
@@ -19,7 +20,10 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.views import APIView
 from utils.filtering import FilterHelper
-from utils.organization_utils import filter_queryset_by_organization, resolve_organization
+from utils.organization_utils import (
+    filter_queryset_by_organization,
+    resolve_organization,
+)
 
 from backend.constants import RequestKey
 from unstract.core.data_models import FileHistoryCreateRequest
@@ -69,7 +73,9 @@ def make_execution_response(response: ExecutionResponse) -> Any:
     return ExecuteWorkflowResponseSerializer(response).data
 
 
-class WorkflowViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
+class WorkflowViewSet(
+    CoOwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     notification_resource_name_field = "workflow_name"
 
@@ -152,54 +158,48 @@ class WorkflowViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
 
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override partial_update to handle sharing notifications."""
-        # Get the workflow instance before update
         workflow = self.get_object()
+        before = self.snapshot_share_axes(workflow)
 
-        # Store current shared users for comparison
-        current_shared_users = set(workflow.shared_users.all())
-
-        # Perform the standard partial update
         response = super().partial_update(request, *args, **kwargs)
-
-        # If update was successful and shared_users field was modified
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and bool(notification_plugin)
-        ):
-            try:
-                # Get updated workflow to compare shared users
-                workflow.refresh_from_db()
-                new_shared_users = set(workflow.shared_users.all())
-
-                # Find newly added users
-                newly_shared_users = new_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    # Get notification service from plugin and send notification
-                    service_class = notification_plugin["service_class"]
-                    notification_service = service_class()
-                    notification_service.send_sharing_notification(
-                        resource_type=ResourceType.WORKFLOW.value,
-                        resource_name=workflow.workflow_name,
-                        resource_id=str(workflow.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=workflow,
-                    )
-
-                    logger.info(
-                        f"Sent sharing notifications for workflow {workflow.id} "
-                        f"to {len(newly_shared_users)} users"
-                    )
-
-            except Exception as e:
-                # Log error but don't fail the update operation
-                logger.exception(
-                    f"Failed to send sharing notification, continuing update though: {str(e)}"
-                )
-
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(workflow, before, request.data, request.user)
         return response
+
+    def _notify_shared_users(
+        self,
+        workflow: Workflow,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        users_diff = self.diff_share_axes(workflow, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+        try:
+            service_class = notification_plugin["service_class"]
+            notification_service = service_class()
+            notification_service.send_sharing_notification(
+                resource_type=ResourceType.WORKFLOW.value,
+                resource_name=workflow.workflow_name,
+                resource_id=str(workflow.id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=workflow,
+            )
+            logger.info(
+                "Sent sharing notifications for workflow %s to %d users",
+                workflow.id,
+                len(users_diff.added),
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification, continuing update though: %s",
+                str(e),
+            )
 
     def get_execution(self, request: Request, pk: str) -> Response:
         execution = WorkflowHelper.get_current_execution(pk)
@@ -405,9 +405,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # Build comprehensive context
             context_data = {
                 "execution": WorkflowExecutionSerializer(execution).data,
-                "workflow_definition": execution.workflow.workflow_definition
-                if execution.workflow
-                else {},
+                "workflow_definition": (
+                    execution.workflow.workflow_definition if execution.workflow else {}
+                ),
                 "source_config": self._get_source_config(execution),
                 "destination_config": self._get_destination_config(execution),
                 "organization_context": self._get_organization_context(execution),
@@ -729,7 +729,11 @@ def file_history_by_cache_key_internal(request, cache_key=None):
             serializer = FileHistorySerializer(file_history)
 
             return Response(
-                {"found": True, "cache_key": cache_key, "file_history": serializer.data},
+                {
+                    "found": True,
+                    "cache_key": cache_key,
+                    "file_history": serializer.data,
+                },
                 status=status.HTTP_200_OK,
             )
         else:
@@ -1314,9 +1318,11 @@ def create_file_history_internal(request):
             workflow_id=str(workflow_id),
             cache_key=file_history_record.cache_key,
             provider_file_uuid=file_history_record.provider_file_uuid,
-            status=file_history_record.status.value
-            if hasattr(file_history_record.status, "value")
-            else str(file_history_record.status),
+            status=(
+                file_history_record.status.value
+                if hasattr(file_history_record.status, "value")
+                else str(file_history_record.status)
+            ),
             result=file_history_record.result,
             metadata=file_history_record.metadata,
             error=file_history_record.error,
@@ -1415,9 +1421,11 @@ def reserve_file_processing_internal(request):
                 workflow_id=str(workflow_id),
                 cache_key=existing_history.cache_key,
                 provider_file_uuid=existing_history.provider_file_uuid,
-                status=existing_history.status.value
-                if hasattr(existing_history.status, "value")
-                else str(existing_history.status),
+                status=(
+                    existing_history.status.value
+                    if hasattr(existing_history.status, "value")
+                    else str(existing_history.status)
+                ),
                 result=existing_history.result,
                 metadata=existing_history.metadata,
                 error=existing_history.error,
@@ -1489,9 +1497,11 @@ def reserve_file_processing_internal(request):
                         workflow_id=str(workflow_id),
                         cache_key=file_history.cache_key,
                         provider_file_uuid=file_history.provider_file_uuid,
-                        status=file_history.status.value
-                        if hasattr(file_history.status, "value")
-                        else str(file_history.status),
+                        status=(
+                            file_history.status.value
+                            if hasattr(file_history.status, "value")
+                            else str(file_history.status)
+                        ),
                         result=file_history.result,
                         metadata=file_history.metadata,
                         error=file_history.error,
@@ -1618,12 +1628,16 @@ def get_file_history_internal(request):
                 "file_path": file_history.file_path,
                 "status": file_history.status,
                 "is_completed": file_history.is_completed(),
-                "created_at": file_history.created_at.isoformat()
-                if file_history.created_at
-                else None,
-                "completed_at": file_history.modified_at.isoformat()
-                if file_history.modified_at
-                else None,
+                "created_at": (
+                    file_history.created_at.isoformat()
+                    if file_history.created_at
+                    else None
+                ),
+                "completed_at": (
+                    file_history.modified_at.isoformat()
+                    if file_history.modified_at
+                    else None
+                ),
             }
 
             logger.info(

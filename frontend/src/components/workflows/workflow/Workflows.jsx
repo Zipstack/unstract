@@ -6,16 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement.jsx";
-import { useAlertStore } from "../../../store/alert-store";
-import { usePromptStudioStore } from "../../../store/prompt-studio-store";
-import { useSessionStore } from "../../../store/session-store";
-import { useWorkflowStore } from "../../../store/workflow-store";
-import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
-import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
-import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
-import { SharePermission } from "../../widgets/share-permission/SharePermission.jsx";
-import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
-import "./Workflows.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import {
@@ -29,11 +19,13 @@ import { useWorkflowStore } from "../../../store/workflow-store";
 import { usePromptStudioService } from "../../api/prompt-studio-service";
 import { PromptStudioModal } from "../../common/PromptStudioModal";
 import { ViewTools } from "../../custom-tools/view-tools/ViewTools.jsx";
+import { groupsService } from "../../groups/groups-service.js";
 import { ToolNavBar } from "../../navigations/tool-nav-bar/ToolNavBar.jsx";
 import { CoOwnerManagement } from "../../widgets/co-owner-management/CoOwnerManagement.jsx";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
 import { EmptyState } from "../../widgets/empty-state/EmptyState.jsx";
 import { LazyLoader } from "../../widgets/lazy-loader/LazyLoader.jsx";
+import { SharePermission } from "../../widgets/share-permission/SharePermission.jsx";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { workflowService } from "./workflow-service";
 import "./Workflows.css";
@@ -44,6 +36,7 @@ function Workflows() {
   const navigate = useNavigate();
   const location = useLocation();
   const projectApiService = workflowService();
+  const groupsApi = groupsService();
   const handleException = useExceptionHandler();
   const { setPostHogCustomEvent } = usePostHogEvents();
   const { count, isLoading, fetchCount } = usePromptStudioStore();
@@ -65,6 +58,8 @@ function Workflows() {
   const [sharePermissionEdit, setSharePermissionEdit] = useState(false);
   const [shareLoading, setShareLoading] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
+  const [allGroups, setAllGroups] = useState([]);
+
   const { setAlertDetails } = useAlertStore();
   const handleListRefresh = useCallback(
     () => getProjectList(),
@@ -260,10 +255,12 @@ function Workflows() {
     setShareLoading(true);
 
     try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        projectApiService.getAllUsers(),
-        projectApiService.getSharedUsers(workflow.id),
-      ]);
+      const [usersResponse, sharedUsersResponse, groupsResponse] =
+        await Promise.all([
+          projectApiService.getAllUsers(),
+          projectApiService.getSharedUsers(workflow.id),
+          groupsApi.listGroups(),
+        ]);
 
       const userList =
         usersResponse?.data?.members?.map((member) => ({
@@ -273,6 +270,14 @@ function Workflows() {
 
       // Pass the complete user list - SharePermission component will handle filtering
       setAllUsers(userList);
+      setAllGroups(
+        Array.isArray(groupsResponse?.data)
+          ? groupsResponse.data.map((g) => ({
+              id: g.id,
+              name: g.name,
+            }))
+          : [],
+      );
       setSelectedWorkflow(sharedUsersResponse.data);
       setShareOpen(true);
     } catch (err) {
@@ -284,20 +289,28 @@ function Workflows() {
     }
   };
 
-  const onShare = async (selectedUsers, workflow, shareWithEveryone) => {
+  const onShare = async (
+    selectedUsers,
+    workflow,
+    shareWithEveryone,
+    selectedGroups = [],
+  ) => {
     setShareLoading(true);
     try {
       await projectApiService.updateSharing(
         workflow.id,
         selectedUsers,
         shareWithEveryone,
+        selectedGroups,
       );
-      setShareOpen(false);
       setAlertDetails({
         type: "success",
         content: "Workflow sharing updated successfully",
       });
-      getProjectList(); // Refresh the list
+      getProjectList();
+      // Close only on success; keep the modal open on failure so the user
+      // can see the rejected entries and retry.
+      setShareOpen(false);
     } catch (error) {
       setAlertDetails(
         handleException(error, "Unable to update workflow sharing"),
@@ -412,6 +425,7 @@ function Workflows() {
               permissionEdit={sharePermissionEdit}
               loading={shareLoading}
               allUsers={allUsers}
+              allGroups={allGroups}
               onApply={onShare}
               isSharableToOrg={true}
             />

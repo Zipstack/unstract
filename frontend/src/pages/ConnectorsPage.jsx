@@ -1,8 +1,9 @@
 import { PlusOutlined } from "@ant-design/icons";
 import { Button } from "antd";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ViewTools } from "../components/custom-tools/view-tools/ViewTools";
+import { groupsService } from "../components/groups/groups-service.js";
 import { AddSourceModal } from "../components/input-output/add-source-modal/AddSourceModal";
 import { ToolNavBar } from "../components/navigations/tool-nav-bar/ToolNavBar";
 import { CoOwnerManagement } from "../components/widgets/co-owner-management/CoOwnerManagement";
@@ -23,8 +24,11 @@ function ConnectorsPage() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [sharingConnector, setSharingConnector] = useState(null);
   const [userList, setUserList] = useState([]);
+  const [groupList, setGroupList] = useState([]);
   const [isPermissionEdit, setIsPermissionEdit] = useState(false);
   const [isShareLoading, setIsShareLoading] = useState(false);
+  const groupsApi = groupsService();
+
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
@@ -136,43 +140,35 @@ function ConnectorsPage() {
     }
   };
 
-  const handleShareConnector = async (_event, connector, isEdit) => {
-    setIsShareLoading(true);
-    try {
-      const [usersResponse, sharedUsersResponse] = await Promise.all([
-        axiosPrivate.get(getUrl("users/")),
-        axiosPrivate.get(getUrl(`connector/users/${connector.id}/`), {
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-        }),
-      ]);
-
-      const users =
-        usersResponse?.data?.members?.map((member) => ({
-          id: member.id,
-          email: member.email,
-        })) || [];
-
-      setUserList(users);
-      setSharingConnector(sharedUsersResponse?.data);
-      setIsPermissionEdit(isEdit);
-      setShareModalVisible(true);
-    } catch (error) {
-      setAlertDetails(handleException(error, "Failed to load sharing data"));
-    } finally {
-      setIsShareLoading(false);
-    }
+  const handleShareConnector = (_event, connector, isEdit) => {
+    setSharingConnector(connector);
+    setIsPermissionEdit(isEdit);
+    setShareModalVisible(true);
+    groupsApi
+      .listGroups()
+      .then((res) => {
+        const items = Array.isArray(res?.data) ? res.data : [];
+        setGroupList(items.map((g) => ({ id: g.id, name: g.name })));
+      })
+      .catch(() => setGroupList([]));
   };
 
-  const handleShareSave = async (userIds, connector, shareWithEveryone) => {
+  const handleShareSave = async (
+    userIds,
+    connector,
+    shareWithEveryone,
+    groupIds = [],
+  ) => {
     setIsShareLoading(true);
     try {
       const updateData = {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,
+        shared_groups: groupIds,
       };
 
-      await axiosPrivate.patch(
-        getUrl(`connector/${connector.id}/`),
+      await axiosPrivate.post(
+        getUrl(`connector/${connector.id}/share/`),
         updateData,
         {
           headers: {
@@ -263,6 +259,7 @@ function ConnectorsPage() {
         setOpen={setShareModalVisible}
         sharedItem={sharingConnector}
         allUsers={userList}
+        allGroups={groupList}
         onApply={handleShareSave}
         permissionEdit={isPermissionEdit}
         loading={isShareLoading}

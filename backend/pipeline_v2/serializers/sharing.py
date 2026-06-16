@@ -4,14 +4,16 @@ from account_v2.serializer import UserSerializer
 from pipeline_v2.models import Pipeline
 from rest_framework import serializers
 from rest_framework.serializers import SerializerMethodField
+from tenant_account_v2.sharing_helpers import serialize_group_refs
 
 
 class SharedUserListSerializer(serializers.ModelSerializer):
-    """Serializer for returning pipeline with shared user details."""
+    """Serializer for returning pipeline with shared user + group details."""
 
     shared_users = SerializerMethodField()
-    co_owners = SerializerMethodField()
+    shared_groups = SerializerMethodField()
     created_by = SerializerMethodField()
+    co_owners = SerializerMethodField()
     created_by_email = SerializerMethodField()
 
     class Meta:
@@ -22,6 +24,7 @@ class SharedUserListSerializer(serializers.ModelSerializer):
             "shared_users",
             "co_owners",
             "shared_to_org",
+            "shared_groups",
             "created_by",
             "created_by_email",
         ]
@@ -35,6 +38,9 @@ class SharedUserListSerializer(serializers.ModelSerializer):
     def get_co_owners(self, obj):
         """Get list of co-owners with their details."""
         return [{"id": u.id, "email": u.email} for u in obj.co_owners.all()]
+
+    def get_shared_groups(self, obj):
+        return serialize_group_refs(obj)
 
     def get_created_by(self, obj):
         """Get the creator's username."""

@@ -10,6 +10,7 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from permissions.co_owner_views import CoOwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -35,7 +36,9 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
-class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
+class ConnectorInstanceViewSet(
+    CoOwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
+):
     versioning_class = URLPathVersioning
     serializer_class = ConnectorInstanceSerializer
     notification_resource_name_field = "connector_name"
@@ -216,42 +219,11 @@ class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
     def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         """Override to handle sharing notifications."""
         instance = self.get_object()
-        current_shared_users = set(instance.shared_users.all())
+        before = self.snapshot_share_axes(instance)
 
         response = super().partial_update(request, *args, **kwargs)
-
-        if (
-            response.status_code == 200
-            and "shared_users" in request.data
-            and bool(notification_plugin)
-        ):
-            try:
-                instance.refresh_from_db()
-                new_shared_users = set(instance.shared_users.all())
-                newly_shared_users = new_shared_users - current_shared_users
-
-                if newly_shared_users:
-                    # Only send notifications if there are newly shared users
-                    SharingNotificationService().send_sharing_notification(
-                        resource_type=ResourceType.CONNECTOR.value,
-                        resource_name=instance.connector_name,
-                        resource_id=str(instance.id),
-                        shared_by=request.user,
-                        shared_to=list(newly_shared_users),
-                        resource_instance=instance,
-                    )
-
-                    logger.info(
-                        f"Sent sharing notifications for connector "
-                        f"to {len(newly_shared_users)} users"
-                    )
-
-            except Exception as e:
-                # Log error but don't fail the update operation
-                logger.exception(
-                    f"Failed to send sharing notification, continuing update though: {str(e)}"
-                )
-
+        if response.status_code == 200 and notification_plugin:
+            self._notify_shared_users(instance, before, request.data, request.user)
         return response
 
     @action(detail=True, methods=["get"])
@@ -259,3 +231,35 @@ class ConnectorInstanceViewSet(CoOwnerManagementMixin, viewsets.ModelViewSet):
         connector = self.get_object()
         serialized_instances = SharedUserListSerializer(connector).data
         return Response(serialized_instances)
+
+    def _notify_shared_users(
+        self,
+        instance: ConnectorInstance,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+        actor: Any,
+    ) -> None:
+        """Email users newly added to ``shared_users`` (best-effort)."""
+        users_diff = self.diff_share_axes(instance, before, request_data).get(
+            "shared_users"
+        )
+        if not (users_diff and users_diff.added):
+            return
+        try:
+            SharingNotificationService().send_sharing_notification(
+                resource_type=ResourceType.CONNECTOR.value,
+                resource_name=instance.connector_name,
+                resource_id=str(instance.id),
+                shared_by=actor,
+                shared_to=list(users_diff.added),
+                resource_instance=instance,
+            )
+            logger.info(
+                "Sent sharing notifications for connector to %d users",
+                len(users_diff.added),
+            )
+        except Exception as e:
+            logger.exception(
+                "Failed to send sharing notification, continuing update though: %s",
+                str(e),
+            )
