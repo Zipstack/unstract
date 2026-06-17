@@ -167,6 +167,32 @@ class TestDispatchBackendOverride:
         mock_app.send_task.assert_not_called()
         assert handle.id == "5"
 
+    def test_override_path_carries_fairness_to_row(self, monkeypatch):
+        # The override's whole purpose is to route an *execution's* dispatches —
+        # exactly the ones that carry a FairnessKey. The org/priority plumbing
+        # must work identically on the override path (not just the allow-list
+        # path), so a regression dropping fairness here would otherwise pass.
+        captured: dict = {}
+
+        class _Client:
+            def send(self, queue_name, payload, **kwargs):
+                captured.update(queue=queue_name, **kwargs)
+                return 13
+
+        monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
+        fairness = FairnessKey(
+            org_id="o", workload_type=WorkloadType.API, pipeline_priority=8
+        )
+        with patch("queue_backend.dispatch.current_app"):
+            dispatch(
+                "pipeline_header",
+                queue="general",
+                fairness=fairness,
+                backend=QueueBackend.PG,
+            )
+        assert captured["priority"] == 8
+        assert captured["org_id"] == "o"
+
 
 class TestDispatchPriorityWiring:
     """dispatch() carries fairness.pipeline_priority onto the PG row (mocked)."""

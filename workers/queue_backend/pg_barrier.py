@@ -65,6 +65,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import psycopg2
+import psycopg2.extensions
 
 from .barrier import CallbackDescriptor, barrier_ttl_seconds
 from .decorator import worker_task
@@ -261,16 +262,37 @@ def _barrier_pg_decrement(
 
     - the Celery ``link`` callback :func:`barrier_pg_decr_and_check` (today's
       only caller, behaviour unchanged); and
-    - the 9e PR 2c PG-consumed pipeline path, which calls this directly in the
-      header task's body — a PG-consumed task fires no ``.link``, so the
-      decrement must run in-body (fire-and-forget self-chaining).
+    - the 9e PR 2c PG-consumed pipeline path, which will call this directly in
+      the header task's body — a PG-consumed task fires no ``.link``, so the
+      decrement must run in-body.
 
-    Callers MUST run each decrement in its own committed transaction (one call
-    = one ``_cursor()`` txn here) and MUST NOT retry it: a replay re-runs the
-    decrement and corrupts the count. The Celery wrapper enforces this with
+    Callers MUST run each decrement in its own committed transaction (the
+    decrement ``UPDATE`` runs in its own ``_cursor()`` txn) and MUST NOT retry
+    it: a replay re-runs the decrement and corrupts the count. This is enforced
+    loudly, not just in prose — entry raises if the shared connection is already
+    mid-transaction (see the guard below). The Celery wrapper additionally pins
     ``max_retries=0``; an orphaned barrier is bounded by ``expires_at`` instead.
     """
     from celery import current_app
+
+    # Enforce the "own committed transaction" contract loudly. A caller that
+    # invokes this inside an already-open transaction on the shared thread-local
+    # connection would hold the row lock across the call and let the outer txn's
+    # commit boundary replay the decrement — corrupting ``remaining`` and
+    # breaking the exactly-one-sees-zero serialisation, surfacing only as a
+    # barrier hung until ``expires_at`` (~6h). The Celery ``.link`` path always
+    # enters idle (``_cursor`` commits after every use); the 2c in-body caller
+    # must too. (Tests inject an autocommit connection → always idle → no trip.)
+    if (
+        _get_conn().get_transaction_status()
+        != psycopg2.extensions.TRANSACTION_STATUS_IDLE
+    ):
+        raise RuntimeError(
+            f"[exec:{execution_id}] _barrier_pg_decrement entered with an open "
+            f"transaction on the shared connection — each decrement MUST run in "
+            f"its own committed transaction (see this function's docstring). "
+            f"Refusing to proceed to avoid corrupting the barrier counter."
+        )
 
     try:
         # No default=str — a non-JSON-safe leaf must fail loudly here (it would
