@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pg_queue', '0006_pgbatchdedup_and_more'),
+        ("pg_queue", "0006_pgbatchdedup_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='pgbarrierstate',
-            name='organization_id',
-            field=models.TextField(blank=True, default=''),
+            model_name="pgbarrierstate",
+            name="organization_id",
+            field=models.TextField(blank=True, default=""),
         ),
     ]
