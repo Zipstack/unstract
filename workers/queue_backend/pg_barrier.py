@@ -724,9 +724,13 @@ def run_batch_with_barrier(
       ``skipped_redelivery`` and never re-runs the batch — the barrier hangs to
       ``expires_at``. (Claiming before the work avoids re-processing on the common
       redelivery case at the cost of this crash window.)
-    - A failure *after* ``remaining`` hits 0 and the callback is committed but
-      before/at the callback enqueue: the decrement is committed, so redelivery is
-      blocked, and the abort here removes the row without the callback having run.
+    - A hard crash *between* the decrement committing (``remaining`` → 0) and the
+      callback enqueue completing: the decrement is committed (so redelivery is
+      blocked by the marker) but the process is gone before the callback is
+      enqueued and before any in-body abort can run, so the ``pg_barrier_state``
+      row survives to ``expires_at`` with no callback ever fired. (A *software*
+      callback-dispatch failure here is NOT this window — that's catchable and is
+      torn down by step 3's wrap above.)
 
     For both, the **reaper** (sweep stranded ``pg_barrier_state``, mark the
     execution ERROR / re-drive, reclaim ``pg_batch_dedup``) is the recovery net;
