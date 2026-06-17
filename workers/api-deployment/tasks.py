@@ -26,7 +26,13 @@ from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrat
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 from worker import app
 
-from unstract.core.data_models import ExecutionStatus, FileHashData, WorkerFileData
+from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
+    ExecutionStatus,
+    FileHashData,
+    WorkerFileData,
+    normalize_transport,
+)
 from unstract.core.worker_models import ApiDeploymentResultStatus
 
 logger = WorkerLogger.get_logger(__name__)
@@ -683,6 +689,14 @@ def _run_workflow_api(
             org_id=str(schema_name),
             workload_type=WorkloadType.API,
         )
+        # Transport rides in via the dispatched task's kwargs (PR 1 seam); the
+        # fan-out honours it (PG path → fire-and-forget PgBarrier). Fail-closed
+        # to celery on any unrecognised value.
+        transport = normalize_transport(
+            kwargs.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
+            logger=logger,
+            context=f" [exec:{execution_id}]",
+        )
         result = WorkflowOrchestrationUtils.create_chord_execution(
             batch_tasks=batch_tasks,
             callback_task_name="process_batch_callback_api",
@@ -694,6 +708,7 @@ def _run_workflow_api(
             callback_queue=file_processing_callback_queue,
             app_instance=app,
             fairness=api_fairness,
+            transport=transport,
         )
 
         if result is None:

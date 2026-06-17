@@ -710,6 +710,7 @@ def _execute_general_workflow(
                 execution_mode=execution_mode,
                 use_file_history=use_file_history,
                 organization_id=api_client.organization_id,
+                transport=transport,
                 **kwargs,
             )
 
@@ -764,6 +765,7 @@ def _orchestrate_file_processing_general(
     execution_mode: tuple | None,
     use_file_history: bool,
     organization_id: str,
+    transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Orchestrate file processing for general workflows using the same pattern as API worker.
@@ -957,6 +959,7 @@ def _orchestrate_file_processing_general(
                 org_id=organization_id,
                 workload_type=WorkloadType.NON_API,
             ),
+            transport=transport,
         )
 
         if not result:

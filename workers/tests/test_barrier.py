@@ -392,6 +392,8 @@ class TestOrchestrationUtilsRoutesThroughSingleton:
                 fairness=fairness,
             )
 
+        # Default transport (celery) → the env-selected singleton, with the
+        # per-execution transport threaded through to the substrate (9e).
         mock_barrier.enqueue.assert_called_once_with(
             batch,
             callback_task_name="process_batch_callback_api",
@@ -399,6 +401,40 @@ class TestOrchestrationUtilsRoutesThroughSingleton:
             callback_queue="api_file_processing_callback",
             app_instance=app_mock,
             fairness=fairness,
+            transport="celery",
+        )
+
+    def test_pg_queue_transport_bypasses_singleton_for_pgbarrier(self):
+        # 9e: a pg_queue execution must coordinate on Postgres regardless of
+        # WORKER_BARRIER_BACKEND, so it uses a fresh PgBarrier — NOT the (possibly
+        # chord) singleton. Pin that the singleton's enqueue is never called.
+        from shared.workflow.execution import orchestration_utils
+        from shared.workflow.execution.orchestration_utils import (
+            WorkflowOrchestrationUtils,
+        )
+
+        app_mock = MagicMock(name="celery_app")
+        batch = [MagicMock(name="h1")]
+
+        with (
+            patch.object(orchestration_utils, "_BARRIER") as mock_singleton,
+            patch.object(orchestration_utils, "PgBarrier") as mock_pgbarrier_cls,
+        ):
+            WorkflowOrchestrationUtils.create_chord_execution(
+                batch_tasks=batch,
+                callback_task_name="process_batch_callback",
+                callback_kwargs={"execution_id": "exec-pg"},
+                callback_queue="general",
+                app_instance=app_mock,
+                transport="pg_queue",
+            )
+
+        mock_singleton.enqueue.assert_not_called()  # NOT the env singleton
+        mock_pgbarrier_cls.assert_called_once_with()  # a fresh PgBarrier
+        mock_pgbarrier_cls.return_value.enqueue.assert_called_once()
+        assert (
+            mock_pgbarrier_cls.return_value.enqueue.call_args.kwargs["transport"]
+            == "pg_queue"
         )
 
 

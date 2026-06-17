@@ -10,6 +10,9 @@ import os
 from typing import TYPE_CHECKING, Any
 
 from queue_backend import BarrierHandle, FairnessKey, get_barrier
+from queue_backend.pg_barrier import PgBarrier
+
+from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT, WorkflowTransport
 
 from ...enums import FileDestinationType, PipelineType
 from ...enums.worker_enums import QueueName
@@ -17,16 +20,29 @@ from ...infrastructure.logging import WorkerLogger
 
 if TYPE_CHECKING:
     from celery.canvas import Signature
+    from queue_backend import Barrier
 
 logger = WorkerLogger.get_logger(__name__)
 
 # Single ``Barrier`` instance reused across all
-# ``WorkflowOrchestrationUtils.create_chord_execution`` calls. The
-# substrate is selected at module-import (worker startup) time by the
-# ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips
-# require a pod restart — same posture as every other ``WORKER_*``
-# env in the codebase.
+# ``WorkflowOrchestrationUtils.create_chord_execution`` calls on the **celery**
+# transport. The substrate is selected at module-import (worker startup) time by
+# the ``WORKER_BARRIER_BACKEND`` env var (default ``chord``). Flag flips require a
+# pod restart — same posture as every other ``WORKER_*`` env in the codebase.
 _BARRIER = get_barrier()
+
+
+def _barrier_for_transport(transport: str) -> Barrier:
+    """Pick the fan-in substrate for a per-execution transport (9e).
+
+    The ``pg_queue`` transport always coordinates on Postgres — it uses a fresh
+    :class:`PgBarrier` in its fire-and-forget mode regardless of
+    ``WORKER_BARRIER_BACKEND`` (the env-selected singleton is the *celery*-transport
+    substrate, which may be ``chord``). Every other transport uses that singleton.
+    """
+    if transport == WorkflowTransport.PG_QUEUE.value:
+        return PgBarrier()
+    return _BARRIER
 
 
 class WorkflowOrchestrationUtils:
@@ -41,6 +57,7 @@ class WorkflowOrchestrationUtils:
         app_instance: Any,
         *,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """Standardized fan-out + callback pattern (Phase 6 ``Barrier``).
 
@@ -71,13 +88,14 @@ class WorkflowOrchestrationUtils:
             parent that direct pipeline status updates should be
             handled instead.
         """
-        return _BARRIER.enqueue(
+        return _barrier_for_transport(transport).enqueue(
             batch_tasks,
             callback_task_name=callback_task_name,
             callback_kwargs=callback_kwargs,
             callback_queue=callback_queue,
             app_instance=app_instance,
             fairness=fairness,
+            transport=transport,
         )
 
     @staticmethod

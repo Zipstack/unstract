@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from queue_backend import worker_task
+from queue_backend.pg_barrier import run_batch_with_barrier
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
@@ -222,25 +223,14 @@ def _enhance_batch_with_mrq_flags(
         )
 
 
-def _process_file_batch_core(
-    task_instance, file_batch_data: dict[str, Any]
+def _run_batch_stages(
+    task_instance, file_batch_data: dict[str, Any], celery_task_id: str
 ) -> dict[str, Any]:
-    """Core implementation of file batch processing.
+    """The actual batch work (validate → setup → pre-create → process → compile).
 
-    This function contains the actual processing logic that both the new task
-    and Django compatibility task will use.
-
-    Args:
-        task_instance: The Celery task instance (self)
-        file_batch_data: Dictionary that will be converted to FileBatchData dataclass
-
-    Returns:
-        Dictionary with successful_files and failed_files counts
+    Transport-agnostic: identical on the Celery chord path and the PG
+    fire-and-forget path. Returns the JSON-serialisable batch result.
     """
-    celery_task_id = (
-        task_instance.request.id if hasattr(task_instance, "request") else "unknown"
-    )
-
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
 
@@ -260,6 +250,44 @@ def _process_file_batch_core(
     return _compile_batch_result(context)
 
 
+def _process_file_batch_core(
+    task_instance,
+    file_batch_data: dict[str, Any],
+    barrier_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Core implementation of file batch processing.
+
+    This function contains the actual processing logic that both the new task
+    and Django compatibility task will use.
+
+    Args:
+        task_instance: The Celery task instance (self)
+        file_batch_data: Dictionary that will be converted to FileBatchData dataclass
+        barrier_context: Present only on the 9e PG fire-and-forget path — carries
+            ``execution_id`` / ``batch_index`` / ``callback_descriptor`` so the
+            batch claims its slot and runs the barrier decrement in-body (a
+            PG-consumed task fires no Celery ``.link``). ``None`` on the Celery
+            chord path, where the chord ``.link`` drives the decrement instead.
+
+    Returns:
+        Dictionary with successful_files and failed_files counts
+    """
+    celery_task_id = (
+        task_instance.request.id if hasattr(task_instance, "request") else "unknown"
+    )
+
+    if barrier_context is None:
+        # Celery chord path — the chord's .link runs the decrement after this.
+        return _run_batch_stages(task_instance, file_batch_data, celery_task_id)
+
+    # PG fire-and-forget path — claim the batch (idempotent on redelivery), run
+    # the stages, then decrement the barrier in-body / self-chain the callback.
+    return run_batch_with_barrier(
+        barrier_context,
+        lambda: _run_batch_stages(task_instance, file_batch_data, celery_task_id),
+    )
+
+
 @worker_task(
     bind=True,
     name=TaskName.PROCESS_FILE_BATCH,
@@ -272,18 +300,26 @@ def _process_file_batch_core(
     # Timeout inherited from global Celery config (FILE_PROCESSING_TASK_TIME_LIMIT env var)
 )
 @monitor_performance
-def process_file_batch(self, file_batch_data: dict[str, Any]) -> dict[str, Any]:
-    """Process a batch of files in parallel using Celery.
+def process_file_batch(
+    self,
+    file_batch_data: dict[str, Any],
+    _barrier_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Process a batch of files in parallel.
 
     This is the main task entry point for new workers.
 
     Args:
         file_batch_data: Dictionary that will be converted to FileBatchData dataclass
+        _barrier_context: Injected only when this task is dispatched onto the PG
+            queue (9e fire-and-forget path) by ``PgBarrier`` — carries the barrier
+            coordination context (``execution_id`` / ``batch_index`` /
+            ``callback_descriptor``). Absent on the Celery chord path.
 
     Returns:
         Dictionary with successful_files and failed_files counts
     """
-    return _process_file_batch_core(self, file_batch_data)
+    return _process_file_batch_core(self, file_batch_data, _barrier_context)
 
 
 def _validate_and_parse_batch_data(file_batch_data: dict[str, Any]) -> FileBatchData:

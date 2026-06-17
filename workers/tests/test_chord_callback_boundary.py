@@ -767,5 +767,45 @@ class TestRealConsumerTolerance:
         assert aggregated["batches_processed"] == 2
 
 
+class TestProcessFileBatchTransportRouting:
+    """9e PR 2c: ``_process_file_batch_core`` routes by ``barrier_context`` —
+    Celery chord path runs the stages directly (the chord ``.link`` decrements);
+    the PG path wraps them in ``run_batch_with_barrier`` (in-body claim + decrement).
+    """
+
+    def test_celery_path_runs_stages_directly(self, monkeypatch):
+        from file_processing import tasks as tasks_mod
+
+        monkeypatch.setattr(tasks_mod, "_run_batch_stages", lambda *a: {"r": "celery"})
+        barrier_calls = []
+        monkeypatch.setattr(
+            tasks_mod,
+            "run_batch_with_barrier",
+            lambda *a, **k: barrier_calls.append(1),
+        )
+        out = tasks_mod._process_file_batch_core(MagicMock(), {"fb": 1}, None)
+        assert out == {"r": "celery"}
+        assert barrier_calls == []  # barrier path NOT taken on the celery transport
+
+    def test_pg_path_routes_through_barrier(self, monkeypatch):
+        from file_processing import tasks as tasks_mod
+
+        monkeypatch.setattr(tasks_mod, "_run_batch_stages", lambda *a: {"r": "work"})
+        captured = {}
+
+        def fake_run_batch_with_barrier(ctx, work_fn):
+            captured["ctx"] = ctx
+            return {"via": "barrier", "work": work_fn()}
+
+        monkeypatch.setattr(
+            tasks_mod, "run_batch_with_barrier", fake_run_batch_with_barrier
+        )
+        ctx = {"execution_id": "e", "batch_index": 0, "callback_descriptor": {}}
+        out = tasks_mod._process_file_batch_core(MagicMock(), {"fb": 1}, ctx)
+        assert captured["ctx"] is ctx
+        assert out["via"] == "barrier"
+        assert out["work"] == {"r": "work"}  # work_fn runs the real stages
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

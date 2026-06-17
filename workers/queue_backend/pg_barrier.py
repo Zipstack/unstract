@@ -60,12 +60,14 @@ import contextlib
 import json
 import logging
 import threading
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import psycopg2
 import psycopg2.extensions
+
+from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT, WorkflowTransport
 
 from .barrier import CallbackDescriptor, barrier_ttl_seconds
 from .decorator import worker_task
@@ -197,15 +199,26 @@ class PgBarrier:
         callback_queue: str,
         app_instance: Any,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """See :class:`queue_backend.barrier.Barrier.enqueue`.
 
         Empty ``header_tasks`` → ``None`` (caller owns the zero-files contract);
         any substrate failure raises. ``app_instance`` is accepted for Protocol
-        parity but unused — the callback is built inside the link task via
-        ``current_app`` so it runs against the worker's app.
+        parity but unused.
+
+        ``transport`` selects the fan-out mode (9e):
+
+        - ``celery`` (default, the ``WORKER_BARRIER_BACKEND=pg`` legacy path):
+          header tasks are Celery-dispatched with ``.link(barrier_pg_decr_and_check)``
+          / ``.link_error(barrier_pg_abort)``; the link drives the decrement.
+        - ``pg_queue`` (the fire-and-forget path): header tasks are dispatched onto
+          the PG queue (``dispatch(backend=PG)``) with a ``_barrier_context`` kwarg
+          carrying ``execution_id`` / ``batch_index`` / ``callback_descriptor`` —
+          a PG-consumed task fires no ``.link``, so it claims its batch and runs
+          the decrement in-body, self-chaining the callback at ``remaining`` → 0.
         """
-        del app_instance  # Protocol parity; callback built in the link task.
+        del app_instance  # Protocol parity; callback dispatched by the decrement.
         if not header_tasks:
             logger.info(
                 f"[exec:{callback_kwargs.get('execution_id')}] "
@@ -223,6 +236,7 @@ class PgBarrier:
             )
         execution_id = str(execution_id)
 
+        is_pg = transport == WorkflowTransport.PG_QUEUE.value
         try:
             fairness_headers = fairness.as_header() if fairness else None
             callback_descriptor: CallbackDescriptor = {
@@ -231,6 +245,10 @@ class PgBarrier:
                 "queue": callback_queue,
                 "fairness_headers": fairness_headers,
             }
+            if is_pg:
+                # The decrement (run in-body on the PG path) reads this to
+                # self-chain the callback onto PG rather than Celery.
+                callback_descriptor["backend"] = WorkflowTransport.PG_QUEUE.value
             ttl_seconds = barrier_ttl_seconds()
 
             with _cursor() as cur:
@@ -249,6 +267,15 @@ class PgBarrier:
                     "  created_at = now(), expires_at = EXCLUDED.expires_at",
                     (execution_id, len(header_tasks), ttl_seconds),
                 )
+                # Reset per-batch dedup markers from a prior run reusing this
+                # execution_id, ATOMICALLY with the barrier reset. Without this a
+                # re-enqueue would leave stale markers → every in-body claim_batch
+                # returns False → all batches skip → barrier hangs to expiry.
+                # (No-op pre-PR-2c: nothing writes pg_batch_dedup yet.)
+                cur.execute(
+                    "DELETE FROM pg_batch_dedup WHERE execution_id = %s",
+                    (execution_id,),
+                )
 
             link_signature = barrier_pg_decr_and_check.s(
                 execution_id=execution_id,
@@ -257,30 +284,35 @@ class PgBarrier:
             link_error_signature = barrier_pg_abort.s(execution_id=execution_id)
             for i, task in enumerate(header_tasks):
                 try:
-                    cloned = task.clone()
-                    if fairness_headers:
-                        cloned.set(headers=fairness_headers)
-                    cloned.link(link_signature)
-                    cloned.link_error(link_error_signature)
-                    cloned.apply_async()
+                    if is_pg:
+                        self._dispatch_header_pg(
+                            task, i, execution_id, callback_descriptor, fairness
+                        )
+                    else:
+                        cloned = task.clone()
+                        if fairness_headers:
+                            cloned.set(headers=fairness_headers)
+                        cloned.link(link_signature)
+                        cloned.link_error(link_error_signature)
+                        cloned.apply_async()
                 except Exception:
-                    # Mid-loop dispatch failure: i of N never reached the broker,
-                    # so the counter can't reach 0. Delete the row so in-flight
-                    # links' decrement finds no row and cleans up; re-raise so the
-                    # caller marks the workflow ERROR.
+                    # Mid-loop dispatch failure: i of N never reached the queue,
+                    # so the counter can't reach 0. Delete the row so an in-flight
+                    # decrement (link or in-body) finds no row and cleans up;
+                    # re-raise so the caller marks the workflow ERROR.
                     with contextlib.suppress(Exception):
                         _delete_barrier(execution_id)
                     logger.exception(
-                        f"[exec:{execution_id}] apply_async failed at task "
+                        f"[exec:{execution_id}] header dispatch failed at task "
                         f"{i}/{len(header_tasks)}; barrier row deleted to prevent "
-                        f"spurious callback fires from the orphan tasks' links."
+                        f"spurious callback fires from the orphan tasks."
                     )
                     raise
 
             logger.info(
-                f"Barrier enqueued via PgBarrier — exec_id={execution_id}, "
-                f"header_tasks={len(header_tasks)}, callback={callback_task_name}, "
-                f"queue={callback_queue}"
+                f"Barrier enqueued via PgBarrier ({transport}) — "
+                f"exec_id={execution_id}, header_tasks={len(header_tasks)}, "
+                f"callback={callback_task_name}, queue={callback_queue}"
             )
             return _PgBarrierHandle(id=execution_id)
 
@@ -293,6 +325,90 @@ class PgBarrier:
                 f"header_tasks={len(header_tasks)})"
             )
             raise
+
+    @staticmethod
+    def _dispatch_header_pg(
+        task: Signature,
+        batch_index: int,
+        execution_id: str,
+        callback_descriptor: CallbackDescriptor,
+        fairness: FairnessKey | None,
+    ) -> None:
+        """Dispatch one header task onto the PG queue (fire-and-forget mode).
+
+        Unpacks the Celery ``Signature`` (the fan-out built it as
+        ``app.signature(name, args=[batch], queue=...)``) and re-dispatches it via
+        ``dispatch(backend=PG)`` with a ``_barrier_context`` kwarg. The PG consumer
+        runs the task; it claims ``(execution_id, batch_index)`` and runs the
+        decrement in-body (no ``.link``). ``fairness`` carries org/priority onto
+        the row exactly as the bare-dispatch sites do.
+        """
+        # Local import to avoid an import cycle (dispatch/routing pull in queue
+        # plumbing that imports the barrier package).
+        from .dispatch import dispatch
+        from .routing import QueueBackend
+
+        header_kwargs = dict(task.kwargs or {})
+        header_kwargs["_barrier_context"] = {
+            "execution_id": execution_id,
+            "batch_index": batch_index,
+            "callback_descriptor": callback_descriptor,
+        }
+        dispatch(
+            task.task,
+            args=list(task.args or ()),
+            kwargs=header_kwargs,
+            queue=task.options.get("queue"),
+            fairness=fairness,
+            backend=QueueBackend.PG,
+        )
+
+
+def _fire_barrier_callback(
+    callback_descriptor: CallbackDescriptor, all_results: list[Any]
+) -> str:
+    """Dispatch the aggregating callback when the barrier completes; return its id.
+
+    Two transports, selected by the descriptor's ``backend`` marker:
+
+    - ``"pg_queue"`` (9e fire-and-forget PG path): self-chain the callback onto
+      the PG queue via ``dispatch(backend=PG)`` — no Celery, so the whole
+      execution stays off the broker. (The callback rides default priority; the
+      barrier's fan-out fairness has already been applied to the header tasks.)
+    - absent / anything else (legacy ``.link`` path): dispatch via
+      ``current_app.signature(...).apply_async()`` — byte-identical to pre-9e,
+      preserving the ``fairness_headers`` the producer attached.
+    """
+    if callback_descriptor.get("backend") == WorkflowTransport.PG_QUEUE.value:
+        # Local imports: avoid an import cycle (dispatch/routing pull in queue
+        # plumbing) and keep the Celery path free of the PG dispatch deps.
+        from .dispatch import dispatch
+        from .routing import QueueBackend
+
+        handle = dispatch(
+            callback_descriptor["task_name"],
+            args=[all_results],
+            kwargs=callback_descriptor["kwargs"],
+            queue=callback_descriptor["queue"],
+            backend=QueueBackend.PG,
+        )
+        return str(handle.id)
+
+    from celery import current_app
+
+    # Build the callback-signature kwargs explicitly (headers only when truthy) —
+    # matching CeleryChordBarrier's idiom, no spurious headers=None.
+    signature_kwargs: dict[str, Any] = {
+        "args": [all_results],
+        "kwargs": callback_descriptor["kwargs"],
+        "queue": callback_descriptor["queue"],
+    }
+    if callback_descriptor.get("fairness_headers"):
+        signature_kwargs["headers"] = callback_descriptor["fairness_headers"]
+    callback_signature = current_app.signature(
+        callback_descriptor["task_name"], **signature_kwargs
+    )
+    return str(callback_signature.apply_async().id)
 
 
 def _barrier_pg_decrement(
@@ -321,8 +437,6 @@ def _barrier_pg_decrement(
     mid-transaction (see the guard below). The Celery wrapper additionally pins
     ``max_retries=0``; an orphaned barrier is bounded by ``expires_at`` instead.
     """
-    from celery import current_app
-
     # Enforce the "own committed transaction" contract loudly. A caller that
     # invokes this inside an already-open transaction on the shared thread-local
     # connection would hold the row lock across the call and let the outer txn's
@@ -406,35 +520,27 @@ def _barrier_pg_decrement(
         return {"status": "abandoned", "remaining": remaining}
 
     # remaining == 0: we are the last task. psycopg2 decodes the jsonb array to
-    # a Python list already — no per-element json.loads needed. Build the kwargs
-    # explicitly (headers only when truthy) — clearer than an inline ** spread,
-    # matching CeleryChordBarrier's idiom.
-    signature_kwargs: dict[str, Any] = {
-        "args": [all_results],
-        "kwargs": callback_descriptor["kwargs"],
-        "queue": callback_descriptor["queue"],
-    }
-    if callback_descriptor.get("fairness_headers"):
-        signature_kwargs["headers"] = callback_descriptor["fairness_headers"]
-    callback_signature = current_app.signature(
-        callback_descriptor["task_name"], **signature_kwargs
-    )
-    # Dispatch FIRST; delete the row only after dispatch succeeds, so a callback
-    # apply_async failure leaves the row (and its expiry) in place rather than
-    # stranding the execution with no state and no recovery path.
-    callback_result = callback_signature.apply_async()
-    # The post-dispatch delete must not mask the successful dispatch: the callback
-    # already fired, so a delete error here is logged (not raised) — the row
-    # lingers until expiry rather than re-running the callback. No double-fire is
-    # possible: this is the last decrement (remaining hit 0) and max_retries=0, so
-    # the link task is never replayed.
+    # a Python list already — no per-element json.loads needed.
+    #
+    # Dispatch the callback FIRST; delete the row only after dispatch succeeds, so
+    # a callback dispatch failure leaves the row (and its expiry) in place rather
+    # than stranding the execution with no state and no recovery path. No
+    # double-fire is possible: this is the last decrement (remaining hit 0) and
+    # max_retries=0, so the task is never replayed.
+    callback_id = _fire_barrier_callback(callback_descriptor, all_results)
+    # Post-dispatch cleanup is best-effort: the callback already fired, so a
+    # failure here is logged (not raised) — the rows linger until reclaim rather
+    # than re-running the callback. Clear the per-batch dedup markers too (their
+    # job is done once the barrier completes); a leftover marker is bounded by
+    # the future dedup-orphan sweep, never re-runs anything.
     try:
         _delete_barrier(execution_id)
+        clear_execution_batches(execution_id)
     except Exception:
         logger.exception(
             f"[exec:{execution_id}] Barrier callback dispatched "
-            f"(callback_task_id={callback_result.id}) but the post-dispatch row "
-            f"delete failed — row will be reclaimed at expiry. Callback NOT "
+            f"(callback_task_id={callback_id}) but the post-dispatch cleanup "
+            f"failed — rows will be reclaimed by expiry/sweep. Callback NOT "
             f"re-run (max_retries=0)."
         )
 
@@ -442,11 +548,11 @@ def _barrier_pg_decrement(
         f"[exec:{execution_id}] Barrier complete — fired callback "
         f"{callback_descriptor['task_name']} on {callback_descriptor['queue']} "
         f"with {len(all_results)} aggregated results "
-        f"(callback_task_id={callback_result.id})"
+        f"(callback_task_id={callback_id})"
     )
     return {
         "status": "complete",
-        "callback_task_id": callback_result.id,
+        "callback_task_id": callback_id,
         "aggregated_count": len(all_results),
     }
 
@@ -510,8 +616,70 @@ def barrier_pg_abort(
         # Another failure already aborted this execution (or it's already gone).
         return {"status": "already_aborted", "execution_id": execution_id}
 
+    # We won the abort: reclaim the per-batch dedup markers too (best-effort —
+    # the barrier is already torn down). A leftover marker would otherwise linger
+    # until the future dedup-orphan sweep; it can never re-run anything.
+    with contextlib.suppress(Exception):
+        clear_execution_batches(execution_id)
+
     logger.error(
         f"[exec:{execution_id}] PgBarrier aborted — a header task failed; "
         f"barrier state cleaned up (aggregating callback will not fire)."
     )
     return {"status": "aborted", "execution_id": execution_id}
+
+
+def run_batch_with_barrier(
+    barrier_context: dict[str, Any], work_fn: Callable[[], dict[str, Any]]
+) -> dict[str, Any]:
+    """Run a fire-and-forget PG-path batch under the barrier protocol (9e PR 2c).
+
+    A PG-consumed header task fires no Celery ``.link``, so the barrier
+    coordination runs in-body here, given the ``_barrier_context`` that
+    :meth:`PgBarrier._dispatch_header_pg` injected (``execution_id`` /
+    ``batch_index`` / ``callback_descriptor``):
+
+    1. **Claim** ``(execution_id, batch_index)``. A redelivery (at-least-once
+       queue) finds the marker already set → returns a no-op result WITHOUT
+       re-running the work or re-decrementing — exactly-once decrement.
+    2. **Run** ``work_fn()`` (the batch). On exception there is no ``.link_error``,
+       so tear the barrier down in-body via :func:`barrier_pg_abort` (mirrors the
+       chord path's failure semantic — the callback won't fire) and re-raise.
+    3. **Decrement** the barrier with the batch result; the task that drives
+       ``remaining`` → 0 self-chains the aggregating callback onto PG.
+
+    ``work_fn`` must return the JSON-serialisable batch result (the same dict the
+    Celery chord path returns), since the decrement appends it to the barrier's
+    aggregated results that the callback receives.
+    """
+    execution_id = str(barrier_context["execution_id"])
+    batch_index = int(barrier_context["batch_index"])
+
+    if not claim_batch(execution_id, batch_index):
+        logger.info(
+            f"[exec:{execution_id}] batch {batch_index} already claimed — "
+            f"redelivery, skipping (barrier already decremented for this batch)."
+        )
+        return {
+            "status": "skipped_redelivery",
+            "execution_id": execution_id,
+            "batch_index": batch_index,
+        }
+
+    try:
+        result = work_fn()
+    except Exception:
+        with contextlib.suppress(Exception):
+            barrier_pg_abort(execution_id=execution_id)
+        logger.exception(
+            f"[exec:{execution_id}] batch {batch_index} failed — barrier torn "
+            f"down in-body (no .link_error on the PG path); execution fails fast."
+        )
+        raise
+
+    _barrier_pg_decrement(
+        result,
+        execution_id=execution_id,
+        callback_descriptor=barrier_context["callback_descriptor"],
+    )
+    return result
