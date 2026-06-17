@@ -66,18 +66,19 @@ answered **once**, at the single creation chokepoint, using the existing
 
 This is the only place Flipt is consulted.
 
-#### Flipt flag contract (fixed — created 2026-06-16, Flipt v2.3.1)
+#### Flipt flag contract (fixed)
 
-PR 3's `resolve_transport` reads this exact flag. The flag is **created and live
-in dev** but carries **no rollouts yet**, so it is inert until PR 3 wires it.
+PR 3's `resolve_transport` reads this exact flag. Live rollout state (whether the
+flag exists in a given env, current rollout %) is tracked in the PR / ticket, not
+here — this table is just the durable contract PR 3 codes against.
 
 | Property | Value |
 |----------|-------|
-| Flipt version | `v2.3.1` (`docker/docker-compose-dev-essentials.yaml`) |
+| Flipt version | the `flipt` image pinned in `docker/docker-compose-dev-essentials.yaml` (single source — don't duplicate the tag here) |
 | Flag type | **Boolean** (binary decision — no variant/payload needed) |
 | Key | `pg_queue_execution_enabled` |
 | Default value | **`false`** → legacy Celery (fails closed; returned when no rollout matches) |
-| Rollouts | **none yet** — added in PR 3 / rollout ops (percentage 0%→ramp; optional per-org segment) |
+| Rollouts | percentage (0%→ramp) + optional per-org segment, added in PR 3 / rollout ops |
 | Helper | `check_feature_flag_status(flag_key="pg_queue_execution_enabled", entity_id=…, context={"organization_id": org_id})` → `evaluate_boolean`; already fails closed to `False` on any error / when `FLIPT_SERVICE_AVAILABLE != "true"` |
 | Mapping | `True → "pg_queue"`, `False → "celery"` |
 | `entity_id` (stickiness) | **TBD in PR 3** — `execution_id` (per-execution bucketing) or `organization_id` (whole orgs move together). Must be stable so an in-flight execution never re-buckets. |
@@ -152,10 +153,14 @@ worker: process_file_batch   (transport rides in kwargs → re-stamped onward)
 worker: callback             (transport in kwargs → finalises on the same transport)
 ```
 
-`ExecutionContext` (`workers/shared/models/execution_models.py`,
-`WorkflowExecutionContext`) gains a `transport: str = "celery"` field, populated
-from the inbound task kwargs and re-emitted into every downstream dispatch.
-Default `"celery"` keeps every pre-existing payload working unchanged.
+The live worker context `WorkflowContextData`
+(`workers/shared/models/execution_models.py`) gains a
+`transport: str = "celery"` field, populated from the inbound task kwargs.
+Default `"celery"` keeps every pre-existing payload working unchanged. In PR 1
+the field is carried but **not yet re-emitted** to the stage-2/3 dispatches; the
+downstream re-stamp + fan-out read land in PR 2. (Note: the unrelated
+`WorkflowExecutionContext` dataclass in the same file is dead scaffolding and is
+**not** the carrier.)
 
 ---
 
@@ -249,16 +254,21 @@ works). All land on `feat/UN-3445-pg-queue-integration`, not `main`.
 > avoid.
 
 ### PR 1 — transport seam (inert, no routing change)
-- `resolve_transport(...)` helper at `create_workflow_execution`
-  (`backend/workflow_manager/workflow_v2/execution.py:126`); **PR 1 hardwires it
-  to `"celery"`** — Flipt wiring is PR 3.
-- Add `transport: str = "celery"` to `WorkflowExecutionContext`
-  (`workers/shared/models/execution_models.py`); populate from inbound kwargs.
-- Thread `transport` into the kwargs of every pipeline dispatch site
-  (`workflow_helper.py` stage-1/2/3 dispatches) across **all four entry paths**
-  (API / async / scheduled-ETL/TASK / manual UI — all funnel through the same
-  chokepoint), reading it back but **branching only into today's Celery path**
-  (the `pg_queue` branch is present but unreachable until PR 2).
+- `resolve_transport(...)` helper (`backend/workflow_manager/workflow_v2/
+  transport.py`), **hardwired to `"celery"`** (Flipt wiring is PR 3), called at
+  the two transport-emit sites: the scheduler-path HTTP view
+  (`internal_api_views.py:create_workflow_execution`, returns `transport`) and
+  the API/manual/async path (`workflow_helper.py:execute_workflow_async`, adds
+  it to the `async_execute_bin` kwargs).
+- Add `transport: str = "celery"` to the live `WorkflowContextData`
+  (`workers/shared/models/execution_models.py`); populate from inbound kwargs
+  (NOT `WorkflowExecutionContext`, which is dead scaffolding).
+- Thread `transport` into the **stage-1** dispatch kwargs only
+  (`workflow_helper.py` send + `scheduler/tasks.py` dispatch) across the entry
+  paths (API / async / scheduled-ETL/TASK / manual). Stage-2 fan-out
+  (`process_file_batch`) and stage-3 callback are **not** modified in PR 1 —
+  they carry no `transport` yet; the downstream re-stamp + the `pg_queue` branch
+  land in PR 2.
 - Tests: resolver returns `"celery"`; `ExecutionContext` carries/defaults the
   field; payload round-trips the field through `to_payload`/decode; scheduled
   path carries it through.
@@ -283,8 +293,8 @@ works). All land on `feat/UN-3445-pg-queue-integration`, not `main`.
   `context` = org segment), replacing the hardwired `"celery"`. Env kill-switch
   wraps it for instant rollback; Flipt fails-closed to `"celery"`.
 - Reads the **fixed flag contract** in §2 (key `pg_queue_execution_enabled`,
-  Boolean, default `false`). The flag already exists in dev with no rollouts —
-  PR 3 only adds the read + decides the `entity_id` stickiness.
+  Boolean, default `false`). PR 3 adds the read + decides the `entity_id`
+  stickiness; provisioning the flag/rollouts per env is rollout ops.
 
 ### Rollout — ops, not a PR
 - Canary %, dashboards (off `pg_queue_message` / `pg_barrier_state`), runbook,
@@ -296,10 +306,11 @@ works). All land on `feat/UN-3445-pg-queue-integration`, not `main`.
 
 | Concern                     | Location |
 |-----------------------------|----------|
-| Creation chokepoint         | `backend/workflow_manager/workflow_v2/execution.py:126` (`create_workflow_execution`) |
-| Callers (API/async/sched/UI)| `api_v2/deployment_helper.py:202`, `workflow_manager/workflow_v2/workflow_helper.py:686/744/935` |
-| Pipeline dispatch sites     | `workflow_helper.py` (stage-1 send, stage-2 batch signatures, stage-3 chord) |
-| ExecutionContext            | `workers/shared/models/execution_models.py` (`WorkflowExecutionContext`) |
+| Transport resolve + emit    | `workflow_v2/transport.py` (`resolve_transport`); emitted at `internal_api_views.py` (`create_workflow_execution` view → response, scheduler path) and `workflow_helper.py` (`execute_workflow_async` → `async_execute_bin` kwargs, API/manual/async path) |
+| Row-builder (no transport)  | `workflow_v2/execution.py` (`WorkflowExecutionServiceHelper.create_workflow_execution` — builds the row; does NOT resolve transport) |
+| Entry paths                 | API deploy, async, scheduled-ETL/TASK, manual UI — all reach one of the two emit sites above |
+| Pipeline dispatch sites     | `workflow_helper.py` (stage-1 send, stage-2 batch signatures, stage-3 chord) — only stage-1 threads transport in PR 1 |
+| Worker context (carrier)    | `workers/shared/models/execution_models.py` (`WorkflowContextData` — NOT the dead `WorkflowExecutionContext`) |
 | Dispatch seam               | `workers/queue_backend/dispatch.py`, `routing.py` (`select_backend`) |
 | PG task payload (durable)   | `workers/queue_backend/pg_queue/task_payload.py` (`TaskPayload` → `pg_queue_message.message` JSONB) |
 | Barrier factory             | `workers/queue_backend/__init__.py` (`get_barrier`) |

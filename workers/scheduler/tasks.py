@@ -27,6 +27,7 @@ from unstract.core.data_models import (
     DEFAULT_WORKFLOW_TRANSPORT,
     NotificationPayload,
     NotificationSource,
+    normalize_transport,
 )
 
 # Import the exact backend logic to ensure consistency
@@ -134,9 +135,15 @@ def _execute_scheduled_workflow(
         )
         execution_id = workflow_execution.get("execution_id")
         # Transport this execution rides (9e), decided by the backend at creation
-        # and carried in the dispatched task's payload. Defaults to celery if the
-        # backend doesn't return it (older backend / no-op until PR 3).
-        transport = workflow_execution.get("transport", DEFAULT_WORKFLOW_TRANSPORT)
+        # and carried in the dispatched task's payload. Absent key (older backend)
+        # → celery default; a present-but-unrecognized value (version skew) is
+        # coerced to celery with a loud warning rather than dispatched onto an
+        # unknown substrate (fail-closed).
+        transport = normalize_transport(
+            workflow_execution.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
+            logger=logger,
+            context=f" [exec:{execution_id}]",
+        )
 
         if not execution_id:
             return SchedulerExecutionResult.error(

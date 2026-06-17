@@ -42,3 +42,10 @@ class TestWorkflowContextTransport:
     def test_carries_pg_queue_when_set(self):
         ctx = _make_context(transport=WorkflowTransport.PG_QUEUE.value)
         assert ctx.transport == "pg_queue"
+
+    def test_invalid_transport_coerced_to_celery(self):
+        """A garbage payload value (version skew / bad PG JSONB) must fail closed
+        at construction, not reach the PR 2 fan-out read."""
+        assert _make_context(transport="pg-queue").transport == "celery"
+        assert _make_context(transport="bogus").transport == "celery"
+        assert _make_context(transport=None).transport == "celery"

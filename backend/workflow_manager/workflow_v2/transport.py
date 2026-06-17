@@ -16,11 +16,7 @@ kill-switch and failing closed to Celery.
 
 from __future__ import annotations
 
-import logging
-
 from unstract.core.data_models import WorkflowTransport
-
-logger = logging.getLogger(__name__)
 
 
 def resolve_transport(
@@ -41,5 +37,10 @@ def resolve_transport(
     Note:
         PR 1 always returns ``"celery"``. The arguments are accepted now so the
         call sites and the contract are stable when PR 3 wires Flipt in here.
+        PR 3 must wrap the Flipt evaluation in ``try/except`` and fall back to
+        ``WorkflowTransport.CELERY.value`` (fail-closed), so a Flipt outage can
+        never break execution creation — mirroring ``normalize_transport`` on
+        the read side. (A module ``logger`` is intentionally omitted until then,
+        when the fallback path needs it.)
     """
     return WorkflowTransport.CELERY.value

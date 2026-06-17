@@ -62,11 +62,15 @@ from workflow_manager.workflow_v2.transport import resolve_transport
 logger = logging.getLogger(__name__)
 
 # Parameters to exclude when calling create_workflow_execution
+# (the classmethod takes no **kwargs, so any task kwarg not a real parameter —
+# incl. the 9e ``transport`` carried in the async_execute_bin payload — must be
+# filtered out here before it reaches the legacy ``execute_workflow`` path).
 EXECUTION_EXCLUDED_PARAMS = {
     "llm_profile_id",
     "hitl_queue_name",
     "hitl_packet_id",
     "custom_data",
+    "transport",
 }
 
 
@@ -507,6 +511,15 @@ class WorkflowHelper:
             # Resolve the transport this execution rides (9e) and carry it in the
             # task payload — the pipeline reads it to stay on one transport
             # end-to-end. PR 1 always resolves "celery" (no behaviour change).
+            #
+            # NOTE (deliberate, two resolution sites): transport is resolved here
+            # for the API/manual/async paths and separately in
+            # internal_api_views.create_workflow_execution for the scheduler
+            # path. These are DISTINCT entry paths — never a double-resolution of
+            # the same execution — so today they cannot diverge. PR 3 makes each
+            # an independent Flipt evaluation; before then, both must be funnelled
+            # through a single per-execution chokepoint (so a percentage re-roll
+            # can't split one execution across transports). Tracked for PR 3.
             transport = resolve_transport(
                 workflow_id=workflow_id,
                 pipeline_id=pipeline_id,
