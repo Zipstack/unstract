@@ -19,28 +19,22 @@ from __future__ import annotations
 from unstract.core.data_models import WorkflowTransport
 
 
-def resolve_transport(
-    workflow_id: str,
-    pipeline_id: str | None = None,
-    organization_id: str | None = None,
-) -> str:
+def resolve_transport() -> str:
     """Resolve the transport for a new workflow execution.
-
-    Args:
-        workflow_id: The workflow being executed.
-        pipeline_id: The pipeline, if this execution belongs to one.
-        organization_id: The owning organization (for per-org rollout in PR 3).
 
     Returns:
         The transport value (a :class:`WorkflowTransport` value string).
 
     Note:
-        PR 1 always returns ``"celery"``. The arguments are accepted now so the
-        call sites and the contract are stable when PR 3 wires Flipt in here.
-        PR 3 must wrap the Flipt evaluation in ``try/except`` and fall back to
+        PR 1 always returns ``"celery"`` and takes no arguments (the inert seam
+        needs no inputs). PR 3 reintroduces ``workflow_id`` / ``pipeline_id`` /
+        ``organization_id`` parameters when it wires Flipt here — percentage
+        rollout via ``entity_id`` hashing + per-org segment via ``context`` —
+        and updates the two call sites (``internal_api_views`` view and
+        ``workflow_helper.execute_workflow_async``). PR 3 must wrap the Flipt
+        evaluation in ``try/except`` and fall back to
         ``WorkflowTransport.CELERY.value`` (fail-closed), so a Flipt outage can
         never break execution creation — mirroring ``normalize_transport`` on
-        the read side. (A module ``logger`` is intentionally omitted until then,
-        when the fallback path needs it.)
+        the read side.
     """
     return WorkflowTransport.CELERY.value

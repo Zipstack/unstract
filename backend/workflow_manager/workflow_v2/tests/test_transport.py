@@ -25,25 +25,14 @@ class TestWorkflowTransportEnum:
 
 
 class TestResolveTransport:
-    def test_resolves_celery_by_default(self):
-        """PR 1: always Celery, regardless of inputs."""
-        assert resolve_transport(workflow_id="wf-1") == WorkflowTransport.CELERY.value
-
-    def test_accepts_optional_args_without_changing_result(self):
-        """The pipeline/org args are accepted now (stable signature for PR 3's
-        Flipt wiring) but must not change the inert result."""
-        assert (
-            resolve_transport(
-                workflow_id="wf-1",
-                pipeline_id="pipe-1",
-                organization_id="org-1",
-            )
-            == WorkflowTransport.CELERY.value
-        )
+    def test_resolves_celery_in_pr1(self):
+        """PR 1: always Celery (inert seam, no inputs). PR 3 adds the
+        workflow/pipeline/org params + Flipt evaluation."""
+        assert resolve_transport() == WorkflowTransport.CELERY.value
 
     def test_result_is_a_valid_transport_value(self):
         valid = {t.value for t in WorkflowTransport}
-        assert resolve_transport(workflow_id="wf-1") in valid
+        assert resolve_transport() in valid
 
 
 class TestNormalizeTransport:

@@ -21,14 +21,14 @@ def _make_context(**overrides):
         organization_id="org-1",
         api_client=MagicMock(),
     )
-    kwargs = dict(
-        workflow_id="wf-1",
-        workflow_name="wf-name",
-        workflow_type="TASK",
-        execution_id="exec-1",
-        organization_context=org_context,
-        files={},
-    )
+    kwargs = {
+        "workflow_id": "wf-1",
+        "workflow_name": "wf-name",
+        "workflow_type": "TASK",
+        "execution_id": "exec-1",
+        "organization_context": org_context,
+        "files": {},
+    }
     kwargs.update(overrides)
     return WorkflowContextData(**kwargs)
 

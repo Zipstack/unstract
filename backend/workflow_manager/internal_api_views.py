@@ -324,12 +324,9 @@ def create_workflow_execution(request):
         # Resolve the transport this execution rides (9e). Decided once here, at
         # the creation chokepoint, and returned so the caller carries it in the
         # dispatched task's payload — not persisted on the row. PR 1 always
-        # resolves "celery"; PR 3 wires Flipt in resolve_transport().
-        transport = resolve_transport(
-            workflow_id=str(workflow.id),
-            pipeline_id=data.get("pipeline_id"),
-            organization_id=org_id,
-        )
+        # resolves "celery"; PR 3 wires Flipt (keyed on workflow/pipeline/org) in
+        # resolve_transport().
+        transport = resolve_transport()
 
         return Response(
             {

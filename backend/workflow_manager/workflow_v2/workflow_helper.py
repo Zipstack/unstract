@@ -520,11 +520,7 @@ class WorkflowHelper:
             # an independent Flipt evaluation; before then, both must be funnelled
             # through a single per-execution chokepoint (so a percentage re-roll
             # can't split one execution across transports). Tracked for PR 3.
-            transport = resolve_transport(
-                workflow_id=workflow_id,
-                pipeline_id=pipeline_id,
-                organization_id=org_schema,
-            )
+            transport = resolve_transport()
             async_execution: AsyncResult = celery_app.send_task(
                 "async_execute_bin",
                 args=[
