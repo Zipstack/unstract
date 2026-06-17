@@ -318,45 +318,14 @@ class PgBarrier:
                     (execution_id,),
                 )
 
-            link_signature = barrier_pg_decr_and_check.s(
+            self._dispatch_headers(
+                header_tasks,
+                is_pg=is_pg,
                 execution_id=execution_id,
                 callback_descriptor=callback_descriptor,
+                fairness=fairness,
+                fairness_headers=fairness_headers,
             )
-            link_error_signature = barrier_pg_abort.s(execution_id=execution_id)
-            for i, task in enumerate(header_tasks):
-                try:
-                    if is_pg:
-                        self._dispatch_header_pg(
-                            task, i, execution_id, callback_descriptor, fairness
-                        )
-                    else:
-                        cloned = task.clone()
-                        if fairness_headers:
-                            cloned.set(headers=fairness_headers)
-                        cloned.link(link_signature)
-                        cloned.link_error(link_error_signature)
-                        cloned.apply_async()
-                except Exception:
-                    # Mid-loop dispatch failure: i of N never reached the queue,
-                    # so the counter can't reach 0. Delete the row so an in-flight
-                    # decrement (link or in-body) finds no row and cleans up;
-                    # re-raise so the caller marks the workflow ERROR.
-                    with contextlib.suppress(Exception):
-                        _delete_barrier(execution_id)
-                    if is_pg:
-                        # On the PG path, headers dispatched before i may already
-                        # have run + committed a claim_batch marker. With the
-                        # barrier row gone, their in-flight barrier_pg_abort is a
-                        # no-op (already_aborted) and never reaches the clear
-                        # inside it — so reclaim the markers here directly.
-                        with contextlib.suppress(Exception):
-                            clear_execution_batches(execution_id)
-                    logger.exception(
-                        f"[exec:{execution_id}] header dispatch failed at task "
-                        f"{i}/{len(header_tasks)}; barrier row deleted to prevent "
-                        f"spurious callback fires from the orphan tasks."
-                    )
-                    raise
 
             logger.info(
                 f"Barrier enqueued via PgBarrier ({transport}) — "
@@ -374,6 +343,56 @@ class PgBarrier:
                 f"header_tasks={len(header_tasks)})"
             )
             raise
+
+    def _dispatch_headers(
+        self,
+        header_tasks: list[Signature],
+        *,
+        is_pg: bool,
+        execution_id: str,
+        callback_descriptor: CallbackDescriptor,
+        fairness: FairnessKey | None,
+        fairness_headers: dict[str, Any] | None,
+    ) -> None:
+        """Dispatch the N header tasks, one transport or the other.
+
+        PG path (``is_pg``) → fire-and-forget onto the PG queue via
+        :meth:`_dispatch_header_pg` (no ``.link``). Celery path → ``.link`` /
+        ``.link_error`` chord-style. On any mid-loop dispatch failure, ``i`` of N
+        never reached the queue so the counter can't reach 0 — delete the barrier
+        row (and, on the PG path, reclaim dedup markers an earlier header may have
+        committed, since the in-flight ``barrier_pg_abort`` is a no-op once the row
+        is gone) so an in-flight decrement finds nothing, then re-raise.
+        """
+        link_signature = barrier_pg_decr_and_check.s(
+            execution_id=execution_id, callback_descriptor=callback_descriptor
+        )
+        link_error_signature = barrier_pg_abort.s(execution_id=execution_id)
+        for i, task in enumerate(header_tasks):
+            try:
+                if is_pg:
+                    self._dispatch_header_pg(
+                        task, i, execution_id, callback_descriptor, fairness
+                    )
+                else:
+                    cloned = task.clone()
+                    if fairness_headers:
+                        cloned.set(headers=fairness_headers)
+                    cloned.link(link_signature)
+                    cloned.link_error(link_error_signature)
+                    cloned.apply_async()
+            except Exception:
+                with contextlib.suppress(Exception):
+                    _delete_barrier(execution_id)
+                if is_pg:
+                    with contextlib.suppress(Exception):
+                        clear_execution_batches(execution_id)
+                logger.exception(
+                    f"[exec:{execution_id}] header dispatch failed at task "
+                    f"{i}/{len(header_tasks)}; barrier row deleted to prevent "
+                    f"spurious callback fires from the orphan tasks."
+                )
+                raise
 
     @staticmethod
     def _dispatch_header_pg(
