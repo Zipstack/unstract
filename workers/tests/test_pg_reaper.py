@@ -357,17 +357,19 @@ class TestRecoverExpiredBarriers:
         api = _FakeApiClient(status="EXECUTING")
         recovered = recover_expired_barriers(barrier_conn, api)
         assert recovered == ["exp-1"]
-        assert [c.execution_id for c in api.update_calls] == ["exp-1"]
-        assert api.update_calls[0].status == "ERROR"
-        assert api.update_calls[0].organization_id == "org-1"
-        assert "never completed" in api.update_calls[0].error_message  # remaining>0
+        (call,) = api.update_calls  # exactly one execution marked
+        assert call.execution_id == "exp-1"
+        assert call.status == "ERROR"
+        assert call.organization_id == "org-1"
+        assert "never completed" in call.error_message  # remaining>0
         assert _ids(barrier_conn) == ["fresh-1"]  # fresh barrier untouched
 
     def test_remaining_zero_uses_callback_stranded_message(self, barrier_conn):
         _seed(barrier_conn, "exp-0", expired=True, remaining=0)
         api = _FakeApiClient(status="EXECUTING")
         recover_expired_barriers(barrier_conn, api)
-        assert "callback never fired" in api.update_calls[0].error_message
+        (call,) = api.update_calls
+        assert "callback never fired" in call.error_message
 
     def test_skips_already_terminal_execution(self, barrier_conn):
         # A remaining==0 expired row can belong to a COMPLETED exec whose row
