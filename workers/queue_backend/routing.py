@@ -36,8 +36,9 @@ consult this allow-list." Until then, only enable *leaf* tasks here.
 **Scaffold posture.** This module only makes the routing *decision*.
 In the current phase there is no PG consumer, so ``dispatch()`` still
 sends PG-selected tasks via Celery (the decision is observable in logs
-but inert). ``select_backend()`` is the seam where the real PG dispatch
-lands in a later phase.
+but inert). ``resolve_backend()`` (which wraps the ``select_backend()``
+allow-list with the per-call override) is the seam where the real PG
+dispatch lands in a later phase.
 
 **Observability.** Because the gate is silent-by-construction (a
 misrouted task still runs on Celery), the only signals are logs, emitted

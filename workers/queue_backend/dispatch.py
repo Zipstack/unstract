@@ -1,11 +1,12 @@
 """Transport-agnostic task dispatch.
 
-Routes each task to its transport via :func:`select_backend`:
+Routes each task to its transport via :func:`resolve_backend` (which applies a
+per-call ``backend`` override, else defers to :func:`select_backend`):
 
 - **Celery** (default) — a thin pass-through to ``current_app.send_task``.
-- **PG Queue** — when a task is opted into ``WORKER_PG_QUEUE_ENABLED_TASKS``,
-  the task is serialised and enqueued to ``pg_queue_message`` (9b); the PG
-  consumer (9c) drains and runs it.
+- **PG Queue** — when a task is opted into ``WORKER_PG_QUEUE_ENABLED_TASKS``
+  (or pinned via a ``backend=`` override), the task is serialised and enqueued
+  to ``pg_queue_message`` (9b); the PG consumer (9c) drains and runs it.
 
 The default (empty allow-list) routes everything to Celery, so dispatch is
 unchanged unless an operator explicitly opts a task in.
@@ -130,6 +131,12 @@ def _enqueue_pg(
         # true regardless of send outcome, so a first-dispatch failure
         # (DB down / unmigrated) must not suppress the one announcement.
         # INFO so it survives a default log config; once-per-task bounds it.
+        # NOTE: keyed on task name only, not on *why* it routed to PG. If a name
+        # is first PG-routed via a ``backend=`` override and the operator later
+        # adds it to the allow-list, the allow-list cutover won't re-announce
+        # (already in the set). Benign given the usage split (override = pipeline
+        # headers, allow-list = leaf tasks, so no overlap expected); the
+        # allow-list config itself is still announced by _log_allow_list_once.
         _pg_routing_logged.add(task_name)
         logger.info(
             "PG-queue: routing task=%r to Postgres (queue=%r). Requires the "
