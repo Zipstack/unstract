@@ -75,7 +75,12 @@ from unstract.core.data_models import (
 
 from .barrier import BarrierContext, CallbackDescriptor, barrier_ttl_seconds
 from .decorator import worker_task
-from .fairness import FairnessKey
+from .fairness import (
+    DEFAULT_PRIORITY,
+    FAIRNESS_HEADER_NAME,
+    FairnessKey,
+    WorkloadType,
+)
 from .handle import BarrierHandle
 from .pg_queue.connection import create_pg_connection
 
@@ -338,6 +343,14 @@ class PgBarrier:
                     # re-raise so the caller marks the workflow ERROR.
                     with contextlib.suppress(Exception):
                         _delete_barrier(execution_id)
+                    if is_pg:
+                        # On the PG path, headers dispatched before i may already
+                        # have run + committed a claim_batch marker. With the
+                        # barrier row gone, their in-flight barrier_pg_abort is a
+                        # no-op (already_aborted) and never reaches the clear
+                        # inside it — so reclaim the markers here directly.
+                        with contextlib.suppress(Exception):
+                            clear_execution_batches(execution_id)
                     logger.exception(
                         f"[exec:{execution_id}] header dispatch failed at task "
                         f"{i}/{len(header_tasks)}; barrier row deleted to prevent "
@@ -406,6 +419,27 @@ class PgBarrier:
         )
 
 
+def _fairness_from_headers(
+    fairness_headers: dict[str, Any] | None,
+) -> FairnessKey | None:
+    """Reconstruct a :class:`FairnessKey` from the stored ``x-fairness-key`` header.
+
+    The descriptor carries the wire-shape headers (``FairnessKey.as_header()``),
+    but the PG dispatch path wants the ``FairnessKey`` itself (``dispatch`` writes
+    ``org_id`` + ``pipeline_priority`` onto the row). Reconstructing keeps the PG
+    callback at the producer's org/priority — parity with the Celery path, which
+    applies the headers directly. ``None`` when the producer attached no key.
+    """
+    payload = (fairness_headers or {}).get(FAIRNESS_HEADER_NAME)
+    if not payload:
+        return None
+    return FairnessKey(
+        org_id=payload.get("org_id"),
+        workload_type=WorkloadType(payload["workload_type"]),
+        pipeline_priority=payload.get("pipeline_priority", DEFAULT_PRIORITY),
+    )
+
+
 def _fire_barrier_callback(
     callback_descriptor: CallbackDescriptor, all_results: list[Any]
 ) -> str:
@@ -414,9 +448,10 @@ def _fire_barrier_callback(
     Two transports, selected by the descriptor's ``transport`` marker:
 
     - ``"pg_queue"`` (9e fire-and-forget PG path): self-chain the callback onto
-      the PG queue via :func:`_dispatch_pg` — no Celery, so the whole execution
-      stays off the broker. (The callback rides default priority; the barrier's
-      fan-out fairness has already been applied to the header tasks.)
+      the PG queue via :func:`_dispatch_pg`, carrying the producer's fairness
+      (reconstructed from the stored headers) so the callback rides the same
+      org/priority as the Celery path — no Celery, so the whole execution stays
+      off the broker.
     - absent / anything else (legacy ``.link`` path): dispatch via
       ``current_app.signature(...).apply_async()`` — byte-identical to pre-9e,
       preserving the ``fairness_headers`` the producer attached.
@@ -427,6 +462,7 @@ def _fire_barrier_callback(
             args=[all_results],
             kwargs=callback_descriptor["kwargs"],
             queue=callback_descriptor["queue"],
+            fairness=_fairness_from_headers(callback_descriptor.get("fairness_headers")),
         )
         return str(handle.id)
 

@@ -613,6 +613,36 @@ class TestPgFireAndForgetMode:
         assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
         assert mock_dispatch.call_args.kwargs["args"] == [[{"r": 1}]]
 
+    def test_fire_barrier_callback_pg_carries_fairness(self):
+        # greptile: the PG callback must ride the producer's org/priority (parity
+        # with the Celery path), reconstructed from the stored fairness_headers.
+        descriptor = {
+            **_CALLBACK,
+            "transport": "pg_queue",
+            "fairness_headers": {
+                FAIRNESS_HEADER_NAME: {
+                    "org_id": "org-9",
+                    "workload_type": "api",
+                    "pipeline_priority": 8,
+                }
+            },
+        }
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="pg-cb")
+            _fire_barrier_callback(descriptor, [{"r": 1}])
+        fairness = mock_dispatch.call_args.kwargs["fairness"]
+        assert fairness is not None
+        assert fairness.org_id == "org-9"
+        assert fairness.pipeline_priority == 8
+
+    def test_fire_barrier_callback_pg_without_fairness_passes_none(self):
+        # No producer key → None (dispatch writes neutral defaults), not a crash.
+        descriptor = {**_CALLBACK, "transport": "pg_queue"}  # fairness_headers None
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="pg-cb")
+            _fire_barrier_callback(descriptor, [{"r": 1}])
+        assert mock_dispatch.call_args.kwargs["fairness"] is None
+
     def test_fire_barrier_callback_legacy_uses_celery(self):
         # No backend marker → the .link-mode Celery dispatch (unchanged).
         with patch("celery.current_app.signature") as sig:
@@ -689,12 +719,15 @@ class TestPgFireAndForgetMode:
                 run_batch_with_barrier(ctx, lambda: {"ok": 1})
         assert _row(barrier_db, "exec-decfail") is None  # barrier torn down
 
-    def test_pg_mid_loop_dispatch_failure_deletes_row(self, barrier_db):
+    def test_pg_mid_loop_dispatch_failure_deletes_row_and_clears_dedup(self, barrier_db):
         # The PG-branch counterpart of test_mid_loop_dispatch_failure_deletes_row:
-        # a header PG-dispatch failure mid fan-out deletes the barrier row so an
-        # in-flight in-body decrement finds no row and cleans up.
+        # a header PG-dispatch failure mid fan-out deletes the barrier row AND
+        # reclaims dedup markers (greptile #2069) — an already-claimed earlier
+        # header's marker would otherwise orphan, since the in-flight abort is a
+        # no-op once the barrier row is gone.
         with barrier_db.cursor() as cur:
             cur.execute("DELETE FROM pg_batch_dedup")
+        claim_batch("exec-midfail", 0)  # an earlier header already claimed its slot
         with patch(
             "queue_backend.dispatch.dispatch",
             side_effect=[MagicMock(id="1"), RuntimeError("broker down")],
@@ -709,6 +742,12 @@ class TestPgFireAndForgetMode:
                     transport="pg_queue",
                 )
         assert _row(barrier_db, "exec-midfail") is None  # row deleted on failure
+        with barrier_db.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
+                ("exec-midfail",),
+            )
+            assert cur.fetchone()[0] == 0  # markers reclaimed, not orphaned
 
 
 if __name__ == "__main__":
