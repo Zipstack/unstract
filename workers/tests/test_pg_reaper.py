@@ -195,12 +195,13 @@ class _FakeApiClient:
 
     def __init__(
         self, status="EXECUTING", *, fail_read=False, fail_update=False,
-        fail_update_for=None,
+        fail_update_for=None, on_get=None,
     ):
         self._status = status
         self._fail_read = fail_read
         self._fail_update = fail_update
         self._fail_update_for = set(fail_update_for or [])
+        self._on_get = on_get  # side-effect hook (e.g. re-arm the row mid-recovery)
         self.get_calls: list = []
         self.update_calls: list = []
 
@@ -208,6 +209,8 @@ class _FakeApiClient:
         self, execution_id, organization_id=None, file_execution=True, **kw
     ):
         self.get_calls.append((execution_id, organization_id, file_execution))
+        if self._on_get is not None:
+            self._on_get(execution_id)
         if self._fail_read:
             return SimpleNamespace(success=False, status=None)  # real error contract
         return SimpleNamespace(success=True, status=self._status)
@@ -440,6 +443,49 @@ class TestRecoverExpiredBarriers:
         recovered = recover_expired_barriers(barrier_conn, api)
         assert sorted(recovered) == ["exp-a", "exp-c"]  # the two good ones
         assert _ids(barrier_conn) == ["exp-bad"]  # only the failing row remains
+
+    def test_rearmed_execution_is_not_marked_error(self, barrier_conn):
+        # greptile #2070: if the same execution_id is re-enqueued (expires_at
+        # reset to the future) between the sweep SELECT and the mark, the reaper
+        # must NOT mark the freshly-running execution ERROR. Simulate the re-arm
+        # via the status-read side-effect.
+        _seed(barrier_conn, "exp-rearm", expired=True)
+
+        def rearm(execution_id):
+            with barrier_conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE pg_barrier_state SET expires_at = now() + interval '6 hours' "
+                    "WHERE execution_id = %s",
+                    (execution_id,),
+                )
+            barrier_conn.commit()
+
+        api = _FakeApiClient(status="EXECUTING", on_get=rearm)
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == []  # not recovered
+        assert api.update_calls == []  # the live re-run was NOT marked ERROR
+        assert _ids(barrier_conn) == ["exp-rearm"]  # re-armed row left intact
+
+    def test_status_none_on_success_does_not_mark(self, barrier_conn):
+        # A successful read with no status is anomalous — don't mark on it.
+        _seed(barrier_conn, "exp-nostatus", expired=True)
+        api = _FakeApiClient(status=None)  # success=True, status=None
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == []
+        assert api.update_calls == []
+        assert _ids(barrier_conn) == ["exp-nostatus"]  # left for next sweep
+
+    def test_all_skipped_sweep_does_not_log_systemic_error(self, barrier_conn, caplog):
+        # org-missing rows are benign skips, not failures — they must NOT trigger
+        # the systemic "recovered NONE / API down" ERROR escalation.
+        import logging
+
+        _seed(barrier_conn, "exp-noorg", expired=True, organization_id="")
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.reaper"):
+            recover_expired_barriers(barrier_conn, _FakeApiClient())
+        assert not any(
+            "systemic" in r.message for r in caplog.records
+        ), "all-skipped sweep should not escalate to a systemic-failure error"
 
     def test_reclaims_dedup_markers(self, barrier_conn):
         _seed(barrier_conn, "exp-d", expired=True)

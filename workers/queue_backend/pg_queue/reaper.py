@@ -149,6 +149,24 @@ def _execution_status(
     return getattr(response, "status", None)
 
 
+def _still_expired(conn: PgConnection, execution_id: str) -> bool:
+    """True iff the barrier row is still present AND still past expiry.
+
+    Re-checked immediately before the ERROR mark so a same-id re-enqueue (UPSERT
+    resets ``expires_at`` to the future) between the sweep's SELECT and the mark
+    doesn't get its live run flagged ERROR.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM pg_barrier_state "
+            "WHERE execution_id = %s AND expires_at < now()",
+            (execution_id,),
+        )
+        found = cur.fetchone() is not None
+    conn.commit()
+    return found
+
+
 def _mark_stranded_error(
     api_client: InternalAPIClient,
     execution_id: str,
@@ -210,9 +228,14 @@ def _recover_one_barrier(
     it and its dedup markers (the new run owns them); the dedup delete only runs
     when the barrier row was actually reclaimed.
 
-    Returns False without deleting when the org is unknown (can't call the
-    org-scoped API → the row is LEFT, not erased, so the only recovery handle
-    survives for ops) — this should never happen (enqueue always stamps the org).
+    Returns False (no mark, no delete) when the row can't be safely recovered:
+    org unknown (can't call the org-scoped API → the row is LEFT, not erased, so
+    the only recovery handle survives for ops; should never happen), a successful
+    read with no status (anomalous), or the row was **re-armed** before the mark.
+    The mark is gated on a re-check that the row is *still* expired immediately
+    before it fires — so a same-id re-enqueue can't get its live run marked ERROR
+    (the worst outcome) — and the DELETE is additionally guarded on
+    ``expires_at < now()`` so a re-armed barrier is never torn down.
     """
     if not organization_id:
         logger.error(
@@ -225,13 +248,31 @@ def _recover_one_barrier(
         return False
 
     status = _execution_status(api_client, execution_id, organization_id)
-    if status is not None and ExecutionStatus.is_completed(status):
+    if status is None:
+        # A successful read with no status is anomalous — don't mark on it; leave
+        # the row for the next sweep rather than risk a wrong ERROR.
+        logger.warning(
+            "Reaper: status read for execution %s returned no status — leaving the "
+            "row for the next sweep (not marking ERROR on an indeterminate status).",
+            execution_id,
+        )
+        return False
+    if ExecutionStatus.is_completed(status):
         logger.warning(
             "Reaper: barrier for execution %s expired but the execution is already "
             "%s — cleaning up the orphaned row only (no status overwrite).",
             execution_id,
             status,
         )
+    elif not _still_expired(conn, execution_id):
+        # Re-armed (same execution_id re-enqueued) between the read and here —
+        # do NOT mark a freshly-running execution ERROR; leave it for the new run.
+        logger.warning(
+            "Reaper: execution %s was re-armed during recovery — skipping the "
+            "ERROR mark (its new run owns the barrier).",
+            execution_id,
+        )
+        return False
     else:
         _mark_stranded_error(api_client, execution_id, organization_id, remaining)
 
@@ -288,15 +329,19 @@ def recover_expired_barriers(
         raise
 
     recovered: list[str] = []
+    failed = 0  # genuine failures (exceptions) — NOT benign skips
     for execution_id, organization_id, remaining in rows:
         try:
             if _recover_one_barrier(
                 conn, api_client, execution_id, organization_id, remaining
             ):
                 recovered.append(execution_id)
+            # else: a benign skip (terminal / re-armed / no-status / no-org) —
+            # logged per-row inside; not a failure, not retried-as-error.
         except Exception:
             # Keep the connection usable for the next row, and leave THIS barrier
             # row in place so the next sweep retries its recovery.
+            failed += 1
             with contextlib.suppress(Exception):
                 conn.rollback()
             logger.exception(
@@ -306,22 +351,23 @@ def recover_expired_barriers(
             )
 
     if rows:
-        unrecovered = len(rows) - len(recovered)
-        if recovered and not unrecovered:
-            logger.info("Reaper: recovered %d stranded execution(s).", len(recovered))
-        elif recovered:
-            logger.warning(
-                "Reaper: recovered %d/%d stranded execution(s); %d left for retry.",
-                len(recovered),
-                len(rows),
-                unrecovered,
-            )
-        else:
+        skipped = len(rows) - len(recovered) - failed
+        summary = (
+            f"recovered={len(recovered)}, failed={failed}, skipped={skipped} "
+            f"of {len(rows)} expired barrier(s)"
+        )
+        if failed and not recovered:
+            # Genuine failures and nothing got through → systemic (API down / bad
+            # migration). Benign skips alone (terminal/re-armed/no-org) don't escalate.
             logger.error(
-                "Reaper: recovered NONE of %d expired barrier(s) this cycle — "
-                "likely systemic (internal API down / bad migration / missing org).",
-                len(rows),
+                "Reaper: %s — likely systemic (internal API down / bad migration).",
+                summary,
             )
+        elif failed:
+            logger.warning("Reaper: %s — failures left for the next sweep.", summary)
+        elif recovered:
+            logger.info("Reaper: %s.", summary)
+        # all-skipped (no recovered, no failed) is fully covered by per-row logs.
     return recovered
 
 
