@@ -31,9 +31,20 @@ readonly PG_QUEUE_CONSUMER_TYPE="pg_queue_consumer"
 readonly PG_QUEUE_REAPER_TYPE="pg_queue_reaper"
 # Set alias that launches the whole PG-queue group (consumer + reaper) together.
 readonly PG_QUEUE_SET="pg-queue"
-# Log-tail alias for the Celery set: every worker EXCEPT the PG-queue members.
-# Mirrors PG_QUEUE_SET so the two transports' logs can be tailed separately
-# (-L celery vs -L pg-queue). Logs-only — the Celery set is *run* via 'all'.
+# The PG-queue member worker dirs, as a set — the single source of truth for
+# "which workers belong to the PG-queue transport". Keeps the `celery = all −
+# pg-queue` complement correct by construction if a third member is ever added
+# (callers test membership via ${PG_QUEUE_MEMBERS[$dir]:-} instead of
+# hand-rolling the consumer/reaper pair).
+declare -rA PG_QUEUE_MEMBERS=(
+    ["$PG_QUEUE_CONSUMER_TYPE"]=1
+    ["$PG_QUEUE_REAPER_TYPE"]=1
+)
+# Log-tail alias for the Celery transport: every worker EXCEPT the PG-queue
+# members — the *complement* of the 'pg-queue' tail alias, so the two
+# transports' logs can be tailed separately (-L celery vs -L pg-queue).
+# Tail-only — there is no 'celery' run alias; this set is started via 'all',
+# which by design omits the opt-in PG-queue workers.
 readonly CELERY_SET="celery"
 
 # Available workers
@@ -444,18 +455,15 @@ tail_logs() {
     local requested=$1  # may be empty → tail all
     local log_files=()
 
-    if [[ -z "$requested" || "$requested" == "all" ]]; then
+    if [[ -z "$requested" || "$requested" == "all" || "$requested" == "$CELERY_SET" ]]; then
+        # 'all' (and empty) tails every worker; 'celery' tails every worker
+        # EXCEPT the PG-queue members — the complement of the 'pg-queue' alias
+        # (handled in the else-branch) — so the two transports' logs can be
+        # tailed separately. Same resolve-and-append body for both, single-sourced.
         for d in $(list_core_worker_dirs) $(list_pluggable_worker_dirs); do
-            local f
-            f=$(resolve_log_file "$d")
-            [[ -n "$f" ]] && log_files+=("$f")
-        done
-    elif [[ "$requested" == "$CELERY_SET" ]]; then
-        # Celery set logs = every worker EXCEPT the PG-queue members. Mirror of
-        # the 'pg-queue' alias below, so the two transports' logs can be tailed
-        # separately when both sets run side by side.
-        for d in $(list_core_worker_dirs) $(list_pluggable_worker_dirs); do
-            [[ "$d" == "$PG_QUEUE_CONSUMER_TYPE" || "$d" == "$PG_QUEUE_REAPER_TYPE" ]] && continue
+            if [[ "$requested" == "$CELERY_SET" && -n "${PG_QUEUE_MEMBERS[$d]:-}" ]]; then
+                continue
+            fi
             local f
             f=$(resolve_log_file "$d")
             [[ -n "$f" ]] && log_files+=("$f")
