@@ -69,6 +69,7 @@ from typing import TYPE_CHECKING, Any
 from celery.canvas import Signature
 
 from unstract.core.cache.redis_client import create_redis_client
+from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT
 
 from .barrier import (
     _DEFAULT_BARRIER_TTL_SECONDS,
@@ -313,10 +314,13 @@ class RedisDecrBarrier:
         callback_queue: str,
         app_instance: Any,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """See :class:`queue_backend.barrier.Barrier.enqueue`.
 
-        Mirrors ``CeleryChordBarrier.enqueue`` semantics:
+        ``transport`` is accepted for Protocol parity and ignored — the Redis
+        barrier is the Celery-transport fan-in substrate (the PG transport uses
+        ``PgBarrier``'s fire-and-forget mode). Mirrors ``CeleryChordBarrier``:
 
         - Empty ``header_tasks`` → ``None`` (caller handles the
           zero-files contract); no Redis keys touched.
@@ -337,7 +341,7 @@ class RedisDecrBarrier:
         """
         # Explicit ``del`` documents the Protocol-parity intent and
         # satisfies static linters' unused-parameter check.
-        del app_instance
+        del app_instance, transport
         if not header_tasks:
             execution_id = callback_kwargs.get("execution_id")
             pipeline_id = callback_kwargs.get("pipeline_id")

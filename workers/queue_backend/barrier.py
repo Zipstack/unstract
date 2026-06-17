@@ -36,9 +36,11 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Protocol, TypedDict
+from typing import TYPE_CHECKING, Any, NotRequired, Protocol, TypedDict
 
 from celery import chord
+
+from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT
 
 from .fairness import FairnessKey
 from .handle import BarrierHandle
@@ -92,6 +94,29 @@ class CallbackDescriptor(TypedDict):
     kwargs: dict[str, Any]
     queue: str
     fairness_headers: dict[str, Any] | None
+    # 9e: the WorkflowTransport the aggregating callback is fired on when the
+    # barrier completes. Absent / ``None`` → legacy Celery dispatch
+    # (``current_app.apply_async`` — the ``.link`` path). ``"pg_queue"`` → the
+    # fire-and-forget PG path self-chains the callback via dispatch onto PG.
+    # Named ``transport`` (a WorkflowTransport value, e.g. ``"pg_queue"``) — NOT
+    # ``backend``, to avoid confusion with ``QueueBackend`` (``"pg"``).
+    transport: NotRequired[str | None]
+
+
+class BarrierContext(TypedDict):
+    """Per-batch barrier coordination injected into a PG-dispatched header task.
+
+    The 9e fire-and-forget sibling of :class:`CallbackDescriptor`, and typed for
+    the same reason: it crosses producer → PG-queue → consumer, so the contract
+    is pinned here to catch a typo/rename at the type layer rather than as a
+    remote ``KeyError`` mid-batch. Carried as the ``_barrier_context`` kwarg on
+    ``process_file_batch`` so the consumer can claim its slot and run the barrier
+    decrement in-body (a PG-consumed task fires no Celery ``.link``).
+    """
+
+    execution_id: str
+    batch_index: int
+    callback_descriptor: CallbackDescriptor
 
 
 class Barrier(Protocol):
@@ -112,8 +137,14 @@ class Barrier(Protocol):
         callback_queue: str,
         app_instance: Any,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """Enqueue ``header_tasks`` and a single callback to fire on completion.
+
+        ``transport`` is the per-execution transport (9e). Only ``PgBarrier``
+        acts on it (``pg_queue`` → fire-and-forget PG fan-out instead of Celery
+        ``.link``); the Celery/Redis substrates accept it for Protocol parity
+        and ignore it (they are only ever reached on the ``celery`` transport).
 
         ``None`` is the **sole signal** that no work was enqueued — it
         is returned exclusively when ``header_tasks`` is empty. Any
@@ -166,8 +197,10 @@ class CeleryChordBarrier:
         callback_queue: str,
         app_instance: Any,
         fairness: FairnessKey | None = None,
+        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """See :class:`Barrier.enqueue`."""
+        del transport  # Celery chord is only reached on the celery transport.
         # Empty-header guard goes FIRST so a zero-task run skips
         # signature construction / fairness serialisation entirely.
         # Any failure in those paths is now constrained to the

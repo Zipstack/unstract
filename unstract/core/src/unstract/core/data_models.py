@@ -249,6 +249,17 @@ def normalize_transport(value: object, *, logger: Any = None, context: str = "")
         return DEFAULT_WORKFLOW_TRANSPORT
 
 
+def is_pg_transport(transport: str | None) -> bool:
+    """True if ``transport`` is the Postgres-queue transport.
+
+    Single source for "what counts as PG transport" — centralises the
+    ``== WorkflowTransport.PG_QUEUE.value`` comparison scattered across the
+    worker fan-out / barrier code, and the seam to extend if a second
+    PG-family transport is ever added.
+    """
+    return transport == WorkflowTransport.PG_QUEUE.value
+
+
 class FileListingResult:
     """Result of listing files from a source."""
 
