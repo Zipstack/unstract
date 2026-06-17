@@ -100,7 +100,7 @@ class TestConstruction:
 
 class TestLeadershipGating:
     def _reaper(self, lease):
-        # Inject dummy sweep_conn + api_client so tick() doesn't build real ones;
+        # Inject dummy sweep_conn + api_client so a tick doesn't build real ones;
         # recover_expired_barriers is patched in each test, so neither is used.
         return PgReaper(
             lease, interval_seconds=0.01, sweep_conn=object(), api_client=object()
@@ -298,9 +298,9 @@ class TestRecoverConnection:
 def _new_conn():
     os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
     # Manual-commit — exactly as the production reaper opens it
-    # (create_pg_connection default). NOT autocommit: that would make
-    # sweep_expired_barriers' own commit() a no-op and its rollback unreachable,
-    # so Layer 4 would test a different mode than the real reaper runs in.
+    # (create_pg_connection default). NOT autocommit: that would make the
+    # recover_expired_barriers commit a no-op and its rollback unreachable, so
+    # Layer 4 would test a different mode than the real reaper runs in.
     return create_pg_connection(env_prefix="TEST_DB_")
 
 
@@ -330,7 +330,7 @@ def _seed(conn, execution_id, *, expired, organization_id="org-1", remaining=1):
     # created_at must precede expires_at (CheckConstraint
     # pg_barrier_expires_after_created). Commit so the seed is durable like a
     # real barrier row (written by PgBarrier in another transaction) — and so the
-    # manual-commit recovery's own commit() is what persists the DELETE.
+    # manual-commit recovery's own commit is what persists the DELETE.
     created_sql, expires_sql = (
         ("now() - interval '2 hours'", "now() - interval '1 hour'")
         if expired
@@ -422,8 +422,8 @@ class TestRecoverExpiredBarriers:
         _seed(barrier_conn, "exp-fe", expired=True)
         api = _FakeApiClient(status="EXECUTING")
         recover_expired_barriers(barrier_conn, api)
-        # Exactly one status read; it must skip the (costly) file-execution fetch
-        # the reaper doesn't need. Unpack (no index) — (exec_id, org, file_execution).
+        # Exactly one status read, recorded as exec-id / org / file_execution.
+        # The reaper must skip the costly file-execution fetch it doesn't need.
         [(_exec_id, _org, file_execution)] = api.get_calls
         assert file_execution is False
 
