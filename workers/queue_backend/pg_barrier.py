@@ -65,6 +65,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 import psycopg2
+import psycopg2.extensions
 
 from .barrier import CallbackDescriptor, barrier_ttl_seconds
 from .decorator import worker_task
@@ -246,22 +247,52 @@ class PgBarrier:
             raise
 
 
-@worker_task(name="barrier_pg_decr_and_check", max_retries=0)
-def barrier_pg_decr_and_check(
+def _barrier_pg_decrement(
     result: Any,
     *,
     execution_id: str,
     callback_descriptor: CallbackDescriptor,
 ) -> dict[str, Any]:
-    """Per-task ``link`` callback for :class:`PgBarrier`.
+    """Atomic barrier decrement + last-task callback fire (substrate core).
 
-    Atomically appends this task's result and decrements ``remaining``. The
-    single task that drives ``remaining`` to 0 dispatches the aggregating
-    callback (then deletes the row). ``max_retries=0`` — a Celery retry would
-    replay the decrement and corrupt the count; an orphaned barrier is bounded
-    by ``expires_at`` instead.
+    Appends this task's result and decrements ``remaining`` in one atomic
+    statement; the single caller that drives ``remaining`` to 0 dispatches the
+    aggregating callback (then deletes the row). This is the plain, in-body-
+    callable core shared by two entry points:
+
+    - the Celery ``link`` callback :func:`barrier_pg_decr_and_check` (today's
+      only caller, behaviour unchanged); and
+    - the 9e PR 2c PG-consumed pipeline path, which will call this directly in
+      the header task's body — a PG-consumed task fires no ``.link``, so the
+      decrement must run in-body.
+
+    Callers MUST run each decrement in its own committed transaction (the
+    decrement ``UPDATE`` runs in its own ``_cursor()`` txn) and MUST NOT retry
+    it: a replay re-runs the decrement and corrupts the count. This is enforced
+    loudly, not just in prose — entry raises if the shared connection is already
+    mid-transaction (see the guard below). The Celery wrapper additionally pins
+    ``max_retries=0``; an orphaned barrier is bounded by ``expires_at`` instead.
     """
     from celery import current_app
+
+    # Enforce the "own committed transaction" contract loudly. A caller that
+    # invokes this inside an already-open transaction on the shared thread-local
+    # connection would hold the row lock across the call and let the outer txn's
+    # commit boundary replay the decrement — corrupting ``remaining`` and
+    # breaking the exactly-one-sees-zero serialisation, surfacing only as a
+    # barrier hung until ``expires_at`` (~6h). The Celery ``.link`` path always
+    # enters idle (``_cursor`` commits after every use); the 2c in-body caller
+    # must too. (Tests inject an autocommit connection → always idle → no trip.)
+    if (
+        _get_conn().get_transaction_status()
+        != psycopg2.extensions.TRANSACTION_STATUS_IDLE
+    ):
+        raise RuntimeError(
+            f"[exec:{execution_id}] _barrier_pg_decrement entered with an open "
+            f"transaction on the shared connection — each decrement MUST run in "
+            f"its own committed transaction (see this function's docstring). "
+            f"Refusing to proceed to avoid corrupting the barrier counter."
+        )
 
     try:
         # No default=str — a non-JSON-safe leaf must fail loudly here (it would
@@ -370,6 +401,25 @@ def barrier_pg_decr_and_check(
         "callback_task_id": callback_result.id,
         "aggregated_count": len(all_results),
     }
+
+
+@worker_task(name="barrier_pg_decr_and_check", max_retries=0)
+def barrier_pg_decr_and_check(
+    result: Any,
+    *,
+    execution_id: str,
+    callback_descriptor: CallbackDescriptor,
+) -> dict[str, Any]:
+    """Per-task ``link`` callback for :class:`PgBarrier` (Celery entry point).
+
+    Thin ``@worker_task`` wrapper around :func:`_barrier_pg_decrement` so the
+    decrement logic stays callable in-body (no ``.link``) on the PG-consumed
+    pipeline path (9e PR 2c). ``max_retries=0`` — a Celery retry would replay
+    the decrement and corrupt the count (see the core's contract).
+    """
+    return _barrier_pg_decrement(
+        result, execution_id=execution_id, callback_descriptor=callback_descriptor
+    )
 
 
 @worker_task(name="barrier_pg_abort", max_retries=0)

@@ -23,6 +23,7 @@ from queue_backend.fairness import FAIRNESS_HEADER_NAME, FairnessKey, WorkloadTy
 from queue_backend.handle import BarrierHandle
 from queue_backend.pg_barrier import (
     PgBarrier,
+    _barrier_pg_decrement,
     barrier_pg_abort,
     barrier_pg_decr_and_check,
 )
@@ -323,6 +324,80 @@ class TestDecrAndCheck:
 
     def test_registered_under_canonical_name(self):
         assert barrier_pg_decr_and_check.name == "barrier_pg_decr_and_check"
+
+
+class TestDecrementCoreExtraction:
+    """The decrement logic lives in a plain ``_barrier_pg_decrement`` core so the
+    9e PR 2c PG-consumed path can call it in-body (a PG-consumed task fires no
+    ``.link``). The Celery ``@worker_task`` is a thin delegator; both paths must
+    share one implementation (no drift). (Inert in 2a — no PG caller yet.)
+    """
+
+    def test_core_is_a_plain_callable_not_a_celery_task(self):
+        # A ``@worker_task`` exposes ``.name`` / ``.delay``; the in-body core
+        # must not, or callers could accidentally re-dispatch instead of running.
+        assert not hasattr(_barrier_pg_decrement, "name")
+        assert not hasattr(_barrier_pg_decrement, "delay")
+
+    def test_core_runs_the_decrement_in_body(self, barrier_db):
+        # Called directly (no Celery), the core performs the atomic decrement.
+        _seed(barrier_db, "exec-core", 3)
+        out = _barrier_pg_decrement(
+            {"f": 1}, execution_id="exec-core", callback_descriptor=_CALLBACK
+        )
+        assert out["status"] == "pending"
+        remaining, results = _row(barrier_db, "exec-core")
+        assert remaining == 2
+        assert results == [{"f": 1}]
+
+    def test_worker_task_produces_same_decrement_as_core(self, barrier_db):
+        # The real no-drift guard: the wrapper, run against a real seeded row,
+        # must produce the SAME observable decrement as a direct core call
+        # (mirror of test_core_runs_the_decrement_in_body). Unlike the mocked
+        # forwarding test below, this would catch a renamed/reordered core param
+        # — the core is NOT mocked away.
+        _seed(barrier_db, "exec-wrap", 3)
+        out = barrier_pg_decr_and_check(
+            {"f": 1}, execution_id="exec-wrap", callback_descriptor=_CALLBACK
+        )
+        assert out["status"] == "pending"
+        remaining, results = _row(barrier_db, "exec-wrap")
+        assert remaining == 2
+        assert results == [{"f": 1}]
+
+    def test_worker_task_forwards_kwargs_verbatim(self):
+        # Complements the real-row test above by pinning the keyword-forwarding
+        # contract explicitly: the wrapper passes result + execution_id +
+        # callback_descriptor straight through, returning the core's result.
+        sentinel = {"status": "pending", "remaining": 9}
+        with patch.object(
+            pg_barrier, "_barrier_pg_decrement", return_value=sentinel
+        ) as core:
+            out = barrier_pg_decr_and_check(
+                {"f": 1}, execution_id="exec-d", callback_descriptor=_CALLBACK
+            )
+        assert out is sentinel
+        core.assert_called_once_with(
+            {"f": 1}, execution_id="exec-d", callback_descriptor=_CALLBACK
+        )
+
+    def test_open_transaction_on_shared_conn_raises(self):
+        # The in-body contract is enforced loudly: a caller that enters with an
+        # already-open transaction on the shared connection is rejected before
+        # any decrement runs (would otherwise corrupt 'remaining' and hang the
+        # barrier to expiry). Guards the 2c in-body caller.
+        import psycopg2.extensions
+
+        conn = MagicMock()
+        conn.get_transaction_status.return_value = (
+            psycopg2.extensions.TRANSACTION_STATUS_INTRANS
+        )
+        with patch.object(pg_barrier, "_get_conn", return_value=conn):
+            with pytest.raises(RuntimeError, match="own committed transaction"):
+                _barrier_pg_decrement(
+                    {"f": 1}, execution_id="exec-tx", callback_descriptor=_CALLBACK
+                )
+        conn.cursor.assert_not_called()  # rejected before touching the DB
 
 
 class TestAbort:

@@ -1,11 +1,12 @@
 """Transport-agnostic task dispatch.
 
-Routes each task to its transport via :func:`select_backend`:
+Routes each task to its transport via :func:`resolve_backend` (which applies a
+per-call ``backend`` override, else defers to :func:`select_backend`):
 
 - **Celery** (default) — a thin pass-through to ``current_app.send_task``.
-- **PG Queue** — when a task is opted into ``WORKER_PG_QUEUE_ENABLED_TASKS``,
-  the task is serialised and enqueued to ``pg_queue_message`` (9b); the PG
-  consumer (9c) drains and runs it.
+- **PG Queue** — when a task is opted into ``WORKER_PG_QUEUE_ENABLED_TASKS``
+  (or pinned via a ``backend=`` override), the task is serialised and enqueued
+  to ``pg_queue_message`` (9b); the PG consumer (9c) drains and runs it.
 
 The default (empty allow-list) routes everything to Celery, so dispatch is
 unchanged unless an operator explicitly opts a task in.
@@ -30,7 +31,7 @@ from celery import current_app
 from .fairness import DEFAULT_PRIORITY, FairnessKey
 from .handle import DispatchHandle
 from .pg_queue import PgQueueClient, to_payload
-from .routing import QueueBackend, select_backend
+from .routing import QueueBackend, resolve_backend
 
 logger = logging.getLogger(__name__)
 
@@ -77,14 +78,29 @@ def dispatch(
     kwargs: Mapping[str, Any] | None = None,
     queue: str | None = None,
     fairness: FairnessKey | None = None,
+    backend: QueueBackend | None = None,
 ) -> DispatchHandle:
     """Enqueue a task by name onto its selected transport.
 
     ``fairness`` is attached as the ``x-fairness-key`` header on the Celery
     path / serialised into the message on the PG path. Pass ``None`` for
     non-workflow worker tasks.
+
+    ``backend`` is a per-call transport override (see
+    :func:`~queue_backend.routing.resolve_backend` for the precedence). When
+    ``None`` (the default, and every call site today) the transport is the env
+    allow-list decision via ``select_backend`` — behaviour is unchanged. When
+    set, it wins over the allow-list: this is the seam the execution-level PG
+    pipeline (9e PR 2c) uses to route a whole execution's header/callback
+    dispatches onto PG without opting their task *names* into
+    ``WORKER_PG_QUEUE_ENABLED_TASKS``. (The allow-list is for *leaf* tasks; the
+    coupled pipeline's migration unit is the whole execution — its transport is
+    resolved once at creation and travels on the execution's task kwargs onto
+    ``WorkflowContextData.transport``, see ``queue_backend/pg_queue/
+    9e-design.md``.) The override only forces the *transport*; it does not
+    bypass ``_enqueue_pg``'s no-silent-fallback contract.
     """
-    if select_backend(task_name) is QueueBackend.PG:
+    if resolve_backend(task_name, backend) is QueueBackend.PG:
         return _enqueue_pg(task_name, args, kwargs, queue, fairness)
 
     headers = fairness.as_header() if fairness is not None else None
@@ -115,6 +131,12 @@ def _enqueue_pg(
         # true regardless of send outcome, so a first-dispatch failure
         # (DB down / unmigrated) must not suppress the one announcement.
         # INFO so it survives a default log config; once-per-task bounds it.
+        # NOTE: keyed on task name only, not on *why* it routed to PG. If a name
+        # is first PG-routed via a ``backend=`` override and the operator later
+        # adds it to the allow-list, the allow-list cutover won't re-announce
+        # (already in the set). Benign given the usage split (override = pipeline
+        # headers, allow-list = leaf tasks, so no overlap expected); the
+        # allow-list config itself is still announced by _log_allow_list_once.
         _pg_routing_logged.add(task_name)
         logger.info(
             "PG-queue: routing task=%r to Postgres (queue=%r). Requires the "

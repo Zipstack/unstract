@@ -19,6 +19,7 @@ from queue_backend import dispatch
 from queue_backend.fairness import FairnessKey, WorkloadType
 from queue_backend.pg_queue import to_payload
 from queue_backend.routing import _ENABLED_TASKS_ENV_VAR as ENABLED_TASKS_ENV
+from queue_backend.routing import QueueBackend
 
 # ``queue_backend.dispatch`` the attribute is the function (shadows the
 # submodule) — import the module explicitly to reach its globals.
@@ -109,6 +110,88 @@ class TestDispatchEnqueueIntegration:
             dispatch("some_task", args=["x"], queue="general")
         mock_app.send_task.assert_called_once()
         mock_get.assert_not_called()
+
+
+class TestDispatchBackendOverride:
+    """The per-call ``backend=`` override (9e PR 2a inert foundation).
+
+    When set it wins over the ``WORKER_PG_QUEUE_ENABLED_TASKS`` allow-list, so
+    the execution-level PG pipeline can route a whole execution's headers /
+    callback onto PG without opting their task *names* in. ``None`` (default)
+    preserves the allow-list decision exactly — every call site today.
+    """
+
+    def test_override_pg_forces_pg_without_allow_list(self, monkeypatch):
+        # Task name NOT in the (empty) allow-list → select_backend says Celery;
+        # the explicit override must still route it to PG.
+        captured: dict = {}
+
+        class _Client:
+            def send(self, queue_name, payload, **kwargs):
+                captured.update(queue=queue_name, payload=payload, **kwargs)
+                return 11
+
+        monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
+        with patch("queue_backend.dispatch.current_app") as mock_app:
+            handle = dispatch(
+                "pipeline_header", queue="general", backend=QueueBackend.PG
+            )
+        mock_app.send_task.assert_not_called()
+        assert handle.id == "11"
+        assert captured["payload"]["task_name"] == "pipeline_header"
+
+    def test_override_celery_forces_celery_despite_allow_list(self, monkeypatch):
+        # Task name IS opted into PG, but the override pins it back to Celery.
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "pipeline_header")
+        with (
+            patch("queue_backend.dispatch.current_app") as mock_app,
+            patch("queue_backend.dispatch._get_pg_client") as mock_get,
+        ):
+            dispatch("pipeline_header", queue="general", backend=QueueBackend.CELERY)
+        mock_app.send_task.assert_called_once()
+        mock_get.assert_not_called()
+
+    def test_default_none_preserves_allow_list_decision(self, monkeypatch):
+        # No override → allow-list decides. Opted-in name → PG.
+        captured: dict = {}
+
+        class _Client:
+            def send(self, queue_name, payload, **kwargs):
+                captured.update(queue=queue_name)
+                return 5
+
+        monkeypatch.setenv(ENABLED_TASKS_ENV, "leaf_task")
+        monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
+        with patch("queue_backend.dispatch.current_app") as mock_app:
+            handle = dispatch("leaf_task", queue="general")
+        mock_app.send_task.assert_not_called()
+        assert handle.id == "5"
+
+    def test_override_path_carries_fairness_to_row(self, monkeypatch):
+        # The override's whole purpose is to route an *execution's* dispatches —
+        # exactly the ones that carry a FairnessKey. The org/priority plumbing
+        # must work identically on the override path (not just the allow-list
+        # path), so a regression dropping fairness here would otherwise pass.
+        captured: dict = {}
+
+        class _Client:
+            def send(self, queue_name, payload, **kwargs):
+                captured.update(queue=queue_name, **kwargs)
+                return 13
+
+        monkeypatch.setattr(dispatch_mod, "_get_pg_client", lambda: _Client())
+        fairness = FairnessKey(
+            org_id="o", workload_type=WorkloadType.API, pipeline_priority=8
+        )
+        with patch("queue_backend.dispatch.current_app"):
+            dispatch(
+                "pipeline_header",
+                queue="general",
+                fairness=fairness,
+                backend=QueueBackend.PG,
+            )
+        assert captured["priority"] == 8
+        assert captured["org_id"] == "o"
 
 
 class TestDispatchPriorityWiring:

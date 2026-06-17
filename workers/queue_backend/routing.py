@@ -36,8 +36,9 @@ consult this allow-list." Until then, only enable *leaf* tasks here.
 **Scaffold posture.** This module only makes the routing *decision*.
 In the current phase there is no PG consumer, so ``dispatch()`` still
 sends PG-selected tasks via Celery (the decision is observable in logs
-but inert). ``select_backend()`` is the seam where the real PG dispatch
-lands in a later phase.
+but inert). ``resolve_backend()`` (which wraps the ``select_backend()``
+allow-list with the per-call override) is the seam where the real PG
+dispatch lands in a later phase.
 
 **Observability.** Because the gate is silent-by-construction (a
 misrouted task still runs on Celery), the only signals are logs, emitted
@@ -132,3 +133,23 @@ def select_backend(task_name: str) -> QueueBackend:
     if task_name in allow_list:
         return QueueBackend.PG
     return QueueBackend.CELERY
+
+
+def resolve_backend(task_name: str, override: QueueBackend | None) -> QueueBackend:
+    """Resolve the transport for a dispatch, applying the per-call override.
+
+    The single home for the override-wins-else-allow-list precedence so the
+    rule reads in one place (and ``dispatch()`` plus the 9e PR 2c call sites
+    share it):
+
+    - ``override`` is ``None`` → defer to :func:`select_backend` (the env
+      allow-list) — the behaviour of every call site today.
+    - ``override`` is a :class:`QueueBackend` → it wins. This is how the
+      execution-level PG pipeline pins a whole execution's header/callback
+      dispatches to one transport regardless of the per-task allow-list (the
+      allow-list is for *leaf* tasks; the coupled pipeline's migration unit is
+      the execution).
+
+    Never raises — both branches resolve to a valid :class:`QueueBackend`.
+    """
+    return override if override is not None else select_backend(task_name)
