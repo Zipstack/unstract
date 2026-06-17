@@ -39,7 +39,7 @@ from .reaper import (
     ReaperLivenessServer,
     TickOutcome,
     reaper_interval_from_env,
-    sweep_expired_barriers,
+    recover_expired_barriers,
 )
 from .task_payload import TaskPayload, to_payload
 
@@ -57,6 +57,6 @@ __all__ = [
     "default_worker_id",
     "lease_seconds_from_env",
     "reaper_interval_from_env",
-    "sweep_expired_barriers",
+    "recover_expired_barriers",
     "to_payload",
 ]

@@ -2,22 +2,34 @@
 
 A singleton, guarded by :class:`LeaderLease` over ``pg_orchestrator_lock``: only
 the elected leader runs recovery work each cycle (several reapers would contend
-and double-act). This slice ships the process *harness* (lease-maintenance loop
-+ graceful shutdown) plus ONE recovery job — the **barrier-orphan sweep**.
+and double-act). It ships the process *harness* (lease-maintenance loop +
+graceful shutdown) plus the **barrier-orphan recovery** job.
 
-**Barrier-orphan sweep.** Reclaims ``pg_barrier_state`` rows past their
+**Barrier-orphan recovery.** Handles ``pg_barrier_state`` rows past their
 ``expires_at`` — a barrier whose header tasks never all completed (the documented
-:class:`PgBarrier` backstop). It ``DELETE``s the orphaned row; by PgBarrier's
-existing semantics a late in-flight decrement then finds no row and abandons (no
-spurious callback). The owning execution is logged loudly. Marking that
-execution *terminal* (ERROR) is recovery that needs the backend and the
-pipeline's PG shape — that's 9e, not here; this slice is the storage/orphan
-backstop only.
+:class:`PgBarrier` backstop). For each, the leader (:func:`recover_expired_barriers`):
 
-**Deferred to 9e.** Pipeline recovery (counter reconstruction from
-``WorkflowFileExecution``, per-stage re-enqueue of stuck file executions) is
-defined against the coupled pipeline running on PG, which doesn't exist yet — so
-it lands with 9e, against a real PG pipeline it can be tested on.
+1. **Marks the execution ERROR** via the internal API — the same path the normal
+   callback uses for terminal status (business state never goes direct-DB) — with
+   a message distinguishing ``remaining>0`` (work incomplete) from ``remaining==0``
+   (all batches done, callback never fired). It reads status first and **skips the
+   mark if the execution is already terminal** (a ``remaining==0`` row can belong
+   to a COMPLETED execution whose best-effort row-delete merely failed, and the
+   backend status update has no terminal guard) or if the row carries no org.
+2. **Reclaims the queue-infra rows** (``pg_batch_dedup`` + ``pg_barrier_state``)
+   directly in PG — same boundary as the rest of ``queue_backend``.
+
+Recovery is best-effort and per-execution: a failure (e.g. the API is
+unreachable) leaves that barrier row for the next sweep to retry, and never
+blocks the others. **This is the recovery net PG-queue execution rollout depends
+on** — without it the un-catchable strand windows (a worker SIGKILL mid-batch, or
+a crash after the final decrement but before the callback enqueues) would bottom
+out silently at the ~6h barrier expiry.
+
+**Deferred (follow-up).** *Callback re-fire* for the ``remaining==0`` strand
+(heal → COMPLETED instead of ERROR) needs the ``callback_descriptor`` stored on
+the barrier row; until then those strands are marked ERROR. Per-stage re-enqueue
+of stuck file executions is a larger pipeline-recovery effort beyond this net.
 
 **Lease maintenance.** Each cycle the leader renews; if ``renew()`` returns
 ``False`` (or raises) it lost / can't confirm the lease and steps down to
@@ -41,12 +53,15 @@ import threading
 import time
 from typing import TYPE_CHECKING, NamedTuple, Protocol
 
+from unstract.core.data_models import ExecutionStatus
+
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
+    from shared.api import InternalAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -111,40 +126,249 @@ def reaper_interval_from_env() -> float:
     return value
 
 
-def sweep_expired_barriers(conn: PgConnection) -> list[str]:
-    """Reclaim ``pg_barrier_state`` rows past ``expires_at``. Returns their ids.
+def _execution_status(
+    api_client: InternalAPIClient, execution_id: str, organization_id: str
+) -> str | None:
+    """Current execution status via the org-scoped internal API.
 
-    A single atomic ``DELETE … RETURNING``: concurrent sweepers would each
-    reclaim a disjoint subset (``RETURNING`` reports only the rows *this*
-    statement deleted), so it stays correct even if leadership gating ever fails —
-    in practice only the leader calls it. Each reclaimed barrier is logged at
-    WARNING: an orphaned barrier means an execution's header tasks never all
-    completed, worth surfacing even though deleting the row is the right backstop.
+    **Raises** when the read fails. The client catches all errors and returns a
+    ``success=False`` response (it does NOT raise), so a transient blip would
+    yield ``status=None`` — which is not terminal, and the caller would then mark
+    a possibly-COMPLETED execution ERROR. Treating "couldn't read" as a hard stop
+    (the caller's ``except`` retains the row for retry) is what keeps the
+    terminal-skip guard honest.
+    """
+    response = api_client.get_workflow_execution(
+        execution_id, organization_id=organization_id, file_execution=False
+    )
+    if not getattr(response, "success", False):
+        raise RuntimeError(
+            f"status read failed for execution {execution_id} "
+            f"(refusing to mark ERROR on an unconfirmed status)"
+        )
+    return getattr(response, "status", None)
 
-    ``conn`` runs in manual-commit mode, so on any error we roll back before
-    re-raising — otherwise the connection is left in an aborted-transaction state
-    and every later statement on it fails with ``InFailedSqlTransaction``.
+
+def _still_expired(conn: PgConnection, execution_id: str) -> bool:
+    """True iff the barrier row is still present AND still past expiry.
+
+    Re-checked immediately before the ERROR mark so a same-id re-enqueue (UPSERT
+    resets ``expires_at`` to the future) between the sweep's SELECT and the mark
+    doesn't get its live run flagged ERROR.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT 1 FROM pg_barrier_state "
+            "WHERE execution_id = %s AND expires_at < now()",
+            (execution_id,),
+        )
+        found = cur.fetchone() is not None
+    conn.commit()
+    return found
+
+
+def _mark_stranded_error(
+    api_client: InternalAPIClient,
+    execution_id: str,
+    organization_id: str,
+    remaining: int,
+) -> None:
+    """Mark a confirmed-non-terminal stranded execution ERROR (message by remaining)."""
+    if remaining > 0:
+        reason = (
+            f"{remaining} file batch(es) never completed before the barrier "
+            f"expired (worker crash / lost task)"
+        )
+    elif remaining == 0:
+        reason = (
+            "all file batches completed but the final aggregating callback never "
+            "fired before the barrier expired"
+        )
+    else:  # remaining < 0: a decrement landed after the row was torn down
+        reason = (
+            "the barrier was already torn down (remaining < 0) yet the execution "
+            "was left non-terminal — inconsistent state"
+        )
+    api_client.update_workflow_execution_status(
+        execution_id=execution_id,
+        status=ExecutionStatus.ERROR.value,
+        error_message=f"[reaper-recovery] Execution stranded: {reason}.",
+        organization_id=organization_id,
+    )
+    logger.error(
+        "Reaper: marked stranded execution %s ERROR (remaining=%s).",
+        execution_id,
+        remaining,
+    )
+
+
+def _recover_one_barrier(
+    conn: PgConnection,
+    api_client: InternalAPIClient,
+    execution_id: str,
+    organization_id: str,
+    remaining: int,
+) -> bool:
+    """Recover one stranded execution; return True iff its barrier row was deleted.
+
+    Marks the execution ERROR via the **internal API** (the path the normal
+    callback uses for terminal status — business state never goes direct-DB),
+    UNLESS the status read shows it's already terminal (``ExecutionStatus
+    .is_completed`` — the single source of truth, so a future terminal status
+    can't drift from a local copy). A ``remaining==0`` expired row can belong to
+    a COMPLETED execution whose best-effort row-delete merely failed, and the
+    backend status update has no terminal guard, so the read-first skip prevents
+    overwriting a finished execution. Queue-infra cleanup (``pg_batch_dedup`` /
+    ``pg_barrier_state``) stays direct-PG.
+
+    The barrier ``DELETE`` is re-guarded on ``expires_at < now()``: between the
+    sweep's SELECT and here the same ``execution_id`` could be re-enqueued
+    (UPSERT resets ``expires_at`` to the future), and we must not tear down a
+    freshly re-armed barrier. If the row was re-armed (``rowcount == 0``) we leave
+    it and its dedup markers (the new run owns them); the dedup delete only runs
+    when the barrier row was actually reclaimed.
+
+    Returns False (no mark, no delete) when the row can't be safely recovered:
+    org unknown (can't call the org-scoped API → the row is LEFT, not erased, so
+    the only recovery handle survives for ops; should never happen), a successful
+    read with no status (anomalous), or the row was **re-armed** before the mark.
+    The mark is gated on a re-check that the row is *still* expired immediately
+    before it fires — so a same-id re-enqueue can't get its live run marked ERROR
+    (the worst outcome) — and the DELETE is additionally guarded on
+    ``expires_at < now()`` so a re-armed barrier is never torn down.
+    """
+    if not organization_id:
+        logger.error(
+            "Reaper: stranded barrier for execution %s has NO organization_id — "
+            "cannot mark it ERROR via the org-scoped API; leaving the row (not "
+            "erasing the only recovery handle). A barrier was enqueued without an "
+            "org — investigate.",
+            execution_id,
+        )
+        return False
+
+    status = _execution_status(api_client, execution_id, organization_id)
+    if status is None:
+        # A successful read with no status is anomalous — don't mark on it; leave
+        # the row for the next sweep rather than risk a wrong ERROR.
+        logger.warning(
+            "Reaper: status read for execution %s returned no status — leaving the "
+            "row for the next sweep (not marking ERROR on an indeterminate status).",
+            execution_id,
+        )
+        return False
+    if ExecutionStatus.is_completed(status):
+        logger.warning(
+            "Reaper: barrier for execution %s expired but the execution is already "
+            "%s — cleaning up the orphaned row only (no status overwrite).",
+            execution_id,
+            status,
+        )
+    elif not _still_expired(conn, execution_id):
+        # Re-armed (same execution_id re-enqueued) between the read and here —
+        # do NOT mark a freshly-running execution ERROR; leave it for the new run.
+        logger.warning(
+            "Reaper: execution %s was re-armed during recovery — skipping the "
+            "ERROR mark (its new run owns the barrier).",
+            execution_id,
+        )
+        return False
+    else:
+        _mark_stranded_error(api_client, execution_id, organization_id, remaining)
+
+    # Queue-infra cleanup (direct PG), re-guarded against a concurrent re-arm.
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM pg_barrier_state WHERE execution_id = %s "
+            "AND expires_at < now()",
+            (execution_id,),
+        )
+        deleted = cur.rowcount > 0
+        if deleted:
+            cur.execute(
+                "DELETE FROM pg_batch_dedup WHERE execution_id = %s", (execution_id,)
+            )
+        else:
+            logger.warning(
+                "Reaper: barrier for execution %s was re-armed during recovery "
+                "(no longer expired) — leaving its rows for the new run.",
+                execution_id,
+            )
+    conn.commit()
+    return deleted
+
+
+def recover_expired_barriers(
+    conn: PgConnection, api_client: InternalAPIClient
+) -> list[str]:
+    """Recover executions stranded by an expired barrier. Returns recovered ids.
+
+    SELECT the expired rows (the reaper is leader-elected → a single active
+    sweeper, so a read-then-act is safe from double-claim), then recover each one
+    best-effort: mark the execution ERROR if it isn't already terminal, then
+    delete its ``pg_batch_dedup`` + ``pg_barrier_state`` rows. One execution
+    failing (e.g. the API is unreachable, or a status read that can't be
+    confirmed) is logged and skipped — its row is left for the next sweep to
+    retry — so it never blocks the others. A non-empty sweep that recovers
+    *nothing* is escalated as a systemic failure (API down / bad migration).
+
+    ``conn`` runs in manual-commit mode; on any error we roll back before
+    continuing/re-raising so the connection isn't left in an aborted-txn state.
     """
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM pg_barrier_state WHERE expires_at < now() "
-                "RETURNING execution_id"
+                "SELECT execution_id, organization_id, remaining "
+                "FROM pg_barrier_state WHERE expires_at < now()"
             )
-            reclaimed = [row[0] for row in cur.fetchall()]
+            rows = cur.fetchall()
         conn.commit()
     except Exception:
         with contextlib.suppress(Exception):
             conn.rollback()
         raise
-    for execution_id in reclaimed:
-        logger.warning(
-            "Reaper: reclaimed orphaned barrier for execution %s — header tasks "
-            "never all completed before expiry; barrier deleted (no callback "
-            "fired). Execution terminal-status recovery is 9e's job.",
-            execution_id,
+
+    recovered: list[str] = []
+    failed = 0  # genuine failures (exceptions) — NOT benign skips
+    for execution_id, organization_id, remaining in rows:
+        try:
+            if _recover_one_barrier(
+                conn, api_client, execution_id, organization_id, remaining
+            ):
+                recovered.append(execution_id)
+            # else: a benign skip (terminal / re-armed / no-status / no-org) —
+            # logged per-row inside; not a failure, not retried-as-error.
+        except Exception:
+            # Keep the connection usable for the next row, and leave THIS barrier
+            # row in place so the next sweep retries its recovery.
+            failed += 1
+            with contextlib.suppress(Exception):
+                conn.rollback()
+            logger.exception(
+                "Reaper: failed to recover stranded barrier for execution %s — "
+                "leaving the row for the next sweep to retry.",
+                execution_id,
+            )
+
+    if rows:
+        skipped = len(rows) - len(recovered) - failed
+        summary = (
+            f"recovered={len(recovered)}, failed={failed}, skipped={skipped} "
+            f"of {len(rows)} expired barrier(s)"
         )
-    return reclaimed
+        if failed and not recovered:
+            # Genuine failures and nothing got through → systemic (API down / bad
+            # migration). Benign skips alone (terminal/re-armed/no-org) don't escalate.
+            logger.error(
+                "Reaper: %s — likely systemic (internal API down / bad migration).",
+                summary,
+            )
+        elif failed:
+            logger.warning("Reaper: %s — failures left for the next sweep.", summary)
+        elif recovered:
+            logger.info("Reaper: %s.", summary)
+        # all-skipped (no recovered, no failed) is fully covered by per-row logs.
+    return recovered
 
 
 class PgReaper:
@@ -156,6 +380,7 @@ class PgReaper:
         *,
         interval_seconds: float | None = None,
         sweep_conn: PgConnection | None = None,
+        api_client: InternalAPIClient | None = None,
     ) -> None:
         self._lease = lease
         self._interval = (
@@ -177,6 +402,10 @@ class PgReaper:
             )
         self._sweep_conn = sweep_conn
         self._owns_sweep_conn = sweep_conn is None
+        # Lazily built so the reaper can be constructed without env/HTTP set up
+        # (tests inject a fake). Recovery marks execution ERROR via this client —
+        # business state goes through the internal API, not direct DB.
+        self._api_client = api_client
         self._running = False
         self._is_leader = False
         # Liveness heartbeat: monotonic timestamp of the last tick start. A
@@ -205,6 +434,15 @@ class PgReaper:
         ):
             self._sweep_conn = create_pg_connection(env_prefix="DB_")
         return self._sweep_conn
+
+    def _get_api_client(self) -> InternalAPIClient:
+        # Lazy import + build: keeps reaper construction free of HTTP/env (an
+        # injected fake short-circuits this), and avoids a module-load import cycle.
+        if self._api_client is None:
+            from shared.api import InternalAPIClient
+
+            self._api_client = InternalAPIClient()
+        return self._api_client
 
     def _discard_owned_sweep_conn(self) -> None:
         # After a sweep error, drop an owned connection so the next tick
@@ -244,7 +482,9 @@ class PgReaper:
         if not self._is_leader:
             return TickOutcome(was_leader=False, reclaimed=0)
         try:
-            reclaimed = len(sweep_expired_barriers(self._get_sweep_conn()))
+            reclaimed = len(
+                recover_expired_barriers(self._get_sweep_conn(), self._get_api_client())
+            )
         except Exception:
             self._discard_owned_sweep_conn()
             raise

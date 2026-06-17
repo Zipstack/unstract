@@ -155,6 +155,16 @@ def _row(conn, execution_id):
         return cur.fetchone()
 
 
+def _org(conn, execution_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT organization_id FROM pg_barrier_state WHERE execution_id = %s",
+            (execution_id,),
+        )
+        row = cur.fetchone()
+        return row[0] if row else None
+
+
 class TestPgBarrierEnqueue:
     def test_upsert_creates_row_and_attaches_links(self, barrier_db):
         tasks = [_mock_header_task() for _ in range(3)]
@@ -191,8 +201,10 @@ class TestPgBarrierEnqueue:
         with barrier_db.cursor() as cur:
             cur.execute(
                 "INSERT INTO pg_barrier_state "
-                "(execution_id, remaining, results, created_at, expires_at) "
-                "VALUES ('exec-R', 1, '[1,2]'::jsonb, now(), now() + interval '1h')"
+                "(execution_id, organization_id, remaining, results, "
+                " created_at, expires_at) "
+                "VALUES ('exec-R', '', 1, '[1,2]'::jsonb, now(), "
+                "        now() + interval '1h')"
             )
         task, _ = _mock_header_task()
         PgBarrier().enqueue(
@@ -203,6 +215,46 @@ class TestPgBarrierEnqueue:
             app_instance=None,
         )
         assert _row(barrier_db, "exec-R") == (2, [])
+
+    def test_enqueue_stamps_organization_id(self, barrier_db):
+        # The whole reason the org column + migration exist (reaper recovery).
+        PgBarrier().enqueue(
+            [_mock_header_task()[0]],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-ORG", "organization_id": "org-42"},
+            callback_queue="general",
+            app_instance=None,
+        )
+        assert _org(barrier_db, "exec-ORG") == "org-42"
+
+    def test_enqueue_defaults_org_to_empty_when_absent(self, barrier_db):
+        PgBarrier().enqueue(
+            [_mock_header_task()[0]],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-NOORG"},  # no organization_id
+            callback_queue="general",
+            app_instance=None,
+        )
+        assert _org(barrier_db, "exec-NOORG") == ""
+
+    def test_upsert_refreshes_org_on_reenqueue(self, barrier_db):
+        # Exercises the ON CONFLICT DO UPDATE SET organization_id clause.
+        with barrier_db.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pg_barrier_state "
+                "(execution_id, organization_id, remaining, results, "
+                " created_at, expires_at) "
+                "VALUES ('exec-REORG', 'old-org', 1, '[]'::jsonb, now(), "
+                "        now() + interval '1h')"
+            )
+        PgBarrier().enqueue(
+            [_mock_header_task()[0]],
+            callback_task_name="cb",
+            callback_kwargs={"execution_id": "exec-REORG", "organization_id": "new-org"},
+            callback_queue="general",
+            app_instance=None,
+        )
+        assert _org(barrier_db, "exec-REORG") == "new-org"
 
     def test_mid_loop_dispatch_failure_deletes_row(self, barrier_db):
         good, _ = _mock_header_task()
@@ -223,8 +275,9 @@ def _seed(conn, execution_id, remaining, *, results="[]"):
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO pg_barrier_state "
-            "(execution_id, remaining, results, created_at, expires_at) "
-            "VALUES (%s, %s, %s::jsonb, now(), now() + interval '1h')",
+            "(execution_id, organization_id, remaining, results, "
+            " created_at, expires_at) "
+            "VALUES (%s, '', %s, %s::jsonb, now(), now() + interval '1h')",
             (execution_id, remaining, results),
         )
 
@@ -487,8 +540,9 @@ class TestDbConstraint:
             with barrier_db.cursor() as cur:
                 cur.execute(
                     "INSERT INTO pg_barrier_state "
-                    "(execution_id, remaining, results, created_at, expires_at) "
-                    "VALUES ('bad', 1, '[]'::jsonb, now(), now())"  # expires == created
+                    "(execution_id, organization_id, remaining, results, "
+                    " created_at, expires_at) "
+                    "VALUES ('bad', '', 1, '[]'::jsonb, now(), now())"  # expires==created
                 )
 
 
