@@ -200,6 +200,55 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
+class WorkflowTransport(str, Enum):
+    """Transport a single workflow execution rides end-to-end.
+
+    The migration unit is the *execution*, not the task: every stage of a
+    coupled pipeline (async_execute → file-batch fan-out → callback) must run
+    on one transport, decided once at execution creation and carried in the
+    task payload (see ``9e-design.md``). ``CELERY`` is the legacy default;
+    ``PG_QUEUE`` is the bespoke Postgres queue.
+    """
+
+    CELERY = "celery"
+    PG_QUEUE = "pg_queue"
+
+
+# Default transport when none is resolved/carried — keeps every pre-existing
+# payload and caller on the legacy path until a transport is explicitly chosen.
+DEFAULT_WORKFLOW_TRANSPORT = WorkflowTransport.CELERY.value
+
+
+def normalize_transport(value: object, *, logger: Any = None, context: str = "") -> str:
+    """Coerce an inbound transport value to a known ``WorkflowTransport`` value.
+
+    The transport crosses untrusted boundaries — a task payload, PG JSONB, an
+    older backend that omits the field — so a missing/garbage value must never
+    route an execution onto an unknown substrate. This **fails closed**: an
+    unrecognized value (``None``, ``"celary"``, ``""``) logs a warning (when a
+    ``logger`` is given) and falls back to :data:`DEFAULT_WORKFLOW_TRANSPORT`
+    (Celery). A recognized value passes through as its canonical string.
+
+    Coerce-not-raise is deliberate, and differs from how
+    ``WorkflowContextData.workflow_type`` is validated: ``transport`` has an
+    explicit safe default by design (the whole point of the seam is reversible
+    fallback to Celery), so a bad value should degrade to Celery, not crash the
+    execution. ``context`` is an optional suffix for the log line (e.g. an
+    ``exec:<id>`` tag) to make a version-skew warning traceable.
+    """
+    try:
+        return WorkflowTransport(value).value
+    except ValueError:
+        if logger is not None:
+            logger.warning(
+                "Unrecognized workflow transport %r%s; falling back to %r",
+                value,
+                context,
+                DEFAULT_WORKFLOW_TRANSPORT,
+            )
+        return DEFAULT_WORKFLOW_TRANSPORT
+
+
 class FileListingResult:
     """Result of listing files from a source."""
 

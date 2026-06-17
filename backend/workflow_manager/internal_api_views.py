@@ -20,6 +20,7 @@ from tool_instance_v2.models import ToolInstance
 
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
+from workflow_manager.workflow_v2.transport import resolve_transport
 
 logger = logging.getLogger(__name__)
 
@@ -320,11 +321,19 @@ def create_workflow_execution(request):
             # Handle tags logic if needed
             pass
 
+        # Resolve the transport this execution rides (9e). Decided once here, at
+        # the creation chokepoint, and returned so the caller carries it in the
+        # dispatched task's payload — not persisted on the row. PR 1 always
+        # resolves "celery"; PR 3 wires Flipt (keyed on workflow/pipeline/org) in
+        # resolve_transport().
+        transport = resolve_transport()
+
         return Response(
             {
                 "execution_id": str(execution.id),
                 "status": execution.status,
                 "execution_log_id": execution.execution_log_id,  # Return for workers to use
+                "transport": transport,
             }
         )
 

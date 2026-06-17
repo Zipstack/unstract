@@ -219,7 +219,12 @@ class TestSchedulerDispatchSite:
         assert args[4] is True  # scheduled flag (always True here)
 
     def test_dispatch_kwargs_layout(self):
-        """Kwargs MUST contain use_file_history and pipeline_id."""
+        """Kwargs MUST contain use_file_history, pipeline_id, and transport.
+
+        ``transport`` (9e) is carried in the task payload so the pipeline stays
+        on one transport end-to-end. It defaults to ``"celery"`` when the
+        create-execution response omits it (older backend / inert PR 1).
+        """
         from scheduler.tasks import _execute_scheduled_workflow
 
         ctx = self._make_context()
@@ -232,7 +237,24 @@ class TestSchedulerDispatchSite:
         assert kwargs == {
             "use_file_history": True,
             "pipeline_id": "pipe-007",
+            "transport": "celery",
         }
+
+    def test_dispatch_carries_backend_resolved_transport(self):
+        """The transport the backend returns from create-execution is threaded
+        verbatim into the dispatched task's payload (payload-carry, 9e)."""
+        from scheduler.tasks import _execute_scheduled_workflow
+
+        api = MagicMock()
+        api.create_workflow_execution.return_value = {
+            "execution_id": "exec-123",
+            "transport": "pg_queue",
+        }
+
+        with patch("scheduler.tasks.dispatch") as mock_dispatch:
+            _execute_scheduled_workflow(api, self._make_context())
+
+        assert mock_dispatch.call_args.kwargs["kwargs"]["transport"] == "pg_queue"
 
     def test_no_dispatch_when_execution_creation_fails(self):
         """If api_client.create_workflow_execution returns no execution_id,

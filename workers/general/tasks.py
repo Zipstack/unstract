@@ -51,6 +51,7 @@ from worker import app, config
 
 # Import shared data models for type safety
 from unstract.core.data_models import (
+    DEFAULT_WORKFLOW_TRANSPORT,
     ExecutionStatus,
     FileBatchData,
     FileHashData,
@@ -156,6 +157,7 @@ def async_execute_bin_general(
     pipeline_id: str | None = None,
     log_events_id: str | None = None,
     use_file_history: bool = False,
+    transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Lightweight general workflow execution task.
@@ -267,6 +269,7 @@ def async_execute_bin_general(
                 use_file_history,
                 scheduled,
                 schema_name,
+                transport=transport,
                 **kwargs,
             )
 
@@ -462,6 +465,7 @@ def _execute_general_workflow(
     use_file_history: bool,
     scheduled: bool,
     schema_name: str,
+    transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     **kwargs: dict[str, Any],
 ) -> dict[str, Any]:
     """Execute general workflow specific logic for ETL/TASK workflows.
@@ -522,6 +526,7 @@ def _execute_general_workflow(
                 "execution_mode": execution_mode,
             },
             is_scheduled=scheduled,
+            transport=transport,
         )
 
         logger.info(
