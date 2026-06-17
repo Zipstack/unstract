@@ -114,6 +114,67 @@ class PgOrchestratorLock(models.Model):
         ]
 
 
+class PgBatchDedup(models.Model):
+    """Per-batch idempotency marker for the at-least-once PG execution pipeline.
+
+    The PG queue is at-least-once: a ``process_file_batch`` task can be
+    redelivered after a crash-before-ack, which would re-run the batch and
+    double-decrement the barrier (``process_file_batch`` is non-idempotent —
+    ``max_retries=0``, and the destination push is not fully idempotent on
+    redelivery). This table is the durable dedup token: one row per
+    ``(execution_id, batch_index)``.
+
+    The worker claims a batch by inserting its row atomically
+    (``INSERT … ON CONFLICT DO NOTHING RETURNING``): a fresh insert means
+    "first delivery — the caller proceeds and performs the single barrier
+    decrement"; a conflict means "already claimed — a redelivery → caller
+    skips". Pairing the claim with the decrement is what keeps the barrier
+    decremented exactly once per batch even though the queue may deliver the
+    task more than once. Rows for an execution are cleared when its barrier
+    finalises (``remaining`` → 0, via ``clear_execution_batches``).
+
+    Orphan reclaim — executions that never finalise currently **leak** their
+    dedup markers: the reaper's ``sweep_expired_barriers`` deletes only the
+    ``pg_barrier_state`` row (there is no FK / cascade to this table), so the
+    matching markers are left behind. A dedup-orphan sweep (e.g. by ``created_at``
+    age) is intended future work; until then the leak is bounded only by how many
+    executions never finalise.
+
+    Composite uniqueness on ``(execution_id, batch_index)`` is enforced by a
+    ``UniqueConstraint`` (Django has no composite primary key here); the worker's
+    ``ON CONFLICT (execution_id, batch_index)`` targets exactly those columns,
+    and the constraint's index — ``execution_id`` leading — also serves the
+    per-execution cleanup ``DELETE``. Managed=True / generated migration, no
+    DB-side function, extension-free (UN-3533) — same posture as the siblings.
+    """
+
+    execution_id = models.TextField()
+    batch_index = models.IntegerField()
+    # Observability/debugging only today (when a marker was claimed); not read,
+    # indexed, or used for reclaim. The intended future dedup-orphan sweep (see
+    # the class docstring) would sweep by this column's age and add an index then.
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pg_batch_dedup"
+        constraints = [
+            # The claim's ON CONFLICT target and the one writer-proof invariant
+            # (the worker SQL can't import this model): a batch is claimed at
+            # most once per execution.
+            models.UniqueConstraint(
+                fields=["execution_id", "batch_index"],
+                name="pg_batch_dedup_exec_batch_uniq",
+            ),
+            # batch_index is a non-negative ordinal; a negative value is a
+            # programming error. Writer-proof, mirroring PgQueueMessage.priority's
+            # domain-bound CheckConstraint precedent.
+            models.CheckConstraint(
+                check=models.Q(batch_index__gte=0),
+                name="pg_batch_dedup_batch_index_non_negative",
+            ),
+        ]
+
+
 class PgBarrierState(models.Model):
     """Per-execution fan-in barrier state for ``PgBarrier`` (the Postgres
     ``WORKER_BARRIER_BACKEND``).
