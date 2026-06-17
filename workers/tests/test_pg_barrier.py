@@ -725,12 +725,24 @@ class TestPgFireAndForgetMode:
         # reclaims dedup markers (greptile #2069) — an already-claimed earlier
         # header's marker would otherwise orphan, since the in-flight abort is a
         # no-op once the barrier row is gone.
+        #
+        # The marker must be claimed AFTER enqueue's UPSERT block (which wipes
+        # stale markers for this execution_id) — else the assertion would pass on
+        # the UPSERT, not the mid-loop clear under test. So the first dispatch
+        # call claims it (a fast consumer on the PG path), the second fails.
         with barrier_db.cursor() as cur:
             cur.execute("DELETE FROM pg_batch_dedup")
-        claim_batch("exec-midfail", 0)  # an earlier header already claimed its slot
+
+        def dispatch_side_effect(*args, **kwargs):
+            if not dispatch_side_effect.claimed:
+                dispatch_side_effect.claimed = True
+                claim_batch("exec-midfail", 0)  # marker created post-UPSERT
+                return MagicMock(id="1")
+            raise RuntimeError("broker down")
+
+        dispatch_side_effect.claimed = False
         with patch(
-            "queue_backend.dispatch.dispatch",
-            side_effect=[MagicMock(id="1"), RuntimeError("broker down")],
+            "queue_backend.dispatch.dispatch", side_effect=dispatch_side_effect
         ):
             with pytest.raises(RuntimeError, match="broker down"):
                 PgBarrier().enqueue(
@@ -747,7 +759,9 @@ class TestPgFireAndForgetMode:
                 "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
                 ("exec-midfail",),
             )
-            assert cur.fetchone()[0] == 0  # markers reclaimed, not orphaned
+            # The marker existed post-UPSERT and was removed by the mid-loop
+            # clear_execution_batches under test (not by the UPSERT reset).
+            assert cur.fetchone()[0] == 0
 
 
 if __name__ == "__main__":
