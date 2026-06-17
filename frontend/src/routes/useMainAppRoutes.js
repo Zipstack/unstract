@@ -5,6 +5,7 @@ import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
+import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
 import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
 import { AgencyPage } from "../pages/AgencyPage.jsx";
@@ -119,27 +120,6 @@ try {
   Manage = mod4.Manage;
 } catch {
   // Do nothing, Not-found Page will be triggered.
-}
-
-// Best-effort classification of a dynamic-import rejection as "plugin
-// not shipped" (expected in OSS builds) vs. a real load failure.
-//
-// LIMITATION: in a browser/Vite bundle this isn't fully sound — a
-// genuinely-absent plugin and a present-but-failed-to-load chunk
-// (transient CDN/origin 5xx, a stale hashed asset) both surface as
-// "Failed to fetch dynamically imported module", and `MODULE_NOT_FOUND`
-// is a Node/CJS code that only appears under jsdom/vitest, not the
-// shipped bundle. So a transient chunk-load failure can be misread as
-// "missing" and de-register the route for that session — same outcome
-// as a bare `catch`, but genuine errors in the present-plugin case at
-// least get logged. Centralized so any future hardening lands once.
-export function isModuleMissing(err) {
-  const msg = err?.message || "";
-  return (
-    err?.code === "MODULE_NOT_FOUND" ||
-    msg.includes("Failed to fetch dynamically imported module") ||
-    msg.includes("Cannot find module")
-  );
 }
 
 try {
