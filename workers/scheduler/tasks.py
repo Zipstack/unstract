@@ -134,6 +134,14 @@ def _execute_scheduled_workflow(
             execution_request.to_dict()
         )
         execution_id = workflow_execution.get("execution_id")
+
+        if not execution_id:
+            return SchedulerExecutionResult.error(
+                error="Failed to create workflow execution",
+                workflow_id=context.workflow_id,
+                pipeline_id=context.pipeline_id,
+            )
+
         # Transport this execution rides (9e), decided by the backend at creation
         # and carried in the dispatched task's payload. Absent key (older backend)
         # → celery default; a present-but-unrecognized value (version skew) is
@@ -144,13 +152,6 @@ def _execute_scheduled_workflow(
             logger=logger,
             context=f" [exec:{execution_id}]",
         )
-
-        if not execution_id:
-            return SchedulerExecutionResult.error(
-                error="Failed to create workflow execution",
-                workflow_id=context.workflow_id,
-                pipeline_id=context.pipeline_id,
-            )
 
         logger.info(
             f"[exec:{execution_id}] [pipeline:{context.pipeline_id}] Created workflow execution for scheduled pipeline {context.pipeline_name}"
