@@ -128,16 +128,18 @@ def claim_batch(execution_id: str, batch_index: int) -> bool:
     idempotency gate for the at-least-once PG pipeline.
 
     Atomically inserts the dedup marker (``pg_batch_dedup``); returns ``True``
-    if THIS call inserted the row (first delivery — proceed and decrement the
-    barrier) and ``False`` if the row already existed (a redelivery — skip, so
-    the barrier is decremented exactly once per batch). ``ON CONFLICT DO
-    NOTHING`` makes the check-and-set a single statement, so concurrent
-    redeliveries of the same batch resolve to exactly one ``True`` (the row's
-    existence is the token) with no race.
+    if THIS call inserted the row (first delivery — the caller should proceed
+    and perform the single barrier decrement) and ``False`` if the row already
+    existed (a redelivery — the caller should skip). This function itself only
+    inserts the marker; pairing it with the caller's decrement is what keeps the
+    barrier decremented exactly once per batch. ``ON CONFLICT DO NOTHING`` makes
+    the check-and-set a single statement, so concurrent redeliveries of the same
+    batch resolve to exactly one ``True`` (the row's existence is the token) with
+    no race.
 
     Inert in 9e PR 2b — wired into ``process_file_batch`` (claim at batch start)
     in PR 2c, alongside the in-body decrement. The companion
-    :func:`clear_execution_batches` reclaims the markers at barrier teardown.
+    :func:`clear_execution_batches` reclaims the markers at barrier finalise.
     """
     with _cursor() as cur:
         cur.execute(
@@ -154,10 +156,13 @@ def clear_execution_batches(execution_id: str) -> int:
     """Delete all per-batch dedup markers for an execution; returns the count.
 
     Called at barrier teardown (``remaining`` → 0) so the markers live exactly
-    as long as the execution needs them — the reaper's barrier-orphan sweep is
-    the backstop for executions that never finalise. Safe to call when no rows
-    exist (returns 0). Uses the ``(execution_id, batch_index)`` constraint index
-    (``execution_id`` leading) for the lookup.
+    as long as the execution needs them. Executions that never finalise
+    currently leak their markers — the reaper sweeps the orphaned
+    ``pg_barrier_state`` row but does NOT yet reclaim ``pg_batch_dedup`` (no
+    cascade); a dedup-orphan sweep is intended future work (see the
+    ``PgBatchDedup`` model docstring). Safe to call when no rows exist (returns
+    0). Uses the ``(execution_id, batch_index)`` constraint index (``execution_id``
+    leading) for the lookup.
 
     Inert in 9e PR 2b — wired into the barrier-finalise path in PR 2c.
     """

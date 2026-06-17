@@ -15,6 +15,8 @@ the 0006 migration is unapplied.
 
 from __future__ import annotations
 
+import os
+
 import psycopg2
 import pytest
 from queue_backend import pg_barrier
@@ -22,21 +24,29 @@ from queue_backend.pg_barrier import claim_batch, clear_execution_batches
 from queue_backend.pg_queue.connection import create_pg_connection
 
 
+def _skip_or_fail(reason: str) -> None:
+    """Skip when Postgres isn't available — UNLESS ``REQUIRE_PG_TESTS`` is set
+    (CI where PG is expected), where a skip would silently ship the idempotency
+    primitive untested, so we fail loudly instead.
+    """
+    if os.getenv("REQUIRE_PG_TESTS"):
+        pytest.fail(f"REQUIRE_PG_TESTS set but PG unusable: {reason}")
+    pytest.skip(reason)
+
+
 @pytest.fixture
 def dedup_db():
-    import os
-
     os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
     try:
         conn = create_pg_connection(env_prefix="TEST_DB_")
     except psycopg2.OperationalError as exc:
-        pytest.skip(f"Postgres not reachable: {exc}")
+        _skip_or_fail(f"Postgres not reachable: {exc}")
     conn.autocommit = True
     with conn.cursor() as cur:
         cur.execute("SELECT to_regclass('pg_batch_dedup')")
         if cur.fetchone()[0] is None:
             conn.close()
-            pytest.skip("pg_batch_dedup migration not applied (run backend migrate)")
+            _skip_or_fail("pg_batch_dedup migration not applied (run backend migrate)")
         cur.execute("DELETE FROM pg_batch_dedup")
     pg_barrier._local.conn = conn
     yield conn
@@ -77,35 +87,58 @@ class TestClaimBatch:
         assert _count(dedup_db, "exec-1") == 1
         assert _count(dedup_db, "exec-2") == 1
 
+    def test_negative_batch_index_is_rejected_by_db(self, dedup_db):
+        # batch_index is a non-negative ordinal; the CheckConstraint is
+        # writer-proof even though claim_batch's callers only pass >= 0.
+        with pytest.raises(psycopg2.errors.CheckViolation):
+            claim_batch("exec-neg", -1)
+
     def test_concurrent_claims_resolve_to_exactly_one_winner(self, dedup_db):
-        # The real at-least-once guarantee: two redeliveries racing on the same
+        # The real at-least-once guarantee: N redeliveries racing on the SAME
         # batch must produce exactly one True (the row's existence is the token).
-        # Each thread uses its own connection (a libpq conn is not thread-safe).
+        # To actually force the contended ON CONFLICT path (not let a fast first
+        # thread connect+commit before the others start), pre-build all N
+        # connections in the main thread and release every claim simultaneously
+        # via a threading.Barrier. Repeat over several distinct batches so a flaky
+        # non-atomic check-then-insert can't pass by luck. Each thread uses its
+        # own connection (a libpq conn is not thread-safe across threads).
         import threading
 
-        results: dict[str, bool] = {}
-        conns = []
-
-        def run(label):
-            conn = create_pg_connection(env_prefix="TEST_DB_")
-            conn.autocommit = True
-            conns.append(conn)
-            pg_barrier._local.conn = conn
-            try:
-                results[label] = claim_batch("exec-race", 0)
-            finally:
-                pg_barrier._local.conn = None
-
-        threads = [threading.Thread(target=run, args=(f"t{i}",)) for i in range(2)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
+        n = 8
+        conns = [create_pg_connection(env_prefix="TEST_DB_") for _ in range(n)]
         for c in conns:
-            c.close()
+            c.autocommit = True
+        try:
+            for trial in range(5):
+                batch_index = trial  # a fresh, uncontended-so-far batch each round
+                gate = threading.Barrier(n)
+                results: list[bool] = []
+                lock = threading.Lock()
 
-        assert sum(1 for won in results.values() if won) == 1  # exactly one winner
-        assert _count(dedup_db, "exec-race") == 1
+                # Bind loop vars as defaults (ruff B023): the threads are created
+                # and joined within this iteration, but defaults make the capture
+                # explicit and lint-clean.
+                def run(conn, bi=batch_index, gate=gate, results=results, lock=lock):
+                    pg_barrier._local.conn = conn
+                    try:
+                        gate.wait()  # align all claims at the same instant
+                        won = claim_batch("exec-race", bi)
+                        with lock:
+                            results.append(won)
+                    finally:
+                        pg_barrier._local.conn = None
+
+                threads = [threading.Thread(target=run, args=(c,)) for c in conns]
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+
+                assert sum(results) == 1, f"trial {trial}: {sum(results)} winners"
+                assert _count(dedup_db, "exec-race") == trial + 1
+        finally:
+            for c in conns:
+                c.close()
 
 
 class TestClearExecutionBatches:
