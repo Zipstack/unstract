@@ -65,18 +65,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Execution statuses that must NOT be overwritten by reaper recovery. A
-# remaining==0 expired barrier can belong to a COMPLETED execution whose
-# best-effort row-delete merely failed; the backend status update has no terminal
-# guard, so blindly marking ERROR would corrupt a finished execution.
-_TERMINAL_STATUSES = frozenset(
-    {
-        ExecutionStatus.COMPLETED.value,
-        ExecutionStatus.ERROR.value,
-        ExecutionStatus.STOPPED.value,
-    }
-)
-
 # Cadence: how often the leader renews + runs recovery. Enforced shorter than
 # the lease window in PgReaper.__init__.
 _DEFAULT_REAPER_INTERVAL_SECONDS = 5.0
@@ -141,11 +129,59 @@ def reaper_interval_from_env() -> float:
 def _execution_status(
     api_client: InternalAPIClient, execution_id: str, organization_id: str
 ) -> str | None:
-    """Current status of an execution via the org-scoped internal API (or None)."""
+    """Current execution status via the org-scoped internal API.
+
+    **Raises** when the read fails. The client catches all errors and returns a
+    ``success=False`` response (it does NOT raise), so a transient blip would
+    yield ``status=None`` — which is not terminal, and the caller would then mark
+    a possibly-COMPLETED execution ERROR. Treating "couldn't read" as a hard stop
+    (the caller's ``except`` retains the row for retry) is what keeps the
+    terminal-skip guard honest.
+    """
     response = api_client.get_workflow_execution(
         execution_id, organization_id=organization_id, file_execution=False
     )
+    if not getattr(response, "success", False):
+        raise RuntimeError(
+            f"status read failed for execution {execution_id} "
+            f"(refusing to mark ERROR on an unconfirmed status)"
+        )
     return getattr(response, "status", None)
+
+
+def _mark_stranded_error(
+    api_client: InternalAPIClient,
+    execution_id: str,
+    organization_id: str,
+    remaining: int,
+) -> None:
+    """Mark a confirmed-non-terminal stranded execution ERROR (message by remaining)."""
+    if remaining > 0:
+        reason = (
+            f"{remaining} file batch(es) never completed before the barrier "
+            f"expired (worker crash / lost task)"
+        )
+    elif remaining == 0:
+        reason = (
+            "all file batches completed but the final aggregating callback never "
+            "fired before the barrier expired"
+        )
+    else:  # remaining < 0: a decrement landed after the row was torn down
+        reason = (
+            "the barrier was already torn down (remaining < 0) yet the execution "
+            "was left non-terminal — inconsistent state"
+        )
+    api_client.update_workflow_execution_status(
+        execution_id=execution_id,
+        status=ExecutionStatus.ERROR.value,
+        error_message=f"[reaper-recovery] Execution stranded: {reason}.",
+        organization_id=organization_id,
+    )
+    logger.error(
+        "Reaper: marked stranded execution %s ERROR (remaining=%s).",
+        execution_id,
+        remaining,
+    )
 
 
 def _recover_one_barrier(
@@ -153,29 +189,43 @@ def _recover_one_barrier(
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
-    remaining: int | None,
-) -> None:
-    """Recover one stranded execution, then delete its queue-infra rows.
+    remaining: int,
+) -> bool:
+    """Recover one stranded execution; return True iff its barrier row was deleted.
 
-    Mark the execution ERROR via the **internal API** (the same path the normal
+    Marks the execution ERROR via the **internal API** (the path the normal
     callback uses for terminal status — business state never goes direct-DB),
-    UNLESS it's already terminal or we don't know its org. A remaining==0 expired
-    row can belong to a COMPLETED execution whose row-delete merely failed, and
-    the backend status update has no terminal guard, so we read status first and
-    skip the mark in that case. Queue-infra cleanup (``pg_batch_dedup`` /
-    ``pg_barrier_state``) stays direct-PG — same boundary as the rest of
-    ``queue_backend``. Recovery happens BEFORE the delete, so a failed mark leaves
-    the row for the next sweep to retry (the caller catches + rolls back).
+    UNLESS the status read shows it's already terminal (``ExecutionStatus
+    .is_completed`` — the single source of truth, so a future terminal status
+    can't drift from a local copy). A ``remaining==0`` expired row can belong to
+    a COMPLETED execution whose best-effort row-delete merely failed, and the
+    backend status update has no terminal guard, so the read-first skip prevents
+    overwriting a finished execution. Queue-infra cleanup (``pg_batch_dedup`` /
+    ``pg_barrier_state``) stays direct-PG.
+
+    The barrier ``DELETE`` is re-guarded on ``expires_at < now()``: between the
+    sweep's SELECT and here the same ``execution_id`` could be re-enqueued
+    (UPSERT resets ``expires_at`` to the future), and we must not tear down a
+    freshly re-armed barrier. If the row was re-armed (``rowcount == 0``) we leave
+    it and its dedup markers (the new run owns them); the dedup delete only runs
+    when the barrier row was actually reclaimed.
+
+    Returns False without deleting when the org is unknown (can't call the
+    org-scoped API → the row is LEFT, not erased, so the only recovery handle
+    survives for ops) — this should never happen (enqueue always stamps the org).
     """
     if not organization_id:
-        logger.warning(
-            "Reaper: stranded barrier for execution %s has no organization_id — "
-            "cannot mark ERROR via the org-scoped API; cleaning up the row only.",
+        logger.error(
+            "Reaper: stranded barrier for execution %s has NO organization_id — "
+            "cannot mark it ERROR via the org-scoped API; leaving the row (not "
+            "erasing the only recovery handle). A barrier was enqueued without an "
+            "org — investigate.",
             execution_id,
         )
-    elif (status := _execution_status(api_client, execution_id, organization_id)) in (
-        _TERMINAL_STATUSES
-    ):
+        return False
+
+    status = _execution_status(api_client, execution_id, organization_id)
+    if status is not None and ExecutionStatus.is_completed(status):
         logger.warning(
             "Reaper: barrier for execution %s expired but the execution is already "
             "%s — cleaning up the orphaned row only (no status overwrite).",
@@ -183,37 +233,28 @@ def _recover_one_barrier(
             status,
         )
     else:
-        if remaining is not None and remaining > 0:
-            reason = (
-                f"{remaining} file batch(es) never completed before the barrier "
-                f"expired (worker crash / lost task)"
+        _mark_stranded_error(api_client, execution_id, organization_id, remaining)
+
+    # Queue-infra cleanup (direct PG), re-guarded against a concurrent re-arm.
+    with conn.cursor() as cur:
+        cur.execute(
+            "DELETE FROM pg_barrier_state WHERE execution_id = %s "
+            "AND expires_at < now()",
+            (execution_id,),
+        )
+        deleted = cur.rowcount > 0
+        if deleted:
+            cur.execute(
+                "DELETE FROM pg_batch_dedup WHERE execution_id = %s", (execution_id,)
             )
         else:
-            reason = (
-                "all file batches completed but the final aggregating callback "
-                "never fired before the barrier expired"
+            logger.warning(
+                "Reaper: barrier for execution %s was re-armed during recovery "
+                "(no longer expired) — leaving its rows for the new run.",
+                execution_id,
             )
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id,
-            status=ExecutionStatus.ERROR.value,
-            error_message=f"[reaper-recovery] Execution stranded: {reason}.",
-            organization_id=organization_id,
-        )
-        logger.error(
-            "Reaper: marked stranded execution %s ERROR (remaining=%s, was %s).",
-            execution_id,
-            remaining,
-            status,
-        )
-
-    # Queue-infra cleanup (direct PG). Delete dedup markers first, then the
-    # barrier row — both in one committed txn after recovery succeeded.
-    with conn.cursor() as cur:
-        cur.execute("DELETE FROM pg_batch_dedup WHERE execution_id = %s", (execution_id,))
-        cur.execute(
-            "DELETE FROM pg_barrier_state WHERE execution_id = %s", (execution_id,)
-        )
     conn.commit()
+    return deleted
 
 
 def recover_expired_barriers(
@@ -225,8 +266,10 @@ def recover_expired_barriers(
     sweeper, so a read-then-act is safe from double-claim), then recover each one
     best-effort: mark the execution ERROR if it isn't already terminal, then
     delete its ``pg_batch_dedup`` + ``pg_barrier_state`` rows. One execution
-    failing (e.g. the API is unreachable) is logged and skipped — its row is left
-    for the next sweep to retry — so it never blocks the others.
+    failing (e.g. the API is unreachable, or a status read that can't be
+    confirmed) is logged and skipped — its row is left for the next sweep to
+    retry — so it never blocks the others. A non-empty sweep that recovers
+    *nothing* is escalated as a systemic failure (API down / bad migration).
 
     ``conn`` runs in manual-commit mode; on any error we roll back before
     continuing/re-raising so the connection isn't left in an aborted-txn state.
@@ -247,10 +290,10 @@ def recover_expired_barriers(
     recovered: list[str] = []
     for execution_id, organization_id, remaining in rows:
         try:
-            _recover_one_barrier(
+            if _recover_one_barrier(
                 conn, api_client, execution_id, organization_id, remaining
-            )
-            recovered.append(execution_id)
+            ):
+                recovered.append(execution_id)
         except Exception:
             # Keep the connection usable for the next row, and leave THIS barrier
             # row in place so the next sweep retries its recovery.
@@ -260,6 +303,24 @@ def recover_expired_barriers(
                 "Reaper: failed to recover stranded barrier for execution %s — "
                 "leaving the row for the next sweep to retry.",
                 execution_id,
+            )
+
+    if rows:
+        unrecovered = len(rows) - len(recovered)
+        if recovered and not unrecovered:
+            logger.info("Reaper: recovered %d stranded execution(s).", len(recovered))
+        elif recovered:
+            logger.warning(
+                "Reaper: recovered %d/%d stranded execution(s); %d left for retry.",
+                len(recovered),
+                len(rows),
+                unrecovered,
+            )
+        else:
+            logger.error(
+                "Reaper: recovered NONE of %d expired barrier(s) this cycle — "
+                "likely systemic (internal API down / bad migration / missing org).",
+                len(rows),
             )
     return recovered
 

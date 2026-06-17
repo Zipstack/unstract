@@ -185,19 +185,32 @@ class TestLeadershipGating:
 
 
 class _FakeApiClient:
-    """Records the reaper's status calls; returns a configurable execution status."""
+    """Models the real ``InternalAPIClient`` contract the reaper depends on.
 
-    def __init__(self, status="EXECUTING", *, fail_update=False):
+    ``get_workflow_execution`` returns a response with ``success``/``status``
+    (the real client returns ``success=False`` on any error instead of raising);
+    ``fail_read`` models that. ``fail_update`` makes the ERROR-mark raise (the
+    real ``update_*`` does raise). ``fail_update_for`` fails only specific ids.
+    """
+
+    def __init__(
+        self, status="EXECUTING", *, fail_read=False, fail_update=False,
+        fail_update_for=None,
+    ):
         self._status = status
+        self._fail_read = fail_read
         self._fail_update = fail_update
+        self._fail_update_for = set(fail_update_for or [])
         self.get_calls: list = []
         self.update_calls: list = []
 
     def get_workflow_execution(
         self, execution_id, organization_id=None, file_execution=True, **kw
     ):
-        self.get_calls.append((execution_id, organization_id))
-        return SimpleNamespace(status=self._status)
+        self.get_calls.append((execution_id, organization_id, file_execution))
+        if self._fail_read:
+            return SimpleNamespace(success=False, status=None)  # real error contract
+        return SimpleNamespace(success=True, status=self._status)
 
     def update_workflow_execution_status(
         self, execution_id, status, error_message=None, organization_id=None, **kw
@@ -210,7 +223,7 @@ class _FakeApiClient:
                 organization_id=organization_id,
             )
         )
-        if self._fail_update:
+        if self._fail_update or execution_id in self._fail_update_for:
             raise RuntimeError("api down")
         return {"status": "updated"}
 
@@ -315,7 +328,7 @@ def _seed(conn, execution_id, *, expired, organization_id="org-1", remaining=1):
     # pg_barrier_expires_after_created). Commit so the seed is durable like a
     # real barrier row (written by PgBarrier in another transaction) — and so the
     # manual-commit recovery's own commit() is what persists the DELETE.
-    interval = (
+    created_sql, expires_sql = (
         ("now() - interval '2 hours'", "now() - interval '1 hour'")
         if expired
         else ("now()", "now() + interval '6 hours'")
@@ -325,7 +338,7 @@ def _seed(conn, execution_id, *, expired, organization_id="org-1", remaining=1):
             "INSERT INTO pg_barrier_state "
             "(execution_id, organization_id, remaining, results, "
             " created_at, expires_at) "
-            f"VALUES (%s, %s, %s, '[]'::jsonb, {interval[0]}, {interval[1]})",
+            f"VALUES (%s, %s, %s, '[]'::jsonb, {created_sql}, {expires_sql})",
             (execution_id, organization_id, remaining),
         )
     conn.commit()
@@ -381,13 +394,34 @@ class TestRecoverExpiredBarriers:
         assert api.update_calls == []  # no status overwrite
         assert _ids(barrier_conn) == []
 
-    def test_skips_status_mark_when_org_missing(self, barrier_conn):
+    def test_org_missing_leaves_row_and_skips_mark(self, barrier_conn):
+        # No org → can't call the org-scoped API; LEAVE the row (don't erase the
+        # only recovery handle) and don't mark.
         _seed(barrier_conn, "exp-noorg", expired=True, organization_id="")
         api = _FakeApiClient()
         recovered = recover_expired_barriers(barrier_conn, api)
-        assert recovered == ["exp-noorg"]
+        assert recovered == []  # not recovered
         assert api.get_calls == [] and api.update_calls == []  # can't call org API
-        assert _ids(barrier_conn) == []  # still cleaned up
+        assert _ids(barrier_conn) == ["exp-noorg"]  # row preserved for ops
+
+    def test_failed_status_read_does_not_mark_and_retains_row(self, barrier_conn):
+        # [Critical] the real client returns success=False (not raises) on a blip;
+        # a failed read must NOT fall through to ERROR (would corrupt a COMPLETED
+        # exec) — leave the row for the next sweep.
+        _seed(barrier_conn, "exp-readfail", expired=True, remaining=0)
+        api = _FakeApiClient(fail_read=True)
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == []
+        assert api.update_calls == []  # never marked ERROR on an unconfirmed status
+        assert _ids(barrier_conn) == ["exp-readfail"]  # retained for retry
+
+    def test_status_read_passes_file_execution_false(self, barrier_conn):
+        _seed(barrier_conn, "exp-fe", expired=True)
+        api = _FakeApiClient(status="EXECUTING")
+        recover_expired_barriers(barrier_conn, api)
+        # (execution_id, organization_id, file_execution) — must skip the (costly)
+        # file-execution fetch the reaper doesn't need.
+        assert api.get_calls[0][2] is False
 
     def test_api_failure_leaves_row_for_retry(self, barrier_conn):
         _seed(barrier_conn, "exp-fail", expired=True)
@@ -395,6 +429,16 @@ class TestRecoverExpiredBarriers:
         recovered = recover_expired_barriers(barrier_conn, api)
         assert recovered == []  # not recovered
         assert _ids(barrier_conn) == ["exp-fail"]  # row left for next sweep
+
+    def test_one_failing_execution_does_not_block_others(self, barrier_conn):
+        # Per-execution isolation: a mid-loop failure rolls back + the loop
+        # continues; the others still recover.
+        for eid in ("exp-a", "exp-bad", "exp-c"):
+            _seed(barrier_conn, eid, expired=True)
+        api = _FakeApiClient(status="EXECUTING", fail_update_for=["exp-bad"])
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert sorted(recovered) == ["exp-a", "exp-c"]  # the two good ones
+        assert _ids(barrier_conn) == ["exp-bad"]  # only the failing row remains
 
     def test_reclaims_dedup_markers(self, barrier_conn):
         _seed(barrier_conn, "exp-d", expired=True)
