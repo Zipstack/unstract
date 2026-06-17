@@ -419,9 +419,10 @@ class TestRecoverExpiredBarriers:
         _seed(barrier_conn, "exp-fe", expired=True)
         api = _FakeApiClient(status="EXECUTING")
         recover_expired_barriers(barrier_conn, api)
-        # (execution_id, organization_id, file_execution) — must skip the (costly)
-        # file-execution fetch the reaper doesn't need.
-        assert api.get_calls[0][2] is False
+        # Exactly one status read; it must skip the (costly) file-execution fetch
+        # the reaper doesn't need. Unpack (no index) — (exec_id, org, file_execution).
+        [(_exec_id, _org, file_execution)] = api.get_calls
+        assert file_execution is False
 
     def test_api_failure_leaves_row_for_retry(self, barrier_conn):
         _seed(barrier_conn, "exp-fail", expired=True)
