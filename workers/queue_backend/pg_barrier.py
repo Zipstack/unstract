@@ -123,6 +123,49 @@ def _delete_barrier(execution_id: str) -> None:
         )
 
 
+def claim_batch(execution_id: str, batch_index: int) -> bool:
+    """Claim ``(execution_id, batch_index)`` for processing — the per-batch
+    idempotency gate for the at-least-once PG pipeline.
+
+    Atomically inserts the dedup marker (``pg_batch_dedup``); returns ``True``
+    if THIS call inserted the row (first delivery — proceed and decrement the
+    barrier) and ``False`` if the row already existed (a redelivery — skip, so
+    the barrier is decremented exactly once per batch). ``ON CONFLICT DO
+    NOTHING`` makes the check-and-set a single statement, so concurrent
+    redeliveries of the same batch resolve to exactly one ``True`` (the row's
+    existence is the token) with no race.
+
+    Inert in 9e PR 2b — wired into ``process_file_batch`` (claim at batch start)
+    in PR 2c, alongside the in-body decrement. The companion
+    :func:`clear_execution_batches` reclaims the markers at barrier teardown.
+    """
+    with _cursor() as cur:
+        cur.execute(
+            "INSERT INTO pg_batch_dedup (execution_id, batch_index, created_at) "
+            "VALUES (%s, %s, now()) "
+            "ON CONFLICT (execution_id, batch_index) DO NOTHING "
+            "RETURNING execution_id",
+            (execution_id, batch_index),
+        )
+        return cur.fetchone() is not None
+
+
+def clear_execution_batches(execution_id: str) -> int:
+    """Delete all per-batch dedup markers for an execution; returns the count.
+
+    Called at barrier teardown (``remaining`` → 0) so the markers live exactly
+    as long as the execution needs them — the reaper's barrier-orphan sweep is
+    the backstop for executions that never finalise. Safe to call when no rows
+    exist (returns 0). Uses the ``(execution_id, batch_index)`` constraint index
+    (``execution_id`` leading) for the lookup.
+
+    Inert in 9e PR 2b — wired into the barrier-finalise path in PR 2c.
+    """
+    with _cursor() as cur:
+        cur.execute("DELETE FROM pg_batch_dedup WHERE execution_id = %s", (execution_id,))
+        return cur.rowcount
+
+
 @dataclass(frozen=True, slots=True)
 class _PgBarrierHandle:
     """Minimal ``BarrierHandle`` — ``id`` is the execution id (what call sites

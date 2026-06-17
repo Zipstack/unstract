@@ -114,6 +114,51 @@ class PgOrchestratorLock(models.Model):
         ]
 
 
+class PgBatchDedup(models.Model):
+    """Per-batch idempotency marker for the at-least-once PG execution pipeline.
+
+    The PG queue is at-least-once: a ``process_file_batch`` task can be
+    redelivered after a crash-before-ack, which would re-run the batch and
+    double-decrement the barrier (``process_file_batch`` is non-idempotent —
+    ``max_retries=0``, the destination push has only partial per-file
+    protection). This table is the durable dedup token: one row per
+    ``(execution_id, batch_index)``.
+
+    The worker claims a batch by inserting its row atomically
+    (``INSERT … ON CONFLICT DO NOTHING RETURNING``): a fresh insert means
+    "first delivery — proceed, and this is the attempt that decrements the
+    barrier"; a conflict means "already claimed — a redelivery → skip". Because
+    the claim and the barrier decrement run together, the barrier is decremented
+    exactly once per batch even though the queue may deliver the task more than
+    once. Rows for an execution are cleared when its barrier finalises
+    (``remaining`` → 0); the reaper's barrier-orphan sweep is the backstop for
+    executions that never finalise.
+
+    Composite uniqueness on ``(execution_id, batch_index)`` is enforced by a
+    ``UniqueConstraint`` (Django has no composite primary key here); the worker's
+    ``ON CONFLICT (execution_id, batch_index)`` targets exactly those columns,
+    and the constraint's index — ``execution_id`` leading — also serves the
+    per-execution cleanup ``DELETE``. Managed=True / generated migration, no
+    DB-side function, extension-free (UN-3533) — same posture as the siblings.
+    """
+
+    execution_id = models.TextField()
+    batch_index = models.IntegerField()
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "pg_batch_dedup"
+        constraints = [
+            # The claim's ON CONFLICT target and the one writer-proof invariant
+            # (the worker SQL can't import this model): a batch is claimed at
+            # most once per execution.
+            models.UniqueConstraint(
+                fields=["execution_id", "batch_index"],
+                name="pg_batch_dedup_exec_batch_uniq",
+            ),
+        ]
+
+
 class PgBarrierState(models.Model):
     """Per-execution fan-in barrier state for ``PgBarrier`` (the Postgres
     ``WORKER_BARRIER_BACKEND``).
