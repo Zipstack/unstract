@@ -224,12 +224,14 @@ def _enhance_batch_with_mrq_flags(
 
 
 def _run_batch_stages(
-    task_instance, file_batch_data: dict[str, Any], celery_task_id: str
+    file_batch_data: dict[str, Any], celery_task_id: str
 ) -> dict[str, Any]:
     """The actual batch work (validate → setup → pre-create → process → compile).
 
     Transport-agnostic: identical on the Celery chord path and the PG
-    fire-and-forget path. Returns the JSON-serialisable batch result.
+    fire-and-forget path. The task instance isn't needed here — its only use
+    (deriving ``celery_task_id``) happens in the caller. Returns the
+    JSON-serialisable batch result.
     """
     # Step 1: Validate and parse input data
     batch_data = _validate_and_parse_batch_data(file_batch_data)
@@ -278,13 +280,13 @@ def _process_file_batch_core(
 
     if barrier_context is None:
         # Celery chord path — the chord's .link runs the decrement after this.
-        return _run_batch_stages(task_instance, file_batch_data, celery_task_id)
+        return _run_batch_stages(file_batch_data, celery_task_id)
 
     # PG fire-and-forget path — claim the batch (idempotent on redelivery), run
     # the stages, then decrement the barrier in-body / self-chain the callback.
     return run_batch_with_barrier(
         barrier_context,
-        lambda: _run_batch_stages(task_instance, file_batch_data, celery_task_id),
+        lambda: _run_batch_stages(file_batch_data, celery_task_id),
     )
 
 
