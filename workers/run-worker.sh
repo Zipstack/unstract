@@ -31,6 +31,10 @@ readonly PG_QUEUE_CONSUMER_TYPE="pg_queue_consumer"
 readonly PG_QUEUE_REAPER_TYPE="pg_queue_reaper"
 # Set alias that launches the whole PG-queue group (consumer + reaper) together.
 readonly PG_QUEUE_SET="pg-queue"
+# Log-tail alias for the Celery set: every worker EXCEPT the PG-queue members.
+# Mirrors PG_QUEUE_SET so the two transports' logs can be tailed separately
+# (-L celery vs -L pg-queue). Logs-only — the Celery set is *run* via 'all'.
+readonly CELERY_SET="celery"
 
 # Available workers
 declare -A WORKERS=(
@@ -163,7 +167,9 @@ OPTIONS:
     -r, --restart         Kill matching worker(s) then relaunch (with WORKER_TYPE,
                           restarts only that worker; without it, restarts all)
     -s, --status          Show status of running workers
-    -L, --logs [WORKER]   Live-tail worker log files (all if WORKER omitted)
+    -L, --logs [WORKER]   Live-tail worker log files (all if WORKER omitted).
+                          WORKER may also be a set: 'celery' (all but the
+                          PG-queue members) or 'pg-queue' (consumer + reaper).
     -C, --clear-logs      Delete worker .log files created by -d / 'all' runs
     -h, --help            Show this help message
 
@@ -199,6 +205,12 @@ EXAMPLES:
 
     # Live-tail all worker logs
     $0 -L
+
+    # Tail just the Celery set's logs (excludes the PG-queue workers)
+    $0 -L celery
+
+    # Tail just the PG-queue set's logs (consumer + reaper)
+    $0 -L pg-queue
 
     # Tail just one worker's log
     $0 -L general
@@ -434,6 +446,16 @@ tail_logs() {
 
     if [[ -z "$requested" || "$requested" == "all" ]]; then
         for d in $(list_core_worker_dirs) $(list_pluggable_worker_dirs); do
+            local f
+            f=$(resolve_log_file "$d")
+            [[ -n "$f" ]] && log_files+=("$f")
+        done
+    elif [[ "$requested" == "$CELERY_SET" ]]; then
+        # Celery set logs = every worker EXCEPT the PG-queue members. Mirror of
+        # the 'pg-queue' alias below, so the two transports' logs can be tailed
+        # separately when both sets run side by side.
+        for d in $(list_core_worker_dirs) $(list_pluggable_worker_dirs); do
+            [[ "$d" == "$PG_QUEUE_CONSUMER_TYPE" || "$d" == "$PG_QUEUE_REAPER_TYPE" ]] && continue
             local f
             f=$(resolve_log_file "$d")
             [[ -n "$f" ]] && log_files+=("$f")
