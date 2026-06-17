@@ -501,10 +501,15 @@ class TestPgFireAndForgetMode:
     def test_enqueue_pg_mode_dispatches_headers_via_pg_with_context(self, barrier_db):
         with barrier_db.cursor() as cur:
             cur.execute("DELETE FROM pg_batch_dedup")
-        headers = [_pg_header(), _pg_header()]
+        # A header with a pre-existing kwarg, real args, and a queue — to prove
+        # the Signature→dispatch unpacking preserves all three (a dropped args or
+        # queue would silently process an empty/misrouted batch).
+        h0 = _pg_header(args=[{"file": "f0"}], queue="api_file_processing")
+        h0.kwargs = {"pre_existing": "keep"}
+        h1 = _pg_header(args=[{"file": "f1"}], queue="api_file_processing")
         with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
             PgBarrier().enqueue(
-                headers,
+                [h0, h1],
                 callback_task_name="process_batch_callback",
                 callback_kwargs={"execution_id": "exec-pg"},
                 callback_queue="general",
@@ -512,14 +517,16 @@ class TestPgFireAndForgetMode:
                 transport="pg_queue",
             )
         assert mock_dispatch.call_count == 2  # one per header, no .link
-        # Each header carries its _barrier_context (incl. its batch_index) + the
-        # callback descriptor marked backend=pg_queue, dispatched backend=PG.
         for i, call in enumerate(mock_dispatch.call_args_list):
             assert call.kwargs["backend"] is QueueBackend.PG
+            assert call.kwargs["args"] == [{"file": f"f{i}"}]  # args preserved
+            assert call.kwargs["queue"] == "api_file_processing"  # queue preserved
             ctx = call.kwargs["kwargs"]["_barrier_context"]
             assert ctx["execution_id"] == "exec-pg"
             assert ctx["batch_index"] == i
-            assert ctx["callback_descriptor"]["backend"] == "pg_queue"
+            assert ctx["callback_descriptor"]["transport"] == "pg_queue"
+        # The pre-existing kwarg on h0 survives alongside the injected context.
+        assert mock_dispatch.call_args_list[0].kwargs["kwargs"]["pre_existing"] == "keep"
 
     def test_enqueue_pg_mode_clears_stale_dedup_on_reuse(self, barrier_db):
         # greptile #2068: a re-enqueue with the same execution_id must wipe prior
@@ -598,7 +605,7 @@ class TestPgFireAndForgetMode:
         assert _row(barrier_db, "exec-err") is None
 
     def test_fire_barrier_callback_pg_self_chains_via_dispatch(self):
-        descriptor = {**_CALLBACK, "backend": "pg_queue"}
+        descriptor = {**_CALLBACK, "transport": "pg_queue"}
         with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
             mock_dispatch.return_value = MagicMock(id="pg-cb-1")
             cb_id = _fire_barrier_callback(descriptor, [{"r": 1}])
@@ -626,6 +633,82 @@ class TestPgFireAndForgetMode:
                 ("exec-ab",),
             )
             assert cur.fetchone()[0] == 0
+
+    def test_last_batch_self_chains_callback_to_pg_and_cleans_up(self, barrier_db):
+        # The PR's core promise, end to end: the batch that drives remaining → 0
+        # self-chains the aggregating callback onto PG (backend=PG, args=[results])
+        # and clears both the barrier row and the dedup markers.
+        with barrier_db.cursor() as cur:
+            cur.execute("DELETE FROM pg_batch_dedup")
+        _seed(barrier_db, "exec-last", 1)  # this batch is the last → remaining → 0
+        descriptor = {
+            "task_name": "process_batch_callback_api",
+            "kwargs": {"execution_id": "exec-last"},
+            "queue": "api_file_processing_callback",
+            "fairness_headers": None,
+            "transport": "pg_queue",
+        }
+        ctx = {
+            "execution_id": "exec-last",
+            "batch_index": 0,
+            "callback_descriptor": descriptor,
+        }
+        with patch("queue_backend.dispatch.dispatch") as mock_dispatch:
+            mock_dispatch.return_value = MagicMock(id="pg-cb")
+            out = run_batch_with_barrier(ctx, lambda: {"successful_files": 1})
+        assert out == {"successful_files": 1}
+        # callback self-chained onto PG with the aggregated results
+        assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
+        assert mock_dispatch.call_args.args[0] == "process_batch_callback_api"
+        assert mock_dispatch.call_args.kwargs["args"] == [[{"successful_files": 1}]]
+        # barrier row + dedup markers cleaned up at finalise
+        assert _row(barrier_db, "exec-last") is None
+        with barrier_db.cursor() as cur:
+            cur.execute(
+                "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
+                ("exec-last",),
+            )
+            assert cur.fetchone()[0] == 0
+
+    def test_decrement_failure_aborts_barrier(self, barrier_db):
+        # #69: a decrement-side failure (after the work succeeded) must tear the
+        # barrier down in-body — else the dedup marker is committed, redelivery is
+        # blocked, and the barrier strands to expiry.
+        with barrier_db.cursor() as cur:
+            cur.execute("DELETE FROM pg_batch_dedup")
+        _seed(barrier_db, "exec-decfail", 2)
+        ctx = {
+            "execution_id": "exec-decfail",
+            "batch_index": 0,
+            "callback_descriptor": _CALLBACK,
+        }
+        with patch.object(
+            pg_barrier, "_barrier_pg_decrement", side_effect=RuntimeError("decr boom")
+        ):
+            with pytest.raises(RuntimeError, match="decr boom"):
+                run_batch_with_barrier(ctx, lambda: {"ok": 1})
+        assert _row(barrier_db, "exec-decfail") is None  # barrier torn down
+
+    def test_pg_mid_loop_dispatch_failure_deletes_row(self, barrier_db):
+        # The PG-branch counterpart of test_mid_loop_dispatch_failure_deletes_row:
+        # a header PG-dispatch failure mid fan-out deletes the barrier row so an
+        # in-flight in-body decrement finds no row and cleans up.
+        with barrier_db.cursor() as cur:
+            cur.execute("DELETE FROM pg_batch_dedup")
+        with patch(
+            "queue_backend.dispatch.dispatch",
+            side_effect=[MagicMock(id="1"), RuntimeError("broker down")],
+        ):
+            with pytest.raises(RuntimeError, match="broker down"):
+                PgBarrier().enqueue(
+                    [_pg_header(), _pg_header()],
+                    callback_task_name="process_batch_callback",
+                    callback_kwargs={"execution_id": "exec-midfail"},
+                    callback_queue="general",
+                    app_instance=None,
+                    transport="pg_queue",
+                )
+        assert _row(barrier_db, "exec-midfail") is None  # row deleted on failure
 
 
 if __name__ == "__main__":

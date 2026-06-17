@@ -94,11 +94,29 @@ class CallbackDescriptor(TypedDict):
     kwargs: dict[str, Any]
     queue: str
     fairness_headers: dict[str, Any] | None
-    # 9e: transport the aggregating callback is fired on when the barrier
-    # completes. Absent / ``None`` → legacy Celery dispatch (``current_app``
-    # ``.apply_async`` — the ``.link`` path). ``"pg_queue"`` → the fire-and-forget
-    # PG path self-chains the callback via ``dispatch(backend=PG)``.
-    backend: NotRequired[str | None]
+    # 9e: the WorkflowTransport the aggregating callback is fired on when the
+    # barrier completes. Absent / ``None`` → legacy Celery dispatch
+    # (``current_app.apply_async`` — the ``.link`` path). ``"pg_queue"`` → the
+    # fire-and-forget PG path self-chains the callback via dispatch onto PG.
+    # Named ``transport`` (a WorkflowTransport value, e.g. ``"pg_queue"``) — NOT
+    # ``backend``, to avoid confusion with ``QueueBackend`` (``"pg"``).
+    transport: NotRequired[str | None]
+
+
+class BarrierContext(TypedDict):
+    """Per-batch barrier coordination injected into a PG-dispatched header task.
+
+    The 9e fire-and-forget sibling of :class:`CallbackDescriptor`, and typed for
+    the same reason: it crosses producer → PG-queue → consumer, so the contract
+    is pinned here to catch a typo/rename at the type layer rather than as a
+    remote ``KeyError`` mid-batch. Carried as the ``_barrier_context`` kwarg on
+    ``process_file_batch`` so the consumer can claim its slot and run the barrier
+    decrement in-body (a PG-consumed task fires no Celery ``.link``).
+    """
+
+    execution_id: str
+    batch_index: int
+    callback_descriptor: CallbackDescriptor
 
 
 class Barrier(Protocol):

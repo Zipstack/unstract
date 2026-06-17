@@ -56,6 +56,7 @@ from unstract.core.data_models import (
     FileBatchData,
     FileHashData,
     WorkerFileData,
+    normalize_transport,
 )
 
 # Import common workflow utilities
@@ -487,6 +488,12 @@ def _execute_general_workflow(
         Execution result
     """
     start_time = time.time()
+
+    # Fail-closed coercion, for parity with the api/scheduler workers (which run
+    # normalize_transport at their entry): a typo'd transport degrades to Celery
+    # with a warning rather than silently routing onto an unknown substrate. The
+    # coerced value feeds both WorkflowContextData and the fan-out below.
+    transport = normalize_transport(transport, logger=logger)
 
     logger.info("Executing general workflow logic for ETL/TASK workflow")
 

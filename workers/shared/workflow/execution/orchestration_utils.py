@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from queue_backend import BarrierHandle, FairnessKey, get_barrier
 from queue_backend.pg_barrier import PgBarrier
 
-from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT, WorkflowTransport
+from unstract.core.data_models import DEFAULT_WORKFLOW_TRANSPORT, is_pg_transport
 
 from ...enums import FileDestinationType, PipelineType
 from ...enums.worker_enums import QueueName
@@ -40,7 +40,7 @@ def _barrier_for_transport(transport: str) -> Barrier:
     ``WORKER_BARRIER_BACKEND`` (the env-selected singleton is the *celery*-transport
     substrate, which may be ``chord``). Every other transport uses that singleton.
     """
-    if transport == WorkflowTransport.PG_QUEUE.value:
+    if is_pg_transport(transport):
         return PgBarrier()
     return _BARRIER
 

@@ -11,6 +11,7 @@ import time
 from typing import Any
 
 from queue_backend import worker_task
+from queue_backend.barrier import BarrierContext
 from queue_backend.pg_barrier import run_batch_with_barrier
 
 # Import shared worker infrastructure
@@ -255,7 +256,7 @@ def _run_batch_stages(
 def _process_file_batch_core(
     task_instance,
     file_batch_data: dict[str, Any],
-    barrier_context: dict[str, Any] | None = None,
+    barrier_context: BarrierContext | None = None,
 ) -> dict[str, Any]:
     """Core implementation of file batch processing.
 
@@ -305,7 +306,7 @@ def _process_file_batch_core(
 def process_file_batch(
     self,
     file_batch_data: dict[str, Any],
-    _barrier_context: dict[str, Any] | None = None,
+    _barrier_context: BarrierContext | None = None,
 ) -> dict[str, Any]:
     """Process a batch of files in parallel.
 
