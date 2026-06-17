@@ -191,8 +191,10 @@ class TestPgBarrierEnqueue:
         with barrier_db.cursor() as cur:
             cur.execute(
                 "INSERT INTO pg_barrier_state "
-                "(execution_id, remaining, results, created_at, expires_at) "
-                "VALUES ('exec-R', 1, '[1,2]'::jsonb, now(), now() + interval '1h')"
+                "(execution_id, organization_id, remaining, results, "
+                " created_at, expires_at) "
+                "VALUES ('exec-R', '', 1, '[1,2]'::jsonb, now(), "
+                "        now() + interval '1h')"
             )
         task, _ = _mock_header_task()
         PgBarrier().enqueue(
@@ -223,8 +225,9 @@ def _seed(conn, execution_id, remaining, *, results="[]"):
     with conn.cursor() as cur:
         cur.execute(
             "INSERT INTO pg_barrier_state "
-            "(execution_id, remaining, results, created_at, expires_at) "
-            "VALUES (%s, %s, %s::jsonb, now(), now() + interval '1h')",
+            "(execution_id, organization_id, remaining, results, "
+            " created_at, expires_at) "
+            "VALUES (%s, '', %s, %s::jsonb, now(), now() + interval '1h')",
             (execution_id, remaining, results),
         )
 
@@ -487,8 +490,9 @@ class TestDbConstraint:
             with barrier_db.cursor() as cur:
                 cur.execute(
                     "INSERT INTO pg_barrier_state "
-                    "(execution_id, remaining, results, created_at, expires_at) "
-                    "VALUES ('bad', 1, '[]'::jsonb, now(), now())"  # expires == created
+                    "(execution_id, organization_id, remaining, results, "
+                    " created_at, expires_at) "
+                    "VALUES ('bad', '', 1, '[]'::jsonb, now(), now())"  # expires==created
                 )
 
 

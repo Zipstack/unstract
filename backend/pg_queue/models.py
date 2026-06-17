@@ -194,6 +194,11 @@ class PgBarrierState(models.Model):
     """
 
     execution_id = models.TextField(primary_key=True)
+    # Owning org, stamped at enqueue. The reaper needs it to call the org-scoped
+    # internal status API when recovering a stranded (expired) barrier — it has
+    # only the execution_id otherwise. "" = unknown (the reaper then skips the API
+    # mark and just cleans up). Same no-NULL-text convention as PgQueueMessage.org_id.
+    organization_id = models.TextField(blank=True, default="")
     # Header tasks still pending. The last task to decrement it to 0 fires the
     # callback. A value < 0 (decrement after expiry/cleanup) means the barrier
     # was already torn down — the task cleans up without firing.

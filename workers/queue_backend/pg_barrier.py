@@ -291,6 +291,11 @@ class PgBarrier:
                 # self-chain the callback onto PG rather than Celery.
                 callback_descriptor["transport"] = WorkflowTransport.PG_QUEUE.value
             ttl_seconds = barrier_ttl_seconds()
+            # Stamp the owning org so the reaper can call the org-scoped status
+            # API when recovering this barrier if it strands (it has only the
+            # execution_id off the row otherwise). "" when absent — reaper skips
+            # the API mark and just cleans up.
+            organization_id = str(callback_kwargs.get("organization_id") or "")
 
             with _cursor() as cur:
                 # UPSERT clears any leftover state from a prior run with this id.
@@ -300,13 +305,15 @@ class PgBarrier:
                 # periodic sweep keyed on pg_barrier_expires_idx.
                 cur.execute(
                     "INSERT INTO pg_barrier_state "
-                    "(execution_id, remaining, results, created_at, expires_at) "
-                    "VALUES (%s, %s, '[]'::jsonb, now(), "
+                    "(execution_id, organization_id, remaining, results, "
+                    " created_at, expires_at) "
+                    "VALUES (%s, %s, %s, '[]'::jsonb, now(), "
                     "        now() + make_interval(secs => %s)) "
                     "ON CONFLICT (execution_id) DO UPDATE SET "
+                    "  organization_id = EXCLUDED.organization_id, "
                     "  remaining = EXCLUDED.remaining, results = '[]'::jsonb, "
                     "  created_at = now(), expires_at = EXCLUDED.expires_at",
-                    (execution_id, len(header_tasks), ttl_seconds),
+                    (execution_id, organization_id, len(header_tasks), ttl_seconds),
                 )
                 # Reset per-batch dedup markers from a prior run reusing this
                 # execution_id, ATOMICALLY with the barrier reset. Without this a

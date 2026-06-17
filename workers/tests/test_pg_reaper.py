@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import psycopg2
@@ -27,7 +28,7 @@ from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.reaper import (
     PgReaper,
     reaper_interval_from_env,
-    sweep_expired_barriers,
+    recover_expired_barriers,
 )
 
 # --- Layer 1: env + construction (no DB) ---
@@ -99,12 +100,16 @@ class TestConstruction:
 
 class TestLeadershipGating:
     def _reaper(self, lease):
-        return PgReaper(lease, interval_seconds=0.01, sweep_conn=object())
+        # Inject dummy sweep_conn + api_client so tick() doesn't build real ones;
+        # recover_expired_barriers is patched in each test, so neither is used.
+        return PgReaper(
+            lease, interval_seconds=0.01, sweep_conn=object(), api_client=object()
+        )
 
     def test_sweeps_when_leader(self):
         reaper = self._reaper(_FakeLease(acquires=True, renews=True))
         with patch.object(
-            reaper_mod, "sweep_expired_barriers", return_value=["x"]
+            reaper_mod, "recover_expired_barriers", return_value=["x"]
         ) as sweep:
             outcome = reaper.tick()  # acquires leadership → sweeps
         assert outcome.was_leader is True
@@ -114,7 +119,7 @@ class TestLeadershipGating:
 
     def test_standby_does_not_sweep(self):
         reaper = self._reaper(_FakeLease(acquires=False))  # can't get the lease
-        with patch.object(reaper_mod, "sweep_expired_barriers") as sweep:
+        with patch.object(reaper_mod, "recover_expired_barriers") as sweep:
             outcome = reaper.tick()
         assert outcome == (False, 0)
         assert reaper.is_leader is False
@@ -124,7 +129,7 @@ class TestLeadershipGating:
         # tick 1 acquires; tick 2 renew fails → step down, acquire also fails →
         # standby. Driven through ticks, no private-flag poking.
         reaper = self._reaper(_FakeLease(acquires=[True, False], renews=[False]))
-        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             assert reaper.tick().was_leader is True
             assert reaper.tick().was_leader is False
         assert reaper.is_leader is False
@@ -132,7 +137,7 @@ class TestLeadershipGating:
     def test_steps_down_then_reacquires(self):
         # leader → lose the lease one cycle → re-acquire the next and resume.
         reaper = self._reaper(_FakeLease(acquires=[True, False, True], renews=[False]))
-        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             assert reaper.tick().was_leader is True  # acquired
             assert reaper.tick().was_leader is False  # renew failed → standby
             assert reaper.tick().was_leader is True  # re-acquired
@@ -141,7 +146,7 @@ class TestLeadershipGating:
     def test_renew_raising_steps_down(self):
         lease = _FakeLease(acquires=True, renews=True)
         reaper = self._reaper(lease)
-        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             reaper.tick()  # becomes leader
         lease.renew = MagicMock(side_effect=psycopg2.OperationalError("boom"))
         with pytest.raises(psycopg2.OperationalError):
@@ -151,7 +156,7 @@ class TestLeadershipGating:
     def test_release_on_stop_when_leader(self):
         lease = _FakeLease(acquires=True, renews=True)
         reaper = self._reaper(lease)
-        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             t = threading.Thread(target=reaper.run, kwargs={"install_signals": False})
             t.start()
             time.sleep(0.05)
@@ -179,26 +184,59 @@ class TestLeadershipGating:
 # --- Layer 3: connection handling (mocked, no DB) ---
 
 
-class TestSweepConnection:
-    def test_sql_contract(self):
+class _FakeApiClient:
+    """Records the reaper's status calls; returns a configurable execution status."""
+
+    def __init__(self, status="EXECUTING", *, fail_update=False):
+        self._status = status
+        self._fail_update = fail_update
+        self.get_calls: list = []
+        self.update_calls: list = []
+
+    def get_workflow_execution(
+        self, execution_id, organization_id=None, file_execution=True, **kw
+    ):
+        self.get_calls.append((execution_id, organization_id))
+        return SimpleNamespace(status=self._status)
+
+    def update_workflow_execution_status(
+        self, execution_id, status, error_message=None, organization_id=None, **kw
+    ):
+        self.update_calls.append(
+            SimpleNamespace(
+                execution_id=execution_id,
+                status=status,
+                error_message=error_message,
+                organization_id=organization_id,
+            )
+        )
+        if self._fail_update:
+            raise RuntimeError("api down")
+        return {"status": "updated"}
+
+
+class TestRecoverConnection:
+    def test_select_sql_contract(self):
         cur = MagicMock()
-        cur.fetchall.return_value = [("e1",), ("e2",)]
+        cur.fetchall.return_value = []  # nothing expired
         conn = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cur
-        assert sweep_expired_barriers(conn) == ["e1", "e2"]
+        api = MagicMock()
+        assert recover_expired_barriers(conn, api) == []
         sql = cur.execute.call_args[0][0]
-        assert "DELETE FROM pg_barrier_state" in sql
+        assert "SELECT" in sql and "pg_barrier_state" in sql
+        assert "organization_id" in sql and "remaining" in sql
         assert "expires_at < now()" in sql
-        assert "RETURNING execution_id" in sql
         conn.commit.assert_called_once()
+        api.update_workflow_execution_status.assert_not_called()
 
-    def test_rolls_back_on_error(self):
+    def test_rolls_back_on_select_error(self):
         cur = MagicMock()
         cur.execute.side_effect = psycopg2.OperationalError("dead")
         conn = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cur
         with pytest.raises(psycopg2.OperationalError):
-            sweep_expired_barriers(conn)
+            recover_expired_barriers(conn, MagicMock())
         conn.rollback.assert_called_once()
         conn.commit.assert_not_called()
 
@@ -222,10 +260,14 @@ class TestSweepConnection:
         monkeypatch.setattr(
             reaper_mod, "create_pg_connection", MagicMock(return_value=conn)
         )
-        reaper = PgReaper(_FakeLease(acquires=True, renews=True), interval_seconds=1)
+        reaper = PgReaper(
+            _FakeLease(acquires=True, renews=True),
+            interval_seconds=1,
+            api_client=object(),  # injected so tick() doesn't build a real client
+        )
         with patch.object(
             reaper_mod,
-            "sweep_expired_barriers",
+            "recover_expired_barriers",
             side_effect=psycopg2.OperationalError("x"),
         ):
             with pytest.raises(psycopg2.OperationalError):
@@ -258,35 +300,34 @@ def barrier_conn():
             conn.close()
             pytest.skip("pg_barrier_state migration not applied (run backend migrate)")
         cur.execute("DELETE FROM pg_barrier_state")
+        cur.execute("DELETE FROM pg_batch_dedup")
     conn.commit()
     yield conn
     with conn.cursor() as cur:
         cur.execute("DELETE FROM pg_barrier_state")
+        cur.execute("DELETE FROM pg_batch_dedup")
     conn.commit()
     conn.close()
 
 
-def _seed(conn, execution_id, *, expired):
+def _seed(conn, execution_id, *, expired, organization_id="org-1", remaining=1):
     # created_at must precede expires_at (CheckConstraint
     # pg_barrier_expires_after_created). Commit so the seed is durable like a
     # real barrier row (written by PgBarrier in another transaction) — and so the
-    # manual-commit sweep's own commit() is what persists the DELETE.
+    # manual-commit recovery's own commit() is what persists the DELETE.
+    interval = (
+        ("now() - interval '2 hours'", "now() - interval '1 hour'")
+        if expired
+        else ("now()", "now() + interval '6 hours'")
+    )
     with conn.cursor() as cur:
-        if expired:
-            cur.execute(
-                "INSERT INTO pg_barrier_state "
-                "(execution_id, remaining, results, created_at, expires_at) "
-                "VALUES (%s, 1, '[]'::jsonb, now() - interval '2 hours', "
-                "        now() - interval '1 hour')",
-                (execution_id,),
-            )
-        else:
-            cur.execute(
-                "INSERT INTO pg_barrier_state "
-                "(execution_id, remaining, results, created_at, expires_at) "
-                "VALUES (%s, 1, '[]'::jsonb, now(), now() + interval '6 hours')",
-                (execution_id,),
-            )
+        cur.execute(
+            "INSERT INTO pg_barrier_state "
+            "(execution_id, organization_id, remaining, results, "
+            " created_at, expires_at) "
+            f"VALUES (%s, %s, %s, '[]'::jsonb, {interval[0]}, {interval[1]})",
+            (execution_id, organization_id, remaining),
+        )
     conn.commit()
 
 
@@ -298,28 +339,86 @@ def _ids(conn):
     return rows
 
 
-class TestSweepExpiredBarriers:
-    def test_reclaims_only_expired(self, barrier_conn):
-        _seed(barrier_conn, "exp-1", expired=True)
-        _seed(barrier_conn, "exp-2", expired=True)
+def _dedup_count(conn, execution_id):
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT count(*) FROM pg_batch_dedup WHERE execution_id = %s",
+            (execution_id,),
+        )
+        n = cur.fetchone()[0]
+    conn.commit()
+    return n
+
+
+class TestRecoverExpiredBarriers:
+    def test_recovers_only_expired_marks_error_and_cleans_up(self, barrier_conn):
+        _seed(barrier_conn, "exp-1", expired=True, remaining=2)
         _seed(barrier_conn, "fresh-1", expired=False)
-        reclaimed = sweep_expired_barriers(barrier_conn)
-        assert sorted(reclaimed) == ["exp-1", "exp-2"]
+        api = _FakeApiClient(status="EXECUTING")
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == ["exp-1"]
+        assert [c.execution_id for c in api.update_calls] == ["exp-1"]
+        assert api.update_calls[0].status == "ERROR"
+        assert api.update_calls[0].organization_id == "org-1"
+        assert "never completed" in api.update_calls[0].error_message  # remaining>0
         assert _ids(barrier_conn) == ["fresh-1"]  # fresh barrier untouched
+
+    def test_remaining_zero_uses_callback_stranded_message(self, barrier_conn):
+        _seed(barrier_conn, "exp-0", expired=True, remaining=0)
+        api = _FakeApiClient(status="EXECUTING")
+        recover_expired_barriers(barrier_conn, api)
+        assert "callback never fired" in api.update_calls[0].error_message
+
+    def test_skips_already_terminal_execution(self, barrier_conn):
+        # A remaining==0 expired row can belong to a COMPLETED exec whose row
+        # delete failed — must NOT overwrite it to ERROR.
+        _seed(barrier_conn, "exp-done", expired=True, remaining=0)
+        api = _FakeApiClient(status="COMPLETED")
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == ["exp-done"]  # cleaned up
+        assert api.update_calls == []  # no status overwrite
+        assert _ids(barrier_conn) == []
+
+    def test_skips_status_mark_when_org_missing(self, barrier_conn):
+        _seed(barrier_conn, "exp-noorg", expired=True, organization_id="")
+        api = _FakeApiClient()
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == ["exp-noorg"]
+        assert api.get_calls == [] and api.update_calls == []  # can't call org API
+        assert _ids(barrier_conn) == []  # still cleaned up
+
+    def test_api_failure_leaves_row_for_retry(self, barrier_conn):
+        _seed(barrier_conn, "exp-fail", expired=True)
+        api = _FakeApiClient(status="EXECUTING", fail_update=True)
+        recovered = recover_expired_barriers(barrier_conn, api)
+        assert recovered == []  # not recovered
+        assert _ids(barrier_conn) == ["exp-fail"]  # row left for next sweep
+
+    def test_reclaims_dedup_markers(self, barrier_conn):
+        _seed(barrier_conn, "exp-d", expired=True)
+        with barrier_conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO pg_batch_dedup (execution_id, batch_index, created_at) "
+                "VALUES ('exp-d', 0, now())"
+            )
+        barrier_conn.commit()
+        recover_expired_barriers(barrier_conn, _FakeApiClient(status="EXECUTING"))
+        assert _dedup_count(barrier_conn, "exp-d") == 0
 
     def test_noop_when_nothing_expired(self, barrier_conn):
         _seed(barrier_conn, "fresh-1", expired=False)
-        assert sweep_expired_barriers(barrier_conn) == []
+        assert recover_expired_barriers(barrier_conn, _FakeApiClient()) == []
         assert _ids(barrier_conn) == ["fresh-1"]
 
-    def test_tick_sweeps_via_real_conn(self, barrier_conn):
+    def test_tick_recovers_via_real_conn(self, barrier_conn):
         _seed(barrier_conn, "exp-1", expired=True)
         reaper = PgReaper(
             _FakeLease(acquires=True, renews=True),
             interval_seconds=1,
             sweep_conn=barrier_conn,
+            api_client=_FakeApiClient(status="EXECUTING"),
         )
-        outcome = reaper.tick()  # became leader and reclaimed the orphan
+        outcome = reaper.tick()  # became leader and recovered the orphan
         assert outcome.was_leader is True
         assert outcome.reclaimed == 1
         assert _ids(barrier_conn) == []
@@ -396,7 +495,7 @@ class TestLivenessServer:
             interval_seconds=0.01,
             sweep_conn=object(),
         )
-        with patch.object(reaper_mod, "sweep_expired_barriers", return_value=[]):
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             reaper.tick()  # becomes leader
         server = self._server(reaper)
         try:
