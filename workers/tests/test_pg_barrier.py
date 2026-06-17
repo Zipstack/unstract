@@ -23,6 +23,7 @@ from queue_backend.fairness import FAIRNESS_HEADER_NAME, FairnessKey, WorkloadTy
 from queue_backend.handle import BarrierHandle
 from queue_backend.pg_barrier import (
     PgBarrier,
+    _barrier_pg_decrement,
     barrier_pg_abort,
     barrier_pg_decr_and_check,
 )
@@ -323,6 +324,46 @@ class TestDecrAndCheck:
 
     def test_registered_under_canonical_name(self):
         assert barrier_pg_decr_and_check.name == "barrier_pg_decr_and_check"
+
+
+class TestDecrementCoreExtraction:
+    """The decrement logic lives in a plain ``_barrier_pg_decrement`` core so the
+    9e PR 2c PG-consumed path can call it in-body (a PG-consumed task fires no
+    ``.link``). The Celery ``@worker_task`` is a thin delegator; both paths must
+    share one implementation (no drift). (Inert in 2a — no PG caller yet.)
+    """
+
+    def test_core_is_a_plain_callable_not_a_celery_task(self):
+        # A ``@worker_task`` exposes ``.name`` / ``.delay``; the in-body core
+        # must not, or callers could accidentally re-dispatch instead of running.
+        assert not hasattr(_barrier_pg_decrement, "name")
+        assert not hasattr(_barrier_pg_decrement, "delay")
+
+    def test_core_runs_the_decrement_in_body(self, barrier_db):
+        # Called directly (no Celery), the core performs the atomic decrement.
+        _seed(barrier_db, "exec-core", 3)
+        out = _barrier_pg_decrement(
+            {"f": 1}, execution_id="exec-core", callback_descriptor=_CALLBACK
+        )
+        assert out["status"] == "pending"
+        remaining, results = _row(barrier_db, "exec-core")
+        assert remaining == 2
+        assert results == [{"f": 1}]
+
+    def test_worker_task_delegates_to_core(self):
+        # The Celery entry point must forward verbatim to the core — same result,
+        # same args — so the link path and the in-body path can never diverge.
+        sentinel = {"status": "pending", "remaining": 9}
+        with patch.object(
+            pg_barrier, "_barrier_pg_decrement", return_value=sentinel
+        ) as core:
+            out = barrier_pg_decr_and_check(
+                {"f": 1}, execution_id="exec-d", callback_descriptor=_CALLBACK
+            )
+        assert out is sentinel
+        core.assert_called_once_with(
+            {"f": 1}, execution_id="exec-d", callback_descriptor=_CALLBACK
+        )
 
 
 class TestAbort:

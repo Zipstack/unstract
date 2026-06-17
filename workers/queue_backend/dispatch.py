@@ -77,14 +77,27 @@ def dispatch(
     kwargs: Mapping[str, Any] | None = None,
     queue: str | None = None,
     fairness: FairnessKey | None = None,
+    backend: QueueBackend | None = None,
 ) -> DispatchHandle:
     """Enqueue a task by name onto its selected transport.
 
     ``fairness`` is attached as the ``x-fairness-key`` header on the Celery
     path / serialised into the message on the PG path. Pass ``None`` for
     non-workflow worker tasks.
+
+    ``backend`` is a per-call transport override. When ``None`` (the default,
+    and every call site today) the transport is the env allow-list decision
+    via :func:`select_backend` — behaviour is unchanged. When set, it wins
+    over the allow-list: this is the seam the execution-level PG pipeline (9e
+    PR 2c) uses to route a whole execution's header/callback dispatches onto
+    PG without opting their task *names* into ``WORKER_PG_QUEUE_ENABLED_TASKS``
+    (the allow-list is for leaf tasks; the coupled pipeline's migration unit is
+    the execution, carried in the payload — see ``routing.py``). The override
+    only forces the *transport*; it does not bypass ``_enqueue_pg``'s no-silent-
+    fallback contract.
     """
-    if select_backend(task_name) is QueueBackend.PG:
+    resolved = backend if backend is not None else select_backend(task_name)
+    if resolved is QueueBackend.PG:
         return _enqueue_pg(task_name, args, kwargs, queue, fairness)
 
     headers = fairness.as_header() if fairness is not None else None

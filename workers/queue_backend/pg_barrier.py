@@ -246,20 +246,29 @@ class PgBarrier:
             raise
 
 
-@worker_task(name="barrier_pg_decr_and_check", max_retries=0)
-def barrier_pg_decr_and_check(
+def _barrier_pg_decrement(
     result: Any,
     *,
     execution_id: str,
     callback_descriptor: CallbackDescriptor,
 ) -> dict[str, Any]:
-    """Per-task ``link`` callback for :class:`PgBarrier`.
+    """Atomic barrier decrement + last-task callback fire (substrate core).
 
-    Atomically appends this task's result and decrements ``remaining``. The
-    single task that drives ``remaining`` to 0 dispatches the aggregating
-    callback (then deletes the row). ``max_retries=0`` — a Celery retry would
-    replay the decrement and corrupt the count; an orphaned barrier is bounded
-    by ``expires_at`` instead.
+    Appends this task's result and decrements ``remaining`` in one atomic
+    statement; the single caller that drives ``remaining`` to 0 dispatches the
+    aggregating callback (then deletes the row). This is the plain, in-body-
+    callable core shared by two entry points:
+
+    - the Celery ``link`` callback :func:`barrier_pg_decr_and_check` (today's
+      only caller, behaviour unchanged); and
+    - the 9e PR 2c PG-consumed pipeline path, which calls this directly in the
+      header task's body — a PG-consumed task fires no ``.link``, so the
+      decrement must run in-body (fire-and-forget self-chaining).
+
+    Callers MUST run each decrement in its own committed transaction (one call
+    = one ``_cursor()`` txn here) and MUST NOT retry it: a replay re-runs the
+    decrement and corrupts the count. The Celery wrapper enforces this with
+    ``max_retries=0``; an orphaned barrier is bounded by ``expires_at`` instead.
     """
     from celery import current_app
 
@@ -370,6 +379,25 @@ def barrier_pg_decr_and_check(
         "callback_task_id": callback_result.id,
         "aggregated_count": len(all_results),
     }
+
+
+@worker_task(name="barrier_pg_decr_and_check", max_retries=0)
+def barrier_pg_decr_and_check(
+    result: Any,
+    *,
+    execution_id: str,
+    callback_descriptor: CallbackDescriptor,
+) -> dict[str, Any]:
+    """Per-task ``link`` callback for :class:`PgBarrier` (Celery entry point).
+
+    Thin ``@worker_task`` wrapper around :func:`_barrier_pg_decrement` so the
+    decrement logic stays callable in-body (no ``.link``) on the PG-consumed
+    pipeline path (9e PR 2c). ``max_retries=0`` — a Celery retry would replay
+    the decrement and corrupt the count (see the core's contract).
+    """
+    return _barrier_pg_decrement(
+        result, execution_id=execution_id, callback_descriptor=callback_descriptor
+    )
 
 
 @worker_task(name="barrier_pg_abort", max_retries=0)
