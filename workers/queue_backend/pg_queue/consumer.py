@@ -70,7 +70,7 @@ class PgQueueConsumer:
 
     def __init__(
         self,
-        queue_name: str,
+        queue_names: list[str],
         *,
         client: PgQueueClient | None = None,
         app: Celery | None = None,
@@ -97,7 +97,13 @@ class PgQueueConsumer:
             raise ValueError(
                 f"backoff_max ({backoff_max}) must be >= poll_interval ({poll_interval})"
             )
-        self.queue_name = queue_name
+        if not queue_names:
+            raise ValueError("queue_names must be a non-empty list")
+        # One process can drain several queues (9f) — e.g. a file_processing
+        # consumer drains both file_processing and api_file_processing. Polled
+        # round-robin so the per-queue (queue_name, priority DESC, msg_id) dequeue
+        # index keeps its top-N efficiency and no queue starves another.
+        self.queue_names = queue_names
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app
         self.batch_size = batch_size
@@ -114,14 +120,19 @@ class PgQueueConsumer:
         self._last_poll_monotonic = time.monotonic()
 
     def poll_once(self) -> int:
-        """Claim + process one batch; returns the number of messages claimed."""
+        """Claim + process one batch per queue (round-robin); returns the total
+        number of messages claimed across all queues this cycle.
+        """
         self._last_poll_monotonic = time.monotonic()
-        messages = self._client.read(
-            self.queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
-        )
-        for message in messages:
-            self._handle(message)
-        return len(messages)
+        total = 0
+        for queue_name in self.queue_names:
+            messages = self._client.read(
+                queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
+            )
+            for message in messages:
+                self._handle(message)
+            total += len(messages)
+        return total
 
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
@@ -254,9 +265,9 @@ class PgQueueConsumer:
             name for name in self._app.tasks if not name.startswith("celery.")
         )
         logger.info(
-            "PG-queue consumer started (queue=%r, batch=%s, vt=%ss) — "
+            "PG-queue consumer started (queues=%r, batch=%s, vt=%ss) — "
             "%d application task(s) registered: %s",
-            self.queue_name,
+            self.queue_names,
             self.batch_size,
             self.vt_seconds,
             len(app_tasks),
@@ -278,7 +289,7 @@ class PgQueueConsumer:
             else:
                 time.sleep(backoff)
                 backoff = min(backoff * 2, self.backoff_max)
-        logger.info("PG-queue consumer stopped (queue=%r)", self.queue_name)
+        logger.info("PG-queue consumer stopped (queues=%r)", self.queue_names)
 
     def stop(self, *_: object) -> None:
         """Request a graceful stop after the current batch."""
@@ -294,6 +305,13 @@ class PgQueueConsumer:
                 "PG-queue consumer: signal handlers not installed (non-main "
                 "thread) — SIGTERM/SIGINT will not trigger graceful shutdown"
             )
+
+
+def _parse_queue_list(raw: str) -> list[str]:
+    """Comma-separated queue list (9f). A single value stays a one-element list,
+    so the pre-9f single-queue config remains valid.
+    """
+    return [q.strip() for q in raw.split(",") if q.strip()]
 
 
 def main() -> None:
@@ -315,7 +333,7 @@ def main() -> None:
             raise ValueError(f"Invalid {var}={raw!r}: {exc}") from exc
 
     consumer = PgQueueConsumer(
-        queue_name=_env("QUEUE", _DEFAULT_QUEUE, str),
+        queue_names=_env("QUEUE", [_DEFAULT_QUEUE], _parse_queue_list),
         batch_size=_env("BATCH", _DEFAULT_BATCH, int),
         vt_seconds=_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
         poll_interval=_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),
