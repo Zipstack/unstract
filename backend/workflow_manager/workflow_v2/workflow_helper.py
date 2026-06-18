@@ -13,6 +13,8 @@ from celery.result import AsyncResult
 from configuration.enums import ConfigKey
 from configuration.models import Configuration
 from django.db import IntegrityError
+from pg_queue.producer import DEFAULT_PRIORITY as PG_DEFAULT_PRIORITY
+from pg_queue.producer import enqueue_task as pg_enqueue_task
 from pipeline_v2.models import Pipeline
 from plugins import get_plugin
 from plugins.workflow_manager.workflow_v2.utils import WorkflowUtil
@@ -26,6 +28,7 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
+from unstract.core.data_models import is_pg_transport
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -526,48 +529,72 @@ class WorkflowHelper:
                 workflow_id=workflow_id,
                 pipeline_id=pipeline_id,
             )
-            async_execution: AsyncResult = celery_app.send_task(
-                "async_execute_bin",
-                args=[
-                    org_schema,  # schema_name
-                    workflow_id,  # workflow_id
-                    execution_id,  # execution_id
-                    file_hash_in_str,  # hash_values_of_files
-                ],
-                kwargs={
-                    "scheduled": False,
-                    "execution_mode": None,
-                    "pipeline_id": pipeline_id,
-                    "log_events_id": log_events_id,
-                    "use_file_history": use_file_history,
-                    "llm_profile_id": llm_profile_id,
-                    "hitl_queue_name": hitl_queue_name,
-                    "hitl_packet_id": hitl_packet_id,
-                    "custom_data": custom_data,
-                    "transport": transport,
-                },
-                queue=queue,
-            )
-            logger.info(
-                f"[{org_schema}] Job '{async_execution}' has been enqueued for "
-                f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
-            )
+            dispatch_args = [
+                org_schema,  # schema_name
+                workflow_id,  # workflow_id
+                execution_id,  # execution_id
+                file_hash_in_str,  # hash_values_of_files
+            ]
+            dispatch_kwargs = {
+                "scheduled": False,
+                "execution_mode": None,
+                "pipeline_id": pipeline_id,
+                "log_events_id": log_events_id,
+                "use_file_history": use_file_history,
+                "llm_profile_id": llm_profile_id,
+                "hitl_queue_name": hitl_queue_name,
+                "hitl_packet_id": hitl_packet_id,
+                "custom_data": custom_data,
+                "transport": transport,
+            }
+            # Orchestrator transport (9e PR A / 2d): a pg_queue execution runs
+            # async_execute_bin on PG too — enqueue it to pg_queue_message (a PG
+            # consumer on this queue runs it). Celery executions are unchanged.
+            async_execution: AsyncResult | None = None
+            if is_pg_transport(transport):
+                is_api_execution = queue == CeleryQueue.CELERY_API_DEPLOYMENTS
+                msg_id = pg_enqueue_task(
+                    task_name="async_execute_bin",
+                    # None → "celery" (general); else celery_api_deployments.
+                    queue=queue,
+                    args=dispatch_args,
+                    kwargs=dispatch_kwargs,
+                    org_id=org_schema or "",
+                    priority=PG_DEFAULT_PRIORITY,
+                    fairness={
+                        "org_id": org_schema or None,
+                        # Mirrors the workers' WorkloadType enum values.
+                        "workload_type": "api" if is_api_execution else "non_api",
+                        "pipeline_priority": PG_DEFAULT_PRIORITY,
+                    },
+                )
+                task_id: str | None = f"pg:{msg_id}"
+            else:
+                async_execution = celery_app.send_task(
+                    "async_execute_bin",
+                    args=dispatch_args,
+                    kwargs=dispatch_kwargs,
+                    queue=queue,
+                )
+                task_id = async_execution.id
+
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            if not async_execution.id:
+            if not task_id:
                 logger.warning(
-                    f"[{org_schema}] Celery returned empty task_id for execution_id '{execution_id}'. "
+                    f"[{org_schema}] Empty task_id for execution_id '{execution_id}'."
                 )
                 # Continue without setting task_id - execution can still complete
             else:
                 # Use existing method to handle task_id setting with validation
                 WorkflowExecutionServiceHelper.update_execution_task(
-                    execution_id=execution_id, task_id=async_execution.id
+                    execution_id=execution_id, task_id=task_id
                 )
                 logger.info(
-                    f"[{org_schema}] Job '{async_execution.id}' has been enqueued for "
-                    f"execution_id '{execution_id}', '{len(hash_values_of_files)}' files"
+                    f"[{org_schema}] Job '{task_id}' enqueued (transport={transport}) "
+                    f"for execution_id '{execution_id}', "
+                    f"'{len(hash_values_of_files)}' files"
                 )
 
             execution_status = workflow_execution.status
@@ -601,7 +628,11 @@ class WorkflowHelper:
             return ExecutionResponse(
                 workflow_id,
                 execution_id,
-                async_execution.status,
+                # async_execution is None on the PG path; fall back to the row's
+                # current status (a Celery-only timeout can't strand the response).
+                async_execution.status
+                if async_execution is not None
+                else ExecutionStatus.EXECUTING.value,
                 message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
             )
         except Exception as error:

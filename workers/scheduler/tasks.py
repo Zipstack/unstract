@@ -7,7 +7,7 @@ to support the new workers architecture while maintaining backward compatibility
 import traceback
 from typing import Any
 
-from queue_backend import FairnessKey, dispatch, worker_task
+from queue_backend import FairnessKey, QueueBackend, dispatch, worker_task
 from queue_backend.fairness import WorkloadType
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
@@ -27,6 +27,7 @@ from unstract.core.data_models import (
     DEFAULT_WORKFLOW_TRANSPORT,
     NotificationPayload,
     NotificationSource,
+    is_pg_transport,
     normalize_transport,
 )
 
@@ -182,6 +183,10 @@ def _execute_scheduled_workflow(
                     "transport": transport,
                 },
                 queue=QueueName.GENERAL,
+                # Orchestrator transport (9e PR A / 2d): route async_execute_bin
+                # onto PG for a pg_queue execution (carried-marker wins over the
+                # allow-list); None keeps the legacy Celery dispatch.
+                backend=QueueBackend.PG if is_pg_transport(transport) else None,
                 fairness=FairnessKey(
                     org_id=context.organization_id,
                     workload_type=WorkloadType.NON_API,

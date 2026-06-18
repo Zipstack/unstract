@@ -9,19 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final, TypedDict
+from typing import Final
 
+# The wire shape now lives in unstract.core (shared backend↔worker contract);
+# re-exported here so existing ``from ..fairness import FairnessPayload`` imports
+# keep working.
+from unstract.core.data_models import FairnessPayload
 
-class FairnessPayload(TypedDict):
-    """Serialised :class:`FairnessKey` (``to_dict()`` / wire shape).
-
-    Shared so producers and the PG ``TaskPayload`` wire contract agree on
-    the exact sub-shape instead of a loose ``dict[str, Any]``.
-    """
-
-    org_id: str | None
-    workload_type: str
-    pipeline_priority: int
+__all__ = ["FairnessPayload"]
 
 
 class WorkloadType(StrEnum):
