@@ -547,10 +547,12 @@ services:
   # behaviour is identical to today. Bring them up with:
   #   docker compose --profile pg-queue up -d
   # They consume from Postgres, not the broker. The orchestrator consumers and
-  # the reaper are fully broker-free (no rabbitmq dependency). The fan-out and
-  # callback consumers still hand off to the Celery executor (tool execution
-  # RPC) / Celery notifications, so they keep a rabbitmq dependency until those
-  # are migrated (steps ③/④). Each maps 1:1 to a future K8s Deployment.
+  # the reaper are broker-free for PG-routed executions (fan-out honors the
+  # carried transport; a missing transport fails closed to Celery, which these
+  # consumers aren't expected to receive). The fan-out and callback consumers
+  # still hand off to the Celery executor (tool-execution RPC) / Celery
+  # notifications, so they keep a rabbitmq dependency until the executor and
+  # notifications themselves move to PG. Each maps 1:1 to a future K8s Deployment.
   # Executions still route to Celery until the backend gate
   # (PG_QUEUE_TRANSPORT_ENABLED) + Flipt flag are flipped — that is the ramp,
   # not this change.
@@ -628,7 +630,7 @@ services:
     depends_on:
       - db
       - redis
-      - rabbitmq   # still dispatches the tool-execution RPC to the Celery executor (until ③)
+      - rabbitmq   # still dispatches the tool-execution RPC to the Celery executor (until the executor/tool-RPC moves to PG)
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-pg-fileproc
@@ -658,7 +660,7 @@ services:
     depends_on:
       - db
       - redis
-      - rabbitmq   # may dispatch Celery notifications when not PG-routed (until ④)
+      - rabbitmq   # may dispatch Celery notifications when not PG-routed (until notifications move to PG)
     environment:
       - ENVIRONMENT=development
       - APPLICATION_NAME=unstract-worker-pg-callback
@@ -675,7 +677,7 @@ services:
       - pg-queue
 
   # Reaper — leader-elected recovery loop. Run exactly ONE instance (it elects a
-  # single leader via orchestrator_lock; extra replicas idle as standby).
+  # single leader via pg_orchestrator_lock; extra replicas idle as standby).
   worker-pg-reaper:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-pg-reaper

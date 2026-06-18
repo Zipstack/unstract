@@ -500,10 +500,32 @@ run_worker() {
 # K8s Deployment); the reaper needs neither. Mirrors the host launcher
 # run-worker.sh (`pg-queue-consumer` / `reaper`).
 
+# Fail loudly if the interpreter is missing (e.g. venv path moved in an image
+# refactor) rather than letting `exec` die with a terse "not found" that
+# restart:unless-stopped turns into a silent crash-loop.
+ensure_pg_interpreter() {
+    if [[ ! -x "$PG_QUEUE_PYTHON_BIN" ]]; then
+        print_status $RED "PG-queue interpreter not found/executable: $PG_QUEUE_PYTHON_BIN — check the image build / venv path."
+        exit 1
+    fi
+}
+
 run_pg_consumer() {
+    ensure_pg_interpreter
     local source_type="${WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE:-notification}"
     local queues="${WORKER_PG_QUEUE_CONSUMER_QUEUE:-}"
     export WORKER_NAME="${WORKER_NAME:-pg-consumer-${source_type}}"
+
+    # Warn (don't fail) on missing config: all compose services set these, but a
+    # hand-rolled docker run / K8s Deployment that forgets them would otherwise
+    # start a mislabelled or idle-looking consumer silently. The module logs its
+    # resolved worker type + queue set at startup, so these stay diagnosable.
+    if [[ -z "${WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE:-}" ]]; then
+        print_status $YELLOW "WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE unset — defaulting source worker type to '$source_type'; WORKER_NAME label may not match the module's actual role."
+    fi
+    if [[ -z "$queues" ]]; then
+        print_status $YELLOW "WORKER_PG_QUEUE_CONSUMER_QUEUE unset — consumer will use the module default; check the startup log for the resolved queue set."
+    fi
 
     print_status $GREEN "Starting PG-queue consumer..."
     print_status $BLUE "Source worker type: $source_type"
@@ -515,6 +537,7 @@ run_pg_consumer() {
 }
 
 run_pg_reaper() {
+    ensure_pg_interpreter
     export WORKER_NAME="${WORKER_NAME:-pg-reaper}"
 
     print_status $GREEN "Starting PG-queue reaper (leader-elected)..."
@@ -544,6 +567,14 @@ case "${1:-}" in
     pg-queue-reaper|pg-reaper|reaper)
         run_pg_reaper
         ;;
+    pg-*|*-reaper)
+        # Obviously-PG-intended but unrecognized (e.g. a typo'd command) — fail
+        # loudly instead of silently coercing it into a default Celery worker.
+        # (No legitimate worker type starts with `pg-` or ends with `-reaper`.)
+        print_status $RED "Unrecognized PG-queue command: '$1' (did you mean pg-queue-consumer / pg-queue-reaper?)."
+        exit 1
+        ;;
+    # Any other token intentionally falls through to the Celery command logic below.
 esac
 
 # Two-path logic: Full Celery command vs Traditional worker type
