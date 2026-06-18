@@ -11,28 +11,18 @@ task. Producer↔consumer contract — keep both sides reading the same keys.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import TYPE_CHECKING, Any, TypedDict
+from typing import TYPE_CHECKING, Any
 
-from ..fairness import FairnessPayload
+# TaskPayload now lives in unstract.core (shared backend↔worker wire contract);
+# re-exported here so existing ``from .task_payload import TaskPayload`` imports
+# keep working. The ``to_payload`` builder stays worker-side (it depends on the
+# worker-only ``FairnessKey``).
+from unstract.core.data_models import TaskPayload
 
 if TYPE_CHECKING:
     from ..fairness import FairnessKey
 
-
-class TaskPayload(TypedDict):
-    """Everything the 9c consumer needs to run a PG-routed task.
-
-    ``fairness`` is the serialised :class:`FairnessKey`
-    (:class:`~queue_backend.fairness.FairnessPayload`) or ``None`` — the
-    consumer rebuilds the ``x-fairness-key`` header from it, mirroring the
-    Celery dispatch path.
-    """
-
-    task_name: str
-    args: list[Any]
-    kwargs: dict[str, Any]
-    queue: str | None
-    fairness: FairnessPayload | None
+__all__ = ["TaskPayload", "to_payload"]
 
 
 def to_payload(

@@ -8,33 +8,33 @@ worker tasks (notifications, callbacks, healthchecks) pass
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
-from typing import Final, TypedDict
+from typing import Final
 
+# The wire shape, the WorkloadType enum, and the priority bounds now live in
+# unstract.core (shared backend↔worker single source of truth); re-exported here
+# so existing ``from ..fairness import FairnessPayload/WorkloadType/...`` imports
+# keep working and the backend producer references the same definitions.
+from unstract.core.data_models import (
+    FAIRNESS_DEFAULT_PRIORITY as DEFAULT_PRIORITY,
+)
+from unstract.core.data_models import (
+    FAIRNESS_MAX_PRIORITY as MAX_PRIORITY,
+)
+from unstract.core.data_models import (
+    FAIRNESS_MIN_PRIORITY as MIN_PRIORITY,
+)
+from unstract.core.data_models import (
+    FairnessPayload,
+    WorkloadType,
+)
 
-class FairnessPayload(TypedDict):
-    """Serialised :class:`FairnessKey` (``to_dict()`` / wire shape).
-
-    Shared so producers and the PG ``TaskPayload`` wire contract agree on
-    the exact sub-shape instead of a loose ``dict[str, Any]``.
-    """
-
-    org_id: str | None
-    workload_type: str
-    pipeline_priority: int
-
-
-class WorkloadType(StrEnum):
-    """Workflow execution type. Labs L2 check is binary api-vs-not."""
-
-    API = "api"
-    NON_API = "non_api"
-
-
-# pipeline_priority bounds per labs schema (1..10, higher = sooner).
-MIN_PRIORITY: Final[int] = 1
-MAX_PRIORITY: Final[int] = 10
-DEFAULT_PRIORITY: Final[int] = 5
+__all__ = [
+    "DEFAULT_PRIORITY",
+    "MAX_PRIORITY",
+    "MIN_PRIORITY",
+    "FairnessPayload",
+    "WorkloadType",
+]
 
 # Header (not kwarg) so task-body signatures without **kwargs aren't broken.
 FAIRNESS_HEADER_NAME: Final[str] = "x-fairness-key"

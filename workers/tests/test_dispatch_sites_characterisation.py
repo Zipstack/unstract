@@ -256,6 +256,32 @@ class TestSchedulerDispatchSite:
 
         assert mock_dispatch.call_args.kwargs["kwargs"]["transport"] == "pg_queue"
 
+    def test_pg_transport_routes_dispatch_to_pg_backend(self):
+        """The one line that actually routes the scheduled orchestrator onto PG:
+        transport=="pg_queue" → dispatch(backend=QueueBackend.PG) (identity, not
+        the allow-list)."""
+        from queue_backend import QueueBackend
+        from scheduler.tasks import _execute_scheduled_workflow
+
+        api = MagicMock()
+        api.create_workflow_execution.return_value = {
+            "execution_id": "exec-123",
+            "transport": "pg_queue",
+        }
+        with patch("scheduler.tasks.dispatch") as mock_dispatch:
+            _execute_scheduled_workflow(api, self._make_context())
+
+        assert mock_dispatch.call_args.kwargs["backend"] is QueueBackend.PG
+
+    def test_celery_transport_leaves_backend_none(self):
+        """transport=="celery" → backend=None (legacy Celery dispatch unchanged)."""
+        from scheduler.tasks import _execute_scheduled_workflow
+
+        with patch("scheduler.tasks.dispatch") as mock_dispatch:
+            _execute_scheduled_workflow(self._make_api_client(), self._make_context())
+
+        assert mock_dispatch.call_args.kwargs["backend"] is None
+
     def test_no_dispatch_when_execution_creation_fails(self):
         """If api_client.create_workflow_execution returns no execution_id,
         the function bails out and never calls send_task."""

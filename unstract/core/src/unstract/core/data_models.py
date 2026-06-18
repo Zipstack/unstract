@@ -9,8 +9,8 @@ import logging
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
-from enum import Enum
-from typing import Any
+from enum import Enum, StrEnum
+from typing import Any, Literal, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -258,6 +258,70 @@ def is_pg_transport(transport: str | None) -> bool:
     PG-family transport is ever added.
     """
     return transport == WorkflowTransport.PG_QUEUE.value
+
+
+class WorkloadType(StrEnum):
+    """Workflow-execution workload class (fairness L2). Binary api-vs-not.
+
+    Shared single source of truth: the workers' ``queue_backend.fairness``
+    re-exports this, and the backend producer references its values, so neither
+    side hand-builds the wire strings. A ``str`` Enum serialises to its value
+    under ``json.dumps`` / the queue payload.
+    """
+
+    API = "api"
+    NON_API = "non_api"
+
+
+# Fairness L3 priority bounds (1..10, higher = claimed sooner). Single source of
+# truth shared by the backend producer and the workers' fairness/queue client —
+# the DB CheckConstraint on pg_queue_message.priority is the writer-proof backstop.
+FAIRNESS_MIN_PRIORITY = 1
+FAIRNESS_MAX_PRIORITY = 10
+FAIRNESS_DEFAULT_PRIORITY = 5
+
+
+class FairnessPayload(TypedDict):
+    """Serialised fairness key — the wire shape of a ``FairnessKey.to_dict()``.
+
+    The PG-queue **backend↔worker contract**: the backend (producer) and the
+    workers' ``queue_backend.fairness`` (consumer) both reference this exact
+    sub-shape so they agree on the keys instead of a loose ``dict[str, Any]``.
+    Lives in ``unstract.core`` because backend and workers are separate
+    codebases that can't import each other — this is their single source of
+    truth. ``workload_type`` is a :class:`WorkloadType` value;
+    ``pipeline_priority`` is the 1..10 fairness L3 priority.
+    """
+
+    org_id: str | None
+    workload_type: Literal["api", "non_api"]
+    pipeline_priority: int
+
+
+class TaskPayload(TypedDict):
+    """The ``message`` JSONB of a task row in ``pg_queue_message``.
+
+    The PG-queue **producer↔consumer contract**: whoever enqueues a task (the
+    workers' ``dispatch()`` PG path, or the backend orchestrator producer)
+    serialises this; the consumer poll loop decodes it and runs the task. Keep
+    both sides reading the same keys. Shared in ``unstract.core`` so the backend
+    producer and the worker consumer agree on one definition.
+
+    ``fairness`` is a :class:`FairnessPayload` (serialised fairness key) or
+    ``None`` — the consumer rebuilds the ``x-fairness-key`` header from it,
+    mirroring the Celery dispatch path.
+
+    ``queue`` is diagnostic only: the consumer routes by the ``queue_name``
+    *column* of the row, not by this field. Producers record the logical queue
+    here for debugging (the backend producer always sets it; the workers'
+    ``to_payload`` may leave it ``None``).
+    """
+
+    task_name: str
+    args: list[Any]
+    kwargs: dict[str, Any]
+    queue: str | None
+    fairness: FairnessPayload | None
 
 
 class FileListingResult:
