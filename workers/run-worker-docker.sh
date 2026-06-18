@@ -567,10 +567,12 @@ case "${1:-}" in
     pg-queue-reaper|pg-reaper|reaper)
         run_pg_reaper
         ;;
-    pg-*|*-reaper)
+    pg-*)
         # Obviously-PG-intended but unrecognized (e.g. a typo'd command) — fail
         # loudly instead of silently coercing it into a default Celery worker.
-        # (No legitimate worker type starts with `pg-` or ends with `-reaper`.)
+        # Scoped to the `pg-` prefix (reserved for PG-queue components) so it
+        # never intercepts a pluggable worker name; the exact reaper aliases are
+        # already matched above.
         print_status $RED "Unrecognized PG-queue command: '$1' (did you mean pg-queue-consumer / pg-queue-reaper?)."
         exit 1
         ;;
