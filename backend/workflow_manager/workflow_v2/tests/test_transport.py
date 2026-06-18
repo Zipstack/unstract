@@ -8,6 +8,7 @@ closed to Celery on any problem. These tests pin that contract.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from django.test import override_settings
 from unstract.core.data_models import (
     DEFAULT_WORKFLOW_TRANSPORT,
@@ -34,9 +35,35 @@ class TestWorkflowTransportEnum:
 
 
 class TestResolveTransport:
+    @pytest.fixture(autouse=True)
+    def _flipt_available(self, monkeypatch):
+        """The gate-ON path short-circuits to celery when Flipt is marked
+        unavailable; default it available so the flag-evaluation tests exercise
+        the real path. Individual tests override as needed."""
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+
     @override_settings(PG_QUEUE_TRANSPORT_ENABLED=False)
     def test_master_gate_off_never_consults_flipt(self):
         """Master-gate off → Celery, and Flipt is not even called."""
+        with patch(_FLIPT) as flipt:
+            result = resolve_transport(execution_id="e1", organization_id="org1")
+        assert result == WorkflowTransport.CELERY.value
+        flipt.assert_not_called()
+
+    @override_settings(PG_QUEUE_TRANSPORT_ENABLED=True)
+    def test_missing_organization_forces_celery(self):
+        """No org context → can't segment safely → fail closed; Flipt not called
+        (str(None)/"" must never reach the Flipt org segment)."""
+        with patch(_FLIPT) as flipt:
+            result = resolve_transport(execution_id="e1", organization_id="")
+        assert result == WorkflowTransport.CELERY.value
+        flipt.assert_not_called()
+
+    @override_settings(PG_QUEUE_TRANSPORT_ENABLED=True)
+    def test_gate_on_but_flipt_unavailable_forces_celery(self, monkeypatch):
+        """Gate ON + Flipt service unavailable → celery, loudly — not a silent
+        masquerade as a healthy 100%-celery canary."""
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "false")
         with patch(_FLIPT) as flipt:
             result = resolve_transport(execution_id="e1", organization_id="org1")
         assert result == WorkflowTransport.CELERY.value
