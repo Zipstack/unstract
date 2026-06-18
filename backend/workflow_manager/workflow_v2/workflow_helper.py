@@ -662,20 +662,18 @@ class WorkflowHelper:
                 # the status now. (The old Celery-only TimeoutError handler is
                 # dropped: the wait loop is a manual poll, not AsyncResult.get, so
                 # it never raised; this generic handler covers any stray case.)
-                logger.error(
+                logger.exception(
                     f"[{org_schema}] Post-dispatch bookkeeping failed for execution "
                     f"'{execution_id}' (orchestrator already dispatched on "
-                    f"{transport}); not marking ERROR: {error}",
-                    exc_info=True,
+                    f"{transport}); not marking ERROR"
                 )
                 return ExecutionResponse(
                     workflow_id, execution_id, ExecutionStatus.EXECUTING.value
                 )
             WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
-            logger.error(
+            logger.exception(
                 f"Error while enqueuing async job for WF '{workflow_id}', "
-                f"execution '{execution_id}': {str(error)}",
-                exc_info=True,
+                f"execution '{execution_id}'",
                 stack_info=True,
             )
             return ExecutionResponse(
