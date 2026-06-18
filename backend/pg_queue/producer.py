@@ -21,17 +21,21 @@ import logging
 from typing import Any
 
 from pg_queue.models import PgQueueMessage
-from unstract.core.data_models import FairnessPayload, TaskPayload
+from unstract.core.data_models import (
+    FAIRNESS_DEFAULT_PRIORITY,
+    FAIRNESS_MAX_PRIORITY,
+    FAIRNESS_MIN_PRIORITY,
+    FairnessPayload,
+    TaskPayload,
+)
 
 logger = logging.getLogger(__name__)
 
-# Mirror the workers' fairness L3 bounds (``queue_backend.fairness`` — a separate
-# codebase, can't be imported). The DB ``CheckConstraint`` on
-# ``pg_queue_message.priority`` is the writer-proof backstop; this is the
-# friendly pre-check that names the offending value.
-_MIN_PRIORITY = 1
-_MAX_PRIORITY = 10
-DEFAULT_PRIORITY = 5
+# Fairness L3 priority default, re-exported under the producer's name so callers
+# (workflow_helper) import one symbol. Bounds + default are the single source of
+# truth in unstract.core (shared with the workers' fairness/queue client); the DB
+# CheckConstraint on pg_queue_message.priority is the writer-proof backstop.
+DEFAULT_PRIORITY = FAIRNESS_DEFAULT_PRIORITY
 
 # Default/general queue name — mirrors the workers' ``QueueName.GENERAL = "celery"``
 # (the Celery default queue), used when the caller passes no explicit queue.
@@ -66,9 +70,10 @@ def enqueue_task(
     decides; for the orchestrator there is no silent Celery fallback (that would
     hide the failure or risk a double-dispatch).
     """
-    if not _MIN_PRIORITY <= priority <= _MAX_PRIORITY:
+    if not FAIRNESS_MIN_PRIORITY <= priority <= FAIRNESS_MAX_PRIORITY:
         raise ValueError(
-            f"priority out of range [{_MIN_PRIORITY}, {_MAX_PRIORITY}]: {priority!r}"
+            f"priority out of range "
+            f"[{FAIRNESS_MIN_PRIORITY}, {FAIRNESS_MAX_PRIORITY}]: {priority!r}"
         )
     pg_queue = queue or DEFAULT_GENERAL_QUEUE
     message: TaskPayload = {
@@ -78,12 +83,24 @@ def enqueue_task(
         "queue": pg_queue,
         "fairness": fairness,
     }
-    row = PgQueueMessage.objects.create(
-        queue_name=pg_queue,
-        message=message,
-        org_id=org_id or "",
-        priority=priority,
-    )
+    # Mirror the worker _enqueue_pg path: log the failure with breadcrumbs before
+    # it propagates, so a DB/constraint/serialization error isn't mislabeled by
+    # the caller's broad handler.
+    try:
+        row = PgQueueMessage.objects.create(
+            queue_name=pg_queue,
+            message=message,
+            org_id=org_id or "",
+            priority=priority,
+        )
+    except Exception:
+        logger.exception(
+            "PG-queue: failed to enqueue task=%r queue=%r org=%r",
+            task_name,
+            pg_queue,
+            org_id,
+        )
+        raise
     logger.info(
         "PG-queue: enqueued task=%r queue=%r msg_id=%s org=%r",
         task_name,

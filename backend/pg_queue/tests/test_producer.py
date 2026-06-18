@@ -4,6 +4,7 @@ DB-free: ``PgQueueMessage`` is mocked, so these pin the wire-shape contract and
 the JSON-coercion logic without needing a test database.
 """
 
+import datetime
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -77,6 +78,36 @@ class TestEnqueueTask:
         assert msg["kwargs"] == {}
         assert msg["fairness"] is None
 
-    def test_priority_out_of_range_raises(self):
+    @pytest.mark.parametrize("priority", [1, 5, 10])
+    def test_priority_boundary_values_accepted(self, priority):
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="celery", priority=priority)
+        assert model.objects.create.call_args.kwargs["priority"] == priority
+
+    @pytest.mark.parametrize("priority", [0, 11, -1])
+    def test_priority_out_of_range_raises(self, priority):
         with pytest.raises(ValueError):
-            producer.enqueue_task(task_name="t", queue="celery", priority=99)
+            producer.enqueue_task(task_name="t", queue="celery", priority=priority)
+
+    def test_default_priority_when_omitted(self):
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="celery")
+        assert model.objects.create.call_args.kwargs["priority"] == 5  # FAIRNESS_DEFAULT
+
+    def test_json_safe_coerces_datetime(self):
+        dt = datetime.datetime(2026, 6, 18, 12, 0, 0)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(
+                task_name="t", queue="celery", kwargs={"when": dt}
+            )
+        when = model.objects.create.call_args.kwargs["message"]["kwargs"]["when"]
+        assert isinstance(when, str) and "2026-06-18" in when
+
+    def test_enqueue_failure_logs_and_propagates(self):
+        with patch(_MODEL) as model:
+            model.objects.create.side_effect = RuntimeError("db down")
+            with pytest.raises(RuntimeError):
+                producer.enqueue_task(task_name="t", queue="celery")

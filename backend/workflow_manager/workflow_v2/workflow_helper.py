@@ -8,7 +8,6 @@ from typing import Any
 from account_v2.constants import Common
 from api_v2.models import APIDeployment
 from celery import chord, current_task
-from celery import exceptions as celery_exceptions
 from celery.result import AsyncResult
 from configuration.enums import ConfigKey
 from configuration.models import Configuration
@@ -28,7 +27,7 @@ from utils.local_context import StateStore
 from utils.user_context import UserContext
 
 from backend.celery_service import app as celery_app
-from unstract.core.data_models import is_pg_transport
+from unstract.core.data_models import WorkloadType, is_pg_transport
 from unstract.workflow_execution.enums import LogStage
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
@@ -473,6 +472,51 @@ class WorkflowHelper:
             )
         return execution_cache.status
 
+    @staticmethod
+    def _dispatch_orchestrator_task(
+        *,
+        transport: str,
+        queue: str | None,
+        args: list[Any],
+        kwargs: dict[str, Any],
+        org_schema: str,
+    ) -> str | None:
+        """Dispatch ``async_execute_bin`` on the resolved transport; return its id.
+
+        ``pg_queue`` → enqueue to ``pg_queue_message`` (a PG consumer runs it);
+        ``celery`` → ``celery_app.send_task``. The returned id is the **bare**
+        ``str(msg_id)`` (PG) or the Celery task id — one format across entry
+        paths, matching the worker PG dispatch (``PgDispatchHandle.id``).
+        """
+        if is_pg_transport(transport):
+            is_api_execution = queue == CeleryQueue.CELERY_API_DEPLOYMENTS
+            msg_id = pg_enqueue_task(
+                task_name="async_execute_bin",
+                # None → "celery" (general); else celery_api_deployments.
+                queue=queue,
+                args=args,
+                kwargs=kwargs,
+                # Two sentinels, deliberately: the row's org_id column is NOT NULL
+                # (wants ""), while the fairness payload's org_id is str | None (a
+                # missing org means "no segment", not the literal "None").
+                org_id=org_schema or "",
+                priority=PG_DEFAULT_PRIORITY,
+                fairness={
+                    "org_id": org_schema or None,
+                    "workload_type": (
+                        WorkloadType.API.value
+                        if is_api_execution
+                        else WorkloadType.NON_API.value
+                    ),
+                    "pipeline_priority": PG_DEFAULT_PRIORITY,
+                },
+            )
+            return str(msg_id)
+        async_execution = celery_app.send_task(
+            "async_execute_bin", args=args, kwargs=kwargs, queue=queue
+        )
+        return async_execution.id
+
     @classmethod
     def execute_workflow_async(
         cls,
@@ -505,6 +549,9 @@ class WorkflowHelper:
         Returns:
             ExecutionResponse: Existing status of execution
         """
+        # Defined before the try so the handler can tell a pre-dispatch failure
+        # (mark ERROR) from a post-dispatch one (orchestrator already running).
+        dispatched = False
         try:
             file_hash_in_str = {
                 key: value.to_json() for key, value in hash_values_of_files.items()
@@ -547,43 +594,29 @@ class WorkflowHelper:
                 "custom_data": custom_data,
                 "transport": transport,
             }
-            # Orchestrator transport (9e PR A / 2d): a pg_queue execution runs
-            # async_execute_bin on PG too — enqueue it to pg_queue_message (a PG
-            # consumer on this queue runs it). Celery executions are unchanged.
-            async_execution: AsyncResult | None = None
-            if is_pg_transport(transport):
-                is_api_execution = queue == CeleryQueue.CELERY_API_DEPLOYMENTS
-                msg_id = pg_enqueue_task(
-                    task_name="async_execute_bin",
-                    # None → "celery" (general); else celery_api_deployments.
-                    queue=queue,
-                    args=dispatch_args,
-                    kwargs=dispatch_kwargs,
-                    org_id=org_schema or "",
-                    priority=PG_DEFAULT_PRIORITY,
-                    fairness={
-                        "org_id": org_schema or None,
-                        # Mirrors the workers' WorkloadType enum values.
-                        "workload_type": "api" if is_api_execution else "non_api",
-                        "pipeline_priority": PG_DEFAULT_PRIORITY,
-                    },
-                )
-                task_id: str | None = f"pg:{msg_id}"
-            else:
-                async_execution = celery_app.send_task(
-                    "async_execute_bin",
-                    args=dispatch_args,
-                    kwargs=dispatch_kwargs,
-                    queue=queue,
-                )
-                task_id = async_execution.id
+            # Orchestrator transport (9e PR A / 2d): dispatch async_execute_bin on
+            # the resolved transport (PG enqueue vs Celery). Extracted to a helper
+            # so this method stays simple and the fork is unit-testable.
+            task_id = cls._dispatch_orchestrator_task(
+                transport=transport,
+                queue=queue,
+                args=dispatch_args,
+                kwargs=dispatch_kwargs,
+                org_schema=org_schema or "",
+            )
+            # Past this point the orchestrator is on its transport: a failure in
+            # the bookkeeping below must NOT flip the (now-running) row to ERROR.
+            dispatched = True
 
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
             if not task_id:
+                # PG always yields a truthy msg_id, so an empty id is Celery-only;
+                # keep the transport in the message so operators can tell.
                 logger.warning(
-                    f"[{org_schema}] Empty task_id for execution_id '{execution_id}'."
+                    f"[{org_schema}] Empty task_id (transport={transport}) for "
+                    f"execution_id '{execution_id}'."
                 )
                 # Continue without setting task_id - execution can still complete
             else:
@@ -608,34 +641,36 @@ class WorkflowHelper:
                     )
             if ExecutionStatus.is_completed(execution_status):
                 # Fetch the object agian to get the latest status.
-                workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
-                    id=execution_id
-                )
+                workflow_execution = WorkflowExecution.objects.get(id=execution_id)
                 task_result = ResultCacheUtils.get_api_results(
                     workflow_id=workflow_id, execution_id=execution_id
                 )
                 cls._set_result_acknowledge(workflow_execution)
             else:
                 task_result = None
-            execution_response = ExecutionResponse(
+            return ExecutionResponse(
                 workflow_id,
                 execution_id,
                 execution_status,
                 result=task_result,
             )
-            return execution_response
-        except celery_exceptions.TimeoutError:
-            return ExecutionResponse(
-                workflow_id,
-                execution_id,
-                # async_execution is None on the PG path; fall back to the row's
-                # current status (a Celery-only timeout can't strand the response).
-                async_execution.status
-                if async_execution is not None
-                else ExecutionStatus.EXECUTING.value,
-                message=WorkflowMessages.CELERY_TIMEOUT_MESSAGE,
-            )
         except Exception as error:
+            if dispatched:
+                # The orchestrator is already enqueued/running on its transport, so
+                # a post-dispatch bookkeeping failure (status read / poll / result
+                # fetch) must not mark the execution ERROR — the orchestrator owns
+                # the status now. (The old Celery-only TimeoutError handler is
+                # dropped: the wait loop is a manual poll, not AsyncResult.get, so
+                # it never raised; this generic handler covers any stray case.)
+                logger.error(
+                    f"[{org_schema}] Post-dispatch bookkeeping failed for execution "
+                    f"'{execution_id}' (orchestrator already dispatched on "
+                    f"{transport}); not marking ERROR: {error}",
+                    exc_info=True,
+                )
+                return ExecutionResponse(
+                    workflow_id, execution_id, ExecutionStatus.EXECUTING.value
+                )
             WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
             logger.error(
                 f"Error while enqueuing async job for WF '{workflow_id}', "
