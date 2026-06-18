@@ -673,8 +673,7 @@ class WorkflowHelper:
             WorkflowExecutionServiceHelper.update_execution_err(execution_id, str(error))
             logger.exception(
                 f"Error while enqueuing async job for WF '{workflow_id}', "
-                f"execution '{execution_id}'",
-                stack_info=True,
+                f"execution '{execution_id}'"
             )
             return ExecutionResponse(
                 workflow_id,
