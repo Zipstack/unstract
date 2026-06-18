@@ -274,9 +274,20 @@ class TestChordSiteInventory:
         but rejects docstring / comment mentions like ``the chord(...)
         primitive``.
 
-        Comment / docstring lines are also explicitly skipped as
-        belt-and-suspenders against a future call site that lacks the
-        ``=`` prefix (e.g. a return-value-discarded ``chord(...)``).
+        **Known blind spot**: a return-value-discarded ``chord(batch)(cb)``
+        at column 0 (no assignment) would slip past this regex AND the
+        comment-line filter. The companion ``test_chord_import_only_in_barrier``
+        canary catches the common ``from celery import chord`` import
+        form — so a stray call site reachable via that import would
+        still trip it. However, aliased imports (``from celery import
+        chord as c``) or module-attribute access (``import celery`` +
+        ``celery.chord(...)``) would evade *both* canaries. We accept
+        this gap because (a) those import shapes are non-idiomatic and
+        not used anywhere in workers/, and (b) ``barrier.py`` is the
+        sole sanctioned chord call site in the codebase, so any stray
+        call would surface in code review long before runtime. If a
+        future PR ships either of those import shapes outside
+        ``barrier.py``, the canaries need broadening.
         """
         import pathlib
         import re

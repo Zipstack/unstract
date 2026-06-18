@@ -11,6 +11,7 @@ from account_v2.models import User
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
+from permissions.permission import has_group_access
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
@@ -209,6 +210,7 @@ class PromptStudioHelper:
             or profile_manager.llm.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.llm)
         )
         is_vector_store_owned = (
             profile_manager.vector_store.shared_to_org
@@ -216,6 +218,7 @@ class PromptStudioHelper:
             or profile_manager.vector_store.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.vector_store)
         )
         is_embedding_model_owned = (
             profile_manager.embedding_model.shared_to_org
@@ -223,6 +226,7 @@ class PromptStudioHelper:
             or profile_manager.embedding_model.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.embedding_model)
         )
         is_x2text_owned = (
             profile_manager.x2text.shared_to_org
@@ -230,6 +234,7 @@ class PromptStudioHelper:
             or profile_manager.x2text.shared_users.filter(
                 pk=profile_manager_owner.pk
             ).exists()
+            or has_group_access(profile_manager_owner, profile_manager.x2text)
         )
 
         if not (
