@@ -676,8 +676,43 @@ services:
     profiles:
       - pg-queue
 
-  # Reaper — leader-elected recovery loop. Run exactly ONE instance (it elects a
-  # single leader via pg_orchestrator_lock; extra replicas idle as standby).
+  # Scheduler consumer — runs scheduler.tasks.execute_pipeline_task fired by the
+  # orchestrator's PG scheduler tick (Beat replacement). Distinct from the Celery
+  # 'scheduler' worker; this only runs the trigger, which then creates the
+  # execution + dispatches the workflow exactly as today.
+  worker-pg-scheduler:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-scheduler
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8098:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq   # the trigger dispatches async_execute_bin (Celery path when not PG-routed)
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-scheduler
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=scheduler
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=scheduler
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Reaper / orchestrator — leader-elected loop. Run exactly ONE instance (it
+  # elects a single leader via pg_orchestrator_lock; extra replicas idle as
+  # standby). Besides barrier-orphan recovery it runs the PG scheduler tick
+  # (fires due pg_owned schedules — Beat replacement); dark until rows are owned.
   worker-pg-reaper:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-pg-reaper

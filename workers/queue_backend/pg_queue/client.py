@@ -119,6 +119,18 @@ class QueueMessage:
     read_ct: int
 
 
+# The whole enqueue contract (columns + their defaults) in one place. `send()`
+# appends ``RETURNING msg_id``; the PG scheduler (pg_scheduler.py) executes this
+# verbatim inside its own transaction so the enqueue + next_run advance commit
+# atomically (it can't call send(), which commits internally). Keep callers in
+# sync by sharing this constant rather than copying the SQL.
+INSERT_MESSAGE_SQL: str = (
+    "INSERT INTO pg_queue_message "
+    "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
+    "VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0)"
+)
+
+
 class PgQueueClient:
     """``send`` / ``read`` / ``delete`` over ``pg_queue_message``.
 
@@ -199,9 +211,7 @@ class PgQueueClient:
             )
         with self._cursor() as cur:
             cur.execute(
-                "INSERT INTO pg_queue_message "
-                "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct) "
-                "VALUES (%s, %s::jsonb, %s, %s, now(), now(), 0) RETURNING msg_id",
+                INSERT_MESSAGE_SQL + " RETURNING msg_id",
                 # "" rather than NULL for "no org" — the column is non-null
                 # (string fields shouldn't have two empty values; Django S6553).
                 (
