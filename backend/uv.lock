@@ -218,14 +218,14 @@ wheels = [
 
 [[package]]
 name = "authlib"
-version = "1.2.1"
+version = "1.6.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "cryptography" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/61/ab/7475c1292d0ae22e291d74468693ae29c146185859e3ea4e01a179e9b625/Authlib-1.2.1.tar.gz", hash = "sha256:421f7c6b468d907ca2d9afede256f068f87e34d23dd221c07d13d4c234726afb", size = 140416, upload-time = "2023-06-25T13:03:58.165Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/30/6691fdc63b35f54a5a65e04fa1e59d827f4d4e8f4a39678ba7d3088ce0c8/authlib-1.6.12.tar.gz", hash = "sha256:0656d8482f28fc8221929d5f35b2bde5d13e10555ebc06b4561b0d622e83b1bd", size = 165368, upload-time = "2026-05-04T08:11:31.826Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/6e/f4522542322c7f53783da5f65464a7dee137c687111624d2ac733e2a1b98/Authlib-1.2.1-py2.py3-none-any.whl", hash = "sha256:c88984ea00149a90e3537c964327da930779afa4564e354edfd98410bea01911", size = 215252, upload-time = "2023-06-25T13:03:55.988Z" },
+    { url = "https://files.pythonhosted.org/packages/cd/51/9b0b5cd4cf683a02db937a6f9bbebcdc9c56558a7bb3763ce7d3512103c3/authlib-1.6.12-py2.py3-none-any.whl", hash = "sha256:e9229ad7fde610b139dd12f5edbe97eab9ee78bfb85691247e767727850b99ab", size = 244473, upload-time = "2026-05-04T08:11:30.354Z" },
 ]
 
 [[package]]
@@ -2854,11 +2854,11 @@ wheels = [
 
 [[package]]
 name = "pymysql"
-version = "1.1.0"
+version = "1.1.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/41/9d/ee68dee1c8821c839bb31e6e5f40e61035a5278f7c1307dde758f0c90452/PyMySQL-1.1.0.tar.gz", hash = "sha256:4f13a7df8bf36a51e81dd9f3605fede45a4878fe02f9236349fd82a3f0612f96", size = 47240, upload-time = "2023-06-26T05:34:02.058Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b3/8f/ce59b5e5ed4ce8512f879ff1fa5ab699d211ae2495f1adaa5fbba2a1eada/pymysql-1.1.1.tar.gz", hash = "sha256:e127611aaf2b417403c60bf4dc570124aeb4a57f5f37b8e95ae399a42f904cd0", size = 47678, upload-time = "2024-05-21T11:03:43.722Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/30/20467e39523d0cfc2b6227902d3687a16364307260c75e6a1cb4422b0c62/PyMySQL-1.1.0-py3-none-any.whl", hash = "sha256:8969ec6d763c856f7073c4c64662882675702efcb114b4bcbb955aea3a069fa7", size = 44768, upload-time = "2023-06-26T05:33:59.951Z" },
+    { url = "https://files.pythonhosted.org/packages/0c/94/e4181a1f6286f545507528c78016e00065ea913276888db2262507693ce5/PyMySQL-1.1.1-py3-none-any.whl", hash = "sha256:4de15da4c61dc132f4fb9ab763063e693d521a80fd0e87943b9a453dd4c19d6c", size = 44972, upload-time = "2024-05-21T11:03:41.216Z" },
 ]
 
 [[package]]
@@ -3726,7 +3726,7 @@ test = [
 
 [package.metadata]
 requires-dist = [
-    { name = "authlib", specifier = "==1.2.1" },
+    { name = "authlib", specifier = "==1.6.12" },
     { name = "azure-identity", specifier = "==1.16.0" },
     { name = "azure-mgmt-apimanagement", specifier = "==3.0.0" },
     { name = "boto3", specifier = "~=1.34.0" },
@@ -3830,7 +3830,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = "==2.9.9" },
     { name = "pydrive2", extras = ["fsspec"], specifier = "==1.15.4" },
     { name = "pymssql", specifier = "==2.3.4" },
-    { name = "pymysql", specifier = "==1.1.0" },
+    { name = "pymysql", specifier = "==1.1.1" },
     { name = "s3fs", extras = ["boto3"], specifier = "==2024.10.0" },
     { name = "singleton-decorator", specifier = "~=1.0.0" },
     { name = "snowflake-connector-python", extras = ["pandas"], specifier = "~=4.6.0" },

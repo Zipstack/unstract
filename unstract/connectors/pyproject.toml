@@ -40,7 +40,7 @@ dependencies = [
     "snowflake-connector-python[pandas]~=4.6.0", # For Snowflake
     "google-cloud-bigquery==3.11.4",              # For Bigquery
     "pymssql==2.3.4",                             # For MSSQL
-    "PyMySQL==1.1.0",                             # For MySQL
+    "PyMySQL==1.1.1",                             # For MySQL
     "oracledb==2.4.0",                            # For OracleDB
     "fsspec[sftp]~=2024.10.0",                    # For SFTP
 ]
