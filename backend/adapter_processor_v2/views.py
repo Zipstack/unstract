@@ -22,6 +22,7 @@ from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -244,6 +245,25 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
+    @staticmethod
+    def _adapter_used_in_tool_instance(adapter: AdapterInstance) -> bool:
+        """True if any workflow tool instance in the adapter's org references
+        it via metadata. These refs are JSON values (post lazy-migration the
+        adapter id; before it, the adapter name), so no FK protects them.
+        """
+        # Linear scan over the org's tool instances — acceptable for an
+        # infrequent, interactive delete.
+        needles = {str(adapter.id), adapter.adapter_name}
+        metadatas = ToolInstance.objects.filter(
+            workflow__organization=adapter.organization
+        ).values_list("metadata", flat=True)
+        for metadata in metadatas:
+            if metadata and any(
+                isinstance(v, str) and v in needles for v in metadata.values()
+            ):
+                return True
+        return False
+
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
     ) -> Response:
@@ -280,6 +300,16 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         except UserDefaultAdapter.DoesNotExist:
             # We can go head and remove adapter here
             logger.info("User default adpater doesnt not exist")
+
+        # Adapter refs inside ToolInstance.metadata are JSON values, not FKs,
+        # so the DB can't PROTECT them — block here to avoid leaving dangling
+        # references. (FK uses are caught by ProtectedError below.)
+        if self._adapter_used_in_tool_instance(adapter_instance):
+            logger.error(
+                f"Cannot delete adapter {adapter_instance.adapter_id}"
+                " — referenced by a workflow tool instance"
+            )
+            raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
 
         try:
             super().perform_destroy(adapter_instance)
