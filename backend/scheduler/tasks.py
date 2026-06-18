@@ -5,12 +5,70 @@ from typing import Any
 
 from celery import shared_task
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
+from pg_queue.models import PgPeriodicSchedule
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# pg_periodic_schedule mirror (Phase 9, ②a) — INERT.
+# Dual-writes the schedule definition into pg_periodic_schedule alongside the
+# django_celery_beat PeriodicTask, so a future PG-backed scheduler (folded into
+# the reaper/orchestrator loop) can fire due schedules without Celery Beat.
+# Nothing reads the table yet. Every write is best-effort: a mirror failure must
+# NEVER break the existing Beat scheduling path.
+# ---------------------------------------------------------------------------
+
+
+def _mirror_periodic_schedule_upsert(
+    *,
+    pipeline_id: Any,
+    organization_id: Any,
+    workflow_id: Any,
+    pipeline_name: Any,
+    cron_string: str,
+    enabled: bool,
+) -> None:
+    try:
+        PgPeriodicSchedule.objects.update_or_create(
+            pipeline_id=pipeline_id,
+            defaults={
+                "organization_id": organization_id or "",
+                "workflow_id": workflow_id or None,
+                "pipeline_name": pipeline_name or "",
+                "cron_string": cron_string,
+                "enabled": enabled,
+            },
+        )
+    except Exception:
+        logger.exception(
+            f"pg_periodic_schedule mirror upsert failed for pipeline {pipeline_id} "
+            "(inert mirror — Beat scheduling unaffected)"
+        )
+
+
+def _mirror_periodic_schedule_set_enabled(pipeline_id: Any, enabled: bool) -> None:
+    try:
+        PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).update(enabled=enabled)
+    except Exception:
+        logger.exception(
+            f"pg_periodic_schedule mirror enabled={enabled} failed for pipeline "
+            f"{pipeline_id} (inert mirror — Beat scheduling unaffected)"
+        )
+
+
+def _mirror_periodic_schedule_delete(pipeline_id: Any) -> None:
+    try:
+        PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).delete()
+    except Exception:
+        logger.exception(
+            f"pg_periodic_schedule mirror delete failed for pipeline {pipeline_id} "
+            "(inert mirror — Beat scheduling unaffected)"
+        )
 
 
 def create_or_update_periodic_task(
@@ -49,6 +107,18 @@ def create_or_update_periodic_task(
         logger.info(f"Created periodic task {periodic_task}")
     else:
         logger.info(f"Updated periodic task {periodic_task}")
+
+    # Inert PG mirror. task_name is the pipeline UUID; task_args layout (set by
+    # SchedulerHelper._schedule_task_job) is
+    # [workflow_id, organization_id, execution_action, "", pipeline_id, False, name].
+    _mirror_periodic_schedule_upsert(
+        pipeline_id=task_name,
+        workflow_id=task_args[0] if len(task_args) > 0 else None,
+        organization_id=task_args[1] if len(task_args) > 1 else "",
+        pipeline_name=task_args[6] if len(task_args) > 6 else "",
+        cron_string=cron_string,
+        enabled=enabled,
+    )
 
 
 # TODO: Remove unused args with a migration
@@ -145,6 +215,8 @@ def delete_periodic_task(task_name: str) -> None:
         logger.info(f"Deleted periodic task: {task_name}")
     except PeriodicTask.DoesNotExist:
         logger.error(f"Periodic task does not exist: {task_name}")
+    # Clean the inert PG mirror regardless of whether the PeriodicTask existed.
+    _mirror_periodic_schedule_delete(task_name)
 
 
 def get_periodic_task(task_name: str) -> PeriodicTask | None:
@@ -158,6 +230,9 @@ def disable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = False
     task.save()
+    # Mirror the PeriodicTask.enabled state right after save (before the pipeline
+    # status update, so a failure there can't desync the inert mirror).
+    _mirror_periodic_schedule_set_enabled(task_name, False)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.PAUSED, False)
 
 
@@ -165,4 +240,5 @@ def enable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
     task.enabled = True
     task.save()
+    _mirror_periodic_schedule_set_enabled(task_name, True)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)
