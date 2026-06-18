@@ -70,7 +70,7 @@ class PgQueueConsumer:
 
     def __init__(
         self,
-        queue_name: str,
+        queue_names: list[str],
         *,
         client: PgQueueClient | None = None,
         app: Celery | None = None,
@@ -97,7 +97,17 @@ class PgQueueConsumer:
             raise ValueError(
                 f"backoff_max ({backoff_max}) must be >= poll_interval ({poll_interval})"
             )
-        self.queue_name = queue_name
+        if not queue_names:
+            raise ValueError("queue_names must be a non-empty list")
+        # One process can drain several queues (9f) — e.g. a file_processing
+        # consumer drains both file_processing and api_file_processing. Each is
+        # read once per cycle in list order (poll_once): this prevents starvation
+        # (every queue gets a read each cycle) but does NOT equalize throughput —
+        # an always-full queue_names[0] claims its full batch and runs it before
+        # later queues. Copy + de-dup (order-preserving): a duplicate would
+        # double-read a queue per cycle, and storing the caller's list by
+        # reference would let a later mutation bypass the non-empty validation.
+        self.queue_names = list(dict.fromkeys(queue_names))
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app
         self.batch_size = batch_size
@@ -114,14 +124,31 @@ class PgQueueConsumer:
         self._last_poll_monotonic = time.monotonic()
 
     def poll_once(self) -> int:
-        """Claim + process one batch; returns the number of messages claimed."""
+        """Claim + process one batch per queue (read once each, in list order);
+        returns the total number of messages claimed across all queues this cycle.
+
+        Each queue is isolated: a read/handle failure on one queue is logged and
+        skipped so the others still get their turn, and the work already done this
+        cycle still counts (so run() doesn't take the empty-queue backoff path
+        after a partial failure).
+        """
         self._last_poll_monotonic = time.monotonic()
-        messages = self._client.read(
-            self.queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
-        )
-        for message in messages:
-            self._handle(message)
-        return len(messages)
+        total = 0
+        for queue_name in self.queue_names:
+            try:
+                messages = self._client.read(
+                    queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
+                )
+                for message in messages:
+                    self._handle(message)
+                total += len(messages)
+            except Exception:
+                logger.exception(
+                    "PG-queue consumer: poll failed for queue %r; "
+                    "continuing with the other queues",
+                    queue_name,
+                )
+        return total
 
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
@@ -254,9 +281,9 @@ class PgQueueConsumer:
             name for name in self._app.tasks if not name.startswith("celery.")
         )
         logger.info(
-            "PG-queue consumer started (queue=%r, batch=%s, vt=%ss) — "
+            "PG-queue consumer started (queues=%r, batch=%s, vt=%ss) — "
             "%d application task(s) registered: %s",
-            self.queue_name,
+            self.queue_names,
             self.batch_size,
             self.vt_seconds,
             len(app_tasks),
@@ -278,7 +305,7 @@ class PgQueueConsumer:
             else:
                 time.sleep(backoff)
                 backoff = min(backoff * 2, self.backoff_max)
-        logger.info("PG-queue consumer stopped (queue=%r)", self.queue_name)
+        logger.info("PG-queue consumer stopped (queues=%r)", self.queue_names)
 
     def stop(self, *_: object) -> None:
         """Request a graceful stop after the current batch."""
@@ -294,6 +321,26 @@ class PgQueueConsumer:
                 "PG-queue consumer: signal handlers not installed (non-main "
                 "thread) — SIGTERM/SIGINT will not trigger graceful shutdown"
             )
+
+
+def _parse_queue_list(raw: str) -> list[str]:
+    """Comma-separated queue list (9f). A single value stays a one-element list,
+    so the pre-9f single-queue config remains valid. Empty entries (a doubled or
+    trailing comma — almost always a config typo) are dropped with a warning so a
+    malformed list is diagnosable from the logs, not just by eyeballing.
+    """
+    parts = [q.strip() for q in raw.split(",")]
+    queues = [q for q in parts if q]
+    dropped = len(parts) - len(queues)
+    if dropped:
+        logger.warning(
+            "PG-queue consumer: dropped %d empty queue name(s) from "
+            "WORKER_PG_QUEUE_CONSUMER_QUEUE=%r → %r",
+            dropped,
+            raw,
+            queues,
+        )
+    return queues
 
 
 def main() -> None:
@@ -315,7 +362,7 @@ def main() -> None:
             raise ValueError(f"Invalid {var}={raw!r}: {exc}") from exc
 
     consumer = PgQueueConsumer(
-        queue_name=_env("QUEUE", _DEFAULT_QUEUE, str),
+        queue_names=_env("QUEUE", [_DEFAULT_QUEUE], _parse_queue_list),
         batch_size=_env("BATCH", _DEFAULT_BATCH, int),
         vt_seconds=_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
         poll_interval=_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),

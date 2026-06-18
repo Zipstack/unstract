@@ -54,7 +54,7 @@ class TestPollOnce:
     def test_runs_task_and_acks(self):
         client = MagicMock()
         client.read.return_value = [_msg(1, _ok_payload(3, 4))]
-        assert PgQueueConsumer("q", client=client).poll_once() == 1
+        assert PgQueueConsumer(["q"], client=client).poll_once() == 1
         assert _calls == [(3, 4)]  # task body ran
         client.delete.assert_called_once_with(1)  # acked
 
@@ -64,7 +64,7 @@ class TestPollOnce:
             _msg(2, {"task_name": "test_pg_consumer.boom", "args": [], "kwargs": {}})
         ]
         with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
-            PgQueueConsumer("q", client=client).poll_once()
+            PgQueueConsumer(["q"], client=client).poll_once()
         client.delete.assert_not_called()  # left for vt-expiry redelivery
         assert "failed" in caplog.text  # the cycling signal is logged
 
@@ -74,7 +74,7 @@ class TestPollOnce:
             _msg(3, {"task_name": "nope.nope", "args": [], "kwargs": {}})
         ]
         with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
-            PgQueueConsumer("q", client=client).poll_once()
+            PgQueueConsumer(["q"], client=client).poll_once()
         client.delete.assert_called_once_with(3)  # dropped, not redelivered
         assert "unknown task" in caplog.text
 
@@ -82,7 +82,7 @@ class TestPollOnce:
         client = MagicMock()
         client.read.return_value = [_msg(4, {"args": [], "kwargs": {}})]  # no task_name
         with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
-            PgQueueConsumer("q", client=client).poll_once()
+            PgQueueConsumer(["q"], client=client).poll_once()
         client.delete.assert_called_once_with(4)
         assert "missing task_name" in caplog.text  # distinct from "unknown task"
 
@@ -93,7 +93,7 @@ class TestPollOnce:
             _msg(5, {"task_name": "test_pg_consumer.boom"}, read_ct=6)
         ]
         with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
-            PgQueueConsumer("q", client=client, max_attempts=5).poll_once()
+            PgQueueConsumer(["q"], client=client, max_attempts=5).poll_once()
         client.delete.assert_called_once_with(5)  # dropped as poison
         assert "poison" in caplog.text
 
@@ -107,7 +107,7 @@ class TestPollOnce:
         client.read.return_value = [
             _msg(6, {"task_name": "t", "args": [1], "kwargs": {"k": "v"}, "fairness": fairness})
         ]
-        PgQueueConsumer("q", client=client, app=app).poll_once()
+        PgQueueConsumer(["q"], client=client, app=app).poll_once()
         kwargs = task.apply.call_args.kwargs
         assert kwargs["args"] == [1]
         assert kwargs["kwargs"] == {"k": "v"}
@@ -118,7 +118,7 @@ class TestPollOnce:
         client.delete.return_value = False  # row already gone (vt expired mid-run)
         client.read.return_value = [_msg(7, _ok_payload(1))]
         with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.consumer"):
-            PgQueueConsumer("q", client=client).poll_once()
+            PgQueueConsumer(["q"], client=client).poll_once()
         assert "possible double-run" in caplog.text
 
     def test_multi_message_batch(self):
@@ -129,7 +129,7 @@ class TestPollOnce:
             _msg(12, {"task_name": "nope.nope"}),
             _msg(13, _ok_payload(2)),
         ]
-        assert PgQueueConsumer("q", client=client).poll_once() == 4
+        assert PgQueueConsumer(["q"], client=client).poll_once() == 4
         assert _calls == [(1, 0), (2, 0)]  # ok tasks ran in order
         deleted = {c.args[0] for c in client.delete.call_args_list}
         assert deleted == {10, 12, 13}  # ok acked + unknown dropped; boom NOT acked
@@ -137,7 +137,7 @@ class TestPollOnce:
     def test_empty_batch_acks_nothing(self):
         client = MagicMock()
         client.read.return_value = []
-        assert PgQueueConsumer("q", client=client).poll_once() == 0
+        assert PgQueueConsumer(["q"], client=client).poll_once() == 0
         client.delete.assert_not_called()
 
 
@@ -151,13 +151,13 @@ class TestConstruction:
             {"max_attempts": 0},
         ):
             with pytest.raises(ValueError):
-                PgQueueConsumer("q", client=MagicMock(), **kw)
+                PgQueueConsumer(["q"], client=MagicMock(), **kw)
 
     def test_rejects_backoff_max_below_poll_interval(self):
         # Otherwise backoff would shrink below poll_interval instead of growing.
         with pytest.raises(ValueError, match="backoff_max"):
             PgQueueConsumer(
-                "q", client=MagicMock(), poll_interval=0.5, backoff_max=0.1
+                ["q"], client=MagicMock(), poll_interval=0.5, backoff_max=0.1
             )
 
 
@@ -165,7 +165,7 @@ class TestRunLoop:
     def test_run_stops_gracefully(self, monkeypatch):
         client = MagicMock()
         client.read.return_value = []  # always empty → backoff path
-        consumer = PgQueueConsumer("q", client=client)
+        consumer = PgQueueConsumer(["q"], client=client)
         # First empty poll → sleep (patched to request stop) → loop exits.
         monkeypatch.setattr(
             "queue_backend.pg_queue.consumer.time.sleep", lambda _s: consumer.stop()
@@ -178,7 +178,7 @@ class TestRunLoop:
         # empty, empty, one message, empty → backoff doubles, resets, doubles.
         client.read.side_effect = [[], [], [_msg(1, _ok_payload(1))], []]
         consumer = PgQueueConsumer(
-            "q", client=client, poll_interval=0.1, backoff_max=0.25
+            ["q"], client=client, poll_interval=0.1, backoff_max=0.25
         )
         sleeps: list[float] = []
 
@@ -196,7 +196,7 @@ class TestRunLoop:
         client = MagicMock()
         # first poll raises (transient), then empty → loop must survive the raise.
         client.read.side_effect = [RuntimeError("blip"), []]
-        consumer = PgQueueConsumer("q", client=client)
+        consumer = PgQueueConsumer(["q"], client=client)
         sleeps: list[float] = []
 
         def _sleep(secs):
@@ -214,7 +214,7 @@ class TestRunLoop:
         from celery import Celery
 
         empty_app = Celery("empty-no-tasks")  # only celery.* built-ins
-        consumer = PgQueueConsumer("q", client=MagicMock(), app=empty_app)
+        consumer = PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)
         with pytest.raises(RuntimeError, match="no application tasks"):
             consumer.run(install_signals=False)
 
@@ -223,7 +223,7 @@ class TestRunLoop:
         # the module's @shared_task tasks registered, so the guard passes.
         client = MagicMock()
         client.read.return_value = []  # empty → loop sleeps → we stop it
-        consumer = PgQueueConsumer("q", client=client)
+        consumer = PgQueueConsumer(["q"], client=client)
         monkeypatch.setattr(
             "queue_backend.pg_queue.consumer.time.sleep", lambda _s: consumer.stop()
         )
@@ -238,7 +238,7 @@ class TestRunLoop:
         empty_app = Celery("empty-no-tasks")
         client = MagicMock()
         client.read.return_value = []
-        consumer = PgQueueConsumer("q", client=client, app=empty_app)
+        consumer = PgQueueConsumer(["q"], client=client, app=empty_app)
         monkeypatch.setattr(
             "queue_backend.pg_queue.consumer.time.sleep", lambda _s: consumer.stop()
         )
@@ -252,7 +252,7 @@ class TestRunLoop:
 
         empty_app = Celery("empty-no-tasks")
         assert (
-            PgQueueConsumer("q", client=MagicMock(), app=empty_app)._registered_task_count()
+            PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)._registered_task_count()
             == 0
         )
 
@@ -261,7 +261,7 @@ class TestRunLoop:
             return 1
 
         assert (
-            PgQueueConsumer("q", client=MagicMock(), app=empty_app)._registered_task_count()
+            PgQueueConsumer(["q"], client=MagicMock(), app=empty_app)._registered_task_count()
             == 1
         )
 
@@ -273,7 +273,7 @@ class TestPollHeartbeat:
     def test_poll_once_refreshes_heartbeat(self):
         client = MagicMock()
         client.read.return_value = []
-        consumer = PgQueueConsumer("q", client=client)
+        consumer = PgQueueConsumer(["q"], client=client)
         # Simulate a long-idle consumer, then poll → heartbeat resets to ~now.
         consumer._last_poll_monotonic -= 120
         assert consumer.seconds_since_last_poll() > 100
@@ -286,7 +286,7 @@ class TestPollHeartbeat:
         # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
         # but fail here.
         client = MagicMock()
-        consumer = PgQueueConsumer("q", client=client)
+        consumer = PgQueueConsumer(["q"], client=client)
         before = consumer._last_poll_monotonic
         seen: dict[str, float] = {}
         client.read.side_effect = lambda *a, **k: (
@@ -297,21 +297,21 @@ class TestPollHeartbeat:
         assert seen["during"] > before  # refreshed BEFORE read ran, not after
 
     def test_is_poll_stale_threshold(self):
-        consumer = PgQueueConsumer("q", client=MagicMock())
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
         consumer._last_poll_monotonic -= 120  # last poll 120s ago
         assert consumer.is_poll_stale(60) is True  # past threshold → stale
         assert consumer.is_poll_stale(200) is False  # within threshold → fresh
 
     def test_fresh_consumer_is_not_stale(self):
         # Seeded at construction, so a just-started consumer reads healthy.
-        consumer = PgQueueConsumer("q", client=MagicMock())
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
         assert consumer.is_poll_stale(60) is False
 
     def test_health_server_disabled_without_port(self):
         # No port configured → no server bound (opt-in).
         from queue_backend.pg_queue.consumer import _maybe_start_health_server
 
-        consumer = PgQueueConsumer("q", client=MagicMock())
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
         assert _maybe_start_health_server(consumer, port=None, stale_after=60) is None
 
     def test_liveness_server_reports_200_then_503(self):
@@ -323,7 +323,7 @@ class TestPollHeartbeat:
 
         from queue_backend.pg_queue.consumer import LivenessServer
 
-        consumer = PgQueueConsumer("q", client=MagicMock())
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
         server = LivenessServer(consumer, port=0, stale_after=60)
         server.start()
         try:
@@ -349,7 +349,7 @@ class TestPollHeartbeat:
 
         from queue_backend.pg_queue.consumer import LivenessServer
 
-        consumer = PgQueueConsumer("q", client=MagicMock())
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
         server = LivenessServer(consumer, port=0, stale_after=60)
         server.start()
         try:
@@ -367,7 +367,7 @@ class TestPollHeartbeat:
     def test_double_start_is_rejected(self):
         from queue_backend.pg_queue.consumer import LivenessServer
 
-        server = LivenessServer(PgQueueConsumer("q", client=MagicMock()), port=0, stale_after=60)
+        server = LivenessServer(PgQueueConsumer(["q"], client=MagicMock()), port=0, stale_after=60)
         server.start()
         try:
             with pytest.raises(RuntimeError, match="already started"):
@@ -391,7 +391,7 @@ class TestConsumerIntegration:
                 queue_name,
                 to_payload("test_pg_consumer.ok", args=[5], kwargs={"y": 6}),
             )
-            claimed = PgQueueConsumer(queue_name, client=pg_client).poll_once()
+            claimed = PgQueueConsumer([queue_name], client=pg_client).poll_once()
             assert claimed == 1
             assert (5, 6) in _calls  # task actually executed off Postgres
             # Row was acked (deleted) — nothing left to claim.
@@ -402,6 +402,66 @@ class TestConsumerIntegration:
                     "DELETE FROM pg_queue_message WHERE queue_name = %s", (queue_name,)
                 )
             pg_client.conn.commit()
+
+
+class TestMultiQueue:
+    """9f: one consumer drains several queues round-robin."""
+
+    def test_round_robin_reads_each_queue_and_aggregates(self):
+        client = MagicMock()
+        # qa → 2 msgs, qb → 1 msg; poll_once returns the total across both.
+        client.read.side_effect = [
+            [_msg(1, _ok_payload(1)), _msg(2, _ok_payload(2))],
+            [_msg(3, _ok_payload(3))],
+        ]
+        claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
+        assert claimed == 3
+        # Read once per queue, in order.
+        assert [c.args[0] for c in client.read.call_args_list] == ["qa", "qb"]
+
+    def test_empty_queue_does_not_starve_the_others(self):
+        client = MagicMock()
+        client.read.side_effect = [[], [_msg(1, _ok_payload(1))]]
+        assert PgQueueConsumer(["empty", "busy"], client=client).poll_once() == 1
+
+    def test_rejects_empty_queue_list(self):
+        with pytest.raises(ValueError, match="queue_names"):
+            PgQueueConsumer([], client=MagicMock())
+
+    def test_one_queue_failing_does_not_abort_the_others(self):
+        """A read failure on one queue is isolated: the already-acked work this
+        cycle still counts (so run() doesn't take the empty backoff path), and
+        the failure doesn't propagate out of poll_once."""
+        client = MagicMock()
+        client.read.side_effect = [[_msg(1, _ok_payload(1))], RuntimeError("boom")]
+        claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
+        assert claimed == 1  # qa's message counted despite qb raising
+        assert _calls == [(1, 0)]  # qa task body ran
+        client.delete.assert_called_once_with(1)  # qa acked
+
+    def test_read_uses_batch_size_qty_per_queue(self):
+        client = MagicMock()
+        client.read.return_value = []
+        PgQueueConsumer(["qa", "qb"], client=client, batch_size=2).poll_once()
+        assert [c.kwargs["qty"] for c in client.read.call_args_list] == [2, 2]
+
+    def test_duplicate_queues_are_deduped(self):
+        """A duplicate (e.g. env "q,q") must not double-read the same queue."""
+        client = MagicMock()
+        client.read.return_value = []
+        consumer = PgQueueConsumer(["q", "q"], client=client)
+        assert consumer.queue_names == ["q"]
+        consumer.poll_once()
+        assert client.read.call_count == 1
+
+
+def test_parse_queue_list():
+    from queue_backend.pg_queue.consumer import _parse_queue_list
+
+    assert _parse_queue_list("a") == ["a"]  # single value → one-element (back-compat)
+    assert _parse_queue_list("a,b,c") == ["a", "b", "c"]
+    assert _parse_queue_list(" a , b ,c ") == ["a", "b", "c"]  # whitespace stripped
+    assert _parse_queue_list("a,,b") == ["a", "b"]  # empties dropped
 
 
 if __name__ == "__main__":
