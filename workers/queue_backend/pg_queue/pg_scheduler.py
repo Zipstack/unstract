@@ -111,13 +111,18 @@ def _quiesce_invalid_cron(conn: PgConnection, schedule: _DueSchedule) -> None:
         schedule.cron_string,
         schedule.pipeline_id,
     )
-    with contextlib.suppress(Exception):
+    try:
         with conn.cursor() as cur:
             cur.execute(
                 "UPDATE pg_periodic_schedule SET enabled = FALSE WHERE pipeline_id = %s",
                 (schedule.pipeline_id,),
             )
         conn.commit()
+    except Exception:
+        # If the disable UPDATE fails, roll back so the connection isn't left in
+        # an aborted-transaction state that would poison the next row's INSERT.
+        with contextlib.suppress(Exception):
+            conn.rollback()
 
 
 def dispatch_due_schedules(conn: PgConnection) -> int:

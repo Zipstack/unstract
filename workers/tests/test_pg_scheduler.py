@@ -211,7 +211,9 @@ class TestDispatchDueSchedules:
         pid = _seed(conn, pg_owned=True, enabled=True, next_run_at=past)
 
         # The per-row failure is swallowed (isolation), so dispatch returns 0.
-        fired = dispatch_due_schedules(_AdvanceFailsConn(conn))
+        # Fail the fire-path advance (the only UPDATE setting last_run_at).
+        proxy = _FailingConn(conn, lambda sql: "last_run_at" in sql)
+        fired = dispatch_due_schedules(proxy)
 
         assert fired == 0
         assert _queued_messages(conn) == []  # INSERT rolled back with the UPDATE
@@ -219,25 +221,44 @@ class TestDispatchDueSchedules:
         assert last_run is None  # not advanced
         assert next_run == past  # unchanged → re-fires next tick (no double-fire)
 
+    def test_quiesce_failure_does_not_poison_next_row(self, clean):
+        """If disabling a bad-cron row fails, the rollback must leave the conn
+        clean so a following healthy row still fires (greptile P1)."""
+        conn = clean
+        past = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+        _seed(conn, pg_owned=True, enabled=True, next_run_at=past, cron="garbage")
+        good = _seed(conn, pg_owned=True, enabled=True, next_run_at=past)
 
-class _AdvanceFailsConn:
-    """Wraps a real connection so the fire-path advance UPDATE raises *after* the
-    INSERT — to prove the two are one transaction. Everything else passes through.
+        # Make the bad-cron disable UPDATE fail; the good row must still fire.
+        proxy = _FailingConn(conn, lambda sql: "enabled = FALSE" in sql)
+        dispatch_due_schedules(proxy)
+
+        msgs = _queued_messages(conn)
+        assert len(msgs) == 1
+        assert msgs[0]["args"][4] == good
+
+
+class _FailingConn:
+    """Wraps a real connection so an ``execute`` whose SQL matches ``fail_when``
+    raises — to prove a statement failure rolls back cleanly. Everything else
+    (commit/rollback/other statements) passes through to the real connection.
     """
 
-    def __init__(self, real):
+    def __init__(self, real, fail_when):
         self._real = real
+        self._fail_when = fail_when
 
     def __getattr__(self, name):
         return getattr(self._real, name)  # commit / rollback / etc.
 
     def cursor(self):
-        return _AdvanceFailsCursor(self._real.cursor())
+        return _FailingCursor(self._real.cursor(), self._fail_when)
 
 
-class _AdvanceFailsCursor:
-    def __init__(self, cur):
+class _FailingCursor:
+    def __init__(self, cur, fail_when):
         self._cur = cur
+        self._fail_when = fail_when
 
     def __enter__(self):
         self._cur.__enter__()
@@ -250,7 +271,6 @@ class _AdvanceFailsCursor:
         return getattr(self._cur, name)  # fetchone / fetchall / etc.
 
     def execute(self, sql, params=None):
-        # The fire-path advance is the only UPDATE that sets last_run_at.
-        if sql.strip().startswith("UPDATE pg_periodic_schedule") and "last_run_at" in sql:
-            raise psycopg2.OperationalError("forced advance failure")
+        if self._fail_when(sql):
+            raise psycopg2.OperationalError("forced failure")
         return self._cur.execute(sql, params)
