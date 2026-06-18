@@ -227,3 +227,48 @@ class PgBarrierState(models.Model):
             # Drives the (future) periodic expiry-sweep job.
             models.Index(fields=["expires_at"], name="pg_barrier_expires_idx"),
         ]
+
+
+class PgPeriodicSchedule(models.Model):
+    """Inert mirror of a scheduled pipeline's cron definition (Phase 9, ②a).
+
+    One row per scheduled pipeline (keyed by ``pipeline_id``), dual-written
+    alongside the existing ``django_celery_beat`` ``PeriodicTask`` whenever a
+    pipeline schedule is created/updated/paused/resumed/deleted. It exists so a
+    future PG-backed scheduler — folded into the leader-elected reaper loop —
+    can fire due schedules without Celery Beat.
+
+    **Nothing reads this table yet.** This slice only keeps it in sync; the
+    scheduler tick (SELECT due → enqueue ``execute_pipeline_task`` → recompute
+    ``next_run_at``) lands in the next slice, which owns all cron computation.
+    ``last_run_at`` / ``next_run_at`` are therefore left NULL here.
+
+    Managed=True / generated migration, extension-free (UN-3533), same posture
+    as ``PgBarrierState``.
+    """
+
+    # Mirrors the Pipeline PK; also the PeriodicTask ``name`` (str of this UUID).
+    pipeline_id = models.UUIDField(primary_key=True)
+    # Owning org — needed to rebuild the ``execute_pipeline_task`` args when the
+    # scheduler fires. "" = unknown. Same no-NULL-text convention as elsewhere.
+    organization_id = models.TextField(blank=True, default="")
+    workflow_id = models.UUIDField(null=True, blank=True)
+    pipeline_name = models.TextField(blank=True, default="")
+    cron_string = models.TextField()
+    # Mirrors PeriodicTask.enabled (pipeline.active / pause / resume).
+    enabled = models.BooleanField(default=True)
+    # Owned by the scheduler tick (next slice); NULL until then.
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    next_run_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "pg_periodic_schedule"
+        indexes = [
+            # Drives the (future) "due schedules" dequeue in the scheduler tick.
+            models.Index(
+                fields=["enabled", "next_run_at"],
+                name="pg_periodic_schedule_due_idx",
+            ),
+        ]

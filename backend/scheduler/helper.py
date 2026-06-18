@@ -15,6 +15,7 @@ from scheduler.tasks import (
     delete_periodic_task,
     disable_task,
     enable_task,
+    mirror_periodic_schedule_upsert,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +60,18 @@ class SchedulerHelper:
                 False,
                 str(name),
             ],
+            enabled=pipeline.active,
+        )
+        # Inert PG mirror (Phase 9, ②a): sourced from the Pipeline object here so
+        # it stores the real pipeline_name + ids (the PeriodicTask args carry the
+        # synthetic "Pipeline job-<id>" label at index 6, not the user name).
+        # Best-effort — never raises, so Beat scheduling is unaffected.
+        mirror_periodic_schedule_upsert(
+            pipeline_id=str(pipeline.pk),
+            organization_id=organization_id or "",
+            workflow_id=str(workflow_id),
+            pipeline_name=pipeline.pipeline_name,
+            cron_string=cron_string,
             enabled=pipeline.active,
         )
 
