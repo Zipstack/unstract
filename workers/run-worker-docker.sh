@@ -574,7 +574,11 @@ case "${1:-}" in
         print_status $RED "Unrecognized PG-queue command: '$1' (did you mean pg-queue-consumer / pg-queue-reaper?)."
         exit 1
         ;;
-    # Any other token intentionally falls through to the Celery command logic below.
+    *)
+        # Not a PG-queue command — intentionally fall through to the Celery
+        # command logic below (handles every existing worker type + full
+        # Celery commands).
+        ;;
 esac
 
 # Two-path logic: Full Celery command vs Traditional worker type
