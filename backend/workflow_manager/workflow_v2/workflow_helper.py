@@ -510,17 +510,22 @@ class WorkflowHelper:
             log_events_id = StateStore.get(Common.LOG_EVENTS_ID)
             # Resolve the transport this execution rides (9e) and carry it in the
             # task payload — the pipeline reads it to stay on one transport
-            # end-to-end. PR 1 always resolves "celery" (no behaviour change).
+            # end-to-end. Flipt (gated by the env master-switch) decides; fails
+            # closed to "celery".
             #
             # NOTE (deliberate, two resolution sites): transport is resolved here
             # for the API/manual/async paths and separately in
             # internal_api_views.create_workflow_execution for the scheduler
             # path. These are DISTINCT entry paths — never a double-resolution of
-            # the same execution — so today they cannot diverge. PR 3 makes each
-            # an independent Flipt evaluation; before then, both must be funnelled
-            # through a single per-execution chokepoint (so a percentage re-roll
-            # can't split one execution across transports). Tracked for PR 3.
-            transport = resolve_transport()
+            # the same execution. entity_id is execution_id, so each execution
+            # buckets exactly once and can't split across transports even if the
+            # rollout % is re-rolled between the two sites.
+            transport = resolve_transport(
+                execution_id=execution_id,
+                organization_id=org_schema,
+                workflow_id=workflow_id,
+                pipeline_id=pipeline_id,
+            )
             async_execution: AsyncResult = celery_app.send_task(
                 "async_execute_bin",
                 args=[

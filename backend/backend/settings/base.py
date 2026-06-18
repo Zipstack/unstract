@@ -151,6 +151,14 @@ DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract")
 CELERY_BACKEND_DB_NAME = os.environ.get("CELERY_BACKEND_DB_NAME") or DB_NAME
 DEFAULT_ORGANIZATION = "default_org"
 FLIPT_BASE_URL = os.environ.get("FLIPT_BASE_URL", "http://localhost:9005")
+# 9e PG-queue transport master-gate (kill-switch). When not "true",
+# resolve_transport() never consults Flipt and every workflow execution rides
+# Celery — the instant global rollback AND the deploy-ordering safety (stays off
+# until PG consumers are running in the fleet). See
+# workers/queue_backend/pg_queue/9e-design.md §2.
+PG_QUEUE_TRANSPORT_ENABLED = CommonUtils.str_to_bool(
+    os.environ.get("PG_QUEUE_TRANSPORT_ENABLED", "False")
+)
 PLATFORM_HOST = os.environ.get("PLATFORM_SERVICE_HOST", "http://localhost")
 PLATFORM_PORT = os.environ.get("PLATFORM_SERVICE_PORT", 3001)
 PROMPT_HOST = os.environ.get("PROMPT_HOST", "http://localhost")
