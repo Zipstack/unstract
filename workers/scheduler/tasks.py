@@ -82,6 +82,7 @@ def _send_pipeline_status_notification(
             pipeline_id=pipeline_id,
             pipeline_name=pipeline_name,
             notification_payload=notification,
+            execution_id=execution_id,
         )
         logger.info(f"Notification sent successfully for {pipeline_type} {pipeline_id}")
     except Exception as notification_error:

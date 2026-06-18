@@ -6,11 +6,38 @@ import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
+import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { OutputAnalyzerPage } from "../pages/OutputAnalyzerPage.jsx";
 import { SetOrgPage } from "../pages/SetOrgPage.jsx";
 import { ToolIdePage } from "../pages/ToolIdePage.jsx";
 import { useMainAppRoutes } from "./useMainAppRoutes.js";
+
+// Marketplace buyer pages must be reachable at TOP-LEVEL paths: Tackle's
+// post-purchase redirect is one static URL per environment
+// (https://<env>/marketplace-landing?...) and cannot carry a per-buyer
+// :orgName segment. The org-scoped variants under :orgName remain
+// registered in useMainAppRoutes for in-app navigation; these top-level
+// routes are the marketplace entry points. The landing page handles its
+// own auth (redirects unauthenticated buyers through signup preserving
+// the query params), so they sit outside RequireAuth.
+let MarketplaceLandingEntry;
+let MarketplaceStripeConflictEntry;
+try {
+  const marketplaceMod = await import("../plugins/marketplace");
+  MarketplaceLandingEntry = marketplaceMod.MarketplaceLandingPage;
+  MarketplaceStripeConflictEntry = marketplaceMod.MarketplaceStripeConflictPage;
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent.
+  if (!isModuleMissing(err)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[marketplace] Plugin import failed unexpectedly; marketplace " +
+        "entry routes disabled",
+      err,
+    );
+  }
+}
 
 let PublicPromptStudioHelper;
 
@@ -167,6 +194,18 @@ function Router() {
         )}
         {PaymentSuccessful && (
           <Route path="/payment/success" element={<PaymentSuccessful />} />
+        )}
+        {MarketplaceLandingEntry && (
+          <Route
+            path="/marketplace-landing"
+            element={<MarketplaceLandingEntry />}
+          />
+        )}
+        {MarketplaceStripeConflictEntry && (
+          <Route
+            path="/marketplace-stripe-conflict"
+            element={<MarketplaceStripeConflictEntry />}
+          />
         )}
         {CustomPlanCheckoutPage && (
           <Route

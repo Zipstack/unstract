@@ -7,9 +7,9 @@ proved to preserve the Celery default path.
 Two layers:
 
 1. **dispatch()** must produce the same ``current_app.send_task`` call
-   as the raw idiom used at the two existing dispatch sites:
-   ``shared/patterns/notification/helper.py::send_notification_to_worker``
-   and ``scheduler/tasks.py::_execute_scheduled_workflow``.
+   as the raw Celery idiom — checked against representative
+   ``send_webhook_notification`` and ``async_execute_bin``
+   (``scheduler/tasks.py::_execute_scheduled_workflow``) shapes.
 
 2. **@worker_task** must register a task with the Celery app so that
    functions decorated with it behave identically to ones decorated
@@ -100,9 +100,13 @@ class TestDispatchEquivalence:
         assert result is sentinel
 
     def test_matches_notification_helper_shape(self):
-        """Output mirrors the raw send_task at ``send_notification_to_worker``.
+        """Output mirrors the raw ``send_task`` shape for a notification task.
 
-        Reference call from helper (paraphrased):
+        The callback notification path itself migrated to an HTTP
+        buffer-enqueue in UN-3056; this keeps a representative
+        ``send_webhook_notification`` call as a seam-equivalence reference.
+
+        Reference call shape (paraphrased):
 
             current_app.send_task(
                 "send_webhook_notification",
@@ -276,14 +280,21 @@ class TestPublicSurface:
         import queue_backend
 
         # Phase 6a added Barrier / BarrierHandle / CeleryChordBarrier.
-        # Phase 6b will add a ``get_barrier`` factory when the
-        # ``WORKER_BARRIER_BACKEND`` flag wiring lands.
+        # Phase 6b adds RedisDecrBarrier + barrier_decr_and_check
+        # (registered as a Celery task on import) + the BarrierBackend
+        # enum + the get_barrier factory that the WORKER_BARRIER_BACKEND
+        # env flag drives.
         assert set(queue_backend.__all__) == {
             "Barrier",
+            "BarrierBackend",
             "BarrierHandle",
             "CeleryChordBarrier",
             "FairnessKey",
+            "RedisDecrBarrier",
+            "barrier_abort",
+            "barrier_decr_and_check",
             "dispatch",
+            "get_barrier",
             "worker_task",
         }
 

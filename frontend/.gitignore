@@ -5,6 +5,10 @@
 /.pnp
 .pnp.js
 
+# Bun is the only package manager here. Do not use npm — bun.lock is the source of truth.
+package-lock.json
+yarn.lock
+
 # testing
 /coverage
 

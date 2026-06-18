@@ -5,6 +5,7 @@ import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
+import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { FullPageLayout } from "../layouts/fullpage-payout/FullPageLayout.jsx";
 import { PageLayout } from "../layouts/page-layout/PageLayout.jsx";
 import { AgencyPage } from "../pages/AgencyPage.jsx";
@@ -130,12 +131,7 @@ try {
   // Expected in OSS builds where the cloud plugin is absent. Surface
   // anything that isn't a missing-module error so syntax/runtime
   // failures inside the plugin don't silently disable the route.
-  const msg = err?.message || "";
-  const isModuleMissing =
-    err?.code === "MODULE_NOT_FOUND" ||
-    msg.includes("Failed to fetch dynamically imported module") ||
-    msg.includes("Cannot find module");
-  if (!isModuleMissing) {
+  if (!isModuleMissing(err)) {
     // eslint-disable-next-line no-console
     console.error(
       "[prompt-change-indicator] ReadOnlyReviewPage import failed unexpectedly",
@@ -168,11 +164,44 @@ try {
   // Do nothing, Not-found Page will be triggered.
 }
 
+let MarketplaceLandingPage;
+let MarketplaceStripeConflictPage;
+try {
+  const mod = await import("../plugins/marketplace");
+  MarketplaceLandingPage = mod.MarketplaceLandingPage;
+  MarketplaceStripeConflictPage = mod.MarketplaceStripeConflictPage;
+} catch (err) {
+  // Expected in OSS builds where the cloud plugin is absent. Surface
+  // anything that isn't a missing-module error so syntax/runtime
+  // failures inside the plugin don't silently de-register the routes.
+  // (See isModuleMissing for the browser-classification limitation.)
+  if (!isModuleMissing(err)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      "[marketplace] Plugin import failed unexpectedly; marketplace " +
+        "routes disabled",
+      err,
+    );
+  }
+}
+
 function useMainAppRoutes() {
   const routes = (
     <>
       <Route path=":orgName" element={<FullPageLayout />}>
         <Route path="onboard" element={<OnBoardPage />} />
+        {MarketplaceLandingPage && (
+          <Route
+            path="marketplace-landing"
+            element={<MarketplaceLandingPage />}
+          />
+        )}
+        {MarketplaceStripeConflictPage && (
+          <Route
+            path="marketplace-stripe-conflict"
+            element={<MarketplaceStripeConflictPage />}
+          />
+        )}
       </Route>
       {ChatAppLayout && ChatAppPage && (
         <Route path=":orgName" element={<ChatAppLayout />}>

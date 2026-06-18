@@ -78,7 +78,7 @@ class PipelineViewSet(ResourceShareManagementMixin, viewsets.ModelViewSet):
         if search:
             queryset = queryset.filter(pipeline_name__icontains=search)
 
-        # Exact-match name filter for migration SDK's get-or-create flow.
+        # Exact-match lookup (distinct from the icontains search above).
         pipeline_name = self.request.query_params.get(PK.PIPELINE_NAME)
         if pipeline_name:
             queryset = queryset.filter(pipeline_name=pipeline_name)

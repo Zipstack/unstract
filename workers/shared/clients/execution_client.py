@@ -265,6 +265,8 @@ class ExecutionAPIClient(BaseAPIClient):
         status: str | TaskStatus,
         error_message: str | None = None,
         total_files: int | None = None,
+        successful_files: int | None = None,
+        failed_files: int | None = None,
         attempts: int | None = None,
         execution_time: float | None = None,
         organization_id: str | None = None,
@@ -276,6 +278,8 @@ class ExecutionAPIClient(BaseAPIClient):
             status: New status (TaskStatus enum or string)
             error_message: Optional error message
             total_files: Optional total files count
+            successful_files: Optional count of files that completed successfully
+            failed_files: Optional count of files that errored
             attempts: Optional attempts count
             execution_time: Optional execution time
             organization_id: Optional organization ID override
@@ -292,6 +296,10 @@ class ExecutionAPIClient(BaseAPIClient):
             data["error_message"] = error_message
         if total_files is not None:
             data["total_files"] = total_files
+        if successful_files is not None:
+            data["successful_files"] = successful_files
+        if failed_files is not None:
+            data["failed_files"] = failed_files
         if attempts is not None:
             data["attempts"] = attempts
         if execution_time is not None:
