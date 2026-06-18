@@ -52,7 +52,7 @@ PG_QUEUE_FLAG_KEY = "pg_queue_execution_enabled"
 def resolve_transport(
     *,
     execution_id: str | UUID,
-    organization_id: str | UUID,
+    organization_id: str | UUID | None,
     workflow_id: str | UUID | None = None,
     pipeline_id: str | UUID | None = None,
 ) -> str:
@@ -69,8 +69,9 @@ def resolve_transport(
             execution is resolved exactly once).
         organization_id: The org's string identifier
             (``Organization.organization_id`` — the ``X-Organization-ID`` header
-            value, *not* the DB pk). Carried in the Flipt ``context`` for per-org
-            segment rollouts.
+            value, *not* the DB pk). May be ``None`` on the helper path
+            (``StateStore`` not populated) → resolves to celery. Carried in the
+            Flipt ``context`` for per-org segment rollouts.
         workflow_id: Optional, carried in ``context`` for future segment rules.
         pipeline_id: Optional, carried in ``context`` for future segment rules.
 
@@ -105,8 +106,9 @@ def resolve_transport(
     # FliptClient returns False for ALL flags when the service is marked
     # unavailable — indistinguishable from "rollout says no". Surface it loudly so
     # a blind Flipt under an ON gate doesn't masquerade as a healthy 100%-Celery
-    # canary. (Mirrors FliptClient's own FLIPT_SERVICE_AVAILABLE env read.)
-    if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").strip().lower() != "true":
+    # canary. Parse exactly as FliptClient does (``.lower()``, no ``.strip()``)
+    # so the two can never disagree on a value like ``" true"``.
+    if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
         logger.warning(
             "resolve_transport: gate ON but FLIPT_SERVICE_AVAILABLE != true "
             "(Flipt is blind) for execution %s; forcing celery",
