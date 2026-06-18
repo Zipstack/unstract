@@ -13,7 +13,7 @@ classifiers = [
 ]
 
 dependencies = [
-    "Authlib==1.2.1", # For Auth plugins
+    "Authlib==1.6.12", # For Auth plugins
     "boto3~=1.34.0", # For Unstract-cloud-storage
     "celery[amqp]>=5.3.4", # For Celery
     "cron-descriptor==1.4.0", # For cron string description
