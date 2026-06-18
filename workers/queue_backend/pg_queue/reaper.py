@@ -490,8 +490,10 @@ class PgReaper:
             self._discard_owned_sweep_conn()
             raise
         # Orchestrator's second job: fire due PG-owned schedules (Beat
-        # replacement). Runs after recovery so a scheduler error can't block the
-        # recovery net. Dark by default — fires nothing until rows are pg_owned.
+        # replacement). Ordered AFTER recovery so this cycle's recovery has
+        # already completed before any scheduler error can propagate (the except
+        # below still re-raises + discards the conn). Dark by default — fires
+        # nothing until rows are pg_owned.
         try:
             dispatch_due_schedules(self._get_sweep_conn())
         except Exception:

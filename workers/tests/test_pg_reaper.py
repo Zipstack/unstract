@@ -229,6 +229,25 @@ class TestSchedulerTick:
             reaper.tick()
         assert order == ["recover", "schedule"]
 
+    def test_scheduler_error_discards_owned_conn(self, stub_scheduler_tick):
+        # A scheduler DB error must propagate (run() catches + continues) AND
+        # discard the owned sweep conn — same posture as a failed recovery.
+        # sweep_conn=None → owned; api_client=object() so _get_api_client doesn't
+        # build a real one (both are evaluated to call the patched recovery).
+        reaper = PgReaper(
+            _FakeLease(acquires=True, renews=True),
+            interval_seconds=0.01,
+            api_client=object(),
+        )
+        owned = MagicMock()
+        owned.closed = False  # so _get_sweep_conn returns it, doesn't reconnect
+        reaper._sweep_conn = owned
+        stub_scheduler_tick.side_effect = psycopg2.OperationalError("db gone")
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            with pytest.raises(psycopg2.OperationalError):
+                reaper.tick()
+        assert reaper._sweep_conn is None  # discarded
+
 
 # --- Layer 3: connection handling (mocked, no DB) ---
 

@@ -260,10 +260,13 @@ class PgPeriodicSchedule(models.Model):
     # Mirrors PeriodicTask.enabled (pipeline.active / pause / resume).
     enabled = models.BooleanField(default=True)
     # Per-schedule rollout switch. The PG scheduler fires a row ONLY when this is
-    # True; when a schedule is pg_owned its Celery Beat PeriodicTask is disabled
-    # (done by the ramp control — next slice) so it fires from exactly one side,
-    # never both. Default False = Beat owns it (no PG firing) → migrating is a
-    # reversible per-schedule flip, and the table is inert until handed over.
+    # True. The no-double-fire guarantee with Celery Beat is CONDITIONAL on the
+    # matching Beat PeriodicTask being disabled when a schedule is handed over —
+    # that's the ②c ramp control, which does not exist yet. Until it lands,
+    # safety rests on this defaulting to False: nothing is pg_owned, so the PG
+    # scheduler fires nothing and Beat fires everything. Flipping a row True while
+    # its PeriodicTask is still enabled WOULD double-fire — the ramp control must
+    # do both atomically. Migrating is then a reversible per-schedule flip.
     pg_owned = models.BooleanField(default=False)
     # Owned by the scheduler tick. NULL next_run_at = "record a baseline next
     # time, don't fire this cycle" (avoids a burst when a schedule is handed over).
