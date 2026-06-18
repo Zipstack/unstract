@@ -238,10 +238,12 @@ class PgPeriodicSchedule(models.Model):
     future PG-backed scheduler — folded into the leader-elected reaper loop —
     can fire due schedules without Celery Beat.
 
-    **Nothing reads this table yet.** This slice only keeps it in sync; the
-    scheduler tick (SELECT due → enqueue ``execute_pipeline_task`` → recompute
-    ``next_run_at``) lands in the next slice, which owns all cron computation.
-    ``last_run_at`` / ``next_run_at`` are therefore left NULL here.
+    The PG scheduler tick (folded into the leader-elected reaper loop) fires
+    due rows where ``pg_owned`` is True; rows default to ``pg_owned=False``, so
+    the table stays inert until a schedule is explicitly handed over to Postgres.
+    ``last_run_at`` / ``next_run_at`` are owned by that tick (the dual-write
+    leaves them NULL; a NULL ``next_run_at`` records a baseline on first tick
+    rather than firing immediately).
 
     Managed=True / generated migration, extension-free (UN-3533), same posture
     as ``PgBarrierState``.
@@ -257,7 +259,14 @@ class PgPeriodicSchedule(models.Model):
     cron_string = models.TextField()
     # Mirrors PeriodicTask.enabled (pipeline.active / pause / resume).
     enabled = models.BooleanField(default=True)
-    # Owned by the scheduler tick (next slice); NULL until then.
+    # Per-schedule rollout switch. The PG scheduler fires a row ONLY when this is
+    # True; when a schedule is pg_owned its Celery Beat PeriodicTask is disabled
+    # (done by the ramp control — next slice) so it fires from exactly one side,
+    # never both. Default False = Beat owns it (no PG firing) → migrating is a
+    # reversible per-schedule flip, and the table is inert until handed over.
+    pg_owned = models.BooleanField(default=False)
+    # Owned by the scheduler tick. NULL next_run_at = "record a baseline next
+    # time, don't fire this cycle" (avoids a burst when a schedule is handed over).
     last_run_at = models.DateTimeField(null=True, blank=True)
     next_run_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
@@ -266,9 +275,10 @@ class PgPeriodicSchedule(models.Model):
     class Meta:
         db_table = "pg_periodic_schedule"
         indexes = [
-            # Drives the (future) "due schedules" dequeue in the scheduler tick.
+            # Drives the "due schedules" scan in the scheduler tick:
+            # WHERE pg_owned AND enabled AND (next_run_at IS NULL OR <= now()).
             models.Index(
-                fields=["enabled", "next_run_at"],
+                fields=["pg_owned", "enabled", "next_run_at"],
                 name="pg_periodic_schedule_due_idx",
             ),
         ]

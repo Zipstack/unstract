@@ -58,6 +58,7 @@ from unstract.core.data_models import ExecutionStatus
 from .connection import create_pg_connection
 from .leader_election import LeaderLease, default_worker_id
 from .liveness import LivenessServer as _BaseLivenessServer
+from .pg_scheduler import dispatch_due_schedules
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -485,6 +486,14 @@ class PgReaper:
             reclaimed = len(
                 recover_expired_barriers(self._get_sweep_conn(), self._get_api_client())
             )
+        except Exception:
+            self._discard_owned_sweep_conn()
+            raise
+        # Orchestrator's second job: fire due PG-owned schedules (Beat
+        # replacement). Runs after recovery so a scheduler error can't block the
+        # recovery net. Dark by default — fires nothing until rows are pg_owned.
+        try:
+            dispatch_due_schedules(self._get_sweep_conn())
         except Exception:
             self._discard_owned_sweep_conn()
             raise

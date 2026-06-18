@@ -31,6 +31,18 @@ from queue_backend.pg_queue.reaper import (
     recover_expired_barriers,
 )
 
+# The reaper's leader tick also runs the PG scheduler tick (②b). Its behaviour
+# is covered in test_pg_scheduler.py; stub it here by default so the leadership /
+# recovery / connection tests aren't coupled to a real schedule query on their
+# dummy or barrier-only connections. Tests that assert the wiring opt in via the
+# returned mock.
+@pytest.fixture(autouse=True)
+def stub_scheduler_tick(monkeypatch):
+    mock = MagicMock(return_value=0)
+    monkeypatch.setattr(reaper_mod, "dispatch_due_schedules", mock)
+    return mock
+
+
 # --- Layer 1: env + construction (no DB) ---
 
 
@@ -179,6 +191,43 @@ class TestLeadershipGating:
                 reaper.run(install_signals=False)  # must not propagate
         assert calls["n"] == 1
         logexc.assert_called_once()
+
+
+class TestSchedulerTick:
+    """The orchestrator's second job: the leader (and only the leader) runs the
+    PG scheduler tick each cycle. Scheduling behaviour itself is in
+    test_pg_scheduler.py; here we only assert the wiring + leader gating."""
+
+    def _reaper(self, lease):
+        return PgReaper(
+            lease, interval_seconds=0.01, sweep_conn=object(), api_client=object()
+        )
+
+    def test_leader_runs_scheduler(self, stub_scheduler_tick):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            reaper.tick()
+        stub_scheduler_tick.assert_called_once()
+
+    def test_standby_does_not_run_scheduler(self, stub_scheduler_tick):
+        reaper = self._reaper(_FakeLease(acquires=False))
+        with patch.object(reaper_mod, "recover_expired_barriers"):
+            reaper.tick()
+        stub_scheduler_tick.assert_not_called()
+
+    def test_scheduler_runs_after_recovery(self, stub_scheduler_tick):
+        # Recovery is the safety net — it must run before scheduling so a
+        # scheduler error can't starve it. Assert ordering via a shared call log.
+        order = []
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        stub_scheduler_tick.side_effect = lambda *_: order.append("schedule")
+        with patch.object(
+            reaper_mod,
+            "recover_expired_barriers",
+            side_effect=lambda *_: order.append("recover") or [],
+        ):
+            reaper.tick()
+        assert order == ["recover", "schedule"]
 
 
 # --- Layer 3: connection handling (mocked, no DB) ---

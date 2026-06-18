@@ -55,11 +55,16 @@ readonly PG_ROLE_ORCH_API="pg-orchestrator-api"
 readonly PG_ROLE_ORCH_GENERAL="pg-orchestrator-general"
 readonly PG_ROLE_FILEPROC="pg-fileproc"
 readonly PG_ROLE_CALLBACK="pg-callback"
+readonly PG_ROLE_SCHEDULER="pg-scheduler"
 declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
     ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
     ["$PG_ROLE_FILEPROC"]="file_processing;file_processing,api_file_processing"
     ["$PG_ROLE_CALLBACK"]="callback;file_processing_callback,api_file_processing_callback"
+    # Runs scheduler.tasks.execute_pipeline_task fired by the orchestrator's PG
+    # scheduler tick (Beat replacement). Distinct from the Celery 'scheduler'
+    # worker (which Beat fires onto RabbitMQ).
+    ["$PG_ROLE_SCHEDULER"]="scheduler;scheduler"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
@@ -68,6 +73,7 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_ORCH_GENERAL"]=1
     ["$PG_ROLE_FILEPROC"]=1
     ["$PG_ROLE_CALLBACK"]=1
+    ["$PG_ROLE_SCHEDULER"]=1
 )
 # The Celery transport set: every worker EXCEPT the PG-queue members — the
 # *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
@@ -105,6 +111,7 @@ declare -A WORKERS=(
     ["$PG_ROLE_ORCH_GENERAL"]="$PG_ROLE_ORCH_GENERAL"
     ["$PG_ROLE_FILEPROC"]="$PG_ROLE_FILEPROC"
     ["$PG_ROLE_CALLBACK"]="$PG_ROLE_CALLBACK"
+    ["$PG_ROLE_SCHEDULER"]="$PG_ROLE_SCHEDULER"
     # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
     ["reaper"]="$PG_QUEUE_REAPER_TYPE"
     ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"
@@ -193,6 +200,7 @@ WORKER_TYPE:
     pg-orchestrator-general Run the PG orchestrator consumer for ETL/general execs (celery)
     pg-fileproc           Run the PG fan-out consumer (file_processing + api_file_processing)
     pg-callback           Run the PG callback consumer (file_processing_callback + api_file_processing_callback)
+    pg-scheduler          Run the PG scheduler consumer (runs execute_pipeline_task fired by the orchestrator)
     reaper, pg-queue-reaper Run PG-queue reaper (leader-elected recovery; opt-in)
     pg, pg-queue          Run the whole PG-queue set (the 4 pipeline roles + reaper) together
     all, celery           Run the Celery worker set (all Celery workers; excludes the PG set)
