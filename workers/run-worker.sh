@@ -69,11 +69,11 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_FILEPROC"]=1
     ["$PG_ROLE_CALLBACK"]=1
 )
-# Log-tail alias for the Celery transport: every worker EXCEPT the PG-queue
-# members — the *complement* of the 'pg-queue' tail alias, so the two
-# transports' logs can be tailed separately (-L celery vs -L pg-queue).
-# Tail-only — there is no 'celery' run alias; this set is started via 'all',
-# which by design omits the opt-in PG-queue workers.
+# The Celery transport set: every worker EXCEPT the PG-queue members — the
+# *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
+# separately (-L celery vs -L pg-queue). Since 9f, 'celery' is BOTH a -L tail
+# alias AND a run alias (WORKERS maps it to "all" → run_all_workers), symmetric
+# with 'pg'; 'all' remains its synonym. Either way it omits the opt-in PG workers.
 readonly CELERY_SET="celery"
 
 # Available workers
@@ -192,7 +192,7 @@ WORKER_TYPE:
     pg-orchestrator-api   Run the PG orchestrator consumer for API execs (celery_api_deployments)
     pg-orchestrator-general Run the PG orchestrator consumer for ETL/general execs (celery)
     pg-fileproc           Run the PG fan-out consumer (file_processing + api_file_processing)
-    pg-callback           Run the PG callback consumer (file_processing_callback + api_…_callback)
+    pg-callback           Run the PG callback consumer (file_processing_callback + api_file_processing_callback)
     reaper, pg-queue-reaper Run PG-queue reaper (leader-elected recovery; opt-in)
     pg, pg-queue          Run the whole PG-queue set (the 4 pipeline roles + reaper) together
     all, celery           Run the Celery worker set (all Celery workers; excludes the PG set)
@@ -840,7 +840,9 @@ run_worker() {
         # ("<type>;<queues>"); the generic pg-queue-consumer reads them from env
         # (default source worker = notification, the first migrated leaf task).
         if [[ -n "$pg_consumer_role" ]]; then
-            export WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE="${pg_consumer_role%%;*}"
+            # Plain assignment — the line below is the single export point (its
+            # :- default/override is load-bearing for the generic consumer path).
+            WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE="${pg_consumer_role%%;*}"
             queues="${pg_consumer_role#*;}"
         fi
         export WORKER_PG_QUEUE_CONSUMER_QUEUE="$queues"
@@ -875,9 +877,10 @@ run_worker() {
     # Change to appropriate directory
     # For pluggable workers, stay at workers root to allow module imports
     # For core workers, change to worker directory
-    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" || "$worker_type" == "$PG_QUEUE_CONSUMER_TYPE" || "$worker_type" == "$PG_QUEUE_REAPER_TYPE" || -n "${PG_CONSUMER_ROLES[$worker_type]:-}" ]]; then
+    if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" || -n "${PG_QUEUE_MEMBERS[$worker_type]:-}" ]]; then
         # Run from the workers root so `python -m pg_queue_consumer` /
-        # `python -m pg_queue_reaper` (and what they import) resolve.
+        # `python -m pg_queue_reaper` (and what they import) resolve. PG_QUEUE_MEMBERS
+        # is the single source of truth for "which workers are PG-queue members".
         cd "$WORKERS_DIR"
     else
         cd "$worker_dir"
@@ -973,7 +976,7 @@ run_all_workers() {
     fi
 }
 
-# Function to run the PG-queue worker set (consumer + reaper) together.
+# Function to run the PG-queue worker set (the 4 pipeline roles + reaper) together.
 # A set is multiple processes, so — like 'all' — it ALWAYS runs detached
 # (it ignores -d/--detach; there's no foreground form). The PG-queue counterpart
 # to 'all' (the Celery set): run both for a dual-transport (strangler-fig) setup.
@@ -986,8 +989,9 @@ run_pg_queue_set() {
     local concurrency=$2
     local pool_type=$3
 
-    # The set = the named pipeline consumer roles (9f) + the reaper. Each role is
-    # a multi-queue consumer covering ETL+API for its stage (fan-out / callback).
+    # The set = the named pipeline consumer roles (9f) + the reaper. The fan-out
+    # and callback roles are multi-queue (ETL+API); the two orchestrator roles
+    # each bind a single registry-specific queue (see PG_CONSUMER_ROLES).
     local members=("${!PG_CONSUMER_ROLES[@]}" "$PG_QUEUE_REAPER_TYPE")
     print_status $GREEN "Starting PG-queue set (${members[*]})..."
     local failed=0
@@ -1007,10 +1011,15 @@ run_pg_queue_set() {
         # Don't leave a survivor: a restart-on-failure relaunch would spawn a
         # second instance on top of it (a consumer would double-poll Postgres).
         # Kill all members (a crashed one is already gone → no-op). Same
-        # all-or-nothing discipline as the restart path.
+        # all-or-nothing discipline as the restart path — aggregate kill failures
+        # so a survivor (would double-poll Postgres) is surfaced, not silent.
+        local teardown_failed=0
         for worker in "${members[@]}"; do
-            kill_one_worker "$worker"
+            kill_one_worker "$worker" || teardown_failed=1
         done
+        if [[ $teardown_failed -ne 0 ]]; then
+            print_status $RED "PG-queue set: a member survived SIGKILL during teardown — check for a duplicate consumer double-polling Postgres"
+        fi
         show_status
         return 1
     fi
@@ -1148,8 +1157,12 @@ if [[ "$RESTART_MODE" == "true" ]]; then
         # consumer would double-poll Postgres. Mirrors kill_workers' discipline.
         print_status $BLUE "Restarting PG-queue set..."
         restart_failed=0
-        kill_one_worker "$PG_QUEUE_CONSUMER_TYPE" || restart_failed=1
-        kill_one_worker "$PG_QUEUE_REAPER_TYPE" || restart_failed=1
+        # Kill the SAME members run_pg_queue_set launches (the named roles +
+        # reaper) — not the generic consumer — or a survivor + relaunch would
+        # double-poll Postgres.
+        for pg_member in "${!PG_CONSUMER_ROLES[@]}" "$PG_QUEUE_REAPER_TYPE"; do
+            kill_one_worker "$pg_member" || restart_failed=1
+        done
         if [[ $restart_failed -ne 0 ]]; then
             print_status $RED "Cannot restart PG-queue set: a member survived SIGKILL; aborting to avoid duplicate processes"
             exit 1

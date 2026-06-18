@@ -428,6 +428,32 @@ class TestMultiQueue:
         with pytest.raises(ValueError, match="queue_names"):
             PgQueueConsumer([], client=MagicMock())
 
+    def test_one_queue_failing_does_not_abort_the_others(self):
+        """A read failure on one queue is isolated: the already-acked work this
+        cycle still counts (so run() doesn't take the empty backoff path), and
+        the failure doesn't propagate out of poll_once."""
+        client = MagicMock()
+        client.read.side_effect = [[_msg(1, _ok_payload(1))], RuntimeError("boom")]
+        claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
+        assert claimed == 1  # qa's message counted despite qb raising
+        assert _calls == [(1, 0)]  # qa task body ran
+        client.delete.assert_called_once_with(1)  # qa acked
+
+    def test_read_uses_batch_size_qty_per_queue(self):
+        client = MagicMock()
+        client.read.return_value = []
+        PgQueueConsumer(["qa", "qb"], client=client, batch_size=2).poll_once()
+        assert [c.kwargs["qty"] for c in client.read.call_args_list] == [2, 2]
+
+    def test_duplicate_queues_are_deduped(self):
+        """A duplicate (e.g. env "q,q") must not double-read the same queue."""
+        client = MagicMock()
+        client.read.return_value = []
+        consumer = PgQueueConsumer(["q", "q"], client=client)
+        assert consumer.queue_names == ["q"]
+        consumer.poll_once()
+        assert client.read.call_count == 1
+
 
 def test_parse_queue_list():
     from queue_backend.pg_queue.consumer import _parse_queue_list

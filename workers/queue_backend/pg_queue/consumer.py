@@ -100,10 +100,14 @@ class PgQueueConsumer:
         if not queue_names:
             raise ValueError("queue_names must be a non-empty list")
         # One process can drain several queues (9f) — e.g. a file_processing
-        # consumer drains both file_processing and api_file_processing. Polled
-        # round-robin so the per-queue (queue_name, priority DESC, msg_id) dequeue
-        # index keeps its top-N efficiency and no queue starves another.
-        self.queue_names = queue_names
+        # consumer drains both file_processing and api_file_processing. Each is
+        # read once per cycle in list order (poll_once): this prevents starvation
+        # (every queue gets a read each cycle) but does NOT equalize throughput —
+        # an always-full queue_names[0] claims its full batch and runs it before
+        # later queues. Copy + de-dup (order-preserving): a duplicate would
+        # double-read a queue per cycle, and storing the caller's list by
+        # reference would let a later mutation bypass the non-empty validation.
+        self.queue_names = list(dict.fromkeys(queue_names))
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app
         self.batch_size = batch_size
@@ -120,18 +124,30 @@ class PgQueueConsumer:
         self._last_poll_monotonic = time.monotonic()
 
     def poll_once(self) -> int:
-        """Claim + process one batch per queue (round-robin); returns the total
-        number of messages claimed across all queues this cycle.
+        """Claim + process one batch per queue (read once each, in list order);
+        returns the total number of messages claimed across all queues this cycle.
+
+        Each queue is isolated: a read/handle failure on one queue is logged and
+        skipped so the others still get their turn, and the work already done this
+        cycle still counts (so run() doesn't take the empty-queue backoff path
+        after a partial failure).
         """
         self._last_poll_monotonic = time.monotonic()
         total = 0
         for queue_name in self.queue_names:
-            messages = self._client.read(
-                queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
-            )
-            for message in messages:
-                self._handle(message)
-            total += len(messages)
+            try:
+                messages = self._client.read(
+                    queue_name, vt_seconds=self.vt_seconds, qty=self.batch_size
+                )
+                for message in messages:
+                    self._handle(message)
+                total += len(messages)
+            except Exception:
+                logger.exception(
+                    "PG-queue consumer: poll failed for queue %r; "
+                    "continuing with the other queues",
+                    queue_name,
+                )
         return total
 
     def _handle(self, message: QueueMessage) -> None:
@@ -309,9 +325,22 @@ class PgQueueConsumer:
 
 def _parse_queue_list(raw: str) -> list[str]:
     """Comma-separated queue list (9f). A single value stays a one-element list,
-    so the pre-9f single-queue config remains valid.
+    so the pre-9f single-queue config remains valid. Empty entries (a doubled or
+    trailing comma — almost always a config typo) are dropped with a warning so a
+    malformed list is diagnosable from the logs, not just by eyeballing.
     """
-    return [q.strip() for q in raw.split(",") if q.strip()]
+    parts = [q.strip() for q in raw.split(",")]
+    queues = [q for q in parts if q]
+    dropped = len(parts) - len(queues)
+    if dropped:
+        logger.warning(
+            "PG-queue consumer: dropped %d empty queue name(s) from "
+            "WORKER_PG_QUEUE_CONSUMER_QUEUE=%r → %r",
+            dropped,
+            raw,
+            queues,
+        )
+    return queues
 
 
 def main() -> None:
