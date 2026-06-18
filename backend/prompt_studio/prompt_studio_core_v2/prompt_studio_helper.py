@@ -2584,10 +2584,17 @@ class PromptStudioHelper:
             list[dict]: List of prompt configurations
         """
         prompts = PromptStudioHelper.fetch_prompt_from_tool(str(tool.tool_id))
-        return [PromptStudioHelper._export_single_prompt(prompt) for prompt in prompts]
+        # Resolve the plugin once for the whole export, not per prompt.
+        payload_modifier_plugin = get_plugin("payload_modifier")
+        return [
+            PromptStudioHelper._export_single_prompt(prompt, payload_modifier_plugin)
+            for prompt in prompts
+        ]
 
     @staticmethod
-    def _export_single_prompt(prompt: ToolStudioPrompt) -> dict:
+    def _export_single_prompt(
+        prompt: ToolStudioPrompt, payload_modifier_plugin: dict | None = None
+    ) -> dict:
         """Export a single prompt configuration.
 
         Args:
@@ -2621,9 +2628,10 @@ class PromptStudioHelper:
         # Enrich with cloud-only per-prompt settings (table / agentic-table)
         # via the payload_modifier plugin. Pure-OSS (no plugin) is a no-op.
         try:
-            p = get_plugin("payload_modifier")
-            if p:
-                settings = p["service_class"]().export_prompt_settings(prompt)
+            if payload_modifier_plugin:
+                settings = payload_modifier_plugin[
+                    "service_class"
+                ]().export_prompt_settings(prompt)
                 if settings:
                     d["settings"] = settings
         except Exception as e:
