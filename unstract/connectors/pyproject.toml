@@ -22,7 +22,8 @@ classifiers = [
 dependencies = [
     "singleton-decorator~=1.0.0",
     # For GCSHelper
-    "google-auth>=2.22.0",  # >=2.22 drops the urllib3<2 cap
+    # google-auth >= 2.53 no longer depends on urllib3 (2.20 did) — that's what unblocks urllib3 2.x
+    "google-auth>=2.22.0,<3",
     "google-cloud-secret-manager==2.16.1",
     "google-cloud-storage==2.9.0",
     # Filesystem connectors
