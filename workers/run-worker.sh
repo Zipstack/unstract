@@ -227,6 +227,9 @@ EXAMPLES:
     # Run file processing worker in background
     $0 -d file
 
+    # Start BOTH transports in one shot (Celery set + PG set) — use -d so neither blocks
+    $0 -d all pg
+
     # Run with custom environment file
     $0 -e production.env all
 
@@ -421,7 +424,11 @@ get_worker_pids() {
         # role argv so co-running roles (and the generic consumer) don't collide.
         pattern="-m[[:space:]]+${PG_QUEUE_CONSUMER_TYPE}[[:space:]]+${worker_type}([[:space:]]|\$)"
     elif [[ "$worker_type" == "$PG_QUEUE_CONSUMER_TYPE" || "$worker_type" == "$PG_QUEUE_REAPER_TYPE" ]]; then
-        pattern="-m[[:space:]]+${worker_type}([[:space:]]|\$)"
+        # End-anchored so the GENERIC consumer doesn't also match the role
+        # consumers (which run as `... -m pg_queue_consumer <role>`); they have
+        # their own role-anchored pattern above. The reaper takes no role arg, so
+        # the same end anchor matches it cleanly.
+        pattern="-m[[:space:]]+${worker_type}[[:space:]]*\$"
     else
         pattern="[^[:alnum:]_]${worker_type}-worker(@|-)"
     fi
@@ -1014,6 +1021,10 @@ SHOW_STATUS=false
 LOGS_MODE=false
 CLEAR_LOGS_MODE=false
 RESTART_MODE=false
+# Multiple positional worker types may be given (e.g. `all pg` to start both the
+# Celery and PG sets in one shot). WORKER_TYPE stays the first for the
+# single-target paths (-r/validation); the launch path loops WORKER_TYPES.
+WORKER_TYPES=()
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -1079,11 +1090,15 @@ while [[ $# -gt 0 ]]; do
             exit 1
             ;;
         *)
-            WORKER_TYPE="$1"
+            WORKER_TYPES+=("$1")
             shift
             ;;
     esac
 done
+
+# First positional drives the single-target paths (-r, validation messages); the
+# launch path below iterates all of WORKER_TYPES.
+WORKER_TYPE="${WORKER_TYPES[0]:-}"
 
 # Handle special actions
 if [[ "$KILL_WORKERS" == "true" ]]; then
@@ -1143,11 +1158,16 @@ if [[ "$RESTART_MODE" == "true" ]]; then
     fi
 fi
 
-# Validate worker type
-if [[ -z "$WORKER_TYPE" ]]; then
-    print_status $RED "Error: Worker type is required"
-    usage
-    exit 1
+# A worker type is required. (restart-all set WORKER_TYPE=all without a positional
+# → seed WORKER_TYPES from it so the launch loop below has a target.)
+if [[ ${#WORKER_TYPES[@]} -eq 0 ]]; then
+    if [[ -n "$WORKER_TYPE" ]]; then
+        WORKER_TYPES=("$WORKER_TYPE")
+    else
+        print_status $RED "Error: Worker type is required"
+        usage
+        exit 1
+    fi
 fi
 
 # Load environment
@@ -1156,23 +1176,25 @@ load_env "$ENV_FILE"
 # Discover pluggable workers
 discover_pluggable_workers
 
-# Validate worker type (check both core and pluggable workers)
-if [[ -z "${WORKERS[$WORKER_TYPE]}" ]] && [[ -z "${PLUGGABLE_WORKERS[$WORKER_TYPE]}" ]]; then
-    print_status $RED "Error: Unknown worker type: $WORKER_TYPE"
-    print_status $BLUE "Available core workers: ${!WORKERS[*]}"
-    if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
-        # Show unique pluggable worker names (not aliases)
-        pluggable_names=""
-        for key in "${!PLUGGABLE_WORKERS[@]}"; do
-            value="${PLUGGABLE_WORKERS[$key]}"
-            if [[ "$key" == "$value" ]]; then
-                pluggable_names="$pluggable_names $value"
-            fi
-        done
-        print_status $BLUE "Available pluggable workers:$pluggable_names"
+# Validate every requested worker type (core or pluggable) up front.
+for wt in "${WORKER_TYPES[@]}"; do
+    if [[ -z "${WORKERS[$wt]:-}" && -z "${PLUGGABLE_WORKERS[$wt]:-}" ]]; then
+        print_status $RED "Error: Unknown worker type: $wt"
+        print_status $BLUE "Available core workers: ${!WORKERS[*]}"
+        if [[ ${#PLUGGABLE_WORKERS[@]} -gt 0 ]]; then
+            # Show unique pluggable worker names (not aliases)
+            pluggable_names=""
+            for key in "${!PLUGGABLE_WORKERS[@]}"; do
+                value="${PLUGGABLE_WORKERS[$key]}"
+                if [[ "$key" == "$value" ]]; then
+                    pluggable_names="$pluggable_names $value"
+                fi
+            done
+            print_status $BLUE "Available pluggable workers:$pluggable_names"
+        fi
+        exit 1
     fi
-    exit 1
-fi
+done
 
 # Validate environment
 validate_env
@@ -1180,19 +1202,24 @@ validate_env
 # Add PYTHONPATH for imports
 export PYTHONPATH="$WORKERS_DIR:${PYTHONPATH:-}"
 
-# Run the requested worker(s)
-if [[ "$WORKER_TYPE" == "all" ]]; then
-    run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
-elif [[ "${WORKERS[$WORKER_TYPE]:-}" == "$PG_QUEUE_SET" ]]; then
-    # The PG-queue set (consumer + reaper). Always backgrounded (multiple procs).
-    # Propagate a member start-failure to the script exit code — the reaper has
-    # no health port, so this is the only programmatic startup signal.
-    run_pg_queue_set "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE" || exit 1
-else
-    # Resolve worker directory name from either WORKERS or PLUGGABLE_WORKERS
-    WORKER_DIR_NAME="${WORKERS[$WORKER_TYPE]}"
-    if [[ -z "$WORKER_DIR_NAME" ]]; then
-        WORKER_DIR_NAME="${PLUGGABLE_WORKERS[$WORKER_TYPE]}"
-    fi
-    run_worker "$WORKER_DIR_NAME" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$POOL_TYPE" "$CUSTOM_HOSTNAME"
+# Multi-type launches (e.g. `all pg`) must be detached: a non-detached set
+# (run_all_workers) `wait`s on its background jobs and would block any later type.
+if [[ ${#WORKER_TYPES[@]} -gt 1 && "$DETACH" != "true" ]]; then
+    print_status $YELLOW "Multiple worker types given without -d/--detach: a foreground set will block the rest. Re-run with -d to start them all."
 fi
+
+# Run each requested worker / set in turn.
+for wt in "${WORKER_TYPES[@]}"; do
+    if [[ "$wt" == "all" ]]; then
+        run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
+    elif [[ "${WORKERS[$wt]:-}" == "$PG_QUEUE_SET" ]]; then
+        # The PG-queue set (pipeline roles + reaper). Always backgrounded (multiple
+        # procs). Propagate a member start-failure to the script exit code — the
+        # reaper has no health port, so this is the only programmatic startup signal.
+        run_pg_queue_set "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE" || exit 1
+    else
+        # Resolve worker directory name from either WORKERS or PLUGGABLE_WORKERS
+        worker_dir_name="${WORKERS[$wt]:-${PLUGGABLE_WORKERS[$wt]}}"
+        run_worker "$worker_dir_name" "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$CUSTOM_QUEUES" "$HEALTH_PORT" "$POOL_TYPE" "$CUSTOM_HOSTNAME"
+    fi
+done
