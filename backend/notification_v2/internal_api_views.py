@@ -9,17 +9,34 @@ Security Note:
 - These endpoints are not accessible from browsers and don't use session cookies
 """
 
+import json
 import logging
+from datetime import timedelta
+from typing import Any, cast
 
 from api_v2.models import APIDeployment
-from django.http import JsonResponse
+from django.conf import settings
+from django.db import transaction
+from django.db.models import F, Min, QuerySet
+from django.http import HttpRequest, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
-from notification_v2.models import Notification
+from backend.celery_service import app as celery_app
+from notification_v2.clubbed_renderer import MAX_BATCH_SIZE, render_clubbed_message
+from notification_v2.enums import BufferStatus
+from notification_v2.helper import (
+    build_webhook_headers,
+    enqueue,
+    is_failure_run,
+    webhook_url_hash,
+)
+from notification_v2.models import Notification, NotificationBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +44,92 @@ logger = logging.getLogger(__name__)
 INTERNAL_SERVER_ERROR_MSG = "Internal server error"
 
 
+def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
+    """Best-effort lookup; returns None on missing id or unknown row."""
+    if not execution_id:
+        return None
+    try:
+        return cast(WorkflowExecution, WorkflowExecution.objects.get(id=execution_id))
+    except WorkflowExecution.DoesNotExist:
+        # Catch ONLY DoesNotExist: a missing row is the fail-closed case
+        # (_apply_failure_filter then drops notify_on_failures rows). A malformed
+        # id raises ValueError/ValidationError and must keep propagating to the
+        # handler's 500 — do not widen this except, or the two paths collapse.
+        # Strip CR/LF from the query-param id before logging (log-forging guard).
+        logger.warning(
+            "WorkflowExecution %s not found",
+            execution_id.replace("\r", "").replace("\n", ""),
+        )
+        return None
+
+
+def _apply_failure_filter(
+    notifications_qs: QuerySet[Notification],
+    execution: WorkflowExecution | None,
+    execution_id: str | None = None,
+) -> QuerySet[Notification]:
+    """Drop notify_on_failures=True rows on success (or unconfirmable) runs.
+
+    Uses the shared rule in notification_v2.helper.is_failure_run (status ∈
+    {ERROR, STOPPED} OR any file errored), the same rule applied by
+    backend/api_v2/notification.py. The pipeline backend path
+    (backend/pipeline_v2/notification.py) ORs an additional last_run_status
+    backstop on top for the case where no WorkflowExecution exists.
+
+    Three lookup outcomes:
+    - No execution_id requested → no filter, preserving legacy "return every
+      active row" behavior for callers that don't pass execution_id.
+    - execution_id requested but the row is missing (replication lag / a race
+      between the status write and this fetch) → fail CLOSED: drop
+      notify_on_failures rows so a run we cannot confirm as a failure never
+      sends a success alert to a failure-only subscriber. Emits a metric so the
+      rare miss is observable. notify_on_failures=False rows are unaffected.
+    - execution found → apply is_failure_run.
+    """
+    if execution is None:
+        if execution_id:
+            # Strip CR/LF from the query-param id before logging (log-forging
+            # guard, SonarCloud S5145); it is UUID-validated upstream.
+            logger.warning(
+                "metric=notification_failure_filter_fail_closed_total execution_id=%s",
+                execution_id.replace("\r", "").replace("\n", ""),
+            )
+            return notifications_qs.filter(notify_on_failures=False)
+        return notifications_qs
+    if not is_failure_run(execution.status, execution.failed_files):
+        notifications_qs = notifications_qs.filter(notify_on_failures=False)
+    return notifications_qs
+
+
+def _execution_counts(execution: WorkflowExecution | None) -> dict[str, int]:
+    """File counts surfaced into webhook payloads. Empty dict on no execution."""
+    if execution is None:
+        return {}
+    return {
+        "total_files": execution.total_files or 0,
+        "successful_files": execution.successful_files or 0,
+        "failed_files": execution.failed_files or 0,
+    }
+
+
+def _serialize_notification(n: Notification) -> dict[str, Any]:
+    return {
+        "id": str(n.id),
+        "notification_type": n.notification_type,
+        "platform": n.platform,
+        "url": n.url,
+        "authorization_type": n.authorization_type,
+        "authorization_key": n.authorization_key,
+        "authorization_header": n.authorization_header,
+        "max_retries": n.max_retries,
+        "is_active": n.is_active,
+        "notify_on_failures": n.notify_on_failures,
+    }
+
+
 @csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
-def get_pipeline_notifications(request, pipeline_id):
+def get_pipeline_notifications(request: HttpRequest, pipeline_id: str) -> JsonResponse:
     """Get active notifications for a pipeline or API deployment.
 
     Used by callback worker to fetch notification configuration.
@@ -41,83 +141,54 @@ def get_pipeline_notifications(request, pipeline_id):
             pipeline_queryset, request, "organization"
         )
 
+        execution_id = request.GET.get("execution_id")
+        execution = _load_execution(execution_id)
+        counts = _execution_counts(execution)
+
         if pipeline_queryset.exists():
             pipeline = pipeline_queryset.first()
-
-            # Get active notifications for this pipeline
             notifications = Notification.objects.filter(pipeline=pipeline, is_active=True)
-
-            notifications_data = []
-            for notification in notifications:
-                notifications_data.append(
-                    {
-                        "id": str(notification.id),
-                        "notification_type": notification.notification_type,
-                        "platform": notification.platform,
-                        "url": notification.url,
-                        "authorization_type": notification.authorization_type,
-                        "authorization_key": notification.authorization_key,
-                        "authorization_header": notification.authorization_header,
-                        "max_retries": notification.max_retries,
-                        "is_active": notification.is_active,
-                    }
-                )
-
+            notifications = _apply_failure_filter(notifications, execution, execution_id)
+            serialized = [_serialize_notification(n) for n in notifications]
             return JsonResponse(
                 {
                     "status": "success",
                     "pipeline_id": str(pipeline.id),
                     "pipeline_name": pipeline.pipeline_name,
                     "pipeline_type": pipeline.pipeline_type,
-                    "notifications": notifications_data,
+                    "notifications": serialized,
+                    "execution_counts": counts,
                 }
             )
-        else:
-            # If not found in Pipeline, try APIDeployment model
-            api_queryset = APIDeployment.objects.filter(id=pipeline_id)
-            api_queryset = filter_queryset_by_organization(
-                api_queryset, request, "organization"
+
+        # If not found in Pipeline, try APIDeployment model
+        api_queryset = APIDeployment.objects.filter(id=pipeline_id)
+        api_queryset = filter_queryset_by_organization(
+            api_queryset, request, "organization"
+        )
+        if api_queryset.exists():
+            api = api_queryset.first()
+            notifications = Notification.objects.filter(api=api, is_active=True)
+            notifications = _apply_failure_filter(notifications, execution, execution_id)
+            serialized = [_serialize_notification(n) for n in notifications]
+            return JsonResponse(
+                {
+                    "status": "success",
+                    "pipeline_id": str(api.id),
+                    "pipeline_name": api.api_name,
+                    "pipeline_type": "API",
+                    "notifications": serialized,
+                    "execution_counts": counts,
+                }
             )
 
-            if api_queryset.exists():
-                api = api_queryset.first()
-
-                # Get active notifications for this API deployment
-                notifications = Notification.objects.filter(api=api, is_active=True)
-
-                notifications_data = []
-                for notification in notifications:
-                    notifications_data.append(
-                        {
-                            "id": str(notification.id),
-                            "notification_type": notification.notification_type,
-                            "platform": notification.platform,
-                            "url": notification.url,
-                            "authorization_type": notification.authorization_type,
-                            "authorization_key": notification.authorization_key,
-                            "authorization_header": notification.authorization_header,
-                            "max_retries": notification.max_retries,
-                            "is_active": notification.is_active,
-                        }
-                    )
-
-                return JsonResponse(
-                    {
-                        "status": "success",
-                        "pipeline_id": str(api.id),
-                        "pipeline_name": api.api_name,
-                        "pipeline_type": "API",
-                        "notifications": notifications_data,
-                    }
-                )
-            else:
-                return JsonResponse(
-                    {
-                        "status": "error",
-                        "message": "Pipeline or API deployment not found",
-                    },
-                    status=404,
-                )
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "Pipeline or API deployment not found",
+            },
+            status=404,
+        )
     except Exception as e:
         logger.error(f"Error getting pipeline notifications for {pipeline_id}: {e}")
         return JsonResponse(
@@ -127,7 +198,7 @@ def get_pipeline_notifications(request, pipeline_id):
 
 @csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
-def get_api_notifications(request, api_id):
+def get_api_notifications(request: HttpRequest, api_id: str) -> JsonResponse:
     """Get active notifications for an API deployment.
 
     Used by callback worker to fetch notification configuration.
@@ -140,24 +211,10 @@ def get_api_notifications(request, api_id):
         )
         api = get_object_or_404(api_queryset)
 
-        # Get active notifications for this API
+        execution_id = request.GET.get("execution_id")
+        execution = _load_execution(execution_id)
         notifications = Notification.objects.filter(api=api, is_active=True)
-
-        notifications_data = []
-        for notification in notifications:
-            notifications_data.append(
-                {
-                    "id": str(notification.id),
-                    "notification_type": notification.notification_type,
-                    "platform": notification.platform,
-                    "url": notification.url,
-                    "authorization_type": notification.authorization_type,
-                    "authorization_key": notification.authorization_key,
-                    "authorization_header": notification.authorization_header,
-                    "max_retries": notification.max_retries,
-                    "is_active": notification.is_active,
-                }
-            )
+        notifications = _apply_failure_filter(notifications, execution, execution_id)
 
         return JsonResponse(
             {
@@ -165,7 +222,8 @@ def get_api_notifications(request, api_id):
                 "api_id": str(api.id),
                 "api_name": api.api_name,
                 "display_name": api.display_name,
-                "notifications": notifications_data,
+                "notifications": [_serialize_notification(n) for n in notifications],
+                "execution_counts": _execution_counts(execution),
             }
         )
 
@@ -182,7 +240,7 @@ def get_api_notifications(request, api_id):
 
 @csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
-def get_pipeline_data(request, pipeline_id):
+def get_pipeline_data(request: HttpRequest, pipeline_id: str) -> JsonResponse:
     """Get basic pipeline data for notification purposes.
 
     Used by callback worker to determine pipeline type and name.
@@ -218,7 +276,7 @@ def get_pipeline_data(request, pipeline_id):
 
 @csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
 @require_http_methods(["GET"])
-def get_api_data(request, api_id):
+def get_api_data(request: HttpRequest, api_id: str) -> JsonResponse:
     """Get basic API deployment data for notification purposes.
 
     Used by callback worker to determine API name and details.
@@ -250,3 +308,475 @@ def get_api_data(request, api_id):
         return JsonResponse(
             {"status": "error", "message": INTERNAL_SERVER_ERROR_MSG}, status=500
         )
+
+
+# `execution_id` is required except for INPROGRESS, which fires from the
+# scheduler before the WorkflowExecution exists. INPROGRESS rows therefore
+# store execution_id=null — receivers cannot correlate with execution logs
+# until the producer ordering is changed.
+_ENQUEUE_REQUIRED_FIELDS = (
+    "notification_id",
+    "pipeline_id",
+    "pipeline_name",
+    "status",
+    "platform",
+    "execution_id",
+)
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
+@require_http_methods(["POST"])
+def enqueue_notification_buffer(request: HttpRequest) -> JsonResponse:
+    """Buffer one execution event from a callback worker.
+
+    Worker code is model-free: it forwards a notification_id + structured
+    payload here and lets the backend write the NotificationBuffer row.
+    Required fields are validated up front; an INPROGRESS event for a
+    failure-only notification is dropped here, since the GET-side filter
+    cannot see it (no WorkflowExecution exists yet at run start).
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"status": "error", "message": "Invalid JSON body"}, status=400
+        )
+
+    missing_fields = [f for f in _ENQUEUE_REQUIRED_FIELDS if not body.get(f)]
+    # INPROGRESS is the one status legitimately allowed to omit execution_id
+    # (see comment on _ENQUEUE_REQUIRED_FIELDS).
+    if (
+        body.get("status") == Pipeline.PipelineStatus.INPROGRESS
+        and "execution_id" in missing_fields
+    ):
+        missing_fields.remove("execution_id")
+    if missing_fields:
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": f"Missing required fields: {', '.join(missing_fields)}",
+            },
+            status=400,
+        )
+
+    try:
+        notification = Notification.objects.get(id=body["notification_id"])
+    except Notification.DoesNotExist:
+        return JsonResponse(
+            {"status": "error", "message": "Notification not found"}, status=404
+        )
+
+    # INPROGRESS fires from the scheduler before a WorkflowExecution exists,
+    # so the GET-side `_apply_failure_filter` cannot run (no execution → no
+    # filter applied) and returns notify_on_failures=True rows too. Drop the
+    # event here so failure-only subscribers never receive a run-start.
+    if (
+        notification.notify_on_failures
+        and body.get("status") == Pipeline.PipelineStatus.INPROGRESS
+    ):
+        return JsonResponse({"status": "ok", "buffer_row_id": None})
+
+    # type / timestamp / additional_data stay optional during rollout — older
+    # worker builds that don't forward them still produce a usable row; the
+    # single-line clubbed renderer simply omits the missing fields.
+    payload = {
+        "type": body.get("type", ""),
+        "execution_id": body.get("execution_id"),
+        "pipeline_id": body["pipeline_id"],
+        "pipeline_name": body["pipeline_name"],
+        "status": body["status"],
+        "error_message": body.get("error_message"),
+        "platform": body["platform"],
+        "timestamp": body.get("timestamp"),
+        "additional_data": body.get("additional_data") or {},
+    }
+    try:
+        buffer_row = enqueue(notification, payload)
+    except ValueError as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=400)
+
+    return JsonResponse(
+        {"status": "success", "buffer_row_id": str(buffer_row.id)}, status=201
+    )
+
+
+def _mark_buffer_rows(
+    request: HttpRequest, *, target_status: str, metric_result: str
+) -> JsonResponse:
+    """Flip a clubbed dispatch's buffer rows to a terminal state.
+
+    Replaces the old Celery ``link``/``link_error`` callbacks: the notification
+    worker POSTs here on delivery success / retry exhaustion instead of relying
+    on a backend Celery task being registered on the ``celery`` queue (the
+    unified ``-A worker`` that also drains that queue does not register those
+    tasks, so half the callbacks were silently dropped). Only rows still in
+    SENDING and owned by ``organization_id`` are transitioned — a reaper-
+    reclaimed/re-dispatched row or a cross-tenant id must never be clobbered.
+    """
+    try:
+        body = json.loads(request.body.decode("utf-8") or "{}")
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"status": "error", "message": "Invalid JSON body"}, status=400
+        )
+
+    ids = body.get("buffer_row_ids") or []
+    org_id = body.get("organization_id")
+    if not ids or not org_id:
+        return JsonResponse(
+            {
+                "status": "error",
+                "message": "buffer_row_ids and organization_id are required",
+            },
+            status=400,
+        )
+
+    updated: int = NotificationBuffer.objects.filter(
+        id__in=ids,
+        organization_id=org_id,
+        status=BufferStatus.SENDING.value,
+    ).update(status=target_status)
+    logger.info(
+        "metric=notification_batch_dispatched_total result=%s rows=%d",
+        metric_result,
+        updated,
+    )
+    return JsonResponse({"status": "success", "updated": int(updated)})
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
+@require_http_methods(["POST"])
+def mark_buffer_dispatched(request: HttpRequest) -> JsonResponse:
+    """Worker reports a clubbed webhook delivered: SENDING -> DISPATCHED."""
+    return _mark_buffer_rows(
+        request, target_status=BufferStatus.DISPATCHED.value, metric_result="delivered"
+    )
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
+@require_http_methods(["POST"])
+def mark_buffer_dead_letter(request: HttpRequest) -> JsonResponse:
+    """Worker reports a clubbed webhook exhausted retries: SENDING -> DEAD_LETTER."""
+    return _mark_buffer_rows(
+        request,
+        target_status=BufferStatus.DEAD_LETTER.value,
+        metric_result="dead_letter",
+    )
+
+
+def _gc_terminal_rows() -> int:
+    """Delete buffer rows past the retention window.
+
+    Two sweeps:
+    - Terminal rows (DISPATCHED / DEAD_LETTER) older than the retention
+      window: hygiene for completed work.
+    - PENDING rows whose source notification has been deactivated and
+      whose ``flush_after`` has aged past the same window: ``_dispatch_group``
+      filters ``notification__is_active=True``, so without this sweep
+      these rows are unreachable from both dispatch and GC and would
+      accumulate forever in the partial PENDING index.
+
+    PENDING rows attached to active notifications are intentionally
+    untouched regardless of age — they represent live work the flush
+    job still owns.
+    """
+    cutoff = timezone.now() - timedelta(days=settings.NOTIFICATION_BUFFER_RETENTION_DAYS)
+    terminal_deleted, _ = NotificationBuffer.objects.filter(
+        status__in=[BufferStatus.DISPATCHED.value, BufferStatus.DEAD_LETTER.value],
+        created_at__lt=cutoff,
+    ).delete()
+    inactive_deleted, _ = NotificationBuffer.objects.filter(
+        status=BufferStatus.PENDING.value,
+        notification__is_active=False,
+        flush_after__lt=cutoff,
+    ).delete()
+    return int(terminal_deleted) + int(inactive_deleted)
+
+
+def _reclaim_stale_sending() -> int:
+    """Return rows stuck in SENDING past the dispatch lease to PENDING.
+
+    Covers the crash window where a flush committed the SENDING claim but no
+    terminal callback ever ran (e.g. the backend died before the on_commit
+    publish, or the worker vanished). The lease must exceed the worst-case retry
+    duration so genuinely in-flight dispatches are never reclaimed mid-flight.
+    """
+    cutoff = timezone.now() - timedelta(
+        seconds=settings.NOTIFICATION_DISPATCH_LEASE_SECONDS
+    )
+    reclaimed = NotificationBuffer.objects.filter(
+        status=BufferStatus.SENDING.value,
+        dispatched_at__lt=cutoff,
+    ).update(status=BufferStatus.PENDING.value, dispatched_at=None)
+    if reclaimed:
+        logger.warning("metric=notification_buffer_reclaimed_total rows=%d", reclaimed)
+    return int(reclaimed)
+
+
+def _send_clubbed(
+    *,
+    url: str,
+    body: Any,
+    headers: dict[str, str],
+    platform: str,
+    max_retries: int,
+    buffer_ids: list[str],
+    org_id: Any,
+) -> None:
+    """Send the clubbed Celery task after the DB transition has committed.
+
+    Runs as a ``transaction.on_commit`` callback so a rolled-back UPDATE can
+    never leave a broker-queued message orphaned (the prior order — send
+    then update — risked duplicate delivery if the UPDATE failed). On broker
+    failure we revert rows back to PENDING in a separate transaction so the
+    next flush tick retries cleanly.
+
+    The buffer rows' terminal transition is reported back by the notification
+    worker over the internal API (``buffer/mark/dispatched`` /
+    ``buffer/mark/dead-letter``), not via Celery ``link``/``link_error``: those
+    callbacks routed to the ``celery`` queue, which the unified ``-A worker``
+    also drains without the backend tasks registered, so ~half were dropped as
+    "unregistered task" and the rows stuck in SENDING. We therefore pass
+    ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
+    """
+    try:
+        celery_app.send_task(
+            "send_webhook_notification",
+            args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
+            kwargs={
+                "max_retries": max_retries,
+                "retry_delay": 10,
+                "platform": platform,
+                # Re-raise on retry exhaustion so the task ends in FAILURE for
+                # monitoring; the worker marks the rows DEAD_LETTER over the
+                # internal API before raising (see send_webhook_notification).
+                "raise_on_final_failure": True,
+                # Worker marks these rows DISPATCHED/DEAD_LETTER via the internal
+                # mark endpoints (replaces Celery link/link_error).
+                "buffer_row_ids": buffer_ids,
+                "organization_id": org_id,
+            },
+            queue="notifications",
+        )
+        logger.info(
+            "metric=notification_batch_dispatched_total platform=%s result=success "
+            "org_id=%s webhook_url_hash=%s rows=%d",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+        )
+    except Exception:
+        logger.exception(
+            "metric=notification_batch_dispatched_total platform=%s "
+            "result=broker_failure org_id=%s webhook_url_hash=%s rows=%d",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+        )
+        # Revert to PENDING (outside the committed txn) so a transient broker
+        # outage retries next tick; refund the SENDING-claim attempt since nothing
+        # was queued or sent. Guard on SENDING so a row the worker already marked
+        # terminal (broker raised post-delivery) isn't resurrected into a duplicate.
+        NotificationBuffer.objects.filter(
+            id__in=buffer_ids,
+            status=BufferStatus.SENDING.value,
+        ).update(
+            status=BufferStatus.PENDING.value,
+            dispatched_at=None,
+            dispatch_attempts=F("dispatch_attempts") - 1,
+        )
+
+
+def _penalize_render_failure(buffer_ids: list[str], org_id: Any, platform: str) -> None:
+    """Charge a dispatch attempt to a group whose payloads failed to render.
+
+    The SENDING-claim increment never runs on a render failure, so count it here
+    to let the cap dead-letter an un-renderable group instead of re-rendering it
+    every flush tick (which also blocks every event clubbed with it).
+    """
+    NotificationBuffer.objects.filter(id__in=buffer_ids).update(
+        dispatch_attempts=F("dispatch_attempts") + 1,
+    )
+    # logger.exception keeps the render traceback the caller used to log.
+    logger.exception(
+        "metric=notification_buffer_render_failed_total rows=%d org_id=%s platform=%s",
+        len(buffer_ids),
+        org_id,
+        platform,
+    )
+
+
+def _dispatch_group(
+    org_id: Any,
+    webhook_url: str,
+    auth_sig: str,
+    platform: str,
+) -> int:
+    """Dispatch a single (org, url, auth_sig, platform) group; returns the number of rows dispatched.
+
+    Caller already filtered groups to MIN(flush_after) <= now. Locks rows
+    with SKIP LOCKED so a sibling replica skips them rather than blocking.
+    Re-fetches the source Notification each time for live auth (record may
+    have been edited between enqueue and flush).
+    """
+    with transaction.atomic():
+        rows = list(
+            # of=("self",): lock only the buffer rows, not the joined Notification
+            # row — else SKIP LOCKED skips the group when an unrelated txn (e.g. an
+            # admin edit) holds the Notification.
+            NotificationBuffer.objects.select_for_update(skip_locked=True, of=("self",))
+            .select_related("notification")
+            .filter(
+                status=BufferStatus.PENDING.value,
+                organization_id=org_id,
+                webhook_url=webhook_url,
+                auth_sig=auth_sig,
+                platform=platform,
+                notification__is_active=True,
+            )
+            .order_by("created_at")[:_PROCESS_BUFFER_CAP]
+        )
+        if not rows:
+            # Either another replica claimed the rows (SKIP LOCKED) or they
+            # transitioned out of PENDING between the GROUP BY scan and the
+            # row-level lock. Either way: nothing to do here.
+            return 0
+
+        # Bound the reaper reclaim loop: a row reclaimed past its dispatch budget
+        # (e.g. a crash that recurs in the dispatch->callback window keeps
+        # returning it to PENDING) is dead-lettered here rather than re-dispatched
+        # forever. Attempts are charged at the SENDING claim below (refunded on a
+        # clean broker-publish failure) and on a render failure
+        # (_penalize_render_failure).
+        cap = settings.NOTIFICATION_MAX_DISPATCH_ATTEMPTS
+        exhausted_ids = [str(r.id) for r in rows if r.dispatch_attempts >= cap]
+        if exhausted_ids:
+            NotificationBuffer.objects.filter(id__in=exhausted_ids).update(
+                status=BufferStatus.DEAD_LETTER.value,
+            )
+            logger.warning(
+                "metric=notification_buffer_dispatch_exhausted_total rows=%d "
+                "org_id=%s platform=%s cap=%d",
+                len(exhausted_ids),
+                org_id,
+                platform,
+                cap,
+            )
+            rows = [r for r in rows if r.dispatch_attempts < cap]
+            if not rows:
+                return 0
+
+        # Live auth — read from the FIRST row's notification. If multiple
+        # notifications collide on (url, auth_sig, platform) we have, by
+        # definition, identical auth + format, so this is safe. Retry budget
+        # is the MAX across rows: there's a single HTTP call per batch, so
+        # the most retry-tolerant subscriber's intent wins; using the first
+        # row's value would silently truncate everyone else's retry budget.
+        first_notification = rows[0].notification
+        payloads = [r.payload for r in rows]
+        buffer_ids = [str(r.id) for r in rows]
+        try:
+            body = render_clubbed_message(payloads, platform)
+            headers = build_webhook_headers(first_notification)
+            max_retries = max(r.notification.max_retries for r in rows)
+        except Exception:
+            # Poison payload: charge an attempt so the cap dead-letters the group
+            # instead of re-rendering it forever (the caller swallows this error).
+            _penalize_render_failure(buffer_ids, org_id, platform)
+            return 0
+
+        # Claim the rows as SENDING (the lease starts at dispatched_at) inside
+        # the transaction; the on_commit hook then publishes the broker task. If
+        # the commit fails, rows stay PENDING and nothing is published —
+        # eliminating the broker-vs-DB duplicate-send race. SENDING rows are
+        # excluded from the flush query, so they are not re-claimed until the
+        # dispatch task's success/failure callback resolves them to
+        # DISPATCHED / DEAD_LETTER (or the reaper reclaims a stale lease).
+        now = timezone.now()
+        NotificationBuffer.objects.filter(id__in=buffer_ids).update(
+            status=BufferStatus.SENDING.value,
+            dispatched_at=now,
+            dispatch_attempts=F("dispatch_attempts") + 1,
+        )
+        transaction.on_commit(
+            lambda: _send_clubbed(
+                url=first_notification.url,
+                body=body,
+                headers=headers,
+                platform=platform,
+                max_retries=max_retries,
+                buffer_ids=buffer_ids,
+                org_id=org_id,
+            )
+        )
+        return len(rows)
+
+
+# Per-group cap, bound to the renderer's MAX_BATCH_SIZE so the rendered events
+# list and the dispatched row set stay in lock-step by construction (raising one
+# can no longer silently mark un-rendered rows DISPATCHED). Anything beyond this
+# rolls into the next flush tick.
+_PROCESS_BUFFER_CAP = MAX_BATCH_SIZE
+
+
+@csrf_exempt  # Safe: Internal API with Bearer token auth, service-to-service only
+@require_http_methods(["POST"])
+def process_notification_buffer(request: HttpRequest) -> JsonResponse:
+    """Flush PENDING groups that have hit their flush_after; then GC.
+
+    Algorithm:
+    1. GROUP BY (org, url, auth_sig, platform), HAVING MIN(flush_after) <= NOW()
+    2. For each group, in its own transaction: lock-skip-locked rows, render,
+       mark rows SENDING, on_commit-dispatch a single Celery task whose success /
+       failure callbacks move the rows to DISPATCHED / DEAD_LETTER.
+    3. Reclaim rows stuck in SENDING past the dispatch lease back to PENDING.
+    4. Sweep terminal rows older than NOTIFICATION_BUFFER_RETENTION_DAYS.
+
+    Concurrency: SELECT FOR UPDATE SKIP LOCKED makes parallel calls safe —
+    each replica skips groups another worker is already dispatching.
+    """
+    now = timezone.now()
+    groups = list(
+        NotificationBuffer.objects.filter(status=BufferStatus.PENDING.value)
+        .values("organization_id", "webhook_url", "auth_sig", "platform")
+        .annotate(earliest_flush=Min("flush_after"))
+        .filter(earliest_flush__lte=now)
+    )
+
+    dispatched_groups = 0
+    dispatched_rows = 0
+    for group in groups:
+        try:
+            rows = _dispatch_group(
+                org_id=group["organization_id"],
+                webhook_url=group["webhook_url"],
+                auth_sig=group["auth_sig"],
+                platform=group["platform"],
+            )
+        except Exception:
+            logger.exception(
+                "Failed dispatching group org=%s url_hash=%s",
+                group["organization_id"],
+                webhook_url_hash(group["webhook_url"]),
+            )
+            continue
+        if rows > 0:
+            dispatched_groups += 1
+            dispatched_rows += rows
+
+    reclaimed_rows = _reclaim_stale_sending()
+    gc_deleted = _gc_terminal_rows()
+    return JsonResponse(
+        {
+            "status": "success",
+            "dispatched_groups": dispatched_groups,
+            "dispatched_rows": dispatched_rows,
+            # DISPATCHED / DEAD_LETTER transitions are async (Celery success /
+            # link_error callbacks) and are not reflected in this response.
+            "dead_letter_rows": 0,
+            "reclaimed_rows": reclaimed_rows,
+            "gc_deleted_rows": gc_deleted,
+        }
+    )
