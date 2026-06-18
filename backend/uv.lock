@@ -781,16 +781,16 @@ wheels = [
 
 [[package]]
 name = "django"
-version = "4.2.1"
+version = "4.2.30"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "asgiref" },
     { name = "sqlparse" },
     { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/89/76/23ee9b9d2bd4119e930eb19164732b79c0a4f6259ca198209b0fe36551ea/Django-4.2.1.tar.gz", hash = "sha256:7efa6b1f781a6119a10ac94b4794ded90db8accbe7802281cd26f8664ffed59c", size = 10420051, upload-time = "2023-05-03T12:58:41.313Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/11/b5/f1a53dc68da6429d6e0345bb848161e2381a2e9f02700148911e8582c2b3/django-4.2.30.tar.gz", hash = "sha256:4ebc7a434e3819db6cf4b399fb5b3f536310a30e8486f08b66886840be84b37c", size = 10468707, upload-time = "2026-04-07T14:05:45.57Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/13/78e8622180f101e95297965045ff1325ea7301c1b80f756debbeaa84c3be/Django-4.2.1-py3-none-any.whl", hash = "sha256:066b6debb5ac335458d2a713ed995570536c8b59a580005acb0732378d5eb1ee", size = 7988496, upload-time = "2023-05-03T12:58:27.208Z" },
+    { url = "https://files.pythonhosted.org/packages/39/b7/a7c96f239cf91313a6589233fed55111c7063b26683b226802732c455dbc/django-4.2.30-py3-none-any.whl", hash = "sha256:4d07aaf1c62f9984842b67c2874ebbf7056a17be253860299b93ae1881faad65", size = 7997231, upload-time = "2026-04-07T14:05:38.241Z" },
 ]
 
 [[package]]
@@ -2694,17 +2694,17 @@ wheels = [
 
 [[package]]
 name = "pyarrow"
-version = "18.1.0"
+version = "24.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/7f/7b/640785a9062bb00314caa8a387abce547d2a420cf09bd6c715fe659ccffb/pyarrow-18.1.0.tar.gz", hash = "sha256:9386d3ca9c145b5539a1cfc75df07757dff870168c959b473a0bccbc3abc8c73", size = 1118671, upload-time = "2024-11-26T02:01:48.62Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/13/13e1069b351bdc3881266e11147ffccf687505dbb0ea74036237f5d454a5/pyarrow-24.0.0.tar.gz", hash = "sha256:85fe721a14dd823aca09127acbb06c3ca723efbd436c004f16bca601b04dcc83", size = 1180261, upload-time = "2026-04-21T10:51:25.837Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6a/50/12829e7111b932581e51dda51d5cb39207a056c30fe31ef43f14c63c4d7e/pyarrow-18.1.0-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:9f3a76670b263dc41d0ae877f09124ab96ce10e4e48f3e3e4257273cee61ad0d", size = 29514620, upload-time = "2024-11-26T01:59:39.797Z" },
-    { url = "https://files.pythonhosted.org/packages/d1/41/468c944eab157702e96abab3d07b48b8424927d4933541ab43788bb6964d/pyarrow-18.1.0-cp312-cp312-macosx_12_0_x86_64.whl", hash = "sha256:da31fbca07c435be88a0c321402c4e31a2ba61593ec7473630769de8346b54ee", size = 30856494, upload-time = "2024-11-26T01:59:44.725Z" },
-    { url = "https://files.pythonhosted.org/packages/68/f9/29fb659b390312a7345aeb858a9d9c157552a8852522f2c8bad437c29c0a/pyarrow-18.1.0-cp312-cp312-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:543ad8459bc438efc46d29a759e1079436290bd583141384c6f7a1068ed6f992", size = 39203624, upload-time = "2024-11-26T01:59:49.189Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/f6/19360dae44200e35753c5c2889dc478154cd78e61b1f738514c9f131734d/pyarrow-18.1.0-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0743e503c55be0fdb5c08e7d44853da27f19dc854531c0570f9f394ec9671d54", size = 40139341, upload-time = "2024-11-26T01:59:54.849Z" },
-    { url = "https://files.pythonhosted.org/packages/bb/e6/9b3afbbcf10cc724312e824af94a2e993d8ace22994d823f5c35324cebf5/pyarrow-18.1.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:d4b3d2a34780645bed6414e22dda55a92e0fcd1b8a637fba86800ad737057e33", size = 38618629, upload-time = "2024-11-26T01:59:59.966Z" },
-    { url = "https://files.pythonhosted.org/packages/3a/2e/3b99f8a3d9e0ccae0e961978a0d0089b25fb46ebbcfb5ebae3cca179a5b3/pyarrow-18.1.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:c52f81aa6f6575058d8e2c782bf79d4f9fdc89887f16825ec3a66607a5dd8e30", size = 40078661, upload-time = "2024-11-26T02:00:04.55Z" },
-    { url = "https://files.pythonhosted.org/packages/76/52/f8da04195000099d394012b8d42c503d7041b79f778d854f410e5f05049a/pyarrow-18.1.0-cp312-cp312-win_amd64.whl", hash = "sha256:0ad4892617e1a6c7a551cfc827e072a633eaff758fa09f21c4ee548c30bcaf99", size = 25092330, upload-time = "2024-11-26T02:00:09.576Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/a9/9686d9f07837f91f775e8932659192e02c74f9d8920524b480b85212cc68/pyarrow-24.0.0-cp312-cp312-macosx_12_0_arm64.whl", hash = "sha256:6233c9ed9ab9d1db47de57d9753256d9dcffbf42db341576099f0fd9f6bf4810", size = 34981559, upload-time = "2026-04-21T10:47:22.17Z" },
+    { url = "https://files.pythonhosted.org/packages/80/b6/0ddf0e9b6ead3474ab087ae598c76b031fc45532bf6a63f3a553440fb258/pyarrow-24.0.0-cp312-cp312-macosx_12_0_x86_64.whl", hash = "sha256:f7616236ec1bc2b15bfdec22a71ab38851c86f8f05ff64f379e1278cf20c634a", size = 36663654, upload-time = "2026-04-21T10:47:28.315Z" },
+    { url = "https://files.pythonhosted.org/packages/7c/3b/926382efe8ce27ba729071d3566ade6dfb86bdf112f366000196b2f5780a/pyarrow-24.0.0-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:1617043b99bd33e5318ae18eb2919af09c71322ef1ca46566cdafc6e6712fb66", size = 45679394, upload-time = "2026-04-21T10:47:34.821Z" },
+    { url = "https://files.pythonhosted.org/packages/b3/7a/829f7d9dfd37c207206081d6dad474d81dde29952401f07f2ba507814818/pyarrow-24.0.0-cp312-cp312-manylinux_2_28_x86_64.whl", hash = "sha256:6165461f55ef6314f026de6638d661188e3455d3ec49834556a0ebbdbace18bb", size = 48863122, upload-time = "2026-04-21T10:47:42.056Z" },
+    { url = "https://files.pythonhosted.org/packages/5f/e8/f88ce625fe8babaae64e8db2d417c7653adb3019b08aae85c5ed787dc816/pyarrow-24.0.0-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:3b13dedfe76a0ad2d1d859b0811b53827a4e9d93a0bcb05cf59333ab4980cc7e", size = 49376032, upload-time = "2026-04-21T10:47:48.967Z" },
+    { url = "https://files.pythonhosted.org/packages/36/7a/82c363caa145fff88fb475da50d3bf52bb024f61917be5424c3392eaf878/pyarrow-24.0.0-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:25ea65d868eb04015cd18e6df2fbe98f07e5bda2abefabcb88fce39a947716f6", size = 51929490, upload-time = "2026-04-21T10:47:55.981Z" },
+    { url = "https://files.pythonhosted.org/packages/66/1c/e3e72c8014ad2743ca64a701652c733cc5cbcee15c0463a32a8c55518d9e/pyarrow-24.0.0-cp312-cp312-win_amd64.whl", hash = "sha256:295f0a7f2e242dabd513737cf076007dc5b2d59237e3eca37b05c0c6446f3826", size = 27355660, upload-time = "2026-04-21T10:48:01.718Z" },
 ]
 
 [[package]]
@@ -2815,11 +2815,11 @@ wheels = [
 
 [[package]]
 name = "pyjwt"
-version = "2.11.0"
+version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5c/5a/b46fa56bf322901eee5b0454a34343cdbdae202cd421775a8ee4e42fd519/pyjwt-2.11.0.tar.gz", hash = "sha256:35f95c1f0fbe5d5ba6e43f00271c275f7a1a4db1dab27bf708073b75318ea623", size = 98019, upload-time = "2026-01-30T19:59:55.694Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3b/81/58d0ac84e1ef3a3843791d6954d94c0b33d526c75eeb1efbce9d0a4c4077/pyjwt-2.13.0.tar.gz", hash = "sha256:41571c89ca91598c79e8ef18a2d07367d4810fbbd6f637794879baf1b7703423", size = 107515, upload-time = "2026-05-21T19:54:36.618Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/01/c26ce75ba460d5cd503da9e13b21a33804d38c2165dec7b716d06b13010c/pyjwt-2.11.0-py3-none-any.whl", hash = "sha256:94a6bde30eb5c8e04fee991062b534071fd1439ef58d2adc9ccb823e7bcd0469", size = 28224, upload-time = "2026-01-30T19:59:54.539Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/5e/ecf12fdb62546d64385c158514e9b2b671f7832108ef2ecd2020ce0af2d1/pyjwt-2.13.0-py3-none-any.whl", hash = "sha256:66adcc2aff09b3f1bbd95fc1e1577df8ac8723c978552fd43304c8a290ac5728", size = 31274, upload-time = "2026-05-21T19:54:35.362Z" },
 ]
 
 [package.optional-dependencies]
@@ -3746,7 +3746,7 @@ requires-dist = [
     { name = "cron-descriptor", specifier = "==1.4.0" },
     { name = "croniter", specifier = ">=3.0.3" },
     { name = "cryptography", specifier = ">=48.0.0" },
-    { name = "django", specifier = "==4.2.1" },
+    { name = "django", specifier = "==4.2.30" },
     { name = "django-celery-beat", specifier = "==2.5.0" },
     { name = "django-cors-headers", specifier = "==4.3.1" },
     { name = "django-filter", specifier = ">=24.3" },
