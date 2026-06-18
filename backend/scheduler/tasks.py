@@ -4,6 +4,7 @@ import traceback
 from typing import Any
 
 from celery import shared_task
+from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from pg_queue.models import PgPeriodicSchedule
 from pipeline_v2.models import Pipeline
@@ -21,15 +22,21 @@ logger = logging.getLogger(__name__)
 # the reaper/orchestrator loop) can fire due schedules without Celery Beat.
 # Nothing reads the table yet. Every write is best-effort: a mirror failure must
 # NEVER break the existing Beat scheduling path.
+#
+# The upsert is driven from SchedulerHelper._schedule_task_job (which holds the
+# Pipeline object, so it sources the real pipeline_name + clean ids — no parsing
+# of the serialized PeriodicTask args). The enable/disable/delete toggles are
+# keyed by pipeline_id only, so they live here next to the functions that mutate
+# the PeriodicTask.
 # ---------------------------------------------------------------------------
 
 
-def _mirror_periodic_schedule_upsert(
+def mirror_periodic_schedule_upsert(
     *,
-    pipeline_id: Any,
-    organization_id: Any,
-    workflow_id: Any,
-    pipeline_name: Any,
+    pipeline_id: str,
+    organization_id: str,
+    workflow_id: str | None,
+    pipeline_name: str,
     cron_string: str,
     enabled: bool,
 ) -> None:
@@ -51,9 +58,23 @@ def _mirror_periodic_schedule_upsert(
         )
 
 
-def _mirror_periodic_schedule_set_enabled(pipeline_id: Any, enabled: bool) -> None:
+def _mirror_periodic_schedule_set_enabled(pipeline_id: str, enabled: bool) -> None:
     try:
-        PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).update(enabled=enabled)
+        # Bump updated_at explicitly: queryset .update() does NOT trigger the
+        # field's auto_now, so without this a pause/resume would change enabled
+        # without advancing the "last changed" timestamp.
+        matched = PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).update(
+            enabled=enabled, updated_at=timezone.now()
+        )
+        if matched == 0:
+            # No mirror row — e.g. a pipeline scheduled before this shipped, or
+            # whose upsert was swallowed. .update() can't self-heal (it only
+            # touches existing rows); the backfill of such rows lands with the
+            # scheduler that reads this table (②b). Log so the gap is visible.
+            logger.info(
+                f"pg_periodic_schedule mirror enabled={enabled} matched 0 rows for "
+                f"pipeline {pipeline_id} (not yet mirrored — backfilled in ②b)"
+            )
     except Exception:
         logger.exception(
             f"pg_periodic_schedule mirror enabled={enabled} failed for pipeline "
@@ -61,7 +82,7 @@ def _mirror_periodic_schedule_set_enabled(pipeline_id: Any, enabled: bool) -> No
         )
 
 
-def _mirror_periodic_schedule_delete(pipeline_id: Any) -> None:
+def _mirror_periodic_schedule_delete(pipeline_id: str) -> None:
     try:
         PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).delete()
     except Exception:
@@ -107,18 +128,9 @@ def create_or_update_periodic_task(
         logger.info(f"Created periodic task {periodic_task}")
     else:
         logger.info(f"Updated periodic task {periodic_task}")
-
-    # Inert PG mirror. task_name is the pipeline UUID; task_args layout (set by
-    # SchedulerHelper._schedule_task_job) is
-    # [workflow_id, organization_id, execution_action, "", pipeline_id, False, name].
-    _mirror_periodic_schedule_upsert(
-        pipeline_id=task_name,
-        workflow_id=task_args[0] if len(task_args) > 0 else None,
-        organization_id=task_args[1] if len(task_args) > 1 else "",
-        pipeline_name=task_args[6] if len(task_args) > 6 else "",
-        cron_string=cron_string,
-        enabled=enabled,
-    )
+    # The inert PG mirror upsert is driven by the caller
+    # (SchedulerHelper._schedule_task_job), which has the Pipeline object and so
+    # sources the real pipeline_name + ids directly (no positional arg parsing).
 
 
 # TODO: Remove unused args with a migration

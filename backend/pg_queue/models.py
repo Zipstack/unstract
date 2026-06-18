@@ -267,5 +267,8 @@ class PgPeriodicSchedule(models.Model):
         db_table = "pg_periodic_schedule"
         indexes = [
             # Drives the (future) "due schedules" dequeue in the scheduler tick.
-            models.Index(fields=["enabled", "next_run_at"], name="pg_sched_due_idx"),
+            models.Index(
+                fields=["enabled", "next_run_at"],
+                name="pg_periodic_schedule_due_idx",
+            ),
         ]
