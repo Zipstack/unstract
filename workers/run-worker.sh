@@ -49,19 +49,25 @@ readonly PG_QUEUE_SET="pg-queue"
 # registry (api-deployment handles it as an API deployment; general routes by
 # workflow type), so one consumer can't serve both — they bind different queues.
 # fileproc/callback are multi-queue (one process drains both ETL + API queues).
+# Role-name constants — the literal lives in one place and is referenced across
+# PG_CONSUMER_ROLES / PG_QUEUE_MEMBERS / WORKERS.
+readonly PG_ROLE_ORCH_API="pg-orchestrator-api"
+readonly PG_ROLE_ORCH_GENERAL="pg-orchestrator-general"
+readonly PG_ROLE_FILEPROC="pg-fileproc"
+readonly PG_ROLE_CALLBACK="pg-callback"
 declare -rA PG_CONSUMER_ROLES=(
-    ["pg-orchestrator-api"]="api_deployment;celery_api_deployments"
-    ["pg-orchestrator-general"]="general;celery"
-    ["pg-fileproc"]="file_processing;file_processing,api_file_processing"
-    ["pg-callback"]="callback;file_processing_callback,api_file_processing_callback"
+    ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
+    ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
+    ["$PG_ROLE_FILEPROC"]="file_processing;file_processing,api_file_processing"
+    ["$PG_ROLE_CALLBACK"]="callback;file_processing_callback,api_file_processing_callback"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
     ["$PG_QUEUE_REAPER_TYPE"]=1
-    ["pg-orchestrator-api"]=1
-    ["pg-orchestrator-general"]=1
-    ["pg-fileproc"]=1
-    ["pg-callback"]=1
+    ["$PG_ROLE_ORCH_API"]=1
+    ["$PG_ROLE_ORCH_GENERAL"]=1
+    ["$PG_ROLE_FILEPROC"]=1
+    ["$PG_ROLE_CALLBACK"]=1
 )
 # Log-tail alias for the Celery transport: every worker EXCEPT the PG-queue
 # members — the *complement* of the 'pg-queue' tail alias, so the two
@@ -95,10 +101,10 @@ declare -A WORKERS=(
     ["pg-consumer"]="$PG_QUEUE_CONSUMER_TYPE"
     # PG Queue named roles (9f) — coupled-pipeline consumers, queues + source
     # worker-type baked in. Run individually like any worker, or via the 'pg' set.
-    ["pg-orchestrator-api"]="pg-orchestrator-api"
-    ["pg-orchestrator-general"]="pg-orchestrator-general"
-    ["pg-fileproc"]="pg-fileproc"
-    ["pg-callback"]="pg-callback"
+    ["$PG_ROLE_ORCH_API"]="$PG_ROLE_ORCH_API"
+    ["$PG_ROLE_ORCH_GENERAL"]="$PG_ROLE_ORCH_GENERAL"
+    ["$PG_ROLE_FILEPROC"]="$PG_ROLE_FILEPROC"
+    ["$PG_ROLE_CALLBACK"]="$PG_ROLE_CALLBACK"
     # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
     ["reaper"]="$PG_QUEUE_REAPER_TYPE"
     ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"
