@@ -113,6 +113,10 @@ declare -A WORKERS=(
     ["$PG_QUEUE_SET"]="$PG_QUEUE_SET"
     ["pg"]="$PG_QUEUE_SET"
     ["all"]="all"
+    # 'celery' is a run alias for the Celery set (== 'all', which excludes the PG
+    # workers) — symmetric with 'pg'. Maps to "all" so it dispatches to
+    # run_all_workers and list_core_worker_dirs skips it (not a phantom dir).
+    ["$CELERY_SET"]="all"
 )
 
 # Pluggable workers will be auto-discovered at runtime
@@ -191,11 +195,11 @@ WORKER_TYPE:
     pg-callback           Run the PG callback consumer (file_processing_callback + api_…_callback)
     reaper, pg-queue-reaper Run PG-queue reaper (leader-elected recovery; opt-in)
     pg, pg-queue          Run the whole PG-queue set (the 4 pipeline roles + reaper) together
-    all                   Run all workers (in separate processes, includes auto-discovered pluggable workers)
+    all, celery           Run the Celery worker set (all Celery workers; excludes the PG set)
 
 Note: Pluggable workers in pluggable_worker/ directory are automatically discovered and can be run by name.
-Note: 'all' is the Celery worker set; 'pg-queue' is the PG-queue set. They are independent —
-      run both in parallel for a dual-transport (strangler-fig) setup.
+Note: 'all' (alias 'celery') is the Celery worker set; 'pg' ('pg-queue') is the PG-queue set. They are
+      independent — pass both (e.g. `-d all pg`) for a dual-transport (strangler-fig) setup.
 Note: pg-queue-consumer overrides: WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE (source worker whose
       tasks to load, default notification), WORKER_PG_QUEUE_CONSUMER_QUEUE (queue to poll),
       and WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT (liveness server port, default 8090).
@@ -1150,7 +1154,8 @@ if [[ "$RESTART_MODE" == "true" ]]; then
             print_status $RED "Cannot restart PG-queue set: a member survived SIGKILL; aborting to avoid duplicate processes"
             exit 1
         fi
-    elif [[ -n "$WORKER_TYPE" && "$WORKER_TYPE" != "all" ]]; then
+    elif [[ -n "$WORKER_TYPE" && "$WORKER_TYPE" != "all" && "${WORKERS[$WORKER_TYPE]:-}" != "all" ]]; then
+        # ('celery' maps to "all" → falls through to the restart-all branch below.)
         restart_target_dir="${WORKERS[$WORKER_TYPE]:-${PLUGGABLE_WORKERS[$WORKER_TYPE]:-}}"
         if [[ -z "$restart_target_dir" ]]; then
             print_status $RED "Error: Unknown worker type for restart: $WORKER_TYPE"
@@ -1216,7 +1221,8 @@ fi
 
 # Run each requested worker / set in turn.
 for wt in "${WORKER_TYPES[@]}"; do
-    if [[ "$wt" == "all" ]]; then
+    if [[ "${WORKERS[$wt]:-}" == "all" ]]; then
+        # 'all' and its synonym 'celery' (the Celery set, excludes PG workers).
         run_all_workers "$DETACH" "$LOG_LEVEL" "$CONCURRENCY" "$POOL_TYPE"
     elif [[ "${WORKERS[$wt]:-}" == "$PG_QUEUE_SET" ]]; then
         # The PG-queue set (pipeline roles + reaper). Always backgrounded (multiple
