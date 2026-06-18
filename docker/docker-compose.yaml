@@ -541,6 +541,167 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
       - prompt_studio_data:/app/prompt-studio-data
 
+  # ===========================================================================
+  # PG-queue services (Postgres-backed transport) — gated behind the `pg-queue`
+  # compose profile, so a plain `docker compose up` starts NONE of them and
+  # behaviour is identical to today. Bring them up with:
+  #   docker compose --profile pg-queue up -d
+  # They consume from Postgres, not the broker. The orchestrator consumers and
+  # the reaper are fully broker-free (no rabbitmq dependency). The fan-out and
+  # callback consumers still hand off to the Celery executor (tool execution
+  # RPC) / Celery notifications, so they keep a rabbitmq dependency until those
+  # are migrated (steps ③/④). Each maps 1:1 to a future K8s Deployment.
+  # Executions still route to Celery until the backend gate
+  # (PG_QUEUE_TRANSPORT_ENABLED) + Flipt flag are flipped — that is the ramp,
+  # not this change.
+  # ===========================================================================
+
+  # Orchestrator consumer for API-deployment executions (async_execute_bin_api).
+  worker-pg-orchestrator-api:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-orchestrator-api
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8093:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-orchestrator-api
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=api_deployment
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_api_deployments
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Orchestrator consumer for general / scheduled-ETL executions (async_execute_bin).
+  worker-pg-orchestrator-general:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-orchestrator-general
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8094:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-orchestrator-general
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=general
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Fan-out consumer (process_file_batch) — both the ETL and API file queues.
+  worker-pg-fileproc:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-fileproc
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8095:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq   # still dispatches the tool-execution RPC to the Celery executor (until ③)
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-fileproc
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=file_processing
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing,api_file_processing
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Fan-in callback consumer (process_batch_callback / _api) — both callback queues.
+  worker-pg-callback:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-callback
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8096:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - rabbitmq   # may dispatch Celery notifications when not PG-routed (until ④)
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-callback
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=callback
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing_callback,api_file_processing_callback
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
+  # Reaper — leader-elected recovery loop. Run exactly ONE instance (it elects a
+  # single leader via orchestrator_lock; extra replicas idle as standby).
+  worker-pg-reaper:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-reaper
+    restart: unless-stopped
+    command: ["pg-queue-reaper"]
+    ports:
+      - "8097:8086"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-reaper
+      - WORKER_PG_REAPER_INTERVAL_SECONDS=${WORKER_PG_REAPER_INTERVAL_SECONDS:-5}
+      - WORKER_PG_REAPER_HEALTH_PORT=8086
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+    profiles:
+      - pg-queue
+
 volumes:
   prompt_studio_data:
   unstract_data:

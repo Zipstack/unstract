@@ -25,6 +25,11 @@ ENV_FILE="/app/.env"
 # Worker type constant for the executor worker
 readonly EXECUTOR_WORKER_TYPE="executor"
 
+# Python interpreter for PG-queue components (consumer / reaper). Unlike Celery
+# workers, these launch a dedicated module rather than a `celery ... worker`
+# command (see run_pg_consumer / run_pg_reaper below).
+readonly PG_QUEUE_PYTHON_BIN="/app/.venv/bin/python"
+
 # Available core workers (OSS)
 declare -A WORKERS=(
     ["api"]="api_deployment"
@@ -486,6 +491,39 @@ run_worker() {
     exec $celery_cmd $celery_args
 }
 
+# =============================================================================
+# PG-queue components (Postgres-backed transport)
+# =============================================================================
+# These do NOT run a Celery worker — they exec a dedicated Python module that
+# polls the Postgres queue. The consumer picks which worker's tasks to register
+# and which queues to poll from the environment (set per compose service /
+# K8s Deployment); the reaper needs neither. Mirrors the host launcher
+# run-worker.sh (`pg-queue-consumer` / `reaper`).
+
+run_pg_consumer() {
+    local source_type="${WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE:-notification}"
+    local queues="${WORKER_PG_QUEUE_CONSUMER_QUEUE:-}"
+    export WORKER_NAME="${WORKER_NAME:-pg-consumer-${source_type}}"
+
+    print_status $GREEN "Starting PG-queue consumer..."
+    print_status $BLUE "Source worker type: $source_type"
+    print_status $BLUE "Queues: ${queues:-<unset — module default>}"
+    print_status $BLUE "Health port: ${WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT:-<disabled>}"
+
+    # WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE / _QUEUE are read by the module itself.
+    exec "$PG_QUEUE_PYTHON_BIN" -m pg_queue_consumer
+}
+
+run_pg_reaper() {
+    export WORKER_NAME="${WORKER_NAME:-pg-reaper}"
+
+    print_status $GREEN "Starting PG-queue reaper (leader-elected)..."
+    print_status $BLUE "Interval: ${WORKER_PG_REAPER_INTERVAL_SECONDS:-5}s"
+    print_status $BLUE "Health port: ${WORKER_PG_REAPER_HEALTH_PORT:-<disabled>}"
+
+    exec "$PG_QUEUE_PYTHON_BIN" -m pg_queue_reaper
+}
+
 # Main execution
 # Load environment first for any needed variables
 load_env "$ENV_FILE"
@@ -495,6 +533,18 @@ discover_pluggable_workers
 
 # Add PYTHONPATH for imports - include both /app and /unstract for packages
 export PYTHONPATH="/app:/unstract/core/src:/unstract/connectors/src:/unstract/filesystem/src:/unstract/flags/src:/unstract/tool-registry/src:/unstract/tool-sandbox/src:/unstract/workflow-execution/src:${PYTHONPATH:-}"
+
+# PG-queue components run a dedicated module, not a Celery worker — dispatch
+# them before the Celery command-building logic below. PYTHONPATH (exported
+# above) is required for the module imports.
+case "${1:-}" in
+    pg-queue-consumer|pg-consumer)
+        run_pg_consumer
+        ;;
+    pg-queue-reaper|pg-reaper|reaper)
+        run_pg_reaper
+        ;;
+esac
 
 # Two-path logic: Full Celery command vs Traditional worker type
 if [[ "$1" == *"celery"* ]] || [[ "$1" == *".venv"* ]]; then
