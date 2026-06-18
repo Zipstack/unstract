@@ -18,7 +18,7 @@ dependencies = [
     "celery[amqp]>=5.3.4", # For Celery
     "cron-descriptor==1.4.0", # For cron string description
     "cryptography>=48.0.0",
-    "django==4.2.1",
+    "django==4.2.30",
     "djangorestframework==3.14.0",
     "django-cors-headers==4.3.1",
     # Pinning django-celery-beat to avoid build issues
