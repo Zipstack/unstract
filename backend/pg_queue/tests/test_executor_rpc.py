@@ -121,7 +121,8 @@ class TestPgExecutionDispatcherDispatch:
                 PgExecutionDispatcher, "_wait_for_result", side_effect=fake_wait
             ),
         ):
-            PgExecutionDispatcher().dispatch(self._ctx())  # timeout=None
+            # No explicit timeout arg → falls back to the env/default.
+            PgExecutionDispatcher().dispatch(self._ctx())
         assert seen["timeout"] == 42
 
 

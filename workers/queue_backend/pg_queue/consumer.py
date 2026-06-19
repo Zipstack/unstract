@@ -259,14 +259,13 @@ class PgQueueConsumer:
             try:
                 self._store_reply(reply_key, result=eager.result)
             except Exception:
-                logger.error(
+                logger.exception(
                     "PG-queue consumer: FAILED to store request-reply result "
                     "(task=%r msg_id=%s reply_key=%s) — acking anyway to avoid an "
                     "expensive re-run; caller will time out",
                     task_name,
                     message.msg_id,
                     reply_key,
-                    exc_info=True,
                 )
 
         if not self._client.delete(message.msg_id):  # ack
@@ -303,11 +302,10 @@ class PgQueueConsumer:
         try:
             self._store_reply(reply_key, error=error)
         except Exception:
-            logger.error(
+            logger.exception(
                 "PG-queue consumer: failed to store failure reply (reply_key=%s): %s",
                 reply_key,
                 error,
-                exc_info=True,
             )
 
     def _registered_task_count(self) -> int:
