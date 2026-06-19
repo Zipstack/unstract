@@ -426,6 +426,32 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
+    def update_execution_queue_message_id(
+        execution_id: str, queue_message_id: int | None
+    ) -> None:
+        """Record the PG queue-row handle (``pg_queue_message.msg_id``) on the
+        execution. PG-only: ``task_id`` is a UUIDField that can't hold the bigint
+        msg_id, so the PG handle lives in its own ``queue_message_id`` column.
+        """
+        try:
+            if queue_message_id is None:
+                logger.warning(
+                    f"Skipped setting queue_message_id for execution {execution_id} "
+                    "since it's None"
+                )
+                return
+
+            execution = WorkflowExecution.objects.get(pk=execution_id)
+            execution.queue_message_id = queue_message_id
+            execution.save(update_fields=["queue_message_id"])
+            logger.info(
+                f"Successfully set queue_message_id '{queue_message_id}' for "
+                f"execution {execution_id}"
+            )
+        except WorkflowExecution.DoesNotExist:
+            logger.error(f"execution doesn't exist {execution_id}")
+
+    @staticmethod
     def convert_tool_instance_model_to_data_class(
         tool_instance: ToolInstance,
     ) -> ToolInstanceDataClass:
