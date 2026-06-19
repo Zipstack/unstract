@@ -71,8 +71,12 @@ function JsonView({
           {adapterData.map((adapter) => (
             <TabPane
               tab={
-                <Tooltip title={adapter?.llm_model}>
-                  <span>{adapter?.profile_name || adapter?.llm_model}</span>
+                <Tooltip title={adapter?.llm_model || adapter?.profile_name}>
+                  <span>
+                    {adapter?.profile_name ||
+                      adapter?.llm_model ||
+                      `Profile ${adapter?.profile_id ?? "?"}`}
+                  </span>
                 </Tooltip>
               }
               key={adapter?.profile_id}
