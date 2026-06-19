@@ -4,6 +4,7 @@ import traceback
 from typing import Any
 
 from celery import shared_task
+from django.db import transaction
 from django.utils import timezone
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
 from pg_queue.models import PgPeriodicSchedule
@@ -249,8 +250,22 @@ def disable_task(task_name: str) -> None:
 
 
 def enable_task(task_name: str) -> None:
-    task = PeriodicTask.objects.get(name=task_name)
-    task.enabled = True
-    task.save()
+    PeriodicTask.objects.get(name=task_name)  # preserve DoesNotExist on a bad name
+    # Resume → the schedule is active again, but Beat must fire it ONLY when it's
+    # not handed to PG — else a pg_owned schedule would fire from both Beat and PG
+    # (the ②c ownership invariant; reconcile sets the same on create/update, but
+    # resume takes this path). Lock the mirror row + write only the `enabled`
+    # column (not a full task.save() of stale state) so a concurrent
+    # reconcile_ownership_for can't be clobbered into a double-fire.
+    with transaction.atomic():
+        pg_owned = (
+            PgPeriodicSchedule.objects.select_for_update()
+            .filter(pipeline_id=task_name)
+            .values_list("pg_owned", flat=True)
+            .first()
+            or False
+        )
+        PeriodicTask.objects.filter(name=task_name).update(enabled=not pg_owned)
+    # mirror.enabled tracks pipeline.active (True on resume) regardless of owner.
     _mirror_periodic_schedule_set_enabled(task_name, True)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)
