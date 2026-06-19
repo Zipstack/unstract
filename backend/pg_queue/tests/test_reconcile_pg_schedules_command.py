@@ -46,8 +46,8 @@ class TestReconcileCommand:
             patch(f"{_CMD}.reconcile_ownership_for", return_value=False) as reconcile,
         ):
             PT.objects.filter.return_value = [pt_new, pt_exists]
-            # pid-exists already mirrored; pid-new not.
-            Sched.objects.filter.return_value.exists.side_effect = [False, True]
+            # pid-exists already mirrored; pid-new not (one prefetch query).
+            Sched.objects.values_list.return_value = ["pid-exists"]
             Sched.objects.all.return_value = [_row("pid-new"), _row("pid-exists")]
             call_command("reconcile_pg_schedules")
 
@@ -65,7 +65,7 @@ class TestReconcileCommand:
             patch(f"{_CMD}.reconcile_ownership_for", return_value=False),
         ):
             PT.objects.filter.return_value = [bad, good]
-            Sched.objects.filter.return_value.exists.return_value = False
+            Sched.objects.values_list.return_value = []
             Sched.objects.all.return_value = []
             # Must not raise despite the bad row.
             call_command("reconcile_pg_schedules")
@@ -83,7 +83,7 @@ class TestReconcileCommand:
             patch(f"{_CMD}.reconcile_ownership_for", return_value=False),
         ):
             PT.objects.filter.return_value = [weird]
-            Sched.objects.filter.return_value.exists.return_value = False
+            Sched.objects.values_list.return_value = []
             Sched.objects.all.return_value = []
             call_command("reconcile_pg_schedules")
 
@@ -100,7 +100,7 @@ class TestReconcileCommand:
             PT.objects.filter.return_value = [
                 _pt("pid-1", args='["wf", "org", "", "", "pid-1", false, "n"]')
             ]
-            Sched.objects.filter.return_value.exists.return_value = False
+            Sched.objects.values_list.return_value = []
             Sched.objects.all.return_value = [_row("pid-1")]
             call_command("reconcile_pg_schedules", "--dry-run")
 
@@ -116,6 +116,7 @@ class TestReconcileCommand:
             patch(f"{_CMD}.reconcile_ownership_for", return_value=None),  # failed
         ):
             PT.objects.filter.return_value = []
+            Sched.objects.values_list.return_value = []
             Sched.objects.all.return_value = [_row("pid-1")]
             with pytest.raises(CommandError):
                 call_command("reconcile_pg_schedules")

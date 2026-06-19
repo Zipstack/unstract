@@ -8,6 +8,7 @@ and that a mirror failure can never break the existing Celery Beat scheduling
 path — without a test database.
 """
 
+from contextlib import nullcontext
 from unittest.mock import MagicMock, patch
 
 from scheduler import tasks
@@ -129,21 +130,26 @@ class TestEnableDisableMirror:
         sched.objects.filter.assert_called_with(pipeline_id=_PIPELINE_ID)
         assert sched.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
 
+    @staticmethod
+    def _set_pg_owned(sched, value):
+        # enable_task reads pg_owned via select_for_update().filter().values_list().first()
+        (
+            sched.objects.select_for_update.return_value.filter.return_value.values_list.return_value.first.return_value
+        ) = value
+
     def test_resume_enables_beat_when_not_pg_owned(self):
         with (
             patch("scheduler.tasks.PeriodicTask") as pt,
             patch("scheduler.tasks.PipelineProcessor"),
             patch("scheduler.tasks.PgPeriodicSchedule") as sched,
+            patch("scheduler.tasks.transaction.atomic", return_value=nullcontext()),
         ):
-            task = MagicMock()
-            pt.objects.get.return_value = task
-            sched.objects.filter.return_value.values_list.return_value.first.return_value = False
-            sched.objects.filter.return_value.update.return_value = 1
+            pt.objects.get.return_value = MagicMock()
+            self._set_pg_owned(sched, False)
             tasks.enable_task(_PIPELINE_ID)
 
-        assert task.enabled is True  # Beat fires it (not PG-owned)
-        # mirror.enabled tracks active (True on resume)
-        assert sched.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
+        # Beat enabled via a column-only .update() (no full task.save() to clobber)
+        assert pt.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
 
     def test_resume_keeps_beat_disabled_when_pg_owned(self):
         """The High bug: resuming a PG-owned schedule must NOT re-enable Beat
@@ -152,14 +158,14 @@ class TestEnableDisableMirror:
             patch("scheduler.tasks.PeriodicTask") as pt,
             patch("scheduler.tasks.PipelineProcessor"),
             patch("scheduler.tasks.PgPeriodicSchedule") as sched,
+            patch("scheduler.tasks.transaction.atomic", return_value=nullcontext()),
         ):
-            task = MagicMock()
-            pt.objects.get.return_value = task
-            sched.objects.filter.return_value.values_list.return_value.first.return_value = True
-            sched.objects.filter.return_value.update.return_value = 1
+            pt.objects.get.return_value = MagicMock()
+            self._set_pg_owned(sched, True)
             tasks.enable_task(_PIPELINE_ID)
 
-        assert task.enabled is False  # PG owns it → Beat stays off
+        # PG owns it → Beat stays off.
+        assert pt.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
 
     def test_disable_mirror_failure_does_not_break_beat_path(self):
         """A mirror failure must be swallowed AND the pipeline-status update must

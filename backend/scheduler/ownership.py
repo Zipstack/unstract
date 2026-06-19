@@ -24,6 +24,7 @@ import os
 
 from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
 from pg_queue.models import PgPeriodicSchedule
 
@@ -102,7 +103,9 @@ def reconcile_ownership_for(
     pg_owned = resolve_schedule_owner(pipeline_id, organization_id)
     try:
         with transaction.atomic():
-            updates: dict = {"pg_owned": pg_owned}
+            # queryset .update() doesn't fire auto_now, so bump updated_at
+            # explicitly (mirrors _mirror_periodic_schedule_set_enabled).
+            updates: dict = {"pg_owned": pg_owned, "updated_at": timezone.now()}
             if not pg_owned:
                 # Back on Beat → clear the PG next-run so a future re-hand-over
                 # baselines instead of firing immediately on a stale timestamp.
@@ -118,7 +121,10 @@ def reconcile_ownership_for(
                     "(not yet mirrored); skipping",
                     pipeline_id,
                 )
-                return pg_owned
+                # Without a mirror row PG can't fire (nothing to tick) and the Beat
+                # PeriodicTask was never disabled → the effective owner is Beat.
+                # Return False so the ramp count isn't inflated past what's live.
+                return False
             # Beat owns it only when active AND not handed to PG.
             PeriodicTask.objects.filter(name=pipeline_id).update(
                 enabled=active and not pg_owned

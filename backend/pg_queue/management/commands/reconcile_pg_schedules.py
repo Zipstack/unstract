@@ -95,10 +95,15 @@ class Command(BaseCommand):
 
     def _backfill_mirrors(self, dry_run: bool) -> int:
         """Create a mirror row for every pipeline-trigger PeriodicTask lacking one."""
+        # Pre-fetch the already-mirrored ids in one query (avoid an EXISTS per row).
+        mirrored = {
+            str(pk)
+            for pk in PgPeriodicSchedule.objects.values_list("pipeline_id", flat=True)
+        }
         backfilled = 0
         for pt in PeriodicTask.objects.filter(task=_PIPELINE_TASK_PATH):
             pipeline_id = pt.name  # = str(pipeline.pk)
-            if PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).exists():
+            if pipeline_id in mirrored:
                 continue
             fields = self._mirror_fields_from_args(pt, pipeline_id)
             if fields is None:

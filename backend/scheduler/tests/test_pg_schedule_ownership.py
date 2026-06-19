@@ -135,11 +135,13 @@ class TestReconcileOwnership:
             PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
         )
 
-    def test_missing_mirror_row_skips_periodictask(self):
+    def test_missing_mirror_row_skips_and_reports_beat(self):
         sched, pt, resolve, txn = self._patches(owner=True)
         with sched as Sched, pt as PT, resolve, txn:
             Sched.objects.filter.return_value.update.return_value = 0  # no row
-            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+            # No mirror row → PG can't fire → effective owner is Beat → returns
+            # False even though resolve said PG (so the ramp count isn't inflated).
+            assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is False
 
         PT.objects.filter.assert_not_called()  # nothing to own yet
 
