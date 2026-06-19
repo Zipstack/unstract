@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlencode, urljoin
 
 from django.conf import settings
@@ -21,12 +21,12 @@ class HeaderItem:
 @dataclass
 class ScriptItem:
     exec: list[str]
-    type: str = "text/javascript"
+    type: Literal["text/javascript"] = "text/javascript"
 
 
 @dataclass
 class EventItem:
-    listen: str
+    listen: Literal["prerequest", "test"]
     script: ScriptItem
 
 
@@ -73,7 +73,7 @@ class RequestItem:
 class PostmanItem:
     name: str
     request: RequestItem
-    event: list[EventItem] | None = None
+    event: list[EventItem] = field(default_factory=list)
 
 
 @dataclass
@@ -88,7 +88,7 @@ class APIBase(ABC):
     def get_form_data_items(self) -> list[FormDataItem]:
         pass
 
-    def get_collection_variables(self) -> list["VariableItem"]:
+    def get_collection_variables(self) -> list[VariableItem]:
         """Collection-level variables; only needed when a request
         references them.
         """
@@ -184,6 +184,12 @@ class APIDeploymentDto(APIBase):
         """Post-response script that stores the execution_id from the execute
         response into a collection variable, so the status request can use it
         without manual copy-pasting.
+
+        This is Postman's ``test`` hook (the emitted event uses
+        ``listen="test"``). It assumes the execute response shape
+        ``{"message": {"execution_id": ...}}``; if the body is non-JSON or
+        lacks that field it captures nothing and resets the variable to the
+        default sentinel so a stale id from a previous run is never reused.
         """
         return EventItem(
             listen="test",
@@ -197,6 +203,9 @@ class APIDeploymentDto(APIBase):
                     "}",
                     "if (response && response.message && response.message.execution_id) {",  # noqa: E501
                     f'    pm.collectionVariables.set("{CollectionKey.EXEC_ID_VARIABLE_NAME}", response.message.execution_id);',  # noqa: E501
+                    "} else {",
+                    f'    pm.collectionVariables.set("{CollectionKey.EXEC_ID_VARIABLE_NAME}", "{CollectionKey.STATUS_EXEC_ID_DEFAULT}");',  # noqa: E501
+                    '    console.warn("No execution_id in execute response; not reusing a stale value. Status:", pm.response.code);',  # noqa: E501
                     "}",
                 ]
             ),
@@ -299,8 +308,9 @@ class PostmanCollection:
             dict[str, Any]: PostmanCollection as a dict
         """
         collection_dict = asdict(self)
-        # Drop null event blocks; Postman expects "event" to be a list
+        # Omit empty event blocks; items without scripts (e.g. pipelines)
+        # should not carry an "event" key at all.
         for item in collection_dict.get("item", []):
-            if item.get("event") is None:
+            if not item.get("event"):
                 item.pop("event", None)
         return collection_dict
