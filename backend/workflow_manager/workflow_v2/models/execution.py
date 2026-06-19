@@ -145,6 +145,12 @@ class WorkflowExecution(BaseModel):
         null=True,
         db_comment="task id of asynchronous execution",
     )
+    queue_message_id = models.BigIntegerField(
+        editable=False,
+        null=True,
+        db_comment="pg_queue_message.msg_id for PG-transport executions "
+        "(the queue-row handle; task_id stays NULL on the PG path)",
+    )
     workflow = models.ForeignKey(
         Workflow,
         on_delete=models.CASCADE,

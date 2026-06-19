@@ -518,6 +518,45 @@ class WorkflowHelper:
         return async_execution.id
 
     @classmethod
+    def _record_dispatch_handle(
+        cls,
+        *,
+        execution_id: str,
+        transport: str,
+        dispatch_handle: str | None,
+        org_schema: str,
+        file_count: int,
+    ) -> None:
+        """Persist the transport's dispatch handle on the execution row.
+
+        Celery → the Celery task UUID into ``task_id`` (UUIDField). PG → the
+        ``pg_queue_message.msg_id`` into ``queue_message_id`` (BigIntegerField);
+        ``task_id`` stays NULL because there is no Celery task on the PG path.
+        Each id lives in its own correctly-typed column so a bigint msg_id is
+        never forced into the UUID ``task_id``.
+        """
+        if not dispatch_handle:
+            # PG always yields a truthy msg_id, so an empty handle is Celery-only.
+            logger.warning(
+                f"[{org_schema}] Empty dispatch handle (transport={transport}) "
+                f"for execution_id '{execution_id}'."
+            )
+            return
+        if is_pg_transport(transport):
+            WorkflowExecutionServiceHelper.update_execution_queue_message_id(
+                execution_id=execution_id, queue_message_id=int(dispatch_handle)
+            )
+        else:
+            WorkflowExecutionServiceHelper.update_execution_task(
+                execution_id=execution_id, task_id=dispatch_handle
+            )
+        logger.info(
+            f"[{org_schema}] Job '{dispatch_handle}' enqueued "
+            f"(transport={transport}) for execution_id '{execution_id}', "
+            f"'{file_count}' files"
+        )
+
+    @classmethod
     def execute_workflow_async(
         cls,
         workflow_id: str,
@@ -597,7 +636,7 @@ class WorkflowHelper:
             # Orchestrator transport (9e PR A / 2d): dispatch async_execute_bin on
             # the resolved transport (PG enqueue vs Celery). Extracted to a helper
             # so this method stays simple and the fork is unit-testable.
-            task_id = cls._dispatch_orchestrator_task(
+            dispatch_handle = cls._dispatch_orchestrator_task(
                 transport=transport,
                 queue=queue,
                 args=dispatch_args,
@@ -611,23 +650,25 @@ class WorkflowHelper:
             workflow_execution: WorkflowExecution = WorkflowExecution.objects.get(
                 id=execution_id
             )
-            if not task_id:
-                # PG always yields a truthy msg_id, so an empty id is Celery-only;
-                # keep the transport in the message so operators can tell.
-                logger.warning(
-                    f"[{org_schema}] Empty task_id (transport={transport}) for "
-                    f"execution_id '{execution_id}'."
+            # Record the dispatch handle (Celery task_id or PG msg_id) on the row.
+            # Best-effort, in its OWN try/except: it must NEVER abort the
+            # synchronous timeout wait below. (Writing a bigint msg_id into the
+            # UUID task_id used to raise ValueError here, which bubbled to the
+            # post-dispatch handler and silently skipped the wait — so every
+            # PG-routed API deployment ignored `timeout`.)
+            try:
+                cls._record_dispatch_handle(
+                    execution_id=execution_id,
+                    transport=transport,
+                    dispatch_handle=dispatch_handle,
+                    org_schema=org_schema or "",
+                    file_count=len(hash_values_of_files),
                 )
-                # Continue without setting task_id - execution can still complete
-            else:
-                # Use existing method to handle task_id setting with validation
-                WorkflowExecutionServiceHelper.update_execution_task(
-                    execution_id=execution_id, task_id=task_id
-                )
-                logger.info(
-                    f"[{org_schema}] Job '{task_id}' enqueued (transport={transport}) "
-                    f"for execution_id '{execution_id}', "
-                    f"'{len(hash_values_of_files)}' files"
+            except Exception:
+                logger.exception(
+                    f"[{org_schema}] Failed to record dispatch handle "
+                    f"(transport={transport}) for execution '{execution_id}'; "
+                    "continuing — the orchestrator is already running"
                 )
 
             execution_status = workflow_execution.status
