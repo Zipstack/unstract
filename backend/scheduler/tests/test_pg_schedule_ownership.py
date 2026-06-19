@@ -9,6 +9,8 @@ the same step (no double-fire), with pause state preserved.
 import contextlib
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from scheduler import ownership
 
 _PID = "11111111-1111-1111-1111-111111111111"
