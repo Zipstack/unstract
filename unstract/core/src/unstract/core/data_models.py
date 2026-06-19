@@ -10,7 +10,7 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from enum import Enum, StrEnum
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -315,6 +315,13 @@ class TaskPayload(TypedDict):
     *column* of the row, not by this field. Producers record the logical queue
     here for debugging (the backend producer always sets it; the workers'
     ``to_payload`` may leave it ``None``).
+
+    ``reply_key`` is set only for **request-reply** dispatches (the executor RPC
+    on PG): the caller generates a unique key, waits on it, and the
+    executor consumer writes the task's result/error to ``pg_task_result`` under
+    it. Absent (the common case) means fire-and-forget — the consumer stores no
+    result. It is deliberately a dedicated key, not ``request_id`` (which is a
+    caller-supplied tracing correlation id and may not be unique per dispatch).
     """
 
     task_name: str
@@ -322,6 +329,7 @@ class TaskPayload(TypedDict):
     kwargs: dict[str, Any]
     queue: str | None
     fairness: FairnessPayload | None
+    reply_key: NotRequired[str | None]
 
 
 class FileListingResult:

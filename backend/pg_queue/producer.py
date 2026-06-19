@@ -62,6 +62,7 @@ def enqueue_task(
     org_id: str = "",
     priority: int = DEFAULT_PRIORITY,
     fairness: FairnessPayload | None = None,
+    reply_key: str | None = None,
 ) -> int:
     """Enqueue a task onto the PG queue; returns the new ``msg_id``.
 
@@ -69,6 +70,10 @@ def enqueue_task(
     consumer can decode and run it. A PG enqueue failure propagates — the caller
     decides; for the orchestrator there is no silent Celery fallback (that would
     hide the failure or risk a double-dispatch).
+
+    ``reply_key`` marks a **request-reply** dispatch (the executor RPC on PG):
+    the executor consumer writes the task's result/error to ``pg_task_result``
+    under it for the blocking caller to poll. Omitted = fire-and-forget.
     """
     if not FAIRNESS_MIN_PRIORITY <= priority <= FAIRNESS_MAX_PRIORITY:
         raise ValueError(
@@ -83,6 +88,10 @@ def enqueue_task(
         "queue": pg_queue,
         "fairness": fairness,
     }
+    # Only set for request-reply dispatches — keeps fire-and-forget rows
+    # byte-identical to before this field existed.
+    if reply_key is not None:
+        message["reply_key"] = reply_key
     # Mirror the worker _enqueue_pg path: log the failure with breadcrumbs before
     # it propagates, so a DB/constraint/serialization error isn't mislabeled by
     # the caller's broad handler.

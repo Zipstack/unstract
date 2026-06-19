@@ -10,7 +10,7 @@ JSONB, and the giant shared table is never migrated for this work.
 
 PR 3 (this change) replaces PR 1's hardwired Celery with a Flipt evaluation:
 
-  master-gate (env) → Flipt boolean (``pg_queue_execution_enabled``) → transport
+  master-gate (env) → Flipt boolean (``pg_queue_enabled``) → transport
 
 Routing onto PG needs **all three** of: the env master-gate on, Flipt reachable
 (``FLIPT_SERVICE_AVAILABLE=true``), and the flag enabled for this execution.
@@ -45,8 +45,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The fixed Flipt flag contract (9e-design §2): Boolean, default false.
-PG_QUEUE_FLAG_KEY = "pg_queue_execution_enabled"
+# The SINGLE PG-queue rollout flag (Boolean, default false), shared by every
+# PG-queue subsystem — execution, scheduler, and executor all read this one key,
+# so a single flip gates the whole feature on/off (no per-subsystem flags).
+PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
 
 
 def resolve_transport(

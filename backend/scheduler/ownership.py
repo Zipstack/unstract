@@ -12,8 +12,8 @@ Doing both in one transaction is what makes "never double-fires" real (it was
 ``PeriodicTask`` disabled, so the two can't both fire.
 
 Inert by default: ``resolve_schedule_owner`` fails closed to Beat
-(``pg_owned=False``) until ops turns the master gate on AND ramps the
-``pg_scheduler_enabled`` Flipt flag — so reconciling on every schedule edit is a
+(``pg_owned=False``) until ops turns the master gate on AND ramps the single
+``pg_queue_enabled`` Flipt flag — so reconciling on every schedule edit is a
 no-op (everything stays Beat-owned) until the rollout starts.
 """
 
@@ -32,16 +32,17 @@ from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
-# Independent of the execution-transport flag (pg_queue_execution_enabled) so
-# scheduling and execution ramp separately. %-rollout keyed on pipeline_id.
-SCHEDULER_FLAG_KEY = "pg_scheduler_enabled"
+# The SINGLE PG-queue rollout flag, shared with execution + executor: one flip
+# gates the whole feature on/off (no per-subsystem flags). %-rollout keyed on
+# pipeline_id here (each subsystem buckets on its own entity).
+SCHEDULER_FLAG_KEY = "pg_queue_enabled"
 
 
 def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> bool:
     """True → the PG scheduler owns this schedule; False → Celery Beat does.
 
     Mirrors ``resolve_transport``: master-gated by ``PG_QUEUE_TRANSPORT_ENABLED``
-    (shared PG kill-switch), then the ``pg_scheduler_enabled`` Flipt flag, keyed
+    (shared PG kill-switch), then the single ``pg_queue_enabled`` Flipt flag, keyed
     on ``pipeline_id`` for a stable percentage bucket. **Fails closed to Beat**
     on a closed gate, a blind Flipt, or any error — so a schedule never silently
     loses its firer.

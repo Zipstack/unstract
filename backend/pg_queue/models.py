@@ -285,3 +285,40 @@ class PgPeriodicSchedule(models.Model):
                 name="pg_periodic_schedule_due_idx",
             ),
         ]
+
+
+class PgTaskResult(models.Model):
+    """Request-reply result store for the executor RPC on PG (Phase 9).
+
+    Replaces Celery's ``AsyncResult`` / result backend for the *blocking*
+    executor dispatch when it rides the PG transport. A row appears ONLY when the
+    executor task finishes: the PG executor consumer (``worker-pg-executor``)
+    writes the returned ``ExecutionResult`` (``status="completed"``) or the error
+    text if the task raised (``status="failed"``), keyed by the caller-chosen
+    ``task_id`` (the reply key). The blocking caller polls this table until the
+    row appears or its timeout elapses; a non-blocking poll just checks presence.
+
+    The absence of a row means "not done yet" — there is deliberately no
+    ``pending`` state to maintain. A separate, droppable table that never touches
+    ``WorkflowExecution`` — same posture as ``PgBarrierState`` / ``PgBatchDedup``,
+    extension-free (UN-3533). ``expires_at`` drives the reaper's retention sweep.
+    """
+
+    # Caller-chosen reply key (opaque text, mirrors a Celery task id's role): the
+    # caller waits on it, the consumer stores the result under it.
+    task_id = models.TextField(primary_key=True)
+    # "completed" = task returned (``result`` holds ExecutionResult.to_dict());
+    # "failed" = task raised (``error`` holds the message).
+    status = models.TextField()
+    result = models.JSONField(null=True, blank=True)
+    error = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
+    # Retention horizon for the reaper sweep; NULL = no expiry recorded yet.
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "pg_task_result"
+        indexes = [
+            # Drives the reaper's retention sweep (DELETE ... WHERE expires_at <= now()).
+            models.Index(fields=["expires_at"], name="pg_task_result_expires_idx"),
+        ]
