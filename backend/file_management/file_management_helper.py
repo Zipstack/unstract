@@ -86,9 +86,11 @@ class FileManagerHelper:
             if file_info.get("type") == "file" and file_info.get("size") is None:
                 try:
                     file_info = fs.info(file_name)
-                except Exception:
+                except Exception as exc:
                     logger.warning(
-                        "fs.info() failed for %s; using ls() metadata", file_name
+                        "fs.info() failed for %s; using ls() metadata: %s",
+                        file_name,
+                        exc,
                     )
                     file_info["size"] = 0
 
