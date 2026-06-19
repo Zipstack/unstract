@@ -2,11 +2,12 @@ import logging
 
 from django.db import IntegrityError
 from rest_framework.exceptions import ValidationError
+from utils.serializer.org_uniqueness import DropServerSetUniquenessMixin
 
 logger = logging.getLogger(__name__)
 
 
-class IntegrityErrorMixin:
+class IntegrityErrorMixin(DropServerSetUniquenessMixin):
     """Mixin to handle IntegrityError across multiple serializers for unique
     constraint violations.
     """

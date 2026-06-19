@@ -1,11 +1,12 @@
 from typing import Any
 
 from rest_framework.serializers import ModelSerializer
+from utils.serializer.org_uniqueness import DropServerSetUniquenessMixin
 
 from backend.constants import RequestKey
 
 
-class AuditSerializer(ModelSerializer):
+class AuditSerializer(DropServerSetUniquenessMixin, ModelSerializer):
     def create(self, validated_data: dict[str, Any]) -> Any:
         request = self.context.get(RequestKey.REQUEST)
         if request:
