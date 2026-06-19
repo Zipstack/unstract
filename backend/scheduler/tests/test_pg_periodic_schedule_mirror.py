@@ -93,6 +93,7 @@ class TestHelperWiringSourcesRealName:
             ),
             patch("scheduler.helper.create_or_update_periodic_task"),
             patch("scheduler.helper.mirror_periodic_schedule_upsert") as mirror,
+            patch("scheduler.helper.reconcile_ownership_for") as reconcile,
         ):
             SchedulerHelper._schedule_task_job(
                 pipeline,
@@ -109,6 +110,9 @@ class TestHelperWiringSourcesRealName:
         assert kwargs["pipeline_id"] == _PIPELINE_ID
         assert kwargs["organization_id"] == _ORG
         assert kwargs["enabled"] is True
+        # ②c: ownership is reconciled after the mirror upsert (org-identifier +
+        # active passed through).
+        reconcile.assert_called_once_with(_PIPELINE_ID, _ORG, True)
 
 
 class TestEnableDisableMirror:

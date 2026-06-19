@@ -9,6 +9,7 @@ from workflow_manager.workflow_v2.serializers import ExecuteWorkflowSerializer
 
 from scheduler.constants import SchedulerConstants as SC
 from scheduler.exceptions import JobDeletionError, JobSchedulingError
+from scheduler.ownership import reconcile_ownership_for
 from scheduler.serializer import AddJobSerializer
 from scheduler.tasks import (
     create_or_update_periodic_task,
@@ -74,6 +75,13 @@ class SchedulerHelper:
             cron_string=cron_string,
             enabled=pipeline.active,
         )
+        # Ramp control (Phase 9, ②c): align this schedule's firer (Beat vs PG)
+        # with the rollout. Inert until the gate + pg_scheduler_enabled flag are
+        # on (fails closed to Beat), so this is a no-op during normal operation;
+        # when a schedule is owned by PG it disables the Beat PeriodicTask in the
+        # same transaction so the two never both fire. Best-effort (never raises).
+        # organization_id is the org identifier string (what the mirror stores).
+        reconcile_ownership_for(str(pipeline.pk), organization_id, pipeline.active)
 
     @staticmethod
     def add_or_update_job(pipeline: Pipeline) -> None:
