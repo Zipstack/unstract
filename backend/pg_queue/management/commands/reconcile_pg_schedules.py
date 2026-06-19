@@ -68,9 +68,9 @@ class Command(BaseCommand):
             raise CommandError(f"{failed} schedule(s) failed to reconcile")
         self.stdout.write(self.style.SUCCESS(summary))
 
-    def _parse_task_args(self, pt: Any, pipeline_id: str) -> list | None:
-        """PeriodicTask.args as a list, or None (logged) for a malformed/non-array
-        row — a bad row must not abort the whole command.
+    def _mirror_fields_from_args(self, pt: Any, pipeline_id: str) -> dict | None:
+        """Extract the mirror fields from PeriodicTask.args, or None (logged) for a
+        malformed/non-array row — a bad row must not abort the whole command.
         """
         try:
             # json.JSONDecodeError is a ValueError subclass, so one except covers
@@ -78,7 +78,6 @@ class Command(BaseCommand):
             task_args = json.loads(pt.args or "[]")
             if not isinstance(task_args, list):
                 raise ValueError(f"expected JSON array, got {type(task_args).__name__}")
-            return task_args
         except ValueError as exc:
             self.stderr.write(
                 self.style.ERROR(
@@ -86,6 +85,13 @@ class Command(BaseCommand):
                 )
             )
             return None
+        return {
+            "workflow_id": task_args[0] if len(task_args) > 0 else None,
+            "organization_id": (task_args[1] if len(task_args) > 1 else "") or "",
+            # args[6] is the synthetic "Pipeline job-<id>" label; the real name
+            # self-heals via the dual-write on the next schedule edit.
+            "pipeline_name": task_args[6] if len(task_args) > 6 else "",
+        }
 
     def _backfill_mirrors(self, dry_run: bool) -> int:
         """Create a mirror row for every pipeline-trigger PeriodicTask lacking one."""
@@ -94,8 +100,8 @@ class Command(BaseCommand):
             pipeline_id = pt.name  # = str(pipeline.pk)
             if PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).exists():
                 continue
-            task_args = self._parse_task_args(pt, pipeline_id)
-            if task_args is None:
+            fields = self._mirror_fields_from_args(pt, pipeline_id)
+            if fields is None:
                 continue
             self.stdout.write(
                 f"backfill mirror for pipeline {pipeline_id} (enabled={pt.enabled})"
@@ -103,13 +109,9 @@ class Command(BaseCommand):
             if not dry_run:
                 mirror_periodic_schedule_upsert(
                     pipeline_id=pipeline_id,
-                    # args[6] is the synthetic "Pipeline job-<id>" label; the real
-                    # name self-heals via the dual-write on the next schedule edit.
-                    workflow_id=task_args[0] if len(task_args) > 0 else None,
-                    organization_id=(task_args[1] if len(task_args) > 1 else "") or "",
-                    pipeline_name=task_args[6] if len(task_args) > 6 else "",
                     cron_string=_cron_from_crontab(pt.crontab),
                     enabled=pt.enabled,
+                    **fields,
                 )
             backfilled += 1
         return backfilled
