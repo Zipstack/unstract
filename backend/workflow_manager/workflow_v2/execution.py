@@ -427,7 +427,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
 
     @staticmethod
     def update_execution_queue_message_id(
-        execution_id: str, queue_message_id: int
+        execution_id: str, queue_message_id: int | None
     ) -> None:
         """Record the PG queue-row handle (``pg_queue_message.msg_id``) on the
         execution. PG-only: ``task_id`` is a UUIDField that can't hold the bigint

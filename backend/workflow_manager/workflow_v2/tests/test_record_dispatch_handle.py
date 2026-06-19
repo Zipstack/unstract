@@ -8,7 +8,12 @@ returned EXECUTING immediately, silently skipping the ``timeout`` sync-wait. The
 fix routes the PG msg_id into its own ``queue_message_id`` (BigIntegerField) and
 leaves ``task_id`` NULL on the PG path, so no bigint is ever forced into a UUID.
 
-DB-free: ``WorkflowExecutionServiceHelper`` is mocked.
+DB-free: ``WorkflowExecutionServiceHelper`` is mocked. These assert ROUTING
+only (PG -> ``queue_message_id`` as int, Celery -> ``task_id``, malformed/empty
+handle -> neither); the UUID-coercion crash and the timeout sync-wait are NOT
+reproduced here (the helper is mocked). The defense-in-depth guarantee — a raise
+during handle recording must not skip the wait loop — is covered separately in
+``test_execute_workflow_async_wait.py``.
 """
 
 from unittest.mock import patch
@@ -69,3 +74,19 @@ class TestRecordDispatchHandle:
             )
         helper.update_execution_task.assert_not_called()
         helper.update_execution_queue_message_id.assert_not_called()
+
+    def test_non_numeric_pg_handle_records_nothing(self):
+        """A malformed PG handle (not a bigint) must be parsed defensively — no
+        ValueError out of the helper, and nothing recorded. Today this can't
+        happen (``_dispatch_orchestrator_task`` always returns ``str(msg_id)``),
+        so this pins the contract against a future handle-format change."""
+        with patch(_HELPER) as helper:
+            WorkflowHelper._record_dispatch_handle(
+                execution_id=_EXEC,
+                transport="pg_queue",
+                dispatch_handle="not-a-number",
+                org_schema="org1",
+                file_count=1,
+            )
+        helper.update_execution_queue_message_id.assert_not_called()
+        helper.update_execution_task.assert_not_called()

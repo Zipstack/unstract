@@ -517,9 +517,8 @@ class WorkflowHelper:
         )
         return async_execution.id
 
-    @classmethod
+    @staticmethod
     def _record_dispatch_handle(
-        cls,
         *,
         execution_id: str,
         transport: str,
@@ -543,8 +542,20 @@ class WorkflowHelper:
             )
             return
         if is_pg_transport(transport):
+            # The PG handle is the bigint msg_id as a string. Parse defensively
+            # so a malformed/future handle format surfaces its specific cause
+            # here instead of being absorbed by the caller's generic guard.
+            try:
+                msg_id = int(dispatch_handle)
+            except (TypeError, ValueError):
+                logger.error(
+                    f"[{org_schema}] PG dispatch handle {dispatch_handle!r} is not "
+                    f"a valid bigint msg_id for execution_id '{execution_id}'; "
+                    "queue_message_id not recorded"
+                )
+                return
             WorkflowExecutionServiceHelper.update_execution_queue_message_id(
-                execution_id=execution_id, queue_message_id=int(dispatch_handle)
+                execution_id=execution_id, queue_message_id=msg_id
             )
         else:
             WorkflowExecutionServiceHelper.update_execution_task(
@@ -653,9 +664,10 @@ class WorkflowHelper:
             # Record the dispatch handle (Celery task_id or PG msg_id) on the row.
             # Best-effort, in its OWN try/except: it must NEVER abort the
             # synchronous timeout wait below. (Writing a bigint msg_id into the
-            # UUID task_id used to raise ValueError here, which bubbled to the
-            # post-dispatch handler and silently skipped the wait — so every
-            # PG-routed API deployment ignored `timeout`.)
+            # UUID task_id used to raise ValueError inside update_execution_task
+            # (UUID coercion on save), which bubbled to the post-dispatch handler
+            # and silently skipped the wait — so every PG-routed API deployment
+            # ignored `timeout`.)
             try:
                 cls._record_dispatch_handle(
                     execution_id=execution_id,
