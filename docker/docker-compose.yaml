@@ -714,7 +714,7 @@ services:
   # blocking caller. Same heavy executor runtime as worker-executor-v2 (tool
   # execution → platform-service / adapters / file storage), but broker-free: it
   # is the terminal of the RPC and dispatches nothing onward to Celery. Dark
-  # until the backend pg_executor_enabled gate is flipped.
+  # until the backend pg_queue_enabled gate is flipped.
   worker-pg-executor:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-pg-executor

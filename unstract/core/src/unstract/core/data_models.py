@@ -319,9 +319,10 @@ class TaskPayload(TypedDict):
     ``reply_key`` is set only for **request-reply** dispatches (the executor RPC
     on PG): the caller generates a unique key, waits on it, and the
     executor consumer writes the task's result/error to ``pg_task_result`` under
-    it. Absent (the common case) means fire-and-forget — the consumer stores no
-    result. It is deliberately a dedicated key, not ``request_id`` (which is a
-    caller-supplied tracing correlation id and may not be unique per dispatch).
+    it. "request-reply" is exactly "key present" — it is ``NotRequired[str]`` (not
+    ``str | None``) so there is one meaning per representation (absent = fire-and-
+    forget; present = a real key). It is deliberately a dedicated key, not
+    ``request_id`` (a caller-supplied tracing id that may not be unique).
     """
 
     task_name: str
@@ -329,7 +330,19 @@ class TaskPayload(TypedDict):
     kwargs: dict[str, Any]
     queue: str | None
     fairness: FairnessPayload | None
-    reply_key: NotRequired[str | None]
+    reply_key: NotRequired[str]
+
+
+class PgTaskStatus(str, Enum):
+    """Status vocabulary for a ``pg_task_result`` row — the executor-RPC
+    request-reply contract (Phase 9). Shared in ``unstract.core`` so the writer
+    (workers ``PgResultBackend``) and reader (backend executor-RPC dispatcher),
+    which live in separate trees with no shared import, agree on one source of
+    truth rather than matching bare literals by eye across the process boundary.
+    """
+
+    COMPLETED = "completed"  # task returned; ``result`` holds ExecutionResult dict
+    FAILED = "failed"  # task raised; ``error`` holds the message
 
 
 class FileListingResult:

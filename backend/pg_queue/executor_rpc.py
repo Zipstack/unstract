@@ -36,9 +36,12 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
+from django.db import close_old_connections
 
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgTaskResult
 from pg_queue.producer import enqueue_task
+from unstract.core.data_models import PgTaskStatus
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.result import ExecutionResult
@@ -48,12 +51,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The SINGLE PG-queue rollout flag — shared with the execution path
-# (canonical constant: ``PG_QUEUE_FLAG_KEY`` in workflow_v2/transport.py; the
-# string is duplicated here rather than imported to avoid a pg_queue →
-# workflow_manager dependency). One flag for the whole feature: on routes the
-# executor (and execution) to PG, off keeps Celery — no per-subsystem flags.
-PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
+# Gating reads the single shared PG-queue flag (pg_queue.flags.PG_QUEUE_FLAG_KEY,
+# imported above) — the same key execution and the scheduler use.
 _EXECUTE_TASK = "execute_extraction"
 # Mirror the SDK's queue-per-executor convention so the PG executor queue name
 # matches the Celery one (the queue routes by the row's queue_name column).
@@ -148,20 +147,51 @@ class PgExecutionDispatcher:
         )
         row = self._wait_for_result(reply_key, timeout)
         if row is None:
+            logger.warning(
+                "PG executor dispatch: TIMEOUT after %ss (reply_key=%s run_id=%s) — "
+                "the executor task may still be running",
+                timeout,
+                reply_key,
+                context.run_id,
+            )
             return ExecutionResult.failure(
                 error=f"TimeoutError: executor reply not received within {timeout}s"
             )
-        if row.status == "completed" and row.result is not None:
-            return ExecutionResult.from_dict(row.result)
+        if row.status == PgTaskStatus.COMPLETED.value and row.result is not None:
+            try:
+                return ExecutionResult.from_dict(row.result)
+            except Exception:
+                # Honour the never-raises contract: a malformed completed row
+                # becomes a failure result, not a 500 to the caller.
+                logger.exception(
+                    "PG executor dispatch: malformed completed result "
+                    "(reply_key=%s run_id=%s)",
+                    reply_key,
+                    context.run_id,
+                )
+                return ExecutionResult.failure(
+                    error=f"Malformed executor result for reply_key {reply_key}"
+                )
+        logger.warning(
+            "PG executor dispatch: executor reported failure (reply_key=%s "
+            "run_id=%s): %s",
+            reply_key,
+            context.run_id,
+            row.error or "(no error)",
+        )
         return ExecutionResult.failure(error=row.error or "executor task failed")
 
     @staticmethod
     def _wait_for_result(reply_key: str, timeout: float) -> PgTaskResult | None:
         """Poll ``pg_task_result`` until the row appears or *timeout* elapses.
 
-        Poll-based with capped backoff (PgBouncer-safe; no LISTEN/NOTIFY). Each
-        ``.first()`` opens+closes its own Django query so a freshly committed row
-        from the executor consumer is visible.
+        Poll-based with capped backoff (PgBouncer-safe; no LISTEN/NOTIFY). The DB
+        connection is released between polls (``close_old_connections``) so a
+        long-running RPC does not pin a backend connection for its whole duration
+        and exhaust the pool. Each poll is its own autocommit query, so a row
+        committed by the executor consumer becomes visible — **dispatch must NOT
+        be called inside an open transaction** (``transaction.atomic`` /
+        ``ATOMIC_REQUESTS`` would pin one snapshot and never see the new row).
         """
         deadline = time.monotonic() + timeout
         delay = _POLL_INITIAL_SECONDS
@@ -172,6 +202,8 @@ class PgExecutionDispatcher:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return None
+            # Don't hold the connection idle through the sleep.
+            close_old_connections()
             time.sleep(min(delay, remaining))
             delay = min(delay * 2, _POLL_MAX_SECONDS)
 

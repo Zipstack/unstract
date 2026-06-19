@@ -158,6 +158,12 @@ class PgQueueConsumer:
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
         task_name = payload.get("task_name")
+        # Request-reply (executor RPC): a unique key the dispatching caller is
+        # blocking on. Read up front so the drop branches below can store a
+        # definitive failure reply (the caller fails fast instead of blocking to
+        # its full timeout). Present → store the outcome + ack after one attempt;
+        # absent → fire-and-forget (the existing leaf/pipeline path).
+        reply_key = payload.get("reply_key")
 
         # Malformed / foreign payload: no task name → can't run; drop with a
         # log that points at the payload, not at task registration.
@@ -168,6 +174,7 @@ class PgQueueConsumer:
                 message.msg_id,
                 payload,
             )
+            self._fail_reply(reply_key, "malformed message: missing task_name")
             self._client.delete(message.msg_id)
             return
 
@@ -184,6 +191,9 @@ class PgQueueConsumer:
                 message.read_ct,
                 payload,
             )
+            self._fail_reply(
+                reply_key, f"task {task_name} exceeded max_attempts={self.max_attempts}"
+            )
             self._client.delete(message.msg_id)
             return
 
@@ -195,14 +205,10 @@ class PgQueueConsumer:
                 task_name,
                 message.msg_id,
             )
+            self._fail_reply(reply_key, f"unknown task {task_name}")
             self._client.delete(message.msg_id)
             return
 
-        # Request-reply (executor RPC): a unique key the dispatching caller
-        # is blocking on. Present → store the outcome to pg_task_result and ack
-        # after a single attempt (no vt-redeliver — see the except branch).
-        # Absent → fire-and-forget (the existing leaf/pipeline path).
-        reply_key = payload.get("reply_key")
         try:
             # Run the task body in-process (eager), carrying the fairness
             # header so a PG-routed run mirrors the Celery dispatch path.
@@ -223,7 +229,7 @@ class PgQueueConsumer:
                 # (LLM spend). The executor task's own autoretry covers transient
                 # errors within this attempt; the caller re-dispatches with a
                 # fresh reply_key to retry the whole RPC.
-                self._store_reply(reply_key, error=f"{type(exc).__name__}: {exc}")
+                self._fail_reply(reply_key, f"{type(exc).__name__}: {exc}")
                 self._client.delete(message.msg_id)  # ack
                 logger.exception(
                     "PG-queue consumer: request-reply task %r (msg_id=%s) failed "
@@ -245,8 +251,23 @@ class PgQueueConsumer:
             return
 
         if reply_key:
-            # Persist the task's return value for the waiting caller before ack.
-            self._store_reply(reply_key, result=eager.result)
+            # Persist the result for the waiting caller before ack. Guarded: a
+            # store failure must NOT leave the message for vt-redelivery — that
+            # re-runs the executor (real LLM spend) and blocks the caller to its
+            # full timeout. Log loudly and ack anyway; the caller degrades to a
+            # timeout (rare), but we never double-spend.
+            try:
+                self._store_reply(reply_key, result=eager.result)
+            except Exception:
+                logger.error(
+                    "PG-queue consumer: FAILED to store request-reply result "
+                    "(task=%r msg_id=%s reply_key=%s) — acking anyway to avoid an "
+                    "expensive re-run; caller will time out",
+                    task_name,
+                    message.msg_id,
+                    reply_key,
+                    exc_info=True,
+                )
 
         if not self._client.delete(message.msg_id):  # ack
             logger.warning(
@@ -268,6 +289,26 @@ class PgQueueConsumer:
         if self._result_backend is None:
             self._result_backend = PgResultBackend()
         self._result_backend.store_result(reply_key, result=result, error=error)
+
+    def _fail_reply(self, reply_key: str | None, error: str) -> None:
+        """Best-effort failure reply for a request-reply message that can't run
+        or whose run raised (drop / poison / unknown-task / exception).
+
+        No-op without a ``reply_key``; never raises — a store failure here must
+        not wedge the drop/ack path (the message is acked regardless), it just
+        means the caller degrades to a timeout instead of a fast definitive error.
+        """
+        if not reply_key:
+            return
+        try:
+            self._store_reply(reply_key, error=error)
+        except Exception:
+            logger.error(
+                "PG-queue consumer: failed to store failure reply (reply_key=%s): %s",
+                reply_key,
+                error,
+                exc_info=True,
+            )
 
     def _registered_task_count(self) -> int:
         """Count application tasks (excluding Celery's built-ins)."""

@@ -38,6 +38,8 @@ from typing import TYPE_CHECKING, Any, Self
 
 import psycopg2
 
+from unstract.core.data_models import PgTaskStatus
+
 from .connection import create_pg_connection
 
 if TYPE_CHECKING:
@@ -65,9 +67,11 @@ _GET_SQL = "SELECT status, result, error FROM pg_task_result WHERE task_id = %s"
 _POLL_INITIAL_SECONDS = 0.2
 _POLL_MAX_SECONDS = 2.0
 
-# status values
-STATUS_COMPLETED = "completed"
-STATUS_FAILED = "failed"
+# Status vocabulary — sourced from the shared enum in unstract.core so the writer
+# (here) and the backend reader agree across the process boundary. Re-exported as
+# plain strings for the SQL/tests.
+STATUS_COMPLETED = PgTaskStatus.COMPLETED.value
+STATUS_FAILED = PgTaskStatus.FAILED.value
 
 
 class PgResultBackend:
@@ -99,6 +103,13 @@ class PgResultBackend:
             try:
                 conn.rollback()
             except Exception:
+                # A failed rollback proves the connection is unusable regardless
+                # of the original error subclass — recycle it (and surface why,
+                # rather than swallowing it silently).
+                logger.warning(
+                    "PgResultBackend: rollback failed; treating connection as dead",
+                    exc_info=True,
+                )
                 conn_dead = True
             if self._owns_conn and (conn_dead or conn.closed):
                 with contextlib.suppress(Exception):

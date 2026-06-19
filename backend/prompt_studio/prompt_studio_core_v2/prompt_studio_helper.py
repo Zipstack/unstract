@@ -290,7 +290,7 @@ class PromptStudioHelper:
     def _get_dispatcher():
         """Executor dispatcher for the executor worker.
 
-        Gate-routed: when ``pg_executor_enabled`` is on the blocking
+        Gate-routed: when ``pg_queue_enabled`` is on the blocking
         ``dispatch()`` rides the PG request-reply transport; otherwise — and for
         all async/callback dispatches — it is the unchanged Celery
         ``ExecutionDispatcher``. The decision is read per dispatch, so flipping

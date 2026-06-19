@@ -36,6 +36,7 @@ import os
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 
 from unstract.core.data_models import WorkflowTransport
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -45,10 +46,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The SINGLE PG-queue rollout flag (Boolean, default false), shared by every
-# PG-queue subsystem — execution, scheduler, and executor all read this one key,
-# so a single flip gates the whole feature on/off (no per-subsystem flags).
-PG_QUEUE_FLAG_KEY = "pg_queue_enabled"
+# The single PG-queue rollout flag (Boolean, default false) is defined once in
+# pg_queue.flags and imported above; execution, scheduler, and executor all read
+# that one key. Re-exported here for callers/tests that import it from this module.
 
 
 def resolve_transport(

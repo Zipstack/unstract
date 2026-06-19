@@ -26,16 +26,16 @@ from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgPeriodicSchedule
 
 from unstract.flags.feature_flag import check_feature_flag_status
 
 logger = logging.getLogger(__name__)
 
-# The SINGLE PG-queue rollout flag, shared with execution + executor: one flip
-# gates the whole feature on/off (no per-subsystem flags). %-rollout keyed on
-# pipeline_id here (each subsystem buckets on its own entity).
-SCHEDULER_FLAG_KEY = "pg_queue_enabled"
+# Gating uses the single shared PG-queue flag (pg_queue.flags.PG_QUEUE_FLAG_KEY,
+# imported above) — one flip gates execution + scheduler + executor. The scheduler
+# buckets the %-rollout on pipeline_id (each subsystem keys on its own entity).
 
 
 def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> bool:
@@ -67,7 +67,7 @@ def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> boo
         context["organization_id"] = str(organization_id)
     try:
         owned = check_feature_flag_status(
-            flag_key=SCHEDULER_FLAG_KEY, entity_id=str(pipeline_id), context=context
+            flag_key=PG_QUEUE_FLAG_KEY, entity_id=str(pipeline_id), context=context
         )
     except Exception:
         # Expected, recoverable (fail-closed to Beat) and runs on every schedule

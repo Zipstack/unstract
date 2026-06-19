@@ -301,7 +301,10 @@ class PgTaskResult(models.Model):
     The absence of a row means "not done yet" — there is deliberately no
     ``pending`` state to maintain. A separate, droppable table that never touches
     ``WorkflowExecution`` — same posture as ``PgBarrierState`` / ``PgBatchDedup``,
-    extension-free (UN-3533). ``expires_at`` drives the reaper's retention sweep.
+    extension-free (UN-3533). ``expires_at`` is written for a **future** retention
+    sweep (``DELETE … WHERE expires_at <= now()``); that sweep is **not wired yet**
+    — until it lands the table grows with each RPC (acceptable while the feature is
+    gated off; tracked as follow-up before the gate ramps to 100%).
     """
 
     # Caller-chosen reply key (opaque text, mirrors a Celery task id's role): the
@@ -315,12 +318,14 @@ class PgTaskResult(models.Model):
     # failed row — avoids a string column having two empty states (NULL vs "").
     error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
-    # Retention horizon for the reaper sweep; NULL = no expiry recorded yet.
+    # Retention horizon for the future sweep (see class docstring). The writer
+    # always sets it; nullable only so the column itself imposes no NOT NULL.
     expires_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "pg_task_result"
         indexes = [
-            # Drives the reaper's retention sweep (DELETE ... WHERE expires_at <= now()).
+            # Index for the future retention sweep (DELETE ... WHERE
+            # expires_at <= now()); no sweeper reads it yet (see class docstring).
             models.Index(fields=["expires_at"], name="pg_task_result_expires_idx"),
         ]
