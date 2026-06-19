@@ -2584,10 +2584,17 @@ class PromptStudioHelper:
             list[dict]: List of prompt configurations
         """
         prompts = PromptStudioHelper.fetch_prompt_from_tool(str(tool.tool_id))
-        return [PromptStudioHelper._export_single_prompt(prompt) for prompt in prompts]
+        # Resolve the plugin once for the whole export, not per prompt.
+        payload_modifier_plugin = get_plugin("payload_modifier")
+        return [
+            PromptStudioHelper._export_single_prompt(prompt, payload_modifier_plugin)
+            for prompt in prompts
+        ]
 
     @staticmethod
-    def _export_single_prompt(prompt: ToolStudioPrompt) -> dict:
+    def _export_single_prompt(
+        prompt: ToolStudioPrompt, payload_modifier_plugin: dict | None = None
+    ) -> dict:
         """Export a single prompt configuration.
 
         Args:
@@ -2596,7 +2603,7 @@ class PromptStudioHelper:
         Returns:
             dict: Prompt configuration
         """
-        return {
+        d = {
             "prompt_key": prompt.prompt_key,
             "prompt": prompt.prompt,
             "active": prompt.active,
@@ -2617,6 +2624,22 @@ class PromptStudioHelper:
             "enable_postprocessing_webhook": prompt.enable_postprocessing_webhook,
             "postprocessing_webhook_url": prompt.postprocessing_webhook_url,
         }
+
+        # Enrich with cloud-only per-prompt settings (table / agentic-table)
+        # via the payload_modifier plugin. Pure-OSS (no plugin) is a no-op.
+        try:
+            if payload_modifier_plugin:
+                settings = payload_modifier_plugin[
+                    "service_class"
+                ]().export_prompt_settings(prompt)
+                if settings:
+                    d["settings"] = settings
+        except Exception as e:
+            logger.warning(
+                f"Failed to export settings for prompt {prompt.prompt_id}: {e}"
+            )
+
+        return d
 
     @staticmethod
     def _export_metadata(tool: CustomTool) -> dict:
@@ -2866,8 +2889,10 @@ class PromptStudioHelper:
             prompt_studio_tool=new_tool, is_default=True
         ).first()
 
+        payload_modifier_plugin = get_plugin("payload_modifier")
+
         for prompt_data in prompts_data:
-            ToolStudioPrompt.objects.create(
+            created = ToolStudioPrompt.objects.create(
                 prompt_key=prompt_data["prompt_key"],
                 prompt=prompt_data["prompt"],
                 active=prompt_data.get("active", DefaultValues.DEFAULT_ACTIVE),
@@ -2911,6 +2936,21 @@ class PromptStudioHelper:
                 created_by=user,
                 modified_by=user,
             )
+
+            # Restore cloud-only per-prompt settings carried in the blob via
+            # the payload_modifier plugin. Backward-compatible: blobs without
+            # a "settings" key (old exports / pure-OSS) are a no-op.
+            settings = prompt_data.get("settings")
+            if settings and payload_modifier_plugin:
+                try:
+                    payload_modifier_plugin["service_class"]().import_prompt_settings(
+                        created, settings
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to import settings for prompt "
+                        f"{created.prompt_id}: {e}"
+                    )
 
     @staticmethod
     def validate_adapter_configuration(
