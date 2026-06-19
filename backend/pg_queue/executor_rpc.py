@@ -117,7 +117,6 @@ class PgExecutionDispatcher:
         self,
         context: ExecutionContext,
         timeout: int | None = None,
-        headers: dict[str, Any] | None = None,  # noqa: ARG002 - parity with SDK
     ) -> ExecutionResult:
         if timeout is None:
             timeout = int(os.environ.get(_DEFAULT_TIMEOUT_ENV, _DEFAULT_TIMEOUT))
@@ -133,12 +132,10 @@ class PgExecutionDispatcher:
                 reply_key=reply_key,
             )
         except Exception as exc:
-            logger.error(
-                "PG executor dispatch: enqueue failed (executor=%s run_id=%s): %s",
+            logger.exception(
+                "PG executor dispatch: enqueue failed (executor=%s run_id=%s)",
                 context.executor_name,
                 context.run_id,
-                exc,
-                exc_info=True,
             )
             return ExecutionResult.failure(error=f"{type(exc).__name__}: {exc}")
         logger.info(
@@ -204,7 +201,9 @@ class RoutingExecutionDispatcher:
                 context.executor_name,
                 context.run_id,
             )
-            return self._pg.dispatch(context, timeout=timeout, headers=headers)
+            # PG carries fairness via the enqueue payload, not Celery headers, so
+            # the headers (fairness key) are intentionally not forwarded here.
+            return self._pg.dispatch(context, timeout=timeout)
         return self._celery.dispatch(context, timeout=timeout, headers=headers)
 
     def dispatch_async(

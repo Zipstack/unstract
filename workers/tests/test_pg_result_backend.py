@@ -44,7 +44,7 @@ class TestStoreGet:
         row = result_backend.get_result(k)
         assert row["status"] == STATUS_COMPLETED
         assert row["result"] == {"success": True, "data": {"x": 1}}
-        assert row["error"] is None
+        assert row["error"] == ""  # no-NULL text convention
 
     def test_store_failed_round_trips(self, result_backend):
         k = _key()

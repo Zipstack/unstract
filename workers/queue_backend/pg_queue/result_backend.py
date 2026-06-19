@@ -121,7 +121,7 @@ class PgResultBackend:
         for the same key (at-least-once redelivery) is a no-op.
         """
         if result is not None:
-            status, result_json, error_text = STATUS_COMPLETED, json.dumps(result), None
+            status, result_json, error_text = STATUS_COMPLETED, json.dumps(result), ""
         else:
             status, result_json, error_text = STATUS_FAILED, None, error or ""
         with self._cursor() as cur:

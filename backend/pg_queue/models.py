@@ -311,7 +311,9 @@ class PgTaskResult(models.Model):
     # "failed" = task raised (``error`` holds the message).
     status = models.TextField()
     result = models.JSONField(null=True, blank=True)
-    error = models.TextField(null=True, blank=True)
+    # No-NULL text convention: "" on a completed row (no error), the message on a
+    # failed row — avoids a string column having two empty states (NULL vs "").
+    error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(default=timezone.now)
     # Retention horizon for the reaper sweep; NULL = no expiry recorded yet.
     expires_at = models.DateTimeField(null=True, blank=True)
