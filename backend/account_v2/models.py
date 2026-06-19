@@ -125,6 +125,8 @@ class PlatformKey(models.Model):
         related_name="platform_keys",
         null=True,
         blank=True,
+        # Server-managed; never accepted as client input.
+        editable=False,
     )
     created_by = models.ForeignKey(
         "User",
