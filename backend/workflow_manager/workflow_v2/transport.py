@@ -10,7 +10,7 @@ JSONB, and the giant shared table is never migrated for this work.
 
 PR 3 (this change) replaces PR 1's hardwired Celery with a Flipt evaluation:
 
-  master-gate (env) → Flipt boolean (``pg_queue_execution_enabled``) → transport
+  master-gate (env) → Flipt boolean (``pg_queue_enabled``) → transport
 
 Routing onto PG needs **all three** of: the env master-gate on, Flipt reachable
 (``FLIPT_SERVICE_AVAILABLE=true``), and the flag enabled for this execution.
@@ -36,6 +36,7 @@ import os
 from typing import TYPE_CHECKING
 
 from django.conf import settings
+from pg_queue.flags import PG_QUEUE_FLAG_KEY
 
 from unstract.core.data_models import WorkflowTransport
 from unstract.flags.feature_flag import check_feature_flag_status
@@ -45,8 +46,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# The fixed Flipt flag contract (9e-design §2): Boolean, default false.
-PG_QUEUE_FLAG_KEY = "pg_queue_execution_enabled"
+# The single PG-queue rollout flag (Boolean, default false) is defined once in
+# pg_queue.flags and imported above; execution, scheduler, and executor all read
+# that one key. Re-exported here for callers/tests that import it from this module.
 
 
 def resolve_transport(

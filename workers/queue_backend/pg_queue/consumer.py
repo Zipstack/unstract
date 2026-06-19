@@ -32,6 +32,7 @@ from celery import current_app
 from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
 from .liveness import LivenessServer as _BaseLivenessServer
+from .result_backend import PgResultBackend
 
 if TYPE_CHECKING:
     from celery import Celery
@@ -116,6 +117,10 @@ class PgQueueConsumer:
         self.backoff_max = backoff_max
         self.max_attempts = max_attempts
         self._running = False
+        # Request-reply (executor RPC) result store — lazily created the first
+        # time a message carries a ``reply_key``; fire-and-forget consumers
+        # (orchestrator/fileproc/callback/scheduler) never instantiate it.
+        self._result_backend: PgResultBackend | None = None
         # Heartbeat for the liveness probe: monotonic timestamp of the most
         # recent poll attempt. Seeded at construction so a just-started consumer
         # reads healthy. Updated at the TOP of poll_once, so a loop wedged on a
@@ -153,6 +158,12 @@ class PgQueueConsumer:
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
         task_name = payload.get("task_name")
+        # Request-reply (executor RPC): a unique key the dispatching caller is
+        # blocking on. Read up front so the drop branches below can store a
+        # definitive failure reply (the caller fails fast instead of blocking to
+        # its full timeout). Present → store the outcome + ack after one attempt;
+        # absent → fire-and-forget (the existing leaf/pipeline path).
+        reply_key = payload.get("reply_key")
 
         # Malformed / foreign payload: no task name → can't run; drop with a
         # log that points at the payload, not at task registration.
@@ -163,6 +174,7 @@ class PgQueueConsumer:
                 message.msg_id,
                 payload,
             )
+            self._fail_reply(reply_key, "malformed message: missing task_name")
             self._client.delete(message.msg_id)
             return
 
@@ -179,6 +191,9 @@ class PgQueueConsumer:
                 message.read_ct,
                 payload,
             )
+            self._fail_reply(
+                reply_key, f"task {task_name} exceeded max_attempts={self.max_attempts}"
+            )
             self._client.delete(message.msg_id)
             return
 
@@ -190,6 +205,7 @@ class PgQueueConsumer:
                 task_name,
                 message.msg_id,
             )
+            self._fail_reply(reply_key, f"unknown task {task_name}")
             self._client.delete(message.msg_id)
             return
 
@@ -198,15 +214,33 @@ class PgQueueConsumer:
             # header so a PG-routed run mirrors the Celery dispatch path.
             fairness = payload.get("fairness")
             headers = {FAIRNESS_HEADER_NAME: fairness} if fairness else None
-            task.apply(
+            eager = task.apply(
                 args=payload.get("args") or [],
                 kwargs=payload.get("kwargs") or {},
                 headers=headers,
                 throw=True,
             )
-        except Exception:
-            # Leave the row: its vt expires and it is redelivered (bounded by
-            # max_attempts above).
+        except Exception as exc:
+            if reply_key:
+                # Record the failure so the waiting caller gets a definitive
+                # result instead of blocking to its timeout, then ACK. We do NOT
+                # vt-redeliver: a redelivery would race a result the caller may
+                # already have consumed, and re-running the executor is costly
+                # (LLM spend). The executor task's own autoretry covers transient
+                # errors within this attempt; the caller re-dispatches with a
+                # fresh reply_key to retry the whole RPC.
+                self._fail_reply(reply_key, f"{type(exc).__name__}: {exc}")
+                self._client.delete(message.msg_id)  # ack
+                logger.exception(
+                    "PG-queue consumer: request-reply task %r (msg_id=%s) failed "
+                    "— stored error + acked (reply_key=%s)",
+                    task_name,
+                    message.msg_id,
+                    reply_key,
+                )
+                return
+            # Fire-and-forget: leave the row — its vt expires and it is
+            # redelivered (bounded by max_attempts above).
             logger.exception(
                 "PG-queue consumer: task %r (msg_id=%s, read_ct=%s) failed — "
                 "leaving for vt-expiry redelivery",
@@ -216,12 +250,62 @@ class PgQueueConsumer:
             )
             return
 
+        if reply_key:
+            # Persist the result for the waiting caller before ack. Guarded: a
+            # store failure must NOT leave the message for vt-redelivery — that
+            # re-runs the executor (real LLM spend) and blocks the caller to its
+            # full timeout. Log loudly and ack anyway; the caller degrades to a
+            # timeout (rare), but we never double-spend.
+            try:
+                self._store_reply(reply_key, result=eager.result)
+            except Exception:
+                logger.exception(
+                    "PG-queue consumer: FAILED to store request-reply result "
+                    "(task=%r msg_id=%s reply_key=%s) — acking anyway to avoid an "
+                    "expensive re-run; caller will time out",
+                    task_name,
+                    message.msg_id,
+                    reply_key,
+                )
+
         if not self._client.delete(message.msg_id):  # ack
             logger.warning(
                 "PG-queue consumer: ack found no row for task %r (msg_id=%s) — "
                 "it likely exceeded vt and was re-claimed (possible double-run)",
                 task_name,
                 message.msg_id,
+            )
+
+    def _store_reply(
+        self, reply_key: str, *, result: dict | None = None, error: str | None = None
+    ) -> None:
+        """Persist a request-reply task's outcome to ``pg_task_result``.
+
+        Lazily opens the result-backend connection on first use (so only the
+        executor consumer pays for it). ``store_result`` is idempotent
+        (first-write-wins), so a redelivery before the original ack is harmless.
+        """
+        if self._result_backend is None:
+            self._result_backend = PgResultBackend()
+        self._result_backend.store_result(reply_key, result=result, error=error)
+
+    def _fail_reply(self, reply_key: str | None, error: str) -> None:
+        """Best-effort failure reply for a request-reply message that can't run
+        or whose run raised (drop / poison / unknown-task / exception).
+
+        No-op without a ``reply_key``; never raises — a store failure here must
+        not wedge the drop/ack path (the message is acked regardless), it just
+        means the caller degrades to a timeout instead of a fast definitive error.
+        """
+        if not reply_key:
+            return
+        try:
+            self._store_reply(reply_key, error=error)
+        except Exception:
+            logger.exception(
+                "PG-queue consumer: failed to store failure reply (reply_key=%s): %s",
+                reply_key,
+                error,
             )
 
     def _registered_task_count(self) -> int:

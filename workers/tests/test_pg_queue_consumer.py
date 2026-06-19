@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 import os
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from celery import shared_task
@@ -462,6 +462,63 @@ def test_parse_queue_list():
     assert _parse_queue_list("a,b,c") == ["a", "b", "c"]
     assert _parse_queue_list(" a , b ,c ") == ["a", "b", "c"]  # whitespace stripped
     assert _parse_queue_list("a,,b") == ["a", "b"]  # empties dropped
+
+
+class TestRequestReply:
+    """Executor-RPC reply_key behaviour: store outcome + ack after one attempt;
+    drop branches store a definitive failure; a store failure still acks (no
+    expensive re-run). PgResultBackend is mocked so no DB is needed.
+    """
+
+    _RB = "queue_backend.pg_queue.consumer.PgResultBackend"
+
+    def test_success_stores_result_and_acks(self):
+        client = MagicMock()
+        client.read.return_value = [_msg(1, {**_ok_payload(3, 4), "reply_key": "rk1"})]
+        with patch(self._RB) as rb_cls:
+            PgQueueConsumer(["q"], client=client).poll_once()
+        rb = rb_cls.return_value
+        rb.store_result.assert_called_once()
+        assert rb.store_result.call_args.args[0] == "rk1"
+        assert rb.store_result.call_args.kwargs["result"] == 7  # x + y
+        assert rb.store_result.call_args.kwargs["error"] is None
+        client.delete.assert_called_once_with(1)  # acked
+
+    def test_task_raise_stores_error_and_acks(self):
+        client = MagicMock()
+        client.read.return_value = [
+            _msg(2, {"task_name": "test_pg_consumer.boom", "reply_key": "rk2"})
+        ]
+        with patch(self._RB) as rb_cls:
+            PgQueueConsumer(["q"], client=client).poll_once()
+        rb = rb_cls.return_value
+        assert rb.store_result.call_args.kwargs["error"] is not None
+        assert rb.store_result.call_args.kwargs["result"] is None
+        client.delete.assert_called_once_with(2)  # acked, NOT left for redelivery
+
+    def test_unknown_task_stores_error_and_acks(self):
+        client = MagicMock()
+        client.read.return_value = [
+            _msg(3, {"task_name": "nope.nope", "reply_key": "rk3"})
+        ]
+        with patch(self._RB) as rb_cls:
+            PgQueueConsumer(["q"], client=client).poll_once()
+        rb = rb_cls.return_value
+        assert rb.store_result.call_args.kwargs["error"] is not None
+        client.delete.assert_called_once_with(3)
+
+    def test_store_failure_on_success_path_still_acks(self, caplog):
+        client = MagicMock()
+        client.read.return_value = [_msg(4, {**_ok_payload(1, 1), "reply_key": "rk4"})]
+        with patch(self._RB) as rb_cls:
+            rb_cls.return_value.store_result.side_effect = RuntimeError("db down")
+            with caplog.at_level(
+                logging.ERROR, logger="queue_backend.pg_queue.consumer"
+            ):
+                PgQueueConsumer(["q"], client=client).poll_once()
+        # A store failure must NOT block the ack (avoids an expensive re-run).
+        client.delete.assert_called_once_with(4)
+        assert "FAILED to store request-reply result" in caplog.text
 
 
 if __name__ == "__main__":

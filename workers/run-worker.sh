@@ -56,6 +56,7 @@ readonly PG_ROLE_ORCH_GENERAL="pg-orchestrator-general"
 readonly PG_ROLE_FILEPROC="pg-fileproc"
 readonly PG_ROLE_CALLBACK="pg-callback"
 readonly PG_ROLE_SCHEDULER="pg-scheduler"
+readonly PG_ROLE_EXECUTOR="pg-executor"
 declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
     ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
@@ -65,6 +66,10 @@ declare -rA PG_CONSUMER_ROLES=(
     # scheduler tick (Beat replacement). Distinct from the Celery 'scheduler'
     # worker (which Beat fires onto RabbitMQ).
     ["$PG_ROLE_SCHEDULER"]="scheduler;scheduler"
+    # Runs execute_extraction (the executor RPC) over PG — request-reply: writes
+    # the result to pg_task_result for the blocking caller. Queues mirror the
+    # Celery executor's CELERY_QUEUES_EXECUTOR.
+    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
@@ -74,6 +79,7 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_FILEPROC"]=1
     ["$PG_ROLE_CALLBACK"]=1
     ["$PG_ROLE_SCHEDULER"]=1
+    ["$PG_ROLE_EXECUTOR"]=1
 )
 # The Celery transport set: every worker EXCEPT the PG-queue members — the
 # *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
@@ -112,6 +118,7 @@ declare -A WORKERS=(
     ["$PG_ROLE_FILEPROC"]="$PG_ROLE_FILEPROC"
     ["$PG_ROLE_CALLBACK"]="$PG_ROLE_CALLBACK"
     ["$PG_ROLE_SCHEDULER"]="$PG_ROLE_SCHEDULER"
+    ["$PG_ROLE_EXECUTOR"]="$PG_ROLE_EXECUTOR"
     # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
     ["reaper"]="$PG_QUEUE_REAPER_TYPE"
     ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"
