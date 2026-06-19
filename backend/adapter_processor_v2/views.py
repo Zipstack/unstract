@@ -251,18 +251,26 @@ class AdapterInstanceViewSet(ResourceShareManagementMixin, ModelViewSet):
         it via metadata. These refs are JSON values (post lazy-migration the
         adapter id; before it, the adapter name), so no FK protects them.
         """
+        needles = {str(adapter.id), adapter.adapter_name}
+
+        # metadata is free-form JSON: walk every nested value so a reference
+        # nested in a sub-object isn't missed, and tolerate non-dict payloads
+        # (list/scalar/None) that would otherwise blow up on .values().
+        def contains_ref(value: Any) -> bool:
+            if isinstance(value, str):
+                return value in needles
+            if isinstance(value, dict):
+                return any(contains_ref(v) for v in value.values())
+            if isinstance(value, list):
+                return any(contains_ref(v) for v in value)
+            return False
+
         # Linear scan over the org's tool instances — acceptable for an
         # infrequent, interactive delete.
-        needles = {str(adapter.id), adapter.adapter_name}
         metadatas = ToolInstance.objects.filter(
             workflow__organization=adapter.organization
         ).values_list("metadata", flat=True)
-        for metadata in metadatas:
-            if metadata and any(
-                isinstance(v, str) and v in needles for v in metadata.values()
-            ):
-                return True
-        return False
+        return any(contains_ref(metadata) for metadata in metadatas)
 
     def destroy(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]

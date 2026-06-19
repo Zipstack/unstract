@@ -60,3 +60,19 @@ def test_ignores_empty_and_non_string_metadata_values():
     ad = _adapter()
     with _patch_metadatas([None, {}, {"chunkSize": 1024, "flag": True}]):
         assert AdapterInstanceViewSet._adapter_used_in_tool_instance(ad) is False
+
+
+def test_blocks_when_adapter_id_nested_in_metadata():
+    ad = _adapter()
+    with _patch_metadatas([{"tool_settings": {"llmAdapterId": ADAPTER_ID}}]):
+        assert AdapterInstanceViewSet._adapter_used_in_tool_instance(ad) is True
+
+
+def test_handles_non_dict_metadata_without_error():
+    # JSONField has no schema constraint, so corrupted/historical rows may hold
+    # a list or scalar; the scan must not raise on them.
+    ad = _adapter()
+    with _patch_metadatas([[ADAPTER_ID], "some-string", 42]):
+        assert AdapterInstanceViewSet._adapter_used_in_tool_instance(ad) is True
+    with _patch_metadatas([["other"], "unrelated", 42]):
+        assert AdapterInstanceViewSet._adapter_used_in_tool_instance(ad) is False
