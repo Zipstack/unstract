@@ -97,14 +97,31 @@ class TestReconcileOwnership:
             PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
         )
 
-    def test_not_pg_owned_enables_beat_when_active(self):
+    def test_not_pg_owned_enables_beat_and_clears_next_run(self):
         sched, pt, resolve, txn = self._patches(owner=False)
         with sched as Sched, pt as PT, resolve, txn:
             Sched.objects.filter.return_value.update.return_value = 1
             ownership.reconcile_ownership_for(_PID, _ORG, active=True)
 
+        update_kwargs = Sched.objects.filter.return_value.update.call_args.kwargs
+        assert update_kwargs["pg_owned"] is False
+        # Rollback to Beat clears next_run_at so a re-hand-over re-baselines.
+        assert update_kwargs["next_run_at"] is None
         assert (
             PT.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
+        )
+
+    def test_pg_owned_does_not_clear_next_run(self):
+        sched, pt, resolve, txn = self._patches(owner=True)
+        with sched as Sched, pt, resolve, txn:
+            Sched.objects.filter.return_value.update.return_value = 1
+            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+
+        # An active PG-owned schedule must NOT have its next_run_at reset (that
+        # would re-baseline and skip a fire).
+        assert (
+            "next_run_at"
+            not in Sched.objects.filter.return_value.update.call_args.kwargs
         )
 
     def test_paused_pipeline_keeps_beat_disabled_even_if_not_pg_owned(self):
@@ -126,9 +143,70 @@ class TestReconcileOwnership:
 
         PT.objects.filter.assert_not_called()  # nothing to own yet
 
-    def test_failure_is_swallowed(self):
+    def test_failure_returns_none_and_is_swallowed(self):
         sched, pt, resolve, txn = self._patches(owner=True)
         with sched as Sched, pt, resolve, txn:
             Sched.objects.filter.return_value.update.side_effect = RuntimeError("db")
-            # Must not raise.
-            ownership.reconcile_ownership_for(_PID, _ORG, active=True)
+            # Must not raise, and signals failure (None) so the ramp can tally it.
+            assert ownership.reconcile_ownership_for(_PID, _ORG, active=True) is None
+
+
+class TestReconcileAtomicityRealDB:
+    """The load-bearing invariant: the pg_owned write and the PeriodicTask write
+    are ONE transaction — if the PeriodicTask update fails, pg_owned rolls back
+    (so a schedule can't end up pg_owned with Beat still enabled). Needs a real
+    DB (the mocked atomic() can't prove rollback); skips if unreachable."""
+
+    def test_periodictask_update_failure_rolls_back_pg_owned(self):
+        import uuid
+
+        from django_celery_beat.models import CrontabSchedule
+        from django_celery_beat.models import PeriodicTask as RealPeriodicTask
+        from pg_queue.models import PgPeriodicSchedule
+
+        try:
+            cron, _ = CrontabSchedule.objects.get_or_create(
+                minute="0",
+                hour="9",
+                day_of_week="*",
+                day_of_month="*",
+                month_of_year="*",
+            )
+        except Exception as exc:  # pragma: no cover - infra-dependent
+            pytest.skip(f"DB unavailable: {exc}")
+
+        pid = str(uuid.uuid4())
+        RealPeriodicTask.objects.create(
+            name=pid,
+            task="scheduler.tasks.execute_pipeline_task",
+            crontab=cron,
+            enabled=True,
+            args="[]",
+        )
+        PgPeriodicSchedule.objects.create(
+            pipeline_id=pid,
+            organization_id="org_atomic",
+            cron_string="0 9 * * *",
+            enabled=True,
+            pg_owned=False,
+        )
+        try:
+            # Force the second write (the Beat PeriodicTask update) to fail; the
+            # pg_owned write (real, before it in the same atomic) must roll back.
+            failing_pt = MagicMock()
+            failing_pt.objects.filter.return_value.update.side_effect = RuntimeError(
+                "beat update fail"
+            )
+            with (
+                patch("scheduler.ownership.resolve_schedule_owner", return_value=True),
+                patch("scheduler.ownership.PeriodicTask", failing_pt),
+            ):
+                result = ownership.reconcile_ownership_for(
+                    pid, "org_atomic", active=True
+                )
+            assert result is None  # failure signalled
+            # The pg_owned=True write was rolled back with the failed PT update.
+            assert PgPeriodicSchedule.objects.get(pipeline_id=pid).pg_owned is False
+        finally:
+            RealPeriodicTask.objects.filter(name=pid).delete()
+            PgPeriodicSchedule.objects.filter(pipeline_id=pid).delete()

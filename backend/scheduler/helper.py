@@ -81,7 +81,7 @@ class SchedulerHelper:
         # when a schedule is owned by PG it disables the Beat PeriodicTask in the
         # same transaction so the two never both fire. Best-effort (never raises).
         # organization_id is the org identifier string (what the mirror stores).
-        reconcile_ownership_for(str(pipeline.pk), organization_id, pipeline.active)
+        reconcile_ownership_for(str(pipeline.pk), organization_id, active=pipeline.active)
 
     @staticmethod
     def add_or_update_job(pipeline: Pipeline) -> None:

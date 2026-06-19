@@ -16,9 +16,9 @@ kept a command here so the ramp stays an explicit, auditable ops action.
 import json
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django_celery_beat.models import CrontabSchedule, PeriodicTask
-from scheduler.ownership import reconcile_ownership_for
+from scheduler.ownership import reconcile_ownership_for, resolve_schedule_owner
 from scheduler.tasks import mirror_periodic_schedule_upsert
 
 from pg_queue.models import PgPeriodicSchedule
@@ -62,14 +62,29 @@ class Command(BaseCommand):
             pipeline_id = pt.name  # = str(pipeline.pk)
             if PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).exists():
                 continue
-            task_args = json.loads(pt.args or "[]")
+            # PeriodicTask.args is free-form text; a malformed / non-array row must
+            # not abort the whole command (step 2 — the reconcile — is the point).
+            try:
+                task_args = json.loads(pt.args or "[]")
+                if not isinstance(task_args, list):
+                    raise ValueError(
+                        f"expected JSON array, got {type(task_args).__name__}"
+                    )
+            except (json.JSONDecodeError, ValueError) as exc:
+                self.stderr.write(
+                    self.style.ERROR(
+                        f"skipping pipeline {pipeline_id}: bad PeriodicTask.args "
+                        f"({exc})"
+                    )
+                )
+                continue
             workflow_id = task_args[0] if len(task_args) > 0 else None
             organization_id = task_args[1] if len(task_args) > 1 else ""
             # args[6] is the synthetic "Pipeline job-<id>" label; the real name
             # self-heals via the dual-write on the next schedule edit.
             pipeline_name = task_args[6] if len(task_args) > 6 else ""
             self.stdout.write(
-                f"backfill mirror for pipeline {pipeline_id} " f"(enabled={pt.enabled})"
+                f"backfill mirror for pipeline {pipeline_id} (enabled={pt.enabled})"
             )
             if not dry_run:
                 mirror_periodic_schedule_upsert(
@@ -83,22 +98,34 @@ class Command(BaseCommand):
             backfilled += 1
 
         # 2. Reconcile ownership for every mirror row against the current rollout.
-        reconciled = pg_owned_count = 0
+        reconciled = pg_owned_count = failed = 0
         for row in PgPeriodicSchedule.objects.all():
-            reconciled += 1
             if dry_run:
+                # Preview only — read the would-be owner (no DB write) so an
+                # operator can see how many a ramp change would hand to PG.
+                reconciled += 1
+                if resolve_schedule_owner(str(row.pipeline_id), row.organization_id):
+                    pg_owned_count += 1
                 continue
             # mirror.enabled tracks pipeline.active (dual-write); use it as the
             # 'active' input so a paused schedule isn't re-enabled by reconcile.
-            if reconcile_ownership_for(
-                str(row.pipeline_id), row.organization_id, row.enabled
-            ):
+            result = reconcile_ownership_for(
+                str(row.pipeline_id), row.organization_id, active=row.enabled
+            )
+            if result is None:  # transaction failed (already logged)
+                failed += 1
+                continue
+            reconciled += 1
+            if result:
                 pg_owned_count += 1
 
         prefix = "[dry-run] " if dry_run else ""
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"{prefix}backfilled={backfilled} reconciled={reconciled} "
-                f"pg_owned={pg_owned_count}"
-            )
+        summary = (
+            f"{prefix}backfilled={backfilled} reconciled={reconciled} "
+            f"pg_owned={pg_owned_count} failed={failed}"
         )
+        if failed:
+            # Surface failures where the operator looks (and to automation).
+            self.stderr.write(self.style.ERROR(summary))
+            raise CommandError(f"{failed} schedule(s) failed to reconcile")
+        self.stdout.write(self.style.SUCCESS(summary))

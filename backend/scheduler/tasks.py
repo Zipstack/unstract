@@ -250,7 +250,18 @@ def disable_task(task_name: str) -> None:
 
 def enable_task(task_name: str) -> None:
     task = PeriodicTask.objects.get(name=task_name)
-    task.enabled = True
+    # Resume → the schedule is active again, but Beat must fire it ONLY when it's
+    # not handed to PG — else a pg_owned schedule would fire from both Beat and PG
+    # (the ②c ownership invariant; reconcile sets the same on create/update, but
+    # resume takes this path). Default False (not owned) when there's no mirror.
+    pg_owned = (
+        PgPeriodicSchedule.objects.filter(pipeline_id=task_name)
+        .values_list("pg_owned", flat=True)
+        .first()
+        or False
+    )
+    task.enabled = not pg_owned
     task.save()
+    # mirror.enabled tracks pipeline.active (True on resume) regardless of owner.
     _mirror_periodic_schedule_set_enabled(task_name, True)
     PipelineProcessor.update_pipeline(task_name, Pipeline.PipelineStatus.RESTARTING, True)

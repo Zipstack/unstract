@@ -111,8 +111,8 @@ class TestHelperWiringSourcesRealName:
         assert kwargs["organization_id"] == _ORG
         assert kwargs["enabled"] is True
         # ②c: ownership is reconciled after the mirror upsert (org-identifier +
-        # active passed through).
-        reconcile.assert_called_once_with(_PIPELINE_ID, _ORG, True)
+        # active passed through; active is keyword-only).
+        reconcile.assert_called_once_with(_PIPELINE_ID, _ORG, active=True)
 
 
 class TestEnableDisableMirror:
@@ -129,17 +129,37 @@ class TestEnableDisableMirror:
         sched.objects.filter.assert_called_with(pipeline_id=_PIPELINE_ID)
         assert sched.objects.filter.return_value.update.call_args.kwargs["enabled"] is False
 
-    def test_enable_mirrors_enabled_true(self):
+    def test_resume_enables_beat_when_not_pg_owned(self):
         with (
             patch("scheduler.tasks.PeriodicTask") as pt,
             patch("scheduler.tasks.PipelineProcessor"),
             patch("scheduler.tasks.PgPeriodicSchedule") as sched,
         ):
-            pt.objects.get.return_value = MagicMock()
+            task = MagicMock()
+            pt.objects.get.return_value = task
+            sched.objects.filter.return_value.values_list.return_value.first.return_value = False
             sched.objects.filter.return_value.update.return_value = 1
             tasks.enable_task(_PIPELINE_ID)
 
+        assert task.enabled is True  # Beat fires it (not PG-owned)
+        # mirror.enabled tracks active (True on resume)
         assert sched.objects.filter.return_value.update.call_args.kwargs["enabled"] is True
+
+    def test_resume_keeps_beat_disabled_when_pg_owned(self):
+        """The High bug: resuming a PG-owned schedule must NOT re-enable Beat
+        (both firing = double-fire)."""
+        with (
+            patch("scheduler.tasks.PeriodicTask") as pt,
+            patch("scheduler.tasks.PipelineProcessor"),
+            patch("scheduler.tasks.PgPeriodicSchedule") as sched,
+        ):
+            task = MagicMock()
+            pt.objects.get.return_value = task
+            sched.objects.filter.return_value.values_list.return_value.first.return_value = True
+            sched.objects.filter.return_value.update.return_value = 1
+            tasks.enable_task(_PIPELINE_ID)
+
+        assert task.enabled is False  # PG owns it → Beat stays off
 
     def test_disable_mirror_failure_does_not_break_beat_path(self):
         """A mirror failure must be swallowed AND the pipeline-status update must
