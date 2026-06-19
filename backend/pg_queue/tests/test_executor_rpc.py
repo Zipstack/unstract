@@ -125,6 +125,23 @@ class TestPgExecutionDispatcherDispatch:
             PgExecutionDispatcher().dispatch(self._ctx())
         assert seen["timeout"] == 42
 
+    def test_timeout_none_bad_env_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("EXECUTOR_RESULT_TIMEOUT", "not-an-int")
+        seen = {}
+
+        def fake_wait(reply_key, timeout):
+            seen["timeout"] = timeout
+            return None
+
+        with (
+            patch(f"{_MOD}.enqueue_task"),
+            patch.object(
+                PgExecutionDispatcher, "_wait_for_result", side_effect=fake_wait
+            ),
+        ):
+            PgExecutionDispatcher().dispatch(self._ctx())  # must not raise
+        assert seen["timeout"] == 3600  # _DEFAULT_TIMEOUT
+
 
 def _ctx(org: str | None = "org1") -> MagicMock:
     c = MagicMock()

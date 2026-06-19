@@ -736,6 +736,13 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=executor
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # The executor runs LLM inference — far longer than the consumer's 30s/60s
+      # defaults. Set the visibility timeout AND the liveness stale-threshold
+      # ABOVE the executor's hard per-task limit (EXECUTOR_TASK_TIME_LIMIT=3600s),
+      # else a long task is re-claimed mid-run (double execution / token
+      # double-spend, two runs racing the same reply_key) or killed by the probe.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_EXECUTOR_VT_SECONDS:-3660}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_EXECUTOR_HEALTH_STALE_SECONDS:-3720}
       - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table}
     labels:
       - traefik.enable=false

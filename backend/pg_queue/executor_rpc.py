@@ -118,7 +118,12 @@ class PgExecutionDispatcher:
         timeout: int | None = None,
     ) -> ExecutionResult:
         if timeout is None:
-            timeout = int(os.environ.get(_DEFAULT_TIMEOUT_ENV, _DEFAULT_TIMEOUT))
+            # Guard the env parse so a misconfigured EXECUTOR_RESULT_TIMEOUT can't
+            # raise out of dispatch() (the never-raises contract).
+            try:
+                timeout = int(os.environ.get(_DEFAULT_TIMEOUT_ENV, _DEFAULT_TIMEOUT))
+            except (TypeError, ValueError):
+                timeout = _DEFAULT_TIMEOUT
         reply_key = str(uuid.uuid4())
         queue = f"{_QUEUE_PREFIX}{context.executor_name}"
         org = getattr(context, "organization_id", "") or ""
