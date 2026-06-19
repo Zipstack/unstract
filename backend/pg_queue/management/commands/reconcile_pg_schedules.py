@@ -54,58 +54,78 @@ class Command(BaseCommand):
 
     def handle(self, *args: Any, **options: Any) -> None:
         dry_run = options["dry_run"]
+        backfilled = self._backfill_mirrors(dry_run)
+        reconciled, pg_owned, failed = self._reconcile_all(dry_run)
 
-        # 1. Backfill: every pipeline-trigger PeriodicTask should have a mirror.
+        prefix = "[dry-run] " if dry_run else ""
+        summary = (
+            f"{prefix}backfilled={backfilled} reconciled={reconciled} "
+            f"pg_owned={pg_owned} failed={failed}"
+        )
+        if failed:
+            # Surface failures where the operator looks (and to automation).
+            self.stderr.write(self.style.ERROR(summary))
+            raise CommandError(f"{failed} schedule(s) failed to reconcile")
+        self.stdout.write(self.style.SUCCESS(summary))
+
+    def _parse_task_args(self, pt: Any, pipeline_id: str) -> list | None:
+        """PeriodicTask.args as a list, or None (logged) for a malformed/non-array
+        row — a bad row must not abort the whole command.
+        """
+        try:
+            # json.JSONDecodeError is a ValueError subclass, so one except covers
+            # both the parse error and the non-array guard below.
+            task_args = json.loads(pt.args or "[]")
+            if not isinstance(task_args, list):
+                raise ValueError(f"expected JSON array, got {type(task_args).__name__}")
+            return task_args
+        except ValueError as exc:
+            self.stderr.write(
+                self.style.ERROR(
+                    f"skipping pipeline {pipeline_id}: bad PeriodicTask.args ({exc})"
+                )
+            )
+            return None
+
+    def _backfill_mirrors(self, dry_run: bool) -> int:
+        """Create a mirror row for every pipeline-trigger PeriodicTask lacking one."""
         backfilled = 0
-        periodic_tasks = PeriodicTask.objects.filter(task=_PIPELINE_TASK_PATH)
-        for pt in periodic_tasks:
+        for pt in PeriodicTask.objects.filter(task=_PIPELINE_TASK_PATH):
             pipeline_id = pt.name  # = str(pipeline.pk)
             if PgPeriodicSchedule.objects.filter(pipeline_id=pipeline_id).exists():
                 continue
-            # PeriodicTask.args is free-form text; a malformed / non-array row must
-            # not abort the whole command (step 2 — the reconcile — is the point).
-            try:
-                task_args = json.loads(pt.args or "[]")
-                if not isinstance(task_args, list):
-                    raise ValueError(
-                        f"expected JSON array, got {type(task_args).__name__}"
-                    )
-            except (json.JSONDecodeError, ValueError) as exc:
-                self.stderr.write(
-                    self.style.ERROR(
-                        f"skipping pipeline {pipeline_id}: bad PeriodicTask.args "
-                        f"({exc})"
-                    )
-                )
+            task_args = self._parse_task_args(pt, pipeline_id)
+            if task_args is None:
                 continue
-            workflow_id = task_args[0] if len(task_args) > 0 else None
-            organization_id = task_args[1] if len(task_args) > 1 else ""
-            # args[6] is the synthetic "Pipeline job-<id>" label; the real name
-            # self-heals via the dual-write on the next schedule edit.
-            pipeline_name = task_args[6] if len(task_args) > 6 else ""
             self.stdout.write(
                 f"backfill mirror for pipeline {pipeline_id} (enabled={pt.enabled})"
             )
             if not dry_run:
                 mirror_periodic_schedule_upsert(
                     pipeline_id=pipeline_id,
-                    organization_id=organization_id or "",
-                    workflow_id=workflow_id,
-                    pipeline_name=pipeline_name,
+                    # args[6] is the synthetic "Pipeline job-<id>" label; the real
+                    # name self-heals via the dual-write on the next schedule edit.
+                    workflow_id=task_args[0] if len(task_args) > 0 else None,
+                    organization_id=(task_args[1] if len(task_args) > 1 else "") or "",
+                    pipeline_name=task_args[6] if len(task_args) > 6 else "",
                     cron_string=_cron_from_crontab(pt.crontab),
                     enabled=pt.enabled,
                 )
             backfilled += 1
+        return backfilled
 
-        # 2. Reconcile ownership for every mirror row against the current rollout.
-        reconciled = pg_owned_count = failed = 0
+    def _reconcile_all(self, dry_run: bool) -> tuple[int, int, int]:
+        """Reconcile ownership for every mirror row against the current rollout.
+        Returns (reconciled, pg_owned, failed).
+        """
+        reconciled = pg_owned = failed = 0
         for row in PgPeriodicSchedule.objects.all():
             if dry_run:
                 # Preview only — read the would-be owner (no DB write) so an
                 # operator can see how many a ramp change would hand to PG.
                 reconciled += 1
                 if resolve_schedule_owner(str(row.pipeline_id), row.organization_id):
-                    pg_owned_count += 1
+                    pg_owned += 1
                 continue
             # mirror.enabled tracks pipeline.active (dual-write); use it as the
             # 'active' input so a paused schedule isn't re-enabled by reconcile.
@@ -117,15 +137,5 @@ class Command(BaseCommand):
                 continue
             reconciled += 1
             if result:
-                pg_owned_count += 1
-
-        prefix = "[dry-run] " if dry_run else ""
-        summary = (
-            f"{prefix}backfilled={backfilled} reconciled={reconciled} "
-            f"pg_owned={pg_owned_count} failed={failed}"
-        )
-        if failed:
-            # Surface failures where the operator looks (and to automation).
-            self.stderr.write(self.style.ERROR(summary))
-            raise CommandError(f"{failed} schedule(s) failed to reconcile")
-        self.stdout.write(self.style.SUCCESS(summary))
+                pg_owned += 1
+        return reconciled, pg_owned, failed
