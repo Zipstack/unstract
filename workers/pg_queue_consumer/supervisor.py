@@ -121,8 +121,10 @@ class _Fleet:
         return self._n
 
     @property
-    def heartbeats(self):  # noqa: ANN201 — ctypes array, passed to forked children
-        """The shared heartbeat array (children write their own slot directly)."""
+    def heartbeats(self):  # noqa: ANN201
+        """The shared heartbeat array (a ctypes array, passed to forked children,
+        which write their own slot directly).
+        """
         return self._heartbeats
 
     def _validate(self, slot: int) -> None:
@@ -247,9 +249,11 @@ def _child_after_fork(slot: int, heartbeats) -> None:  # noqa: ANN001 (ctypes ar
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     try:
         _run_child(slot, heartbeats)
-    except BaseException:
+    except Exception:
         # A child that can't even start must not return into the supervisor loop
-        # (it would fork grandchildren). Log + hard exit.
+        # (it would fork grandchildren). Log + hard exit. Exception (not
+        # BaseException) is the realistic startup-failure surface here — import,
+        # connection, config; SystemExit/KeyboardInterrupt would exit anyway.
         logger.exception("PG-queue consumer: child slot=%s failed to run", slot)
         os._exit(1)
     os._exit(0)
@@ -264,11 +268,10 @@ def _try_fork_child(fleet: _Fleet, slot: int) -> bool:
     try:
         pid = os.fork()
     except OSError:
-        logger.error(
+        logger.exception(
             "PG-queue consumer: os.fork() failed for slot=%s (process/memory "
             "limit?) — will retry",
             slot,
-            exc_info=True,
         )
         return False
     if pid == 0:  # child — never returns

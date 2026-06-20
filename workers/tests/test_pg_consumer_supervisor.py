@@ -67,7 +67,7 @@ class TestFleet:
         f.record_fork(0, 111)
         assert f.alive_items() == [(0, 111)] and f.alive_count() == 1
         uptime = f.reap(0)
-        assert uptime >= 0.0
+        assert uptime >= 0  # a non-negative monotonic duration
         assert f.alive_count() == 0  # pid + last_fork dropped together
 
     def test_slot_out_of_range_raises(self):
@@ -99,10 +99,12 @@ class TestFleet:
         assert n == 0 and f.is_crash_looping() is False
 
     def test_freshness_is_inf_when_crash_looping(self):
+        import math
+
         f = _Fleet(1)
         for _ in range(_CRASH_LOOP_THRESHOLD):
             f.schedule_restart(0, uptime=0.1)
-        assert f.freshness() == float("inf")
+        assert math.isinf(f.freshness())
 
     def test_freshness_is_oldest_age_when_healthy(self):
         f = _Fleet(2)
