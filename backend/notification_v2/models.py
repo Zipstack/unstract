@@ -139,6 +139,8 @@ class NotificationBuffer(BaseModel):
             "Tenant scope. Mandatory grouping key — prevents cross-tenant "
             "leakage at flush time."
         ),
+        # Server-managed; never accepted as client input.
+        editable=False,
     )
     webhook_url = models.URLField(
         db_comment="Denormalized destination URL; grouping key.",
