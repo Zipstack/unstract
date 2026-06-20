@@ -465,9 +465,12 @@ def build_consumer_from_env() -> PgQueueConsumer:
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
     consumer = build_consumer_from_env()
+    # Annotate the int|None result so the intent ("a port, or None when unset") is
+    # declared rather than recovered from the generic widening over default=None.
+    port: int | None = consumer_env("HEALTH_PORT", None, int)
     health_server = _maybe_start_health_server(
         consumer,
-        port=consumer_env("HEALTH_PORT", None, int),
+        port=port,
         stale_after=consumer_env(
             "HEALTH_STALE_SECONDS", _DEFAULT_HEALTH_STALE_SECONDS, float
         ),

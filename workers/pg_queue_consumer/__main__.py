@@ -20,8 +20,6 @@ so the right worker type must be selected here.
 Launch via ``python -m pg_queue_consumer`` or ``./run-worker.sh pg-queue-consumer``.
 """
 
-import os
-
 
 def _bootstrap_and_run() -> None:
     # CONCURRENCY > 1 → run a prefork supervisor (UN-3606): N isolated consumer
@@ -43,12 +41,11 @@ def _bootstrap_and_run() -> None:
         return
 
     # Single-process path: select the source worker whose tasks back this
-    # consumer's queue. Must run BEFORE `import worker`, which reads WORKER_TYPE at
-    # import time. We overwrite (not setdefault) because the launcher's own
-    # WORKER_TYPE owns no tasks.
-    os.environ["WORKER_TYPE"] = os.environ.get(
-        "WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE", "notification"
-    )
+    # consumer's queue (must run BEFORE `import worker`, which reads WORKER_TYPE at
+    # import time). Shared with the supervisor's children via _bootstrap.
+    from pg_queue_consumer._bootstrap import select_source_worker_type
+
+    select_source_worker_type()
 
     import worker  # noqa: F401 — side-effect: registers the source worker's tasks
     from queue_backend.pg_queue.consumer import main
