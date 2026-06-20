@@ -41,7 +41,7 @@ from django.db import close_old_connections
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgTaskResult
 from pg_queue.producer import enqueue_task
-from unstract.core.data_models import PgTaskStatus
+from unstract.core.data_models import ContinuationSpec, PgTaskStatus
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.result import ExecutionResult
@@ -63,6 +63,46 @@ _DEFAULT_TIMEOUT_ENV = "EXECUTOR_RESULT_TIMEOUT"
 _DEFAULT_TIMEOUT = 3600
 _POLL_INITIAL_SECONDS = 0.2
 _POLL_MAX_SECONDS = 2.0
+
+
+class _DispatchHandle:
+    """Minimal duck-type of Celery ``AsyncResult`` for the PG callback path.
+
+    ``dispatch_with_callback`` callers read only ``.id`` (to return the task id
+    in the HTTP 202 response); they must NOT call ``.get()`` — the result arrives
+    via the self-chained callback (WebSocket), not by polling here. Exposing just
+    ``.id`` lets a PG dispatch return the same shape the call sites already use.
+    """
+
+    __slots__ = ("id",)
+
+    def __init__(self, task_id: str) -> None:
+        self.id = task_id
+
+
+def _signature_to_spec(sig: Any | None) -> ContinuationSpec | None:
+    """Translate a Celery ``Signature`` to a serialisable continuation spec.
+
+    Reads only the three attributes PG self-chaining needs — task name, kwargs,
+    target queue — so the prompt-studio call sites keep passing
+    ``signature(name, kwargs=..., queue=...)`` unchanged; only the PG branch
+    translates. ``None`` (no callback for that outcome) passes through. A
+    signature without a queue is a configuration error: PG routes by the row's
+    queue and must not silently default it, so we fail fast.
+    """
+    if sig is None:
+        return None
+    queue = (getattr(sig, "options", None) or {}).get("queue")
+    if not queue:
+        raise ValueError(
+            f"callback signature {getattr(sig, 'task', sig)!r} has no queue; "
+            "PG self-chaining routes by the row's queue and cannot default it"
+        )
+    return ContinuationSpec(
+        task_name=sig.task,
+        kwargs=dict(getattr(sig, "kwargs", None) or {}),
+        queue=queue,
+    )
 
 
 def resolve_executor_transport(context: ExecutionContext) -> bool:
@@ -186,6 +226,80 @@ class PgExecutionDispatcher:
         )
         return ExecutionResult.failure(error=row.error or "executor task failed")
 
+    def dispatch_async(
+        self, context: ExecutionContext, headers: dict[str, Any] | None = None
+    ) -> str:
+        """Fire-and-forget enqueue of ``execute_extraction``; returns the task id.
+
+        The PG analogue of the SDK ``dispatch_async``: no ``reply_key``, no
+        callback, no blocking. There is no PG ``AsyncResult`` backend, so a caller
+        that needs the outcome uses :meth:`dispatch_with_callback` (a self-chained
+        continuation), not polling on this id. ``headers`` is accepted and ignored
+        (PG carries routing in the payload). Enqueue failures propagate — parity
+        with the SDK, which lets a broker error out of ``dispatch_async``.
+        """
+        task_id = str(uuid.uuid4())
+        queue = f"{_QUEUE_PREFIX}{context.executor_name}"
+        org = getattr(context, "organization_id", "") or ""
+        enqueue_task(
+            task_name=_EXECUTE_TASK,
+            queue=queue,
+            args=[context.to_dict()],
+            org_id=str(org),
+            task_id=task_id,
+        )
+        logger.info(
+            "PG executor dispatch_async: enqueued task_id=%s queue=%s run_id=%s",
+            task_id,
+            queue,
+            context.run_id,
+        )
+        return task_id
+
+    def dispatch_with_callback(
+        self,
+        context: ExecutionContext,
+        on_success: Any | None = None,
+        on_error: Any | None = None,
+        task_id: str | None = None,
+        headers: dict[str, Any] | None = None,
+    ) -> _DispatchHandle:
+        """Fire-and-forget enqueue with self-chained callbacks (§5 model).
+
+        The PG analogue of the SDK ``dispatch_with_callback``: instead of Celery
+        ``link`` / ``link_error`` (which the broker fires), the on-success /
+        on-error Celery ``Signature``s are translated to serialisable
+        :class:`ContinuationSpec`s and carried in the payload. After the executor
+        consumer runs ``execute_extraction`` it self-chains the matching
+        continuation onto the callback queue. Returns a :class:`_DispatchHandle`
+        exposing ``.id`` (== ``task_id``) so call sites read the task id exactly
+        as on the Celery path. ``headers`` is accepted and ignored.
+        """
+        task_id = task_id or str(uuid.uuid4())
+        queue = f"{_QUEUE_PREFIX}{context.executor_name}"
+        org = getattr(context, "organization_id", "") or ""
+        success_spec = _signature_to_spec(on_success)
+        error_spec = _signature_to_spec(on_error)
+        enqueue_task(
+            task_name=_EXECUTE_TASK,
+            queue=queue,
+            args=[context.to_dict()],
+            org_id=str(org),
+            on_success=success_spec,
+            on_error=error_spec,
+            task_id=task_id,
+        )
+        logger.info(
+            "PG executor dispatch_with_callback: enqueued task_id=%s queue=%s "
+            "run_id=%s on_success=%s on_error=%s",
+            task_id,
+            queue,
+            context.run_id,
+            success_spec["task_name"] if success_spec else None,
+            error_spec["task_name"] if error_spec else None,
+        )
+        return _DispatchHandle(task_id)
+
     @staticmethod
     def _wait_for_result(reply_key: str, timeout: float) -> PgTaskResult | None:
         """Poll ``pg_task_result`` until the row appears or *timeout* elapses.
@@ -216,10 +330,10 @@ class PgExecutionDispatcher:
 class RoutingExecutionDispatcher:
     """Gate-routed executor dispatcher returned by ``_get_dispatcher()``.
 
-    ``dispatch()`` chooses PG vs Celery per call (instant rollout/rollback);
-    ``dispatch_async`` / ``dispatch_with_callback`` always delegate to Celery —
-    the async/callback path stays on Celery until a later continuation slice.
-    Duck-typed against the SDK ``ExecutionDispatcher`` so call sites are unchanged.
+    Every mode chooses PG vs Celery per call (instant rollout/rollback):
+    ``dispatch()`` (request-reply), ``dispatch_async`` (fire-and-forget) and
+    ``dispatch_with_callback`` (self-chained callbacks). Duck-typed against the SDK
+    ``ExecutionDispatcher`` so call sites are unchanged.
     """
 
     def __init__(self, celery_app: object | None = None) -> None:
@@ -246,10 +360,32 @@ class RoutingExecutionDispatcher:
     def dispatch_async(
         self, context: ExecutionContext, headers: dict[str, Any] | None = None
     ) -> str:
+        if resolve_executor_transport(context):
+            return self._pg.dispatch_async(context)
         return self._celery.dispatch_async(context, headers=headers)
 
-    def dispatch_with_callback(self, context: ExecutionContext, **kwargs: Any) -> Any:
-        return self._celery.dispatch_with_callback(context, **kwargs)
+    def dispatch_with_callback(
+        self,
+        context: ExecutionContext,
+        on_success: Any | None = None,
+        on_error: Any | None = None,
+        task_id: str | None = None,
+        headers: dict[str, Any] | None = None,
+    ) -> Any:
+        if resolve_executor_transport(context):
+            return self._pg.dispatch_with_callback(
+                context,
+                on_success=on_success,
+                on_error=on_error,
+                task_id=task_id,
+            )
+        return self._celery.dispatch_with_callback(
+            context,
+            on_success=on_success,
+            on_error=on_error,
+            task_id=task_id,
+            headers=headers,
+        )
 
 
 def get_executor_dispatcher(

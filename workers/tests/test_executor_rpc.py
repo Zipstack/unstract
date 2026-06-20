@@ -11,9 +11,11 @@ row is a plain ``dict`` (``PgResultBackend``) instead of a Django model.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from queue_backend.pg_queue.executor_rpc import (
     PgExecutionDispatcher,
     RoutingExecutionDispatcher,
+    _signature_to_spec,
     resolve_executor_transport,
 )
 
@@ -298,11 +300,126 @@ class TestRoutingZeroRegression:
         assert "headers" not in pg.dispatch.call_args.kwargs
         celery.dispatch.assert_not_called()
 
-    def test_async_and_callback_always_celery(self):
-        """The callback/async path stays on Celery regardless of the gate (a later slice)."""
+    def test_async_and_callback_stay_celery_when_gate_off(self):
+        """Zero-regression: gate off → async/callback delegate to Celery unchanged."""
         dispatcher, celery, pg = self._build()
-        dispatcher.dispatch_async(_ctx())
-        dispatcher.dispatch_with_callback(_ctx(), on_success=None)
+        with patch(f"{_MOD}.resolve_executor_transport", return_value=False):
+            dispatcher.dispatch_async(_ctx(), headers={"h": 1})
+            dispatcher.dispatch_with_callback(_ctx(), on_success="s", on_error="e")
         celery.dispatch_async.assert_called_once()
         celery.dispatch_with_callback.assert_called_once()
-        pg.dispatch.assert_not_called()
+        pg.dispatch_async.assert_not_called()
+        pg.dispatch_with_callback.assert_not_called()
+
+    def test_async_and_callback_route_to_pg_when_gated(self):
+        """Gate on (③c) → async/callback take the PG self-chained path."""
+        dispatcher, celery, pg = self._build()
+        with patch(f"{_MOD}.resolve_executor_transport", return_value=True):
+            dispatcher.dispatch_async(_ctx())
+            dispatcher.dispatch_with_callback(
+                _ctx(), on_success="s", on_error="e", task_id="t"
+            )
+        pg.dispatch_async.assert_called_once()
+        pg.dispatch_with_callback.assert_called_once()
+        # PG carries callbacks in the payload, not Celery headers → no header leak.
+        assert "headers" not in pg.dispatch_with_callback.call_args.kwargs
+        celery.dispatch_async.assert_not_called()
+        celery.dispatch_with_callback.assert_not_called()
+
+
+class TestSignatureToSpec:
+    """Celery ``Signature`` → serialisable continuation spec (the §5 wire-form)."""
+
+    def test_none_passes_through(self):
+        assert _signature_to_spec(None) is None
+
+    def test_translates_task_kwargs_and_queue(self):
+        sig = MagicMock(
+            task="ide_prompt_complete",
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+        assert _signature_to_spec(sig) == {
+            "task_name": "ide_prompt_complete",
+            "kwargs": {"callback_kwargs": {"room": "r1"}},
+            "queue": "ide_callback",
+        }
+
+    def test_missing_queue_fails_fast(self):
+        sig = MagicMock(task="ide_prompt_complete", kwargs={}, options={})
+        with pytest.raises(ValueError, match="no queue"):
+            _signature_to_spec(sig)
+
+
+class TestPgAsyncCallbackWiring:
+    """PG fire-and-forget + self-chained-callback enqueue shapes.
+
+    ``to_payload`` runs for real; only ``PgQueueClient`` is mocked. Pins that the
+    async path carries NO reply_key (it must not block a consumer) and the callback
+    path carries the translated continuations + the tracking task_id.
+    """
+
+    @staticmethod
+    def _ctx():
+        c = MagicMock()
+        c.executor_name = "legacy"
+        c.run_id = "r"
+        c.organization_id = "org9"
+        c.to_dict.return_value = {"run_id": "r", "organization_id": "org9"}
+        return c
+
+    @staticmethod
+    def _client():
+        client = MagicMock()
+        client.__enter__.return_value = client
+        return client
+
+    def test_dispatch_async_is_fire_and_forget(self):
+        client = self._client()
+        with patch(f"{_MOD}.PgQueueClient", return_value=client):
+            task_id = PgExecutionDispatcher().dispatch_async(self._ctx())
+        client.send.assert_called_once()
+        queue_arg, payload_arg = client.send.call_args.args[:2]
+        assert queue_arg == "celery_executor_legacy"
+        assert client.send.call_args.kwargs["org_id"] == "org9"
+        assert payload_arg["task_name"] == "execute_extraction"
+        assert payload_arg["task_id"] == task_id
+        # No reply_key (would make a consumer try to store a reply) and no callback.
+        assert "reply_key" not in payload_arg
+        assert "on_success" not in payload_arg
+        assert "on_error" not in payload_arg
+
+    def test_dispatch_with_callback_carries_continuations(self):
+        client = self._client()
+        on_s = MagicMock(
+            task="ide_prompt_complete",
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+        on_e = MagicMock(
+            task="ide_prompt_error",
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+        with patch(f"{_MOD}.PgQueueClient", return_value=client):
+            handle = PgExecutionDispatcher().dispatch_with_callback(
+                self._ctx(), on_success=on_s, on_error=on_e, task_id="tid-7"
+            )
+        assert handle.id == "tid-7"  # call sites read .id off the handle
+        payload_arg = client.send.call_args.args[1]
+        assert payload_arg["on_success"] == {
+            "task_name": "ide_prompt_complete",
+            "kwargs": {"callback_kwargs": {"room": "r1"}},
+            "queue": "ide_callback",
+        }
+        assert payload_arg["on_error"]["task_name"] == "ide_prompt_error"
+        assert payload_arg["task_id"] == "tid-7"
+        assert "reply_key" not in payload_arg  # callback, not request-reply
+
+    def test_dispatch_with_callback_defaults_task_id(self):
+        client = self._client()
+        with patch(f"{_MOD}.PgQueueClient", return_value=client):
+            handle = PgExecutionDispatcher().dispatch_with_callback(self._ctx())
+        # No task_id passed → a uuid is generated and echoed on the handle + payload.
+        assert handle.id
+        assert client.send.call_args.args[1]["task_id"] == handle.id

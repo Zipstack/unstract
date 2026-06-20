@@ -770,6 +770,44 @@ services:
     profiles:
       - pg-queue
 
+  # IDE callback consumer (③c) — drains the ``ide_callback`` queue the executor
+  # self-chains onto for async/callback dispatch (Prompt Studio run/index/extract,
+  # lookups). Registers the ide_callback worker's tasks (ide_prompt_complete,
+  # ide_index_complete, extraction_complete, …). Dark until dispatch_with_callback
+  # routes to PG (flag on); the Celery ``worker-ide-callback`` still serves the
+  # Celery path. Callbacks are lightweight (ws emit + small API writes), so a
+  # modest concurrency suffices; scale via replicas (SKIP LOCKED) under load.
+  worker-pg-ide-callback:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-ide-callback
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8100:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-ide-callback
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=ide_callback
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_IDE_CALLBACK_CONCURRENCY:-2}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - prompt_studio_data:/app/prompt-studio-data
+    profiles:
+      - pg-queue
+
   # Reaper / orchestrator — leader-elected loop. Run exactly ONE instance (it
   # elects a single leader via pg_orchestrator_lock; extra replicas idle as
   # standby). Besides barrier-orphan recovery it runs the PG scheduler tick

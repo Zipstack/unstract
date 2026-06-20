@@ -33,6 +33,7 @@ from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
 from .liveness import LivenessServer as _BaseLivenessServer
 from .result_backend import PgResultBackend
+from .task_payload import to_payload
 
 if TYPE_CHECKING:
     from celery import Celery
@@ -164,6 +165,13 @@ class PgQueueConsumer:
         # its full timeout). Present → store the outcome + ack after one attempt;
         # absent → fire-and-forget (the existing leaf/pipeline path).
         reply_key = payload.get("reply_key")
+        # Async/callback (dispatch_with_callback) self-chaining (③c): a callback
+        # to enqueue after the task runs (on_success after success, on_error after
+        # failure) — the PG analogue of Celery firing a link/link_error. Mutually
+        # exclusive with reply_key. ``task_id`` is the dispatch id prepended to the
+        # on_error callback as the failed id (Celery link_error parity).
+        on_success = payload.get("on_success")
+        on_error = payload.get("on_error")
 
         # Malformed / foreign payload: no task name → can't run; drop with a
         # log that points at the payload, not at task registration.
@@ -239,6 +247,22 @@ class PgQueueConsumer:
                     reply_key,
                 )
                 return
+            if on_error:
+                # Async/callback: self-chain the on_error continuation, then ACK
+                # regardless — same anti-double-spend reasoning as reply_key (a
+                # vt-redelivery would re-run the executor / re-spend LLM tokens).
+                # _chain_continuation is best-effort, so the ack never wedges.
+                self._chain_continuation(
+                    on_error, prepend=payload.get("task_id") or "", payload=payload
+                )
+                self._client.delete(message.msg_id)  # ack
+                logger.exception(
+                    "PG-queue consumer: callback task %r (msg_id=%s) failed — "
+                    "self-chained on_error + acked",
+                    task_name,
+                    message.msg_id,
+                )
+                return
             # Fire-and-forget: leave the row — its vt expires and it is
             # redelivered (bounded by max_attempts above).
             logger.exception(
@@ -267,6 +291,12 @@ class PgQueueConsumer:
                     message.msg_id,
                     reply_key,
                 )
+        elif on_success:
+            # Async/callback: self-chain the success continuation onto the callback
+            # queue before the ack — the §5 hand-off (PG analogue of Celery's link).
+            # Best-effort (never raises): a chain failure logs + still acks, so the
+            # executor is not re-run (LLM double-spend); the callback is lost.
+            self._chain_continuation(on_success, prepend=eager.result, payload=payload)
 
         if not self._client.delete(message.msg_id):  # ack
             logger.warning(
@@ -288,6 +318,55 @@ class PgQueueConsumer:
         if self._result_backend is None:
             self._result_backend = PgResultBackend()
         self._result_backend.store_result(reply_key, result=result, error=error)
+
+    def _chain_continuation(self, spec: dict, *, prepend: object, payload: dict) -> None:
+        """Enqueue a self-chained callback continuation (best-effort, never raises).
+
+        The PG analogue of Celery firing a ``link`` / ``link_error``: after the
+        executor task runs, enqueue ``spec`` (``task_name`` + ``kwargs`` +
+        ``queue``) onto its queue with ``prepend`` as the first positional arg —
+        the executor result dict on success, the dispatch ``task_id`` on error —
+        exactly the first parameter the callback signature expects (mirroring
+        Celery prepending the parent task's return value).
+
+        Never raises: a failure here must not wedge the executor message's ack
+        (which is taken regardless, to avoid an expensive re-run). It just means
+        the callback — and its user-facing WebSocket event — is lost, logged loud.
+        """
+        try:
+            queue = spec["queue"]
+            self._client.send(
+                queue,
+                to_payload(
+                    spec["task_name"],
+                    args=[prepend],
+                    kwargs=spec.get("kwargs") or {},
+                    queue=queue,
+                ),
+                org_id=self._continuation_org(payload),
+            )
+        except Exception:
+            logger.exception(
+                "PG-queue consumer: FAILED to self-chain continuation %r — the "
+                "callback (and its user-facing event) is lost",
+                spec.get("task_name") if isinstance(spec, dict) else spec,
+            )
+
+    @staticmethod
+    def _continuation_org(payload: dict) -> str:
+        """Best-effort org id for a chained callback (fairness/debug on its queue).
+
+        The executor request carries it in the context dict (``args[0]``);
+        callbacks are not fairness-critical, so any extraction failure degrades to
+        ``""`` (no org).
+        """
+        try:
+            args = payload.get("args") or []
+            if args and isinstance(args[0], dict):
+                return str(args[0].get("organization_id") or "")
+        except Exception:
+            pass
+        return ""
 
     def _fail_reply(self, reply_key: str | None, error: str) -> None:
         """Best-effort failure reply for a request-reply message that can't run

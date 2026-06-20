@@ -521,5 +521,75 @@ class TestRequestReply:
         assert "FAILED to store request-reply result" in caplog.text
 
 
+class TestSelfChain:
+    """Async/callback self-chaining (③c): with no reply_key, the consumer enqueues
+    the on_success / on_error continuation onto its queue after the task runs, then
+    acks regardless (a vt-redelivery would re-run the executor = LLM double-spend).
+    Best-effort: a chain-enqueue failure still acks. ``client.send`` is the
+    self-chain enqueue (the mock client is also read/delete).
+    """
+
+    @staticmethod
+    def _spec(task="cb.done", queue="ide_callback"):
+        return {
+            "task_name": task,
+            "kwargs": {"callback_kwargs": {"room": "r1"}},
+            "queue": queue,
+        }
+
+    def test_success_chains_on_success_with_result_and_acks(self):
+        client = MagicMock()
+        payload = {**_ok_payload(3, 4), "on_success": self._spec(), "task_id": "tid"}
+        client.read.return_value = [_msg(1, payload)]
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.delete.assert_called_once_with(1)  # executor msg acked
+        client.send.assert_called_once()  # continuation enqueued
+        queue_arg, payload_arg = client.send.call_args.args[:2]
+        assert queue_arg == "ide_callback"
+        assert payload_arg["task_name"] == "cb.done"
+        assert payload_arg["args"] == [7]  # x + y prepended (Celery link parity)
+        assert payload_arg["kwargs"] == {"callback_kwargs": {"room": "r1"}}
+
+    def test_failure_chains_on_error_with_task_id_and_acks(self):
+        client = MagicMock()
+        payload = {
+            "task_name": "test_pg_consumer.boom",
+            "on_error": self._spec("cb.err"),
+            "task_id": "tid-9",
+        }
+        client.read.return_value = [_msg(2, payload)]
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.delete.assert_called_once_with(2)  # acked, NOT left for redelivery
+        client.send.assert_called_once()
+        payload_arg = client.send.call_args.args[1]
+        assert payload_arg["task_name"] == "cb.err"
+        assert payload_arg["args"] == ["tid-9"]  # dispatch task_id as the failed id
+
+    def test_no_continuation_is_plain_fire_and_forget(self):
+        client = MagicMock()
+        client.read.return_value = [_msg(3, _ok_payload(1, 1))]
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.send.assert_not_called()  # nothing self-chained
+        client.delete.assert_called_once_with(3)  # acked
+
+    def test_chain_failure_on_success_still_acks(self, caplog):
+        client = MagicMock()
+        client.send.side_effect = RuntimeError("queue down")
+        payload = {**_ok_payload(2, 2), "on_success": self._spec()}
+        client.read.return_value = [_msg(4, payload)]
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
+            PgQueueConsumer(["q"], client=client).poll_once()
+        client.delete.assert_called_once_with(4)  # acked despite the chain failure
+        assert "FAILED to self-chain" in caplog.text
+
+    def test_continuation_org_extracted_from_context(self):
+        # The chained callback inherits the executor request's org (context dict);
+        # non-dict / absent args degrade to "" (callbacks aren't fairness-critical).
+        org_of = PgQueueConsumer._continuation_org
+        assert org_of({"args": [{"organization_id": "orgZ"}]}) == "orgZ"
+        assert org_of({"args": [42]}) == ""
+        assert org_of({}) == ""
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
