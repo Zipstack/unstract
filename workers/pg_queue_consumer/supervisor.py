@@ -182,8 +182,16 @@ class _Fleet:
     def is_crash_looping(self) -> bool:
         """True if any slot has died immediately ``_CRASH_LOOP_THRESHOLD`` times in
         a row — the signal that the heartbeat alone can't be trusted fresh.
+
+        Snapshots the values first (``tuple(...)`` is atomic under the GIL): this
+        runs in the liveness daemon thread (via :meth:`freshness`) while the main
+        thread mutates ``_consecutive_crashes`` in :meth:`schedule_restart`, so a
+        bare ``.values()`` iteration could raise "dictionary changed size during
+        iteration".
         """
-        return any(n >= _CRASH_LOOP_THRESHOLD for n in self._consecutive_crashes.values())
+        return any(
+            n >= _CRASH_LOOP_THRESHOLD for n in tuple(self._consecutive_crashes.values())
+        )
 
     def oldest_age(self) -> float:
         now = time.time()
