@@ -32,12 +32,23 @@ def to_payload(
     kwargs: Mapping[str, Any] | None = None,
     queue: str | None = None,
     fairness: FairnessKey | None = None,
+    reply_key: str | None = None,
 ) -> TaskPayload:
-    """Build the JSON-serialisable task payload for the PG queue."""
-    return TaskPayload(
+    """Build the JSON-serialisable task payload for the PG queue.
+
+    ``reply_key`` marks a **request-reply** dispatch (the executor RPC on PG):
+    the executor consumer writes the task's result/error to ``pg_task_result``
+    under it for the blocking caller to poll. Omitted = fire-and-forget.
+    """
+    payload = TaskPayload(
         task_name=task_name,
         args=list(args) if args is not None else [],
         kwargs=dict(kwargs) if kwargs is not None else {},
         queue=queue,
         fairness=fairness.to_dict() if fairness is not None else None,
     )
+    # Only set for request-reply dispatches — keeps fire-and-forget rows
+    # byte-identical to before this field existed (mirrors the backend producer).
+    if reply_key is not None:
+        payload["reply_key"] = reply_key
+    return payload
