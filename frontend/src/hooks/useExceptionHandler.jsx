@@ -48,6 +48,20 @@ const useExceptionHandler = () => {
           // Handle validation errors
           if (setBackendErrors) {
             setBackendErrors(err?.response?.data);
+            // Field-bound errors render inline next to their input. Errors not
+            // tied to a field (non_field_errors / attr-less) map to no input and
+            // would otherwise vanish silently — surface them as a toast.
+            const nonFieldErrors = (errors || []).filter(
+              (error) => !error?.attr || error.attr === "non_field_errors",
+            );
+            if (nonFieldErrors.length > 0) {
+              return alert(
+                nonFieldErrors
+                  .map((error) => error?.detail || errMessage)
+                  .join("\n"),
+              );
+            }
+            // No non-field errors: field-level errors are rendered inline.
           } else {
             // Handle both single error and array of errors
             let errorMessage = "Validation error";
