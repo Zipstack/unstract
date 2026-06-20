@@ -427,36 +427,53 @@ def _parse_queue_list(raw: str) -> list[str]:
     return queues
 
 
+def consumer_env(suffix: str, default: _T, cast: Callable[[str], _T]) -> _T:
+    """Read ``WORKER_PG_QUEUE_CONSUMER_<suffix>`` with a typed default.
+
+    Preserves the default's type through to PgQueueConsumer's typed ``__init__``
+    (a bare ``type`` would erase it). On a bad value, fail with the offending var
+    name instead of a context-free ``int('abc')`` ValueError. Treats empty-string
+    as unset (an empty HEALTH_PORT must hit the clean opt-out, not ``int("")``).
+    Module-level (not nested in ``main``) so the prefork supervisor reads the same
+    knobs the single-process path does.
+    """
+    var = f"WORKER_PG_QUEUE_CONSUMER_{suffix}"
+    raw = os.getenv(var)
+    if raw is None or raw == "":
+        return default
+    try:
+        return cast(raw)
+    except (ValueError, TypeError) as exc:
+        raise ValueError(f"Invalid {var}={raw!r}: {exc}") from exc
+
+
+def build_consumer_from_env() -> PgQueueConsumer:
+    """Construct a :class:`PgQueueConsumer` from the ``WORKER_PG_QUEUE_CONSUMER_*``
+    env. Shared by ``main`` (single process) and the prefork supervisor's children,
+    so every consumer instance is configured identically.
+    """
+    return PgQueueConsumer(
+        queue_names=consumer_env("QUEUE", [_DEFAULT_QUEUE], _parse_queue_list),
+        batch_size=consumer_env("BATCH", _DEFAULT_BATCH, int),
+        vt_seconds=consumer_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
+        poll_interval=consumer_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),
+        backoff_max=consumer_env("BACKOFF_MAX", _DEFAULT_BACKOFF_MAX, float),
+        max_attempts=consumer_env("MAX_ATTEMPTS", _DEFAULT_MAX_ATTEMPTS, int),
+    )
+
+
 def main() -> None:
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-
-    def _env(suffix: str, default: _T, cast: Callable[[str], _T]) -> _T:
-        # Preserve the default's type through to PgQueueConsumer's typed
-        # __init__ (a bare `type` would erase it). On a bad value, fail with the
-        # offending var name instead of a context-free `int('abc')` ValueError.
-        var = f"WORKER_PG_QUEUE_CONSUMER_{suffix}"
-        raw = os.getenv(var)
-        # Treat empty-string as unset: an empty HEALTH_PORT (e.g. a run-worker.sh
-        # fallback resolving empty) must hit the clean opt-out, not int("") crash.
-        if raw is None or raw == "":
-            return default
-        try:
-            return cast(raw)
-        except (ValueError, TypeError) as exc:
-            raise ValueError(f"Invalid {var}={raw!r}: {exc}") from exc
-
-    consumer = PgQueueConsumer(
-        queue_names=_env("QUEUE", [_DEFAULT_QUEUE], _parse_queue_list),
-        batch_size=_env("BATCH", _DEFAULT_BATCH, int),
-        vt_seconds=_env("VT_SECONDS", _DEFAULT_VT_SECONDS, int),
-        poll_interval=_env("POLL_INTERVAL", _DEFAULT_POLL_INTERVAL, float),
-        backoff_max=_env("BACKOFF_MAX", _DEFAULT_BACKOFF_MAX, float),
-        max_attempts=_env("MAX_ATTEMPTS", _DEFAULT_MAX_ATTEMPTS, int),
-    )
+    consumer = build_consumer_from_env()
+    # Annotate the int|None result so the intent ("a port, or None when unset") is
+    # declared rather than recovered from the generic widening over default=None.
+    port: int | None = consumer_env("HEALTH_PORT", None, int)
     health_server = _maybe_start_health_server(
         consumer,
-        port=_env("HEALTH_PORT", None, int),
-        stale_after=_env("HEALTH_STALE_SECONDS", _DEFAULT_HEALTH_STALE_SECONDS, float),
+        port=port,
+        stale_after=consumer_env(
+            "HEALTH_STALE_SECONDS", _DEFAULT_HEALTH_STALE_SECONDS, float
+        ),
     )
     try:
         consumer.run()

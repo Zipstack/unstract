@@ -638,6 +638,17 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=file_processing
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=file_processing,api_file_processing
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      # UN-3606: prefork N consumer children so file batches run in parallel (the
+      # PG analogue of the Celery worker's --concurrency). SKIP LOCKED distributes
+      # batches across children + replicas; a single execution is still capped by
+      # MAX_PARALLEL_FILE_BATCHES. Mirrors WORKER_FILE_PROCESSING_CONCURRENCY.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_FILEPROC_CONCURRENCY:-4}
+      # process_file_batch blocks on the executor RPC (up to EXECUTOR_RESULT_TIMEOUT,
+      # default 3600s). vt must exceed ONE batch's worst case (children run in
+      # parallel, not serially) or a long batch gets re-claimed mid-run; health-stale
+      # sits just above vt so a legitimately-long batch never trips the fleet probe.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_FILEPROC_VT_SECONDS:-3660}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_FILEPROC_HEALTH_STALE_SECONDS:-3720}
     labels:
       - traefik.enable=false
     volumes:
@@ -743,6 +754,12 @@ services:
       # double-spend, two runs racing the same reply_key) or killed by the probe.
       - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${WORKER_PG_EXECUTOR_VT_SECONDS:-3660}
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${WORKER_PG_EXECUTOR_HEALTH_STALE_SECONDS:-3720}
+      # UN-3606: prefork N executor children so concurrent file batches' executor
+      # RPCs run in parallel instead of serializing here. Without this the
+      # file-processing parallelism delivers no end-to-end speedup — the LLM
+      # extraction (the wall-clock-dominant work) is the bottleneck. Match the
+      # file-processing concurrency so N parallel files get N parallel executors.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_EXECUTOR_CONCURRENCY:-4}
       - CELERY_QUEUES_EXECUTOR=${CELERY_QUEUES_EXECUTOR:-celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table}
     labels:
       - traefik.enable=false

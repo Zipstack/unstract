@@ -20,21 +20,32 @@ so the right worker type must be selected here.
 Launch via ``python -m pg_queue_consumer`` or ``./run-worker.sh pg-queue-consumer``.
 """
 
-import os
-
 
 def _bootstrap_and_run() -> None:
-    # Select the source worker whose tasks back this consumer's queue. Must run
-    # BEFORE `import worker`, which reads WORKER_TYPE at import time. We overwrite
-    # (not setdefault) because the launcher's own WORKER_TYPE owns no tasks.
+    # CONCURRENCY > 1 → run a prefork supervisor (UN-3606): N isolated consumer
+    # children, the PG analogue of Celery --pool=prefork --concurrency=N. The
+    # supervisor forks the children (each does its OWN worker bootstrap, so no
+    # connections are inherited across the fork) and owns the single health port.
+    # CONCURRENCY = 1 (default) keeps the plain single-process path below,
+    # byte-identical to before the supervisor existed.
     #
     # Kept inside this guarded function (not at module scope) so the env mutation
     # and the heavy `import worker` bootstrap only happen on the `python -m`
     # entry — never as a side-effect if this module is imported by a test, IDE,
     # or type-checker walking `__main__` files.
-    os.environ["WORKER_TYPE"] = os.environ.get(
-        "WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE", "notification"
-    )
+    from pg_queue_consumer.supervisor import concurrency_from_env, run_supervised
+
+    concurrency = concurrency_from_env()
+    if concurrency > 1:
+        run_supervised(concurrency)
+        return
+
+    # Single-process path: select the source worker whose tasks back this
+    # consumer's queue (must run BEFORE `import worker`, which reads WORKER_TYPE at
+    # import time). Shared with the supervisor's children via _bootstrap.
+    from pg_queue_consumer._bootstrap import select_source_worker_type
+
+    select_source_worker_type()
 
     import worker  # noqa: F401 — side-effect: registers the source worker's tasks
     from queue_backend.pg_queue.consumer import main
