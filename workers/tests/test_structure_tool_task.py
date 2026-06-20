@@ -17,8 +17,11 @@ site forwards it".
 
 from __future__ import annotations
 
+from unittest.mock import patch
+
 import pytest
 
+from file_processing import structure_tool_task as st
 from file_processing.structure_tool_task import _fairness_headers
 from queue_backend.fairness import WorkloadType
 
@@ -48,6 +51,41 @@ class TestFairnessHeaders:
         wire = _fairness_headers("org-1")
         assert wire["x-fairness-key"]["workload_type"] == WorkloadType.NON_API.value
         assert wire["x-fairness-key"]["workload_type"] != WorkloadType.API.value
+
+
+class TestDispatcherFactory:
+    """Pin the call-site swap this PR makes: the impl builds its dispatcher via
+    ``get_executor_dispatcher(celery_app=app)`` (the gate-routed dispatcher), not
+    the raw SDK ``ExecutionDispatcher``. A mis-import or wrong arg would otherwise
+    silently bypass the PG routing with nothing failing.
+    """
+
+    @staticmethod
+    def _params() -> dict:
+        return {
+            "organization_id": "org1",
+            "file_execution_id": "fe1",
+            "tool_instance_metadata": {},
+            "platform_service_api_key": "sk",
+            "input_file_path": "/in/f.pdf",
+            "output_dir_path": "/out",
+            "source_file_name": "f.pdf",
+            "execution_data_dir": "/data",
+        }
+
+    def test_impl_builds_dispatcher_via_factory_with_app(self):
+        # Stub everything up to (and just past) the dispatcher construction, then
+        # raise to stop before the heavy tool-metadata work runs.
+        with (
+            patch("executor.executor_tool_shim.ExecutorToolShim"),
+            patch.object(st, "_create_platform_helper"),
+            patch.object(st, "_get_file_storage"),
+            patch.object(st, "get_executor_dispatcher") as factory,
+            patch.object(st, "_fetch_tool_metadata", side_effect=RuntimeError("stop")),
+        ):
+            with pytest.raises(RuntimeError, match="stop"):
+                st._execute_structure_tool_impl(self._params())
+        factory.assert_called_once_with(celery_app=st.app)
 
 
 if __name__ == "__main__":

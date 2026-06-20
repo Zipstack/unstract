@@ -127,13 +127,26 @@ class PgExecutionDispatcher:
         self,
         context: ExecutionContext,
         timeout: int | None = None,
+        headers: dict[str, Any] | None = None,
     ) -> ExecutionResult:
+        # ``headers`` is accepted (and ignored) for substitutability with the SDK
+        # ``ExecutionDispatcher.dispatch`` / ``RoutingExecutionDispatcher.dispatch``
+        # shapes — the PG path carries org/routing via the enqueue payload, not
+        # Celery headers, so fairness headers are intentionally not forwarded.
         if timeout is None:
             # Guard the env parse so a misconfigured EXECUTOR_RESULT_TIMEOUT can't
             # raise out of dispatch() (the never-raises contract).
             try:
                 timeout = int(os.environ.get(_DEFAULT_TIMEOUT_ENV, _DEFAULT_TIMEOUT))
             except (TypeError, ValueError):
+                # Don't swallow silently — an operator who fat-fingers the value
+                # would otherwise wait the 3600s default with no signal.
+                logger.warning(
+                    "PG executor dispatch: invalid %s=%r; falling back to %ss",
+                    _DEFAULT_TIMEOUT_ENV,
+                    os.environ.get(_DEFAULT_TIMEOUT_ENV),
+                    _DEFAULT_TIMEOUT,
+                )
                 timeout = _DEFAULT_TIMEOUT
         reply_key = str(uuid.uuid4())
         queue = f"{_QUEUE_PREFIX}{context.executor_name}"
@@ -166,6 +179,14 @@ class PgExecutionDispatcher:
             )
             return ExecutionResult.failure(error=f"{type(exc).__name__}: {exc}")
         if row is None:
+            # On timeout the executor task may still be running on the consumer;
+            # it will write its outcome under this reply_key, but we've already
+            # given up reading it (the reaper retention-sweeps the orphan row). If
+            # the workflow engine retries the file execution, it re-dispatches with
+            # a FRESH reply_key — so two executor tasks for the same file can
+            # overlap (double LLM spend / duplicate writes). De-duping that belongs
+            # at the file-execution layer, not here; this transport stays at-least-
+            # once + caller-timeout by design.
             logger.warning(
                 "PG executor dispatch: TIMEOUT after %ss (reply_key=%s run_id=%s) — "
                 "the executor task may still be running",
@@ -176,14 +197,19 @@ class PgExecutionDispatcher:
             return ExecutionResult.failure(
                 error=f"TimeoutError: executor reply not received within {timeout}s"
             )
+        # ``.get`` (not ``[...]``) so a result row missing ``status`` can't raise
+        # out of dispatch() — the never-raises contract must not depend on the
+        # producer always writing every key.
         if (
-            row["status"] == PgTaskStatus.COMPLETED.value
+            row.get("status") == PgTaskStatus.COMPLETED.value
             and row.get("result") is not None
         ):
             try:
                 return ExecutionResult.from_dict(row["result"])
-            except Exception:
+            except Exception as exc:
                 # A malformed completed row becomes a failure result, not a raise.
+                # Surface the parse cause (like the enqueue/wait paths) so a UI
+                # reading result.error isn't left with an opaque message.
                 logger.exception(
                     "PG executor dispatch: malformed completed result "
                     "(reply_key=%s run_id=%s)",
@@ -191,7 +217,10 @@ class PgExecutionDispatcher:
                     context.run_id,
                 )
                 return ExecutionResult.failure(
-                    error=f"Malformed executor result for reply_key {reply_key}"
+                    error=(
+                        f"Malformed executor result ({type(exc).__name__}) "
+                        f"for reply_key {reply_key}"
+                    )
                 )
         logger.warning(
             "PG executor dispatch: executor reported failure (reply_key=%s "
@@ -227,9 +256,14 @@ class PgExecutionDispatcher:
         """Poll ``pg_task_result`` until the row appears or *timeout* elapses.
 
         Poll-based with capped backoff (PgBouncer-safe; no LISTEN/NOTIFY). The
-        backend owns one connection for the duration of the wait (one per
-        in-flight RPC; structure_tool dispatches are sequential) and closes it on
-        exit, so a long RPC never leaks a connection.
+        backend owns one connection for the duration of the wait and closes it on
+        exit, so a long RPC never leaks a connection. The pin is bounded: a
+        file_processing worker runs ``--pool=prefork`` with
+        ``WORKER_FILE_PROCESSING_CONCURRENCY`` (default 4) processes, and each
+        dispatches sequentially, so at most ~concurrency connections are held for
+        up to ``EXECUTOR_RESULT_TIMEOUT``. (The backend twin instead releases via
+        ``close_old_connections`` between polls; if file_processing concurrency is
+        raised materially, do the same here.)
         """
         with PgResultBackend() as rb:
             return rb.wait_for_result(reply_key, timeout)

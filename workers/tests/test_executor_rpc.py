@@ -211,6 +211,60 @@ class TestResolveExecutorTransport:
         ):
             assert resolve_executor_transport(_ctx()) is False
 
+    def test_org_less_context_buckets_on_run_id(self, monkeypatch):
+        """No org → entity_id falls back to run_id and org is absent from context.
+
+        Guards the org-less bucketing so cross-org/run-only contexts resolve
+        deterministically instead of shipping a bogus "None" org.
+        """
+        monkeypatch.setenv("PG_QUEUE_TRANSPORT_ENABLED", "true")
+        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
+        with patch(
+            f"{_MOD}.check_feature_flag_status", return_value=True
+        ) as flag:
+            assert resolve_executor_transport(_ctx(org=None)) is True
+        assert flag.call_args.kwargs["entity_id"] == "run-1"
+        assert "organization_id" not in flag.call_args.kwargs["context"]
+
+
+class TestPgExecutionDispatcherEnqueueWiring:
+    """The actual PG-transport wiring: queue name, payload shape, org_id.
+
+    These are the *only* routing/identity carried on the PG path (Celery headers
+    are dropped), so a bug here misroutes or breaks org-fairness. ``to_payload``
+    runs for real; only ``PgQueueClient`` and the wait are mocked.
+    """
+
+    @staticmethod
+    def _ctx():
+        c = MagicMock()
+        c.executor_name = "legacy"
+        c.run_id = "r"
+        c.organization_id = "org9"
+        c.to_dict.return_value = {"run_id": "r"}
+        return c
+
+    def test_enqueue_sends_queue_payload_and_org(self):
+        client = MagicMock()
+        client.__enter__.return_value = client  # `with PgQueueClient() as c` → c is client
+        with (
+            patch(f"{_MOD}.PgQueueClient", return_value=client),
+            patch.object(
+                PgExecutionDispatcher,
+                "_wait_for_result",
+                return_value=_completed(_ok_result()),
+            ),
+        ):
+            PgExecutionDispatcher().dispatch(self._ctx(), timeout=5)
+        client.send.assert_called_once()
+        args, kwargs = client.send.call_args
+        queue_arg, payload_arg = args[0], args[1]
+        assert queue_arg == "celery_executor_legacy"
+        assert kwargs["org_id"] == "org9"
+        assert payload_arg["task_name"] == "execute_extraction"
+        assert payload_arg["args"] == [{"run_id": "r"}]
+        assert payload_arg["reply_key"]  # request-reply marker present (a uuid)
+
 
 class TestRoutingZeroRegression:
     @staticmethod
@@ -224,18 +278,24 @@ class TestRoutingZeroRegression:
             dispatcher = RoutingExecutionDispatcher(celery_app="app")
         return dispatcher, celery_cls.return_value, pg_cls.return_value
 
-    def test_gate_off_dispatch_uses_celery_only(self):
+    def test_gate_off_forwards_timeout_and_headers_to_celery(self):
+        """Zero-regression: gate off → Celery gets timeout AND headers unchanged."""
         dispatcher, celery, pg = self._build()
+        ctx = _ctx()
+        hdrs = {"x-fairness-key": {"org_id": "o"}}
         with patch(f"{_MOD}.resolve_executor_transport", return_value=False):
-            dispatcher.dispatch(_ctx())
-        celery.dispatch.assert_called_once()
+            dispatcher.dispatch(ctx, timeout=9, headers=hdrs)
+        celery.dispatch.assert_called_once_with(ctx, timeout=9, headers=hdrs)
         pg.dispatch.assert_not_called()  # the zero-regression guarantee
 
-    def test_gate_on_dispatch_uses_pg(self):
+    def test_gate_on_passes_timeout_to_pg_and_drops_headers(self):
+        """Gate on → PG gets the timeout but NOT the Celery headers (intentional)."""
         dispatcher, celery, pg = self._build()
+        ctx = _ctx()
         with patch(f"{_MOD}.resolve_executor_transport", return_value=True):
-            dispatcher.dispatch(_ctx())
-        pg.dispatch.assert_called_once()
+            dispatcher.dispatch(ctx, timeout=7, headers={"x-fairness-key": {"o": 1}})
+        pg.dispatch.assert_called_once_with(ctx, timeout=7)
+        assert "headers" not in pg.dispatch.call_args.kwargs
         celery.dispatch.assert_not_called()
 
     def test_async_and_callback_always_celery(self):

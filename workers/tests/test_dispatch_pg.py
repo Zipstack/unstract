@@ -66,6 +66,15 @@ class TestToPayload:
         # Must round-trip through JSON (it's stored in a JSONB column).
         json.dumps(to_payload("t", args=[1], kwargs={"a": "b"}, fairness=fairness))
 
+    def test_reply_key_set_when_passed(self):
+        # The request-reply marker (executor RPC): the consumer keys the result
+        # row on it; a drop/mis-key would make the caller block until timeout.
+        assert to_payload("t", reply_key="rk")["reply_key"] == "rk"
+
+    def test_reply_key_omitted_when_absent(self):
+        # Fire-and-forget rows stay byte-identical to before the field existed.
+        assert "reply_key" not in to_payload("t")
+
 
 # --- Integration: dispatch() lands a decodable row in pg_queue_message ---
 # Uses the shared ``pg_client`` fixture from conftest.py.
