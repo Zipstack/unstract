@@ -837,6 +837,12 @@ services:
       - APPLICATION_NAME=unstract-worker-pg-reaper
       - WORKER_PG_REAPER_INTERVAL_SECONDS=${WORKER_PG_REAPER_INTERVAL_SECONDS:-5}
       - WORKER_PG_REAPER_HEALTH_PORT=8086
+      # Retention sweep (cadence-gated inside the leader's tick): drop expired
+      # pg_task_result rows + orphaned pg_batch_dedup markers so neither grows
+      # unbounded as the gate ramps. Dedup retention must exceed the longest
+      # execution (default 24h) so an in-flight marker is never swept.
+      - WORKER_PG_REAPER_SWEEP_SECONDS=${WORKER_PG_REAPER_SWEEP_SECONDS:-300}
+      - WORKER_PG_DEDUP_RETENTION_SECONDS=${WORKER_PG_DEDUP_RETENTION_SECONDS:-86400}
     labels:
       - traefik.enable=false
     volumes:

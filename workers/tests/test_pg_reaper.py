@@ -27,9 +27,14 @@ from queue_backend.pg_queue import reaper as reaper_mod
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.reaper import (
     PgReaper,
+    dedup_retention_from_env,
     reaper_interval_from_env,
+    reaper_sweep_interval_from_env,
     recover_expired_barriers,
+    sweep_expired_results,
+    sweep_orphan_dedup,
 )
+
 
 # The reaper's leader tick also runs the PG scheduler tick (②b). Its behaviour
 # is covered in test_pg_scheduler.py; stub it here by default so the leadership /
@@ -41,6 +46,20 @@ def stub_scheduler_tick(monkeypatch):
     mock = MagicMock(return_value=0)
     monkeypatch.setattr(reaper_mod, "dispatch_due_schedules", mock)
     return mock
+
+
+# The leader tick also runs the retention sweep (UN-3610). Stub the two sweep
+# helpers by default so the leadership / connection tests don't hit a real DELETE
+# on their dummy connections; the SQL-contract tests import the real helpers
+# directly (unaffected by this module-attribute patch), and the sweep-wiring tests
+# opt in via the returned mocks.
+@pytest.fixture(autouse=True)
+def stub_retention_sweep(monkeypatch):
+    results = MagicMock(return_value=0)
+    dedup = MagicMock(return_value=0)
+    monkeypatch.setattr(reaper_mod, "sweep_expired_results", results)
+    monkeypatch.setattr(reaper_mod, "sweep_orphan_dedup", dedup)
+    return SimpleNamespace(results=results, dedup=dedup)
 
 
 # --- Layer 1: env + construction (no DB) ---
@@ -60,6 +79,29 @@ class TestIntervalEnv:
         monkeypatch.setenv("WORKER_PG_REAPER_INTERVAL_SECONDS", bad)
         with pytest.raises(ValueError):
             reaper_interval_from_env()
+
+
+class TestSweepEnv:
+    def test_sweep_interval_default_and_override(self, monkeypatch):
+        monkeypatch.delenv("WORKER_PG_REAPER_SWEEP_SECONDS", raising=False)
+        assert reaper_sweep_interval_from_env() == pytest.approx(300.0)
+        monkeypatch.setenv("WORKER_PG_REAPER_SWEEP_SECONDS", "30")
+        assert reaper_sweep_interval_from_env() == pytest.approx(30.0)
+
+    def test_dedup_retention_default_and_override(self, monkeypatch):
+        monkeypatch.delenv("WORKER_PG_DEDUP_RETENTION_SECONDS", raising=False)
+        assert dedup_retention_from_env() == 86400
+        monkeypatch.setenv("WORKER_PG_DEDUP_RETENTION_SECONDS", "3600")
+        assert dedup_retention_from_env() == 3600
+
+    @pytest.mark.parametrize("bad", ["0", "-5", "abc"])
+    def test_invalid_raises(self, monkeypatch, bad):
+        monkeypatch.setenv("WORKER_PG_REAPER_SWEEP_SECONDS", bad)
+        monkeypatch.setenv("WORKER_PG_DEDUP_RETENTION_SECONDS", bad)
+        with pytest.raises(ValueError):
+            reaper_sweep_interval_from_env()
+        with pytest.raises(ValueError):
+            dedup_retention_from_env()
 
 
 class _FakeLease:
@@ -243,6 +285,112 @@ class TestSchedulerTick:
         owned.closed = False  # so _get_sweep_conn returns it, doesn't reconnect
         reaper._sweep_conn = owned
         stub_scheduler_tick.side_effect = psycopg2.OperationalError("db gone")
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            with pytest.raises(psycopg2.OperationalError):
+                reaper.tick()
+        assert reaper._sweep_conn is None  # discarded
+
+
+class TestRetentionSweepSql:
+    """The sweep helpers' SQL contract (mock cursor, no DB). These call the real
+    helpers (imported at module load), unaffected by the autouse stub which patches
+    the module attribute the reaper looks up at call time.
+    """
+
+    @staticmethod
+    def _conn_cur(rowcount):
+        cur = MagicMock()
+        cur.rowcount = rowcount
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cur
+        return conn, cur
+
+    def test_sweep_expired_results_sql(self):
+        conn, cur = self._conn_cur(3)
+        assert sweep_expired_results(conn) == 3
+        sql = cur.execute.call_args[0][0]
+        assert "DELETE FROM pg_task_result" in sql and "expires_at <= now()" in sql
+        conn.commit.assert_called_once()
+
+    def test_sweep_orphan_dedup_sql(self):
+        conn, cur = self._conn_cur(2)
+        assert sweep_orphan_dedup(conn, 999) == 2
+        args = cur.execute.call_args[0]
+        assert "DELETE FROM pg_batch_dedup" in args[0]
+        assert "created_at <= now() - make_interval" in args[0]
+        assert args[1] == (999,)  # the retention param is bound, not interpolated
+        conn.commit.assert_called_once()
+
+    def test_sweep_rolls_back_on_error(self):
+        cur = MagicMock()
+        cur.execute.side_effect = psycopg2.OperationalError("dead")
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cur
+        with pytest.raises(psycopg2.OperationalError):
+            sweep_expired_results(conn)
+        conn.rollback.assert_called_once()
+        conn.commit.assert_not_called()
+
+
+class TestRetentionSweepTick:
+    """The sweep runs leader-only, after recovery + schedule, cadence-gated."""
+
+    def _reaper(self, lease, **kw):
+        kw.setdefault("sweep_interval_seconds", 300)
+        kw.setdefault("dedup_retention_seconds", 86400)
+        return PgReaper(
+            lease, interval_seconds=0.01, sweep_conn=object(), api_client=object(), **kw
+        )
+
+    def test_leader_sweeps(self, stub_retention_sweep):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            reaper.tick()
+        stub_retention_sweep.results.assert_called_once()
+        stub_retention_sweep.dedup.assert_called_once_with(reaper._get_sweep_conn(), 86400)
+
+    def test_standby_does_not_sweep(self, stub_retention_sweep):
+        reaper = self._reaper(_FakeLease(acquires=False))
+        with patch.object(reaper_mod, "recover_expired_barriers"):
+            reaper.tick()
+        stub_retention_sweep.results.assert_not_called()
+        stub_retention_sweep.dedup.assert_not_called()
+
+    def test_cadence_gates_repeat_within_interval(self, stub_retention_sweep):
+        # Two leader ticks well within the 300s interval → swept once, not twice.
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
+            reaper.tick()
+            reaper.tick()
+        assert stub_retention_sweep.results.call_count == 1
+        assert stub_retention_sweep.dedup.call_count == 1
+
+    def test_runs_after_recovery_and_schedule(
+        self, stub_scheduler_tick, stub_retention_sweep
+    ):
+        order = []
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        stub_scheduler_tick.side_effect = lambda *_: order.append("schedule")
+        stub_retention_sweep.results.side_effect = lambda *_: order.append("sweep") or 0
+        with patch.object(
+            reaper_mod,
+            "recover_expired_barriers",
+            side_effect=lambda *_: order.append("recover") or [],
+        ):
+            reaper.tick()
+        assert order == ["recover", "schedule", "sweep"]
+
+    def test_sweep_error_discards_owned_conn(self, stub_retention_sweep):
+        reaper = PgReaper(
+            _FakeLease(acquires=True, renews=True),
+            interval_seconds=0.01,
+            sweep_interval_seconds=300,
+            api_client=object(),
+        )
+        owned = MagicMock()
+        owned.closed = False
+        reaper._sweep_conn = owned
+        stub_retention_sweep.results.side_effect = psycopg2.OperationalError("db gone")
         with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             with pytest.raises(psycopg2.OperationalError):
                 reaper.tick()
