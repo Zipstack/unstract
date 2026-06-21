@@ -266,7 +266,7 @@ wheels = [
 
 [[package]]
 name = "azure-identity"
-version = "1.16.0"
+version = "1.16.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "azure-core" },
@@ -274,9 +274,9 @@ dependencies = [
     { name = "msal" },
     { name = "msal-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/f1/25cba0d1f4ba1f9b9c799c4755400a3e577adcb1470cf5760fcd730b88e1/azure-identity-1.16.0.tar.gz", hash = "sha256:6ff1d667cdcd81da1ceab42f80a0be63ca846629f518a922f7317a7e3c844e1b", size = 235619, upload-time = "2024-04-09T19:40:38.889Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/1c/bd704075e555046e24b069157ca25c81aedb4199c3e0b35acba9243a6ca6/azure-identity-1.16.1.tar.gz", hash = "sha256:6d93f04468f240d59246d8afde3091494a5040d4f141cad0f49fc0c399d0d91e", size = 236726, upload-time = "2024-06-10T22:23:27.46Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0d/89/2ab156cfa44367e1449e87ff3be393732677b55ed35719cdc8c2f5dfc170/azure_identity-1.16.0-py3-none-any.whl", hash = "sha256:722fdb60b8fdd55fa44dc378b8072f4b419b56a5e54c0de391f644949f3a826f", size = 166115, upload-time = "2024-04-09T19:40:42.835Z" },
+    { url = "https://files.pythonhosted.org/packages/ef/c5/ca55106564d2044ab90614381368b3756690fb7e3ab04552e17f308e4e4f/azure_identity-1.16.1-py3-none-any.whl", hash = "sha256:8fb07c25642cd4ac422559a8b50d3e77f73dcc2bbfaba419d06d6c9d7cff6726", size = 166741, upload-time = "2024-06-10T22:23:30.906Z" },
 ]
 
 [[package]]
@@ -3024,15 +3024,15 @@ wheels = [
 
 [[package]]
 name = "python-socketio"
-version = "5.9.0"
+version = "5.14.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bidict" },
     { name = "python-engineio" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/12/b5/5084ce6c772ee2f7d20714a116976cdb5d24c850745b1364d43e024e5a89/python-socketio-5.9.0.tar.gz", hash = "sha256:dc42735f65534187f381fde291ebf620216a4960001370f32de940229b2e7f8f", size = 47982, upload-time = "2023-09-03T19:22:47.083Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ec/bf/bbc41facdb33a7f440a39f213e59202032106b42df4667a32ef4c9ffe604/python_socketio-5.14.0.tar.gz", hash = "sha256:d057737f658b3948392ff452a5c865c5ccc969859c37cf095a73393ce755f98e", size = 122099, upload-time = "2025-09-30T19:30:40.902Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2b/31/fd41960cf365177f323d8c10d774a0b017336556c6f0ba0a38403240914d/python_socketio-5.9.0-py3-none-any.whl", hash = "sha256:c20f12e4ed0cba57581af26bbeea9998bc2eeebb3b952fa92493a1e051cfe9dc", size = 57630, upload-time = "2023-09-03T19:22:45.482Z" },
+    { url = "https://files.pythonhosted.org/packages/ee/8d/f41abde5846c456b33f25e7fa71d8b8ad78785bb812ef0f2393cda2caaf2/python_socketio-5.14.0-py3-none-any.whl", hash = "sha256:7de5ad8a55efc33e17897f6cf91d20168d3d259f98c38d38e2940af83136d6f8", size = 78438, upload-time = "2025-09-30T19:30:39.134Z" },
 ]
 
 [[package]]
@@ -3727,7 +3727,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "authlib", specifier = "==1.6.12" },
-    { name = "azure-identity", specifier = "==1.16.0" },
+    { name = "azure-identity", specifier = "==1.16.1" },
     { name = "azure-mgmt-apimanagement", specifier = "==3.0.0" },
     { name = "boto3", specifier = "~=1.34.0" },
     { name = "celery", extras = ["amqp"], specifier = ">=5.3.4" },
@@ -3750,7 +3750,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = "==2.9.9" },
     { name = "python-dotenv", specifier = "==1.2.2" },
     { name = "python-magic", specifier = "==0.4.27" },
-    { name = "python-socketio", specifier = "==5.9.0" },
+    { name = "python-socketio", specifier = "==5.14.0" },
     { name = "social-auth-app-django", specifier = "==5.3.0" },
     { name = "social-auth-core", specifier = "==4.4.2" },
     { name = "stripe", specifier = ">=12.5.1" },
