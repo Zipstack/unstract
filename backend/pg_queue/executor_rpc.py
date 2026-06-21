@@ -42,6 +42,7 @@ from pg_queue.flags import PG_QUEUE_FLAG_KEY
 from pg_queue.models import PgTaskResult
 from pg_queue.producer import enqueue_task
 from unstract.core.data_models import PgTaskStatus
+from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
 from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.result import ExecutionResult
@@ -186,6 +187,80 @@ class PgExecutionDispatcher:
         )
         return ExecutionResult.failure(error=row.error or "executor task failed")
 
+    def dispatch_async(
+        self, context: ExecutionContext, headers: dict[str, Any] | None = None
+    ) -> str:
+        """Fire-and-forget enqueue of ``execute_extraction``; returns the task id.
+
+        The PG analogue of the SDK ``dispatch_async``: no ``reply_key``, no
+        callback, no blocking. There is no PG ``AsyncResult`` backend, so a caller
+        that needs the outcome uses :meth:`dispatch_with_callback` (a self-chained
+        continuation), not polling on this id. ``headers`` is accepted and ignored
+        (PG carries routing in the payload). Enqueue failures propagate — parity
+        with the SDK, which lets a broker error out of ``dispatch_async``.
+        """
+        task_id = str(uuid.uuid4())
+        queue = f"{_QUEUE_PREFIX}{context.executor_name}"
+        org = getattr(context, "organization_id", "") or ""
+        enqueue_task(
+            task_name=_EXECUTE_TASK,
+            queue=queue,
+            args=[context.to_dict()],
+            org_id=str(org),
+            task_id=task_id,
+        )
+        logger.info(
+            "PG executor dispatch_async: enqueued task_id=%s queue=%s run_id=%s",
+            task_id,
+            queue,
+            context.run_id,
+        )
+        return task_id
+
+    def dispatch_with_callback(
+        self,
+        context: ExecutionContext,
+        on_success: Any | None = None,
+        on_error: Any | None = None,
+        task_id: str | None = None,
+        headers: dict[str, Any] | None = None,
+    ) -> DispatchHandle:
+        """Fire-and-forget enqueue with self-chained callbacks (§5 model).
+
+        The PG analogue of the SDK ``dispatch_with_callback``: instead of Celery
+        ``link`` / ``link_error`` (which the broker fires), the on-success /
+        on-error Celery ``Signature``s are translated to serialisable
+        :class:`ContinuationSpec`s and carried in the payload. After the executor
+        consumer runs ``execute_extraction`` it self-chains the matching
+        continuation onto the callback queue. Returns a :class:`DispatchHandle`
+        exposing ``.id`` (== ``task_id``) so call sites read the task id exactly
+        as on the Celery path. ``headers`` is accepted and ignored.
+        """
+        task_id = task_id or str(uuid.uuid4())
+        queue = f"{_QUEUE_PREFIX}{context.executor_name}"
+        org = getattr(context, "organization_id", "") or ""
+        success_spec = signature_to_continuation(on_success)
+        error_spec = signature_to_continuation(on_error)
+        enqueue_task(
+            task_name=_EXECUTE_TASK,
+            queue=queue,
+            args=[context.to_dict()],
+            org_id=str(org),
+            on_success=success_spec,
+            on_error=error_spec,
+            task_id=task_id,
+        )
+        logger.info(
+            "PG executor dispatch_with_callback: enqueued task_id=%s queue=%s "
+            "run_id=%s on_success=%s on_error=%s",
+            task_id,
+            queue,
+            context.run_id,
+            success_spec["task_name"] if success_spec else None,
+            error_spec["task_name"] if error_spec else None,
+        )
+        return DispatchHandle(task_id)
+
     @staticmethod
     def _wait_for_result(reply_key: str, timeout: float) -> PgTaskResult | None:
         """Poll ``pg_task_result`` until the row appears or *timeout* elapses.
@@ -216,10 +291,10 @@ class PgExecutionDispatcher:
 class RoutingExecutionDispatcher:
     """Gate-routed executor dispatcher returned by ``_get_dispatcher()``.
 
-    ``dispatch()`` chooses PG vs Celery per call (instant rollout/rollback);
-    ``dispatch_async`` / ``dispatch_with_callback`` always delegate to Celery —
-    the async/callback path stays on Celery until a later continuation slice.
-    Duck-typed against the SDK ``ExecutionDispatcher`` so call sites are unchanged.
+    Every mode chooses PG vs Celery per call (instant rollout/rollback):
+    ``dispatch()`` (request-reply), ``dispatch_async`` (fire-and-forget) and
+    ``dispatch_with_callback`` (self-chained callbacks). Duck-typed against the SDK
+    ``ExecutionDispatcher`` so call sites are unchanged.
     """
 
     def __init__(self, celery_app: object | None = None) -> None:
@@ -246,10 +321,32 @@ class RoutingExecutionDispatcher:
     def dispatch_async(
         self, context: ExecutionContext, headers: dict[str, Any] | None = None
     ) -> str:
+        if resolve_executor_transport(context):
+            return self._pg.dispatch_async(context)
         return self._celery.dispatch_async(context, headers=headers)
 
-    def dispatch_with_callback(self, context: ExecutionContext, **kwargs: Any) -> Any:
-        return self._celery.dispatch_with_callback(context, **kwargs)
+    def dispatch_with_callback(
+        self,
+        context: ExecutionContext,
+        on_success: Any | None = None,
+        on_error: Any | None = None,
+        task_id: str | None = None,
+        headers: dict[str, Any] | None = None,
+    ) -> Any:
+        if resolve_executor_transport(context):
+            return self._pg.dispatch_with_callback(
+                context,
+                on_success=on_success,
+                on_error=on_error,
+                task_id=task_id,
+            )
+        return self._celery.dispatch_with_callback(
+            context,
+            on_success=on_success,
+            on_error=on_error,
+            task_id=task_id,
+            headers=headers,
+        )
 
 
 def get_executor_dispatcher(

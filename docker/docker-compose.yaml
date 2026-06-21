@@ -770,6 +770,51 @@ services:
     profiles:
       - pg-queue
 
+  # IDE callback consumer (③c) — drains the ``ide_callback`` queue the executor
+  # self-chains onto for async/callback dispatch (Prompt Studio run/index/extract,
+  # lookups). Registers the ide_callback worker's tasks (ide_prompt_complete,
+  # ide_index_complete, extraction_complete, …). Idle (receives no work) until
+  # dispatch_with_callback routes to PG (i.e. the gating flag is on); the Celery
+  # ``worker-ide-callback`` still serves the Celery path. No broker dependency:
+  # these callbacks only do API writes + ws emits, never an onward Celery dispatch.
+  # Lightweight, so a modest concurrency suffices; scale via replicas (SKIP LOCKED).
+  worker-pg-ide-callback:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-pg-ide-callback
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    ports:
+      - "8100:8090"
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+      - platform-service
+    environment:
+      - ENVIRONMENT=development
+      - APPLICATION_NAME=unstract-worker-pg-ide-callback
+      - WORKER_BARRIER_BACKEND=pg
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=ide_callback
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_IDE_CALLBACK_CONCURRENCY:-2}
+      # Callbacks are sub-second (ws emit + small API writes), so nowhere near the
+      # executor's 1h limit — but set the visibility timeout above a slow internal
+      # API write (backend under load) so a sibling replica can't re-claim mid-run
+      # and double-emit. Health-stale sits above it. Overridable per-env.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_IDE_CALLBACK_VT_SECONDS:-120}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_IDE_CALLBACK_HEALTH_STALE_SECONDS:-180}
+    labels:
+      - traefik.enable=false
+    volumes:
+      - ./workflow_data:/data
+      - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
+      - prompt_studio_data:/app/prompt-studio-data
+    profiles:
+      - pg-queue
+
   # Reaper / orchestrator — leader-elected loop. Run exactly ONE instance (it
   # elects a single leader via pg_orchestrator_lock; extra replicas idle as
   # standby). Besides barrier-orphan recovery it runs the PG scheduler tick

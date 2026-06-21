@@ -221,11 +221,82 @@ class TestRoutingZeroRegression:
         pg.dispatch.assert_called_once()
         celery.dispatch.assert_not_called()
 
-    def test_async_and_callback_always_celery(self):
-        """The callback/async path stays on Celery regardless of the gate (a later slice)."""
+    def test_async_and_callback_stay_celery_when_gate_off(self):
+        """Zero-regression: gate off → async/callback delegate to Celery unchanged."""
         dispatcher, celery, pg = self._build()
-        dispatcher.dispatch_async(_ctx())
-        dispatcher.dispatch_with_callback(_ctx(), on_success=None)
+        with patch(f"{_MOD}.resolve_executor_transport", return_value=False):
+            dispatcher.dispatch_async(_ctx(), headers={"h": 1})
+            dispatcher.dispatch_with_callback(_ctx(), on_success="s", on_error="e")
         celery.dispatch_async.assert_called_once()
         celery.dispatch_with_callback.assert_called_once()
-        pg.dispatch.assert_not_called()
+        pg.dispatch_async.assert_not_called()
+        pg.dispatch_with_callback.assert_not_called()
+
+    def test_async_and_callback_route_to_pg_when_gated(self):
+        """Gate on (③c) → async/callback take the PG self-chained path."""
+        dispatcher, celery, pg = self._build()
+        with patch(f"{_MOD}.resolve_executor_transport", return_value=True):
+            dispatcher.dispatch_async(_ctx())
+            dispatcher.dispatch_with_callback(
+                _ctx(), on_success="s", on_error="e", task_id="t"
+            )
+        pg.dispatch_async.assert_called_once()
+        pg.dispatch_with_callback.assert_called_once()
+        assert "headers" not in pg.dispatch_with_callback.call_args.kwargs
+        celery.dispatch_async.assert_not_called()
+        celery.dispatch_with_callback.assert_not_called()
+
+
+class TestPgAsyncCallbackWiring:
+    """PG fire-and-forget + self-chained-callback enqueue shapes (``enqueue_task``
+    mocked). Pins that the async path carries NO reply_key and the callback path
+    carries the translated continuations + the tracking task_id.
+    """
+
+    @staticmethod
+    def _ctx():
+        c = MagicMock()
+        c.executor_name = "legacy"
+        c.run_id = "r"
+        c.organization_id = "org9"
+        c.to_dict.return_value = {"run_id": "r", "organization_id": "org9"}
+        return c
+
+    def test_dispatch_async_is_fire_and_forget(self):
+        with patch(f"{_MOD}.enqueue_task") as enq:
+            task_id = PgExecutionDispatcher().dispatch_async(self._ctx())
+        kwargs = enq.call_args.kwargs
+        assert kwargs["task_name"] == "execute_extraction"
+        assert kwargs["queue"] == "celery_executor_legacy"
+        assert kwargs["org_id"] == "org9"
+        assert kwargs["task_id"] == task_id
+        assert "reply_key" not in kwargs
+        assert "on_success" not in kwargs
+
+    def test_dispatch_with_callback_carries_continuations(self):
+        on_s = MagicMock(
+            task="ide_prompt_complete",
+            args=(),
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+        on_e = MagicMock(
+            task="ide_prompt_error",
+            args=(),
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+        with patch(f"{_MOD}.enqueue_task") as enq:
+            handle = PgExecutionDispatcher().dispatch_with_callback(
+                self._ctx(), on_success=on_s, on_error=on_e, task_id="tid-7"
+            )
+        assert handle.id == "tid-7"  # call sites read .id off the handle
+        kwargs = enq.call_args.kwargs
+        assert kwargs["on_success"] == {
+            "task_name": "ide_prompt_complete",
+            "kwargs": {"callback_kwargs": {"room": "r1"}},
+            "queue": "ide_callback",
+        }
+        assert kwargs["on_error"]["task_name"] == "ide_prompt_error"
+        assert kwargs["task_id"] == "tid-7"
+        assert "reply_key" not in kwargs

@@ -25,6 +25,7 @@ from unstract.core.data_models import (
     FAIRNESS_DEFAULT_PRIORITY,
     FAIRNESS_MAX_PRIORITY,
     FAIRNESS_MIN_PRIORITY,
+    ContinuationSpec,
     FairnessPayload,
     TaskPayload,
 )
@@ -63,6 +64,9 @@ def enqueue_task(
     priority: int = DEFAULT_PRIORITY,
     fairness: FairnessPayload | None = None,
     reply_key: str | None = None,
+    on_success: ContinuationSpec | None = None,
+    on_error: ContinuationSpec | None = None,
+    task_id: str | None = None,
 ) -> int:
     """Enqueue a task onto the PG queue; returns the new ``msg_id``.
 
@@ -74,7 +78,19 @@ def enqueue_task(
     ``reply_key`` marks a **request-reply** dispatch (the executor RPC on PG):
     the executor consumer writes the task's result/error to ``pg_task_result``
     under it for the blocking caller to poll. Omitted = fire-and-forget.
+
+    ``on_success`` / ``on_error`` mark an **async/callback** dispatch
+    (``dispatch_with_callback``): the executor consumer self-chains the matching
+    continuation after the task runs. ``task_id`` is the dispatch id prepended to
+    ``on_error`` as the failed id (Celery ``link_error`` parity). Mutually
+    exclusive with ``reply_key`` — passing both is rejected (the consumer checks
+    ``reply_key`` first and would silently drop the callback).
     """
+    if reply_key is not None and (on_success is not None or on_error is not None):
+        raise ValueError(
+            "reply_key (request-reply) and on_success/on_error (callback) are "
+            "mutually exclusive"
+        )
     if not FAIRNESS_MIN_PRIORITY <= priority <= FAIRNESS_MAX_PRIORITY:
         raise ValueError(
             f"priority out of range "
@@ -88,10 +104,19 @@ def enqueue_task(
         "queue": pg_queue,
         "fairness": fairness,
     }
-    # Only set for request-reply dispatches — keeps fire-and-forget rows
-    # byte-identical to before this field existed.
+    # Each optional key is set only when present — keeps fire-and-forget rows
+    # byte-identical to before these fields existed.
     if reply_key is not None:
         message["reply_key"] = reply_key
+    # Continuation specs carry a nested callback ``kwargs`` dict that may hold a
+    # UUID/datetime — coerce like ``args``/``kwargs`` above, else the JSONField
+    # insert raises at dispatch time (caller-visible).
+    if on_success is not None:
+        message["on_success"] = _json_safe(on_success)
+    if on_error is not None:
+        message["on_error"] = _json_safe(on_error)
+    if task_id is not None:
+        message["task_id"] = task_id
     # Mirror the worker _enqueue_pg path: log the failure with breadcrumbs before
     # it propagates, so a DB/constraint/serialization error isn't mislabeled by
     # the caller's broad handler.

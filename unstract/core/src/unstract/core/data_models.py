@@ -298,6 +298,30 @@ class FairnessPayload(TypedDict):
     pipeline_priority: int
 
 
+class ContinuationSpec(TypedDict):
+    """A self-chained continuation — the PG wire-form of a Celery ``Signature``.
+
+    The async/callback executor path (``dispatch_with_callback``) attaches an
+    ``on_success`` / ``on_error`` callback. Celery carries these as ``link`` /
+    ``link_error`` signatures the broker fires automatically; PG has no such
+    broker mechanism, so the executor consumer **self-chains** instead — after it
+    runs ``execute_extraction`` it enqueues this continuation onto ``queue`` (the
+    §5 fire-and-forget model). ``task_name`` / ``kwargs`` / ``queue`` are exactly
+    the three fields read off a ``signature(task_name, kwargs=..., queue=...)`` so
+    the prompt-studio call sites keep passing Celery ``Signature``s unchanged and
+    the dispatcher translates them only on the PG branch.
+
+    The consumer passes the chained value the callback expects (the executor
+    result dict on success, the dispatch ``task_id`` on error) as the callback's
+    first positional arg, alongside the spec's ``kwargs`` as a distinct mapping —
+    mirroring how Celery's ``link`` prepends the parent task's return value.
+    """
+
+    task_name: str
+    kwargs: dict[str, Any]
+    queue: str
+
+
 class TaskPayload(TypedDict):
     """The ``message`` JSONB of a task row in ``pg_queue_message``.
 
@@ -331,6 +355,15 @@ class TaskPayload(TypedDict):
     queue: str | None
     fairness: FairnessPayload | None
     reply_key: NotRequired[str]
+    # Async/callback dispatch (``dispatch_with_callback``). Mutually exclusive with
+    # ``reply_key``: request-reply (blocking) sets ``reply_key``; fire-and-forget
+    # with callbacks sets these continuations. The executor consumer self-chains
+    # whichever applies after the task runs. ``task_id`` is the dispatch id the
+    # caller tracks (== Celery's task id); the consumer prepends it as the failed
+    # id to ``on_error`` (parity with Celery ``link_error``).
+    on_success: NotRequired[ContinuationSpec]
+    on_error: NotRequired[ContinuationSpec]
+    task_id: NotRequired[str]
 
 
 class PgTaskStatus(str, Enum):
