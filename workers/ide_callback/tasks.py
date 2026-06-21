@@ -94,8 +94,20 @@ def _emit_event(
     )
 
 
-def _get_task_error(failed_task_id: str, default: str) -> str:
-    """Retrieve the error message from a failed Celery task's result backend."""
+def _get_task_error(
+    failed_task_id: str, default: str, explicit: str | None = None
+) -> str:
+    """Resolve the error text for a failed-task callback.
+
+    Prefers an ``explicit`` error when the caller already has it: the PG
+    self-chained path carries the real error via ``callback_kwargs['error']``
+    because the executor ran eagerly (``task.apply``) and never wrote a Celery
+    result backend under ``failed_task_id`` — so the ``AsyncResult`` lookup below
+    is empty there. The Celery ``link_error`` path passes no explicit error and
+    falls back to the result backend, then the ``default``.
+    """
+    if explicit:
+        return explicit
     try:
         from celery.result import AsyncResult
 
@@ -321,7 +333,9 @@ def ide_index_error(
     api = _get_api_client()
 
     try:
-        error_msg = _get_task_error(failed_task_id, default="Indexing failed")
+        error_msg = _get_task_error(
+            failed_task_id, default="Indexing failed", explicit=cb.get("error")
+        )
 
         # Clean up the indexing-in-progress flag
         if doc_id_key:
@@ -499,7 +513,9 @@ def ide_prompt_error(
     api = _get_api_client()
 
     try:
-        error_msg = _get_task_error(failed_task_id, default="Prompt execution failed")
+        error_msg = _get_task_error(
+            failed_task_id, default="Prompt execution failed", explicit=cb.get("error")
+        )
 
         _emit_event(
             api,
@@ -642,7 +658,11 @@ def extraction_error(
     # Context-manage clients to avoid per-task session leaks.
     with _get_extraction_client() as api, _get_api_client() as ps_api:
         try:
-            error_msg = _get_task_error(failed_task_id, default="Text extraction failed")
+            error_msg = _get_task_error(
+                failed_task_id,
+                default="Text extraction failed",
+                explicit=cb.get("error"),
+            )
 
             api.mark_extraction_error(
                 source=source,

@@ -48,14 +48,28 @@ def signature_to_continuation(sig: Any | None) -> ContinuationSpec | None:
     """
     if sig is None:
         return None
+    task = getattr(sig, "task", None)
+    if not task:
+        raise ValueError(
+            "callback signature has no task name; PG self-chaining cannot enqueue "
+            "it (it would be dropped downstream as a malformed payload)"
+        )
     queue = (getattr(sig, "options", None) or {}).get("queue")
     if not queue:
         raise ValueError(
-            f"callback signature {getattr(sig, 'task', sig)!r} has no queue; "
-            "PG self-chaining routes by the row's queue and cannot default it"
+            f"callback signature {task!r} has no queue; PG self-chaining routes "
+            "by the row's queue and cannot default it"
+        )
+    # ContinuationSpec carries no positional args (the consumer prepends the one
+    # chained value). A signature with its own positional args would run with a
+    # different arg list on PG than on Celery — fail fast rather than drop them.
+    if getattr(sig, "args", None):
+        raise ValueError(
+            f"callback signature {task!r} has positional args; PG self-chaining "
+            "supports kwargs-only callbacks"
         )
     return ContinuationSpec(
-        task_name=sig.task,
+        task_name=task,
         kwargs=dict(getattr(sig, "kwargs", None) or {}),
         queue=queue,
     )

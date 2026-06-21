@@ -773,10 +773,11 @@ services:
   # IDE callback consumer (③c) — drains the ``ide_callback`` queue the executor
   # self-chains onto for async/callback dispatch (Prompt Studio run/index/extract,
   # lookups). Registers the ide_callback worker's tasks (ide_prompt_complete,
-  # ide_index_complete, extraction_complete, …). Dark until dispatch_with_callback
-  # routes to PG (flag on); the Celery ``worker-ide-callback`` still serves the
-  # Celery path. Callbacks are lightweight (ws emit + small API writes), so a
-  # modest concurrency suffices; scale via replicas (SKIP LOCKED) under load.
+  # ide_index_complete, extraction_complete, …). Idle (receives no work) until
+  # dispatch_with_callback routes to PG (i.e. the gating flag is on); the Celery
+  # ``worker-ide-callback`` still serves the Celery path. No broker dependency:
+  # these callbacks only do API writes + ws emits, never an onward Celery dispatch.
+  # Lightweight, so a modest concurrency suffices; scale via replicas (SKIP LOCKED).
   worker-pg-ide-callback:
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-pg-ide-callback

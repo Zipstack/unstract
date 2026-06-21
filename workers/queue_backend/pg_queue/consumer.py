@@ -20,6 +20,7 @@ resolve in ``current_app.tasks``.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import signal
@@ -28,6 +29,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, TypeVar
 
 from celery import current_app
+
+from unstract.core.data_models import ContinuationSpec, TaskPayload
 
 from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
@@ -65,6 +68,19 @@ _DEFAULT_MAX_ATTEMPTS = 5
 # raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
 # max(batch_size x worst_case_task_seconds, backoff_max).
 _DEFAULT_HEALTH_STALE_SECONDS = 60.0
+
+
+def _json_safe(value: object) -> object:
+    """Round-trip through JSON with ``default=str`` so non-JSON-native values
+    (UUID / datetime) survive a self-chained enqueue.
+
+    ``PgQueueClient.send`` serialises with a plain ``json.dumps`` (no
+    ``default=``), so a self-chained continuation whose prepended argument is an
+    executor result dict containing a UUID/datetime would raise ``TypeError`` —
+    swallowed by ``_chain_continuation`` and the callback (plus its user-facing
+    event) lost. Coercing here mirrors the backend producer's ``_json_safe``.
+    """
+    return json.loads(json.dumps(value, default=str))
 
 
 class PgQueueConsumer:
@@ -182,7 +198,7 @@ class PgQueueConsumer:
                 message.msg_id,
                 payload,
             )
-            self._fail_reply(reply_key, "malformed message: missing task_name")
+            self._fail_dispatch(payload, error="malformed message: missing task_name")
             self._client.delete(message.msg_id)
             return
 
@@ -199,8 +215,9 @@ class PgQueueConsumer:
                 message.read_ct,
                 payload,
             )
-            self._fail_reply(
-                reply_key, f"task {task_name} exceeded max_attempts={self.max_attempts}"
+            self._fail_dispatch(
+                payload,
+                error=f"task {task_name} exceeded max_attempts={self.max_attempts}",
             )
             self._client.delete(message.msg_id)
             return
@@ -213,7 +230,7 @@ class PgQueueConsumer:
                 task_name,
                 message.msg_id,
             )
-            self._fail_reply(reply_key, f"unknown task {task_name}")
+            self._fail_dispatch(payload, error=f"unknown task {task_name}")
             self._client.delete(message.msg_id)
             return
 
@@ -229,36 +246,21 @@ class PgQueueConsumer:
                 throw=True,
             )
         except Exception as exc:
-            if reply_key:
-                # Record the failure so the waiting caller gets a definitive
-                # result instead of blocking to its timeout, then ACK. We do NOT
+            if reply_key or on_error:
+                # Request-reply / async-callback dispatch: surface the failure on
+                # its return channel (store the error reply, or self-chain on_error
+                # carrying the real error text), then ACK regardless. We do NOT
                 # vt-redeliver: a redelivery would race a result the caller may
                 # already have consumed, and re-running the executor is costly
                 # (LLM spend). The executor task's own autoretry covers transient
-                # errors within this attempt; the caller re-dispatches with a
-                # fresh reply_key to retry the whole RPC.
-                self._fail_reply(reply_key, f"{type(exc).__name__}: {exc}")
+                # errors within this attempt; the caller re-dispatches with a fresh
+                # handle to retry the whole RPC. _fail_dispatch is best-effort, so
+                # the ack never wedges.
+                self._fail_dispatch(payload, error=f"{type(exc).__name__}: {exc}")
                 self._client.delete(message.msg_id)  # ack
                 logger.exception(
-                    "PG-queue consumer: request-reply task %r (msg_id=%s) failed "
-                    "— stored error + acked (reply_key=%s)",
-                    task_name,
-                    message.msg_id,
-                    reply_key,
-                )
-                return
-            if on_error:
-                # Async/callback: self-chain the on_error continuation, then ACK
-                # regardless — same anti-double-spend reasoning as reply_key (a
-                # vt-redelivery would re-run the executor / re-spend LLM tokens).
-                # _chain_continuation is best-effort, so the ack never wedges.
-                self._chain_continuation(
-                    on_error, prepend=payload.get("task_id") or "", payload=payload
-                )
-                self._client.delete(message.msg_id)  # ack
-                logger.exception(
-                    "PG-queue consumer: callback task %r (msg_id=%s) failed — "
-                    "self-chained on_error + acked",
+                    "PG-queue consumer: dispatch %r (msg_id=%s) failed — surfaced "
+                    "via reply/on_error + acked",
                     task_name,
                     message.msg_id,
                 )
@@ -296,6 +298,13 @@ class PgQueueConsumer:
             # queue before the ack — the §5 hand-off (PG analogue of Celery's link).
             # Best-effort (never raises): a chain failure logs + still acks, so the
             # executor is not re-run (LLM double-spend); the callback is lost.
+            #
+            # "success" == the task did not RAISE (parity with Celery `link`, which
+            # also fires on any non-exception return). A task that *returns* a failed
+            # ExecutionResult (success=False, no raise) deliberately follows this
+            # path — the on_success callback receives the failed result and renders
+            # it — exactly as on Celery. This is NOT the missing-on_error drop bug
+            # the early-drop branches handle.
             self._chain_continuation(on_success, prepend=eager.result, payload=payload)
 
         if not self._client.delete(message.msg_id):  # ack
@@ -319,7 +328,14 @@ class PgQueueConsumer:
             self._result_backend = PgResultBackend()
         self._result_backend.store_result(reply_key, result=result, error=error)
 
-    def _chain_continuation(self, spec: dict, *, prepend: object, payload: dict) -> None:
+    def _chain_continuation(
+        self,
+        spec: ContinuationSpec,
+        *,
+        prepend: object,
+        payload: TaskPayload,
+        error: str | None = None,
+    ) -> None:
         """Enqueue a self-chained callback continuation (best-effort, never raises).
 
         The PG analogue of Celery firing a ``link`` / ``link_error``: after the
@@ -327,7 +343,15 @@ class PgQueueConsumer:
         ``queue``) onto its queue with ``prepend`` as the first positional arg —
         the executor result dict on success, the dispatch ``task_id`` on error —
         exactly the first parameter the callback signature expects (mirroring
-        Celery prepending the parent task's return value).
+        Celery prepending the parent task's return value). The prepended value is
+        JSON-coerced so a UUID/datetime in an executor result can't make the
+        enqueue's ``json.dumps`` raise and silently drop the callback.
+
+        ``error`` (failure path only): the real error text. On PG there is no
+        Celery ``AsyncResult`` for the on_error callback (e.g. ``ide_prompt_error``)
+        to recover the message from — the executor ran eagerly — so we hand it
+        through ``callback_kwargs['error']``, which those callbacks prefer over the
+        empty ``AsyncResult`` lookup. Absent on the success path.
 
         Never raises: a failure here must not wedge the executor message's ack
         (which is taken regardless, to avoid an expensive re-run). It just means
@@ -335,12 +359,17 @@ class PgQueueConsumer:
         """
         try:
             queue = spec["queue"]
+            kwargs = dict(spec.get("kwargs") or {})
+            if error is not None:
+                cb = dict(kwargs.get("callback_kwargs") or {})
+                cb.setdefault("error", error)
+                kwargs["callback_kwargs"] = cb
             self._client.send(
                 queue,
                 to_payload(
                     spec["task_name"],
-                    args=[prepend],
-                    kwargs=spec.get("kwargs") or {},
+                    args=[_json_safe(prepend)],
+                    kwargs=kwargs,
                     queue=queue,
                 ),
                 org_id=self._continuation_org(payload),
@@ -353,20 +382,43 @@ class PgQueueConsumer:
             )
 
     @staticmethod
-    def _continuation_org(payload: dict) -> str:
+    def _continuation_org(payload: TaskPayload) -> str:
         """Best-effort org id for a chained callback (fairness/debug on its queue).
 
         The executor request carries it in the context dict (``args[0]``);
-        callbacks are not fairness-critical, so any extraction failure degrades to
-        ``""`` (no org).
+        callbacks are not fairness-critical, so a missing/odd shape degrades to
+        ``""`` (no org). The guards below cover every non-dict shape, so no
+        try/except is needed.
         """
-        try:
-            args = payload.get("args") or []
-            if args and isinstance(args[0], dict):
-                return str(args[0].get("organization_id") or "")
-        except Exception:
-            pass
+        args = payload.get("args") or []
+        if args and isinstance(args[0], dict):
+            return str(args[0].get("organization_id") or "")
         return ""
+
+    def _fail_dispatch(self, payload: TaskPayload, *, error: str) -> None:
+        """Surface a terminal dispatch failure on whichever return channel applies.
+
+        Request-reply (``reply_key``) → store the error for the blocking caller.
+        Async/callback (``on_error``) → self-chain the on_error continuation,
+        carrying the real ``error`` text. Best-effort + never raises — the caller
+        acks regardless. Used by BOTH the run-raised path and the early-drop
+        branches (malformed / poison / unknown task), so a ``dispatch_with_callback``
+        failure ALWAYS reaches its on_error callback, not only when the task body
+        raised (the realistic poison-executor case is exactly when the user most
+        needs the error surfaced).
+        """
+        reply_key = payload.get("reply_key")
+        if reply_key:
+            self._fail_reply(reply_key, error)
+            return
+        on_error = payload.get("on_error")
+        if on_error:
+            self._chain_continuation(
+                on_error,
+                prepend=payload.get("task_id") or "",
+                payload=payload,
+                error=error,
+            )
 
     def _fail_reply(self, reply_key: str | None, error: str) -> None:
         """Best-effort failure reply for a request-reply message that can't run

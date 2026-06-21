@@ -83,8 +83,14 @@ def enqueue_task(
     (``dispatch_with_callback``): the executor consumer self-chains the matching
     continuation after the task runs. ``task_id`` is the dispatch id prepended to
     ``on_error`` as the failed id (Celery ``link_error`` parity). Mutually
-    exclusive with ``reply_key``.
+    exclusive with ``reply_key`` — passing both is rejected (the consumer checks
+    ``reply_key`` first and would silently drop the callback).
     """
+    if reply_key is not None and (on_success is not None or on_error is not None):
+        raise ValueError(
+            "reply_key (request-reply) and on_success/on_error (callback) are "
+            "mutually exclusive"
+        )
     if not FAIRNESS_MIN_PRIORITY <= priority <= FAIRNESS_MAX_PRIORITY:
         raise ValueError(
             f"priority out of range "
@@ -102,10 +108,13 @@ def enqueue_task(
     # byte-identical to before these fields existed.
     if reply_key is not None:
         message["reply_key"] = reply_key
+    # Continuation specs carry a nested callback ``kwargs`` dict that may hold a
+    # UUID/datetime — coerce like ``args``/``kwargs`` above, else the JSONField
+    # insert raises at dispatch time (caller-visible).
     if on_success is not None:
-        message["on_success"] = on_success
+        message["on_success"] = _json_safe(on_success)
     if on_error is not None:
-        message["on_error"] = on_error
+        message["on_error"] = _json_safe(on_error)
     if task_id is not None:
         message["task_id"] = task_id
     # Mirror the worker _enqueue_pg path: log the failure with breadcrumbs before

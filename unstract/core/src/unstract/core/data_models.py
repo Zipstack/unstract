@@ -311,8 +311,9 @@ class ContinuationSpec(TypedDict):
     the prompt-studio call sites keep passing Celery ``Signature``s unchanged and
     the dispatcher translates them only on the PG branch.
 
-    The consumer prepends the chained argument the callback expects (the executor
-    result dict on success, the dispatch ``task_id`` on error) before ``kwargs`` —
+    The consumer passes the chained value the callback expects (the executor
+    result dict on success, the dispatch ``task_id`` on error) as the callback's
+    first positional arg, alongside the spec's ``kwargs`` as a distinct mapping —
     mirroring how Celery's ``link`` prepends the parent task's return value.
     """
 

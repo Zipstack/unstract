@@ -369,11 +369,13 @@ class TestPgAsyncCallbackWiring:
         client = self._client()
         on_s = MagicMock(
             task="ide_prompt_complete",
+            args=(),
             kwargs={"callback_kwargs": {"room": "r1"}},
             options={"queue": "ide_callback"},
         )
         on_e = MagicMock(
             task="ide_prompt_error",
+            args=(),
             kwargs={"callback_kwargs": {"room": "r1"}},
             options={"queue": "ide_callback"},
         )
@@ -412,6 +414,7 @@ class TestSharedDispatchHelpers:
     def test_signature_translates_task_kwargs_and_queue(self):
         sig = MagicMock(
             task="ide_prompt_complete",
+            args=(),  # a real kwargs-only Celery Signature has empty .args
             kwargs={"callback_kwargs": {"room": "r1"}},
             options={"queue": "ide_callback"},
         )
@@ -422,8 +425,23 @@ class TestSharedDispatchHelpers:
         }
 
     def test_signature_missing_queue_fails_fast(self):
-        sig = MagicMock(task="ide_prompt_complete", kwargs={}, options={})
+        sig = MagicMock(task="ide_prompt_complete", kwargs={}, options={"queue": ""})
         with pytest.raises(ValueError, match="no queue"):
+            signature_to_continuation(sig)
+
+    def test_signature_missing_task_fails_fast(self):
+        sig = MagicMock(task=None, kwargs={}, options={"queue": "ide_callback"})
+        with pytest.raises(ValueError, match="no task name"):
+            signature_to_continuation(sig)
+
+    def test_signature_with_positional_args_fails_fast(self):
+        sig = MagicMock(
+            task="ide_prompt_complete",
+            args=("pos",),
+            kwargs={},
+            options={"queue": "ide_callback"},
+        )
+        with pytest.raises(ValueError, match="positional args"):
             signature_to_continuation(sig)
 
     def test_dispatch_handle_exposes_only_id(self):

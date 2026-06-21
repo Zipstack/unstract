@@ -48,8 +48,15 @@ def to_payload(
     continuation after the task runs (success → ``on_success``, failure →
     ``on_error``). ``task_id`` is the dispatch id the consumer prepends to
     ``on_error`` as the failed id (Celery ``link_error`` parity). These are
-    mutually exclusive with ``reply_key`` (blocking vs callback dispatch).
+    mutually exclusive with ``reply_key`` (blocking vs callback dispatch) — passing
+    both is rejected, since the consumer checks ``reply_key`` first and would
+    silently drop the callback.
     """
+    if reply_key is not None and (on_success is not None or on_error is not None):
+        raise ValueError(
+            "reply_key (request-reply) and on_success/on_error (callback) are "
+            "mutually exclusive"
+        )
     payload = TaskPayload(
         task_name=task_name,
         args=list(args) if args is not None else [],

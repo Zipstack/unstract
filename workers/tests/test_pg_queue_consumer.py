@@ -34,6 +34,15 @@ def _boom_task():
     raise RuntimeError("boom")
 
 
+@shared_task(name="test_pg_consumer.dt")
+def _dt_task():
+    # Returns a non-JSON-native value (datetime) — the self-chain must coerce it
+    # before enqueue, else client.send's plain json.dumps would raise.
+    from datetime import datetime
+
+    return {"when": datetime(2020, 1, 1)}  # noqa: DTZ001 — fixed value for the test
+
+
 @pytest.fixture(autouse=True)
 def _clear_calls():
     _calls.clear()
@@ -564,6 +573,46 @@ class TestSelfChain:
         payload_arg = client.send.call_args.args[1]
         assert payload_arg["task_name"] == "cb.err"
         assert payload_arg["args"] == ["tid-9"]  # dispatch task_id as the failed id
+        # The real error text rides callback_kwargs['error'] (no Celery AsyncResult
+        # to recover it from on PG) so on_error callbacks surface it, not a default.
+        assert "RuntimeError: boom" in payload_arg["kwargs"]["callback_kwargs"]["error"]
+
+    def test_early_drop_branches_still_chain_on_error(self):
+        # Critical: a dispatch_with_callback that hits malformed/unknown/poison must
+        # still fire on_error — else the HTTP-202 caller hangs with no terminal event.
+        err = self._spec("cb.err")
+        cases = [
+            # (msg_id, payload, read_ct)  — malformed / unknown / poison
+            (10, {"on_error": err, "task_id": "t"}, 1),
+            (11, {"task_name": "nope.nope", "on_error": err, "task_id": "t"}, 1),
+            (12, {"task_name": "test_pg_consumer.boom", "on_error": err, "task_id": "t"}, 99),
+        ]
+        for msg_id, payload, read_ct in cases:
+            client = MagicMock()
+            client.read.return_value = [_msg(msg_id, payload, read_ct=read_ct)]
+            PgQueueConsumer(["q"], client=client).poll_once()
+            client.delete.assert_called_once_with(msg_id)  # dropped/acked
+            client.send.assert_called_once()  # on_error STILL chained
+            payload_arg = client.send.call_args.args[1]
+            assert payload_arg["task_name"] == "cb.err"
+            assert payload_arg["args"] == ["t"]
+            assert payload_arg["kwargs"]["callback_kwargs"]["error"]  # the drop reason
+
+    def test_non_json_safe_result_is_coerced_before_chaining(self):
+        client = MagicMock()
+        payload = {
+            "task_name": "test_pg_consumer.dt",
+            "on_success": self._spec(),
+            "task_id": "tid",
+        }
+        client.read.return_value = [_msg(6, payload)]
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.send.assert_called_once()  # not swallowed by a json.dumps TypeError
+        chained = client.send.call_args.args[1]["args"][0]
+        assert isinstance(chained["when"], str)  # datetime → str (default=str)
+        import json as _json
+
+        _json.dumps(chained)  # the coerced payload is plain-json serialisable
 
     def test_no_continuation_is_plain_fire_and_forget(self):
         client = MagicMock()
@@ -589,6 +638,18 @@ class TestSelfChain:
         assert org_of({"args": [{"organization_id": "orgZ"}]}) == "orgZ"
         assert org_of({"args": [42]}) == ""
         assert org_of({}) == ""
+
+    def test_reply_key_and_callback_are_mutually_exclusive(self):
+        # The consumer checks reply_key first and would silently drop a callback —
+        # so to_payload rejects the ambiguous combination at the build boundary.
+        spec = self._spec()
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            to_payload("execute_extraction", reply_key="rk", on_success=spec)
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            to_payload("execute_extraction", reply_key="rk", on_error=spec)
+        # Either alone is fine.
+        assert to_payload("execute_extraction", reply_key="rk")["reply_key"] == "rk"
+        assert to_payload("execute_extraction", on_success=spec)["on_success"] == spec
 
 
 if __name__ == "__main__":

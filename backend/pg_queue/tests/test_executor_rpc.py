@@ -276,11 +276,13 @@ class TestPgAsyncCallbackWiring:
     def test_dispatch_with_callback_carries_continuations(self):
         on_s = MagicMock(
             task="ide_prompt_complete",
+            args=(),
             kwargs={"callback_kwargs": {"room": "r1"}},
             options={"queue": "ide_callback"},
         )
         on_e = MagicMock(
             task="ide_prompt_error",
+            args=(),
             kwargs={"callback_kwargs": {"room": "r1"}},
             options={"queue": "ide_callback"},
         )

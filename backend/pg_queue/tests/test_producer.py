@@ -111,3 +111,33 @@ class TestEnqueueTask:
             model.objects.create.side_effect = RuntimeError("db down")
             with pytest.raises(RuntimeError):
                 producer.enqueue_task(task_name="t", queue="celery")
+
+    def test_reply_key_and_callback_mutually_exclusive(self):
+        spec = {"task_name": "cb", "kwargs": {}, "queue": "ide_callback"}
+        with pytest.raises(ValueError, match="mutually exclusive"):
+            producer.enqueue_task(
+                task_name="execute_extraction",
+                queue="celery_executor_legacy",
+                reply_key="rk",
+                on_success=spec,
+            )
+
+    def test_continuation_specs_are_json_coerced(self):
+        # A callback's kwargs can carry a UUID/datetime → must be coerced like
+        # args/kwargs, else the JSONField insert raises at dispatch (caller-visible).
+        uid = uuid.UUID("ebed2834-c9fb-4b6c-8df3-9dd841f616bb")
+        spec = {
+            "task_name": "ide_prompt_complete",
+            "kwargs": {"callback_kwargs": {"doc_id": uid}},
+            "queue": "ide_callback",
+        }
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(
+                task_name="execute_extraction",
+                queue="celery_executor_legacy",
+                on_success=spec,
+                task_id="t1",
+            )
+        msg = model.objects.create.call_args.kwargs["message"]
+        assert msg["on_success"]["kwargs"]["callback_kwargs"]["doc_id"] == str(uid)
