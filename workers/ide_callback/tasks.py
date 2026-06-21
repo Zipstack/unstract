@@ -106,7 +106,7 @@ def _get_task_error(
     is empty there. The Celery ``link_error`` path passes no explicit error and
     falls back to the result backend, then the ``default``.
     """
-    if explicit:
+    if explicit is not None:
         return explicit
     try:
         from celery.result import AsyncResult

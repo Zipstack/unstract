@@ -246,7 +246,7 @@ class PgQueueConsumer:
                 throw=True,
             )
         except Exception as exc:
-            if reply_key or on_error:
+            if reply_key or on_success or on_error:
                 # Request-reply / async-callback dispatch: surface the failure on
                 # its return channel (store the error reply, or self-chain on_error
                 # carrying the real error text), then ACK regardless. We do NOT
@@ -254,8 +254,11 @@ class PgQueueConsumer:
                 # already have consumed, and re-running the executor is costly
                 # (LLM spend). The executor task's own autoretry covers transient
                 # errors within this attempt; the caller re-dispatches with a fresh
-                # handle to retry the whole RPC. _fail_dispatch is best-effort, so
-                # the ack never wedges.
+                # handle to retry the whole RPC. ``on_success`` is in the guard too:
+                # an on_success-only callback dispatch (on_error omitted) that raises
+                # must still ACK — falling through to vt-redelivery would re-run the
+                # executor (the LLM double-spend this path exists to avoid).
+                # _fail_dispatch is best-effort, so the ack never wedges.
                 self._fail_dispatch(payload, error=f"{type(exc).__name__}: {exc}")
                 self._client.delete(message.msg_id)  # ack
                 logger.exception(
@@ -296,8 +299,6 @@ class PgQueueConsumer:
         elif on_success:
             # Async/callback: self-chain the success continuation onto the callback
             # queue before the ack — the §5 hand-off (PG analogue of Celery's link).
-            # Best-effort (never raises): a chain failure logs + still acks, so the
-            # executor is not re-run (LLM double-spend); the callback is lost.
             #
             # "success" == the task did not RAISE (parity with Celery `link`, which
             # also fires on any non-exception return). A task that *returns* a failed
@@ -305,7 +306,17 @@ class PgQueueConsumer:
             # path — the on_success callback receives the failed result and renders
             # it — exactly as on Celery. This is NOT the missing-on_error drop bug
             # the early-drop branches handle.
-            self._chain_continuation(on_success, prepend=eager.result, payload=payload)
+            #
+            # If the success hand-off can't be enqueued (transport/DB error, bad
+            # queue), fall back to on_error so the HTTP-202 caller still gets a
+            # terminal event instead of hanging after the LLM spend already
+            # happened. Both are best-effort + still ack (no executor re-run).
+            if not self._chain_continuation(
+                on_success, prepend=eager.result, payload=payload
+            ):
+                self._fail_dispatch(
+                    payload, error="result delivery failed; see worker logs"
+                )
 
         if not self._client.delete(message.msg_id):  # ack
             logger.warning(
@@ -335,7 +346,7 @@ class PgQueueConsumer:
         prepend: object,
         payload: TaskPayload,
         error: str | None = None,
-    ) -> None:
+    ) -> bool:
         """Enqueue a self-chained callback continuation (best-effort, never raises).
 
         The PG analogue of Celery firing a ``link`` / ``link_error``: after the
@@ -353,9 +364,13 @@ class PgQueueConsumer:
         through ``callback_kwargs['error']``, which those callbacks prefer over the
         empty ``AsyncResult`` lookup. Absent on the success path.
 
+        Returns ``True`` if the continuation was enqueued, ``False`` if it failed.
         Never raises: a failure here must not wedge the executor message's ack
-        (which is taken regardless, to avoid an expensive re-run). It just means
-        the callback — and its user-facing WebSocket event — is lost, logged loud.
+        (which is taken regardless, to avoid an expensive re-run). The success path
+        uses the return value to fall back to on_error so the caller still gets a
+        terminal event; the failure path can't recover further (the callback — and
+        its user-facing WebSocket event — is lost, logged loud with the run/task/org
+        so the stranded session is correlatable).
         """
         try:
             queue = spec["queue"]
@@ -374,12 +389,20 @@ class PgQueueConsumer:
                 ),
                 org_id=self._continuation_org(payload),
             )
+            return True
         except Exception:
+            ctx = payload.get("args") or [{}]
+            ctx0 = ctx[0] if ctx and isinstance(ctx[0], dict) else {}
             logger.exception(
                 "PG-queue consumer: FAILED to self-chain continuation %r — the "
-                "callback (and its user-facing event) is lost",
+                "callback (and its user-facing event) is lost "
+                "(run_id=%s task_id=%s org=%s)",
                 spec.get("task_name") if isinstance(spec, dict) else spec,
+                ctx0.get("run_id"),
+                payload.get("task_id"),
+                self._continuation_org(payload),
             )
+            return False
 
     @staticmethod
     def _continuation_org(payload: TaskPayload) -> str:

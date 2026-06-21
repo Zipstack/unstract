@@ -800,6 +800,12 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=ide_callback
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_IDE_CALLBACK_CONCURRENCY:-2}
+      # Callbacks are sub-second (ws emit + small API writes), so nowhere near the
+      # executor's 1h limit — but set the visibility timeout above a slow internal
+      # API write (backend under load) so a sibling replica can't re-claim mid-run
+      # and double-emit. Health-stale sits above it. Overridable per-env.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_IDE_CALLBACK_VT_SECONDS:-120}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_IDE_CALLBACK_HEALTH_STALE_SECONDS:-180}
     labels:
       - traefik.enable=false
     volumes:

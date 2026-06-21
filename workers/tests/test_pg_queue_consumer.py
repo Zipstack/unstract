@@ -614,6 +614,40 @@ class TestSelfChain:
 
         _json.dumps(chained)  # the coerced payload is plain-json serialisable
 
+    def test_on_success_only_failure_acks_not_redelivered(self):
+        # An on_success-only callback dispatch (on_error omitted) whose executor
+        # RAISES must ACK — not fall through to vt-redelivery and re-run the
+        # executor (LLM double-spend). No on_error → nothing chained, but acked.
+        client = MagicMock()
+        payload = {
+            "task_name": "test_pg_consumer.boom",
+            "on_success": self._spec(),
+            "task_id": "tid",
+        }
+        client.read.return_value = [_msg(7, payload)]
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.delete.assert_called_once_with(7)  # acked, NOT left for redelivery
+        client.send.assert_not_called()  # success callback not fired on a raise
+
+    def test_on_success_enqueue_failure_falls_back_to_on_error(self):
+        # If the success hand-off can't be enqueued, surface on_error so the caller
+        # still gets a terminal event instead of hanging after the LLM spend.
+        client = MagicMock()
+        client.send.side_effect = [RuntimeError("queue down"), 999]  # 1st fails, 2nd ok
+        payload = {
+            **_ok_payload(2, 2),
+            "on_success": self._spec("cb.ok"),
+            "on_error": self._spec("cb.err"),
+            "task_id": "tid",
+        }
+        client.read.return_value = [_msg(8, payload)]
+        PgQueueConsumer(["q"], client=client).poll_once()
+        assert client.send.call_count == 2  # on_success attempt, then on_error fallback
+        fallback = client.send.call_args_list[1].args[1]
+        assert fallback["task_name"] == "cb.err"
+        assert "delivery failed" in fallback["kwargs"]["callback_kwargs"]["error"]
+        client.delete.assert_called_once_with(8)  # acked
+
     def test_no_continuation_is_plain_fire_and_forget(self):
         client = MagicMock()
         client.read.return_value = [_msg(3, _ok_payload(1, 1))]
