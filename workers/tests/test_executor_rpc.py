@@ -15,9 +15,9 @@ import pytest
 from queue_backend.pg_queue.executor_rpc import (
     PgExecutionDispatcher,
     RoutingExecutionDispatcher,
-    _signature_to_spec,
     resolve_executor_transport,
 )
+from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
 
 _MOD = "queue_backend.pg_queue.executor_rpc"
 
@@ -327,30 +327,6 @@ class TestRoutingZeroRegression:
         celery.dispatch_with_callback.assert_not_called()
 
 
-class TestSignatureToSpec:
-    """Celery ``Signature`` → serialisable continuation spec (the §5 wire-form)."""
-
-    def test_none_passes_through(self):
-        assert _signature_to_spec(None) is None
-
-    def test_translates_task_kwargs_and_queue(self):
-        sig = MagicMock(
-            task="ide_prompt_complete",
-            kwargs={"callback_kwargs": {"room": "r1"}},
-            options={"queue": "ide_callback"},
-        )
-        assert _signature_to_spec(sig) == {
-            "task_name": "ide_prompt_complete",
-            "kwargs": {"callback_kwargs": {"room": "r1"}},
-            "queue": "ide_callback",
-        }
-
-    def test_missing_queue_fails_fast(self):
-        sig = MagicMock(task="ide_prompt_complete", kwargs={}, options={})
-        with pytest.raises(ValueError, match="no queue"):
-            _signature_to_spec(sig)
-
-
 class TestPgAsyncCallbackWiring:
     """PG fire-and-forget + self-chained-callback enqueue shapes.
 
@@ -423,3 +399,36 @@ class TestPgAsyncCallbackWiring:
         # No task_id passed → a uuid is generated and echoed on the handle + payload.
         assert handle.id
         assert client.send.call_args.args[1]["task_id"] == handle.id
+
+
+class TestSharedDispatchHelpers:
+    """The transport-agnostic helpers lifted to ``unstract.core`` (shared by the
+    backend + workers executor-RPC mirrors). Tested once here, not per-mirror.
+    """
+
+    def test_signature_none_passes_through(self):
+        assert signature_to_continuation(None) is None
+
+    def test_signature_translates_task_kwargs_and_queue(self):
+        sig = MagicMock(
+            task="ide_prompt_complete",
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+        assert signature_to_continuation(sig) == {
+            "task_name": "ide_prompt_complete",
+            "kwargs": {"callback_kwargs": {"room": "r1"}},
+            "queue": "ide_callback",
+        }
+
+    def test_signature_missing_queue_fails_fast(self):
+        sig = MagicMock(task="ide_prompt_complete", kwargs={}, options={})
+        with pytest.raises(ValueError, match="no queue"):
+            signature_to_continuation(sig)
+
+    def test_dispatch_handle_exposes_only_id(self):
+        handle = DispatchHandle("tid-1")
+        assert handle.id == "tid-1"
+        # __slots__ → no stray attributes (callers must not poke at .get()/.result).
+        with pytest.raises(AttributeError):
+            handle.result = 1  # type: ignore[attr-defined]

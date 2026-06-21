@@ -8,11 +8,9 @@ Celery ``ExecutionDispatcher`` and never touches the PG path.
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 from pg_queue.executor_rpc import (
     PgExecutionDispatcher,
     RoutingExecutionDispatcher,
-    _signature_to_spec,
     resolve_executor_transport,
 )
 
@@ -247,30 +245,6 @@ class TestRoutingZeroRegression:
         assert "headers" not in pg.dispatch_with_callback.call_args.kwargs
         celery.dispatch_async.assert_not_called()
         celery.dispatch_with_callback.assert_not_called()
-
-
-class TestSignatureToSpec:
-    """Celery ``Signature`` → serialisable continuation spec (the §5 wire-form)."""
-
-    def test_none_passes_through(self):
-        assert _signature_to_spec(None) is None
-
-    def test_translates_task_kwargs_and_queue(self):
-        sig = MagicMock(
-            task="ide_prompt_complete",
-            kwargs={"callback_kwargs": {"room": "r1"}},
-            options={"queue": "ide_callback"},
-        )
-        assert _signature_to_spec(sig) == {
-            "task_name": "ide_prompt_complete",
-            "kwargs": {"callback_kwargs": {"room": "r1"}},
-            "queue": "ide_callback",
-        }
-
-    def test_missing_queue_fails_fast(self):
-        sig = MagicMock(task="ide_prompt_complete", kwargs={}, options={})
-        with pytest.raises(ValueError, match="no queue"):
-            _signature_to_spec(sig)
 
 
 class TestPgAsyncCallbackWiring:
