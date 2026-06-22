@@ -16,9 +16,25 @@ the duplication today rather than waiting for the full package.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol
 
 from .data_models import ContinuationSpec
+
+
+class CallbackSignature(Protocol):
+    """Structural type of the Celery ``Signature`` the callback path accepts.
+
+    Documents (and lets a type-checker enforce) the precondition
+    :func:`signature_to_continuation` reads: a task name, a ``queue`` in
+    ``options``, and kwargs-only (no positional ``args``). Defined here as a
+    Protocol — not imported from ``celery`` — so ``unstract.core`` stays
+    celery-free; a real ``celery.Signature`` conforms structurally.
+    """
+
+    task: str
+    options: dict[str, Any]
+    args: tuple[Any, ...]
+    kwargs: dict[str, Any]
 
 
 class DispatchHandle:
@@ -36,7 +52,9 @@ class DispatchHandle:
         self.id = task_id
 
 
-def signature_to_continuation(sig: Any | None) -> ContinuationSpec | None:
+def signature_to_continuation(
+    sig: CallbackSignature | None,
+) -> ContinuationSpec | None:
     """Translate a Celery ``Signature`` to a serialisable continuation spec.
 
     Reads only the three attributes PG self-chaining needs — task name, kwargs,
