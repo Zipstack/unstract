@@ -47,8 +47,10 @@ def _completed(result: dict) -> ExecResultRow:
 
 
 class _FakeTransport:
-    """Records ``enqueue`` calls and returns a configured result for the poll —
-    so the shared dispatcher's logic is tested without any DB."""
+    """Records ``enqueue`` calls and returns a configured result for the poll.
+
+    Lets the shared dispatcher's logic be exercised without any DB.
+    """
 
     def __init__(self, *, wait_return=None, wait_raises=None, enqueue_raises=None):
         self.enqueue_calls: list[dict] = []
@@ -138,13 +140,25 @@ class TestSharedDispatchContract:
         assert kw["task_id"] == task_id and kw.get("reply_key") is None
         assert kw.get("on_success") is None and kw.get("on_error") is None
 
-    def test_dispatch_with_callback_translates_signatures(self):
+    def test_dispatch_async_propagates_enqueue_failure(self):
+        # Documented asymmetry vs the never-raises dispatch: a fire-and-forget enqueue
+        # error propagates (the caller has no result object to fail into).
+        t = _FakeTransport(enqueue_raises=RuntimeError("db down"))
+        with pytest.raises(RuntimeError, match="db down"):
+            PgExecutionDispatcher(t).dispatch_async(_ctx())
+
+    @staticmethod
+    def _sig(task: str):
+        return MagicMock(
+            task=task, args=(), kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
+
+    def test_dispatch_with_callback_translates_both_signatures(self):
         t = _FakeTransport()
-        on_s = MagicMock(task="ide_prompt_complete", args=(),
-                         kwargs={"callback_kwargs": {"room": "r1"}},
-                         options={"queue": "ide_callback"})
         handle = PgExecutionDispatcher(t).dispatch_with_callback(
-            _ctx(), on_success=on_s, task_id="tid-7"
+            _ctx(), on_success=self._sig("ide_prompt_complete"),
+            on_error=self._sig("ide_prompt_error"), task_id="tid-7",
         )
         assert handle.id == "tid-7"
         (kw,) = t.enqueue_calls
@@ -153,7 +167,17 @@ class TestSharedDispatchContract:
             "kwargs": {"callback_kwargs": {"room": "r1"}},
             "queue": "ide_callback",
         }
+        assert kw["on_error"]["task_name"] == "ide_prompt_error"  # on_error translated
         assert kw["task_id"] == "tid-7" and kw.get("reply_key") is None
+
+    def test_dispatch_with_callback_defaults_task_id(self):
+        t = _FakeTransport()
+        handle = PgExecutionDispatcher(t).dispatch_with_callback(
+            _ctx(), on_success=self._sig("ide_prompt_complete")
+        )
+        # No task_id passed → a uuid is generated, echoed on the handle AND the payload.
+        assert handle.id
+        assert t.enqueue_calls[0]["task_id"] == handle.id
 
 
 # --- Shared gate: resolve_pg_transport (master-gated, then Flipt, fail-closed) ---

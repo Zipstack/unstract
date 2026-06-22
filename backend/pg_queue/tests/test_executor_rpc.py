@@ -77,6 +77,22 @@ class TestDjangoQueueTransportWait:
             # timeout=0 → first poll misses, remaining <= 0 → None (no sleep).
             assert DjangoQueueTransport().wait_for_result("rk", timeout=0) is None
 
+    def test_multi_iteration_poll_misses_then_hits(self):
+        # The load-bearing backoff path: a miss, then a hit on the next poll — the
+        # connection is released (close_old_connections) and it sleeps once between.
+        row = MagicMock(status="completed", result={"a": 1}, error="")
+        qs = MagicMock()
+        qs.filter.return_value.first.side_effect = [None, row]
+        with (
+            patch(f"{_MOD}.PgTaskResult", MagicMock(objects=qs)),
+            patch(f"{_MOD}.close_old_connections") as cl,
+            patch("unstract.workflow_execution.executor_rpc.time.sleep") as slp,
+        ):
+            out = DjangoQueueTransport().wait_for_result("rk", timeout=5)
+        assert isinstance(out, ExecResultRow) and out.result == {"a": 1}
+        cl.assert_called_once()  # between_polls released the conn on the miss
+        slp.assert_called_once()  # slept once between the two polls
+
 
 class TestResolveExecutorTransport:
     @staticmethod

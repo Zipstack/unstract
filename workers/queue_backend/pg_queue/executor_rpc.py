@@ -14,6 +14,7 @@ unchanged Celery ``ExecutionDispatcher`` and no ``pg_task_result`` row is create
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -22,6 +23,7 @@ from unstract.workflow_execution.executor_rpc import (
     EXECUTE_TASK,
     ExecResultRow,
     PgExecutionDispatcher,
+    QueueTransport,
     RoutingExecutionDispatcher,
     resolve_pg_transport,
 )
@@ -44,9 +46,13 @@ __all__ = [
     "resolve_executor_transport",
 ]
 
+logger = logging.getLogger(__name__)
+
 # Master kill-switch + deploy-ordering gate — the workers analogue of the backend's
 # ``settings.PG_QUEUE_TRANSPORT_ENABLED``, read straight from the env here.
 _MASTER_GATE_ENV = "PG_QUEUE_TRANSPORT_ENABLED"
+_TRUE = "true"
+_FALSE = "false"
 
 
 def resolve_executor_transport(context: ExecutionContext) -> bool:
@@ -55,12 +61,26 @@ def resolve_executor_transport(context: ExecutionContext) -> bool:
     The workers gate: master switch = the ``PG_QUEUE_TRANSPORT_ENABLED`` env, then the
     shared Flipt eval (single ``pg_queue_enabled`` flag, fail-closed).
     """
-    master = os.environ.get(_MASTER_GATE_ENV, "false").lower() == "true"
+    raw = os.environ.get(_MASTER_GATE_ENV, _FALSE)
+    master = raw.strip().lower() == _TRUE
+    if not master and raw.strip().lower() != _FALSE:
+        # A fat-fingered value ("1"/"yes"/"on"/" True ") parses to OFF — warn so it
+        # isn't a silent no-op for an operator who expected it to enable PG.
+        logger.warning(
+            "resolve_executor_transport: %s=%r is not 'true'/'false' — treating as "
+            "OFF (PG transport disabled); use exactly 'true' to enable",
+            _MASTER_GATE_ENV,
+            raw,
+        )
     return resolve_pg_transport(context, master_gate_enabled=master)
 
 
-class PgClientQueueTransport:
-    """:class:`QueueTransport` over psycopg2 (the workers half)."""
+class PgClientQueueTransport(QueueTransport):
+    """:class:`QueueTransport` over psycopg2 (the workers half).
+
+    Inherits the Protocol so a type-checker verifies this implementation against the
+    seam independently of the ``PgExecutionDispatcher(...)`` construction site.
+    """
 
     def enqueue(
         self,

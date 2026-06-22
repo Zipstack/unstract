@@ -34,9 +34,11 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar
 
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
@@ -44,12 +46,13 @@ from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.execution.result import ExecutionResult
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
-
     from unstract.core.data_models import ContinuationSpec
+    from unstract.core.execution_dispatch import CallbackSignature
     from unstract.sdk1.execution.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
+
+_T = TypeVar("_T")
 
 # The single PG-queue rollout flag — the same key execution and the scheduler read,
 # so one flip turns the whole PG-queue feature on/off.
@@ -62,6 +65,64 @@ QUEUE_PREFIX = "celery_executor_"
 # else 3600s) so a PG-routed caller waits exactly as long as a Celery one.
 DEFAULT_TIMEOUT_ENV = "EXECUTOR_RESULT_TIMEOUT"
 DEFAULT_TIMEOUT = 3600
+
+
+def poll_for_row(
+    fetch: Callable[[], _T | None],
+    timeout: float,
+    *,
+    between_polls: Callable[[], None] | None = None,
+    initial: float = 0.2,
+    maximum: float = 2.0,
+) -> _T | None:
+    """Poll ``fetch()`` until it returns non-``None`` or *timeout* elapses.
+
+    Capped exponential backoff (PgBouncer-safe; no LISTEN/NOTIFY). ``between_polls``
+    runs once before each sleep — the backend adapter passes
+    ``close_old_connections`` to release the DB connection between polls. Returns the
+    fetched row, or ``None`` on timeout. (The workers side has its own equivalent in
+    ``PgResultBackend.wait_for_result``; this is the shared skeleton the backend
+    adapter reuses instead of re-implementing the loop.)
+    """
+    deadline = time.monotonic() + timeout
+    delay = initial
+    while True:
+        row = fetch()
+        if row is not None:
+            return row
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return None
+        if between_polls is not None:
+            between_polls()
+        time.sleep(min(delay, remaining))
+        delay = min(delay * 2, maximum)
+
+
+class _CeleryDispatcher(Protocol):
+    """The subset of the SDK ``ExecutionDispatcher`` the router delegates to on the
+    Celery path — so ``RoutingExecutionDispatcher`` holds it typed, not as ``Any``.
+    """
+
+    def dispatch(
+        self,
+        context: ExecutionContext,
+        timeout: int | None = ...,
+        headers: dict[str, Any] | None = ...,
+    ) -> ExecutionResult: ...
+
+    def dispatch_async(
+        self, context: ExecutionContext, headers: dict[str, Any] | None = ...
+    ) -> str: ...
+
+    def dispatch_with_callback(
+        self,
+        context: ExecutionContext,
+        on_success: CallbackSignature | None = ...,
+        on_error: CallbackSignature | None = ...,
+        task_id: str | None = ...,
+        headers: dict[str, Any] | None = ...,
+    ) -> Any: ...
 
 
 @dataclass
@@ -185,9 +246,18 @@ class PgExecutionDispatcher:
         context: ExecutionContext,
         timeout: int | None = None,
     ) -> ExecutionResult:
-        # No ``headers`` on any PG dispatch method: the PG path carries org/routing
-        # via the enqueue payload, not Celery headers, and the
-        # RoutingExecutionDispatcher strips fairness headers before delegating here.
+        """Send ``execute_extraction`` and block for the result (request-reply).
+
+        Enqueues with a unique ``reply_key``, polls the result row until it appears
+        or *timeout* elapses, and converts the outcome to an ``ExecutionResult``.
+        Never raises (the SDK dispatch contract): an enqueue/poll failure, a timeout,
+        or a malformed/failed/empty result all become ``ExecutionResult.failure`` so
+        callers branch on ``result.success`` identically on either transport.
+
+        No ``headers`` on any PG dispatch method: the PG path carries org/routing in
+        the enqueue payload, not Celery headers, so the ``RoutingExecutionDispatcher``
+        does not forward fairness headers to the PG path.
+        """
         timeout = _resolve_timeout(timeout)
         reply_key = str(uuid.uuid4())
         queue = f"{QUEUE_PREFIX}{context.executor_name}"
@@ -255,6 +325,19 @@ class PgExecutionDispatcher:
                         f"for reply_key {reply_key}"
                     )
                 )
+        if row.status == PgTaskStatus.COMPLETED.value:
+            # COMPLETED but result is None — a producer-side anomaly (the consumer
+            # recorded success yet wrote no payload). Distinguish it from a real task
+            # failure so it isn't mislabelled "executor task failed".
+            logger.warning(
+                "PG executor dispatch: completed row has no result "
+                "(reply_key=%s run_id=%s)",
+                reply_key,
+                context.run_id,
+            )
+            return ExecutionResult.failure(
+                error=f"Executor reported completion with no result (reply_key {reply_key})"
+            )
         logger.warning(
             "PG executor dispatch: executor reported failure (reply_key=%s "
             "run_id=%s): %s",
@@ -269,13 +352,26 @@ class PgExecutionDispatcher:
 
         No ``reply_key``, no callback, no blocking. A caller that needs the outcome
         uses :meth:`dispatch_with_callback` (a self-chained continuation), not polling
-        on this id. Enqueue failures propagate — parity with the SDK, which lets a
-        broker error out of ``dispatch_async``.
+        on this id. Enqueue failures **propagate** — parity with the SDK, which lets a
+        broker error out of ``dispatch_async`` — but are logged here first so the
+        failure is observable even if the caller swallows it.
         """
         task_id = str(uuid.uuid4())
         queue = f"{QUEUE_PREFIX}{context.executor_name}"
         org = str(getattr(context, "organization_id", "") or "")
-        self._transport.enqueue(queue=queue, context=context, org_id=org, task_id=task_id)
+        try:
+            self._transport.enqueue(
+                queue=queue, context=context, org_id=org, task_id=task_id
+            )
+        except Exception:
+            # The enqueue is the only fallible step (fire-and-forget). Log before the
+            # re-raise so a swallowed error is still observable.
+            logger.exception(
+                "PG executor dispatch_async: enqueue failed (executor=%s run_id=%s)",
+                context.executor_name,
+                context.run_id,
+            )
+            raise
         logger.info(
             "PG executor dispatch_async: enqueued task_id=%s queue=%s run_id=%s",
             task_id,
@@ -287,8 +383,8 @@ class PgExecutionDispatcher:
     def dispatch_with_callback(
         self,
         context: ExecutionContext,
-        on_success: Any | None = None,
-        on_error: Any | None = None,
+        on_success: CallbackSignature | None = None,
+        on_error: CallbackSignature | None = None,
         task_id: str | None = None,
     ) -> DispatchHandle:
         """Fire-and-forget enqueue with self-chained callbacks (§5 model).
@@ -298,20 +394,35 @@ class PgExecutionDispatcher:
         carried in the payload; after the executor runs, the consumer self-chains the
         matching continuation. Returns a :class:`DispatchHandle` exposing ``.id``
         (== ``task_id``) so call sites read the task id exactly as on the Celery path.
+
+        Enqueue failures **propagate** (parity with :meth:`dispatch_async`), logged
+        first. NOTE: because the continuations are carried *in the payload*, a failed
+        enqueue means the executor never runs and ``on_error`` never fires — so a
+        caller MUST treat a raised enqueue as the failure signal itself (the
+        prompt-studio views do, in their own try/except).
         """
         task_id = task_id or str(uuid.uuid4())
         queue = f"{QUEUE_PREFIX}{context.executor_name}"
         org = str(getattr(context, "organization_id", "") or "")
         success_spec = signature_to_continuation(on_success)
         error_spec = signature_to_continuation(on_error)
-        self._transport.enqueue(
-            queue=queue,
-            context=context,
-            org_id=org,
-            on_success=success_spec,
-            on_error=error_spec,
-            task_id=task_id,
-        )
+        try:
+            self._transport.enqueue(
+                queue=queue,
+                context=context,
+                org_id=org,
+                on_success=success_spec,
+                on_error=error_spec,
+                task_id=task_id,
+            )
+        except Exception:
+            logger.exception(
+                "PG executor dispatch_with_callback: enqueue failed — on_error will "
+                "NOT fire (executor=%s run_id=%s)",
+                context.executor_name,
+                context.run_id,
+            )
+            raise
         logger.info(
             "PG executor dispatch_with_callback: enqueued task_id=%s queue=%s "
             "run_id=%s on_success=%s on_error=%s",
@@ -337,7 +448,7 @@ class RoutingExecutionDispatcher:
     def __init__(
         self,
         *,
-        celery: Any,
+        celery: _CeleryDispatcher,
         pg: PgExecutionDispatcher,
         resolve: Callable[[ExecutionContext], bool],
     ) -> None:
@@ -372,8 +483,8 @@ class RoutingExecutionDispatcher:
     def dispatch_with_callback(
         self,
         context: ExecutionContext,
-        on_success: Any | None = None,
-        on_error: Any | None = None,
+        on_success: CallbackSignature | None = None,
+        on_error: CallbackSignature | None = None,
         task_id: str | None = None,
         headers: dict[str, Any] | None = None,
     ) -> Any:

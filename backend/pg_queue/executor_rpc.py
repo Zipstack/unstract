@@ -13,7 +13,6 @@ unchanged Celery ``ExecutionDispatcher`` and no ``pg_task_result`` row is create
 
 from __future__ import annotations
 
-import time
 from typing import TYPE_CHECKING
 
 from django.conf import settings
@@ -26,7 +25,9 @@ from unstract.workflow_execution.executor_rpc import (
     EXECUTE_TASK,
     ExecResultRow,
     PgExecutionDispatcher,
+    QueueTransport,
     RoutingExecutionDispatcher,
+    poll_for_row,
     resolve_pg_transport,
 )
 
@@ -43,10 +44,6 @@ __all__ = [
     "resolve_executor_transport",
 ]
 
-# Poll cadence for the result wait (PgBouncer-safe; no LISTEN/NOTIFY).
-_POLL_INITIAL_SECONDS = 0.2
-_POLL_MAX_SECONDS = 2.0
-
 
 def resolve_executor_transport(context: ExecutionContext) -> bool:
     """True → route this executor dispatch over PG; False → Celery (default).
@@ -59,8 +56,12 @@ def resolve_executor_transport(context: ExecutionContext) -> bool:
     )
 
 
-class DjangoQueueTransport:
-    """:class:`QueueTransport` over the Django ORM (the backend half)."""
+class DjangoQueueTransport(QueueTransport):
+    """:class:`QueueTransport` over the Django ORM (the backend half).
+
+    Inherits the Protocol so a type-checker verifies this implementation against the
+    seam independently of the ``PgExecutionDispatcher(...)`` construction site.
+    """
 
     def enqueue(
         self,
@@ -87,28 +88,22 @@ class DjangoQueueTransport:
     def wait_for_result(self, reply_key: str, timeout: float) -> ExecResultRow | None:
         """Poll ``pg_task_result`` until the row appears or *timeout* elapses.
 
-        The DB connection is released between polls (``close_old_connections``) so a
-        long-running RPC does not pin a backend connection and exhaust the pool. Each
-        poll is its own autocommit query, so a row committed by the executor consumer
-        becomes visible — **dispatch must NOT be called inside an open transaction**
+        Uses the shared :func:`poll_for_row` backoff skeleton, releasing the DB
+        connection between polls (``close_old_connections``) so a long-running RPC
+        does not pin a backend connection and exhaust the pool. Each poll is its own
+        autocommit query, so a row committed by the executor consumer becomes visible
+        — **dispatch must NOT be called inside an open transaction**
         (``transaction.atomic`` / ``ATOMIC_REQUESTS`` would pin one snapshot and never
         see the new row).
         """
-        deadline = time.monotonic() + timeout
-        delay = _POLL_INITIAL_SECONDS
-        while True:
+
+        def _fetch() -> ExecResultRow | None:
             row = PgTaskResult.objects.filter(pk=reply_key).first()
-            if row is not None:
-                return ExecResultRow(
-                    status=row.status, result=row.result, error=row.error
-                )
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
+            if row is None:
                 return None
-            # Don't hold the connection idle through the sleep.
-            close_old_connections()
-            time.sleep(min(delay, remaining))
-            delay = min(delay * 2, _POLL_MAX_SECONDS)
+            return ExecResultRow(status=row.status, result=row.result, error=row.error)
+
+        return poll_for_row(_fetch, timeout, between_polls=close_old_connections)
 
 
 def get_executor_dispatcher(
