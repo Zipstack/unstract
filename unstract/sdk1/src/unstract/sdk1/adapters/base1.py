@@ -82,7 +82,8 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
       from the string. Pass the AIP ARN in `model_id` and keep the standard
       model id in `model`, or the strip won't fire.
     - Azure AI Foundry deployment names that omit the model id; rename the
-      deployment to include `claude-opus-4-7` so detection works.
+      deployment to include the relevant model id (e.g. `claude-opus-4-8`)
+      so detection works.
     """
     if not model:
         return False
