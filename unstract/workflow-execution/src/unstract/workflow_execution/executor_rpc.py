@@ -34,11 +34,9 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 import uuid
-from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Protocol, TypeVar
+from typing import TYPE_CHECKING, Any, Protocol
 
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
@@ -46,13 +44,13 @@ from unstract.flags.feature_flag import check_feature_flag_status
 from unstract.sdk1.execution.result import ExecutionResult
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from unstract.core.data_models import ContinuationSpec
     from unstract.core.execution_dispatch import CallbackSignature
     from unstract.sdk1.execution.context import ExecutionContext
 
 logger = logging.getLogger(__name__)
-
-_T = TypeVar("_T")
 
 # The single PG-queue rollout flag — the same key execution and the scheduler read,
 # so one flip turns the whole PG-queue feature on/off.
@@ -65,38 +63,6 @@ QUEUE_PREFIX = "celery_executor_"
 # else 3600s) so a PG-routed caller waits exactly as long as a Celery one.
 DEFAULT_TIMEOUT_ENV = "EXECUTOR_RESULT_TIMEOUT"
 DEFAULT_TIMEOUT = 3600
-
-
-def poll_for_row(
-    fetch: Callable[[], _T | None],
-    timeout: float,
-    *,
-    between_polls: Callable[[], None] | None = None,
-    initial: float = 0.2,
-    maximum: float = 2.0,
-) -> _T | None:
-    """Poll ``fetch()`` until it returns non-``None`` or *timeout* elapses.
-
-    Capped exponential backoff (PgBouncer-safe; no LISTEN/NOTIFY). ``between_polls``
-    runs once before each sleep — the backend adapter passes
-    ``close_old_connections`` to release the DB connection between polls. Returns the
-    fetched row, or ``None`` on timeout. (The workers side has its own equivalent in
-    ``PgResultBackend.wait_for_result``; this is the shared skeleton the backend
-    adapter reuses instead of re-implementing the loop.)
-    """
-    deadline = time.monotonic() + timeout
-    delay = initial
-    while True:
-        row = fetch()
-        if row is not None:
-            return row
-        remaining = deadline - time.monotonic()
-        if remaining <= 0:
-            return None
-        if between_polls is not None:
-            between_polls()
-        time.sleep(min(delay, remaining))
-        delay = min(delay * 2, maximum)
 
 
 class _CeleryDispatcher(Protocol):

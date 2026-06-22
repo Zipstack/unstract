@@ -86,7 +86,7 @@ class TestDjangoQueueTransportWait:
         with (
             patch(f"{_MOD}.PgTaskResult", MagicMock(objects=qs)),
             patch(f"{_MOD}.close_old_connections") as cl,
-            patch("unstract.workflow_execution.executor_rpc.time.sleep") as slp,
+            patch("unstract.core.polling.time.sleep") as slp,
         ):
             out = DjangoQueueTransport().wait_for_result("rk", timeout=5)
         assert isinstance(out, ExecResultRow) and out.result == {"a": 1}

@@ -20,6 +20,7 @@ from django.db import close_old_connections
 
 from pg_queue.models import PgTaskResult
 from pg_queue.producer import enqueue_task
+from unstract.core.polling import poll_for_row
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.workflow_execution.executor_rpc import (
     EXECUTE_TASK,
@@ -27,7 +28,6 @@ from unstract.workflow_execution.executor_rpc import (
     PgExecutionDispatcher,
     QueueTransport,
     RoutingExecutionDispatcher,
-    poll_for_row,
     resolve_pg_transport,
 )
 

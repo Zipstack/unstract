@@ -32,13 +32,13 @@ from __future__ import annotations
 import contextlib
 import json
 import logging
-import time
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Self
 
 import psycopg2
 
 from unstract.core.data_models import PgTaskStatus
+from unstract.core.polling import poll_for_row
 
 from .connection import create_pg_connection
 
@@ -164,22 +164,18 @@ class PgResultBackend:
     ) -> dict[str, Any] | None:
         """Block until the result row appears or *timeout* seconds elapse.
 
-        Returns the ``{status, result, error}`` dict, or ``None`` on timeout.
-        Poll-based with exponential backoff (capped) — PgBouncer-safe, no
-        persistent listener. The final sleep is clamped so we never overshoot
-        the deadline.
+        Returns the ``{status, result, error}`` dict, or ``None`` on timeout. Uses
+        the shared :func:`~unstract.core.polling.poll_for_row` backoff (capped
+        exponential, PgBouncer-safe; the final sleep is clamped to the deadline) — the
+        same skeleton the backend's ``DjangoQueueTransport`` poller uses, so the
+        backoff lives in one place.
         """
-        deadline = time.monotonic() + timeout
-        delay = poll_interval
-        while True:
-            row = self.get_result(task_id)
-            if row is not None:
-                return row
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                return None
-            time.sleep(min(delay, remaining))
-            delay = min(delay * 2, _POLL_MAX_SECONDS)
+        return poll_for_row(
+            lambda: self.get_result(task_id),
+            timeout,
+            initial=poll_interval,
+            maximum=_POLL_MAX_SECONDS,
+        )
 
     def close(self) -> None:
         """Close an owned connection (injected connections are the caller's)."""
