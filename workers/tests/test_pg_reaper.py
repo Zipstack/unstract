@@ -15,6 +15,7 @@ Layers:
 
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
@@ -103,6 +104,14 @@ class TestSweepEnv:
         with pytest.raises(ValueError):
             dedup_retention_from_env()
 
+    def test_cast_distinction_float_vs_int(self, monkeypatch):
+        # sweep parses as float, dedup as int — the cast is load-bearing.
+        monkeypatch.setenv("WORKER_PG_REAPER_SWEEP_SECONDS", "1.5")
+        assert reaper_sweep_interval_from_env() == pytest.approx(1.5)
+        monkeypatch.setenv("WORKER_PG_DEDUP_RETENTION_SECONDS", "1.5")
+        with pytest.raises(ValueError):  # int("1.5") rejects the fractional value
+            dedup_retention_from_env()
+
 
 class _FakeLease:
     """Duck-typed LeaderLease. ``acquires``/``renews`` accept a bool (constant)
@@ -147,6 +156,21 @@ class TestConstruction:
 
     def test_valid_interval_accepted(self):
         PgReaper(_FakeLease(lease_seconds=10), interval_seconds=3, sweep_conn=object())
+
+    def test_non_positive_sweep_interval_rejected(self):
+        # An injected knob bypasses the env parser's guard → re-validated in __init__.
+        with pytest.raises(ValueError, match="sweep_interval"):
+            PgReaper(
+                _FakeLease(), interval_seconds=1, sweep_interval_seconds=0,
+                sweep_conn=object(),
+            )
+
+    def test_non_positive_dedup_retention_rejected(self):
+        with pytest.raises(ValueError, match="dedup_retention"):
+            PgReaper(
+                _FakeLease(), interval_seconds=1, dedup_retention_seconds=0,
+                sweep_conn=object(),
+            )
 
 
 # --- Layer 2: leadership gating (fake lease + patched sweep, no DB) ---
@@ -321,15 +345,37 @@ class TestRetentionSweepSql:
         assert args[1] == (999,)  # the retention param is bound, not interpolated
         conn.commit.assert_called_once()
 
-    def test_sweep_rolls_back_on_error(self):
+    @pytest.mark.parametrize(
+        "sweep",
+        [
+            lambda conn: sweep_expired_results(conn),
+            lambda conn: sweep_orphan_dedup(conn, 60),
+        ],
+        ids=["expired_results", "orphan_dedup"],
+    )
+    def test_sweep_rolls_back_on_error(self, sweep):
+        # Both helpers have their own try/except/rollback — exercise each.
         cur = MagicMock()
         cur.execute.side_effect = psycopg2.OperationalError("dead")
         conn = MagicMock()
         conn.cursor.return_value.__enter__.return_value = cur
         with pytest.raises(psycopg2.OperationalError):
-            sweep_expired_results(conn)
+            sweep(conn)
         conn.rollback.assert_called_once()
         conn.commit.assert_not_called()
+
+    def test_rollback_failure_is_logged_and_original_error_raised(self, caplog):
+        # If rollback itself raises, surface it (don't swallow) but still propagate
+        # the ORIGINAL DELETE error, not the rollback's.
+        cur = MagicMock()
+        cur.execute.side_effect = psycopg2.OperationalError("dead")
+        conn = MagicMock()
+        conn.cursor.return_value.__enter__.return_value = cur
+        conn.rollback.side_effect = psycopg2.InterfaceError("conn dead")
+        with caplog.at_level(logging.WARNING, logger="queue_backend.pg_queue.reaper"):
+            with pytest.raises(psycopg2.OperationalError):
+                sweep_expired_results(conn)
+        assert "rollback after a failed pg_task_result sweep also failed" in caplog.text
 
 
 class TestRetentionSweepTick:
@@ -344,10 +390,11 @@ class TestRetentionSweepTick:
 
     def test_leader_sweeps(self, stub_retention_sweep):
         reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        conn = reaper._sweep_conn  # capture once (don't re-fetch in the assertion)
         with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
             reaper.tick()
-        stub_retention_sweep.results.assert_called_once()
-        stub_retention_sweep.dedup.assert_called_once_with(reaper._get_sweep_conn(), 86400)
+        stub_retention_sweep.results.assert_called_once_with(conn)
+        stub_retention_sweep.dedup.assert_called_once_with(conn, 86400)
 
     def test_standby_does_not_sweep(self, stub_retention_sweep):
         reaper = self._reaper(_FakeLease(acquires=False))
@@ -380,21 +427,64 @@ class TestRetentionSweepTick:
             reaper.tick()
         assert order == ["recover", "schedule", "sweep"]
 
-    def test_sweep_error_discards_owned_conn(self, stub_retention_sweep):
+    def test_one_sweep_failing_does_not_starve_the_other(
+        self, stub_retention_sweep, caplog
+    ):
+        # [High] independence: a failing pg_task_result sweep must NOT skip the
+        # pg_batch_dedup sweep, must NOT propagate (cleanup mustn't fail the tick),
+        # and must discard the owned conn so the sibling reconnects.
         reaper = PgReaper(
             _FakeLease(acquires=True, renews=True),
             interval_seconds=0.01,
             sweep_interval_seconds=300,
             api_client=object(),
         )
-        owned = MagicMock()
-        owned.closed = False
+        owned = MagicMock(closed=False)
         reaper._sweep_conn = owned
         stub_retention_sweep.results.side_effect = psycopg2.OperationalError("db gone")
+        with (
+            patch.object(
+                reaper_mod, "create_pg_connection", return_value=MagicMock(closed=False)
+            ) as reconnect,
+            patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
+            caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.reaper"),
+        ):
+            reaper.tick()  # must NOT raise
+        stub_retention_sweep.results.assert_called_once()  # attempted + failed
+        stub_retention_sweep.dedup.assert_called_once()  # sibling still ran
+        reconnect.assert_called_once()  # reconnected after the discard
+        assert "retention sweep of pg_task_result failed (1 consecutive)" in caplog.text
+
+    def test_failing_sweep_still_advances_cadence(self, stub_retention_sweep):
+        # The stamp is advanced before the sweep, so a failure waits one interval
+        # before retry (no DB hammering) — a second immediate tick is gated out.
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        stub_retention_sweep.results.side_effect = RuntimeError("boom")
         with patch.object(reaper_mod, "recover_expired_barriers", return_value=[]):
-            with pytest.raises(psycopg2.OperationalError):
-                reaper.tick()
-        assert reaper._sweep_conn is None  # discarded
+            reaper.tick()
+            reaper.tick()
+        assert stub_retention_sweep.results.call_count == 1  # not retried immediately
+
+    def test_logs_counts_only_when_rows_deleted(self, stub_retention_sweep, caplog):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        stub_retention_sweep.results.return_value = 0
+        stub_retention_sweep.dedup.return_value = 4  # one non-zero → still logs
+        with (
+            patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
+            caplog.at_level(logging.INFO, logger="queue_backend.pg_queue.reaper"),
+        ):
+            reaper.tick()
+        assert "deleted 0 pg_task_result + 4 pg_batch_dedup row(s)" in caplog.text
+
+    def test_no_log_when_nothing_deleted(self, stub_retention_sweep, caplog):
+        reaper = self._reaper(_FakeLease(acquires=True, renews=True))
+        # both stubs default to return_value=0
+        with (
+            patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
+            caplog.at_level(logging.INFO, logger="queue_backend.pg_queue.reaper"),
+        ):
+            reaper.tick()
+        assert "retention sweep deleted" not in caplog.text
 
 
 # --- Layer 3: connection handling (mocked, no DB) ---
