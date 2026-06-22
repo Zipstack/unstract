@@ -51,14 +51,14 @@ const useExceptionHandler = () => {
             // Field-bound errors render inline next to their input. Errors not
             // tied to a field (non_field_errors / attr-less) map to no input and
             // would otherwise vanish silently — surface them as a toast.
-            const nonFieldErrors = (errors || []).filter(
+            const nonFieldErrors = (Array.isArray(errors) ? errors : []).filter(
               (error) => !error?.attr || error.attr === "non_field_errors",
             );
             if (nonFieldErrors.length > 0) {
               return alert(
                 nonFieldErrors
                   .map((error) => error?.detail || errMessage)
-                  .join("\n"),
+                  .join(" • "),
               );
             }
             // No non-field errors: field-level errors are rendered inline.
