@@ -59,6 +59,45 @@ DB connection defaults mirror the local docker-compose stack
 (`localhost:5432/unstract_db`, schema `unstract`). Override via `DB_HOST`,
 `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` env vars or the `--db-*` flags.
 
+### Triggering a real deployment
+
+`run` POSTs to an API deployment. The execute response nests the `execution_id`
+inside `message.status_api` (a `?execution_id=` query param) — the harness parses
+that automatically. Subscription headers + form fields the deployment expects are
+passed through:
+
+```bash
+python -m pg_benchmark run --n 1 --concurrency 1 \
+  --path /deployment/api/<org>/<api>/ --api-key <key> \
+  --file /path/to/doc.pdf \
+  --header X-subscription-id:sub-1 --form tags=bench --form timeout=300
+```
+
+## Zero-cost load testing (mock adapters)
+
+Real LLM/extraction calls cost money **and** are a poor transport signal — a 20s
+LLM call swamps the millisecond queue differences. For a true PG-vs-Celery
+**transport** benchmark, mock the adapters so cost = $0 and execution time ≈
+queue + dispatch + fan-out:
+
+1. **LLM + embedding** → the bundled mock server (instant, OpenAI-compatible):
+
+   ```bash
+   python -m pg_benchmark.mock_server --port 8901   # POST /v1/chat/completions + /v1/embeddings
+   ```
+
+   Then set an **OpenAI-compatible** LLM and embedding adapter's `api_base` to
+   `http://<host>:8901/v1`. `--latency-ms` can simulate adapter latency; `--content`
+   sets the canned answer.
+
+2. **Extraction + vector DB** → Unstract's built-in **`noOpX2text`** and
+   **`noOpVectorDb`** adapters (instant, free, active by default).
+
+Wire a "benchmark" workflow to those four adapters, expose it as an API
+deployment, then fire load through the **same** transport-comparison protocol:
+run a batch with the flag/gate **off** (Celery) and another **on** (PG) against
+the same deployment — the runner buckets each execution by its observed transport.
+
 ## Tests
 
 ```bash
