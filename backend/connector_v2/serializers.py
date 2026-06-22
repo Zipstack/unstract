@@ -34,6 +34,9 @@ class ConnectorInstanceSerializer(AuditSerializer):
     class Meta:
         model = ConnectorInstance
         fields = "__all__"
+        # View owns uniqueness (IntegrityError->DuplicateData); drop the DRF
+        # auto-validator that 400s on re-save before the view can handle it.
+        validators = []
         extra_kwargs = {
             "connector_name": {"required": False},
             # connector_mode is derived from the catalog in to_representation.
