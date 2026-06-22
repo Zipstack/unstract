@@ -184,11 +184,10 @@ class PgExecutionDispatcher:
         self,
         context: ExecutionContext,
         timeout: int | None = None,
-        headers: dict[str, Any] | None = None,
     ) -> ExecutionResult:
-        # ``headers`` is accepted (and ignored) for substitutability with the SDK /
-        # Routing shapes — the PG path carries org/routing via the enqueue payload,
-        # not Celery headers, so fairness headers are intentionally not forwarded.
+        # No ``headers`` on any PG dispatch method: the PG path carries org/routing
+        # via the enqueue payload, not Celery headers, and the
+        # RoutingExecutionDispatcher strips fairness headers before delegating here.
         timeout = _resolve_timeout(timeout)
         reply_key = str(uuid.uuid4())
         queue = f"{QUEUE_PREFIX}{context.executor_name}"
@@ -265,15 +264,12 @@ class PgExecutionDispatcher:
         )
         return ExecutionResult.failure(error=row.error or "executor task failed")
 
-    def dispatch_async(
-        self, context: ExecutionContext, headers: dict[str, Any] | None = None
-    ) -> str:
+    def dispatch_async(self, context: ExecutionContext) -> str:
         """Fire-and-forget enqueue of ``execute_extraction``; returns the task id.
 
         No ``reply_key``, no callback, no blocking. A caller that needs the outcome
         uses :meth:`dispatch_with_callback` (a self-chained continuation), not polling
-        on this id. ``headers`` is accepted and ignored (PG carries routing in the
-        payload). Enqueue failures propagate — parity with the SDK, which lets a
+        on this id. Enqueue failures propagate — parity with the SDK, which lets a
         broker error out of ``dispatch_async``.
         """
         task_id = str(uuid.uuid4())
@@ -294,7 +290,6 @@ class PgExecutionDispatcher:
         on_success: Any | None = None,
         on_error: Any | None = None,
         task_id: str | None = None,
-        headers: dict[str, Any] | None = None,
     ) -> DispatchHandle:
         """Fire-and-forget enqueue with self-chained callbacks (§5 model).
 
