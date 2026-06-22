@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
+from urllib.parse import parse_qs, urlparse
 
 import requests
 
@@ -30,7 +31,8 @@ class TriggerConfig:
     auth_header: str = "Authorization"
     auth_prefix: str = "Bearer "
     request_timeout: float = 600.0
-    extra_fields: dict[str, str] = field(default_factory=dict)
+    extra_fields: dict[str, str] = field(default_factory=dict)  # multipart form fields
+    extra_headers: dict[str, str] = field(default_factory=dict)  # e.g. X-subscription-id
 
     @property
     def url(self) -> str:
@@ -57,18 +59,38 @@ class TriggerResult:
     error: str | None = None
 
 
+def _id_from_url(url: str) -> str | None:
+    """Extract the ``execution_id`` query param from a status URL, if present."""
+    try:
+        values = parse_qs(urlparse(url).query).get("execution_id")
+    except ValueError:
+        return None
+    return values[0] if values else None
+
+
 def _extract_execution_id(payload: object) -> str | None:
-    """Pull the execution id out of common Unstract response shapes."""
+    """Pull the execution id out of Unstract API-deployment response shapes.
+
+    The async/sync execute response nests the id inside ``message.status_api`` as
+    a ``?execution_id=...`` query param (not a top-level field), so probe the
+    direct keys, then ``status_api``, then recurse into the common wrappers.
+    """
+    if isinstance(payload, str):
+        return _id_from_url(payload)
     if not isinstance(payload, dict):
         return None
     for key in ("execution_id", "id"):
         value = payload.get(key)
         if isinstance(value, str) and value:
             return value
-    # Some responses nest under "execution" or "data".
-    for key in ("execution", "data"):
-        nested = payload.get(key)
-        found = _extract_execution_id(nested)
+    status_api = payload.get("status_api")
+    if isinstance(status_api, str):
+        found = _id_from_url(status_api)
+        if found:
+            return found
+    # Real shape wraps everything under "message"; older shapes used execution/data.
+    for key in ("message", "execution", "data"):
+        found = _extract_execution_id(payload.get(key))
         if found:
             return found
     return None
@@ -83,7 +105,7 @@ def trigger_execution(
     concurrent triggers) and always closes them.
     """
     session = session or requests.Session()
-    headers = {cfg.auth_header: f"{cfg.auth_prefix}{cfg.api_key}"}
+    headers = {cfg.auth_header: f"{cfg.auth_prefix}{cfg.api_key}", **cfg.extra_headers}
     handles = [open(path, "rb") for path in cfg.files]  # noqa: SIM115 — closed below
     try:
         files = [

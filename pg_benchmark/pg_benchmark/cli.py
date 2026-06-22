@@ -71,6 +71,17 @@ def _cmd_queue_depth(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_kv(items: list[str], *, sep: str, label: str) -> dict[str, str]:
+    """Parse repeated ``KEY<sep>VALUE`` CLI args into a dict (split on first sep only)."""
+    out: dict[str, str] = {}
+    for item in items:
+        key, found, value = item.partition(sep)
+        if not found:
+            raise SystemExit(f"error: {label} expects KEY{sep}VALUE, got {item!r}")
+        out[key.strip()] = value.strip()
+    return out
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
     api_key = args.api_key or os.environ.get("PGBENCH_API_KEY", "")
     if not args.path:
@@ -79,6 +90,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
     if not api_key:
         print("error: --api-key or PGBENCH_API_KEY is required", file=sys.stderr)
         return 2
+    extra_headers = _parse_kv(args.header or [], sep=":", label="--header")
+    extra_fields = _parse_kv(args.form or [], sep="=", label="--form")
     trigger_cfg = TriggerConfig(
         base_url=args.base_url,
         path=args.path,
@@ -86,6 +99,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         files=args.file or [],
         auth_header=args.auth_header,
         auth_prefix=args.auth_prefix,
+        extra_headers=extra_headers,
+        extra_fields=extra_fields,
     )
     db_cfg = _db_config(args)
     done = {"n": 0}
@@ -158,6 +173,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--api-key", help="API key (or set PGBENCH_API_KEY)")
     run.add_argument("--file", action="append", help="local file to upload (repeatable)")
+    run.add_argument(
+        "--header",
+        action="append",
+        help="extra request header KEY:VALUE (repeatable), e.g. X-subscription-id:sub-1",
+    )
+    run.add_argument(
+        "--form",
+        action="append",
+        help="extra multipart form field KEY=VALUE (repeatable), e.g. tags=ali1",
+    )
     run.add_argument("--auth-header", default="Authorization")
     run.add_argument("--auth-prefix", default="Bearer ")
     run.add_argument("--poll-interval", type=float, default=0.5)
