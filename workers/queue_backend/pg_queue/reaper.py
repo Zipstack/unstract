@@ -151,8 +151,10 @@ def _positive_duration_from_env(name: str, default: _N, cast: Callable[[str], _N
     try:
         value = cast(raw)
     except ValueError as exc:
+        # Include the cause: an int knob given "1.5" IS a number, just not an int —
+        # "is not a number" would mislead. The cause spells out the real reason.
         raise ValueError(
-            f"{name}={raw!r} is not a number. Unset it to default to {default}."
+            f"{name}={raw!r} cannot be parsed: {exc}. Unset it to default to {default}."
         ) from exc
     if value <= 0:
         raise ValueError(
@@ -696,7 +698,7 @@ class PgReaper:
             self._sweep_fail_streak[table] = streak
             logger.exception(
                 "Reaper: retention sweep of %s failed (%s consecutive) — will retry "
-                "next cycle",
+                "after the next sweep interval",
                 table,
                 streak,
             )

@@ -109,7 +109,9 @@ class TestSweepEnv:
         monkeypatch.setenv("WORKER_PG_REAPER_SWEEP_SECONDS", "1.5")
         assert reaper_sweep_interval_from_env() == pytest.approx(1.5)
         monkeypatch.setenv("WORKER_PG_DEDUP_RETENTION_SECONDS", "1.5")
-        with pytest.raises(ValueError):  # int("1.5") rejects the fractional value
+        # int("1.5") rejects the fractional value; the message names the real cause
+        # ("cannot be parsed: …") rather than the misleading "is not a number".
+        with pytest.raises(ValueError, match="cannot be parsed"):
             dedup_retention_from_env()
 
 
