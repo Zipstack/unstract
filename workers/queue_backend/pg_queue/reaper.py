@@ -51,7 +51,8 @@ import os
 import signal
 import threading
 import time
-from typing import TYPE_CHECKING, NamedTuple, Protocol
+from collections.abc import Callable
+from typing import TYPE_CHECKING, NamedTuple, Protocol, TypeVar
 
 from unstract.core.data_models import ExecutionStatus
 
@@ -69,6 +70,17 @@ logger = logging.getLogger(__name__)
 # Cadence: how often the leader renews + runs recovery. Enforced shorter than
 # the lease window in PgReaper.__init__.
 _DEFAULT_REAPER_INTERVAL_SECONDS = 5.0
+# Retention sweep cadence — far rarer than the tick (cleanup, not recovery), so
+# the per-cycle DELETE doesn't run every few seconds.
+_DEFAULT_SWEEP_INTERVAL_SECONDS = 300.0
+# Default age before an orphaned ``pg_batch_dedup`` marker is swept. Should be set
+# (here / via WORKER_PG_DEDUP_RETENTION_SECONDS) above the longest possible
+# execution, else a still-in-flight marker could be swept out from under a running
+# fan-out — this is operator-enforced, not coupled in code to the actual bound. 24h
+# is comfortably above any single execution.
+_DEFAULT_DEDUP_RETENTION_SECONDS = 86400
+
+_N = TypeVar("_N", int, float)
 
 
 class LeaderLeaseLike(Protocol):
@@ -125,6 +137,115 @@ def reaper_interval_from_env() -> float:
             f"Unset it to default to {_DEFAULT_REAPER_INTERVAL_SECONDS}s."
         )
     return value
+
+
+def _positive_duration_from_env(name: str, default: _N, cast: Callable[[str], _N]) -> _N:
+    """Read a positive duration env var (default on unset; raise on invalid/<=0).
+
+    Same loud-on-misconfig posture as :func:`reaper_interval_from_env`, shared by
+    the sweep-cadence and dedup-retention knobs.
+    """
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = cast(raw)
+    except ValueError as exc:
+        # Include the cause: an int knob given "1.5" IS a number, just not an int —
+        # "is not a number" would mislead. The cause spells out the real reason.
+        raise ValueError(
+            f"{name}={raw!r} cannot be parsed: {exc}. Unset it to default to {default}."
+        ) from exc
+    if value <= 0:
+        raise ValueError(
+            f"{name}={value} must be positive. Unset it to default to {default}."
+        )
+    return value
+
+
+def reaper_sweep_interval_from_env() -> float:
+    """Retention-sweep cadence from ``WORKER_PG_REAPER_SWEEP_SECONDS`` (default 300s)."""
+    return _positive_duration_from_env(
+        "WORKER_PG_REAPER_SWEEP_SECONDS", _DEFAULT_SWEEP_INTERVAL_SECONDS, float
+    )
+
+
+def dedup_retention_from_env() -> int:
+    """Dedup-orphan age from ``WORKER_PG_DEDUP_RETENTION_SECONDS`` (default 24h)."""
+    return _positive_duration_from_env(
+        "WORKER_PG_DEDUP_RETENTION_SECONDS", _DEFAULT_DEDUP_RETENTION_SECONDS, int
+    )
+
+
+def _rollback_after_sweep_failure(conn: PgConnection, table: str) -> None:
+    """Roll back after a failed sweep DELETE; surface a rollback that itself fails.
+
+    The caller re-raises the original error regardless — but a rollback that also
+    raises (broken socket / admin-terminated backend) signals a dead connection, so
+    log it rather than swallow it silently (which would hide why the next cycle's
+    reconnect is needed).
+    """
+    try:
+        conn.rollback()
+    except Exception:
+        logger.warning(
+            "Reaper: rollback after a failed %s sweep also failed "
+            "(connection likely dead)",
+            table,
+            exc_info=True,
+        )
+
+
+def sweep_expired_results(conn: PgConnection) -> int:
+    """Delete expired executor-RPC result rows; return the number deleted.
+
+    ``pg_task_result`` rows carry ``expires_at = now() + retention`` (written by
+    the consumer's ``store_result``, ``DEFAULT_RETENTION_SECONDS``). Once past it no
+    caller is still waiting **by default** — that retention matches the caller-
+    timeout default (``EXECUTOR_RESULT_TIMEOUT``), so the result has outlived any
+    wait. (An operator who raises the caller timeout ABOVE the store retention could
+    in principle have a result swept mid-wait; size the retention >= the longest
+    caller timeout.) The table has no other reader once expired, so this is the only
+    thing keeping it from growing unbounded with each RPC. Idempotent
+    (``DELETE … WHERE``) and uses the ``pg_task_result_expires_idx`` index. Rolls
+    back on error so the manual-commit connection isn't left in an aborted-txn state.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM pg_task_result WHERE expires_at <= now()")
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    except Exception:
+        _rollback_after_sweep_failure(conn, "pg_task_result")
+        raise
+
+
+def sweep_orphan_dedup(conn: PgConnection, retention_seconds: int) -> int:
+    """Delete orphaned per-batch dedup markers older than *retention_seconds*.
+
+    ``pg_batch_dedup`` markers are normally cleared on barrier teardown / reaper
+    barrier-recovery, but a partial-failure execution can leave them behind. A
+    marker only matters while its execution is in flight, so anything older than
+    the longest possible execution (*retention_seconds*) is a safe-to-drop orphan.
+    Filters on ``created_at``, which is deliberately **unindexed** (see
+    ``backend/pg_queue/models.py``), so each sweep seq-scans — fine at the 5-min
+    cadence on a normally-near-empty table; add an index if the dedup table grows.
+    Idempotent; rolls back on error.
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM pg_batch_dedup "
+                "WHERE created_at <= now() - make_interval(secs => %s)",
+                (retention_seconds,),
+            )
+            deleted = cur.rowcount
+        conn.commit()
+        return deleted
+    except Exception:
+        _rollback_after_sweep_failure(conn, "pg_batch_dedup")
+        raise
 
 
 def _execution_status(
@@ -380,6 +501,8 @@ class PgReaper:
         lease: LeaderLeaseLike,
         *,
         interval_seconds: float | None = None,
+        sweep_interval_seconds: float | None = None,
+        dedup_retention_seconds: int | None = None,
         sweep_conn: PgConnection | None = None,
         api_client: InternalAPIClient | None = None,
     ) -> None:
@@ -401,6 +524,29 @@ class PgReaper:
                 f"lease window {lease.lease_seconds}s, or the leader loses the "
                 f"lease between renews"
             )
+        # Retention-sweep cadence + dedup-orphan horizon (validated like interval:
+        # an injected non-positive value reaches here unvalidated by the env parser).
+        self._sweep_interval = (
+            sweep_interval_seconds
+            if sweep_interval_seconds is not None
+            else reaper_sweep_interval_from_env()
+        )
+        if self._sweep_interval <= 0:
+            raise ValueError("sweep_interval_seconds must be positive")
+        self._dedup_retention = (
+            dedup_retention_seconds
+            if dedup_retention_seconds is not None
+            else dedup_retention_from_env()
+        )
+        if self._dedup_retention <= 0:
+            raise ValueError("dedup_retention_seconds must be positive")
+        # None → "never swept", so the first leader tick sweeps immediately; set to
+        # monotonic() each sweep so the cadence holds thereafter. (A None sentinel,
+        # not 0.0, so the gate doesn't lean on monotonic() never returning ~0.)
+        self._last_sweep_monotonic: float | None = None
+        # Per-table consecutive-failure streak — surfaced in the failure log so a
+        # persistently-failing sweep (and which table) is traceable in prod.
+        self._sweep_fail_streak: dict[str, int] = {}
         self._sweep_conn = sweep_conn
         self._owns_sweep_conn = sweep_conn is None
         # Lazily built so the reaper can be constructed without env/HTTP set up
@@ -499,7 +645,67 @@ class PgReaper:
         except Exception:
             self._discard_owned_sweep_conn()
             raise
+        # Orchestrator's third job: retention cleanup (cadence-gated, so it does
+        # NOT run every tick). Last so a sweep error can't skip recovery/schedules.
+        self._maybe_sweep()
         return TickOutcome(was_leader=True, reclaimed=reclaimed)
+
+    def _maybe_sweep(self) -> None:
+        """Run the retention sweep at most once per ``_sweep_interval``.
+
+        Leader-only (called from :meth:`tick` after recovery + schedules). Deletes
+        expired ``pg_task_result`` rows and orphaned ``pg_batch_dedup`` markers so
+        neither table grows unbounded as the gate ramps. The two sweeps run
+        **independently** (via :meth:`_run_sweep`): they cover different tables, so
+        a persistent fault in one must not skip — and then cadence-gate out — the
+        other. The cadence is advanced BEFORE sweeping so a failure waits one
+        interval before retry rather than hammering the DB every tick.
+        """
+        now = time.monotonic()
+        if (
+            self._last_sweep_monotonic is not None
+            and now - self._last_sweep_monotonic < self._sweep_interval
+        ):
+            return
+        self._last_sweep_monotonic = now
+        results = self._run_sweep("pg_task_result", sweep_expired_results)
+        dedup = self._run_sweep(
+            "pg_batch_dedup",
+            lambda conn: sweep_orphan_dedup(conn, self._dedup_retention),
+        )
+        if results or dedup:
+            logger.info(
+                "Reaper: retention sweep deleted %s pg_task_result + "
+                "%s pg_batch_dedup row(s)",
+                results,
+                dedup,
+            )
+
+    def _run_sweep(self, table: str, fn: Callable[[PgConnection], int]) -> int:
+        """Run one retention sweep best-effort; return its row count (0 on failure).
+
+        A cleanup failure is NOT propagated (it must not fail the tick) and must not
+        starve the sibling sweep — it is logged at this boundary with the table name
+        and a consecutive-failure streak (so a bloated ``pg_task_result`` /
+        ``pg_batch_dedup`` in prod is traceable, distinct from the generic
+        tick-failure log), and the owned conn is discarded so the next cycle
+        reconnects. A clean run resets the streak.
+        """
+        try:
+            count = fn(self._get_sweep_conn())
+        except Exception:
+            streak = self._sweep_fail_streak.get(table, 0) + 1
+            self._sweep_fail_streak[table] = streak
+            logger.exception(
+                "Reaper: retention sweep of %s failed (%s consecutive) — will retry "
+                "after the next sweep interval",
+                table,
+                streak,
+            )
+            self._discard_owned_sweep_conn()
+            return 0
+        self._sweep_fail_streak[table] = 0
+        return count
 
     def run(self, *, install_signals: bool = True) -> None:
         """Lease-maintenance + recovery loop until stopped; releases on exit."""
