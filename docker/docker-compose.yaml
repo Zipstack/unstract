@@ -4,6 +4,11 @@ include:
 
 # Reusable host-gateway mapping so containers can reach services on the host
 # (e.g. host-installed Ollama at http://host.docker.internal:11434).
+# NOTE: YAML merge (<<:) merges mappings shallowly and does NOT concatenate
+# lists. If a service ever needs additional extra_hosts entries alongside
+# this one, inline ALL entries under that service (including
+# host.docker.internal:host-gateway) instead of using the anchor — a sibling
+# extra_hosts key would silently shadow the anchor's list.
 x-host-gateway: &host_gateway
   extra_hosts:
     - "host.docker.internal:host-gateway"

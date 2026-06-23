@@ -44,6 +44,11 @@ class EnvHelper:
                 f"Env var '{env_name}' is not valid JSON: {e}. "
                 f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
             ) from e
+        if not isinstance(file_storage_creds, dict):
+            raise FileStorageError(
+                f"Env var '{env_name}' must be a JSON object. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            )
         try:
             provider = FileStorageProvider(file_storage_creds[CredentialKeyword.PROVIDER])
             credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
@@ -56,9 +61,12 @@ class EnvHelper:
             else:
                 raise NotImplementedError()
             return file_storage
-        except KeyError as e:
-            logger.error(f"Required credentials are missing in the env: {str(e)}")
+        except (KeyError, TypeError, ValueError) as e:
+            logger.error(f"Invalid storage configuration in env: {str(e)}")
             logger.error(f"The configuration format is {EnvHelper.ENV_CONFIG_FORMAT}")
-            raise e
+            raise FileStorageError(
+                f"Invalid storage configuration in env var '{env_name}': {e}. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            ) from e
         except FileStorageError as e:
             raise e
