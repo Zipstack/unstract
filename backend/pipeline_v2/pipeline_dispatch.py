@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any
+from uuid import UUID
 
 from pg_queue.producer import enqueue_task
 from workflow_manager.workflow_v2.transport import resolve_transport
@@ -36,16 +37,16 @@ SCHEDULER_QUEUE = "scheduler"
 def dispatch_pipeline_trigger(
     *,
     celery_app: Any,
-    org_id: str,
-    pipeline_id: str,
+    org_id: str | UUID,
+    pipeline_id: str | UUID,
     pipeline_name: str,
-) -> str:
+) -> None:
     """Dispatch the pipeline-trigger task on the resolved transport.
 
-    Returns the transport actually used (``"pg_queue"`` / ``"celery"``). The
-    positional args match ``execute_pipeline_task``'s signature on **both** paths:
-    ``(workflow_id, org_schema, execution_action, execution_id, pipeline_id,
-    with_logs, name)``.
+    The positional args match ``execute_pipeline_task``'s signature on **both**
+    paths: ``(workflow_id, org_schema, execution_action, execution_id,
+    pipeline_id, with_logs, name)``. ``org_id`` / ``pipeline_id`` accept ``UUID``
+    (what ``resolve_transport`` takes) and are str-coerced into the task args.
     """
     args = ["", str(org_id), "", "", str(pipeline_id), True, pipeline_name]
     # No execution exists yet (it's created inside the task), so the trigger
@@ -69,7 +70,6 @@ def dispatch_pipeline_trigger(
             pipeline_id,
             msg_id,
         )
-        return transport
-    celery_app.send_task(PIPELINE_TRIGGER_TASK, args=args)
-    logger.info("Pipeline %s trigger dispatched on Celery", pipeline_id)
-    return transport
+    else:
+        celery_app.send_task(PIPELINE_TRIGGER_TASK, args=args)
+        logger.info("Pipeline %s trigger dispatched on Celery", pipeline_id)

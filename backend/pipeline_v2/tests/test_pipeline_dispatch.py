@@ -33,8 +33,7 @@ class TestDispatchPipelineTrigger:
             patch.object(pd, "resolve_transport", return_value="pg_queue"),
             patch.object(pd, "enqueue_task", return_value=42) as enqueue,
         ):
-            transport = _dispatch(celery)
-        assert transport == "pg_queue"
+            _dispatch(celery)
         enqueue.assert_called_once()
         kwargs = enqueue.call_args.kwargs
         assert kwargs["task_name"] == "scheduler.tasks.execute_pipeline_task"
@@ -76,8 +75,7 @@ class TestDispatchPipelineTrigger:
             patch.object(pd, "resolve_transport", return_value="celery"),
             patch.object(pd, "enqueue_task") as enqueue,
         ):
-            transport = _dispatch(celery)
-        assert transport == "celery"
+            _dispatch(celery)
         celery.send_task.assert_called_once_with(
             "scheduler.tasks.execute_pipeline_task", args=_EXPECTED_ARGS
         )
