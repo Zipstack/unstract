@@ -1,17 +1,17 @@
 """Transport-routed dispatch for the API-triggered pipeline execution trigger.
 
-The **scheduled** pipeline path already enqueues
-``scheduler.tasks.execute_pipeline_task`` onto the PG queue
-(``pg_scheduler.dispatch_due_schedules`` → the ``scheduler`` queue, run by
-``worker-pg-scheduler``). The **API-trigger** view historically sent it only to
-Celery — so when the flag was on, the trigger stayed on Celery while the
-execution it spawns rode PG, breaking uniform flag control. This routes the
-trigger through the same :func:`resolve_transport` flag as everything else.
+Routes ``scheduler.tasks.execute_pipeline_task`` through the same
+:func:`resolve_transport` flag as the rest of the execution path: the PG queue
+when enabled for this pipeline/org, else Celery. **Fail-closed** — with the
+master gate off (the production default) it resolves to Celery, behaving exactly
+like the prior unconditional ``send_task`` (zero regression). The
+scheduled-pipeline path already enqueues this task onto the PG ``scheduler``
+queue (``pg_scheduler.dispatch_due_schedules``, run by ``worker-pg-scheduler``);
+this brings the API-trigger view to parity.
 
-**Fail-closed / zero regression:** with the master gate off (production default)
-``resolve_transport`` returns Celery → identical to the prior ``send_task``. The
-task args are byte-identical on both paths, so the consumer behaves the same
-regardless of transport.
+The same ``args`` are sent on both paths; on PG they're JSON-normalized by
+``enqueue_task`` (UUIDs/datetimes → str), a no-op for these string/bool values,
+so the consumer sees the same payload.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ def dispatch_pipeline_trigger(
     ``(workflow_id, org_schema, execution_action, execution_id, pipeline_id,
     with_logs, name)``.
     """
-    args = ["", org_id, "", "", str(pipeline_id), True, pipeline_name]
+    args = ["", str(org_id), "", "", str(pipeline_id), True, pipeline_name]
     # No execution exists yet (it's created inside the task), so the trigger
     # buckets the flag by pipeline_id as the sticky entity.
     transport = resolve_transport(
@@ -55,7 +55,9 @@ def dispatch_pipeline_trigger(
         organization_id=org_id,
         pipeline_id=pipeline_id,
     )
-    if transport == WorkflowTransport.PG_QUEUE.value:
+    # Compare the enum member (not a bare string) so a literal typo can't silently
+    # fall through to the Celery branch; WorkflowTransport is a str-enum.
+    if transport == WorkflowTransport.PG_QUEUE:
         msg_id = enqueue_task(
             task_name=PIPELINE_TRIGGER_TASK,
             queue=SCHEDULER_QUEUE,

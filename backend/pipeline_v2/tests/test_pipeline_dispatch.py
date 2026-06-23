@@ -7,7 +7,10 @@ otherwise (fail-closed), with byte-identical args on both paths.
 
 from __future__ import annotations
 
+import uuid
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 import pipeline_v2.pipeline_dispatch as pd
 
@@ -39,6 +42,33 @@ class TestDispatchPipelineTrigger:
         assert kwargs["args"] == _EXPECTED_ARGS
         assert kwargs["org_id"] == "org_x"
         celery.send_task.assert_not_called()
+
+    def test_pg_enqueue_failure_propagates_with_no_celery_fallback(self):
+        # The dispatcher has no try/except → a PG enqueue failure must surface
+        # (no silent Celery fallback, which would risk a double-dispatch).
+        celery = MagicMock()
+        with (
+            patch.object(pd, "resolve_transport", return_value="pg_queue"),
+            patch.object(pd, "enqueue_task", side_effect=RuntimeError("pg down")),
+        ):
+            with pytest.raises(RuntimeError, match="pg down"):
+                _dispatch(celery)
+        celery.send_task.assert_not_called()
+
+    def test_uuid_pipeline_id_is_coerced_to_str_in_args(self):
+        # resolve_transport accepts a UUID, but the task args must carry strings.
+        pid = uuid.UUID("b1f16024-45f2-4e39-8756-d40e24148e30")
+        celery = MagicMock()
+        with (
+            patch.object(pd, "resolve_transport", return_value="pg_queue") as resolve,
+            patch.object(pd, "enqueue_task", return_value=1) as enqueue,
+        ):
+            pd.dispatch_pipeline_trigger(
+                celery_app=celery, org_id="org_x", pipeline_id=pid, pipeline_name="P"
+            )
+        assert enqueue.call_args.kwargs["args"][4] == str(pid)
+        # The raw UUID is passed to resolve_transport as the sticky entity.
+        assert resolve.call_args.kwargs["execution_id"] == pid
 
     def test_routes_to_celery_when_flag_resolves_celery(self):
         celery = MagicMock()

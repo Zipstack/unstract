@@ -30,9 +30,8 @@ class PipelineApiExecution(views.APIView):
     def post(
         self, request: Request, org_name: str, pipeline_id: str, pipeline: Pipeline
     ) -> Response:
-        # Route through the transport flag (PG when enabled for this pipeline/org,
-        # else Celery — fail-closed). Matches the scheduled-pipeline path, which
-        # already enqueues this task onto the PG queue.
+        # Route through the transport flag instead of hardcoding Celery
+        # (see dispatch_pipeline_trigger).
         dispatch_pipeline_trigger(
             celery_app=celery_app,
             org_id=org_name,
