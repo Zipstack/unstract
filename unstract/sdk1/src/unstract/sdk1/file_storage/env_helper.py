@@ -31,8 +31,20 @@ class EnvHelper:
             FileStorage: FIleStorage instance initialised using the provider
             and credentials configured in the env
         """
+        raw = os.environ.get(env_name)
+        if not raw:
+            raise FileStorageError(
+                f"Required env var '{env_name}' is unset or empty. "
+                f"Expected JSON config of the form: {EnvHelper.ENV_CONFIG_FORMAT}"
+            )
         try:
-            file_storage_creds = json.loads(os.environ.get(env_name, ""))
+            file_storage_creds = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise FileStorageError(
+                f"Env var '{env_name}' is not valid JSON: {e}. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            ) from e
+        try:
             provider = FileStorageProvider(file_storage_creds[CredentialKeyword.PROVIDER])
             credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
             if storage_type == StorageType.PERMANENT:

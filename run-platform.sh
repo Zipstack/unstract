@@ -33,6 +33,14 @@ check_dependencies() {
     echo "$red_text""docker not found. Exiting.""$default_text"
     exit 1
   fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "$red_text""Cannot connect to the Docker daemon.""$default_text"
+    echo "  - Check group membership:    getent group docker"
+    echo "  - Add your user to it:       sudo usermod -aG docker \$USER"
+    echo "  - Activate in current shell: newgrp docker"
+    echo "  - For new shells, a full desktop logout (not just terminal close) is required."
+    exit 1
+  fi
   # For 'docker compose' vs 'docker-compose', see https://stackoverflow.com/a/66526176.
   docker compose >/dev/null 2>&1
   if [ $? -eq 0 ]; then

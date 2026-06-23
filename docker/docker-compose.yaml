@@ -2,9 +2,16 @@ name: ${COMPOSE_PROJECT_NAME:-docker}
 include:
   - docker-compose-dev-essentials.yaml
 
+# Reusable host-gateway mapping so containers can reach services on the host
+# (e.g. host-installed Ollama at http://host.docker.internal:11434).
+x-host-gateway: &host_gateway
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 services:
   # Backend service
   backend:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-backend
     restart: unless-stopped
@@ -34,12 +41,10 @@ services:
       - traefik.enable=true
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
-    extra_hosts:
-      # "host-gateway" is a special string that translates to host docker0 i/f IP.
-      - "host.docker.internal:host-gateway"
 
   # Celery worker for dashboard metrics processing
   worker-metrics:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-worker-metrics
     restart: unless-stopped
@@ -61,6 +66,7 @@ services:
   # Processes post-execution callbacks via InternalAPIClient (no Django).
   # Handles: ide_index_complete/error, ide_prompt_complete/error.
   worker-ide-callback:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-ide-callback
     restart: unless-stopped
@@ -82,6 +88,7 @@ services:
 
   # Celery Flower
   celery-flower:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-flower
     restart: unless-stopped
@@ -105,6 +112,7 @@ services:
 
   # Celery Beat
   celery-beat:
+    <<: *host_gateway
     image: unstract/backend:${VERSION}
     container_name: unstract-celery-beat
     restart: unless-stopped
@@ -152,6 +160,7 @@ services:
       - traefik.enable=false
 
   prompt-service:
+    <<: *host_gateway
     image: unstract/prompt-service:${VERSION}
     container_name: unstract-prompt-service
     restart: unless-stopped
@@ -166,9 +175,6 @@ services:
       - ../prompt-service/.env
     labels:
       - traefik.enable=false
-    extra_hosts:
-      # "host-gateway" is a special string that translates to host docker0 i/f IP.
-      - "host.docker.internal:host-gateway"
 
   x2text-service:
     image: unstract/x2text-service:${VERSION}
@@ -184,6 +190,7 @@ services:
       - traefik.enable=false
 
   runner:
+    <<: *host_gateway
     image: unstract/runner:${VERSION}
     container_name: unstract-runner
     restart: unless-stopped
@@ -206,6 +213,7 @@ services:
   # ====================================================================
 
   worker-api-deployment-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-api-deployment-v2
     restart: unless-stopped
@@ -238,6 +246,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-callback-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-callback-v2
     restart: unless-stopped
@@ -264,6 +273,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-file-processing-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-file-processing-v2
     restart: unless-stopped
@@ -316,6 +326,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-general-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-general-v2
     restart: unless-stopped
@@ -343,6 +354,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-notification-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-notification-v2
     restart: unless-stopped
@@ -391,6 +403,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-log-consumer-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-log-consumer-v2
     restart: unless-stopped
@@ -440,6 +453,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-log-history-scheduler-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-log-history-scheduler-v2
     restart: unless-stopped
@@ -463,6 +477,7 @@ services:
       - traefik.enable=false
 
   worker-scheduler-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-scheduler-v2
     restart: unless-stopped
@@ -507,6 +522,7 @@ services:
       - ${TOOL_REGISTRY_CONFIG_SRC_PATH}:/data/tool_registry_config
 
   worker-executor-v2:
+    <<: *host_gateway
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-executor-v2
     restart: unless-stopped
