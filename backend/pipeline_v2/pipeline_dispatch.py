@@ -23,7 +23,7 @@ from uuid import UUID
 from pg_queue.producer import enqueue_task
 from workflow_manager.workflow_v2.transport import resolve_transport
 
-from unstract.core.data_models import WorkflowTransport
+from unstract.core.data_models import is_pg_transport
 
 logger = logging.getLogger(__name__)
 
@@ -56,9 +56,9 @@ def dispatch_pipeline_trigger(
         organization_id=org_id,
         pipeline_id=pipeline_id,
     )
-    # Compare the enum member (not a bare string) so a literal typo can't silently
-    # fall through to the Celery branch; WorkflowTransport is a str-enum.
-    if transport == WorkflowTransport.PG_QUEUE:
+    # Use the shared is_pg_transport() — the single source for "what counts as PG
+    # transport" — rather than opening a second comparison site.
+    if is_pg_transport(transport):
         msg_id = enqueue_task(
             task_name=PIPELINE_TRIGGER_TASK,
             queue=SCHEDULER_QUEUE,
