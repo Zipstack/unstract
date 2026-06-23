@@ -40,6 +40,11 @@ class MockConfig:
         return self.latency_ms / 1000.0
 
 
+# Fixed model name returned in every response. Deliberately NOT echoed from the
+# request body — never reflect untrusted client input back into the response.
+MOCK_MODEL = "mock-model"
+
+
 class _Counter:
     """Thread-safe request tallies (so a load run can confirm the server was hit)."""
 
@@ -143,21 +148,22 @@ def _make_handler(config: MockConfig, counter: _Counter) -> type[BaseHTTPRequest
             if config.latency_s:
                 time.sleep(config.latency_s)
             req = self._read_json()
-            model = req.get("model", "mock-model")
+            # Always respond with MOCK_MODEL — never echo the request's "model"
+            # (untrusted input) back into the response body.
             path = self.path
             # Order matters: chat/completions must be matched before the bare
             # /completions suffix.
             if path.endswith("/chat/completions"):
                 counter.bump("chat")
-                self._send_json(chat_completion(model, config.content))
+                self._send_json(chat_completion(MOCK_MODEL, config.content))
             elif path.endswith("/embeddings"):
                 counter.bump("embeddings")
                 inputs = req.get("input", "")
                 count = len(inputs) if isinstance(inputs, list) else 1
-                self._send_json(embeddings(model, count, config.embedding_dim))
+                self._send_json(embeddings(MOCK_MODEL, count, config.embedding_dim))
             elif path.endswith("/completions"):
                 counter.bump("chat")
-                self._send_json(text_completion(model, config.content))
+                self._send_json(text_completion(MOCK_MODEL, config.content))
             else:
                 self._send_json({"error": "not found"}, status=404)
 

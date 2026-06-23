@@ -10,26 +10,31 @@ from pg_benchmark.db import ExecutionLatency, Transport
 from pg_benchmark.stats import percentile, summarize
 
 
+def _close(a: float, b: float) -> bool:
+    """Float comparison helper — avoids ``==`` on floats (SonarCloud S1244)."""
+    return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)
+
+
 class TestPercentile:
     def test_endpoints_are_min_and_max(self):
         values = [1.0, 2.0, 3.0, 4.0, 5.0]
-        assert percentile(values, 0) == 1.0
-        assert percentile(values, 100) == 5.0
+        assert _close(percentile(values, 0), 1.0)
+        assert _close(percentile(values, 100), 5.0)
 
     def test_median_of_odd_sample(self):
-        assert percentile([3.0, 1.0, 2.0], 50) == 2.0
+        assert _close(percentile([3.0, 1.0, 2.0], 50), 2.0)
 
     def test_median_of_even_sample_interpolates(self):
-        assert percentile([1.0, 2.0, 3.0, 4.0], 50) == 2.5
+        assert _close(percentile([1.0, 2.0, 3.0, 4.0], 50), 2.5)
 
     def test_p95_interpolates_between_ranks(self):
         # 0..100 step 1 → p95 lands exactly on 95 (rank 95 of 100).
         values = [float(i) for i in range(101)]
-        assert percentile(values, 95) == pytest.approx(95.0)
+        assert _close(percentile(values, 95), 95.0)
 
     def test_single_element(self):
-        assert percentile([7.0], 50) == 7.0
-        assert percentile([7.0], 99) == 7.0
+        assert _close(percentile([7.0], 50), 7.0)
+        assert _close(percentile([7.0], 99), 7.0)
 
     def test_empty_raises(self):
         with pytest.raises(ValueError):
@@ -40,18 +45,20 @@ class TestSummarize:
     def test_empty_sample_is_all_zero(self):
         s = summarize([])
         assert s.empty
-        assert s.n == 0 and s.mean == 0.0 and s.p99 == 0.0
+        assert s.n == 0
+        assert _close(s.mean, 0.0) and _close(s.p99, 0.0)
 
     def test_basic_summary(self):
         s = summarize([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0])
         assert s.n == 8
-        assert s.mean == pytest.approx(5.0)
-        assert s.minimum == 2.0 and s.maximum == 9.0
-        assert s.stdev == pytest.approx(2.0)  # population stdev of this classic sample
+        assert _close(s.mean, 5.0)
+        assert _close(s.minimum, 2.0) and _close(s.maximum, 9.0)
+        assert _close(s.stdev, 2.0)  # population stdev of this classic sample
 
     def test_single_value_has_zero_stdev(self):
         s = summarize([3.3])
-        assert s.n == 1 and s.stdev == 0.0 and s.p50 == 3.3
+        assert s.n == 1
+        assert _close(s.stdev, 0.0) and _close(s.p50, 3.3)
 
 
 class TestTransportClassify:
@@ -88,12 +95,12 @@ class TestParallelism:
     def test_fully_parallel_two_files_is_near_two(self):
         # Two 30s files that overlapped → execution ~34s → ratio ≈ 1.76.
         e = self._exec(exec_time=34.0, file_times=[29.9, 29.8])
-        assert e.parallelism == pytest.approx(59.7 / 34.0)
+        assert _close(e.parallelism, 59.7 / 34.0)
         assert e.parallelism > 1.5
 
     def test_serial_two_files_is_near_one(self):
         e = self._exec(exec_time=60.0, file_times=[30.0, 30.0])
-        assert e.parallelism == pytest.approx(1.0)
+        assert _close(e.parallelism, 1.0)
 
     def test_none_when_no_files(self):
         assert self._exec(exec_time=10.0, file_times=[]).parallelism is None
@@ -110,4 +117,4 @@ def test_stdev_matches_math():
     values = [1.0, 2.0, 3.0]
     s = summarize(values)
     expected = math.sqrt(((1 - 2) ** 2 + 0 + (3 - 2) ** 2) / 3)
-    assert s.stdev == pytest.approx(expected)
+    assert _close(s.stdev, expected)

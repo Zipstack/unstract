@@ -7,7 +7,8 @@ is exercised deterministically.
 
 from __future__ import annotations
 
-import pytest
+import math
+
 
 import pg_benchmark.probe as probe_mod
 from pg_benchmark.config import DbConfig
@@ -16,6 +17,11 @@ from pg_benchmark.probe import RunResult, run_probe
 from pg_benchmark.report import build_load_reports, render_load
 from pg_benchmark.runner import LoadOutcome, run_load
 from pg_benchmark.trigger import TriggerConfig, TriggerResult
+
+
+def _close(a: float, b: float) -> bool:
+    """Float comparison helper — avoids ``==`` on floats (SonarCloud S1244)."""
+    return math.isclose(a, b, rel_tol=1e-9, abs_tol=1e-12)
 
 
 class FakeClock:
@@ -32,7 +38,7 @@ class FakeClock:
 
 
 def _trigger_cfg():
-    return TriggerConfig(base_url="http://x", path="/p/", api_key="k")
+    return TriggerConfig(base_url="https://x", path="/p/", api_key="k")
 
 
 def _db_cfg():
@@ -83,10 +89,10 @@ class TestRunProbe:
         )
         assert result.ok
         assert result.transport is Transport.PG
-        assert result.wall_clock_e2e == pytest.approx(30.6)
-        assert result.server_execution_time == 30.0
-        assert result.overhead == pytest.approx(0.6)
-        assert result.http_latency == 0.05
+        assert _close(result.wall_clock_e2e, 30.6)
+        assert _close(result.server_execution_time, 30.0)
+        assert _close(result.overhead, 0.6)
+        assert _close(result.http_latency, 0.05)
 
     def test_trigger_without_execution_id_is_failure(self, monkeypatch):
         trig = TriggerResult(
@@ -173,7 +179,7 @@ class TestRunner:
 
     def test_load_outcome_zero_walltime_is_safe(self):
         outcome = LoadOutcome(results=[self._result()], wall_clock=0.0)
-        assert outcome.throughput == 0.0
+        assert _close(outcome.throughput, 0.0)
 
 
 class TestLoadReport:
