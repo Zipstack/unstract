@@ -39,9 +39,11 @@ class TestExtractExecutionId:
 
 class TestParseKv:
     def test_header_split_on_first_colon(self):
-        # A header value can itself contain a colon (e.g. a URL).
-        out = _parse_kv(["X-Sub:sub-1", "X-Url:http://x:8000"], sep=":", label="--header")
-        assert out == {"X-Sub": "sub-1", "X-Url": "http://x:8000"}
+        # A header value can itself contain a colon (e.g. a URL with a port).
+        out = _parse_kv(
+            ["X-Sub:sub-1", "X-Url:https://x:8000"], sep=":", label="--header"
+        )
+        assert out == {"X-Sub": "sub-1", "X-Url": "https://x:8000"}
 
     def test_form_split_on_equals(self):
         assert _parse_kv(["tags=ali1", "timeout=300"], sep="=", label="--form") == {
