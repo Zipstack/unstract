@@ -60,7 +60,6 @@ CONFIG_FILES=(
     "x2text-service/.env"
     # Docker config files
     "docker/.env"
-    "docker/essentials.env"
     "docker/compose.override.yaml"
     "docker/proxy_overrides.yaml"
 )

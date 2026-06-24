@@ -153,7 +153,7 @@ This command will start Flower on the default port (5555) and can be accessed vi
 - RabbitMQ provides a web interface for monitoring and managing the broker
 - Access the dashboard at `http://localhost:15672`
 - Default credentials: `admin` / `password`
-- These can be configured with `RABBITMQ_DEFAULT_USER` and `RABBITMQ_DEFAULT_PASS` envs in [essentials.env](../docker/essentials.env)
+- These are configured with `CELERY_BROKER_USER` and `CELERY_BROKER_PASS` in [docker/sample.env](../docker/sample.env) (mapped to the container's `RABBITMQ_DEFAULT_USER`/`RABBITMQ_DEFAULT_PASS` by docker-compose)
 
 ## Connecting to Postgres
 
