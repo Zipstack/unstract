@@ -9,7 +9,7 @@ import django
 from django.conf import settings
 
 if not settings.configured:
-    settings.configure(DEBUG=True, INSTALLED_APPS=[], DATABASES={})
+    settings.configure(INSTALLED_APPS=[], DATABASES={})
     django.setup()
 
 from middleware.exception import _enrich_not_found_detail  # noqa: E402
