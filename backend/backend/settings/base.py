@@ -15,9 +15,16 @@ from pathlib import Path
 from urllib.parse import quote
 
 import httpx
+from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
+
+# Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
+# temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,
+# causing "Enter a valid URL." on the API deployment `presigned_urls` field.
+# Raise the cap globally. No-op on Django 4.2.x (no such attribute is checked).
+URLValidator.max_length = 8192
 
 missing_settings = []
 
