@@ -14,7 +14,6 @@ delegates every mode to the unchanged Celery ``ExecutionDispatcher`` and no
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
@@ -44,8 +43,6 @@ __all__ = [
     "get_executor_dispatcher",
     "resolve_executor_transport",
 ]
-
-logger = logging.getLogger(__name__)
 
 
 def resolve_executor_transport(context: ExecutionContext) -> bool:

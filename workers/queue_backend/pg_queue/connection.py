@@ -34,8 +34,11 @@ logger = logging.getLogger(__name__)
 # (queue_backend.pg_queue.client.send): an ambiguous commit-time failure could
 # double-enqueue → double-dispatch, so that path stays fail-and-surface.
 _DEFAULT_CONNECT_RETRIES = 3  # total attempts (1 = no retry)
+_MAX_CONNECT_RETRIES = 10  # sane upper bound — a fat-fingered value can't wedge startup
 _DEFAULT_CONNECT_BACKOFF = 0.5  # base seconds between attempts; doubles each retry
-_CONNECT_BACKOFF_CAP = 5.0  # ceiling on a single inter-attempt sleep
+_CONNECT_BACKOFF_CAP = (
+    5.0  # fixed ceiling on a single inter-attempt sleep (not env-tunable)
+)
 
 
 def _connect_env[T](suffix: str, default: T, cast: Callable[[str], T]) -> T:
@@ -59,6 +62,34 @@ def _connect_env[T](suffix: str, default: T, cast: Callable[[str], T]) -> T:
         return default
 
 
+def _connect_retry_policy() -> tuple[int, float]:
+    """Resolve ``(attempts, base_backoff)`` from env, clamping out-of-range values.
+
+    Out-of-range knobs are clamped *and warned* (not silently coerced), mirroring
+    the unparseable-value path: attempts to ``[1, _MAX_CONNECT_RETRIES]``, backoff
+    to ``>= 0``. The per-sleep ``_CONNECT_BACKOFF_CAP`` is a separate fixed ceiling.
+    """
+    raw_retries = _connect_env("RETRIES", _DEFAULT_CONNECT_RETRIES, int)
+    attempts = min(_MAX_CONNECT_RETRIES, max(1, raw_retries))
+    if attempts != raw_retries:
+        logger.warning(
+            "PG-queue: WORKER_PG_QUEUE_CONNECT_RETRIES=%d out of range [1, %d]; "
+            "clamped to %d",
+            raw_retries,
+            _MAX_CONNECT_RETRIES,
+            attempts,
+        )
+    raw_backoff = _connect_env("BACKOFF", _DEFAULT_CONNECT_BACKOFF, float)
+    backoff = max(0.0, raw_backoff)
+    if backoff != raw_backoff:
+        logger.warning(
+            "PG-queue: WORKER_PG_QUEUE_CONNECT_BACKOFF=%s is negative; clamped to "
+            "0.0 (retry without sleep)",
+            raw_backoff,
+        )
+    return attempts, backoff
+
+
 def create_pg_connection(env_prefix: str = "DB_") -> PgConnection:
     """Open a direct Postgres connection from ``{env_prefix}*`` env.
 
@@ -73,8 +104,11 @@ def create_pg_connection(env_prefix: str = "DB_") -> PgConnection:
 
     A transient ``OperationalError`` is retried with exponential backoff
     (``WORKER_PG_QUEUE_CONNECT_RETRIES`` total attempts, base
-    ``WORKER_PG_QUEUE_CONNECT_BACKOFF`` seconds). Non-operational errors
-    (e.g. a bad ``options`` string) are not transient and raise immediately.
+    ``WORKER_PG_QUEUE_CONNECT_BACKOFF`` seconds, each sleep capped at
+    ``_CONNECT_BACKOFF_CAP``). Non-operational errors (e.g. a bad ``options``
+    string) are not transient and raise immediately. **Permanent** misconfigs
+    (auth failure, unknown database, bad host) also surface as ``OperationalError``,
+    so they are retried-then-raised — the final ``logger.error`` makes them obvious.
     """
     host = os.getenv(f"{env_prefix}HOST", "unstract-db")
     port = os.getenv(f"{env_prefix}PORT", "5432")
@@ -82,8 +116,7 @@ def create_pg_connection(env_prefix: str = "DB_") -> PgConnection:
     user = os.getenv(f"{env_prefix}USER", "unstract_dev")
     schema = os.getenv(f"{env_prefix}SCHEMA", "unstract")
 
-    attempts = max(1, _connect_env("RETRIES", _DEFAULT_CONNECT_RETRIES, int))
-    backoff = max(0.0, _connect_env("BACKOFF", _DEFAULT_CONNECT_BACKOFF, float))
+    attempts, backoff = _connect_retry_policy()
 
     for attempt in range(1, attempts + 1):
         try:
@@ -96,32 +129,30 @@ def create_pg_connection(env_prefix: str = "DB_") -> PgConnection:
                 options=f"-c search_path={schema}",
             )
         except psycopg2.OperationalError:
-            if attempt < attempts:
-                sleep_for = min(backoff * (2 ** (attempt - 1)), _CONNECT_BACKOFF_CAP)
-                logger.warning(
-                    "PG-queue: connect attempt %d/%d failed "
-                    "(host=%s port=%s dbname=%s schema=%s); retrying in %.2fs",
-                    attempt,
+            if attempt >= attempts:
+                # Every attempt exhausted — keep the failure self-identifying so a
+                # misconfigured DB_* var is obvious. Secrets (password) omitted.
+                logger.error(
+                    "PG-queue: failed to connect to Postgres after %d attempt(s) "
+                    "(host=%s port=%s dbname=%s schema=%s, env_prefix=%r)",
                     attempts,
                     host,
                     port,
                     dbname,
                     schema,
-                    sleep_for,
+                    env_prefix,
                 )
-                time.sleep(sleep_for)
-                continue
-            # Final attempt exhausted — keep the failure self-identifying so a
-            # misconfigured DB_* var is obvious. Secrets (password) omitted.
-            logger.error(
-                "PG-queue: failed to connect to Postgres after %d attempt(s) "
-                "(host=%s port=%s dbname=%s schema=%s, env_prefix=%r)",
+                raise
+            sleep_for = min(backoff * (2 ** (attempt - 1)), _CONNECT_BACKOFF_CAP)
+            logger.warning(
+                "PG-queue: connect attempt %d/%d failed "
+                "(host=%s port=%s dbname=%s schema=%s); retrying in %.2fs",
+                attempt,
                 attempts,
                 host,
                 port,
                 dbname,
                 schema,
-                env_prefix,
+                sleep_for,
             )
-            raise
-    raise AssertionError("unreachable: loop returns or raises")  # pragma: no cover
+            time.sleep(sleep_for)

@@ -16,10 +16,9 @@ primitive is **injected** (composition, not inheritance) via :class:`QueueTransp
   ``dispatch_with_callback`` + the reply_key/timeout orchestration and the
   never-raises contract (timeout/failure → ``ExecutionResult.failure``). It calls
   ``transport.enqueue(...)`` and ``transport.wait_for_result(...)``.
-- :func:`resolve_pg_transport` — the gate: a master kill-switch (its boolean value
-  supplied by the caller — a Django setting on the backend, an env var on the
-  workers) then the single ``pg_queue_enabled`` Flipt flag, bucketed per org. Fails
-  closed to Celery.
+- :func:`resolve_pg_transport` — the gate: the single ``pg_queue_enabled`` Flipt
+  flag (bucketed per org) is the sole control. Fails closed to Celery on a
+  blind/unreachable Flipt or any error.
 - :class:`RoutingExecutionDispatcher` — picks PG-vs-Celery per call (instant
   rollout/rollback) for every mode; the Celery dispatcher, the PG dispatcher and the
   per-side ``resolve`` are all injected.
