@@ -553,9 +553,8 @@ services:
   # still hand off to the Celery executor (tool-execution RPC) / Celery
   # notifications, so they keep a rabbitmq dependency until the executor and
   # notifications themselves move to PG. Each maps 1:1 to a future K8s Deployment.
-  # Executions still route to Celery until the backend gate
-  # (PG_QUEUE_TRANSPORT_ENABLED) + Flipt flag are flipped — that is the ramp,
-  # not this change.
+  # Executions still route to Celery until the single `pg_queue_enabled` Flipt
+  # flag is ramped — that is the rollout, not this change.
   # ===========================================================================
 
   # Orchestrator consumer for API-deployment executions (async_execute_bin_api).

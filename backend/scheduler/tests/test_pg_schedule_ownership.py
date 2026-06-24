@@ -1,9 +1,9 @@
 """Unit tests for the schedule-ownership ramp control (Phase 9, ②c).
 
-DB-free: Flipt, settings, and the ORM (``PgPeriodicSchedule`` / ``PeriodicTask``)
-are mocked. These pin the fail-closed rollout decision and — the load-bearing
-property — that handing a schedule to PG disables its Beat ``PeriodicTask`` in
-the same step (no double-fire), with pause state preserved.
+DB-free: Flipt and the ORM (``PgPeriodicSchedule`` / ``PeriodicTask``) are mocked.
+These pin the fail-closed rollout decision and — the load-bearing property — that
+handing a schedule to PG disables its Beat ``PeriodicTask`` in the same step (no
+double-fire), with pause state preserved.
 """
 
 import contextlib
@@ -17,32 +17,16 @@ _PID = "11111111-1111-1111-1111-111111111111"
 _ORG = "org_abc"
 
 
-def _gate(on: bool):
-    s = MagicMock()
-    s.PG_QUEUE_TRANSPORT_ENABLED = on
-    return patch("scheduler.ownership.settings", s)
-
-
 class TestResolveScheduleOwner:
-    def test_gate_off_is_beat(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with _gate(False), patch(
-            "scheduler.ownership.check_feature_flag_status"
-        ) as flag:
-            assert ownership.resolve_schedule_owner(_PID, _ORG) is False
-            flag.assert_not_called()  # gate off → Flipt never consulted
-
     def test_flipt_unavailable_is_beat(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "false")
-        with _gate(True), patch(
-            "scheduler.ownership.check_feature_flag_status"
-        ) as flag:
+        with patch("scheduler.ownership.check_feature_flag_status") as flag:
             assert ownership.resolve_schedule_owner(_PID, _ORG) is False
             flag.assert_not_called()
 
     def test_flag_true_is_pg(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with _gate(True), patch(
+        with patch(
             "scheduler.ownership.check_feature_flag_status", return_value=True
         ) as flag:
             assert ownership.resolve_schedule_owner(_PID, _ORG) is True
@@ -53,14 +37,14 @@ class TestResolveScheduleOwner:
 
     def test_flag_false_is_beat(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with _gate(True), patch(
+        with patch(
             "scheduler.ownership.check_feature_flag_status", return_value=False
         ):
             assert ownership.resolve_schedule_owner(_PID, _ORG) is False
 
     def test_flipt_error_fails_closed_to_beat(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with _gate(True), patch(
+        with patch(
             "scheduler.ownership.check_feature_flag_status",
             side_effect=RuntimeError("flipt down"),
         ):
@@ -159,7 +143,8 @@ class TestReconcileAtomicityRealDB:
     """The load-bearing invariant: the pg_owned write and the PeriodicTask write
     are ONE transaction — if the PeriodicTask update fails, pg_owned rolls back
     (so a schedule can't end up pg_owned with Beat still enabled). Needs a real
-    DB (the mocked atomic() can't prove rollback); skips if unreachable."""
+    DB (the mocked atomic() can't prove rollback); skips if unreachable.
+    """
 
     def test_periodictask_update_failure_rolls_back_pg_owned(self):
         import uuid

@@ -135,22 +135,17 @@ class QueueTransport(Protocol):
 def resolve_pg_transport(
     context: ExecutionContext,
     *,
-    master_gate_enabled: bool,
     flag_key: str = PG_QUEUE_FLAG_KEY,
 ) -> bool:
     """True → route this executor dispatch over PG; False → Celery (default).
 
-    Master-gated by ``master_gate_enabled`` (the caller supplies its value — a Django
-    setting on the backend, an env var on the workers), then the single
-    ``pg_queue_enabled`` Flipt flag, bucketed per org. **Fails closed to Celery** on a
-    closed gate, a blind Flipt, or any error — so the executor never silently loses
-    its transport.
+    Gated by the single ``pg_queue_enabled`` Flipt flag, bucketed per org.
+    **Fails closed to Celery** on a blind Flipt or any error — so the executor
+    never silently loses its transport.
     """
-    if not master_gate_enabled:
-        return False
     if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
         logger.warning(
-            "resolve_pg_transport: gate ON but FLIPT_SERVICE_AVAILABLE != true "
+            "resolve_pg_transport: FLIPT_SERVICE_AVAILABLE != true "
             "(Flipt blind); using Celery"
         )
         return False

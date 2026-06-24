@@ -180,42 +180,37 @@ class TestSharedDispatchContract:
         assert t.enqueue_calls[0]["task_id"] == handle.id
 
 
-# --- Shared gate: resolve_pg_transport (master-gated, then Flipt, fail-closed) ---
+# --- Shared gate: resolve_pg_transport (single Flipt flag, fail-closed) ---
 
 
 class TestResolvePgTransport:
-    def test_master_gate_off_is_celery(self):
-        with patch(f"{_SMOD}.check_feature_flag_status") as flag:
-            assert resolve_pg_transport(_ctx(), master_gate_enabled=False) is False
-            flag.assert_not_called()
-
     def test_flipt_unavailable_is_celery(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "false")
         with patch(f"{_SMOD}.check_feature_flag_status") as flag:
-            assert resolve_pg_transport(_ctx(), master_gate_enabled=True) is False
+            assert resolve_pg_transport(_ctx()) is False
             flag.assert_not_called()
 
     def test_flag_true_is_pg_keyed_on_org(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
         with patch(f"{_SMOD}.check_feature_flag_status", return_value=True) as flag:
-            assert resolve_pg_transport(_ctx("orgX"), master_gate_enabled=True) is True
+            assert resolve_pg_transport(_ctx("orgX")) is True
             assert flag.call_args.kwargs["entity_id"] == "orgX"
             assert flag.call_args.kwargs["flag_key"] == "pg_queue_enabled"
 
     def test_flag_false_is_celery(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
         with patch(f"{_SMOD}.check_feature_flag_status", return_value=False):
-            assert resolve_pg_transport(_ctx(), master_gate_enabled=True) is False
+            assert resolve_pg_transport(_ctx()) is False
 
     def test_flipt_error_fails_closed(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
         with patch(f"{_SMOD}.check_feature_flag_status", side_effect=RuntimeError("x")):
-            assert resolve_pg_transport(_ctx(), master_gate_enabled=True) is False
+            assert resolve_pg_transport(_ctx()) is False
 
     def test_org_less_context_buckets_on_run_id(self, monkeypatch):
         monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
         with patch(f"{_SMOD}.check_feature_flag_status", return_value=True) as flag:
-            assert resolve_pg_transport(_ctx(org=None), master_gate_enabled=True) is True
+            assert resolve_pg_transport(_ctx(org=None)) is True
         assert flag.call_args.kwargs["entity_id"] == "run-1"
         assert "organization_id" not in flag.call_args.kwargs["context"]
 
@@ -328,23 +323,22 @@ class TestWorkersAdapter:
         with patch(f"{_WMOD}.PgResultBackend", return_value=rb):
             assert PgClientQueueTransport().wait_for_result("rk", 5) is None
 
-    def test_resolve_reads_env_master_gate(self, monkeypatch):
-        monkeypatch.setenv("PG_QUEUE_TRANSPORT_ENABLED", "true")
+    def test_resolve_delegates_to_shared_flipt_resolver_true(self):
         with patch(f"{_WMOD}.resolve_pg_transport", return_value=True) as r:
             assert resolve_executor_transport(self._ctx()) is True
-        assert r.call_args.kwargs["master_gate_enabled"] is True
+        r.assert_called_once()
+        # No env master-gate is threaded any more — Flipt is the sole gate.
+        assert "master_gate_enabled" not in r.call_args.kwargs
 
-    def test_resolve_env_off_is_false(self, monkeypatch):
-        monkeypatch.delenv("PG_QUEUE_TRANSPORT_ENABLED", raising=False)
-        with patch(f"{_WMOD}.resolve_pg_transport", return_value=False) as r:
-            resolve_executor_transport(self._ctx())
-        assert r.call_args.kwargs["master_gate_enabled"] is False
+    def test_resolve_delegates_to_shared_flipt_resolver_false(self):
+        with patch(f"{_WMOD}.resolve_pg_transport", return_value=False):
+            assert resolve_executor_transport(self._ctx()) is False
 
     def test_factory_wires_routing_with_workers_transport(self):
         d = get_executor_dispatcher(celery_app="app")
         assert isinstance(d, RoutingExecutionDispatcher)
         # The PG dispatcher is wired with the workers psycopg2 transport, and the gate
-        # is the workers env-master-gate resolver.
+        # is the workers' Flipt resolver.
         assert isinstance(d._pg._transport, PgClientQueueTransport)
         assert d._resolve is resolve_executor_transport
 

@@ -8,25 +8,23 @@ in the dispatched task's payload (see ``workers/queue_backend/pg_queue/
 row: the payload is the single carrier, durable for PG via the queue row's
 JSONB, and the giant shared table is never migrated for this work.
 
-PR 3 (this change) replaces PR 1's hardwired Celery with a Flipt evaluation:
+The transport is resolved from a single Flipt evaluation:
 
-  master-gate (env) → Flipt boolean (``pg_queue_enabled``) → transport
+  Flipt boolean (``pg_queue_enabled``) → transport
 
-Routing onto PG needs **all three** of: the env master-gate on, Flipt reachable
-(``FLIPT_SERVICE_AVAILABLE=true``), and the flag enabled for this execution.
+Routing onto PG needs **both**: Flipt reachable (``FLIPT_SERVICE_AVAILABLE=true``)
+and the single ``pg_queue_enabled`` flag enabled for this execution. The flag is the
+sole rollout control — flip it to ramp PG, flip it off (or a Flipt outage) to fall
+back to Celery.
 
-- **Master-gate** (``settings.PG_QUEUE_TRANSPORT_ENABLED``, default off): until
-  ops flips it on, Flipt is never consulted and every execution rides Celery.
-  This is both the instant global kill-switch *and* the deploy-ordering safety —
-  the flag stays inert until PG consumers are actually running in the fleet.
 - **Flipt** decides per-execution: ``entity_id = execution_id`` drives the
   percentage-rollout hashing (an execution resolves exactly once, so it can
   never re-bucket mid-flight); ``context`` carries org/workflow/pipeline for
   segment rules. The flag contract is fixed in 9e-design §2.
-- **Fail-closed to Celery**: a Flipt outage must never break execution creation,
-  mirroring ``normalize_transport`` on the read side. The gate-ON path logs its
-  decision so a "gate on but still all Celery" situation (e.g. a blind Flipt)
-  is visible rather than silent.
+- **Fail-closed to Celery**: a blind/unreachable Flipt, a missing org, or any error
+  must never break execution creation — it resolves to Celery, mirroring
+  ``normalize_transport`` on the read side. The decision is logged so a "flag on but
+  still all Celery" situation (e.g. a blind Flipt) is visible rather than silent.
 """
 
 from __future__ import annotations
@@ -35,7 +33,6 @@ import logging
 import os
 from typing import TYPE_CHECKING
 
-from django.conf import settings
 from pg_queue.flags import PG_QUEUE_FLAG_KEY
 
 from unstract.core.data_models import WorkflowTransport
@@ -78,21 +75,11 @@ def resolve_transport(
         pipeline_id: Optional, carried in ``context`` for future segment rules.
 
     Returns:
-        A :class:`WorkflowTransport` value string — ``"pg_queue"`` only when the
-        master-gate is on, Flipt is reachable, and Flipt says yes for this
-        execution; ``"celery"`` otherwise (including any error — fail-closed).
+        A :class:`WorkflowTransport` value string — ``"pg_queue"`` only when Flipt
+        is reachable and says yes for this execution; ``"celery"`` otherwise
+        (including any error — fail-closed).
     """
     celery = WorkflowTransport.CELERY.value
-
-    # Master-gate: until ops sets PG_QUEUE_TRANSPORT_ENABLED=true, never consult
-    # Flipt — every execution rides Celery (kill-switch + deploy-ordering safety).
-    # Intentionally unlogged: this is the steady state for every execution while
-    # the gate is off, so a log here would be pure noise.
-    if not settings.PG_QUEUE_TRANSPORT_ENABLED:
-        return celery
-
-    # Gate is ON (canary/rollout). From here the decision is logged so a
-    # "gate on but everything still Celery" situation cannot hide.
 
     # No org context → per-org segment matching can't be trusted (str(None) would
     # ship a bogus "None" org into the Flipt context and mis-segment). The view
@@ -107,12 +94,12 @@ def resolve_transport(
 
     # FliptClient returns False for ALL flags when the service is marked
     # unavailable — indistinguishable from "rollout says no". Surface it loudly so
-    # a blind Flipt under an ON gate doesn't masquerade as a healthy 100%-Celery
-    # canary. Parse exactly as FliptClient does (``.lower()``, no ``.strip()``)
-    # so the two can never disagree on a value like ``" true"``.
+    # a blind Flipt doesn't masquerade as a healthy 100%-Celery rollout. Parse
+    # exactly as FliptClient does (``.lower()``, no ``.strip()``) so the two can
+    # never disagree on a value like ``" true"``.
     if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
         logger.warning(
-            "resolve_transport: gate ON but FLIPT_SERVICE_AVAILABLE != true "
+            "resolve_transport: FLIPT_SERVICE_AVAILABLE != true "
             "(Flipt is blind) for execution %s; forcing celery",
             execution_id,
         )
