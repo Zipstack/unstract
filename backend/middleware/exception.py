@@ -73,7 +73,8 @@ def _enrich_not_found_detail(response: Response | None, context: Any) -> None:
         return
     label = str(model._meta.verbose_name).capitalize()
     for err in data.get("errors", []):
-        if err.get("code") == "not_found":
+        # Guard: a raise here would mask the original error with a 500.
+        if isinstance(err, dict) and err.get("code") == "not_found":
             err["detail"] = f"{label} not found."
 
 

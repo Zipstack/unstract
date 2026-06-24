@@ -57,3 +57,11 @@ def test_non_404_untouched():
 
 def test_none_response_is_safe():
     _enrich_not_found_detail(None, {})
+
+
+def test_non_dict_error_item_does_not_raise():
+    resp = _Resp(
+        404, {"errors": ["unexpected", {"code": "not_found", "detail": "Not found."}]}
+    )
+    _enrich_not_found_detail(resp, {"view": _View()})
+    assert resp.data["errors"][1]["detail"] == "Lookup definition not found."
