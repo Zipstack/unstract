@@ -4,18 +4,16 @@ The gate + reply_key/timeout orchestration + routing live ONCE in
 ``unstract.workflow_execution.executor_rpc`` (shared with the backend). This module
 is the thin psycopg2 half: a :class:`PgClientQueueTransport` that enqueues via
 :class:`~queue_backend.pg_queue.client.PgQueueClient` and polls via
-:class:`~queue_backend.pg_queue.result_backend.PgResultBackend`, plus the per-side
-gate (master switch = the ``PG_QUEUE_TRANSPORT_ENABLED`` env, the workers analogue of
-the backend's Django setting) and the :func:`get_executor_dispatcher` factory.
+:class:`~queue_backend.pg_queue.result_backend.PgResultBackend`, plus the
+:func:`get_executor_dispatcher` factory.
 
-Zero-regression: gate off ⇒ the routing dispatcher delegates every mode to the
-unchanged Celery ``ExecutionDispatcher`` and no ``pg_task_result`` row is created.
+Zero-regression: with the ``pg_queue_enabled`` Flipt flag off the routing dispatcher
+delegates every mode to the unchanged Celery ``ExecutionDispatcher`` and no
+``pg_task_result`` row is created.
 """
 
 from __future__ import annotations
 
-import logging
-import os
 from typing import TYPE_CHECKING
 
 from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
@@ -46,33 +44,13 @@ __all__ = [
     "resolve_executor_transport",
 ]
 
-logger = logging.getLogger(__name__)
-
-# Master kill-switch + deploy-ordering gate — the workers analogue of the backend's
-# ``settings.PG_QUEUE_TRANSPORT_ENABLED``, read straight from the env here.
-_MASTER_GATE_ENV = "PG_QUEUE_TRANSPORT_ENABLED"
-_TRUE = "true"
-_FALSE = "false"
-
 
 def resolve_executor_transport(context: ExecutionContext) -> bool:
     """True → route this executor dispatch over PG; False → Celery (default).
 
-    The workers gate: master switch = the ``PG_QUEUE_TRANSPORT_ENABLED`` env, then the
-    shared Flipt eval (single ``pg_queue_enabled`` flag, fail-closed).
+    The single ``pg_queue_enabled`` Flipt flag (fail-closed).
     """
-    raw = os.environ.get(_MASTER_GATE_ENV, _FALSE)
-    master = raw.strip().lower() == _TRUE
-    if not master and raw.strip().lower() != _FALSE:
-        # A fat-fingered value ("1"/"yes"/"on"/" True ") parses to OFF — warn so it
-        # isn't a silent no-op for an operator who expected it to enable PG.
-        logger.warning(
-            "resolve_executor_transport: %s=%r is not 'true'/'false' — treating as "
-            "OFF (PG transport disabled); use exactly 'true' to enable",
-            _MASTER_GATE_ENV,
-            raw,
-        )
-    return resolve_pg_transport(context, master_gate_enabled=master)
+    return resolve_pg_transport(context)
 
 
 class PgClientQueueTransport(QueueTransport):

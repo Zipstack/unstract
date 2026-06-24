@@ -4,8 +4,8 @@ The dispatch contract (never-raises / result interpretation), the routing, and t
 Flipt gate matrix live ONCE in the shared module and are covered in
 ``workers/tests/test_executor_rpc.py`` against a fake transport. This suite pins the
 **backend half**: the :class:`DjangoQueueTransport` (enqueue via the ORM, poll
-``PgTaskResult`` → ``ExecResultRow``), the per-side gate (master switch =
-``settings.PG_QUEUE_TRANSPORT_ENABLED``), and the factory wiring.
+``PgTaskResult`` → ``ExecResultRow``), the resolver's delegation to the shared
+single-Flipt-flag gate, and the factory wiring.
 """
 
 from unittest.mock import MagicMock, patch
@@ -95,31 +95,22 @@ class TestDjangoQueueTransportWait:
 
 
 class TestResolveExecutorTransport:
-    @staticmethod
-    def _gate(on: bool):
-        s = MagicMock()
-        s.PG_QUEUE_TRANSPORT_ENABLED = on
-        return patch(f"{_MOD}.settings", s)
-
-    def test_reads_settings_master_gate_on(self):
-        with self._gate(True), patch(
-            f"{_MOD}.resolve_pg_transport", return_value=True
-        ) as r:
+    def test_delegates_to_shared_flipt_resolver_true(self):
+        with patch(f"{_MOD}.resolve_pg_transport", return_value=True) as r:
             assert resolve_executor_transport(_ctx()) is True
-        assert r.call_args.kwargs["master_gate_enabled"] is True
+        r.assert_called_once()
+        # No master-gate is threaded any more — Flipt is the sole gate.
+        assert "master_gate_enabled" not in r.call_args.kwargs
 
-    def test_reads_settings_master_gate_off(self):
-        with self._gate(False), patch(
-            f"{_MOD}.resolve_pg_transport", return_value=False
-        ) as r:
-            resolve_executor_transport(_ctx())
-        assert r.call_args.kwargs["master_gate_enabled"] is False
+    def test_delegates_to_shared_flipt_resolver_false(self):
+        with patch(f"{_MOD}.resolve_pg_transport", return_value=False):
+            assert resolve_executor_transport(_ctx()) is False
 
 
 class TestFactoryWiring:
     def test_factory_wires_routing_with_django_transport(self):
         d = get_executor_dispatcher(celery_app="app")
         assert isinstance(d, RoutingExecutionDispatcher)
-        # PG dispatcher uses the backend ORM transport; gate = the settings resolver.
+        # PG dispatcher uses the backend ORM transport; gate = the Flipt resolver.
         assert isinstance(d._pg._transport, DjangoQueueTransport)
         assert d._resolve is resolve_executor_transport

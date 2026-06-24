@@ -3,19 +3,18 @@
 The gate + reply_key/timeout orchestration + routing live ONCE in
 ``unstract.workflow_execution.executor_rpc`` (shared with the workers). This module
 is the thin Django half: a :class:`DjangoQueueTransport` that enqueues via the ORM
-(``enqueue_task``) and polls ``PgTaskResult``, plus the per-side gate (master switch =
-``settings.PG_QUEUE_TRANSPORT_ENABLED``) and the :func:`get_executor_dispatcher`
+(``enqueue_task``) and polls ``PgTaskResult``, plus the :func:`get_executor_dispatcher`
 factory that wires them together.
 
-Zero-regression: gate off ⇒ the routing dispatcher delegates every mode to the
-unchanged Celery ``ExecutionDispatcher`` and no ``pg_task_result`` row is created.
+Zero-regression: with the ``pg_queue_enabled`` Flipt flag off the routing dispatcher
+delegates every mode to the unchanged Celery ``ExecutionDispatcher`` and no
+``pg_task_result`` row is created.
 """
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from django.conf import settings
 from django.db import close_old_connections
 
 from pg_queue.models import PgTaskResult
@@ -48,12 +47,9 @@ __all__ = [
 def resolve_executor_transport(context: ExecutionContext) -> bool:
     """True → route this executor dispatch over PG; False → Celery (default).
 
-    The backend gate: master switch ``settings.PG_QUEUE_TRANSPORT_ENABLED``, then the
-    shared Flipt eval (single ``pg_queue_enabled`` flag, fail-closed).
+    The single ``pg_queue_enabled`` Flipt flag (fail-closed).
     """
-    return resolve_pg_transport(
-        context, master_gate_enabled=settings.PG_QUEUE_TRANSPORT_ENABLED
-    )
+    return resolve_pg_transport(context)
 
 
 class DjangoQueueTransport(QueueTransport):

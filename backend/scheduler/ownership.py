@@ -12,9 +12,9 @@ Doing both in one transaction is what makes "never double-fires" real (it was
 ``PeriodicTask`` disabled, so the two can't both fire.
 
 Inert by default: ``resolve_schedule_owner`` fails closed to Beat
-(``pg_owned=False``) until ops turns the master gate on AND ramps the single
-``pg_queue_enabled`` Flipt flag — so reconciling on every schedule edit is a
-no-op (everything stays Beat-owned) until the rollout starts.
+(``pg_owned=False``) until ops ramps the single ``pg_queue_enabled`` Flipt flag — so
+reconciling on every schedule edit is a no-op (everything stays Beat-owned) until the
+rollout starts.
 """
 
 from __future__ import annotations
@@ -22,7 +22,6 @@ from __future__ import annotations
 import logging
 import os
 
-from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
 from django_celery_beat.models import PeriodicTask
@@ -41,19 +40,14 @@ logger = logging.getLogger(__name__)
 def resolve_schedule_owner(pipeline_id: str, organization_id: str | None) -> bool:
     """True → the PG scheduler owns this schedule; False → Celery Beat does.
 
-    Mirrors ``resolve_transport``: master-gated by ``PG_QUEUE_TRANSPORT_ENABLED``
-    (shared PG kill-switch), then the single ``pg_queue_enabled`` Flipt flag, keyed
-    on ``pipeline_id`` for a stable percentage bucket. **Fails closed to Beat**
-    on a closed gate, a blind Flipt, or any error — so a schedule never silently
-    loses its firer.
+    Mirrors ``resolve_transport``: gated by the single ``pg_queue_enabled`` Flipt
+    flag, keyed on ``pipeline_id`` for a stable percentage bucket. **Fails closed to
+    Beat** on a blind Flipt or any error — so a schedule never silently loses its
+    firer.
     """
-    # Master gate off → never consult Flipt; every schedule stays on Beat.
-    if not settings.PG_QUEUE_TRANSPORT_ENABLED:
-        return False
-
     if os.environ.get("FLIPT_SERVICE_AVAILABLE", "false").lower() != "true":
         logger.warning(
-            "resolve_schedule_owner: gate ON but FLIPT_SERVICE_AVAILABLE != true "
+            "resolve_schedule_owner: FLIPT_SERVICE_AVAILABLE != true "
             "(Flipt blind) for pipeline %s; leaving on Beat",
             pipeline_id,
         )
