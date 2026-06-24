@@ -33,6 +33,28 @@ check_dependencies() {
     echo "$red_text""docker not found. Exiting.""$default_text"
     exit 1
   fi
+  if ! docker info >/dev/null 2>&1; then
+    echo "$red_text""Cannot connect to the Docker daemon.""$default_text"
+    case "$(uname -s)" in
+      Linux*)
+        echo "  On Linux (daemon access via the 'docker' group):"
+        echo "    - Check group membership:    getent group docker"
+        echo "    - Add your user to it:       sudo usermod -aG docker \$USER"
+        echo "    - Activate in current shell: newgrp docker"
+        echo "    - For new shells, a full desktop logout (not just terminal close) is required."
+        ;;
+      Darwin*)
+        echo "  On macOS: ensure Docker Desktop is running (whale icon in the menu bar)."
+        ;;
+      MINGW*|MSYS*|CYGWIN*)
+        echo "  On Windows: ensure Docker Desktop is running and WSL integration is enabled if applicable."
+        ;;
+      *)
+        echo "  Ensure the Docker daemon is running and your user can reach its socket."
+        ;;
+    esac
+    exit 1
+  fi
   # For 'docker compose' vs 'docker-compose', see https://stackoverflow.com/a/66526176.
   docker compose >/dev/null 2>&1
   if [ $? -eq 0 ]; then
