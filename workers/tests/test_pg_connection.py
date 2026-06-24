@@ -118,11 +118,11 @@ class TestCreatePgConnectionRetry:
         # path (env absent → 3 attempts / 0.5s base) that production actually uses.
         monkeypatch.delenv("WORKER_PG_QUEUE_CONNECT_RETRIES", raising=False)
         monkeypatch.delenv("WORKER_PG_QUEUE_CONNECT_BACKOFF", raising=False)
-        monkeypatch.setattr(
-            conn_mod.psycopg2,
-            "connect",
-            lambda **_kwargs: (_ for _ in ()).throw(psycopg2.OperationalError("down")),
-        )
+
+        def connect(**_kwargs):
+            raise psycopg2.OperationalError("down")
+
+        monkeypatch.setattr(conn_mod.psycopg2, "connect", connect)
         sleeps: list[float] = []
         monkeypatch.setattr(conn_mod.time, "sleep", lambda s: sleeps.append(s))
         with pytest.raises(psycopg2.OperationalError):
