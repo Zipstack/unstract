@@ -19,7 +19,7 @@ dependencies = [
     "cron-descriptor==1.4.0", # For cron string description
     "cryptography>=48.0.1",
     "django==4.2.30",
-    "djangorestframework==3.14.0",
+    "djangorestframework==3.17.1",
     "django-cors-headers==4.3.1",
     # Pinning django-celery-beat to avoid build issues
     "django-celery-beat==2.5.0",
