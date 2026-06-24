@@ -51,22 +51,17 @@ class EnvHelper:
             )
         try:
             provider = FileStorageProvider(file_storage_creds[CredentialKeyword.PROVIDER])
-            credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
-            if storage_type == StorageType.PERMANENT:
-                file_storage = PermanentFileStorage(provider=provider, **credentials)
-            elif storage_type == StorageType.SHARED_TEMPORARY:
-                file_storage = SharedTemporaryFileStorage(
-                    provider=provider, **credentials
-                )
-            else:
-                raise NotImplementedError()
-            return file_storage
-        except (KeyError, TypeError, ValueError) as e:
+        except (KeyError, ValueError) as e:
             logger.error(f"Invalid storage configuration in env: {str(e)}")
             logger.error(f"The configuration format is {EnvHelper.ENV_CONFIG_FORMAT}")
             raise FileStorageError(
                 f"Invalid storage configuration in env var '{env_name}': {e}. "
                 f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
             ) from e
-        except FileStorageError as e:
-            raise e
+        credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
+        if storage_type == StorageType.PERMANENT:
+            return PermanentFileStorage(provider=provider, **credentials)
+        elif storage_type == StorageType.SHARED_TEMPORARY:
+            return SharedTemporaryFileStorage(provider=provider, **credentials)
+        else:
+            raise NotImplementedError()
