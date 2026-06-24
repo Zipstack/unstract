@@ -59,6 +59,11 @@ class EnvHelper:
                 f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
             ) from e
         credentials = file_storage_creds.get(CredentialKeyword.CREDENTIALS, {})
+        if not isinstance(credentials, dict):
+            raise FileStorageError(
+                f"Env var '{env_name}' field '{CredentialKeyword.CREDENTIALS}' must be a JSON object. "
+                f"Expected: {EnvHelper.ENV_CONFIG_FORMAT}"
+            )
         if storage_type == StorageType.PERMANENT:
             return PermanentFileStorage(provider=provider, **credentials)
         elif storage_type == StorageType.SHARED_TEMPORARY:
