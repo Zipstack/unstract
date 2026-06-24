@@ -703,6 +703,19 @@ class LegacyExecutor(BaseExecutor):
         )
 
         output_map = structured_output.get(PSKeys.OUTPUT, {}) or {}
+        if not isinstance(output_map, dict):
+            # Single-pass can return a non-dict (e.g. a top-level JSON array) when the
+            # LLM emits a truncated/runaway response. Fail clearly instead of crashing
+            # on .values(), and keep the malformed shape from flowing downstream as a
+            # success.
+            return ExecutionResult.failure(
+                error=(
+                    f"Single-pass extraction returned a {type(output_map).__name__}, "
+                    "expected a field map; the LLM likely produced a truncated or "
+                    "runaway response (check output-token usage)."
+                ),
+                metadata={"usage_records": pipeline_records},
+            )
         answered = sum(1 for v in output_map.values() if v not in (None, "", [], {}))
         shim.stream_log(f"Pipeline completed: {answered}/{len(outputs)} prompts answered")
         out_metadata = {
