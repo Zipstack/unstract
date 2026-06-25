@@ -126,6 +126,30 @@ jobs:
           echo "latest_tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Base release: $LATEST_TAG"
 
+      - name: Ensure there are new commits to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.get-latest.outputs.latest_tag }}
+          BRANCH: ${{ github.ref_name }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          # Reject a no-op release: if the branch has no commits beyond the last release
+          # tag (e.g. main is already at v0.177.0), there is nothing to release. This
+          # prevents empty releases such as v0.177.1 pointing at the same commit as
+          # v0.177.0. The workflow has no local checkout, so use the compare API's
+          # `ahead_by` (commits on BRANCH not in LATEST_TAG).
+          AHEAD=$(gh api "repos/${{ github.repository }}/compare/${LATEST_TAG}...${BRANCH}" --jq '.ahead_by')
+          if [[ "$AHEAD" -eq 0 ]]; then
+            if [[ "$DRY_RUN" == "true" ]]; then
+              echo "::warning::No new commits on '$BRANCH' since $LATEST_TAG — a real run would be rejected (nothing to release)."
+            else
+              echo "::error::No new commits on '$BRANCH' since $LATEST_TAG — nothing to release. Aborting to avoid an empty release."
+              exit 1
+            fi
+          else
+            echo "✅ $AHEAD new commit(s) on '$BRANCH' since $LATEST_TAG"
+          fi
+
       - name: Compute next version
         id: compute-version
         env:
