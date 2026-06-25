@@ -348,12 +348,13 @@ function useMainAppRoutes() {
     </>
   );
 
-  if (OnboardProduct && Object.keys(PRODUCT_NAMES)?.length) {
+  // Gate on the exact value passed as `type` (PRODUCT_NAMES.unstract) rather
+  // than on the map being non-empty, so we never wrap every route in
+  // OnboardProduct with an undefined product type.
+  const unstractProduct = PRODUCT_NAMES?.unstract;
+  if (OnboardProduct && unstractProduct) {
     return (
-      <Route
-        path=""
-        element={<OnboardProduct type={PRODUCT_NAMES?.unstract} />}
-      >
+      <Route path="" element={<OnboardProduct type={unstractProduct} />}>
         <Route path="" element={<UnstractSubscriptionCheck />}>
           {routes}
         </Route>

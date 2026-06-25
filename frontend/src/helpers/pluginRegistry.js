@@ -1,7 +1,20 @@
 import { lazy } from "react";
 
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
-import { isModuleMissing } from "./pluginLoader.js";
+
+// The only error that means "this plugin was not shipped" is the build-time
+// stub vite.config.js's `optionalPluginImports` resolves a missing optional
+// plugin to: `throw new Error('Optional plugin not available')`. We match that
+// exact signal and nothing else.
+//
+// We deliberately do NOT reuse the broader `isModuleMissing` here: it also
+// matches "Failed to fetch dynamically imported module", which is a TRANSIENT
+// chunk-load failure of a plugin that IS shipped (CDN/origin blip, stale hashed
+// asset). Treating that as "absent" would silently render NotFound for a real,
+// momentarily-unreachable route instead of surfacing the failure.
+function isPluginAbsent(err) {
+  return (err?.message || "").includes("Optional plugin not available");
+}
 
 // Wrap an enterprise plugin's dynamic import as a lazy route element. The
 // plugin chunk is fetched only when the element actually renders (i.e. on
@@ -14,17 +27,17 @@ import { isModuleMissing } from "./pluginLoader.js";
 // fail the build), and vite.config.js's `optionalPluginImports` can resolve
 // the path to its stub in OSS builds.
 //
-// Registration is unconditional. In OSS the stub makes the import reject with
-// a missing-module error, which we map to the app's NotFound page so the route
-// harmlessly 404s — the same user-visible result as the previous "route not
-// registered" branch. A plugin that is present but throws for any OTHER reason
-// is re-thrown so the failure is loud instead of silently swallowed.
+// Registration is unconditional. In OSS the stub makes the import reject, which
+// we map to the app's NotFound page so the route harmlessly 404s — the same
+// user-visible result as the previous "route not registered" branch. Any other
+// failure (incl. a transient chunk-load error of a shipped plugin) is re-thrown
+// so it surfaces instead of being silently swallowed.
 export function lazyPlugin(loader, exportName = "default") {
   return lazy(() =>
     loader()
       .then((m) => ({ default: m[exportName] ?? m.default }))
       .catch((err) => {
-        if (isModuleMissing(err)) {
+        if (isPluginAbsent(err)) {
           return { default: NotFound };
         }
         throw err;
