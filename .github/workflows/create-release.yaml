@@ -229,12 +229,54 @@ jobs:
             --notes-start-tag "$LATEST_TAG"
           )
 
-          # Only mark as "latest" on main releases; hotfixes never override latest
-          # (matches the convention documented in the Hotfix Deployment Guide).
-          if [[ "$MODE" == "main" ]]; then
-            RELEASE_ARGS+=(--latest=true)
-          else
+          # Decide whether this release should become GitHub "latest".
+          #
+          # Rule: mark latest iff this version supersedes the current "latest" release
+          # (i.e. it is the newest stable release by semver). This replaces the old
+          # main-only heuristic, which left hotfixes on the CURRENT production line
+          # (e.g. latest v0.176.3, hotfix -> v0.176.4) incorrectly marked latest=false.
+          # Hotfixes on OLDER lines still stay latest=false because they do not
+          # supersede the current latest.
+          if [[ "$PRERELEASE" == "true" ]]; then
+            # A pre-release is never GitHub "latest" — skip the supersession check so we
+            # never emit --latest=true alongside --prerelease.
+            echo "ℹ️ Pre-release $NEW_TAG - not marking latest"
             RELEASE_ARGS+=(--latest=false)
+          else
+            # Query the current "latest" release, distinguishing a genuine 404 (no latest
+            # release yet) from a transient API failure (rate limit / 5xx). On a transient
+            # failure we must NOT silently fall through to latest=true, or a back-version
+            # hotfix could wrongly steal "latest" — fail the job loudly instead. (Mirrors
+            # the existing guarded pattern in the "Fetch base release version" step above.)
+            if CURRENT_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // empty' 2>/tmp/gh_latest.err); then
+              :
+            elif grep -qiE 'HTTP 404|Not Found' /tmp/gh_latest.err; then
+              CURRENT_LATEST=""   # genuinely no latest release yet
+            else
+              echo "::error::Could not determine the current latest release (transient gh API failure); refusing to guess the 'latest' flag."
+              cat /tmp/gh_latest.err >&2
+              exit 1
+            fi
+            if [[ -z "$CURRENT_LATEST" ]]; then
+              echo "✅ No existing 'latest' release - marking $NEW_TAG as latest"
+              RELEASE_ARGS+=(--latest=true)
+            elif [[ "$NEW_TAG" == "$CURRENT_LATEST" ]]; then
+              # Defensive/unreachable: the "Check for tag collision" step rejects a NEW_TAG
+              # that already exists, and CURRENT_LATEST is an existing release, so the two
+              # cannot be equal here. Kept only as a guard against a tie if this block is
+              # ever reused without that upstream check.
+              echo "ℹ️ $NEW_TAG equals current latest $CURRENT_LATEST - leaving latest unchanged"
+              RELEASE_ARGS+=(--latest=false)
+            else
+              NEWEST=$(printf '%s\n%s\n' "$NEW_TAG" "$CURRENT_LATEST" | sort -V | tail -n1)
+              if [[ "$NEWEST" == "$NEW_TAG" ]]; then
+                echo "✅ $NEW_TAG supersedes current latest $CURRENT_LATEST (mode: $MODE) - marking as latest"
+                RELEASE_ARGS+=(--latest=true)
+              else
+                echo "ℹ️ $NEW_TAG does not supersede current latest $CURRENT_LATEST (mode: $MODE) - NOT marking as latest"
+                RELEASE_ARGS+=(--latest=false)
+              fi
+            fi
           fi
 
           if [[ "$PRERELEASE" == "true" ]]; then
