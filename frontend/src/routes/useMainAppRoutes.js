@@ -6,82 +6,91 @@ import { ProjectHelper } from "../components/helpers/project/ProjectHelper.js";
 import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.jsx";
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
+import { lazyNamed } from "../helpers/lazyNamed.js";
 import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
 
-// Route pages are code-split so they are only fetched when navigated to,
-// not eagerly on the unauthenticated /landing page. The <Suspense> boundary
-// that renders these lives in Router.jsx (shared <Routes>).
-const named = (loader, name) =>
-  lazy(() => loader().then((m) => ({ default: m[name] })));
+// Route pages are code-split (via the shared lazyNamed helper) so they are
+// only fetched when navigated to, not eagerly on the unauthenticated /landing
+// page. The <Suspense> boundary that renders these lives in Router.jsx
+// (shared <Routes>).
 
 // The authenticated app shell is lazy too: it statically pulls in heavy nav
 // widgets (which themselves eager-load plugins like lookup-studio), so keeping
 // it eager would drag that whole graph onto /landing even though the shell
 // never renders pre-login.
-const FullPageLayout = named(
+const FullPageLayout = lazyNamed(
   () => import("../layouts/fullpage-payout/FullPageLayout.jsx"),
   "FullPageLayout",
 );
-const PageLayout = named(
+const PageLayout = lazyNamed(
   () => import("../layouts/page-layout/PageLayout.jsx"),
   "PageLayout",
 );
 
-const AgencyPage = named(() => import("../pages/AgencyPage.jsx"), "AgencyPage");
+const AgencyPage = lazyNamed(
+  () => import("../pages/AgencyPage.jsx"),
+  "AgencyPage",
+);
 const ConnectorsPage = lazy(() => import("../pages/ConnectorsPage.jsx")); // default export
-const CustomTools = named(
+const CustomTools = lazyNamed(
   () => import("../pages/CustomTools.jsx"),
   "CustomTools",
 );
-const DeploymentsPage = named(
+const DeploymentsPage = lazyNamed(
   () => import("../pages/DeploymentsPage.jsx"),
   "DeploymentsPage",
 );
-const GroupsPage = named(() => import("../pages/GroupsPage.jsx"), "GroupsPage");
-const InviteEditUserPage = named(
+const GroupsPage = lazyNamed(
+  () => import("../pages/GroupsPage.jsx"),
+  "GroupsPage",
+);
+const InviteEditUserPage = lazyNamed(
   () => import("../pages/InviteEditUserPage.jsx"),
   "InviteEditUserPage",
 );
-const LogsPage = named(() => import("../pages/LogsPage.jsx"), "LogsPage");
-const MetricsDashboardPage = named(
+const LogsPage = lazyNamed(() => import("../pages/LogsPage.jsx"), "LogsPage");
+const MetricsDashboardPage = lazyNamed(
   () => import("../pages/MetricsDashboardPage.jsx"),
   "MetricsDashboardPage",
 );
-const OnBoardPage = named(
+const OnBoardPage = lazyNamed(
   () => import("../pages/OnBoardPage.jsx"),
   "OnBoardPage",
 );
-const OutputAnalyzerPage = named(
+const OutputAnalyzerPage = lazyNamed(
   () => import("../pages/OutputAnalyzerPage.jsx"),
   "OutputAnalyzerPage",
 );
-const PlatformApiKeysPage = named(
+const PlatformApiKeysPage = lazyNamed(
   () => import("../pages/PlatformApiKeysPage.jsx"),
   "PlatformApiKeysPage",
 );
-const ProfilePage = named(
+const ProfilePage = lazyNamed(
   () => import("../pages/ProfilePage.jsx"),
   "ProfilePage",
 );
-const SettingsPage = named(
+const SettingsPage = lazyNamed(
   () => import("../pages/SettingsPage.jsx"),
   "SettingsPage",
 );
-const ToolIdePage = named(
+const ToolIdePage = lazyNamed(
   () => import("../pages/ToolIdePage.jsx"),
   "ToolIdePage",
 );
-const ToolsSettingsPage = named(
+const ToolsSettingsPage = lazyNamed(
   () => import("../pages/ToolsSettingsPage.jsx"),
   "ToolsSettingsPage",
 );
-const UnstractAdministrationPage = named(
+const UnstractAdministrationPage = lazyNamed(
   () => import("../pages/UnstractAdministrationPage.jsx"),
   "UnstractAdministrationPage",
 );
-const UsersPage = named(() => import("../pages/UsersPage.jsx"), "UsersPage");
-const WorkflowsPage = named(
+const UsersPage = lazyNamed(
+  () => import("../pages/UsersPage.jsx"),
+  "UsersPage",
+);
+const WorkflowsPage = lazyNamed(
   () => import("../pages/WorkflowsPage.jsx"),
   "WorkflowsPage",
 );

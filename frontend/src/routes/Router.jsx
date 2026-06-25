@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
@@ -8,6 +8,7 @@ import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
+import { lazyNamed } from "../helpers/lazyNamed.js";
 import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
 import { LandingPage } from "../pages/LandingPage.jsx";
@@ -17,16 +18,17 @@ import { useMainAppRoutes } from "./useMainAppRoutes.js";
 // not download their chunks (PDF viewer, Monaco, charts) before login. The
 // single <Suspense> boundary below covers these as well as the lazy pages
 // rendered by useMainAppRoutes (they share this <Routes>).
-const OutputAnalyzerPage = lazy(() =>
-  import("../pages/OutputAnalyzerPage.jsx").then((m) => ({
-    default: m.OutputAnalyzerPage,
-  })),
+const OutputAnalyzerPage = lazyNamed(
+  () => import("../pages/OutputAnalyzerPage.jsx"),
+  "OutputAnalyzerPage",
 );
-const SetOrgPage = lazy(() =>
-  import("../pages/SetOrgPage.jsx").then((m) => ({ default: m.SetOrgPage })),
+const SetOrgPage = lazyNamed(
+  () => import("../pages/SetOrgPage.jsx"),
+  "SetOrgPage",
 );
-const ToolIdePage = lazy(() =>
-  import("../pages/ToolIdePage.jsx").then((m) => ({ default: m.ToolIdePage })),
+const ToolIdePage = lazyNamed(
+  () => import("../pages/ToolIdePage.jsx"),
+  "ToolIdePage",
 );
 
 // Enterprise plugin route elements are code-split (see lazyPlugin). Each
