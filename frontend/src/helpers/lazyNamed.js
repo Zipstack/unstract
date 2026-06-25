@@ -9,5 +9,15 @@ import { lazy } from "react";
 // For OPTIONAL enterprise plugins that may be absent in OSS, use `lazyPlugin`
 // (pluginRegistry.js) instead — it adds the missing-plugin NotFound fallback.
 export function lazyNamed(loader, exportName) {
-  return lazy(() => loader().then((m) => ({ default: m[exportName] })));
+  return lazy(() =>
+    loader().then((m) => {
+      const component = m?.[exportName];
+      if (!component) {
+        // Fail loudly with the offending name instead of handing React.lazy
+        // `{ default: undefined }`, which surfaces as an opaque render error.
+        throw new Error(`lazyNamed: module has no export "${exportName}"`);
+      }
+      return { default: component };
+    }),
+  );
 }

@@ -1,3 +1,4 @@
+import { Button, Result } from "antd";
 import { Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 
@@ -8,6 +9,7 @@ import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
 import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
 import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
+import { ErrorBoundary } from "../components/widgets/error-boundary/ErrorBoundary.jsx";
 import { lazyNamed } from "../helpers/lazyNamed.js";
 import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
@@ -134,98 +136,119 @@ try {
   }
 }
 
+// Shown when a lazy route chunk fails to load (e.g. a transient network/CDN
+// blip, or a stale hashed asset after a deploy). lazyPlugin/lazyNamed rethrow
+// such failures, so without a boundary here React would unmount the whole tree
+// to a blank screen. A reload re-fetches the chunk, so that's the recovery.
+function RouteLoadError() {
+  return (
+    <Result
+      status="warning"
+      title="Couldn't load this page"
+      subTitle="Part of the app failed to load — this is usually a temporary network issue. Reloading should fix it."
+      extra={
+        <Button type="primary" onClick={() => window.location.reload()}>
+          Reload
+        </Button>
+      }
+    />
+  );
+}
+
 function Router() {
   const MainAppRoute = useMainAppRoutes();
   return (
-    <Suspense fallback={<GenericLoader />}>
-      <Routes>
-        <Route path="error" element={<GenericError />} />
-        <Route path="" element={<PersistentLogin />}>
-          {/* public routes */}
-          <Route path="">
-            {/* public routes accessible only to unauthenticated users */}
-            <Route path="" element={<RequireGuest />}>
-              <Route path="landing" element={<LandingPage />} />
-            </Route>
+    <ErrorBoundary fallbackComponent={<RouteLoadError />}>
+      <Suspense fallback={<GenericLoader />}>
+        <Routes>
+          <Route path="error" element={<GenericError />} />
+          <Route path="" element={<PersistentLogin />}>
+            {/* public routes */}
+            <Route path="">
+              {/* public routes accessible only to unauthenticated users */}
+              <Route path="" element={<RequireGuest />}>
+                <Route path="landing" element={<LandingPage />} />
+              </Route>
 
-            {/* public routes accessible to both authenticated and unauthenticated users */}
-            {SimplePromptStudioHelper &&
-              SimplePromptStudio &&
-              SpsLanding &&
-              SpsUpload && (
+              {/* public routes accessible to both authenticated and unauthenticated users */}
+              {SimplePromptStudioHelper &&
+                SimplePromptStudio &&
+                SpsLanding &&
+                SpsUpload && (
+                  <Route
+                    path="simple-prompt-studio"
+                    element={<SimplePromptStudioHelper />}
+                  >
+                    <Route path="" element={<SimplePromptStudio />} />
+                    <Route path="landing" element={<SpsLanding />} />
+                    <Route path="upload" element={<SpsUpload />} />
+                  </Route>
+                )}
+              {PublicPromptStudioHelper && (
                 <Route
-                  path="simple-prompt-studio"
-                  element={<SimplePromptStudioHelper />}
+                  path="/promptStudio/share/:id"
+                  element={<PublicPromptStudioHelper />}
                 >
-                  <Route path="" element={<SimplePromptStudio />} />
-                  <Route path="landing" element={<SpsLanding />} />
-                  <Route path="upload" element={<SpsUpload />} />
+                  <Route path="" element={<ToolIdePage />} />
+                  <Route
+                    path="/promptStudio/share/:id/outputAnalyzer"
+                    element={<OutputAnalyzerPage />}
+                  />
                 </Route>
               )}
-            {PublicPromptStudioHelper && (
-              <Route
-                path="/promptStudio/share/:id"
-                element={<PublicPromptStudioHelper />}
-              >
-                <Route path="" element={<ToolIdePage />} />
-                <Route
-                  path="/promptStudio/share/:id/outputAnalyzer"
-                  element={<OutputAnalyzerPage />}
-                />
-              </Route>
-            )}
-          </Route>
+            </Route>
 
-          {/* protected routes */}
-          <Route path="setOrg" element={<SetOrgPage />} />
-          {SelectProduct && (
-            <Route path="selectProduct" element={<SelectProduct />} />
-          )}
-          {UnstractSubscriptionEndPage && (
-            <Route
-              path="/subscription-expired"
-              element={<UnstractSubscriptionEndPage />}
-            />
-          )}
-          {PaymentSuccessful && (
-            <Route path="/payment/success" element={<PaymentSuccessful />} />
-          )}
-          {MarketplaceLandingEntry && (
-            <Route
-              path="/marketplace-landing"
-              element={<MarketplaceLandingEntry />}
-            />
-          )}
-          {MarketplaceStripeConflictEntry && (
-            <Route
-              path="/marketplace-stripe-conflict"
-              element={<MarketplaceStripeConflictEntry />}
-            />
-          )}
-          {CustomPlanCheckoutPage && (
-            <Route
-              path="/subscription/custom"
-              element={<CustomPlanCheckoutPage />}
-            />
-          )}
-          {LlmWhispererCustomCheckoutPage && (
-            <Route
-              path="/llm-whisperer/custom-checkout"
-              element={<LlmWhispererCustomCheckoutPage />}
-            />
-          )}
-          <Route path="" element={<RequireAuth />}>
-            {MainAppRoute}
-            {llmWhispererRouter && (
-              <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+            {/* protected routes */}
+            <Route path="setOrg" element={<SetOrgPage />} />
+            {SelectProduct && (
+              <Route path="selectProduct" element={<SelectProduct />} />
             )}
+            {UnstractSubscriptionEndPage && (
+              <Route
+                path="/subscription-expired"
+                element={<UnstractSubscriptionEndPage />}
+              />
+            )}
+            {PaymentSuccessful && (
+              <Route path="/payment/success" element={<PaymentSuccessful />} />
+            )}
+            {MarketplaceLandingEntry && (
+              <Route
+                path="/marketplace-landing"
+                element={<MarketplaceLandingEntry />}
+              />
+            )}
+            {MarketplaceStripeConflictEntry && (
+              <Route
+                path="/marketplace-stripe-conflict"
+                element={<MarketplaceStripeConflictEntry />}
+              />
+            )}
+            {CustomPlanCheckoutPage && (
+              <Route
+                path="/subscription/custom"
+                element={<CustomPlanCheckoutPage />}
+              />
+            )}
+            {LlmWhispererCustomCheckoutPage && (
+              <Route
+                path="/llm-whisperer/custom-checkout"
+                element={<LlmWhispererCustomCheckoutPage />}
+              />
+            )}
+            <Route path="" element={<RequireAuth />}>
+              {MainAppRoute}
+              {llmWhispererRouter && (
+                <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+              )}
+            </Route>
+            {verticalsRouter && verticalsRouter()}
           </Route>
-          {verticalsRouter && verticalsRouter()}
-        </Route>
-        <Route path="*" element={<NotFound />} />
-        <Route path="oauth-status" element={<OAuthStatus />} />
-      </Routes>
-    </Suspense>
+          <Route path="*" element={<NotFound />} />
+          <Route path="oauth-status" element={<OAuthStatus />} />
+        </Routes>
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
