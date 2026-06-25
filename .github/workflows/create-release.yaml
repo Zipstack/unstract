@@ -237,7 +237,20 @@ jobs:
           # (e.g. latest v0.176.3, hotfix -> v0.176.4) incorrectly marked latest=false.
           # Hotfixes on OLDER lines still stay latest=false because they do not
           # supersede the current latest.
-          CURRENT_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // empty' 2>/dev/null || true)
+          # Query the current "latest" release, distinguishing a genuine 404 (no latest
+          # release yet) from a transient API failure (rate limit / 5xx). On a transient
+          # failure we must NOT silently fall through to latest=true, or a back-version
+          # hotfix could wrongly steal "latest" — fail the job loudly instead. (Mirrors
+          # the existing guarded pattern in the "Fetch base release version" step above.)
+          if CURRENT_LATEST=$(gh api "repos/${{ github.repository }}/releases/latest" --jq '.tag_name // empty' 2>/tmp/gh_latest.err); then
+            :
+          elif grep -qiE 'HTTP 404|Not Found' /tmp/gh_latest.err; then
+            CURRENT_LATEST=""   # genuinely no latest release yet
+          else
+            echo "::error::Could not determine the current latest release (transient gh API failure); refusing to guess the 'latest' flag."
+            cat /tmp/gh_latest.err >&2
+            exit 1
+          fi
           if [[ -z "$CURRENT_LATEST" ]]; then
             echo "✅ No existing 'latest' release - marking $NEW_TAG as latest"
             RELEASE_ARGS+=(--latest=true)
