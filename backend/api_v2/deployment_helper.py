@@ -236,15 +236,17 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     f"API hub header caching failed for execution {execution_id}: {e}"
                 )
 
-        hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
-            pipeline_id=pipeline_id,
-            workflow_id=workflow_id,
-            execution_id=execution_id,
-            file_objs=file_objs,
-            use_file_history=use_file_history,
-        )
-
         try:
+            # Staging runs synchronously (before async dispatch). Keep it inside the
+            # try so a staging failure marks the execution ERROR instead of leaving
+            # the PENDING row created above stuck/running forever in the UI (UN-3647).
+            hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
+                pipeline_id=pipeline_id,
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                file_objs=file_objs,
+                use_file_history=use_file_history,
+            )
             result = WorkflowHelper.execute_workflow_async(
                 workflow_id=workflow_id,
                 pipeline_id=pipeline_id,
@@ -287,6 +289,13 @@ class DeploymentHelper(BaseAPIKeyValidator):
             if not include_metrics:
                 result.remove_result_metrics()
         except Exception as error:
+            # Mark the execution ERROR so it doesn't appear stuck/PENDING in the UI.
+            # The async-dispatch path marks it internally (execute_workflow_async),
+            # but synchronous failures (e.g. staging) bypass that, so do it here.
+            WorkflowExecutionServiceHelper.update_execution_err(
+                str(execution_id), str(error)
+            )
+
             # Release rate limit slot (workflow setup/dispatch failed, async job not started)
             APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
 
