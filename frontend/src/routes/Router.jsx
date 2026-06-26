@@ -2,7 +2,10 @@ import { Suspense } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
-import { RouteLoadError } from "../components/error/LazyOutlet/LazyOutlet.jsx";
+import {
+  handleRouteError,
+  RouteLoadError,
+} from "../components/error/LazyOutlet/LazyOutlet.jsx";
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
 import { GenericLoader } from "../components/generic-loader/GenericLoader.jsx";
 import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
@@ -146,6 +149,7 @@ function Router() {
     // navigation clear the error without a full reload.
     <ErrorBoundary
       resetKeys={[location.pathname]}
+      onError={handleRouteError}
       fallbackComponent={<RouteLoadError />}
     >
       <Suspense fallback={<GenericLoader />}>
