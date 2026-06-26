@@ -1,4 +1,4 @@
-import { Button, Form, Input, Select, Space } from "antd";
+import { Button, Checkbox, Form, Input, Select, Space } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
@@ -12,6 +12,7 @@ const DEFAULT_FORM_DETAILS = {
   authorization_key: "",
   is_active: false,
   max_retries: 0,
+  notify_on_failures: false,
   pipeline: "",
   api: "",
   url: "",
@@ -83,7 +84,8 @@ function CreateNotification({
   }, [formDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
-    setFormDetails({ ...formDetails, ...allValues });
+    const nextValues = { ...formDetails, ...allValues };
+    setFormDetails(nextValues);
     const changedFieldName = Object.keys(changedValues)[0];
     form.setFields([
       {
@@ -220,6 +222,13 @@ function CreateNotification({
             </Form.Item>
           ),
       )}
+      <Form.Item
+        name="notify_on_failures"
+        valuePropName="checked"
+        extra="Notification interval can be configured in Platform settings."
+      >
+        <Checkbox>Notify on failures only</Checkbox>
+      </Form.Item>
       <Form.Item className="display-flex-right">
         <Space>
           <Button onClick={() => setIsForm(false)}>Cancel</Button>

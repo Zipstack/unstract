@@ -18,7 +18,6 @@ from utils.user_context import UserContext
 
 from workflow_manager.execution.dto import ExecutionCache
 from workflow_manager.execution.execution_cache_utils import ExecutionCacheUtils
-from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow
 
@@ -185,6 +184,24 @@ class WorkflowExecution(BaseModel):
     )
     total_files = models.PositiveIntegerField(
         default=0, verbose_name="Total files", db_comment="Number of files to process"
+    )
+    successful_files = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Per-run aggregate of files that completed successfully. Written by "
+            "the worker callback at terminal state. Null on rows created before "
+            "this column was added."
+        ),
+    )
+    failed_files = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Per-run aggregate of files that errored. Written by the worker "
+            "callback at terminal state. Null on rows created before this "
+            "column was added."
+        ),
     )
     error_message = models.CharField(
         max_length=EXECUTION_ERROR_LENGTH,
@@ -432,16 +449,8 @@ class WorkflowExecution(BaseModel):
 
         result = []
         for e in executions:
-            # TODO: Optimize by storing successful/failed counts directly in
-            # WorkflowExecution model. Current approach causes N+1 queries
-            # (2 queries per execution). Denormalized counts would eliminate
-            # these queries entirely.
-            successful = WorkflowFileExecution.objects.filter(
-                workflow_execution_id=e.id, status="COMPLETED"
-            ).count()
-            failed = WorkflowFileExecution.objects.filter(
-                workflow_execution_id=e.id, status="ERROR"
-            ).count()
+            successful = e.successful_files or 0
+            failed = e.failed_files or 0
 
             # Compute display_status: PARTIAL_SUCCESS if completed with mixed results
             display_status = e.status

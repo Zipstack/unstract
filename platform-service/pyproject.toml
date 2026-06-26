@@ -13,7 +13,7 @@ dependencies = [
     "psycopg2-binary~=2.9",
     "python-dotenv~=1.2.2",
     "redis~=5.2.1",
-    "cryptography>=48.0.0",
+    "cryptography>=48.0.1",
     "requests>=2.33.0",
     "unstract-flags",
     "unstract-core[flask]",

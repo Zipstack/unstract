@@ -22,7 +22,8 @@ classifiers = [
 dependencies = [
     "singleton-decorator~=1.0.0",
     # For GCSHelper
-    "google-auth==2.20.0",
+    # google-auth >= 2.53 no longer depends on urllib3 (2.20 did) — that's what unblocks urllib3 2.x
+    "google-auth>=2.22.0,<3",
     "google-cloud-secret-manager==2.16.1",
     "google-cloud-storage==2.9.0",
     # Filesystem connectors
@@ -39,7 +40,7 @@ dependencies = [
     "snowflake-connector-python[pandas]~=4.6.0", # For Snowflake
     "google-cloud-bigquery==3.11.4",              # For Bigquery
     "pymssql==2.3.4",                             # For MSSQL
-    "PyMySQL==1.1.0",                             # For MySQL
+    "PyMySQL==1.1.1",                             # For MySQL
     "oracledb==2.4.0",                            # For OracleDB
     "fsspec[sftp]~=2024.10.0",                    # For SFTP
 ]

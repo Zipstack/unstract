@@ -23,7 +23,7 @@
       "type": "string",
       "title": "Base URL",
       "default": "",
-      "description": "Provide the base URL where Ollama server is running. Example: http://docker.host.internal:11434 or http://localhost:11434"
+      "description": "Provide the base URL where Ollama server is running. Example: http://host.docker.internal:11434 or http://localhost:11434"
     },
     "max_tokens": {
       "type": "number",

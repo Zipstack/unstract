@@ -380,12 +380,16 @@ def _update_execution_status_unified(
     try:
         # Consistent workflow execution status update across all callback types
         total_files = aggregated_results.get("total_files", 0)
+        successful_files = aggregated_results.get("successful_files", 0)
+        failed_files = aggregated_results.get("failed_files", 0)
 
         # Make the unified API call
         api_client.update_workflow_execution_status(
             execution_id=execution_id,
             status=final_status,
             total_files=total_files,
+            successful_files=successful_files,
+            failed_files=failed_files,
             organization_id=organization_id,
             error_message=error_message,
         )
