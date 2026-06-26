@@ -41,6 +41,9 @@ class PipelineSerializer(
     class Meta:
         model = Pipeline
         fields = "__all__"
+        # IntegrityErrorMixin / view own uniqueness; drop the DRF auto-validator
+        # that 400s on re-save before the view can map a friendly message.
+        validators = []
         extra_kwargs = {
             "shared_users": {"read_only": True},
             "shared_to_org": {"read_only": True},
