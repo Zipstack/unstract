@@ -19,7 +19,7 @@
   z-index: 1;
   margin-bottom: 0;
   padding-top: 12px;
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--ant-color-border-secondary, #f0f0f0);
 }
 
 .add-llm-profile-row {
