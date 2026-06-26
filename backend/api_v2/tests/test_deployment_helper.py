@@ -1,4 +1,4 @@
-"""Regression test for UN-3647.
+"""Regression test for UN-3648.
 
 When an API-deployment run fails synchronously at the "Staging files in API
 storage" step (``SourceConnector.add_input_file_to_api_storage``, before async
@@ -7,8 +7,10 @@ ERROR — otherwise the UI shows the run as stuck/running forever.
 
 Before the fix, staging sat *outside* the try/except in
 ``DeploymentHelper.execute_workflow``, so a staging exception propagated out of
-the method and the row stayed PENDING. The fix moves staging inside the try and
-has the except branch call ``update_execution_err``.
+the method and the row stayed PENDING. The fix gives staging its own
+try/except that marks the execution ERROR (with the error-marking isolated so
+cleanup still runs if that DB write fails) and then releases the rate-limit
+slot and cleans up storage.
 
 Like ``usage_v2/tests/test_helper.py``, this test does not require a live Django
 database (the backend test env has no ``pytest-django`` / no DB). It stubs the
@@ -102,9 +104,20 @@ def _load_deployment_helper():
     return helper
 
 
-def _run_staging_failure() -> None:
-    """A staging failure marks the execution ERROR instead of leaving it PENDING."""
+def _make_helper_and_api(staging_error: Exception):
+    """Load the helper with a known execution id and a failing staging call."""
     helper = _load_deployment_helper()
+
+    # The module is cached in sys.modules, so its mocked collaborators are shared
+    # across tests. Reset call counts and side effects so each test is isolated.
+    for collaborator in (
+        helper.WorkflowExecutionServiceHelper,
+        helper.SourceConnector,
+        helper.APIDeploymentRateLimiter,
+        helper.DestinationConnector,
+        helper.WorkflowHelper,
+    ):
+        collaborator.reset_mock(return_value=True, side_effect=True)
 
     # Known execution id so we can assert it is the one marked ERROR.
     execution_row = MagicMock()
@@ -114,13 +127,17 @@ def _run_staging_failure() -> None:
     )
 
     # Simulate the synchronous staging failure (e.g. the Moody's S3/MinIO 403).
-    helper.SourceConnector.add_input_file_to_api_storage.side_effect = RuntimeError(
-        "boom"
-    )
+    helper.SourceConnector.add_input_file_to_api_storage.side_effect = staging_error
 
     api = MagicMock()
     api.workflow.id = "wf-1"
     api.id = "pipe-1"
+    return helper, api
+
+
+def _run_staging_failure() -> None:
+    """A staging failure marks the execution ERROR instead of leaving it PENDING."""
+    helper, api = _make_helper_and_api(RuntimeError("boom"))
 
     # Must NOT raise — the failure should be handled, not propagated.
     helper.DeploymentHelper.execute_workflow(
@@ -142,10 +159,45 @@ def _run_staging_failure() -> None:
     helper.WorkflowHelper.execute_workflow_async.assert_not_called()
 
 
+def _run_staging_failure_db_marking_raises() -> None:
+    """If marking the row ERROR itself raises, cleanup must still run (not propagate)."""
+    helper, api = _make_helper_and_api(RuntimeError("boom"))
+
+    # The DB write to mark ERROR fails (e.g. transient DB error).
+    helper.WorkflowExecutionServiceHelper.update_execution_err.side_effect = RuntimeError(
+        "db down"
+    )
+
+    # Must NOT raise — a failed error-marking should not break cleanup.
+    # The helper logs the failure via logger.exception; silence it so the
+    # expected, handled error doesn't look like a test failure in the output.
+    helper.logger.disabled = True
+    try:
+        helper.DeploymentHelper.execute_workflow(
+            organization_name="org",
+            api=api,
+            file_objs=[],
+            timeout=-1,
+        )
+    finally:
+        helper.logger.disabled = False
+
+    # Cleanup still runs even though error-marking raised.
+    helper.APIDeploymentRateLimiter.release_slot.assert_called_once()
+    helper.DestinationConnector.delete_api_storage_dir.assert_called_once()
+
+
 def test_staging_failure_marks_execution_error() -> None:
     _run_staging_failure()
 
 
+def test_staging_failure_cleanup_survives_db_marking_error() -> None:
+    _run_staging_failure_db_marking_raises()
+
+
 if __name__ == "__main__":
     _run_staging_failure()
-    print("OK: staging failure marks execution ERROR (UN-3647)")
+    _run_staging_failure_db_marking_raises()
+    print(
+        "OK: staging failure marks execution ERROR + cleanup survives DB error (UN-3648)"
+    )
