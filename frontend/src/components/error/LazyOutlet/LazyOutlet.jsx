@@ -16,7 +16,7 @@ export function RouteLoadError() {
       title="Couldn't load this page"
       subTitle="Part of the app failed to load — this is usually a temporary network issue. Reloading should fix it."
       extra={
-        <Button type="primary" onClick={() => window.location.reload()}>
+        <Button type="primary" onClick={() => globalThis.location.reload()}>
           Reload
         </Button>
       }
