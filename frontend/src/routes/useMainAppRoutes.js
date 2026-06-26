@@ -197,16 +197,12 @@ try {
   }
 }
 
-// The readonly route lives inside the manual-review ReviewLayout. If the
-// prompt-change-indicator plugin ships without manual-review, the route
-// would silently never register — surface that misconfiguration loudly.
-if (ReadOnlyReviewPage && !ReviewLayout) {
-  // eslint-disable-next-line no-console
-  console.warn(
-    "[prompt-change-indicator] ReadOnlyReviewPage loaded but ReviewLayout " +
-      "is missing; readonly route will not be registered.",
-  );
-}
+// NOTE: the old "ReadOnlyReviewPage loaded but ReviewLayout missing" warning
+// was removed — with lazyPlugin both wrappers are always truthy, so the check
+// could never fire. If prompt-change-indicator ever ships without
+// manual-review, ReviewLayout's import rejects at render and falls back to
+// NotFound (lazyPlugin), so the readonly route degrades to a 404 rather than
+// crashing — no silent total failure to guard against.
 
 function useMainAppRoutes() {
   const routes = (

@@ -1,8 +1,8 @@
-import { Button, Result } from "antd";
 import { Suspense } from "react";
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
+import { RouteLoadError } from "../components/error/LazyOutlet/LazyOutlet.jsx";
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
 import { GenericLoader } from "../components/generic-loader/GenericLoader.jsx";
 import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
@@ -136,29 +136,18 @@ try {
   }
 }
 
-// Shown when a lazy route chunk fails to load (e.g. a transient network/CDN
-// blip, or a stale hashed asset after a deploy). lazyPlugin/lazyNamed rethrow
-// such failures, so without a boundary here React would unmount the whole tree
-// to a blank screen. A reload re-fetches the chunk, so that's the recovery.
-function RouteLoadError() {
-  return (
-    <Result
-      status="warning"
-      title="Couldn't load this page"
-      subTitle="Part of the app failed to load — this is usually a temporary network issue. Reloading should fix it."
-      extra={
-        <Button type="primary" onClick={() => window.location.reload()}>
-          Reload
-        </Button>
-      }
-    />
-  );
-}
-
 function Router() {
+  const location = useLocation();
   const MainAppRoute = useMainAppRoutes();
   return (
-    <ErrorBoundary fallbackComponent={<RouteLoadError />}>
+    // App-wide backstop: catches shell-level chunk failures and errors on
+    // routes that don't sit inside a LazyOutlet layout. Per-page load errors
+    // are handled by the scoped boundaries inside the layouts. resetKeys lets
+    // navigation clear the error without a full reload.
+    <ErrorBoundary
+      resetKeys={[location.pathname]}
+      fallbackComponent={<RouteLoadError />}
+    >
       <Suspense fallback={<GenericLoader />}>
         <Routes>
           <Route path="error" element={<GenericError />} />

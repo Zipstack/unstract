@@ -35,7 +35,20 @@ function isPluginAbsent(err) {
 export function lazyPlugin(loader, exportName = "default") {
   return lazy(() =>
     loader()
-      .then((m) => ({ default: m[exportName] ?? m.default }))
+      .then((m) => {
+        const component = m[exportName] ?? m.default;
+        if (!component) {
+          // The plugin loaded but the expected export is gone (renamed/
+          // removed). Fail loudly with the offending name instead of handing
+          // React.lazy `{ default: undefined }`. isPluginAbsent won't match
+          // this message, so it re-throws to the ErrorBoundary rather than
+          // masquerading as an absent plugin.
+          throw new Error(
+            `lazyPlugin: module loaded but has no export "${exportName}" (or default)`,
+          );
+        }
+        return { default: component };
+      })
       .catch((err) => {
         if (isPluginAbsent(err)) {
           return { default: NotFound };
