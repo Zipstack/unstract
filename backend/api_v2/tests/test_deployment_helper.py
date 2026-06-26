@@ -1,4 +1,4 @@
-"""Regression test for UN-3648.
+"""Regression tests for synchronous staging failures in ``execute_workflow``.
 
 When an API-deployment run fails synchronously at the "Staging files in API
 storage" step (``SourceConnector.add_input_file_to_api_storage``, before async
@@ -126,7 +126,7 @@ def _make_helper_and_api(staging_error: Exception):
         execution_row
     )
 
-    # Simulate the synchronous staging failure (e.g. the Moody's S3/MinIO 403).
+    # Simulate the synchronous staging failure (e.g. an object-store 403).
     helper.SourceConnector.add_input_file_to_api_storage.side_effect = staging_error
 
     api = MagicMock()
@@ -198,6 +198,4 @@ def test_staging_failure_cleanup_survives_db_marking_error() -> None:
 if __name__ == "__main__":
     _run_staging_failure()
     _run_staging_failure_db_marking_raises()
-    print(
-        "OK: staging failure marks execution ERROR + cleanup survives DB error (UN-3648)"
-    )
+    print("OK: staging failure marks execution ERROR + cleanup survives DB error")

@@ -236,11 +236,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     f"API hub header caching failed for execution {execution_id}: {e}"
                 )
 
-        # Staging runs synchronously, before async dispatch. A failure here must
-        # mark the PENDING execution ERROR (UN-3648) — otherwise the row is
-        # orphaned and the UI shows the run as stuck/running forever. Scoped to
-        # its own try so the error-marking only applies to genuine pre-dispatch
-        # failures and never overwrites an already-dispatched execution's status.
+        # Staging runs synchronously, before async dispatch. Scope it to its own
+        # try/except so a failure marks the still-PENDING execution ERROR (else the
+        # row is orphaned and the UI shows the run as stuck), and so error-marking
+        # never runs in the post-dispatch path where it could overwrite the status
+        # of an already-running execution.
         try:
             hash_values_of_files = SourceConnector.add_input_file_to_api_storage(
                 pipeline_id=pipeline_id,
