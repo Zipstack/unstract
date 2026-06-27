@@ -10,70 +10,21 @@ method when the plugin is installed.  Challenge and evaluation plugins
 are integrated at the caller level (LegacyExecutor).
 """
 
-import ipaddress
 import logging
 import os
-import socket
 from typing import Any
-from urllib.parse import urlparse
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 
+from unstract.sdk1.utils.signature_highlights import (
+    format_signature_metadata_context,
+    merge_into_highlight_data,
+    resolve_signature_highlight_coords,
+)
+from unstract.sdk1.utils.url_safety import is_safe_public_url
+
 logger = logging.getLogger(__name__)
-
-
-def _resolve_host_addresses(host: str) -> set[str]:
-    """Resolve a hostname or IP string to a set of IP address strings."""
-    try:
-        ipaddress.ip_address(host)
-        return {host}
-    except ValueError:
-        pass
-    try:
-        return {
-            sockaddr[0]
-            for _family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
-                host, None, type=socket.SOCK_STREAM
-            )
-        }
-    except Exception:
-        return set()
-
-
-def _is_safe_public_url(url: str) -> bool:
-    """Validate webhook URL for SSRF protection.
-
-    Only allows HTTPS and blocks private/loopback/internal addresses.
-    """
-    try:
-        p = urlparse(url)
-        if p.scheme not in ("https",):
-            return False
-        host = p.hostname or ""
-        if host in ("localhost",):
-            return False
-
-        addrs = _resolve_host_addresses(host)
-        if not addrs:
-            return False
-
-        for addr in addrs:
-            try:
-                ip = ipaddress.ip_address(addr)
-            except ValueError:
-                return False
-            if (
-                ip.is_private
-                or ip.is_loopback
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-            ):
-                return False
-        return True
-    except Exception:
-        return False
 
 
 class AnswerPromptService:
@@ -157,9 +108,10 @@ class AnswerPromptService:
             platform_postamble=platform_postamble,
             word_confidence_postamble=word_confidence_postamble,
             prompt_type=prompt_type,
+            signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
         )
         output[PSKeys.COMBINED_PROMPT] = prompt
-        return AnswerPromptService.run_completion(
+        answer = AnswerPromptService.run_completion(
             llm=llm,
             prompt=prompt,
             metadata=metadata,
@@ -171,6 +123,14 @@ class AnswerPromptService:
             execution_source=execution_source,
             process_text=process_text,
         )
+        AnswerPromptService._attach_signature_highlights(
+            answer=answer,
+            signature_metadata=tool_settings.get(PSKeys.SIGNATURE_METADATA),
+            signature_page_references=tool_settings.get(PSKeys.SIGNATURE_PAGE_REFERENCES),
+            metadata=metadata,
+            prompt_key=output[PSKeys.NAME],
+        )
+        return answer
 
     @staticmethod
     def _build_grammar_notes(grammar_list: list[dict[str, Any]]) -> str:
@@ -190,6 +150,43 @@ class AnswerPromptService:
         return notes
 
     @staticmethod
+    def _attach_signature_highlights(
+        answer: str,
+        signature_metadata: dict[str, list[Any]] | None,
+        signature_page_references: dict[str, Any] | None,
+        metadata: dict[str, Any] | None,
+        prompt_key: str | None,
+    ) -> None:
+        """Attach signature page highlights to ``metadata`` when the LLM
+        answer references a known signer or signatures generally.
+
+        Delegates the matching logic to
+        ``unstract.sdk1.utils.signature_highlights`` so workers and
+        prompt-service stay in sync.
+        """
+        if metadata is None or not prompt_key:
+            return
+        new_coords = resolve_signature_highlight_coords(
+            answer=answer,
+            signature_metadata=signature_metadata,
+            signature_page_references=signature_page_references,
+        )
+        if not new_coords:
+            return
+        merge_into_highlight_data(
+            metadata=metadata,
+            prompt_key=prompt_key,
+            new_coords=new_coords,
+            highlight_data_key=PSKeys.HIGHLIGHT_DATA,
+        )
+        logger.info(
+            "DOC_INSIGHTS attach_signature_highlights: prompt=%s, added %d "
+            "signature highlight(s)",
+            prompt_key,
+            len(new_coords),
+        )
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -199,6 +196,7 @@ class AnswerPromptService:
         platform_postamble: str,
         word_confidence_postamble: str,
         prompt_type: str = "text",
+        signature_metadata: dict[str, list[Any]] | None = None,
     ) -> str:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
@@ -212,8 +210,22 @@ class AnswerPromptService:
             platform_postamble += "\n\n"
             if word_confidence_postamble:
                 platform_postamble += f"{word_confidence_postamble}\n\n"
+        # Append signature metadata to context if present
+        signature_context = ""
+        if signature_metadata:
+            logger.info(
+                "DOC_INSIGHTS construct_prompt: injecting signature context "
+                "for %d page(s)",
+                len(signature_metadata),
+            )
+            signature_context = format_signature_metadata_context(signature_metadata)
+            logger.debug(
+                "DOC_INSIGHTS construct_prompt: signature_context=%s",
+                signature_context[:200] if signature_context else "empty",
+            )
         prompt += (
-            f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
+            f"\n\n{postamble}\n\nContext:\n---------------\n{context}"
+            f"{signature_context}\n"
             f"-----------------\n\n{platform_postamble}Answer:"
         )
         return prompt
@@ -292,7 +304,7 @@ class AnswerPromptService:
         if not webhook_url:
             logger.warning("Postprocessing webhook enabled but URL missing; skipping.")
             return parsed_data, None
-        if not _is_safe_public_url(webhook_url):
+        if not is_safe_public_url(webhook_url):
             logger.warning("Postprocessing webhook URL is not allowed; skipping.")
             return parsed_data, None
         try:

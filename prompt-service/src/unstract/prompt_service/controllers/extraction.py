@@ -36,7 +36,7 @@ def extract() -> Any:
     tool_exec_metadata = payload.get(IKeys.TOOL_EXECUTION_METATADA, {})
     execution_run_data_folder = payload.get(IKeys.EXECUTION_DATA_DIR, "")
 
-    extracted_text = ExtractionService.perform_extraction(
+    extraction_result = ExtractionService.perform_extraction(
         file_path=file_path,
         x2text_instance_id=x2text_instance_id,
         output_file_path=output_file_path,
@@ -49,5 +49,13 @@ def extract() -> Any:
         tool_exec_metadata=tool_exec_metadata,
         execution_run_data_folder=execution_run_data_folder,
     )
-    response = {IKeys.EXTRACTED_TEXT: extracted_text}
+    response = {
+        IKeys.EXTRACTED_TEXT: extraction_result["extracted_text"],
+    }
+    signature_metadata = extraction_result.get("signature_metadata")
+    if signature_metadata:
+        response["signature_metadata"] = signature_metadata
+    signature_page_references = extraction_result.get("signature_page_references")
+    if signature_page_references:
+        response["signature_page_references"] = signature_page_references
     return response

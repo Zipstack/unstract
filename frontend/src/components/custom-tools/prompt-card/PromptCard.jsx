@@ -254,23 +254,32 @@ const PromptCard = memo(
       highlightedProfile,
       confidenceData,
     ) => {
-      if (details?.enable_highlight) {
-        const processedHighlight =
-          singlePassExtractMode &&
-          typeof highlightData === "object" &&
-          !Array.isArray(highlightData)
-            ? flattenHighlightData(highlightData)
-            : highlightData;
-
-        updateCustomTool({
-          selectedHighlight: {
-            highlight: processedHighlight,
-            highlightedPrompt: highlightedPrompt,
-            highlightedProfile: highlightedProfile,
-            confidence: confidenceData,
-          },
-        });
+      // Allow highlight state to update when the tool has highlighting
+      // enabled OR when the backend produced highlight_data (e.g.
+      // signature page refs from LLMWhisperer's document_insights mode),
+      // so signature-driven page jumps work without the separate
+      // enable_highlight toggle.
+      const hasHighlightData = Array.isArray(highlightData)
+        ? highlightData.length > 0
+        : Boolean(highlightData);
+      if (!details?.enable_highlight && !hasHighlightData) {
+        return;
       }
+      const processedHighlight =
+        singlePassExtractMode &&
+        typeof highlightData === "object" &&
+        !Array.isArray(highlightData)
+          ? flattenHighlightData(highlightData)
+          : highlightData;
+
+      updateCustomTool({
+        selectedHighlight: {
+          highlight: processedHighlight,
+          highlightedPrompt: highlightedPrompt,
+          highlightedProfile: highlightedProfile,
+          confidence: confidenceData,
+        },
+      });
     };
 
     const handleTypeChange = (value) => {

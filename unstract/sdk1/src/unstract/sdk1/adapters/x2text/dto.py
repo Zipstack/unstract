@@ -6,6 +6,8 @@ from typing import Any
 class TextExtractionMetadata:
     whisper_hash: str
     line_metadata: dict[Any, Any] | None = None
+    signature_metadata: dict[str, list[Any]] | None = None
+    signature_page_references: dict[str, Any] | None = None
 
 
 @dataclass

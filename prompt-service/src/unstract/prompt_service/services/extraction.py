@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +14,8 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.utils.common import log_elapsed
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
+
+logger = logging.getLogger(__name__)
 
 
 class ExtractionService:
@@ -30,7 +33,7 @@ class ExtractionService:
         execution_source: str | None = None,
         tool_exec_metadata: dict[str, Any] | None = None,
         execution_run_data_folder: str | None = None,
-    ) -> str:
+    ) -> dict[str, Any]:
         extracted_text = ""
         util = PromptServiceBaseTool(platform_key=platform_key)
         x2text = X2Text(
@@ -64,7 +67,37 @@ class ExtractionService:
                     fs=fs,
                 )
             extracted_text = process_response.extracted_text
-            return extracted_text
+            # Extract signature metadata if present
+            signature_metadata = None
+            signature_page_references = None
+            if (
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.signature_metadata
+            ):
+                signature_metadata = (
+                    process_response.extraction_metadata.signature_metadata
+                )
+                logger.info(
+                    "DOC_INSIGHTS extraction: signature_metadata found for pages: %s",
+                    list(signature_metadata.keys()),
+                )
+            if (
+                process_response.extraction_metadata
+                and process_response.extraction_metadata.signature_page_references
+            ):
+                signature_page_references = (
+                    process_response.extraction_metadata.signature_page_references
+                )
+                logger.info(
+                    "DOC_INSIGHTS extraction: signature_page_references "
+                    "found for pages: %s",
+                    list(signature_page_references.keys()),
+                )
+            return {
+                "extracted_text": extracted_text,
+                "signature_metadata": signature_metadata,
+                "signature_page_references": signature_page_references,
+            }
         except AdapterError as e:
             msg = f"Error from text extractor '{x2text.x2text_instance.get_name()}'. "
             msg += str(e)

@@ -415,14 +415,22 @@ const TextResult = ({
 
   const confidence = getConfidenceForText();
 
-  return enableHighlight ? (
+  // Make the answer clickable when the tool has highlighting enabled OR
+  // when the backend produced highlight_data (e.g. signature page refs
+  // from LLMWhisperer's document_insights mode), so signature highlights
+  // still work without requiring the separate enable_highlight toggle.
+  const hasHighlightData =
+    Array.isArray(highlightData) && highlightData.length > 0;
+  const isClickable = enableHighlight || hasHighlightData;
+
+  return isClickable ? (
     <Typography.Text
       wrap
       onClick={() =>
         onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
-        highlightData ? "clickable" : ""
+        hasHighlightData ? "clickable" : ""
       } ${selectedHighlight?.highlightedPrompt === promptId ? "selected" : ""}`}
     >
       {parsedOutput}
