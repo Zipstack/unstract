@@ -34,8 +34,8 @@ from unstract.sdk1.vector_db import VectorDB
 answer_prompt_bp = Blueprint("answer-prompt", __name__)
 
 
-@AuthHelper.auth_required
 @answer_prompt_bp.route("/answer-prompt", methods=["POST"])
+@AuthHelper.auth_required
 def prompt_processor() -> Any:
     platform_key = AuthHelper.get_token_from_auth_header(request)
     payload: dict[Any, Any] = request.json
